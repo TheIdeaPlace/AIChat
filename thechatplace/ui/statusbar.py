@@ -108,7 +108,8 @@ class StatusText(wx.Control):
         # Shortened with "..." when it doesn't fit, rather than cut mid-word
         # ("Pick a name for the rel", #179). What screen readers read is the
         # whole label, from the accessible above.
-        shown = wx.Control.Ellipsize(text, dc, wx.ELLIPSIZE_END, max(width - 6, 0))
+        shown = wx.Control.Ellipsize(text, dc, wx.ELLIPSIZE_END, max(width - 6, 0),
+                                     wx.ELLIPSIZE_FLAGS_NONE)
         dc.DrawText(shown, 3, max((height - text_height) // 2, 0))
         if self.HasFocus():
             wx.RendererNative.Get().DrawFocusRect(self, dc, wx.Rect(0, 0, width, height))

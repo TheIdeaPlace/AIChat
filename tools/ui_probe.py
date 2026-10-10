@@ -264,7 +264,11 @@ def describe(window: wx.TopLevelWindow) -> dict:
             # that it's shortened, and screen readers get it whole.
             ellipsized = isinstance(child, wx.StaticText) and child.HasFlag(
                 wx.ST_ELLIPSIZE_START | wx.ST_ELLIPSIZE_MIDDLE | wx.ST_ELLIPSIZE_END)
-            if isinstance(child, _TEXT_CONTROLS) and entry["label"] and not ellipsized:
+            if ellipsized and entry["label"]:
+                # Shortened is fine; too narrow to show any of it isn't.
+                if screen.width < child.GetTextExtent("W...").width:
+                    entry["problems"].append("text hidden: too narrow to show any of it")
+            elif isinstance(child, _TEXT_CONTROLS) and entry["label"]:
                 if best.width > screen.width + 1 or best.height > screen.height + 1:
                     entry["problems"].append("text cut off: smaller than its best size")
             if isinstance(child, wx.ListBox):

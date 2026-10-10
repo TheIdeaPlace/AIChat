@@ -545,16 +545,18 @@ class MainFrame(wx.Frame):
         orow.Add(self.send_btn, 0, wx.RIGHT, 6)
         orow.Add(self.stop_btn, 0, wx.RIGHT, 6)
         orow.Add(self.commands_btn, 0, wx.RIGHT, 6)
-        orow.Add(self.attach_btn, 0, wx.RIGHT, 12)
-        # Ends in "..." when it doesn't fit, rather than widening the column:
-        # "1 message queued. Claude is working (1 minute 15 seconds)." took
-        # the session list from 378 to 268 pixels wide while a turn ran
-        # (#179). Its label, which screen readers read, stays whole.
+        orow.Add(self.attach_btn, 0)
+        osizer.Add(orow, 0, wx.EXPAND | wx.TOP, 6)
+        # On its own line under the buttons, with the column's whole width,
+        # and ending in "..." only when even that isn't enough, rather than
+        # widening the column: beside the buttons, "1 message queued. Claude
+        # is working (1 minute 15 seconds)." took the session list from 378
+        # to 268 pixels wide while a turn ran (#179). Its label, which
+        # screen readers read, stays whole.
         self.turn_status = wx.StaticText(self.own_reply, label="",
                                          style=wx.ST_ELLIPSIZE_END | wx.ST_NO_AUTORESIZE)
         self.turn_status.SetMinSize((1, -1))
-        orow.Add(self.turn_status, 1, wx.ALIGN_CENTER_VERTICAL)
-        osizer.Add(orow, 0, wx.EXPAND | wx.TOP, 6)
+        osizer.Add(self.turn_status, 0, wx.EXPAND | wx.TOP, 4)
         self.own_reply.SetSizer(osizer)
         self.send_btn.Bind(wx.EVT_BUTTON, self.on_send)
         self.stop_btn.Bind(wx.EVT_BUTTON, self.on_stop)
