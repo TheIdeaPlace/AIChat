@@ -41,7 +41,11 @@ The variants are in `tools/ui_probe_plan.json`:
 `tools/ui_probe_guest.ps1` sets each one inside the VM, runs the probe, and puts the display
 back. Access keys are always underlined in every run, as Windows'
 "Underline access keys" setting does, so the pictures don't differ by whether the keyboard
-was used last. It refuses to run outside a virtual machine.
+was used last. ClearType is turned on too, so text is smoothed the same way in every run. It
+refuses to run outside a virtual machine.
+
+A pop-up from Windows itself (OneDrive asking to back up, for example) can land on a
+screen and show as a change. Check the diff picture before accepting a changed screen.
 
 For a run, the VM is switched to its largest screen mode, 1920 by 1080. Windows allows up to
 175% on that screen, so 200% would need ClaudeTesting's Hyper-V display set larger. The first

@@ -20,6 +20,7 @@
   1000,
   720
  ],
+ "complete": true,
  "surfaces": {
   "main-start": {
    "kind": "window",
@@ -528,5 +529,5 @@
    "about": "Main window with no sessions at all (a first run)"
   }
  },
- "seconds": 87.8
+ "seconds": 88.3
 }

@@ -67,6 +67,17 @@ public static class ProbeDisplay {
         SystemParametersInfoPtr(SPI_SETKEYBOARDCUES, 0, (IntPtr)(on ? 1 : 0), SPIF_SENDCHANGE);
     }
 
+    // ClearType on, for the same reason: on a fresh VM the first run's
+    // WebView drew its text in grey and every later one in ClearType, and
+    // the User Guide showed as 7% changed (#155).
+    public static void SetClearType() {
+        const uint SPI_SETFONTSMOOTHING = 0x004B, SPI_SETFONTSMOOTHINGTYPE = 0x200B;
+        const uint FE_FONTSMOOTHINGCLEARTYPE = 2, SPIF_UPDATEINIFILE = 1, SPIF_SENDCHANGE = 2;
+        SystemParametersInfoPtr(SPI_SETFONTSMOOTHING, 1, IntPtr.Zero, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+        SystemParametersInfoPtr(SPI_SETFONTSMOOTHINGTYPE, 0, (IntPtr)FE_FONTSMOOTHINGCLEARTYPE,
+                                SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+    }
+
     // ---- display scaling, live, through DisplayConfig (what Settings does) ----
 
     [StructLayout(LayoutKind.Sequential)] struct LUID { public uint Low; public int High; }
@@ -266,6 +277,7 @@ function Reset-Display {
     Set-AppsTheme $false
     Set-Scaling 100
     [ProbeDisplay]::SetKeyboardCues($true)
+    [ProbeDisplay]::SetClearType()
 }
 
 New-Item $Out -ItemType Directory -Force | Out-Null
