@@ -105,7 +105,11 @@ class StatusText(wx.Control):
         text = self.GetLabel() or self.empty_text
         _w, text_height = dc.GetTextExtent(text or "Ag")
         dc.SetClippingRegion(0, 0, width, height)
-        dc.DrawText(text, 3, max((height - text_height) // 2, 0))
+        # Shortened with "..." when it doesn't fit, rather than cut mid-word
+        # ("Pick a name for the rel", #179). What screen readers read is the
+        # whole label, from the accessible above.
+        shown = wx.Control.Ellipsize(text, dc, wx.ELLIPSIZE_END, max(width - 6, 0))
+        dc.DrawText(shown, 3, max((height - text_height) // 2, 0))
         if self.HasFocus():
             wx.RendererNative.Get().DrawFocusRect(self, dc, wx.Rect(0, 0, width, height))
 

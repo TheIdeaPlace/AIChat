@@ -33,7 +33,6 @@ pytestmark = windows_layout
 #: surface -> [(pattern matching one problem, issue)]. Each pattern names
 #: the problem it excuses, so it can't hide another on the same control.
 KNOWN = {
-    "main-narrow": [(r"^StaticText 'Ready\.': text cut off", 179)],
 }
 
 
@@ -123,3 +122,22 @@ def test_status_bar_buttons_are_as_tall_as_their_text(app, tmp_path, monkeypatch
             assert button.GetSize().height >= button.GetBestSize().height, key
     finally:
         ui_probe.close_frame(frame)
+
+
+def test_the_split_stays_put_whatever_is_loaded(app, tmp_path, monkeypatch):
+    """#179: the session list was 378 pixels wide with an own session, 326
+    with a desktop session and 268 while a turn ran, because labels in the
+    right column set its width."""
+    widths = {}
+    for name in ("main-own", "main-own-working", "main-desktop", "main-activity",
+                 "main-attachments"):
+        env = ui_probe.build_world(tmp_path / name, monkeypatch.setattr, formatted_view=False)
+        frame = ui_probe.build_frame(env)
+        frame.SetSize(ui_probe.DEFAULT_SIZE)
+        try:
+            ui_probe.SURFACES[name][1](frame, env)
+            frame.Layout()
+            widths[name] = frame.session_list.GetSize().width
+        finally:
+            ui_probe.close_frame(frame)
+    assert len(set(widths.values())) == 1, widths
