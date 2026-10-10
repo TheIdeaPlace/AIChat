@@ -55,6 +55,18 @@ public static class ProbeDisplay {
         return (hc.dwFlags & 1) != 0;
     }
 
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    static extern bool SystemParametersInfoPtr(uint action, uint param, IntPtr value, uint winIni);
+
+    // "Underline access keys" (Settings, Accessibility, Keyboard): always,
+    // so every run draws them the same. Left to Windows, a window shows them
+    // or not by whether the keyboard was used last, which differs between
+    // runs and VMs and showed as changes on every dialog (#155).
+    public static void SetKeyboardCues(bool on) {
+        const uint SPI_SETKEYBOARDCUES = 0x100B, SPIF_SENDCHANGE = 2;
+        SystemParametersInfoPtr(SPI_SETKEYBOARDCUES, 0, (IntPtr)(on ? 1 : 0), SPIF_SENDCHANGE);
+    }
+
     // ---- display scaling, live, through DisplayConfig (what Settings does) ----
 
     [StructLayout(LayoutKind.Sequential)] struct LUID { public uint Low; public int High; }
@@ -253,6 +265,7 @@ function Reset-Display {
     Set-HighContrast ''
     Set-AppsTheme $false
     Set-Scaling 100
+    [ProbeDisplay]::SetKeyboardCues($true)
 }
 
 New-Item $Out -ItemType Directory -Force | Out-Null
