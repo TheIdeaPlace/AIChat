@@ -67,9 +67,9 @@ NEVER_DREW = "the web page never drew"
 
 @contextlib.contextmanager
 def _physical_pixels():
-    """Measure and copy in the screen's real pixels. The app (like the
-    probe) isn't DPI aware, so at 150% Windows draws it at 100% and stretches
-    it; only a per-monitor-aware thread sees what is really on screen."""
+    """Measure and copy in the screen's real pixels. The app and the probe
+    are DPI aware now (#185), so this changes nothing for them; it's kept for
+    a probe run of an older, unaware build, which Windows stretches."""
     user32 = ctypes.windll.user32
     user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
     user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
@@ -579,7 +579,8 @@ def s_main_status_bar(frame, env):
 
 def s_main_narrow(frame, env):
     _open(frame, "Visual probe")
-    frame.SetSize((640, 480))
+    from thechatplace.ui.sizes import dip
+    frame.SetSize(dip(frame, 640, 480))  # design pixels, as the app's own sizes are
 
 
 def d_shortcuts_page(frame, env):

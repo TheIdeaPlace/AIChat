@@ -58,3 +58,33 @@ def test_a_dialog_is_never_bigger_than_its_screen(app, monkeypatch):
     assert size == wx.Size(1097 - sizes.SCREEN_MARGIN, 593 - sizes.SCREEN_MARGIN)
     small = sizes.dialog_size(None, 300, 200)
     assert small == wx.Size(525, 350)  # fits: left as designed
+
+
+def test_no_dialog_has_a_raw_pixel_size():
+    """A size written as plain pixels would come out small at 150% (#185):
+    every dialog's size goes through dialog_size."""
+    import re
+    text = (ROOT / "thechatplace" / "ui" / "dialogs.py").read_text(encoding="utf-8")
+    assert re.findall(r"size=\(\d+, *\d+\)", text) == []
+    assert re.findall(r"SetMinSize\(\((?:-1|\d+), *\d{2,}\)\)", text) == []
+
+
+def test_status_bar_widths_are_scaled_at_every_layout(app, monkeypatch):
+    from thechatplace.ui.statusbar import StatusParts
+    frame = wx.Frame(None, size=(1000, 300))
+    try:
+        bar = frame.CreateStatusBar(1)
+        parts = StatusParts(bar)
+        parts.add_text("message", "Status", -3)
+        button = parts.add_button("update", 150, lambda: None)
+        parts.set("update", "Update 0.2.0 ready")
+        widths = []
+        real = bar.SetFieldsCount
+        monkeypatch.setattr(bar, "SetFieldsCount",
+                            lambda n, w: widths.append(list(w)) or real(n, w))
+        monkeypatch.setattr(bar, "FromDIP", lambda width: width * 2)  # as at 200%
+        parts.layout()
+        assert widths[-1] == [-3, 300]  # the button's 150 scaled; the share isn't
+        assert button.IsShown()
+    finally:
+        frame.Destroy()

@@ -160,8 +160,8 @@ def make_dpi_aware() -> None:
             return
     except (AttributeError, OSError):
         pass
-    try:  # Windows before 10 1703
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    try:  # Windows before 10 1703: system aware (wx can't follow per-monitor v1)
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
     except (AttributeError, OSError):
         pass
 

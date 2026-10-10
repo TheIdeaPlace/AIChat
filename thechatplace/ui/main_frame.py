@@ -84,7 +84,7 @@ from ..transcript import (ASSISTANT, ERROR, PEER, PLAN, QUESTION, QUEUED, TOOL, 
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
 from . import mac_a11y
-from .sizes import dialog_size, dip, dip_width
+from .sizes import dialog_size, dip
 from .a11y import set_accessible_name, set_list_items_accessible, set_voiceover_menu
 from .notify import Notifier
 from .statusbar import StatusParts
@@ -660,9 +660,9 @@ class MainFrame(wx.Frame):
                                                       empty_text="Ready")
         self.status_session = self.status_parts.add_text("session", "Loaded session", -2,
                                                          empty_text="No session loaded")
-        self.status_parts.add_button("context", dip_width(self, 150), self.on_usage)
-        self.status_parts.add_button("needs_you", dip_width(self, 170), self._go_to_needs_you)
-        self.status_parts.add_button("update", dip_width(self, 190), lambda: self.check_for_updates(True))
+        self.status_parts.add_button("context", 150, self.on_usage)
+        self.status_parts.add_button("needs_you", 170, self._go_to_needs_you)
+        self.status_parts.add_button("update", 190, lambda: self.check_for_updates(True))
         self._status_latest = ""
 
     def _status(self, text: str):

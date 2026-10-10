@@ -20,7 +20,7 @@ from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LE
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import shortcuts_text
 from . import mac_a11y
-from .sizes import dialog_size, dip, dip_width, screen_area
+from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
 
@@ -781,7 +781,7 @@ class SettingsDialog(wx.Dialog):
             self, "Turn on Remote &Control for The Chat Place's sessions, so you can reach "
                   "them from claude.ai and other devices. Their conversations are copied to "
                   "claude.ai and kept there. (File, Remote Control changes one session.)",
-            self.GetClientSize().width - 20 - _CHECK_BOX_GLYPH))
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.remote_control.SetValue(speech.remote_control)
         outer.Add(self.remote_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -1086,8 +1086,14 @@ def _fit_height(dialog, max_height: Optional[int] = None) -> None:
         dialog.Layout()
 
 
-#: The room a check box's square and its gap take beside the label.
-_CHECK_BOX_GLYPH = 24
+def _check_box_glyph(window) -> int:
+    """The room a check box's square and its gap take beside its label, at
+    this screen's scaling: 22 pixels at 100%, 46 at 200% (#185)."""
+    probe = wx.CheckBox(window, label="Ag")
+    try:
+        return probe.GetBestSize().width - probe.GetTextExtent("Ag").width
+    finally:
+        probe.Destroy()
 
 
 def _wrapped(window, text: str, width: int) -> str:
@@ -1145,8 +1151,8 @@ class WrappingText(wx.StaticText):
             return
         self._width = width
         # Measured with the control's own font in its own pixels: on a PC at
-        # 150% (the app isn't DPI aware, #185), wx's Wrap left a heading 50
-        # pixels too wide unwrapped.
+        # 150%, while the app wasn't DPI aware (#185), wx's Wrap left a
+        # heading 50 pixels too wide unwrapped.
         wx.StaticText.SetLabel(self, _wrapped(self, self._text, width))
         # Measured with no minimum, which would hold the old height.
         self.SetMinSize((1, -1))
@@ -1874,8 +1880,11 @@ class LinesDialog(wx.Dialog):
         # A list's rows don't wrap, so the dialog is as wide as its longest
         # line, within the screen (#176: the context line was cut off).
         longest = max((self.GetTextExtent(line).width for line in self._lines), default=0)
-        screen = screen_area(parent).width
-        width = min(max(dip_width(self, 640), longest + 60), screen - 40)
+        screen = screen_area(self).width
+        # The room around a row: borders, the dialog's frame and a scroll
+        # bar, which shows once the list is long enough to need one.
+        room = dip_width(self, 40) + wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self)
+        width = min(max(dip_width(self, 640), longest + room), screen - SCREEN_MARGIN)
         if width != self.GetSize().width:
             self.SetSize((width, self.GetSize().height))
         self._copy = copy
