@@ -145,6 +145,27 @@ def os_name() -> str:
         return sys.platform
 
 
+def make_dpi_aware() -> None:
+    """Windows: draw the app at the screen's own scaling (#185). Unaware,
+    Windows drew it at 100% and stretched the picture, so at 150% and above
+    its text was soft. Must run before the first window is made; the
+    app's fixed sizes then go through ``ui.sizes`` to grow with the scaling.
+    Does nothing elsewhere: a Mac scales the app itself."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+    try:
+        PER_MONITOR_AWARE_V2 = ctypes.c_void_p(-4)
+        if ctypes.windll.user32.SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2):
+            return
+    except (AttributeError, OSError):
+        pass
+    try:  # Windows before 10 1703
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except (AttributeError, OSError):
+        pass
+
+
 def app_icon_path() -> Path:
     """The app's icon (#64), shipped with the package (``assets``)."""
     return Path(__file__).resolve().parent / "assets" / "app.ico"

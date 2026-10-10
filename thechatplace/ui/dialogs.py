@@ -20,13 +20,14 @@ from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LE
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import shortcuts_text
 from . import mac_a11y
+from .sizes import dialog_size, dip, dip_width, screen_area
 from .a11y import set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
 
 
 class ShortcutsDialog(wx.Dialog):
     def __init__(self, parent):
-        super().__init__(parent, title="Keyboard Shortcuts", size=(620, 520),
+        super().__init__(parent, title="Keyboard Shortcuts", size=dialog_size(parent, 620, 520),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Shortcuts:"), 0, wx.LEFT | wx.TOP, 8)
@@ -90,7 +91,7 @@ class NewSessionDialog(wx.Dialog):
                  remove_recent=None):
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
-        super().__init__(parent, title=title, size=(680, 620),
+        super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.continuing = bool(continue_from)
         self._projects_root = projects_root or default_folder
@@ -502,7 +503,7 @@ class GitHubRepoDialog(wx.Dialog):
     there first if it isn't there yet. ``folder`` is the result."""
 
     def __init__(self, parent, gh: str, root: str, feedback=None):
-        super().__init__(parent, title="From GitHub", size=(720, 520),
+        super().__init__(parent, title="From GitHub", size=dialog_size(parent, 720, 520),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._gh, self._root = gh, root
         self._feedback = feedback or (lambda text: None)
@@ -668,7 +669,7 @@ class SettingsDialog(wx.Dialog):
     """Announcements and speech (the Speech tab of IDT's settings, adapted)."""
 
     def __init__(self, parent, speech: SpeechSettings, options, clear_recent=None):
-        super().__init__(parent, title="Settings", size=(680, 620))
+        super().__init__(parent, title="Settings", size=dialog_size(parent, 680, 620))
         self._options = list(options)
         # Settings kept elsewhere (the session list's sort order) pass through.
         self._original = speech
@@ -735,7 +736,7 @@ class SettingsDialog(wx.Dialog):
         if problem:
             self.speech_problem = wx.TextCtrl(
                 self, value=f"Last announcement {problem}.",
-                style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=(-1, 44))
+                style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=dip(self, -1, 44))
             set_accessible_name(self.speech_problem, "Speech problem")
             outer.Add(self.speech_problem, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -870,7 +871,7 @@ class MessageDialog(wx.Dialog):
     def __init__(self, parent, speaker_label: str, text: str):
         super().__init__(parent, title=f"Message from {speaker_label}"
                          if speaker_label in ("Claude", "You") else speaker_label,
-                         size=(720, 520), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+                         size=dialog_size(parent, 720, 520), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         sizer = wx.BoxSizer(wx.VERTICAL)
         label = f"{speaker_label} said:" if speaker_label in ("Claude", "You") \
             else f"{speaker_label}:"
@@ -990,7 +991,7 @@ class FormattedMessageDialog(wx.Dialog):
     def __init__(self, parent, title: str, page_html: str):
         import wx.html2
         from .. import platform_paths
-        super().__init__(parent, title=title, size=(820, 620),
+        super().__init__(parent, title=title, size=dialog_size(parent, 820, 620),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         _prepare_webview_data_folder()
         self._open_url = platform_paths.open_url
@@ -1070,13 +1071,6 @@ ID_ALLOW_SESSION = wx.NewIdRef()
 ID_DENY = wx.NewIdRef()
 
 
-def _screen_area(window) -> wx.Rect:
-    """The work area of the monitor ``window`` is on (the main one if it
-    isn't on any yet)."""
-    index = wx.Display.GetFromWindow(window)
-    return wx.Display(index if index != wx.NOT_FOUND else 0).GetClientArea()
-
-
 def _fit_height(dialog, max_height: Optional[int] = None) -> None:
     """Make ``dialog`` the height its controls need, keeping its width: no
     band of empty space (#176: Settings and Question had them), and no
@@ -1085,7 +1079,7 @@ def _fit_height(dialog, max_height: Optional[int] = None) -> None:
     dialog.Layout()
     width, height = dialog.GetSize()
     chrome = height - dialog.GetClientSize().height
-    limit = max_height if max_height is not None else _screen_area(dialog).height
+    limit = max_height if max_height is not None else screen_area(dialog).height
     target = min(dialog.GetSizer().GetMinSize().height + chrome, limit)
     if target != height:
         dialog.SetSize((width, target))
@@ -1179,7 +1173,7 @@ def _read_only_text(parent, value: str, name: str, min_height: int = 160) -> wx.
     text = wx.TextCtrl(parent, value=value,
                        style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
     set_accessible_name(text, name)
-    text.SetMinSize((-1, min_height))
+    text.SetMinSize(dip(parent, -1, min_height))
     text.SetInsertionPoint(0)
     return text
 
@@ -1194,7 +1188,7 @@ class PermissionDialog(wx.Dialog):
 
     def __init__(self, parent, session_title: str, request):
         super().__init__(parent, title=f"Claude needs permission: {session_title}",
-                         size=(700, 540), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+                         size=dialog_size(parent, 700, 540), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
@@ -1250,7 +1244,7 @@ class QuestionDialog(wx.Dialog):
     default button."""
 
     def __init__(self, parent, session_title: str, request):
-        super().__init__(parent, title=f"Claude asks: {session_title}", size=(700, 560),
+        super().__init__(parent, title=f"Claude asks: {session_title}", size=dialog_size(parent, 700, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._questions = request.questions()
         self._controls = []  # per question: (kind, [controls], other text)
@@ -1414,7 +1408,7 @@ class PlanDialog(wx.Dialog):
     button: approving starts real changes, so it needs a deliberate press."""
 
     def __init__(self, parent, session_title: str, request, modes, default_mode: str):
-        super().__init__(parent, title=f"Claude's plan: {session_title}", size=(760, 600),
+        super().__init__(parent, title=f"Claude's plan: {session_title}", size=dialog_size(parent, 760, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._modes = list(modes)  # (value, label)
         self.approved = False
@@ -1493,7 +1487,7 @@ class ManageGroupsDialog(wx.Dialog):
     its sessions."""
 
     def __init__(self, parent, groups, counts):
-        super().__init__(parent, title="Manage Groups", size=(480, 420),
+        super().__init__(parent, title="Manage Groups", size=dialog_size(parent, 480, 420),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.groups = groups
         self._counts = dict(counts)
@@ -1600,7 +1594,7 @@ class CommandPickerDialog(wx.Dialog):
     description; Down moves into the list; Enter (or Insert) chooses."""
 
     def __init__(self, parent, commands):
-        super().__init__(parent, title="Insert Command or Skill", size=(720, 520),
+        super().__init__(parent, title="Insert Command or Skill", size=dialog_size(parent, 720, 520),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._all = list(commands)
         self._shown = []
@@ -1680,7 +1674,7 @@ class BugReportDialog(wx.Dialog):
     Report only copies it."""
 
     def __init__(self, parent, environment_lines):
-        super().__init__(parent, title="Report a Bug", size=(660, 640),
+        super().__init__(parent, title="Report a Bug", size=dialog_size(parent, 660, 640),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.action = ""
         outer = wx.BoxSizer(wx.VERTICAL)
@@ -1691,7 +1685,7 @@ class BugReportDialog(wx.Dialog):
             control = wx.TextCtrl(self, style=style)
             set_accessible_name(control, name)
             if multiline:
-                control.SetMinSize((-1, height))
+                control.SetMinSize(dip(self, -1, height))
             outer.Add(control, 1 if multiline else 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
             return control
 
@@ -1747,7 +1741,7 @@ class CodeBlocksDialog(wx.Dialog):
     and character, and Copy for just that block."""
 
     def __init__(self, parent, blocks, copy):
-        super().__init__(parent, title="Code Blocks", size=(760, 560),
+        super().__init__(parent, title="Code Blocks", size=dialog_size(parent, 760, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._blocks = list(blocks)
         self._copy = copy
@@ -1756,7 +1750,7 @@ class CodeBlocksDialog(wx.Dialog):
         self.list = wx.ListBox(self, style=wx.LB_SINGLE,
                                choices=[b.row() for b in self._blocks])
         set_accessible_name(self.list, f"Code blocks, {len(self._blocks)}")
-        self.list.SetMinSize((-1, 110))
+        self.list.SetMinSize(dip(self, -1, 110))
         sizer.Add(self.list, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         sizer.Add(wx.StaticText(self, label="Co&de:"), 0, wx.LEFT | wx.TOP, 8)
         self.code = _read_only_text(self, "", "Code", min_height=220)
@@ -1806,7 +1800,7 @@ class ChangesDialog(wx.Dialog):
     read by line ("Removed: …", "Added: …")."""
 
     def __init__(self, parent, title, latest, everything, describe):
-        super().__init__(parent, title=f"Changed Files: {title}", size=(800, 580),
+        super().__init__(parent, title=f"Changed Files: {title}", size=dialog_size(parent, 800, 580),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._sets = [latest, everything]
         self._describe = describe
@@ -1822,7 +1816,7 @@ class ChangesDialog(wx.Dialog):
         sizer.Add(row, 0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
         sizer.Add(wx.StaticText(self, label="&Files:"), 0, wx.LEFT | wx.TOP, 8)
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
-        self.list.SetMinSize((-1, 130))
+        self.list.SetMinSize(dip(self, -1, 130))
         sizer.Add(self.list, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         sizer.Add(wx.StaticText(self, label="C&hanges:"), 0, wx.LEFT | wx.TOP, 8)
         self.text = _read_only_text(self, "", "Changes", min_height=240)
@@ -1874,16 +1868,16 @@ class LinesDialog(wx.Dialog):
     key."""
 
     def __init__(self, parent, title, label, lines, copy):
-        super().__init__(parent, title=title, size=(640, 360),
+        super().__init__(parent, title=title, size=dialog_size(parent, 640, 360),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._lines = list(lines)
         # A list's rows don't wrap, so the dialog is as wide as its longest
         # line, within the screen (#176: the context line was cut off).
         longest = max((self.GetTextExtent(line).width for line in self._lines), default=0)
-        screen = _screen_area(parent).width
-        width = min(max(640, longest + 60), screen - 40)
-        if width != 640:
-            self.SetSize((width, 360))
+        screen = screen_area(parent).width
+        width = min(max(dip_width(self, 640), longest + 60), screen - 40)
+        if width != self.GetSize().width:
+            self.SetSize((width, self.GetSize().height))
         self._copy = copy
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label=f"{label}:"), 0, wx.LEFT | wx.TOP, 8)
@@ -1954,7 +1948,7 @@ class AboutYouDialog(wx.Dialog):
     def __init__(self, parent, kinds, load, edit, show, copy):
         """``kinds`` is what was found; ``load(done)`` reads it all again
         in the background and calls ``done(kinds)`` on the UI thread."""
-        super().__init__(parent, title="What Claude Knows About You", size=(860, 640),
+        super().__init__(parent, title="What Claude Knows About You", size=dialog_size(parent, 860, 640),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._load, self._edit, self._show_file, self._copy = load, edit, show, copy
         self._kinds = list(kinds)
@@ -1967,12 +1961,12 @@ class AboutYouDialog(wx.Dialog):
         sizer.Add(wx.StaticText(self, label="&Kind:"), 0, wx.LEFT | wx.TOP, 8)
         self.kinds = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.kinds, "Kind")
-        self.kinds.SetMinSize((-1, 120))
+        self.kinds.SetMinSize(dip(self, -1, 120))
         sizer.Add(self.kinds, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         sizer.Add(wx.StaticText(self, label="&Items:"), 0, wx.LEFT | wx.TOP, 8)
         self.items = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.items, "Items")
-        self.items.SetMinSize((-1, 140))
+        self.items.SetMinSize(dip(self, -1, 140))
         sizer.Add(self.items, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         row.Add(wx.StaticText(self, label="Locatio&n:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
@@ -2119,7 +2113,7 @@ class SessionColumnsDialog(wx.Dialog):
     def __init__(self, parent, fields, sample, say):
         """``fields``: the shown column ids, in order. ``sample``: the
         session whose row the preview shows. ``say(text)`` speaks."""
-        super().__init__(parent, title="Session List Columns", size=(640, 560),
+        super().__init__(parent, title="Session List Columns", size=dialog_size(parent, 640, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._shown = clean_fields(list(fields))
         self._sample = sample
@@ -2134,7 +2128,7 @@ class SessionColumnsDialog(wx.Dialog):
         left.Add(wx.StaticText(self, label="A&vailable columns:"), 0, wx.BOTTOM, 4)
         self.available = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.available, "Available columns")
-        self.available.SetMinSize((220, 200))
+        self.available.SetMinSize(dip(self, 220, 200))
         left.Add(self.available, 1, wx.EXPAND)
         lists.Add(left, 1, wx.EXPAND | wx.ALL, 8)
         right = wx.BoxSizer(wx.VERTICAL)
@@ -2142,7 +2136,7 @@ class SessionColumnsDialog(wx.Dialog):
                   0, wx.BOTTOM, 4)
         self.shown = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.shown, "Shown columns, in the order they're read")
-        self.shown.SetMinSize((220, 200))
+        self.shown.SetMinSize(dip(self, 220, 200))
         right.Add(self.shown, 1, wx.EXPAND)
         lists.Add(right, 1, wx.EXPAND | wx.ALL, 8)
         sizer.Add(lists, 1, wx.EXPAND)
@@ -2329,7 +2323,7 @@ class PromptEditDialog(wx.Dialog):
 
     def __init__(self, parent, title: str, name: str = "", text: str = "",
                  focus_name: Optional[bool] = None):
-        super().__init__(parent, title=title, size=(620, 460),
+        super().__init__(parent, title=title, size=dialog_size(parent, 620, 460),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Name:"), 0, wx.LEFT | wx.TOP, 8)
@@ -2340,7 +2334,7 @@ class PromptEditDialog(wx.Dialog):
         sizer.Add(wx.StaticText(self, label="&Text:"), 0, wx.LEFT | wx.TOP, 8)
         self.text = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_RICH2)
         set_accessible_name(self.text, "Prompt text")
-        self.text.SetMinSize((-1, 200))
+        self.text.SetMinSize(dip(self, -1, 200))
         sizer.Add(self.text, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         save = wx.Button(self, wx.ID_OK, "&Save")
@@ -2397,7 +2391,7 @@ class PromptsDialog(wx.Dialog):
     look after your prompts, and Use says why."""
 
     def __init__(self, parent, store, say, use_refused: str = ""):
-        super().__init__(parent, title="Prompts", size=(680, 560),
+        super().__init__(parent, title="Prompts", size=dialog_size(parent, 680, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.store = store
         self._say = say
@@ -2407,7 +2401,7 @@ class PromptsDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Prompts:"), 0, wx.LEFT | wx.TOP, 8)
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
-        self.list.SetMinSize((-1, 150))
+        self.list.SetMinSize(dip(self, -1, 150))
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         sizer.Add(wx.StaticText(self, label="Te&xt:"), 0, wx.LEFT | wx.TOP, 8)
         self.text = _read_only_text(self, "", "Prompt text", min_height=140)
@@ -2603,7 +2597,7 @@ class LinksDialog(wx.Dialog):
 
     def __init__(self, parent, title: str, links, copy, feedback):
         count = len(links)
-        super().__init__(parent, title=f"Links in {title}: {count}", size=(760, 480),
+        super().__init__(parent, title=f"Links in {title}: {count}", size=dialog_size(parent, 760, 480),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._all = list(links)
         self._shown = list(links)
@@ -2720,7 +2714,7 @@ class FindResultsDialog(wx.Dialog):
 
     def __init__(self, parent, results, now=None, app_name="The Chat Place"):
         super().__init__(parent, title=results.title(app_name),
-                         size=(820, 520), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+                         size=dialog_size(parent, 820, 520), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._matches = list(results.matches)
         #: The match to go to once the dialog has closed, or None.
         self.chosen = None

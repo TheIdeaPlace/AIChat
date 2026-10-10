@@ -1165,6 +1165,9 @@ def main(argv=None) -> int:
     if session_locked():
         print("The session is locked, so every picture would be blank. Unlock it and run again.")
         return 2
+    # As the app does, so the probe photographs it as people see it (#185).
+    from thechatplace import platform_paths
+    platform_paths.make_dpi_aware()
     app = wx.App(False)  # noqa: F841
     return run(args.out, args.tag, args.surface or list(SURFACES), args.size)
 
