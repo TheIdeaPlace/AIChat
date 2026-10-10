@@ -916,6 +916,16 @@ def _save(window, out: Path, stem: str) -> dict:
             "problems": problems}
 
 
+def _os_name() -> str:
+    """platform.platform(), which can fail on a freshly reset VM: its WMI
+    query sometimes comes back without the fields it reads (KeyError:
+    'ProductType'), and the record isn't worth losing a run over."""
+    try:
+        return platform.platform()
+    except Exception:  # noqa: BLE001
+        return f"{platform.system()} {platform.version()}"
+
+
 def _dpi_awareness() -> str:
     if not IS_WINDOWS:
         return ""
@@ -1023,7 +1033,7 @@ def run(out: Path, tag: str, names, size) -> int:
     out.mkdir(parents=True, exist_ok=True)
     manifest_path = out / (f"manifest-{tag}.json" if tag else "manifest.json")
     manifest = {
-        "tag": tag, "platform": sys.platform, "os": platform.platform(),
+        "tag": tag, "platform": sys.platform, "os": _os_name(),
         "wx": wx.version(), "python": platform.python_version(),
         # This Python's; a built app's own manifest may say otherwise.
         "dpi_awareness": _dpi_awareness(), "appearance": _system_appearance(),
