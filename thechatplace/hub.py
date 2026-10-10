@@ -15,7 +15,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 from . import platform_paths
 from .desktop_groups import DesktopGroups, load_desktop_groups
 from .own_store import OwnSession
-from .sessions import (NEEDS_YOU, SORT_STATUS, WORKING, DesktopLoadResult, LiveStatus, SessionInfo,
+from .sessions import (NEEDS_YOU, SORT_STATUS, TERMINAL, WORKING, DesktopLoadResult, LiveStatus, SessionInfo,
                        load_desktop_sessions, load_live_status, load_terminal_sessions,
                        sort_sessions)
 from .transcript import LastMessages, SessionFactsCache, TranscriptParser, split_jsonl
@@ -101,6 +101,16 @@ def collect(own: Iterable[OwnSession], running_own_ids: Set[str],
         sessions.append(info)
     listed = desktop.desktop_cli_ids | desktop.cowork_cli_ids | {o.cli_session_id for o in own}
     sessions.extend(load_terminal_sessions(terminal_projects_dir(), live, listed, TERMINAL_FACTS))
+    for info in sessions:
+        # Last activity follows Claude's work (#209): the desktop app's time,
+        # and an own session's (set when The Chat Place starts or ends a
+        # turn), stand still through a long turn or one run elsewhere. Only
+        # while it's working or waiting on you, though: a transcript's file
+        # can be rewritten without anything happening in it (68 archived
+        # ones all changed in the same minute), and an idle session's own
+        # time is the truer one. A terminal session's is its file's already.
+        if info.state in (WORKING, NEEDS_YOU) and info.source != TERMINAL:
+            info.last_activity_ms = max(info.last_activity_ms, info.transcript_written_ms())
     if last_messages:
         fill_last_messages(sessions)
     folders = [desktop_dir] if desktop_dir is not None else platform_paths.desktop_sessions_dirs()

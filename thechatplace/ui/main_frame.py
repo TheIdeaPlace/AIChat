@@ -73,7 +73,7 @@ from ..prompts import (MAX_NAME as PROMPT_NAME_MAX, PromptStore, clean_text as c
                        suggested_name)
 from ..hidden import HiddenStore, ToolActivityStore
 from ..titles import MAX_TITLE, TitleStore, clean_title
-from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, GROUP_VIEW_PREFIX, IDLE,
+from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP_VIEW_PREFIX, IDLE,
                         DESKTOP, NEEDS_YOU, OWN, SORT_ORDERS,
                         SORT_SPOKEN, VIEW_ALL, VIEW_ARCHIVED, VIEW_HIDDEN, VIEW_NEEDS_YOU, VIEWS,
                         WORKING,
@@ -954,7 +954,9 @@ class MainFrame(wx.Frame):
         now = int(time.time() * 1000)
         by_key = {s.key: s for s in sessions}
         fields = self.speech.session_fields
-        steady_fields = [f for f in fields if f not in (FIELD_ACTIVITY, FIELD_LAST_MESSAGE)]
+        # Columns a clock moves: a row isn't rewritten (and read again) for them.
+        steady_fields = [f for f in fields
+                         if f not in (FIELD_ACTIVITY, FIELD_STARTED, FIELD_LAST_MESSAGE)]
 
         def basis(info: SessionInfo) -> Tuple[str, str]:
             message = info.last_message if FIELD_LAST_MESSAGE in fields else ""

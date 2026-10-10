@@ -64,8 +64,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   **View, Session List Columns** (Alt+V, E) chooses what each line says and in what order, so
   it can start with the status rather than the title. The columns are Title, Folder,
   Status, New reply, Last activity, Kind (Chat Place, Cowork or terminal), Remote Control, Archived,
-  Hidden and Groups, all shown at first, and **Last message**, which isn't shown until you add
-  it; a column with nothing to say for a session is left out of its line. Last message says
+  Hidden and Groups, all shown at first, and **Started** and **Last message**, which aren't shown
+  until you add them; a column with nothing to say for a session is left out of its line. Last
+  activity is the last time the session did anything. While a session is working or waiting on
+  you, that's when its transcript was last written, so one working through a long turn, or run
+  outside The Chat Place, reads "active just now" rather than the time the turn began (#209);
+  an idle one keeps the time its own record gives. How long a turn has been running is in Turn Status (Ctrl+Shift+T). **Started**
+  says when the session began ("started 2 days ago"). Last message says
   where each conversation ended without loading it: "Claude:" or "You:" and the start of the
   last message either of you wrote, as plain text on one line (about 150 characters, cut at a
   word with "…"; a link reads as its words, a bare web address as its site). Tool calls and their results don't count. Press Enter to load the session and

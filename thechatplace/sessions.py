@@ -19,6 +19,7 @@ so every field is read defensively and a file that will not parse is skipped.
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,6 +52,8 @@ class SessionInfo:
     cli_session_id: str         # transcript file name / --resume id
     desktop_session_id: str = ""  # local_... id for claude:// links ("" if none)
     last_activity_ms: int = 0
+    #: When the session began, for the Started column (#209); 0 if unknown.
+    created_ms: int = 0
     state: str = IDLE
     detail: str = ""            # needs_action text, error, etc.
     permission_mode: str = ""
@@ -115,6 +118,20 @@ class SessionInfo:
         root = self.claude_home / "projects" if self.claude_home is not None else None
         return platform_paths.transcript_path(self.cwd, self.cli_session_id, root)
 
+    def transcript_written_ms(self) -> int:
+        """When its transcript was last written, in milliseconds, or 0. Only
+        where Claude Code puts it (no search of every project folder, as
+        ``transcript_path`` does when that misses): this is asked of every
+        session on every refresh of the list."""
+        if not self.cli_session_id or not platform_paths.is_safe_id(self.cli_session_id):
+            return 0
+        root = self.claude_home / "projects" if self.claude_home is not None else None
+        try:
+            path = platform_paths.direct_transcript_path(self.cwd, self.cli_session_id, root)
+            return os.stat(path).st_mtime_ns // 1_000_000
+        except (OSError, ValueError):
+            return 0
+
     def list_line(self, now_ms: Optional[int] = None,
                   fields: Optional[Iterable[str]] = None) -> str:
         """What a screen reader hears on arrowing to this session: its
@@ -149,6 +166,7 @@ class SessionInfo:
             FIELD_STATUS: state,
             FIELD_NEW_REPLY: "new reply" if self.unread else "",
             FIELD_ACTIVITY: describe_age(self.last_activity_ms, now_ms),
+            FIELD_STARTED: describe_started(self.created_ms, now_ms),
             FIELD_KIND: ", ".join(kind),
             # #96: say which can be reached from claude.ai
             FIELD_REMOTE: "Remote Control" if self.remote else "",
@@ -168,6 +186,7 @@ FIELD_FOLDER = "folder"
 FIELD_STATUS = "status"
 FIELD_NEW_REPLY = "new_reply"
 FIELD_ACTIVITY = "activity"
+FIELD_STARTED = "started"
 FIELD_KIND = "kind"
 FIELD_REMOTE = "remote"
 FIELD_ARCHIVED = "archived"
@@ -185,13 +204,15 @@ FIELDS = [
     (FIELD_ARCHIVED, "Archived"),
     (FIELD_HIDDEN, "Hidden"),
     (FIELD_GROUPS, "Groups"),
+    (FIELD_STARTED, "Started (when the session began)"),
     (FIELD_LAST_MESSAGE, "Last message"),
 ]
 FIELD_IDS = [field_id for field_id, _name in FIELDS]
 FIELD_NAMES = dict(FIELDS)
 #: Columns there are but rows don't read until you add them: Last message
-#: (#146) reads each session's transcript, and makes every row long.
-OPTIONAL_FIELDS = (FIELD_LAST_MESSAGE,)
+#: (#146) reads each session's transcript, and makes every row long; Started
+#: (#209) is there for those who want it, not news for everyone.
+OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE)
 #: The columns rows read unless you choose otherwise, in the order they
 #: have always been read. A saved order lists its columns, so one saved
 #: before a column was added doesn't gain it.
@@ -217,27 +238,37 @@ def clean_fields(raw) -> List[str]:
     return fields or list(DEFAULT_FIELDS)
 
 
-def describe_age(then_ms: int, now_ms: Optional[int] = None) -> str:
+def _how_long_ago(then_ms: int, now_ms: Optional[int]) -> str:
     """'just now', '5 minutes ago', 'yesterday', '3 days ago'."""
-    if not then_ms:
-        return "no activity recorded"
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     seconds = max(0, (now_ms - then_ms) // 1000)
     if seconds < 60:
-        return "active just now"
+        return "just now"
     minutes = seconds // 60
     if minutes < 60:
-        return f"active {minutes} minute{'s' if minutes != 1 else ''} ago"
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
     hours = minutes // 60
     if hours < 24:
-        return f"active {hours} hour{'s' if hours != 1 else ''} ago"
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
     days = hours // 24
     if days == 1:
-        return "active yesterday"
+        return "yesterday"
     if days < 30:
-        return f"active {days} days ago"
+        return f"{days} days ago"
     months = days // 30
-    return f"active {months} month{'s' if months != 1 else ''} ago"
+    return f"{months} month{'s' if months != 1 else ''} ago"
+
+
+def describe_age(then_ms: int, now_ms: Optional[int] = None) -> str:
+    """Last activity: 'active just now', 'active 3 days ago'."""
+    if not then_ms:
+        return "no activity recorded"
+    return f"active {_how_long_ago(then_ms, now_ms)}"
+
+
+def describe_started(then_ms: int, now_ms: Optional[int] = None) -> str:
+    """Started (#209): 'started 2 days ago', or nothing when it isn't known."""
+    return f"started {_how_long_ago(then_ms, now_ms)}" if then_ms else ""
 
 
 #: How the session list can be ordered (View, Sort Sessions): (value, menu label).
@@ -603,6 +634,7 @@ def desktop_session_from_metadata(data: dict,
         cli_session_id=cli_id,
         desktop_session_id=local_id,
         last_activity_ms=_int(data.get("lastActivityAt") or data.get("createdAt")),
+        created_ms=_int(data.get("createdAt")),
         permission_mode=str(data.get("permissionMode") or ""),
         archived=bool(data.get("isArchived")),
         remote=isinstance(data.get("bridgeSessionIds"), list) and bool(data["bridgeSessionIds"]),
@@ -675,7 +707,8 @@ def load_terminal_sessions(projects: Path, live: Dict[str, LiveStatus],
             source=TERMINAL, key=f"terminal:{cli_id}",
             title=about.title or f"Untitled terminal session in {_folder_name(about.cwd)}",
             cwd=about.cwd, cli_session_id=cli_id,
-            last_activity_ms=about.modified_ms, state=state, detail=detail))
+            last_activity_ms=about.modified_ms, created_ms=about.started_ms,
+            state=state, detail=detail))
     facts.keep_only(seen)
     return sessions
 

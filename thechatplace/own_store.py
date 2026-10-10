@@ -65,6 +65,7 @@ class OwnSession:
             cli_session_id=self.cli_session_id,
             desktop_session_id=self.desktop_session_id,
             last_activity_ms=self.last_activity_ms or self.created_ms,
+            created_ms=self.created_ms,
             state=self.state,
             detail=self.detail,
             permission_mode=self.permission_mode,

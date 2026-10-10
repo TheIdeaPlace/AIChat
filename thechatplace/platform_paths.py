@@ -183,6 +183,13 @@ def encode_cwd(cwd: str) -> str:
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 
 
+def direct_transcript_path(cwd: str, cli_session_id: str,
+                           root: Optional[Path] = None) -> Path:
+    """Where Claude Code puts a session's transcript: its folder's encoded
+    name, then its id. It may not be there (see ``transcript_path``)."""
+    return (root or projects_dir()) / encode_cwd(cwd) / f"{cli_session_id}.jsonl"
+
+
 def transcript_path(cwd: str, cli_session_id: str,
                     root: Optional[Path] = None) -> Optional[Path]:
     """Find a session's transcript, or None when it no longer exists.
@@ -194,7 +201,7 @@ def transcript_path(cwd: str, cli_session_id: str,
     if not cli_session_id or not _SAFE_ID.match(cli_session_id):
         return None
     root = root or projects_dir()
-    direct = root / encode_cwd(cwd) / f"{cli_session_id}.jsonl"
+    direct = direct_transcript_path(cwd, cli_session_id, root)
     if direct.is_file():
         return direct
     try:

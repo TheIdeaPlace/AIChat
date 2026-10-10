@@ -467,9 +467,14 @@ what order. Move Status to the top, for example, and each line starts with "need
 or "idle", so you can stop on the one you want before hearing its title.
 
 The parts are called columns: Title, Folder, Status, New reply, Last activity, Kind (Chat Place,
-Cowork or terminal session), Remote Control, Archived, Hidden and Groups, all read at first, and Last
-message, which is read only once you add it. A column with nothing to say for a session, such as
-New reply when there isn't one, is simply left out of that line.
+Cowork or terminal session), Remote Control, Archived, Hidden and Groups, all read at first, and
+Started and Last message, which are read only once you add them. A column with nothing to say for
+a session, such as New reply when there isn't one, is simply left out of that line.
+
+**Last activity** ("active 5 minutes ago") is the last time the session did anything, even in the
+middle of a long turn, or while it's being run outside The Chat Place. How long the turn now
+running has taken is in Turn Status (Ctrl+Shift+T). **Started** ("started 2 days ago") is when
+the session began.
 
 **Last message** tells you where each conversation ended without loading it: "Claude:" or "You:"
 and the start of the last message either of you wrote, as plain text on one line, cut at about
