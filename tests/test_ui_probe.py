@@ -213,3 +213,40 @@ def test_the_working_surface_says_working(opened, tmp_path, monkeypatch):
         assert "working" in row
     finally:
         ui_probe.close_frame(frame)
+
+
+@pytest.mark.parametrize("width, label, hidden", [
+    (1, "1 message queued. Claude is working (1 minute 15 seconds).", True),
+    (40, "1 message queued. Claude is working (1 minute 15 seconds).", True),
+    (300, "1 message queued. Claude is working (1 minute 15 seconds).", False),
+    (15, "OK", False),  # shown whole, however narrow the label
+])
+def test_an_ellipsized_label_too_narrow_to_show_anything_is_flagged(app, width, label, hidden):
+    dialog = wx.Dialog(None, size=(500, 200))
+    try:
+        text = wx.StaticText(dialog, label=label, pos=(10, 10), size=(width, 20),
+                             style=wx.ST_ELLIPSIZE_END | wx.ST_NO_AUTORESIZE)
+        text.SetSize((width, 20))
+        info = ui_probe.describe(dialog)
+        problems = next(c for c in info["controls"] if c["label"] == label)["problems"]
+        assert any("too narrow" in p for p in problems) is hidden
+        assert not any("cut off" in p for p in problems)  # shortened on purpose
+    finally:
+        dialog.Destroy()
+
+
+def test_status_bar_text_is_shortened_with_an_ellipsis(app):
+    from thechatplace.ui.statusbar import shown_text
+    frame = wx.Frame(None)
+    try:
+        dc = wx.ClientDC(frame)
+        dc.SetFont(frame.GetFont())
+        text = "Fix the flaky upload test: needs you, Pick a name for the release branch"
+        assert shown_text(dc, text, 2000) == text
+        short = shown_text(dc, text, 120)
+        assert short.endswith("...") and len(short) < len(text)
+        assert dc.GetTextExtent(short).width <= 120
+        assert shown_text(dc, text, 0) == ""
+        assert shown_text(dc, "Tom & Jerry", 2000) == "Tom & Jerry"  # "&" drawn as written
+    finally:
+        frame.Destroy()

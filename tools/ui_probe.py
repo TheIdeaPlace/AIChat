@@ -265,8 +265,10 @@ def describe(window: wx.TopLevelWindow) -> dict:
             ellipsized = isinstance(child, wx.StaticText) and child.HasFlag(
                 wx.ST_ELLIPSIZE_START | wx.ST_ELLIPSIZE_MIDDLE | wx.ST_ELLIPSIZE_END)
             if ellipsized and entry["label"]:
-                # Shortened is fine; too narrow to show any of it isn't.
-                if screen.width < child.GetTextExtent("W...").width:
+                # Shortened is fine; too narrow to show even a little of it
+                # isn't: less than a third of its text, or of "W...".
+                needs = child.GetTextExtent(entry["label"].replace("&", "")).width
+                if screen.width + 1 < min(needs, max(needs // 3, child.GetTextExtent("W...").width)):
                     entry["problems"].append("text hidden: too narrow to show any of it")
             elif isinstance(child, _TEXT_CONTROLS) and entry["label"]:
                 if best.width > screen.width + 1 or best.height > screen.height + 1:

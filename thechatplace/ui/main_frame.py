@@ -593,9 +593,11 @@ class MainFrame(wx.Frame):
         self.reply_claude_btn.Bind(wx.EVT_BUTTON, self.on_open_in_claude)
         self.continue_btn.Bind(wx.EVT_BUTTON, self.on_continue_here)
 
-        # The reply area takes a third of the height and grows with the
-        # window: held at its minimum, the reply box was about four lines
-        # however big the window was.
+        # The reply area grows with the window (a third of what's spare):
+        # held at its minimum, the reply box was about four lines however big
+        # the window was. At the default size it is at its minimum (the reply
+        # box's 120 pixels, the buttons and the turn status's line), so the
+        # messages list has the rest.
         vsizer.Add(self.own_reply, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         vsizer.Add(self.desktop_reply, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
@@ -2206,6 +2208,9 @@ class MainFrame(wx.Frame):
                     label = f"{self._queued_words(waiting_count)} {label}"
             else:
                 label = "Ready."
+            # One line: a question's own line breaks would hide the rest of
+            # it on this single-line status (#179).
+            label = " ".join(label.split())
             if self.turn_status.GetLabel() != label:
                 self.turn_status.SetLabel(label)
         self._update_status_session()
