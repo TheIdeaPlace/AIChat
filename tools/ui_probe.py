@@ -923,7 +923,9 @@ def _os_name() -> str:
     try:
         return platform.platform()
     except Exception:  # noqa: BLE001
-        return f"{platform.system()} {platform.version()}"
+        if IS_WINDOWS:  # platform.version() would ask WMI again
+            return "Windows " + ".".join(str(n) for n in sys.getwindowsversion()[:3])
+        return sys.platform
 
 
 def _dpi_awareness() -> str:
