@@ -39,10 +39,9 @@ The variants are in `tools/ui_probe_plan.json`:
 - High Contrast Aquatic and Desert.
 
 `tools/ui_probe_guest.ps1` sets each one inside the VM, runs the probe, and puts the display
-back. Access keys are always underlined in every run, as Windows'
-"Underline access keys" setting does, so the pictures don't differ by whether the keyboard
-was used last. ClearType is turned on too, so text is smoothed the same way in every run. It
-refuses to run outside a virtual machine.
+back. It turns on Windows' "Underline access keys" setting, so the pictures don't differ by
+whether the keyboard was used last, and ClearType, so text is smoothed the same way in every
+run. It refuses to run outside a virtual machine.
 
 A pop-up from Windows itself (OneDrive asking to back up, for example) can land on a
 screen and show as a change. Check the diff picture before accepting a changed screen.

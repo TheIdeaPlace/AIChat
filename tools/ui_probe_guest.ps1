@@ -1,7 +1,8 @@
 <#
 Runs inside the test VM (#155), started by tools\ui_probe_vm.ps1: sets one
 variant (light or dark apps, High Contrast, display scaling), runs the probe,
-then puts the display back to light, no High Contrast, 100%.
+then puts the display back to light, no High Contrast, 100%. Access key
+underlining and ClearType are left on: every run sets them the same.
 
 It changes Windows-wide settings, which is why it only runs in the VM: it
 refuses on a machine that isn't a Hyper-V guest.
@@ -58,24 +59,43 @@ public static class ProbeDisplay {
     [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
     static extern bool SystemParametersInfoPtr(uint action, uint param, IntPtr value, uint winIni);
 
-    // "Underline access keys" (Settings, Accessibility, Keyboard): always,
-    // so every run draws them the same. Left to Windows, a window shows them
-    // or not by whether the keyboard was used last, which differs between
-    // runs and VMs and showed as changes on every dialog (#155).
-    public static void SetKeyboardCues(bool on) {
-        const uint SPI_SETKEYBOARDCUES = 0x100B, SPIF_SENDCHANGE = 2;
-        SystemParametersInfoPtr(SPI_SETKEYBOARDCUES, 0, (IntPtr)(on ? 1 : 0), SPIF_SENDCHANGE);
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    static extern bool SystemParametersInfoGet(uint action, uint param, out uint value, uint winIni);
+
+    static void Spi(string what, uint action, uint param, IntPtr value) {
+        // Saved as well as sent (SPIF_UPDATEINIFILE | SPIF_SENDCHANGE): each
+        // run sets them again anyway, and a saved setting survives sign-out.
+        if (!SystemParametersInfoPtr(action, param, value, 1 | 2))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Couldn't set " + what);
     }
 
-    // ClearType on, for the same reason: on a fresh VM the first run's
-    // WebView drew its text in grey and every later one in ClearType, and
-    // the User Guide showed as 7% changed (#155).
-    public static void SetClearType() {
-        const uint SPI_SETFONTSMOOTHING = 0x004B, SPI_SETFONTSMOOTHINGTYPE = 0x200B;
-        const uint FE_FONTSMOOTHINGCLEARTYPE = 2, SPIF_UPDATEINIFILE = 1, SPIF_SENDCHANGE = 2;
-        SystemParametersInfoPtr(SPI_SETFONTSMOOTHING, 1, IntPtr.Zero, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-        SystemParametersInfoPtr(SPI_SETFONTSMOOTHINGTYPE, 0, (IntPtr)FE_FONTSMOOTHINGCLEARTYPE,
-                                SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+    static uint SpiGet(uint action) {
+        uint value;
+        if (!SystemParametersInfoGet(action, 0, out value, 0))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        return value;
+    }
+
+    // Two settings that change how text is drawn, set the same for every run
+    // so the pictures don't differ by them (#155):
+    // - "Underline access keys" (Settings, Accessibility, Keyboard). Left to
+    //   Windows, a window shows them or not by whether the keyboard was used
+    //   last, which differed between runs and VMs and showed as changes on
+    //   every dialog.
+    // - ClearType. On a fresh VM the first run's WebView drew its text in grey
+    //   and every later one in ClearType, and the User Guide showed as 7% changed.
+    public static void SetSteadyText() {
+        const uint SPI_SETKEYBOARDCUES = 0x100B, SPI_SETFONTSMOOTHING = 0x004B,
+                   SPI_SETFONTSMOOTHINGTYPE = 0x200B, FE_FONTSMOOTHINGCLEARTYPE = 2;
+        Spi("access key underlining", SPI_SETKEYBOARDCUES, 0, (IntPtr)1);
+        Spi("font smoothing", SPI_SETFONTSMOOTHING, 1, IntPtr.Zero);  // ClearType needs it on too
+        Spi("ClearType", SPI_SETFONTSMOOTHINGTYPE, 0, (IntPtr)FE_FONTSMOOTHINGCLEARTYPE);
+    }
+
+    public static string SteadyText() {
+        const uint SPI_GETKEYBOARDCUES = 0x100A, SPI_GETFONTSMOOTHINGTYPE = 0x200A;
+        return "access keys underlined " + (SpiGet(SPI_GETKEYBOARDCUES) != 0)
+            + ", ClearType " + (SpiGet(SPI_GETFONTSMOOTHINGTYPE) == 2);
     }
 
     // ---- display scaling, live, through DisplayConfig (what Settings does) ----
@@ -276,8 +296,7 @@ function Reset-Display {
     Set-HighContrast ''
     Set-AppsTheme $false
     Set-Scaling 100
-    [ProbeDisplay]::SetKeyboardCues($true)
-    [ProbeDisplay]::SetClearType()
+    [ProbeDisplay]::SetSteadyText()
 }
 
 New-Item $Out -ItemType Directory -Force | Out-Null
@@ -292,7 +311,9 @@ try {
         'high-contrast' { Set-HighContrast $HcTheme }
     }
     Set-Scaling $Scale
-    "Variant $Tag set: scaling $([ProbeDisplay]::Scaling()); High Contrast $([ProbeDisplay]::HighContrastOn())"
+    # Again, in case a theme the variant applied changed either.
+    [ProbeDisplay]::SetSteadyText()
+    "Variant $Tag set: scaling $([ProbeDisplay]::Scaling()); High Contrast $([ProbeDisplay]::HighContrastOn()); $([ProbeDisplay]::SteadyText())"
     $probeArgs = @("$Source\tools\ui_probe.py", '--out', $Out, '--tag', $Tag)
     foreach ($name in $Surface) { $probeArgs += @('--surface', $name) }
     & $Python @probeArgs
