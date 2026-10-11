@@ -715,7 +715,10 @@ def d_usage(frame, env):
 
 
 def d_properties(frame, env):
-    _open(frame, "Visual probe")
+    """Highlighted in the session list, not loaded: then the session's
+    properties are shown wherever focus is, never a message's."""
+    _select(frame, "Visual probe")
+    frame.session_list.SetFocus()
     return frame.on_properties
 
 
@@ -788,7 +791,7 @@ SURFACES = {
     "find-all": ("dialog", d_find_all, "View, Find in All Sessions: the results"),
     "changes": ("dialog", d_changes, "View, Changed Files"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
-    "properties": ("dialog", d_properties, "View, Properties of the loaded session"),
+    "properties": ("dialog", d_properties, "View, Properties of a session"),
     "about-you": ("dialog", d_about_you, "View, What Claude Knows About You"),
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
     "prompts": ("dialog", d_prompts, "File, Prompts"),

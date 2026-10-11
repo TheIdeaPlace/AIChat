@@ -8002,7 +8002,7 @@ def test_session_properties_without_a_transcript(frame, env, monkeypatch):
     _alt_enter(frame, monkeypatch, frame.session_list)
     assert pump(lambda: seen)
     rows = seen[0]["rows"]
-    assert "Status: needs you: Pick a name" in rows
+    assert "Status: Needs you: Pick a name" in rows
     assert "Transcript: not on disk" in rows
     assert not any(r.startswith("Messages") for r in rows)
 
@@ -8018,8 +8018,54 @@ def test_session_properties_survive_a_failing_read(frame, env, monkeypatch):
     select(frame, "Quiet one")
     _alt_enter(frame, monkeypatch, frame.session_list)
     assert pump(lambda: seen)
-    assert "Transcript: not on disk" in seen[0]["rows"]
+    rows = seen[0]["rows"]
+    # There but unreadable (locked, say): never "not on disk".
+    assert any(r.startswith("Transcript: ") and r.endswith("cli-a.jsonl") for r in rows)
+    assert "Transcript read: failed (locked)" in rows
     assert not frame._properties_busy  # Alt+Enter works again
+
+
+def test_a_second_alt_enter_while_reading_is_ignored(frame, env, monkeypatch):
+    from thechatplace.ui import main_frame
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi")])
+    release = threading.Event()
+    real = main_frame.read_transcript
+
+    def slow(path):
+        release.wait(5)
+        return real(path)
+    monkeypatch.setattr(main_frame, "read_transcript", slow)
+    seen = _properties(frame, monkeypatch)
+    select(frame, "Quiet one")
+    _alt_enter(frame, monkeypatch, frame.session_list)
+    assert frame._properties_busy
+    _alt_enter(frame, monkeypatch, frame.session_list)  # ignored, not queued
+    release.set()
+    assert pump(lambda: seen and not frame._properties_busy)
+    pump(lambda: False, timeout=0.3)
+    assert len(seen) == 1
+    _alt_enter(frame, monkeypatch, frame.session_list)  # and works again
+    assert pump(lambda: len(seen) == 2)
+
+
+def test_session_properties_not_shown_over_another_dialog_or_once_closing(frame, env,
+                                                                           monkeypatch):
+    seen = _properties(frame, monkeypatch)
+    select(frame, "Quiet one")
+    monkeypatch.setattr(frame, "_open_modal", lambda: frame)
+    _alt_enter(frame, monkeypatch, frame.session_list)
+    assert pump(lambda: not frame._properties_busy)
+    assert not seen
+    assert env["feedback"][-1].startswith("Properties: another window is open.")
+    monkeypatch.setattr(frame, "_open_modal", lambda: None)
+    frame._closing = True
+    try:
+        _alt_enter(frame, monkeypatch, frame.session_list)
+        assert pump(lambda: not frame._properties_busy)
+        pump(lambda: False, timeout=0.3)
+        assert not seen
+    finally:
+        frame._closing = False
 
 
 def test_alt_enter_in_the_messages_shows_the_message_properties(frame, env, monkeypatch):
@@ -8035,13 +8081,49 @@ def test_alt_enter_in_the_messages_shows_the_message_properties(frame, env, monk
     assert not _alt_enter(frame, monkeypatch, frame.chat_list)
     assert not read  # Alt+Enter isn't Enter: the message isn't opened
     rows = seen[0]["rows"]
-    assert seen[0]["title"] == "Message Properties"
+    assert seen[0]["title"] == "Properties of message 2 of 2"
     assert rows[0] == "From: Claude"
     assert "Position: 2 of 2" in rows and "Lines: 2" in rows and "Words: 2" in rows
     # In the reply box it's the loaded session's.
     _alt_enter(frame, monkeypatch, frame.reply_text)
     assert pump(lambda: len(seen) == 2)
     assert seen[1]["title"] == "Properties of Quiet one"
+    # The message menu's Properties is the message's.
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    menu = frame._message_menu()
+    try:
+        item = menu.GetMenuItems()[-1]
+        assert item.IsEnabled()
+        menu.ProcessEvent(wx.CommandEvent(wx.wxEVT_MENU, item.GetId()))
+    finally:
+        menu.Destroy()
+    assert seen[2]["title"] == "Properties of message 2 of 2"
+
+
+def test_other_enter_keys_in_the_messages_are_not_properties(frame, env, monkeypatch):
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hello there")])
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded)
+    read, props = [], []
+    monkeypatch.setattr(frame, "on_read_message", lambda: read.append(True))
+    monkeypatch.setattr(frame, "on_properties", lambda: props.append(True))
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+
+    def press(key=wx.WXK_RETURN, alt=False, ctrl=False, shift=False):
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(key)
+        event.SetAltDown(alt)
+        event.SetControlDown(ctrl)
+        event.SetShiftDown(shift)
+        frame._on_char_hook(event)
+    press(wx.WXK_NUMPAD_ENTER, alt=True)
+    assert props == [True] and not read  # Alt with the keypad's Enter too
+    press(alt=True, shift=True)  # reads the message, as it always did
+    press(alt=True, ctrl=True)  # AltGr+Enter on many keyboards
+    assert props == [True] and read == [True]
+    press()
+    assert read == [True, True]
 
 
 def test_properties_with_nothing_selected(frame, env, monkeypatch):

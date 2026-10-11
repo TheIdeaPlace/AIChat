@@ -1885,10 +1885,10 @@ class MainFrame(wx.Frame):
             if message is None:
                 self._feedback("No message selected.")
                 return
-            visible = self._visible_messages()
-            lines = properties.message_properties(
-                message, self.chat_list.GetSelection() + 1, len(visible))
-            self._show_properties("Message Properties", lines, returning_to)
+            position, total = self.chat_list.GetSelection() + 1, len(self._visible_messages())
+            lines = properties.message_properties(message, position, total)
+            self._show_properties(f"Properties of message {position} of {total}", lines,
+                                  returning_to)
             return
         info = self._selected_session()
         if info is None:
@@ -1897,35 +1897,43 @@ class MainFrame(wx.Frame):
         if self._properties_busy:
             return  # Alt+Enter twice: the first is still reading
         self._properties_busy = True
-        own = self.store.get(info.cli_session_id) if info.is_own else None
-        own_window = self._windows.get(info.cli_session_id, 0) if info.is_own else 0
-        model_windows = dict(self._model_windows)
 
         def work():
-            transcript, path, size = None, "", 0
+            transcript, path, size, error = None, "", 0, ""
             try:
                 found = info.transcript_path()
                 if found is not None:
                     path, size = properties.transcript_facts(found)
                     if path:
                         transcript = read_transcript(found)
-            except Exception:  # noqa: BLE001 - say what can be said without it
-                transcript = None
-            model = transcript.model if transcript is not None else ""
-            reported = own_window or model_windows.get(model, 0)
-            try:
-                lines = properties.session_properties(info, transcript, path, size, own,
-                                                      reported)
-            except Exception as exc:  # noqa: BLE001 - never leave the busy flag set
-                lines = [f"Couldn't read this session's properties: {exc}"]
-            wx.CallAfter(self._session_properties_read, info, lines, returning_to)
+            except Exception as exc:  # noqa: BLE001 - say what can be said without it
+                transcript, error = None, str(exc) or type(exc).__name__
+            wx.CallAfter(self._session_properties_read, info, transcript, path, size, error,
+                         returning_to)
 
-        self._pool.submit(work)
+        try:
+            self._pool.submit(work)
+        except RuntimeError:  # the pool is shut down: the window is closing
+            self._properties_busy = False
 
-    def _session_properties_read(self, info, lines, returning_to):
+    def _session_properties_read(self, info, transcript, path, size, error, returning_to):
         self._properties_busy = False
-        if not self or self._closing:
+        if self._gone() or self._closing:
             return
+        if self._open_modal() is not None:
+            # Another dialog opened while the transcript was read: don't
+            # stack this one on it and send focus behind it.
+            self._feedback("Properties: another window is open. Close it and press "
+                           "Alt+Enter again.")
+            return
+        own = self.store.get(info.cli_session_id) if info.is_own else None
+        model = transcript.model if transcript is not None else ""
+        try:
+            lines = properties.session_properties(
+                info, transcript, path, size, own, self._reported_window(info, model),
+                read_error=error)
+        except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
+            lines = [f"Error: couldn't list this session's properties ({exc})"]
         self._show_properties(f"Properties of {info.title or 'Untitled session'}", lines,
                               returning_to)
 
@@ -2298,10 +2306,15 @@ class MainFrame(wx.Frame):
                 or info.key != self._open.key:
             return 0, 0
         transcript = self._reader.transcript
-        reported = (self._windows.get(info.cli_session_id, 0) if info.is_own else 0) or \
-            self._model_windows.get(transcript.model, 0)
-        window = usage.context_window(transcript.model, transcript.context_tokens, reported)
+        window = usage.context_window(transcript.model, transcript.context_tokens,
+                                      self._reported_window(info, transcript.model))
         return transcript.context_tokens, window
+
+    def _reported_window(self, info: SessionInfo, model: str) -> int:
+        """The context window Claude Code reported for this session (one of
+        ours) or, failing that, for its model; 0 if neither."""
+        return (self._windows.get(info.cli_session_id, 0) if info.is_own else 0) or \
+            self._model_windows.get(model, 0)
 
     def on_usage(self):
         """View, Usage and Context (Ctrl+Shift+U): how full the loaded
