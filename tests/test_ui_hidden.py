@@ -6688,6 +6688,266 @@ def test_new_session_without_recent_folders_starts_at_the_root(frame):
         dialog.Destroy()
 
 
+def _delete_key(dialog):
+    """Delete pressed in the Folder box; True if it went on to the box's
+    own editing (wx skipped it)."""
+    event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
+    event.SetKeyCode(wx.WXK_DELETE)
+    event.SetEventObject(dialog.folder)
+    return not dialog.folder.GetEventHandler().ProcessEvent(event)
+
+
+def test_delete_takes_a_recent_folder_off_the_list_and_goes_to_the_next(frame, env,
+                                                                        monkeypatch):
+    """#215: Delete on a recent folder removes it, for good, and the next
+    one takes its place; the last one gives way to the one before."""
+    import os
+    from thechatplace.ui.dialogs import NewSessionDialog
+    # This system's own paths: what's spoken is the last part of one.
+    root = str(env["tmp"])
+    a, b, c = (os.path.join(root, name) for name in "abc")
+    gone = []
+    dialog = NewSessionDialog(frame, root, recent=[a, b, c], projects_root=root,
+                              feedback=env["feedback"].append,
+                              remove_recent=lambda f: gone.append(f) or True)
+    monkeypatch.setattr(dialog, "refresh_repo", lambda: None)
+    try:
+        dialog.folder.SetSelection(1)
+        dialog.folder.SelectAll()  # as arrowing leaves it
+        assert not _delete_key(dialog)
+        assert gone == [b]
+        assert list(dialog.folder.GetStrings()) == [a, c]
+        assert dialog.folder.GetValue() == c
+        assert dialog.folder.GetSelection() == 1
+        assert dialog.folder.GetTextSelection() == (0, len(c))
+        # Just what happened: the screen reader reads the folder now there.
+        assert env["feedback"][-1] == "Removed b from recent folders."
+        # The last one: the one before it comes up.
+        assert not _delete_key(dialog)
+        assert dialog.folder.GetValue() == a
+        assert not _delete_key(dialog)
+        assert dialog.folder.GetCount() == 0 and dialog.folder.GetValue() == root
+        assert env["feedback"][-1] == "Removed a from recent folders. None left."
+        assert gone == [b, c, a]
+        # Nothing left to remove: Delete is the box's own again.
+        assert _delete_key(dialog)
+    finally:
+        dialog.Destroy()
+
+
+def test_delete_still_edits_a_folder_being_typed(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    gone = []
+    dialog = NewSessionDialog(frame, "C:\\G", recent=["C:\\G\\a", "C:\\G\\b"],
+                              feedback=env["feedback"].append,
+                              remove_recent=lambda f: gone.append(f) or True)
+    monkeypatch.setattr(dialog, "refresh_repo", lambda: None)
+    try:
+        dialog.folder.SetSelection(0)
+        dialog.folder.SetInsertionPoint(2)  # in the middle of the folder
+        assert _delete_key(dialog)
+        # At the end (End to read a long path's end): nothing, as ever.
+        dialog.folder.SetInsertionPointEnd()
+        assert _delete_key(dialog)
+        dialog.folder.SetValue("C:\\G\\typed")  # not one of the list's
+        dialog.folder.SelectAll()
+        assert _delete_key(dialog)
+        # Shift+Delete (cut) and the like are the box's own.
+        dialog.folder.SetSelection(0)
+        dialog.folder.SelectAll()
+        event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
+        event.SetKeyCode(wx.WXK_DELETE)
+        event.SetShiftDown(True)
+        assert not dialog.folder.GetEventHandler().ProcessEvent(event)
+        assert gone == [] and dialog.folder.GetCount() == 2
+    finally:
+        dialog.Destroy()
+
+
+def test_delete_in_the_open_list_removes_the_folder_it_is_on(frame, env, monkeypatch):
+    """With the list open (Alt+Down), the folder highlighted is the current
+    selection, which can differ from the one chosen when it opened."""
+    from thechatplace.ui.dialogs import NewSessionDialog
+    gone = []
+    dialog = NewSessionDialog(frame, "C:\\G", recent=["C:\\G\\a", "C:\\G\\b", "C:\\G\\c"],
+                              feedback=env["feedback"].append,
+                              remove_recent=lambda f: gone.append(f) or True)
+    monkeypatch.setattr(dialog, "refresh_repo", lambda: None)
+    dismissed = []
+    monkeypatch.setattr(dialog.folder, "GetCurrentSelection", lambda: 2)
+    monkeypatch.setattr(dialog.folder, "Dismiss", lambda: dismissed.append(True))
+    try:
+        dialog.folder.SetSelection(0)
+        dialog.folder.ChangeValue("C:\\G\\c")  # as the open list shows it
+        dialog.folder.SelectAll()
+        assert not _delete_key(dialog)
+        assert gone == ["C:\\G\\c"] and dismissed == [True]
+        assert list(dialog.folder.GetStrings()) == ["C:\\G\\a", "C:\\G\\b"]
+    finally:
+        dialog.Destroy()
+
+
+def test_a_removal_that_cannot_be_saved_keeps_the_folder(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, "C:\\G", recent=["C:\\G\\a"],
+                              remove_recent=lambda f: False)
+    try:
+        dialog.folder.SetSelection(0)
+        dialog.folder.SelectAll()
+        assert not _delete_key(dialog)
+        assert list(dialog.folder.GetStrings()) == ["C:\\G\\a"]
+        assert dialog.folder.GetValue() == "C:\\G\\a"
+    finally:
+        dialog.Destroy()
+
+
+def test_the_frame_says_when_a_removal_cannot_be_saved(frame, env):
+    from thechatplace import workplaces
+    path = env["tmp"] / "appdata" / workplaces.RemovedFolders.FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not json", encoding="utf-8")
+    frame.recent_removed = workplaces.RemovedFolders()
+    assert frame.recent_removed.load_error
+    assert frame._remove_recent_folder("C:\\G\\a") is False
+    assert env["feedback"][-1].startswith("Couldn't remove that folder from recent folders:")
+    frame._clear_recent_folders()
+    assert env["feedback"][-1].startswith("Couldn't clear recent folders:")
+    assert path.read_text(encoding="utf-8") == "not json"
+
+
+def test_new_session_falls_back_unchecked_with_the_setting_and_removals(frame, env,
+                                                                       fake_runner,
+                                                                       monkeypatch):
+    """The timed-out path (#154) keeps to the limit and the removals too."""
+    from concurrent.futures import Future
+    from thechatplace.ui import main_frame
+    for n, name in enumerate(["one", "two"]):
+        frame.store.add(OwnSession(f"own-{name}", name, f"C:\\Gone\\{name}",
+                                   last_activity_ms=1000 + n))
+    frame.recent_removed.remove("C:\\Gone\\two", now_ms=5000)
+
+    def timed_out(*args, **kwargs):
+        future = Future()
+        future.set_exception(TimeoutError())
+        return future
+    monkeypatch.setattr(frame._pool, "submit", timed_out)
+    seen = []
+
+    class Fills(main_frame.NewSessionDialog):
+        def ShowModal(self):
+            seen.append(list(self.folder.GetStrings()))
+            return wx.ID_CANCEL
+    monkeypatch.setattr(main_frame, "NewSessionDialog", Fills)
+    root = str(platform_paths.default_projects_root())
+    frame.on_new_session()
+    assert seen[0][0] == root and "C:\\Gone\\one" in seen[0]
+    assert "C:\\Gone\\two" not in seen[0]
+    frame.speech.recent_folder_limit = 0
+    frame.on_new_session()
+    assert seen[1] == []
+
+
+def test_new_session_leaves_out_removed_folders_and_keeps_to_the_setting(frame, env,
+                                                                         fake_runner,
+                                                                         monkeypatch):
+    """#215, through the frame: Delete saves the removal, the next New
+    Session leaves the folder out, and Settings' number limits the list."""
+    from thechatplace import workplaces
+    from thechatplace.ui import main_frame
+    names = ["one", "two", "three"]
+    for n, name in enumerate(names):
+        (env["tmp"] / name).mkdir()
+        frame.store.add(OwnSession(f"own-{name}", name, str(env["tmp"] / name),
+                                   last_activity_ms=now_ms() + 5000 + n))
+    seen = []
+
+    class Fills(main_frame.NewSessionDialog):
+        def ShowModal(self):
+            seen.append(list(self.folder.GetStrings()))
+            if len(seen) == 1:
+                assert self._remove_recent(str(env["tmp"] / "three"))
+            return wx.ID_CANCEL
+    monkeypatch.setattr(main_frame, "NewSessionDialog", Fills)
+    frame.on_new_session()
+    assert seen[0][:3] == [str(env["tmp"] / n) for n in ("three", "two", "one")]
+    assert (env["tmp"] / "appdata" / workplaces.RemovedFolders.FILE).exists()
+    # Taken off now, though it was last used "later": the clock is the only
+    # thing a removal can go by, so make it later still.
+    frame.recent_removed.remove(str(env["tmp"] / "three"), now_ms=now_ms() + 10_000)
+    frame.on_new_session()
+    assert seen[1][:2] == [str(env["tmp"] / "two"), str(env["tmp"] / "one")]
+    assert str(env["tmp"] / "three") not in seen[1]
+    frame.speech.recent_folder_limit = 1
+    frame.on_new_session()
+    assert seen[2] == [str(env["tmp"] / "two")]
+    frame.speech.recent_folder_limit = 0
+    frame.on_new_session()
+    assert seen[3] == []
+
+
+def test_settings_sets_how_many_recent_folders_and_clears_them(frame, env, monkeypatch):
+    from thechatplace.ui import dialogs
+    from thechatplace.ui.dialogs import SettingsDialog
+    asked = []
+    answer = [wx.NO]
+    monkeypatch.setattr(dialogs.wx, "MessageBox",
+                        lambda text, *a, **k: asked.append(text) or answer[0])
+    dialog = SettingsDialog(frame, speech.SpeechSettings(recent_folder_limit=7),
+                            speech.default_options(), clear_recent=frame._clear_recent_folders)
+    try:
+        assert dialog.recent_limit.GetValue() == 7
+        assert dialog.recent_limit.GetMax() == 100 and dialog.recent_limit.GetMin() == 0
+        dialog.recent_limit.SetValue(3)
+        assert dialog.get_settings().recent_folder_limit == 3
+        button = dialog.clear_recent_btn
+        assert button.GetLabel() == "C&lear Recent Folders"
+        children = list(dialog.GetChildren())
+        assert children.index(dialog.recent_limit) < children.index(button) < \
+            children.index(dialog.remote_control)
+        # Asked first: No leaves them.
+        button.GetEventHandler().ProcessEvent(
+            wx.CommandEvent(wx.wxEVT_BUTTON, button.GetId()))
+        assert asked and asked[-1].startswith("Clear all of New Session's recent folders?")
+        assert frame.recent_removed.cleared_ms == 0
+        answer[0] = wx.YES
+        button.GetEventHandler().ProcessEvent(
+            wx.CommandEvent(wx.wxEVT_BUTTON, button.GetId()))
+        assert frame.recent_removed.cleared_ms > 0
+        assert env["feedback"][-1].startswith("Recent folders cleared.")
+    finally:
+        dialog.Destroy()
+    # Without a way to clear (as other callers make it), no button.
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        assert dialog.clear_recent_btn is None
+    finally:
+        dialog.Destroy()
+
+
+def test_settings_ok_saves_how_many_recent_folders(frame, env, monkeypatch):
+    from thechatplace.ui import main_frame
+
+    class Picks(main_frame.SettingsDialog):
+        def ShowModal(self):
+            self.recent_limit.SetValue(4)
+            return wx.ID_OK
+    monkeypatch.setattr(main_frame, "SettingsDialog", Picks)
+    frame.on_settings()
+    assert frame.speech.recent_folder_limit == 4
+    assert speech.SpeechSettings.load().recent_folder_limit == 4
+
+
+def test_the_recent_folder_setting_is_saved_and_checked(tmp_path):
+    path = tmp_path / "speech.json"
+    speech.SpeechSettings(recent_folder_limit=5).save(path)
+    assert speech.SpeechSettings.load(path).recent_folder_limit == 5
+    for bad in (-1, 101, "7", True, None):
+        path.write_text(json.dumps({"recent_folder_limit": bad}), encoding="utf-8")
+        assert speech.SpeechSettings.load(path).recent_folder_limit == 20
+    path.write_text("{}", encoding="utf-8")
+    assert speech.SpeechSettings.load(path).recent_folder_limit == 20
+
+
 def test_a_worktree_is_refused_at_once_outside_a_repository(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog, WORK_IN_FOLDER, WORK_IN_WORKTREE
     plain = env["tmp"] / "plain"

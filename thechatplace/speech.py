@@ -188,6 +188,8 @@ class SpeechSettings:
     #: The version that last started, recorded by installed copies only, so
     #: the first start after an update can say so (#141).
     last_run_version: str = ""
+    #: How many recent folders New Session offers (#215); 0 offers none.
+    recent_folder_limit: int = 20
 
     @property
     def enabled(self) -> bool:
@@ -235,6 +237,10 @@ class SpeechSettings:
         settings.update_installed_notice = raw.get("update_installed_notice") is not False
         last = raw.get("last_run_version", "")
         settings.last_run_version = last.strip() if isinstance(last, str) else ""
+        from .workplaces import RECENT_LIMIT, RECENT_MAX
+        limit = raw.get("recent_folder_limit", RECENT_LIMIT)
+        settings.recent_folder_limit = limit if isinstance(limit, int) \
+            and not isinstance(limit, bool) and 0 <= limit <= RECENT_MAX else RECENT_LIMIT
         return settings
 
     #: True when settings.json was there but couldn't be read, so these are

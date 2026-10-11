@@ -185,6 +185,8 @@ class MainFrame(wx.Frame):
         # The sessions Show Tool Activity is on for: it's each session's own (#162).
         self.tool_activity = ToolActivityStore()
         self.titles = TitleStore()  # names given to desktop app sessions (#93)
+        # Folders taken off New Session's recent list (#215).
+        self.recent_removed = workplaces.RemovedFolders()
         self.updates = updates or UpdateService(__version__)
         self._update_busy = False
         # The newer version the last check found, "" if none (#141): Help's
@@ -333,6 +335,9 @@ class MainFrame(wx.Frame):
                          wx.OK | wx.ICON_WARNING, self)
         if self.titles.load_error:
             wx.CallAfter(wx.MessageBox, self.titles.load_error, APP_NAME,
+                         wx.OK | wx.ICON_WARNING, self)
+        if self.recent_removed.load_error:
+            wx.CallAfter(wx.MessageBox, self.recent_removed.load_error, APP_NAME,
                          wx.OK | wx.ICON_WARNING, self)
         if self.prompts.load_error:
             wx.CallAfter(wx.MessageBox, self.prompts.load_error, APP_NAME,
@@ -3075,17 +3080,23 @@ class MainFrame(wx.Frame):
         # Whether each folder still exists is asked off the UI thread, with a
         # limit: a folder on a network drive that's gone can take a long time
         # to answer, and then the list is offered without that check.
+        # As many as Settings says, leaving out any taken off the list (#215).
+        limit, removed = self.speech.recent_folder_limit, self.recent_removed
         try:
-            recent = self._pool.submit(workplaces.recent_folders, sessions).result(timeout=1.5)
+            recent = self._pool.submit(workplaces.recent_folders, sessions, limit=limit,
+                                       removed=removed).result(timeout=1.5)
         except Exception:  # noqa: BLE001 - timed out, or the pool is closing
             # Unchecked, so the Folder box starts at the projects folder
             # rather than at one that may be gone (asking again could hang).
-            same = lambda folder: os.path.normcase(os.path.normpath(folder))  # noqa: E731
-            recent = [root] + [folder for folder in workplaces.recent_folders(
-                sessions, exists=lambda folder: True) if same(folder) != same(root)]
+            same = workplaces.folder_key
+            recent = [folder for folder in workplaces.recent_folders(
+                sessions, limit=limit, exists=lambda folder: True, removed=removed)
+                if same(folder) != same(root)]
+            recent = [root] + recent if limit else []
         dialog = NewSessionDialog(self, root, recent=recent, projects_root=root,
                                   feedback=self._feedback,
-                                  clone_root=str(platform_paths.clone_root()))
+                                  clone_root=str(platform_paths.clone_root()),
+                                  remove_recent=self._remove_recent_folder)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
@@ -4377,9 +4388,29 @@ class MainFrame(wx.Frame):
             return
         self._feedback(f"Session list columns saved. Each session reads: {names}.")
 
+    def _remove_recent_folder(self, folder: str) -> bool:
+        """Delete on a recent folder in New Session (#215)."""
+        try:
+            self.recent_removed.remove(folder)
+        except OSError as exc:
+            self._feedback(f"Couldn't remove that folder from recent folders: {exc}")
+            return False
+        return True
+
+    def _clear_recent_folders(self):
+        """Settings, Clear Recent Folders (#215)."""
+        try:
+            self.recent_removed.clear()
+        except OSError as exc:
+            self._feedback(f"Couldn't clear recent folders: {exc}")
+            return
+        self._feedback("Recent folders cleared. A folder comes back when a session works "
+                       "in it again.")
+
     def on_settings(self, _event=None):
         options = self._speech_options or default_options()
-        dialog = SettingsDialog(self, self.speech, options)
+        dialog = SettingsDialog(self, self.speech, options,
+                                clear_recent=self._clear_recent_folders)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return

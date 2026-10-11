@@ -63,6 +63,88 @@ def test_recent_folders_stop_at_the_limit(tmp_path):
     assert found == [str(tmp_path / n) for n in ("29", "28", "27")]
 
 
+def test_recent_folders_limit_of_zero_offers_none(tmp_path):
+    sessions = [info(str(tmp_path / "a"), 1)]
+    assert workplaces.recent_folders(sessions, limit=0, exists=lambda f: True) == []
+
+
+# -- taking folders off the recent list (#215) --------------------------------------------
+
+def test_a_removed_folder_stays_off_until_a_session_uses_it_again(tmp_path):
+    removed = workplaces.RemovedFolders(tmp_path / "recent_folders.json")
+    a, b = str(tmp_path / "A"), str(tmp_path / "B")
+    yes = lambda f: True  # noqa: E731
+    sessions = [info(a, 100), info(b, 50)]
+    removed.remove(a.lower() if os.name == "nt" else a, now_ms=200)
+    assert workplaces.recent_folders(sessions, exists=yes, removed=removed) == [b]
+    # Saved: a new store reads it back.
+    again = workplaces.RemovedFolders(removed.path)
+    assert workplaces.recent_folders(sessions, exists=yes, removed=again) == [b]
+    # Worked in again after it was taken off: back on the list, at the top.
+    sessions.append(info(a, 300))
+    assert workplaces.recent_folders(sessions, exists=yes, removed=again) == [a, b]
+
+
+def test_a_removed_worktree_repository_stays_off(tmp_path):
+    repo = tmp_path / "Repo"
+    worktree = str(repo / ".claude" / "worktrees" / "x")
+    removed = workplaces.RemovedFolders(tmp_path / "r.json")
+    removed.remove(str(repo), now_ms=500)
+    assert workplaces.recent_folders([info(worktree, 400)], exists=lambda f: True,
+                                     removed=removed) == []
+
+
+def test_clearing_takes_every_folder_off_and_replaces_single_removals(tmp_path):
+    removed = workplaces.RemovedFolders(tmp_path / "r.json")
+    removed.remove(str(tmp_path / "old"), now_ms=10)
+    removed.clear(now_ms=1000)
+    sessions = [info(str(tmp_path / "a"), 999), info(str(tmp_path / "b"), 1000),
+                info(str(tmp_path / "c"), 1001)]
+    assert workplaces.recent_folders(sessions, exists=lambda f: True, removed=removed) == \
+        [str(tmp_path / "c")]
+    raw = json.loads(removed.path.read_text(encoding="utf-8"))
+    assert raw == {"version": 1, "cleared_ms": 1000, "removed": {}}
+
+
+@pytest.mark.parametrize("text", ["not json", "[]", '{"removed": []}',
+                                  '{"removed": {}, "cleared_ms": "x"}',
+                                  '{"removed": {}, "cleared_ms": true}'])
+def test_an_unreadable_removed_folders_file_is_reported_and_never_saved_over(tmp_path, text):
+    path = tmp_path / "recent_folders.json"
+    path.write_text(text, encoding="utf-8")
+    removed = workplaces.RemovedFolders(path)
+    assert removed.load_error and str(path) in removed.load_error
+    assert not removed.hides("C:/x", 0)
+    with pytest.raises(OSError):
+        removed.remove("C:/x")
+    with pytest.raises(OSError):
+        removed.clear()
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_bad_entries_in_the_removed_folders_file_are_skipped(tmp_path):
+    path = tmp_path / "recent_folders.json"
+    path.write_text(json.dumps({"version": 1, "cleared_ms": 0, "removed": {
+        workplaces.folder_key("C:/good"): 50, "bad": "x", "worse": True, "": 5}}),
+        encoding="utf-8")
+    removed = workplaces.RemovedFolders(path)
+    assert not removed.load_error
+    assert removed.hides("C:/good", 50) and not removed.hides("C:/good", 51)
+    assert not removed.hides("bad", 0) and not removed.hides("worse", 0)
+
+
+def test_a_failed_save_changes_nothing(tmp_path, monkeypatch):
+    removed = workplaces.RemovedFolders(tmp_path / "r.json")
+
+    def fail(*args):
+        raise OSError("disk full")
+    monkeypatch.setattr(workplaces.os, "replace", fail)
+    with pytest.raises(OSError):
+        removed.remove("C:/x", now_ms=5)
+    assert not removed.hides("C:/x", 1)
+    assert not list(tmp_path.glob("*.tmp"))
+
+
 # -- repository names ---------------------------------------------------------------------
 
 @pytest.mark.parametrize("typed, expected", [
