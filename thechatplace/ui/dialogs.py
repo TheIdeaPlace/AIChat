@@ -219,6 +219,7 @@ class NewSessionDialog(wx.Dialog):
         if not continue_from:
             self.folder.Bind(wx.EVT_COMBOBOX, lambda e: self._folder_chosen())
             self.folder.Bind(wx.EVT_KILL_FOCUS, self._on_folder_left)
+            self.folder.Bind(wx.EVT_KEY_DOWN, self._on_folder_key)
             self.work_in.Bind(wx.EVT_CHOICE, lambda e: self._on_work_in())
             self.refresh_repo()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
@@ -257,22 +258,23 @@ class NewSessionDialog(wx.Dialog):
         if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and event.ControlDown():
             self._on_ok(None)
             return
+        event.Skip()
+
+    def _on_folder_key(self, event):
+        # Delete on a recent folder (#215). On the box itself, not the
+        # dialog's char hook: with the list open (Alt+Down) the hook never
+        # hears a key, and Delete went on to empty the box.
         if event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE) \
-                and not event.HasAnyModifiers() and not self.continuing \
-                and self._folder_has_focus() and self.remove_recent_folder():
+                and not event.HasAnyModifiers() and self.remove_recent_folder():
             return
         event.Skip()
 
-    def _folder_has_focus(self) -> bool:
-        focus = wx.Window.FindFocus()
-        # On Windows the focus is the combo box's own edit box, its child.
-        return focus is not None and (focus is self.folder or focus.GetParent() is self.folder)
-
     def _recent_under_delete(self) -> int:
         """The recent folder Delete would take off the list (#215), or
-        NOT_FOUND. Only when the box holds that folder as it was chosen, all
-        selected (as arrowing leaves it) or with the cursor at its end, so
-        Delete still edits a folder being typed or changed."""
+        NOT_FOUND. Only when the box holds that folder as it was chosen and
+        all selected, as arrowing leaves it, so Delete still edits a folder
+        being typed or changed, and does nothing at the end of one, as ever.
+        With the list open, the folder it's on is the current selection."""
         index = self.folder.GetCurrentSelection()
         if index == wx.NOT_FOUND:
             index = self.folder.GetSelection()
@@ -281,8 +283,7 @@ class NewSessionDialog(wx.Dialog):
         value = self.folder.GetValue()
         if value != self.folder.GetString(index):
             return wx.NOT_FOUND
-        start, end = self.folder.GetTextSelection()
-        if (start, end) == (0, len(value)) or start == end == len(value):
+        if value and self.folder.GetTextSelection() == (0, len(value)):
             return index
         return wx.NOT_FOUND
 
@@ -295,20 +296,22 @@ class NewSessionDialog(wx.Dialog):
         folder = self.folder.GetString(index)
         if not self._remove_recent(folder):
             return True  # couldn't be saved, and the caller said so
+        # Closed first, so the open list isn't changed under it.
+        self.folder.Dismiss()
         self.folder.Delete(index)
         name = os.path.basename(folder.rstrip("\\/")) or folder
         count = self.folder.GetCount()
         if count:
-            index = min(index, count - 1)
-            self.folder.SetSelection(index)
-            self.folder.SelectAll()
-            now = self.folder.GetString(index)
+            self.folder.SetSelection(min(index, count - 1))
+            said = f"Removed {name} from recent folders."
         else:
             self.folder.ChangeValue(self._projects_root)
-            self.folder.SelectAll()
-            now = f"No recent folders left. {self._projects_root}"
+            said = f"Removed {name} from recent folders. None left."
+        self.folder.SelectAll()
         self._folder_chosen()
-        self._feedback(f"Removed {name} from recent folders. {now}")
+        # Not the folder now in the box: the screen reader reads that as
+        # the box's value changes, and saying it too read it twice.
+        self._feedback(said)
         return True
 
     def _folder_chosen(self):
@@ -748,7 +751,8 @@ class SettingsDialog(wx.Dialog):
         outer.Add(notify_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # New Session's recent folders (#215): how many, and clearing them,
-        # which happens at once rather than on OK, as it can't be undone.
+        # which is asked first and then done at once, not on OK: Cancel
+        # can't take it back, so it isn't made to look as if it could.
         recent_row = wx.BoxSizer(wx.HORIZONTAL)
         recent_row.Add(wx.StaticText(self, label="Recent &folders New Session offers:"), 0,
                        wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
@@ -759,7 +763,8 @@ class SettingsDialog(wx.Dialog):
         self.clear_recent_btn = None
         if clear_recent is not None:
             self.clear_recent_btn = wx.Button(self, label="C&lear Recent Folders")
-            self.clear_recent_btn.Bind(wx.EVT_BUTTON, lambda e: clear_recent())
+            self.clear_recent_btn.Bind(wx.EVT_BUTTON,
+                                       lambda e: self._on_clear_recent(clear_recent))
             recent_row.Add(self.clear_recent_btn, 0)
         outer.Add(recent_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -803,6 +808,12 @@ class SettingsDialog(wx.Dialog):
         self.engine_choice.Bind(wx.EVT_CHOICE, lambda e: self._update_rate_state())
         self._update_rate_state()
         wx.CallAfter(self.level.SetFocus)
+
+    def _on_clear_recent(self, clear_recent):
+        if wx.MessageBox("Clear all of New Session's recent folders? Each comes back when a "
+                         "session works in it again.", "Clear Recent Folders",
+                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES:
+            clear_recent()
 
     def _selected_option(self):
         index = self.engine_choice.GetSelection()
