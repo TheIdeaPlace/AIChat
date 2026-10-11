@@ -310,7 +310,11 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   your sessions have used, The Chat Place's and the desktop app's, newest first: a worktree
   counts as its repository, and Cowork sessions and folders that no longer exist are left out
   (if checking takes more than a moment, as for a network drive that's gone, the list is offered
-  unchecked). Browse (Alt+B) still opens a folder dialog. **From GitHub** (Alt+G) lists your
+  unchecked). Delete on a folder from the list (#215) takes it off the list, and the next folder
+  takes its place; a folder you've taken off comes back once a session works in it again. Delete
+  still edits a folder you're typing. Settings (Ctrl+Comma) sets how many recent folders the list
+  offers (20 at first; 0 for none) and has Clear Recent Folders (Alt+L), which takes them all off
+  at once. Browse (Alt+B) still opens a folder dialog. **From GitHub** (Alt+G) lists your
   repositories with `gh repo list` (the GitHub CLI's own sign-in; The Chat Place keeps no token)
   and says how many there are, or in the list why it couldn't get them. Type to filter, or type
   owner/name or a GitHub address for exactly that repository; Enter uses it. A repository

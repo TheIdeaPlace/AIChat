@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -22,8 +23,10 @@ from typing import Callable, Iterable, List, Optional
 
 from . import platform_paths
 
-#: How many recent folders New Session offers.
+#: How many recent folders New Session offers unless Settings says otherwise
+#: (#215), and the most Settings allows.
 RECENT_LIMIT = 20
+RECENT_MAX = 100
 #: How many of your repositories From GitHub lists.
 REPO_LIMIT = 300
 
@@ -51,27 +54,117 @@ def repo_of_worktree(folder: str) -> str:
     return folder[:match.start()] if match and match.start() > 0 else folder
 
 
+def folder_key(folder: str) -> str:
+    """The same folder however it's written: letter case (on Windows) and
+    separators don't matter."""
+    return os.path.normcase(os.path.normpath(folder))
+
+
 def recent_folders(sessions: Iterable, limit: int = RECENT_LIMIT,
-                   exists: Callable[[str], bool] = os.path.isdir) -> List[str]:
+                   exists: Callable[[str], bool] = os.path.isdir,
+                   removed: Optional["RemovedFolders"] = None) -> List[str]:
     """The folders ``sessions`` (SessionInfo) have worked in, most recently
     used first, each once. A worktree counts as its repository, a Cowork
     session (whose folder is its own "outputs" folder) not at all, and a
-    folder that no longer exists is left out."""
+    folder that no longer exists is left out. So is one taken off the list
+    (``removed``, #215) that no session has worked in since."""
+    if limit <= 0:
+        return []
     ordered = sorted((s for s in sessions if not getattr(s, "cowork", False) and s.cwd),
                      key=lambda s: s.last_activity_ms or 0, reverse=True)
     seen = set()
     folders = []
     for info in ordered:
         folder = repo_of_worktree(info.cwd.rstrip("\\/") or info.cwd)
-        key = os.path.normcase(os.path.normpath(folder))
+        key = folder_key(folder)
         if key in seen:
             continue
         seen.add(key)
+        # Newest first, so this is the folder's last use.
+        if removed is not None and removed.hides(folder, info.last_activity_ms or 0):
+            continue
         if exists(folder):
             folders.append(folder)
             if len(folders) >= limit:
                 break
     return folders
+
+
+class RemovedFolders:
+    """The folders taken off New Session's recent list (#215), in
+    ``<app data>/recent_folders.json``. The list is made from the sessions,
+    which The Chat Place never changes, so a folder is taken off by noting
+    when: it comes back once a session works in it again. Clearing the list
+    notes one time for every folder."""
+    FILE = "recent_folders.json"
+
+    def __init__(self, path: Optional[Path] = None) -> None:
+        self.path = Path(path) if path else platform_paths.app_data_dir() / self.FILE
+        self.cleared_ms = 0
+        self._removed = {}  # folder_key -> when it was taken off, in ms
+        self.load_error = ""
+        self.load()
+
+    def load(self) -> None:
+        self.cleared_ms, self._removed, self.load_error = 0, {}, ""
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError) as exc:
+            self.load_error = f"Couldn't read your recent folders ({self.path}): {exc}"
+            return
+        removed = raw.get("removed") if isinstance(raw, dict) else None
+        cleared = raw.get("cleared_ms", 0) if isinstance(raw, dict) else None
+        if not isinstance(removed, dict) or not _is_ms(cleared):
+            self.load_error = (f"Your recent folders file ({self.path}) isn't in the "
+                               "expected format, so The Chat Place won't change it.")
+            return
+        self.cleared_ms = cleared
+        self._removed = {k: v for k, v in removed.items() if isinstance(k, str) and k
+                         and _is_ms(v)}
+
+    def hides(self, folder: str, last_used_ms: int) -> bool:
+        """Whether ``folder``, last used at ``last_used_ms``, stays off the list."""
+        since = max(self.cleared_ms, self._removed.get(folder_key(folder), 0))
+        return since > 0 and last_used_ms <= since
+
+    def remove(self, folder: str, now_ms: Optional[int] = None) -> None:
+        removed = dict(self._removed)
+        removed[folder_key(folder)] = _now_ms() if now_ms is None else now_ms
+        self._save(self.cleared_ms, removed)
+
+    def clear(self, now_ms: Optional[int] = None) -> None:
+        # One time covers every folder, so the ones taken off singly go.
+        self._save(_now_ms() if now_ms is None else now_ms, {})
+
+    def _save(self, cleared_ms: int, removed: dict) -> None:
+        """Save, then keep: a change that can't be saved isn't made."""
+        if self.load_error:
+            raise OSError(f"Not saving over the unreadable {self.path}.")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix="recent_folders-", suffix=".tmp",
+                                   dir=str(self.path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump({"version": 1, "cleared_ms": cleared_ms, "removed": removed},
+                          handle, indent=2)
+            os.replace(tmp, self.path)
+        except OSError:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        self.cleared_ms, self._removed = cleared_ms, removed
+
+
+def _is_ms(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 # -- running git and gh -------------------------------------------------------------------

@@ -86,7 +86,8 @@ class NewSessionDialog(wx.Dialog):
     """
 
     def __init__(self, parent, default_folder: str, continue_from: str = "",
-                 recent=(), projects_root: str = "", feedback=None, clone_root: str = ""):
+                 recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
+                 remove_recent=None):
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=(680, 620),
@@ -95,6 +96,8 @@ class NewSessionDialog(wx.Dialog):
         self._projects_root = projects_root or default_folder
         self._clone_root = clone_root or self._projects_root
         self._feedback = feedback or (lambda text: None)
+        # Takes a folder off the recent list for good (#215): True if it did.
+        self._remove_recent = remove_recent
         self._repo = None           # workplaces.RepoInfo of the folder, or None
         self._repo_for = None       # the folder being read, or read
         self._repo_known = False    # whether _repo is the answer for _repo_for
@@ -254,7 +257,59 @@ class NewSessionDialog(wx.Dialog):
         if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and event.ControlDown():
             self._on_ok(None)
             return
+        if event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE) \
+                and not event.HasAnyModifiers() and not self.continuing \
+                and self._folder_has_focus() and self.remove_recent_folder():
+            return
         event.Skip()
+
+    def _folder_has_focus(self) -> bool:
+        focus = wx.Window.FindFocus()
+        # On Windows the focus is the combo box's own edit box, its child.
+        return focus is not None and (focus is self.folder or focus.GetParent() is self.folder)
+
+    def _recent_under_delete(self) -> int:
+        """The recent folder Delete would take off the list (#215), or
+        NOT_FOUND. Only when the box holds that folder as it was chosen, all
+        selected (as arrowing leaves it) or with the cursor at its end, so
+        Delete still edits a folder being typed or changed."""
+        index = self.folder.GetCurrentSelection()
+        if index == wx.NOT_FOUND:
+            index = self.folder.GetSelection()
+        if index == wx.NOT_FOUND or index >= self.folder.GetCount():
+            return wx.NOT_FOUND
+        value = self.folder.GetValue()
+        if value != self.folder.GetString(index):
+            return wx.NOT_FOUND
+        start, end = self.folder.GetTextSelection()
+        if (start, end) == (0, len(value)) or start == end == len(value):
+            return index
+        return wx.NOT_FOUND
+
+    def remove_recent_folder(self) -> bool:
+        """Delete on a recent folder: take it off the list, here and for good,
+        and go to the next one (the one before, if it was the last)."""
+        index = self._recent_under_delete()
+        if index == wx.NOT_FOUND or self._remove_recent is None:
+            return False
+        folder = self.folder.GetString(index)
+        if not self._remove_recent(folder):
+            return True  # couldn't be saved, and the caller said so
+        self.folder.Delete(index)
+        name = os.path.basename(folder.rstrip("\\/")) or folder
+        count = self.folder.GetCount()
+        if count:
+            index = min(index, count - 1)
+            self.folder.SetSelection(index)
+            self.folder.SelectAll()
+            now = self.folder.GetString(index)
+        else:
+            self.folder.ChangeValue(self._projects_root)
+            self.folder.SelectAll()
+            now = f"No recent folders left. {self._projects_root}"
+        self._folder_chosen()
+        self._feedback(f"Removed {name} from recent folders. {now}")
+        return True
 
     def _folder_chosen(self):
         # Arrowing through the recent folders chooses each in turn: read the
@@ -609,7 +664,7 @@ class GitHubRepoDialog(wx.Dialog):
 class SettingsDialog(wx.Dialog):
     """Announcements and speech (the Speech tab of IDT's settings, adapted)."""
 
-    def __init__(self, parent, speech: SpeechSettings, options):
+    def __init__(self, parent, speech: SpeechSettings, options, clear_recent=None):
         super().__init__(parent, title="Settings", size=(680, 620))
         self._options = list(options)
         # Settings kept elsewhere (the session list's sort order) pass through.
@@ -692,6 +747,22 @@ class SettingsDialog(wx.Dialog):
         notify_row.Add(self.notify_choice, 0)
         outer.Add(notify_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        # New Session's recent folders (#215): how many, and clearing them,
+        # which happens at once rather than on OK, as it can't be undone.
+        recent_row = wx.BoxSizer(wx.HORIZONTAL)
+        recent_row.Add(wx.StaticText(self, label="Recent &folders New Session offers:"), 0,
+                       wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.recent_limit = wx.SpinCtrl(self, min=0, max=workplaces.RECENT_MAX,
+                                        initial=speech.recent_folder_limit)
+        set_accessible_name(self.recent_limit, "Recent folders New Session offers")
+        recent_row.Add(self.recent_limit, 0, wx.RIGHT, 8)
+        self.clear_recent_btn = None
+        if clear_recent is not None:
+            self.clear_recent_btn = wx.Button(self, label="C&lear Recent Folders")
+            self.clear_recent_btn.Bind(wx.EVT_BUTTON, lambda e: clear_recent())
+            recent_row.Add(self.clear_recent_btn, 0)
+        outer.Add(recent_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         # The label wraps onto several lines: as one it ran past the dialog's
         # edge (#176). A check box's label is its spoken name, so screen
         # readers hear the same sentence as before.
@@ -767,7 +838,8 @@ class SettingsDialog(wx.Dialog):
                                    notifications=NOTIFY_LEVELS[max(
                                        self.notify_choice.GetSelection(), 0)],
                                    remote_control=self.remote_control.GetValue(),
-                                   update_installed_notice=self.update_notice.GetValue())
+                                   update_installed_notice=self.update_notice.GetValue(),
+                                   recent_folder_limit=self.recent_limit.GetValue())
 
 
 class MessageDialog(wx.Dialog):
