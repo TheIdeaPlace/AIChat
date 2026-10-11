@@ -145,9 +145,7 @@
     480
    ],
    "capture": "PrintWindow",
-   "problems": [
-    "StaticText 'Ready.': text cut off: smaller than its best size"
-   ],
+   "problems": [],
    "about": "An own session in a 640 by 480 window"
   },
   "shortcuts-page": {
@@ -529,5 +527,5 @@
    "about": "Main window with no sessions at all (a first run)"
   }
  },
- "seconds": 89.5
+ "seconds": 89.1
 }

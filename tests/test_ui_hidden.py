@@ -4303,7 +4303,13 @@ def test_the_reply_box_grows_with_the_window(frame):
     (small_frame, small), (large_frame, large) = heights((1000, 720)), heights((1440, 900))
     assert small >= 120
     assert large_frame > small_frame
-    assert large - small >= (large_frame - small_frame) / 5  # about a third goes to the reply
+    assert large > small
+    # At 720 the reply box is at its minimum (#179 gave the turn status a
+    # line of its own), so the first few dozen pixels go to the messages
+    # list until the reply's share passes it; after that about a third goes
+    # to the reply. CI's screen may let the window grow only a little.
+    if large_frame - small_frame >= 150:
+        assert large - small >= (large_frame - small_frame) / 5
     assert frame.chat_list.GetSize().height > frame.own_reply.GetSize().height
 
 
@@ -7920,3 +7926,15 @@ def test_continue_here_shows_the_start_of_its_title_and_all_its_note(frame, tmp_
             assert note.GetClientSize().height >= lines * note.GetCharHeight()
     finally:
         dialog.Destroy()
+
+
+def test_the_turn_status_is_one_line_and_keeps_its_ampersands(frame):
+    # #179: a command's line breaks would show only its first line on the
+    # single-line status (and stop Windows ending it in "..."), and an "&"
+    # was taken as an access key, so screen readers didn't hear it.
+    _waiting_turn(frame, _request(tool_input={"command": "npm i &&\nnpm test"}))
+    shown = frame.turn_status.GetLabelText()
+    assert "\n" not in shown and "npm i && npm test" in shown
+    assert frame.turn_status.GetLabel() == shown.replace("&", "&&")
+    session_part = frame.status_session.latest()
+    assert "\n" not in session_part and "npm i && npm test" in session_part

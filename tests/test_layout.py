@@ -32,9 +32,7 @@ pytestmark = windows_layout
 
 #: surface -> [(pattern matching one problem, issue)]. Each pattern names
 #: the problem it excuses, so it can't hide another on the same control.
-KNOWN = {
-    "main-narrow": [(r"^StaticText 'Ready\.': text cut off", 179)],
-}
+KNOWN = {}
 
 
 @pytest.fixture(scope="module")
@@ -121,5 +119,44 @@ def test_status_bar_buttons_are_as_tall_as_their_text(app, tmp_path, monkeypatch
             button = frame.status_parts.get(key)
             assert button.IsShown()
             assert button.GetSize().height >= button.GetBestSize().height, key
+    finally:
+        ui_probe.close_frame(frame)
+
+
+@pytest.mark.parametrize("size", [(1000, 720), (800, 600), (640, 480)])
+def test_the_split_stays_put_whatever_is_loaded(app, tmp_path, monkeypatch, size):
+    """#179: the session list was 378 pixels wide with an own session and
+    268 while a turn ran, because the turn status beside the buttons set the
+    right column's width."""
+    widths = {}
+    for name in ("main-own", "main-own-working", "main-desktop", "main-activity",
+                 "main-attachments"):
+        env = ui_probe.build_world(tmp_path / name, monkeypatch.setattr, formatted_view=False)
+        frame = ui_probe.build_frame(env)
+        frame.SetSize(size)
+        try:
+            ui_probe.SURFACES[name][1](frame, env)
+            frame.Layout()
+            widths[name] = frame.session_list.GetSize().width
+        finally:
+            ui_probe.close_frame(frame)
+    assert len(set(widths.values())) == 1, widths
+
+
+def test_the_turn_status_fits_its_line_and_the_status_bar_has_it_whole(app, tmp_path, monkeypatch):
+    """Not the regression test for #179 (the split test above is): this
+    checks the status's own line is wide enough to read at the usual size."""
+    env = ui_probe.build_world(tmp_path, monkeypatch.setattr, formatted_view=False)
+    frame = ui_probe.build_frame(env)
+    frame.SetSize(ui_probe.DEFAULT_SIZE)
+    try:
+        ui_probe.s_main_own_working(frame, env)
+        frame.Layout()
+        label = frame.turn_status.GetLabel()
+        assert label.startswith("1 message queued. Claude is working (")
+        # On its own line, wide enough to show it all at the usual size.
+        assert frame.turn_status.GetSize().width >= frame.turn_status.GetTextExtent(label).width
+        # The status bar's session part says it whole too.
+        assert label in frame.status_session.latest()
     finally:
         ui_probe.close_frame(frame)

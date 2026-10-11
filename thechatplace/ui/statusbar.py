@@ -43,6 +43,14 @@ class _TextAccessible(wx.Accessible):
         return (wx.ACC_OK, state)
 
 
+def shown_text(dc, text: str, width: int) -> str:
+    """``text`` as it fits ``width`` pixels in ``dc``'s font: whole, or
+    shortened with "..." at the end rather than cut mid-word (#179). Drawn
+    as written: an "&" is a character, not an access key."""
+    return wx.Control.Ellipsize(text, dc, wx.ELLIPSIZE_END, max(width, 0),
+                                wx.ELLIPSIZE_FLAGS_NONE)
+
+
 class StatusText(wx.Control):
     """A status bar part that holds information: focusable, read-only, no
     caret. Drawn by hand, with a focus rectangle while it has the focus."""
@@ -105,7 +113,10 @@ class StatusText(wx.Control):
         text = self.GetLabel() or self.empty_text
         _w, text_height = dc.GetTextExtent(text or "Ag")
         dc.SetClippingRegion(0, 0, width, height)
-        dc.DrawText(text, 3, max((height - text_height) // 2, 0))
+        # Shortened with "..." when it doesn't fit, rather than cut mid-word
+        # ("Pick a name for the rel", #179). What screen readers read is the
+        # whole label, from the accessible above.
+        dc.DrawText(shown_text(dc, text, width - 6), 3, max((height - text_height) // 2, 0))
         if self.HasFocus():
             wx.RendererNative.Get().DrawFocusRect(self, dc, wx.Rect(0, 0, width, height))
 

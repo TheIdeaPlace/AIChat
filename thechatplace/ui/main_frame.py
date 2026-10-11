@@ -545,10 +545,18 @@ class MainFrame(wx.Frame):
         orow.Add(self.send_btn, 0, wx.RIGHT, 6)
         orow.Add(self.stop_btn, 0, wx.RIGHT, 6)
         orow.Add(self.commands_btn, 0, wx.RIGHT, 6)
-        orow.Add(self.attach_btn, 0, wx.RIGHT, 12)
-        self.turn_status = wx.StaticText(self.own_reply, label="")
-        orow.Add(self.turn_status, 1, wx.ALIGN_CENTER_VERTICAL)
+        orow.Add(self.attach_btn, 0)
         osizer.Add(orow, 0, wx.EXPAND | wx.TOP, 6)
+        # On its own line under the buttons, with the column's whole width,
+        # and ending in "..." only when even that isn't enough, rather than
+        # widening the column: beside the buttons, "1 message queued. Claude
+        # is working (1 minute 15 seconds)." took the session list from 378
+        # to 268 pixels wide while a turn ran (#179). Its label, which
+        # screen readers read, stays whole.
+        self.turn_status = wx.StaticText(self.own_reply, label="",
+                                         style=wx.ST_ELLIPSIZE_END | wx.ST_NO_AUTORESIZE)
+        self.turn_status.SetMinSize((1, -1))
+        osizer.Add(self.turn_status, 0, wx.EXPAND | wx.TOP, 4)
         self.own_reply.SetSizer(osizer)
         self.send_btn.Bind(wx.EVT_BUTTON, self.on_send)
         self.stop_btn.Bind(wx.EVT_BUTTON, self.on_stop)
@@ -585,9 +593,11 @@ class MainFrame(wx.Frame):
         self.reply_claude_btn.Bind(wx.EVT_BUTTON, self.on_open_in_claude)
         self.continue_btn.Bind(wx.EVT_BUTTON, self.on_continue_here)
 
-        # The reply area takes a third of the height and grows with the
-        # window: held at its minimum, the reply box was about four lines
-        # however big the window was.
+        # The reply area grows with the window (a third of what's spare):
+        # held at its minimum, the reply box was about four lines however big
+        # the window was. At the default size it is at its minimum (the reply
+        # box's 120 pixels, the buttons and the turn status's line), so the
+        # messages list has the rest.
         vsizer.Add(self.own_reply, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         vsizer.Add(self.desktop_reply, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
@@ -655,7 +665,7 @@ class MainFrame(wx.Frame):
         if info is None:
             text = ""
         elif info.is_own and info.cli_session_id in self._runners:
-            text = f"{info.title}: {self.turn_status.GetLabel()}"
+            text = f"{info.title}: {self.turn_status.GetLabelText()}"
         else:
             state = info.state + (f", {info.detail}" if info.detail else "")
             text = f"{info.title}: {state}"
@@ -2198,8 +2208,11 @@ class MainFrame(wx.Frame):
                     label = f"{self._queued_words(waiting_count)} {label}"
             else:
                 label = "Ready."
-            if self.turn_status.GetLabel() != label:
-                self.turn_status.SetLabel(label)
+            # One line: a question's own line breaks would hide the rest of
+            # it on this single-line status (#179).
+            label = " ".join(label.split())
+            if self.turn_status.GetLabelText() != label:
+                self.turn_status.SetLabelText(label)  # an & is shown, not an access key
         self._update_status_session()
 
     def _context(self, info: Optional[SessionInfo]):
