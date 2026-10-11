@@ -2,16 +2,16 @@
  "title": "New Chat Place Session",
  "class": "NewSessionDialog",
  "size": [
-  680,
-  620
+  1020,
+  930
  ],
  "client": [
-  664,
-  581
+  998,
+  874
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     10,
     13,
-    37,
-    16
+    55,
+    26
    ],
    "best": [
-    37,
-    16
+    55,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -39,14 +39,14 @@
    "name": "Folder",
    "label": "",
    "rect": [
-    241,
+    349,
     10,
-    413,
-    23
+    639,
+    33
    ],
    "best": [
-    461,
-    23
+    680,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -58,14 +58,14 @@
    "name": "button",
    "label": "&Browse...",
    "rect": [
-    241,
-    41,
-    75,
-    23
+    349,
+    51,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -77,14 +77,14 @@
    "name": "button",
    "label": "From &GitHub...",
    "rect": [
-    322,
-    41,
-    99,
-    23
+    469,
+    51,
+    148,
+    36
    ],
    "best": [
-    99,
-    23
+    148,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -97,13 +97,13 @@
    "label": "Work &in:",
    "rect": [
     10,
-    75,
-    45,
-    16
+    98,
+    67,
+    26
    ],
    "best": [
-    45,
-    16
+    67,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -115,14 +115,14 @@
    "name": "Work in",
    "label": "",
    "rect": [
-    241,
-    72,
-    413,
-    23
+    349,
+    95,
+    639,
+    33
    ],
    "best": [
-    312,
-    23
+    467,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -136,13 +136,13 @@
    "label": "B&ranch (choose one, or type a new name):",
    "rect": [
     10,
-    106,
-    223,
-    16
+    139,
+    331,
+    26
    ],
    "best": [
-    223,
-    16
+    331,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -154,14 +154,14 @@
    "name": "Branch (choose one, or type a new name)",
    "label": "",
    "rect": [
-    241,
-    103,
-    413,
-    23
+    349,
+    136,
+    639,
+    33
    ],
    "best": [
-    111,
-    23
+    162,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -174,13 +174,13 @@
    "label": "&Title:",
    "rect": [
     10,
-    137,
-    27,
-    16
+    180,
+    37,
+    26
    ],
    "best": [
-    27,
-    16
+    37,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -192,14 +192,14 @@
    "name": "Title (optional)",
    "label": "",
    "rect": [
-    243,
-    136,
-    413,
-    23
+    351,
+    179,
+    639,
+    33
    ],
    "best": [
-    110,
-    23
+    165,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -213,13 +213,13 @@
    "label": "Mo&del:",
    "rect": [
     10,
-    168,
-    38,
-    16
+    221,
+    56,
+    26
    ],
    "best": [
-    38,
-    16
+    56,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -231,14 +231,14 @@
    "name": "Model",
    "label": "",
    "rect": [
-    241,
-    165,
-    413,
-    23
+    349,
+    218,
+    639,
+    33
    ],
    "best": [
-    211,
-    23
+    310,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -252,13 +252,13 @@
    "label": "&Effort:",
    "rect": [
     10,
-    199,
-    33,
-    16
+    262,
+    49,
+    26
    ],
    "best": [
-    33,
-    16
+    49,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -270,14 +270,14 @@
    "name": "Effort",
    "label": "",
    "rect": [
-    241,
-    196,
-    413,
-    23
+    349,
+    259,
+    639,
+    33
    ],
    "best": [
-    211,
-    23
+    310,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -291,13 +291,13 @@
    "label": "Permission m&ode:",
    "rect": [
     10,
-    230,
-    96,
-    16
+    303,
+    143,
+    26
    ],
    "best": [
-    96,
-    16
+    143,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -309,14 +309,14 @@
    "name": "Permission mode",
    "label": "",
    "rect": [
-    241,
-    227,
-    413,
-    23
+    349,
+    300,
+    639,
+    33
    ],
    "best": [
-    457,
-    23
+    683,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -330,13 +330,13 @@
    "label": "About &permissions:",
    "rect": [
     10,
-    260,
-    103,
-    16
+    343,
+    155,
+    26
    ],
    "best": [
-    103,
-    16
+    155,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -349,13 +349,13 @@
    "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
    "rect": [
     12,
-    278,
-    644,
-    72
+    371,
+    978,
+    118
    ],
    "best": [
-    127,
-    72
+    191,
+    118
    ],
    "depth": 0,
    "parent": -1,
@@ -369,13 +369,13 @@
    "label": "First &message:",
    "rect": [
     10,
-    358,
-    75,
-    16
+    497,
+    113,
+    26
    ],
    "best": [
-    75,
-    16
+    113,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -388,13 +388,13 @@
    "label": "",
    "rect": [
     12,
-    386,
-    644,
-    148
+    535,
+    978,
+    279
    ],
    "best": [
-    127,
-    38
+    191,
+    58
    ],
    "depth": 0,
    "parent": -1,
@@ -407,14 +407,14 @@
    "name": "button",
    "label": "&Start",
    "rect": [
-    494,
-    550,
-    75,
-    23
+    747,
+    830,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -426,14 +426,14 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    577,
-    550,
-    75,
-    23
+    871,
+    830,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -441,5 +441,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

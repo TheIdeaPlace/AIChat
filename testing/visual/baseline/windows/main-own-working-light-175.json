@@ -2,16 +2,16 @@
  "title": "Visual probe — The Chat Place",
  "class": "MainFrame",
  "size": [
-  1000,
-  529
+  1750,
+  956
  ],
  "client": [
-  984,
-  439
+  1726,
+  808
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     0,
     0,
-    984,
-    439
+    1726,
+    808
    ],
    "best": [
-    611,
-    677
+    1023,
+    1158
    ],
    "depth": 0,
    "parent": -1,
@@ -41,12 +41,12 @@
    "rect": [
     8,
     8,
-    61,
-    16
+    107,
+    31
    ],
    "best": [
-    61,
-    16
+    107,
+    31
    ],
    "depth": 1,
    "parent": 0,
@@ -59,13 +59,13 @@
    "label": "",
    "rect": [
     10,
-    34,
-    378,
-    399
+    49,
+    674,
+    753
    ],
    "best": [
-    876,
-    64
+    1550,
+    124
    ],
    "depth": 1,
    "parent": 0,
@@ -84,14 +84,14 @@
    "name": "staticText",
    "label": "Visual probe, Scratch, working. Chat Place session on the default model.",
    "rect": [
-    402,
+    698,
     8,
-    574,
-    16
+    1020,
+    31
    ],
    "best": [
-    380,
-    16
+    667,
+    31
    ],
    "depth": 1,
    "parent": 0,
@@ -103,14 +103,14 @@
    "name": "staticText",
    "label": "&Messages in Visual probe (working, on the default model):",
    "rect": [
-    402,
-    32,
-    574,
-    16
+    698,
+    47,
+    1020,
+    31
    ],
    "best": [
-    55,
-    16
+    97,
+    31
    ],
    "depth": 1,
    "parent": 0,
@@ -122,14 +122,14 @@
    "name": "Messages in Visual probe (working, on the default model)",
    "label": "",
    "rect": [
-    404,
-    50,
-    574,
-    132
+    700,
+    80,
+    1020,
+    298
    ],
    "best": [
-    286,
-    49
+    501,
+    94
    ],
    "depth": 1,
    "parent": 0,
@@ -147,14 +147,14 @@
    "name": "panel",
    "label": "panel",
    "rect": [
-    402,
-    188,
-    574,
-    189
+    698,
+    384,
+    1020,
+    328
    ],
    "best": [
-    351,
-    189
+    598,
+    328
    ],
    "depth": 1,
    "parent": 0,
@@ -166,14 +166,14 @@
    "name": "staticText",
    "label": "&Your message (Ctrl+Enter sends):",
    "rect": [
-    402,
-    188,
-    176,
-    16
+    698,
+    384,
+    307,
+    31
    ],
    "best": [
-    176,
-    16
+    307,
+    31
    ],
    "depth": 2,
    "parent": 6,
@@ -185,14 +185,14 @@
    "name": "Your message",
    "label": "",
    "rect": [
-    404,
-    210,
-    574,
-    120
+    700,
+    421,
+    1020,
+    210
    ],
    "best": [
-    127,
-    120
+    222,
+    210
    ],
    "depth": 2,
    "parent": 6,
@@ -205,14 +205,14 @@
    "name": "button",
    "label": "Sen&d",
    "rect": [
-    402,
-    334,
-    75,
-    23
+    698,
+    635,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 2,
    "parent": 6,
@@ -224,14 +224,14 @@
    "name": "button",
    "label": "Sto&p",
    "rect": [
-    483,
-    334,
-    75,
-    23
+    837,
+    635,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 2,
    "parent": 6,
@@ -243,14 +243,14 @@
    "name": "button",
    "label": "C&ommands...",
    "rect": [
-    564,
-    334,
-    92,
-    23
+    976,
+    635,
+    156,
+    42
    ],
    "best": [
-    92,
-    23
+    156,
+    42
    ],
    "depth": 2,
    "parent": 6,
@@ -262,14 +262,14 @@
    "name": "button",
    "label": "A&ttach Files...",
    "rect": [
-    662,
-    334,
-    91,
-    23
+    1138,
+    635,
+    158,
+    42
    ],
    "best": [
-    91,
-    23
+    158,
+    42
    ],
    "depth": 2,
    "parent": 6,
@@ -281,14 +281,14 @@
    "name": "staticText",
    "label": "1 message queued. Claude is working (1 minute 15 seconds).",
    "rect": [
-    402,
-    361,
-    574,
-    16
+    698,
+    681,
+    1020,
+    31
    ],
    "best": [
     1,
-    16
+    31
    ],
    "depth": 2,
    "parent": 6,
@@ -300,14 +300,14 @@
    "name": "check",
    "label": "Show tool &activity",
    "rect": [
-    402,
-    385,
-    116,
-    15
+    698,
+    720,
+    205,
+    30
    ],
    "best": [
-    116,
-    15
+    205,
+    30
    ],
    "depth": 1,
    "parent": 0,
@@ -319,14 +319,14 @@
    "name": "button",
    "label": "&New Session...",
    "rect": [
-    402,
-    408,
-    96,
-    23
+    698,
+    758,
+    168,
+    42
    ],
    "best": [
-    96,
-    23
+    168,
+    42
    ],
    "depth": 1,
    "parent": 0,
@@ -338,14 +338,14 @@
    "name": "button",
    "label": "&Refresh",
    "rect": [
-    504,
-    408,
-    75,
-    23
+    872,
+    758,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 1,
    "parent": 0,
@@ -358,13 +358,13 @@
    "label": "",
    "rect": [
     0,
-    439,
-    984,
-    31
+    808,
+    1726,
+    50
    ],
    "best": [
-    301,
-    31
+    429,
+    50
    ],
    "depth": 0,
    "parent": -1,
@@ -377,13 +377,13 @@
    "label": "4 sessions: 1 need you, 1 working.",
    "rect": [
     2,
-    443,
-    464,
-    24
+    812,
+    833,
+    43
    ],
    "best": [
-    100,
-    80
+    175,
+    140
    ],
    "depth": 1,
    "parent": 17,
@@ -395,14 +395,14 @@
    "name": "Loaded session",
    "label": "Visual probe: 1 message queued. Claude is working (1 minute 15 seconds).",
    "rect": [
-    471,
-    443,
-    312,
-    24
+    840,
+    812,
+    557,
+    43
    ],
    "best": [
-    100,
-    80
+    175,
+    140
    ],
    "depth": 1,
    "parent": 17,
@@ -414,14 +414,14 @@
    "name": "button",
    "label": "1 session needs you",
    "rect": [
-    788,
-    443,
-    146,
-    24
+    1402,
+    812,
+    247,
+    43
    ],
    "best": [
-    111,
-    23
+    197,
+    38
    ],
    "depth": 1,
    "parent": 17,
@@ -429,5 +429,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

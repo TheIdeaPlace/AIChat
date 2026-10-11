@@ -2,16 +2,16 @@
  "title": "The Chat Place: 6 results for \"the\", Find in All Sessions",
  "class": "FindResultsDialog",
  "size": [
-  820,
-  520
+  1435,
+  910
  ],
  "client": [
-  804,
-  481
+  1411,
+  846
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    41,
-    16
+    72,
+    31
    ],
    "best": [
-    41,
-    16
+    72,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "",
    "rect": [
     10,
-    26,
-    788,
-    354
+    41,
+    1395,
+    640
    ],
    "best": [
-    1091,
-    94
+    1933,
+    184
    ],
    "depth": 0,
    "parent": -1,
@@ -68,13 +68,13 @@
    "label": "&Searched:",
    "rect": [
     8,
-    386,
-    52,
-    16
+    687,
+    91,
+    31
    ],
    "best": [
-    52,
-    16
+    91,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -87,13 +87,13 @@
    "label": "6 messages in 2 sessions contain \"the\". Searched 2 sessions. 2 had no transcript to read.",
    "rect": [
     10,
-    404,
-    788,
-    40
+    720,
+    1395,
+    70
    ],
    "best": [
-    127,
-    83
+    222,
+    158
    ],
    "depth": 0,
    "parent": -1,
@@ -106,14 +106,14 @@
    "name": "button",
    "label": "&Go to Message",
    "rect": [
-    616,
-    450,
-    99,
-    23
+    1089,
+    796,
+    175,
+    42
    ],
    "best": [
-    99,
-    23
+    175,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -125,14 +125,14 @@
    "name": "button",
    "label": "C&lose",
    "rect": [
-    721,
-    450,
-    75,
-    23
+    1270,
+    796,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -140,5 +140,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

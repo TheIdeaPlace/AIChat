@@ -4,7 +4,7 @@
  "os": "Windows-11-10.0.26300-SP0",
  "wx": "4.3.1 msw (phoenix) wxWidgets 3.3.3",
  "python": "3.12.10",
- "dpi_awareness": "unaware",
+ "dpi_awareness": "per-monitor aware",
  "appearance": {
   "dark": false,
   "name": "",
@@ -20,7 +20,6 @@
   1000,
   720
  ],
- "complete": true,
  "surfaces": {
   "main-start": {
    "kind": "window",
@@ -226,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    517
+    550
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -435,12 +434,26 @@
    "title": "Usage and Context",
    "class": "UsageDialog",
    "size": [
-    754,
+    751,
     360
    ],
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, Usage and Context"
+  },
+  "properties": {
+   "kind": "dialog",
+   "png": "properties-hc-desert-100.png",
+   "json": "properties-hc-desert-100.json",
+   "title": "Properties of Visual probe",
+   "class": "PropertiesDialog",
+   "size": [
+    976,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Properties of a session"
   },
   "about-you": {
    "kind": "dialog",
@@ -527,5 +540,5 @@
    "about": "Main window with no sessions at all (a first run)"
   }
  },
- "seconds": 88.5
+ "seconds": 92.2
 }

@@ -2,16 +2,16 @@
  "title": "User Guide",
  "class": "FormattedMessageDialog",
  "size": [
-  820,
-  620
+  1230,
+  930
  ],
  "client": [
-  804,
-  581
+  1208,
+  874
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     6,
     6,
-    796,
-    534
+    1200,
+    814
    ],
    "best": [
-    100,
-    80
+    150,
+    120
    ],
    "depth": 0,
    "parent": -1,
@@ -39,14 +39,14 @@
    "name": "button",
    "label": "Read as &Plain Text",
    "rect": [
-    600,
-    550,
-    115,
-    23
+    906,
+    830,
+    174,
+    36
    ],
    "best": [
-    115,
-    23
+    174,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -58,14 +58,14 @@
    "name": "button",
    "label": "&Close",
    "rect": [
-    721,
-    550,
-    75,
-    23
+    1086,
+    830,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -73,5 +73,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

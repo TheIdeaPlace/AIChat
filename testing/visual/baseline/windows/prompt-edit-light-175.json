@@ -2,16 +2,16 @@
  "title": "Edit Prompt",
  "class": "PromptEditDialog",
  "size": [
-  620,
-  460
+  1085,
+  805
  ],
  "client": [
-  604,
-  421
+  1061,
+  741
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    36,
-    16
+    62,
+    31
    ],
    "best": [
-    36,
-    16
+    62,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "Review",
    "rect": [
     10,
-    26,
-    588,
-    23
+    41,
+    1045,
+    38
    ],
    "best": [
-    110,
-    23
+    192,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "&Text:",
    "rect": [
     8,
-    55,
-    26,
-    16
+    85,
+    45,
+    31
    ],
    "best": [
-    26,
-    16
+    45,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -79,13 +79,13 @@
    "label": "Review this change for bugs.",
    "rect": [
     10,
-    73,
-    588,
-    311
+    118,
+    1045,
+    567
    ],
    "best": [
-    127,
-    200
+    222,
+    350
    ],
    "depth": 0,
    "parent": -1,
@@ -98,14 +98,14 @@
    "name": "button",
    "label": "&Save",
    "rect": [
-    440,
-    390,
-    75,
-    23
+    781,
+    691,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -117,14 +117,14 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    521,
-    390,
-    75,
-    23
+    920,
+    691,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -132,5 +132,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

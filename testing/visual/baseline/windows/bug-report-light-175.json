@@ -2,16 +2,16 @@
  "title": "Report a Bug",
  "class": "BugReportDialog",
  "size": [
-  660,
-  637
+  1155,
+  956
  ],
  "client": [
-  644,
-  598
+  1131,
+  892
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    143,
-    16
+    248,
+    31
    ],
    "best": [
-    143,
-    16
+    248,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "",
    "rect": [
     10,
-    26,
-    628,
-    23
+    41,
+    1115,
+    38
    ],
    "best": [
-    110,
-    23
+    192,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "What &happened:",
    "rect": [
     8,
-    55,
-    88,
-    16
+    85,
+    155,
+    31
    ],
    "best": [
-    88,
-    16
+    155,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -79,13 +79,13 @@
    "label": "",
    "rect": [
     10,
-    73,
-    628,
-    94
+    118,
+    1115,
+    125
    ],
    "best": [
-    127,
-    70
+    222,
+    123
    ],
    "depth": 0,
    "parent": -1,
@@ -99,13 +99,13 @@
    "label": "What you &expected (optional):",
    "rect": [
     8,
-    173,
-    160,
-    16
+    249,
+    280,
+    31
    ],
    "best": [
-    160,
-    16
+    280,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -118,13 +118,13 @@
    "label": "",
    "rect": [
     10,
-    191,
-    628,
-    94
+    282,
+    1115,
+    125
    ],
    "best": [
-    127,
-    50
+    222,
+    88
    ],
    "depth": 0,
    "parent": -1,
@@ -138,13 +138,13 @@
    "label": "S&teps to reproduce (optional):",
    "rect": [
     8,
-    291,
-    158,
-    16
+    413,
+    275,
+    31
    ],
    "best": [
-    158,
-    16
+    275,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -157,13 +157,13 @@
    "label": "",
    "rect": [
     10,
-    309,
-    628,
-    95
+    446,
+    1115,
+    124
    ],
    "best": [
-    127,
-    50
+    222,
+    88
    ],
    "depth": 0,
    "parent": -1,
@@ -177,13 +177,13 @@
    "label": "What the report &includes besides your words (no session titles, folders or messages):",
    "rect": [
     8,
-    410,
-    442,
-    16
+    576,
+    779,
+    31
    ],
    "best": [
-    442,
-    16
+    779,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -196,13 +196,13 @@
    "label": "The Chat Place: 0.1.6 (run from source)\r\nWindows: Windows-11-10.0.26300-SP0\r\nPython: 3.12.10\r\nwxPython: 4.3.1 msw (phoenix) wxWidgets 3.3.3\r\nClaude Code: 2.1.286 (Claude Code)\r\nAnnouncements: full, speech engine auto\r\nSession list: showing all, sorted status\r\nReading: formatted full messages\r\nSessions listed: 3 desktop app, 1 Chat Place, 0 terminal",
    "rect": [
     10,
-    428,
-    628,
-    94
+    609,
+    1115,
+    158
    ],
    "best": [
-    127,
-    158
+    222,
+    308
    ],
    "depth": 0,
    "parent": -1,
@@ -216,13 +216,13 @@
    "label": "Open on GitHub needs access to the app's repository on GitHub. Without it, use Copy Report and email the report to support@theideaplace.net.",
    "rect": [
     8,
-    528,
-    628,
-    31
+    773,
+    1115,
+    61
    ],
    "best": [
-    614,
-    31
+    1083,
+    61
    ],
    "depth": 0,
    "parent": -1,
@@ -234,14 +234,14 @@
    "name": "button",
    "label": "&Open on GitHub",
    "rect": [
-    354,
-    567,
-    108,
-    23
+    639,
+    842,
+    188,
+    42
    ],
    "best": [
-    108,
-    23
+    188,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -253,14 +253,14 @@
    "name": "button",
    "label": "&Copy Report",
    "rect": [
-    468,
-    567,
-    87,
-    23
+    833,
+    842,
+    151,
+    42
    ],
    "best": [
-    87,
-    23
+    151,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -272,14 +272,14 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    561,
-    567,
-    75,
-    23
+    990,
+    842,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -287,5 +287,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

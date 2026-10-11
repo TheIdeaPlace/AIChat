@@ -2,16 +2,16 @@
  "title": "Settings",
  "class": "SettingsDialog",
  "size": [
-  680,
-  517
+  1190,
+  885
  ],
  "client": [
-  664,
-  478
+  1166,
+  821
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     10,
     10,
-    644,
-    91
+    1146,
+    179
    ],
    "best": [
-    351,
-    91
+    623,
+    179
    ],
    "depth": 0,
    "parent": -1,
@@ -39,14 +39,14 @@
    "name": "radioButton",
    "label": "Full: read the whole reply",
    "rect": [
-    20,
-    32,
-    154,
-    15
+    28,
+    51,
+    274,
+    30
    ],
    "best": [
-    154,
-    15
+    274,
+    30
    ],
    "depth": 1,
    "parent": 0,
@@ -58,14 +58,14 @@
    "name": "radioButton",
    "label": "Summary: the session's name and the reply's first sentence",
    "rect": [
-    20,
-    54,
-    331,
-    15
+    28,
+    96,
+    587,
+    30
    ],
    "best": [
-    331,
-    15
+    587,
+    30
    ],
    "depth": 1,
    "parent": 0,
@@ -77,14 +77,14 @@
    "name": "radioButton",
    "label": "Silent: status bar only",
    "rect": [
-    20,
-    76,
-    134,
-    15
+    28,
+    141,
+    240,
+    30
    ],
    "best": [
-    134,
-    15
+    240,
+    30
    ],
    "depth": 1,
    "parent": 0,
@@ -97,13 +97,13 @@
    "label": "Announce when &any listed session finishes a turn, not just the open one",
    "rect": [
     10,
-    111,
-    399,
-    15
+    199,
+    708,
+    30
    ],
    "best": [
-    399,
-    15
+    708,
+    30
    ],
    "depth": 0,
    "parent": -1,
@@ -116,13 +116,13 @@
    "label": "Read your own &messages back when they're sent",
    "rect": [
     10,
-    136,
-    279,
-    15
+    239,
+    496,
+    30
    ],
    "best": [
-    279,
-    15
+    496,
+    30
    ],
    "depth": 0,
    "parent": -1,
@@ -135,13 +135,13 @@
    "label": "Reading messages",
    "rect": [
     10,
-    161,
-    644,
-    70
+    279,
+    1146,
+    119
    ],
    "best": [
-    115,
-    23
+    205,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -153,14 +153,14 @@
    "name": "check",
    "label": "Open full messages as a formatted &page (headings, lists and tables), not plain text",
    "rect": [
-    21,
-    184,
-    450,
-    15
+    25,
+    317,
+    801,
+    30
    ],
    "best": [
-    450,
-    15
+    801,
+    30
    ],
    "depth": 0,
    "parent": -1,
@@ -172,14 +172,14 @@
    "name": "check",
    "label": "Read the &whole message on each item in the messages list (otherwise just its first line)",
    "rect": [
-    21,
-    205,
-    473,
-    15
+    25,
+    353,
+    840,
+    30
    ],
    "best": [
-    473,
-    15
+    840,
+    30
    ],
    "depth": 0,
    "parent": -1,
@@ -192,13 +192,13 @@
    "label": "Speech &engine:",
    "rect": [
     10,
-    254,
-    81,
-    16
+    421,
+    142,
+    31
    ],
    "best": [
-    81,
-    16
+    142,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -210,14 +210,14 @@
    "name": "Speech engine",
    "label": "",
    "rect": [
-    99,
-    251,
-    555,
-    23
+    160,
+    418,
+    996,
+    38
    ],
    "best": [
-    407,
-    23
+    705,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -231,13 +231,13 @@
    "label": "Speaking &rate:",
    "rect": [
     10,
-    285,
-    75,
-    16
+    467,
+    132,
+    31
    ],
    "best": [
-    75,
-    16
+    132,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -249,14 +249,14 @@
    "name": "Speaking rate",
    "label": "",
    "rect": [
-    99,
-    282,
-    68,
-    23
+    160,
+    464,
+    110,
+    38
    ],
    "best": [
-    68,
-    23
+    110,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -270,13 +270,13 @@
    "label": "Voice and rate follow your screen reader's own settings.",
    "rect": [
     10,
-    315,
-    293,
-    16
+    512,
+    517,
+    31
    ],
    "best": [
-    293,
-    16
+    517,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -289,13 +289,13 @@
    "label": "Windows &notifications:",
    "rect": [
     10,
-    344,
-    122,
-    16
+    556,
+    211,
+    31
    ],
    "best": [
-    122,
-    16
+    211,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -307,14 +307,14 @@
    "name": "Windows notifications, while The Chat Place isn't the active window",
    "label": "",
    "rect": [
-    140,
-    341,
-    335,
-    23
+    229,
+    553,
+    585,
+    38
    ],
    "best": [
-    335,
-    23
+    585,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -323,18 +323,75 @@
    "value": "When your sessions finish a turn, or any session needs you"
   },
   {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Recent &folders New Session offers:",
+   "rect": [
+    10,
+    606,
+    321,
+    31
+   ],
+   "best": [
+    321,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "SpinCtrl",
+   "name": "Recent folders New Session offers",
+   "label": "",
+   "rect": [
+    339,
+    601,
+    84,
+    38
+   ],
+   "best": [
+    84,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lear Recent Folders",
+   "rect": [
+    431,
+    601,
+    225,
+    42
+   ],
+   "best": [
+    225,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "CheckBox",
    "name": "check",
    "label": "Turn on Remote &Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)",
    "rect": [
     10,
-    374,
-    624,
-    30
+    653,
+    1103,
+    60
    ],
    "best": [
-    624,
-    30
+    1103,
+    60
    ],
    "depth": 0,
    "parent": -1,
@@ -347,13 +404,13 @@
    "label": "&Tell me when an update has been installed, with a link to what's new",
    "rect": [
     10,
-    414,
-    382,
-    15
+    723,
+    677,
+    30
    ],
    "best": [
-    382,
-    15
+    677,
+    30
    ],
    "depth": 0,
    "parent": -1,
@@ -365,14 +422,14 @@
    "name": "button",
    "label": "OK",
    "rect": [
-    494,
-    447,
-    75,
-    23
+    874,
+    771,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -384,14 +441,14 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    577,
-    447,
-    75,
-    23
+    1019,
+    771,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -399,5 +456,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

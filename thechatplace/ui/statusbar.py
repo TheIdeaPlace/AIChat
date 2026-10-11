@@ -169,6 +169,7 @@ class StatusParts:
         self._parts: List[_Part] = []
         self._fitted = False  # the bar's height is set for its buttons (#175)
         bar.Bind(wx.EVT_SIZE, self._on_size)
+        bar.Bind(wx.EVT_DPI_CHANGED, self._on_dpi_changed)
 
     def add_text(self, key: str, name: str, width: int, empty_text: str = "") -> StatusText:
         control = StatusText(self.bar, name, empty_text)
@@ -176,7 +177,7 @@ class StatusParts:
         self.layout()
         return control
 
-    def add_button(self, key: str, width: int,
+    def add_button(self, key: str, width: int,  # width: in design pixels (#185)
                    on_press: Callable[[], None]) -> "StatusButton":
         control = StatusButton(self.bar, self.focus_first, label="",
                                style=wx.BORDER_NONE | wx.BU_EXACTFIT)
@@ -195,9 +196,15 @@ class StatusParts:
         controls need and adds the bar's own borders. Every button has the
         same font, so the first one's height does for all. (A Mac's status
         bar keeps its own fixed height whatever this asks.)"""
-        button.SetLabel("Ag")
-        needed = button.GetBestSize().height
-        button.SetLabel("")
+        # Measured on a button of its own: the one passed may be showing
+        # text, which a screen reader reads as its name (after a move to a
+        # screen with other scaling it's a live button, #185).
+        probe = wx.Button(self.bar, label="Ag")
+        probe.SetFont(button.GetFont())
+        try:
+            needed = probe.GetBestSize().height
+        finally:
+            probe.Destroy()
         before = self.bar.GetFieldRect(0).height
         self.bar.SetMinHeight(needed)
         self._fitted = True
@@ -252,7 +259,11 @@ class StatusParts:
         shown = [p for p in self._parts if p.always or p.control.IsShown()]
         if not shown:
             return
-        self.bar.SetFieldsCount(len(shown), [p.width for p in shown])
+        # A part's width is in design pixels (#185): scaled here, every time,
+        # so it follows a move to a screen with other scaling. A negative
+        # width is a share of what's left, and isn't scaled.
+        self.bar.SetFieldsCount(len(shown), [self.bar.FromDIP(p.width) if p.width > 0
+                                             else p.width for p in shown])
         grip = self.bar.GetSize().height
         for index, part in enumerate(shown):
             rect = self.bar.GetFieldRect(index)
@@ -271,6 +282,16 @@ class StatusParts:
                     else part.control.GetLabel()
                 if self.bar.GetStatusText(index) != text:
                     self.bar.SetStatusText(text, index)
+
+    def _on_dpi_changed(self, event):
+        """Moved to a screen with other scaling (#185): the buttons' text is
+        another size, so the bar's height is fitted again, and the parts laid
+        out at the new scale."""
+        event.Skip()
+        buttons = [p.control for p in self._parts if isinstance(p.control, StatusButton)]
+        if buttons:
+            self._fit_height(buttons[0])
+        self.layout()
 
     def _on_size(self, event):
         self.layout()

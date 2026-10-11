@@ -2,16 +2,16 @@
  "title": "Claude needs permission: Visual probe",
  "class": "PermissionDialog",
  "size": [
-  700,
-  540
+  1050,
+  810
  ],
  "client": [
-  684,
-  501
+  1028,
+  754
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    46,
-    16
+    69,
+    26
    ],
    "best": [
-    46,
-    16
+    69,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "Claude wants to run git push origin release/0.2.\r\n\r\nBash command:\r\ngit push origin release/0.2",
    "rect": [
     10,
-    34,
-    668,
-    367
+    44,
+    1012,
+    577
    ],
    "best": [
-    127,
-    160
+    191,
+    240
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "&Reason to give Claude if you deny (optional):",
    "rect": [
     8,
-    407,
-    238,
-    16
+    627,
+    357,
+    26
    ],
    "best": [
-    238,
-    16
+    357,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -79,13 +79,13 @@
    "label": "",
    "rect": [
     10,
-    433,
-    668,
-    23
+    663,
+    1012,
+    33
    ],
    "best": [
-    110,
-    23
+    165,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -98,14 +98,14 @@
    "name": "button",
    "label": "&Allow",
    "rect": [
-    425,
-    470,
-    75,
-    23
+    646,
+    710,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -117,14 +117,14 @@
    "name": "button",
    "label": "&Deny",
    "rect": [
-    506,
-    470,
-    75,
-    23
+    766,
+    710,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -136,14 +136,14 @@
    "name": "button",
    "label": "Answer &Later",
    "rect": [
-    587,
-    470,
-    89,
-    23
+    886,
+    710,
+    134,
+    36
    ],
    "best": [
-    89,
-    23
+    134,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -151,5 +151,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

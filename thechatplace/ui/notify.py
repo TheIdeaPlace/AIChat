@@ -117,7 +117,8 @@ class Notifier:
     def _ensure_icon(self):
         if self._icon is None:
             icon = self._factory()
-            image = app_icon(16)
+            # The size the notification area asks for: 16 at 100%, 32 at 200%.
+            image = app_icon(wx.SystemSettings.GetMetric(wx.SYS_SMALLICON_X) or 16)
             icon.SetIcon(image, self._tooltip)
             icon.Bind(wx.adv.EVT_TASKBAR_BALLOON_CLICK, self._balloon_clicked)
             icon.Bind(wx.adv.EVT_TASKBAR_LEFT_UP, lambda event: self._on_click(None))

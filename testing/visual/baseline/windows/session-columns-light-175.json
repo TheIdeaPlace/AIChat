@@ -2,16 +2,16 @@
  "title": "Session List Columns",
  "class": "SessionColumnsDialog",
  "size": [
-  640,
-  560
+  1120,
+  956
  ],
  "client": [
-  624,
-  521
+  1096,
+  892
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    608,
-    31
+    1080,
+    61
    ],
    "best": [
-    574,
-    31
+    1020,
+    61
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "A&vailable columns:",
    "rect": [
     8,
-    47,
-    101,
-    16
+    77,
+    174,
+    31
    ],
    "best": [
-    101,
-    16
+    174,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -59,13 +59,13 @@
    "label": "",
    "rect": [
     10,
-    69,
-    296,
-    265
+    114,
+    532,
+    474
    ],
    "best": [
-    220,
-    200
+    385,
+    350
    ],
    "depth": 0,
    "parent": -1,
@@ -82,14 +82,14 @@
    "name": "staticText",
    "label": "&Shown columns, in the order they're read:",
    "rect": [
-    320,
-    47,
-    221,
-    16
+    556,
+    77,
+    387,
+    31
    ],
    "best": [
-    221,
-    16
+    387,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -101,14 +101,14 @@
    "name": "Shown columns, in the order they're read",
    "label": "",
    "rect": [
-    322,
-    69,
-    296,
-    265
+    558,
+    114,
+    532,
+    474
    ],
    "best": [
-    241,
-    200
+    414,
+    350
    ],
    "depth": 0,
    "parent": -1,
@@ -134,13 +134,13 @@
    "label": "&Add",
    "rect": [
     8,
-    340,
-    75,
-    23
+    594,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -152,14 +152,14 @@
    "name": "button",
    "label": "&Remove",
    "rect": [
-    89,
-    340,
-    75,
-    23
+    147,
+    594,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -171,14 +171,14 @@
    "name": "button",
    "label": "Move &Up",
    "rect": [
-    170,
-    340,
-    75,
-    23
+    286,
+    594,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -190,14 +190,14 @@
    "name": "button",
    "label": "Move &Down",
    "rect": [
-    251,
-    340,
-    85,
-    23
+    425,
+    594,
+    148,
+    42
    ],
    "best": [
-    85,
-    23
+    148,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -209,14 +209,14 @@
    "name": "button",
    "label": "Move to &Top",
    "rect": [
-    342,
-    340,
-    89,
-    23
+    579,
+    594,
+    154,
+    42
    ],
    "best": [
-    89,
-    23
+    154,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -228,14 +228,14 @@
    "name": "button",
    "label": "Move to &Bottom",
    "rect": [
-    437,
-    340,
-    108,
-    23
+    739,
+    594,
+    187,
+    42
    ],
    "best": [
-    108,
-    23
+    187,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -248,13 +248,13 @@
    "label": "R&eset to Default",
    "rect": [
     8,
-    369,
-    537,
-    23
+    642,
+    918,
+    42
    ],
    "best": [
-    104,
-    23
+    186,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -267,13 +267,13 @@
    "label": "&Preview of the selected session's line:",
    "rect": [
     8,
-    406,
-    196,
-    16
+    698,
+    346,
+    31
    ],
    "best": [
-    196,
-    16
+    346,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -286,13 +286,13 @@
    "label": "",
    "rect": [
     10,
-    424,
-    608,
-    60
+    731,
+    1080,
+    105
    ],
    "best": [
-    127,
-    98
+    222,
+    188
    ],
    "depth": 0,
    "parent": -1,
@@ -305,14 +305,14 @@
    "name": "button",
    "label": "OK",
    "rect": [
-    454,
-    490,
-    75,
-    23
+    804,
+    842,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -324,14 +324,14 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    537,
-    490,
-    75,
-    23
+    949,
+    842,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -339,5 +339,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

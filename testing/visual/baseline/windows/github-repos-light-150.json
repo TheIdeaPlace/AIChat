@@ -2,16 +2,16 @@
  "title": "From GitHub",
  "class": "GitHubRepoDialog",
  "size": [
-  720,
-  520
+  1080,
+  780
  ],
  "client": [
-  704,
-  481
+  1058,
+  724
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    153,
-    16
+    228,
+    26
    ],
    "best": [
-    153,
-    16
+    228,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "",
    "rect": [
     10,
-    26,
-    688,
-    23
+    36,
+    1042,
+    33
    ],
    "best": [
-    110,
-    23
+    165,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "&Repositories (3 of 3):",
    "rect": [
     8,
-    55,
-    108,
-    16
+    75,
+    165,
+    26
    ],
    "best": [
-    108,
-    16
+    165,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -79,13 +79,13 @@
    "label": "",
    "rect": [
     10,
-    73,
-    688,
-    347
+    103,
+    1042,
+    537
    ],
    "best": [
-    382,
-    49
+    572,
+    79
    ],
    "depth": 0,
    "parent": -1,
@@ -104,13 +104,13 @@
    "label": "Cloned into C:\\Users\\probe\\GitHub, if it isn't there yet.",
    "rect": [
     8,
-    426,
-    289,
-    16
+    646,
+    430,
+    26
    ],
    "best": [
-    289,
-    16
+    430,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -122,14 +122,14 @@
    "name": "button",
    "label": "&Use",
    "rect": [
-    540,
-    450,
-    75,
-    23
+    816,
+    680,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -141,14 +141,14 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    621,
-    450,
-    75,
-    23
+    936,
+    680,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -156,5 +156,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

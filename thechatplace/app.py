@@ -233,6 +233,8 @@ def main(argv: Optional[list] = None) -> int:
             else:
                 self.waiting.append(url)
 
+    # Before the first window: Windows then doesn't stretch the app (#185).
+    platform_paths.make_dpi_aware()
     app = ChatPlaceApp(False)
     app.SetAppName(APP_TITLE)
     # One copy at a time: two would both run turns, announce everything

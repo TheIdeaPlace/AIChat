@@ -2,16 +2,16 @@
  "title": "Continue Here: Fix the flaky upload test",
  "class": "NewSessionDialog",
  "size": [
-  680,
-  620
+  1190,
+  956
  ],
  "client": [
-  664,
-  581
+  1166,
+  892
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     10,
     13,
-    37,
-    16
+    63,
+    31
    ],
    "best": [
-    37,
-    16
+    63,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -39,14 +39,14 @@
    "name": "Folder",
    "label": "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\continue-here\\Projects\\AIChat",
    "rect": [
-    116,
+    185,
     12,
-    540,
-    23
+    973,
+    38
    ],
    "best": [
-    110,
-    23
+    192,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "&Title:",
    "rect": [
     10,
-    44,
-    27,
-    16
+    59,
+    45,
+    31
    ],
    "best": [
-    27,
-    16
+    45,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -78,14 +78,14 @@
    "name": "Title (optional)",
    "label": "Fix the flaky upload test (continued)",
    "rect": [
-    116,
-    43,
-    540,
-    23
+    185,
+    58,
+    973,
+    38
    ],
    "best": [
-    110,
-    23
+    192,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -99,13 +99,13 @@
    "label": "Mo&del:",
    "rect": [
     10,
-    75,
-    38,
-    16
+    105,
+    65,
+    31
    ],
    "best": [
-    38,
-    16
+    65,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -117,14 +117,14 @@
    "name": "Model",
    "label": "",
    "rect": [
-    114,
-    72,
-    540,
-    23
+    183,
+    102,
+    973,
+    38
    ],
    "best": [
-    211,
-    23
+    361,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -138,13 +138,13 @@
    "label": "&Effort:",
    "rect": [
     10,
-    106,
-    33,
-    16
+    151,
+    57,
+    31
    ],
    "best": [
-    33,
-    16
+    57,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -156,14 +156,14 @@
    "name": "Effort",
    "label": "",
    "rect": [
-    114,
-    103,
-    540,
-    23
+    183,
+    148,
+    973,
+    38
    ],
    "best": [
-    211,
-    23
+    361,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -177,13 +177,13 @@
    "label": "Permission m&ode:",
    "rect": [
     10,
-    137,
-    96,
-    16
+    197,
+    165,
+    31
    ],
    "best": [
-    96,
-    16
+    165,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -195,14 +195,14 @@
    "name": "Permission mode",
    "label": "",
    "rect": [
-    114,
-    134,
-    540,
-    23
+    183,
+    194,
+    973,
+    38
    ],
    "best": [
-    457,
-    23
+    796,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -216,13 +216,13 @@
    "label": "About &continuing:",
    "rect": [
     10,
-    167,
-    98,
-    16
+    242,
+    168,
+    31
    ],
    "best": [
-    98,
-    16
+    168,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -235,13 +235,13 @@
    "label": "This starts a Chat Place session that is a copy of this session, with its whole conversation so far, so you can carry on and reply here. The original, in the desktop app or a terminal, isn't changed, and replies here don't appear in it.\r\n\r\nThe permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
    "rect": [
     12,
-    185,
-    644,
-    117
+    275,
+    1146,
+    231
    ],
    "best": [
-    127,
-    117
+    222,
+    231
    ],
    "depth": 0,
    "parent": -1,
@@ -255,13 +255,13 @@
    "label": "First &message:",
    "rect": [
     10,
-    310,
-    75,
-    16
+    514,
+    131,
+    31
    ],
    "best": [
-    75,
-    16
+    131,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -274,13 +274,13 @@
    "label": "",
    "rect": [
     12,
-    338,
-    644,
-    196
+    557,
+    1146,
+    269
    ],
    "best": [
-    127,
-    38
+    222,
+    68
    ],
    "depth": 0,
    "parent": -1,
@@ -293,14 +293,14 @@
    "name": "button",
    "label": "&Start",
    "rect": [
-    494,
-    550,
-    75,
-    23
+    874,
+    842,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -312,14 +312,14 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    577,
-    550,
-    75,
-    23
+    1019,
+    842,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -327,5 +327,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

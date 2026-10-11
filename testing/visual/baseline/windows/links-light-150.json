@@ -2,16 +2,16 @@
  "title": "Links in Fix the flaky upload test: 1",
  "class": "LinksDialog",
  "size": [
-  760,
-  480
+  1140,
+  720
  ],
  "client": [
-  744,
-  441
+  1118,
+  664
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    30,
-    16
+    43,
+    26
    ],
    "best": [
-    30,
-    16
+    43,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "",
    "rect": [
     10,
-    26,
-    728,
-    23
+    36,
+    1102,
+    33
    ],
    "best": [
-    110,
-    23
+    165,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "&Links (1):",
    "rect": [
     8,
-    55,
-    48,
-    16
+    75,
+    69,
+    26
    ],
    "best": [
-    48,
-    16
+    69,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -79,13 +79,13 @@
    "label": "",
    "rect": [
     10,
-    73,
-    728,
-    331
+    103,
+    1102,
+    511
    ],
    "best": [
-    414,
-    49
+    623,
+    79
    ],
    "depth": 0,
    "parent": -1,
@@ -101,14 +101,14 @@
    "name": "button",
    "label": "&Open",
    "rect": [
-    370,
-    410,
-    75,
-    23
+    563,
+    620,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -120,14 +120,14 @@
    "name": "button",
    "label": "&Copy",
    "rect": [
-    451,
-    410,
-    75,
-    23
+    683,
+    620,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -139,14 +139,14 @@
    "name": "button",
    "label": "Copy as &Markdown",
    "rect": [
-    532,
-    410,
-    123,
-    23
+    803,
+    620,
+    187,
+    36
    ],
    "best": [
-    123,
-    23
+    187,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -158,14 +158,14 @@
    "name": "button",
    "label": "Clo&se",
    "rect": [
-    661,
-    410,
-    75,
-    23
+    996,
+    620,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -173,5 +173,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

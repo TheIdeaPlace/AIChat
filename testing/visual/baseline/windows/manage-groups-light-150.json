@@ -2,16 +2,16 @@
  "title": "Manage Groups",
  "class": "ManageGroupsDialog",
  "size": [
-  480,
-  420
+  720,
+  630
  ],
  "client": [
-  464,
-  381
+  698,
+  574
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    42,
-    16
+    63,
+    26
    ],
    "best": [
-    42,
-    16
+    63,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "",
    "rect": [
     10,
-    34,
-    448,
-    302
+    44,
+    682,
+    472
    ],
    "best": [
-    144,
-    49
+    220,
+    79
    ],
    "depth": 0,
    "parent": -1,
@@ -64,13 +64,13 @@
    "label": "&New...",
    "rect": [
     8,
-    350,
-    75,
-    23
+    530,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -82,14 +82,14 @@
    "name": "button",
    "label": "&Rename...",
    "rect": [
-    89,
-    350,
-    75,
-    23
+    128,
+    530,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -101,14 +101,14 @@
    "name": "button",
    "label": "&Delete...",
    "rect": [
-    170,
-    350,
-    75,
-    23
+    248,
+    530,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -120,14 +120,14 @@
    "name": "button",
    "label": "&Close",
    "rect": [
-    381,
-    350,
-    75,
-    23
+    576,
+    530,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -135,5 +135,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

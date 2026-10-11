@@ -2,16 +2,16 @@
  "title": "Insert Command or Skill",
  "class": "CommandPickerDialog",
  "size": [
-  720,
-  520
+  1080,
+  780
  ],
  "client": [
-  704,
-  481
+  1058,
+  724
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    39,
-    16
+    57,
+    26
    ],
    "best": [
-    39,
-    16
+    57,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "",
    "rect": [
     10,
-    26,
-    688,
-    23
+    36,
+    1042,
+    33
    ],
    "best": [
-    110,
-    23
+    165,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "&Commands and skills (3 of 3):",
    "rect": [
     8,
-    55,
-    157,
-    16
+    75,
+    236,
+    26
    ],
    "best": [
-    157,
-    16
+    236,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -79,13 +79,13 @@
    "label": "",
    "rect": [
     10,
-    73,
-    688,
-    371
+    103,
+    1042,
+    571
    ],
    "best": [
-    479,
-    49
+    715,
+    79
    ],
    "depth": 0,
    "parent": -1,
@@ -103,14 +103,14 @@
    "name": "button",
    "label": "&Insert",
    "rect": [
-    540,
-    450,
-    75,
-    23
+    816,
+    680,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -122,14 +122,14 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    621,
-    450,
-    75,
-    23
+    936,
+    680,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -137,5 +137,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

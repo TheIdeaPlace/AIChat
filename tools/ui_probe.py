@@ -67,9 +67,9 @@ NEVER_DREW = "the web page never drew"
 
 @contextlib.contextmanager
 def _physical_pixels():
-    """Measure and copy in the screen's real pixels. The app (like the
-    probe) isn't DPI aware, so at 150% Windows draws it at 100% and stretches
-    it; only a per-monitor-aware thread sees what is really on screen."""
+    """Measure and copy in the screen's real pixels. The app and the probe
+    are DPI aware now (#185), so this changes nothing for them; it's kept for
+    a probe run of an older, unaware build, which Windows stretches."""
     user32 = ctypes.windll.user32
     user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
     user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
@@ -390,6 +390,10 @@ def build_world(root: Path, patch=setattr, empty: bool = False, formatted_view: 
     patch(main_frame, "TurnRunner", fake_env.FakeRunner)
     patch(platform_paths, "find_claude", lambda: platform_paths.ClaudeLookup("claude.exe"))
     # Nor the real gh, for New Session's From GitHub (#154).
+    # A date and time read from the clock would change every picture of
+    # Properties (#214); the "(just now)" after it still comes from the data.
+    from thechatplace import properties
+    patch(properties, "_date", lambda moment: "11 October 2026 at 14:05")
     from thechatplace import workplaces
     patch(workplaces, "find_gh", lambda: "gh.exe")
     patch(workplaces, "list_github_repos", lambda gh, limit=0: [
@@ -579,7 +583,8 @@ def s_main_status_bar(frame, env):
 
 def s_main_narrow(frame, env):
     _open(frame, "Visual probe")
-    frame.SetSize((640, 480))
+    from thechatplace.ui.sizes import dip
+    frame.SetSize(dip(frame, 640, 480))  # design pixels, as the app's own sizes are
 
 
 def d_shortcuts_page(frame, env):
@@ -1165,6 +1170,9 @@ def main(argv=None) -> int:
     if session_locked():
         print("The session is locked, so every picture would be blank. Unlock it and run again.")
         return 2
+    # As the app does, so the probe photographs it as people see it (#185).
+    from thechatplace import platform_paths
+    platform_paths.make_dpi_aware()
     app = wx.App(False)  # noqa: F841
     return run(args.out, args.tag, args.surface or list(SURFACES), args.size)
 

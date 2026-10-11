@@ -1,10 +1,10 @@
 <#
 The visual probe in the test VM (#155), run from this PC:
 
-    vmtest begin
     powershell -File tools\ui_probe_vm.ps1 [-Variant light-100,dark-100] [-Surface settings,usage] [-Out folder]
 
-Copies this checkout into the VM, installs Python and the app's packages
+Takes a free test VM from vmtest's pool if this branch has none yet. Copies
+this checkout into the VM, installs Python and the app's packages
 there the first time (following vmtest's own recipe), runs
 tools\ui_probe_guest.ps1 for each variant in tools\ui_probe_plan.json (all of
 them by default), and copies the pictures and descriptions back to -Out (a
@@ -26,12 +26,17 @@ $repo = Split-Path $PSScriptRoot
 Import-Module (Join-Path $VmTest 'VmTest.psm1') -Force
 Push-Location $repo
 try {
-    Assert-TaskHasVM
     # vmtest keeps a pool of VMs (TheWorkBench #208): this task's is the one
-    # its lock names, not necessarily the first.
+    # its lock names, not necessarily the first. A branch that has none yet
+    # takes a free one, rather than stopping to be told to.
     $vmName = Find-TaskVM (Resolve-Task)
+    if (-not $vmName) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $VmTest 'vmtest.ps1') begin
+        if ($LASTEXITCODE) { throw "vmtest couldn't give this branch a test VM (exit $LASTEXITCODE)." }
+        $vmName = Find-TaskVM (Resolve-Task)
+    }
 } finally { Pop-Location }
-if (-not $vmName) { throw "This task holds no test VM. Run 'vmtest begin' first." }
+if (-not $vmName) { throw "This task holds no test VM, and 'vmtest begin' didn't give it one." }
 
 $plan = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'ui_probe_plan.json') -Raw | ConvertFrom-Json
 $variants = @($plan.windows | Where-Object { -not $Variant -or $Variant -contains $_.tag })

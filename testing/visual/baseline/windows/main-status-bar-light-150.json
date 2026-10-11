@@ -2,16 +2,16 @@
  "title": "Visual probe — The Chat Place",
  "class": "MainFrame",
  "size": [
-  1000,
-  632
+  1500,
+  968
  ],
  "client": [
-  984,
-  542
+  1478,
+  838
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     0,
     0,
-    984,
-    542
+    1478,
+    838
    ],
    "best": [
-    611,
-    677
+    890,
+    999
    ],
    "depth": 0,
    "parent": -1,
@@ -41,12 +41,12 @@
    "rect": [
     8,
     8,
-    61,
-    16
+    92,
+    26
    ],
    "best": [
-    61,
-    16
+    92,
+    26
    ],
    "depth": 1,
    "parent": 0,
@@ -59,13 +59,13 @@
    "label": "",
    "rect": [
     10,
-    34,
-    378,
-    502
+    44,
+    575,
+    788
    ],
    "best": [
-    876,
-    64
+    1330,
+    104
    ],
    "depth": 1,
    "parent": 0,
@@ -84,14 +84,14 @@
    "name": "staticText",
    "label": "Visual probe, Scratch, idle. Chat Place session on the default model.",
    "rect": [
-    402,
+    599,
     8,
-    574,
-    16
+    871,
+    26
    ],
    "best": [
-    356,
-    16
+    532,
+    26
    ],
    "depth": 1,
    "parent": 0,
@@ -103,14 +103,14 @@
    "name": "staticText",
    "label": "&Messages in Visual probe (idle, on the default model):",
    "rect": [
-    402,
-    32,
-    574,
-    16
+    599,
+    42,
+    871,
+    26
    ],
    "best": [
-    55,
-    16
+    83,
+    26
    ],
    "depth": 1,
    "parent": 0,
@@ -122,14 +122,14 @@
    "name": "Messages in Visual probe (idle, on the default model)",
    "label": "",
    "rect": [
-    404,
-    50,
-    574,
-    235
+    601,
+    70,
+    871,
+    395
    ],
    "best": [
-    286,
-    49
+    430,
+    79
    ],
    "depth": 1,
    "parent": 0,
@@ -146,14 +146,14 @@
    "name": "panel",
    "label": "panel",
    "rect": [
-    402,
-    291,
-    574,
-    189
+    599,
+    471,
+    871,
+    282
    ],
    "best": [
-    351,
-    189
+    518,
+    282
    ],
    "depth": 1,
    "parent": 0,
@@ -165,14 +165,14 @@
    "name": "staticText",
    "label": "&Your message (Ctrl+Enter sends):",
    "rect": [
-    402,
-    291,
-    176,
-    16
+    599,
+    471,
+    262,
+    26
    ],
    "best": [
-    176,
-    16
+    262,
+    26
    ],
    "depth": 2,
    "parent": 6,
@@ -184,14 +184,14 @@
    "name": "Your message",
    "label": "",
    "rect": [
-    404,
-    313,
-    574,
-    120
+    601,
+    503,
+    871,
+    180
    ],
    "best": [
-    127,
-    120
+    191,
+    180
    ],
    "depth": 2,
    "parent": 6,
@@ -204,14 +204,14 @@
    "name": "button",
    "label": "Sen&d",
    "rect": [
-    402,
-    437,
-    75,
-    23
+    599,
+    687,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 2,
    "parent": 6,
@@ -223,14 +223,14 @@
    "name": "button",
    "label": "Sto&p",
    "rect": [
-    483,
-    437,
-    75,
-    23
+    719,
+    687,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 2,
    "parent": 6,
@@ -242,14 +242,14 @@
    "name": "button",
    "label": "C&ommands...",
    "rect": [
-    564,
-    437,
-    92,
-    23
+    839,
+    687,
+    137,
+    36
    ],
    "best": [
-    92,
-    23
+    137,
+    36
    ],
    "depth": 2,
    "parent": 6,
@@ -261,14 +261,14 @@
    "name": "button",
    "label": "A&ttach Files...",
    "rect": [
-    662,
-    437,
-    91,
-    23
+    982,
+    687,
+    135,
+    36
    ],
    "best": [
-    91,
-    23
+    135,
+    36
    ],
    "depth": 2,
    "parent": 6,
@@ -280,14 +280,14 @@
    "name": "staticText",
    "label": "Ready.",
    "rect": [
-    402,
-    464,
-    574,
-    16
+    599,
+    727,
+    871,
+    26
    ],
    "best": [
     1,
-    16
+    26
    ],
    "depth": 2,
    "parent": 6,
@@ -299,14 +299,14 @@
    "name": "check",
    "label": "Show tool &activity",
    "rect": [
-    402,
-    488,
-    116,
-    15
+    599,
+    761,
+    177,
+    25
    ],
    "best": [
-    116,
-    15
+    177,
+    25
    ],
    "depth": 1,
    "parent": 0,
@@ -318,14 +318,14 @@
    "name": "button",
    "label": "&New Session...",
    "rect": [
-    402,
-    511,
-    96,
-    23
+    599,
+    794,
+    145,
+    36
    ],
    "best": [
-    96,
-    23
+    145,
+    36
    ],
    "depth": 1,
    "parent": 0,
@@ -337,14 +337,14 @@
    "name": "button",
    "label": "&Refresh",
    "rect": [
-    504,
-    511,
-    75,
-    23
+    750,
+    794,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 1,
    "parent": 0,
@@ -357,13 +357,13 @@
    "label": "",
    "rect": [
     0,
-    542,
-    984,
-    31
+    838,
+    1478,
+    44
    ],
    "best": [
-    645,
-    31
+    900,
+    44
    ],
    "depth": 0,
    "parent": -1,
@@ -376,13 +376,13 @@
    "label": "Loaded Visual probe, 2 messages.",
    "rect": [
     2,
-    546,
-    248,
-    24
+    842,
+    392,
+    37
    ],
    "best": [
-    100,
-    80
+    150,
+    120
    ],
    "depth": 1,
    "parent": 17,
@@ -394,14 +394,14 @@
    "name": "Loaded session",
    "label": "Visual probe: idle",
    "rect": [
-    255,
-    546,
-    168,
-    24
+    399,
+    842,
+    263,
+    37
    ],
    "best": [
-    100,
-    80
+    150,
+    120
    ],
    "depth": 1,
    "parent": 17,
@@ -413,14 +413,14 @@
    "name": "button",
    "label": "Context 42% full",
    "rect": [
-    428,
-    546,
-    155,
-    24
+    667,
+    842,
+    230,
+    37
    ],
    "best": [
-    93,
-    23
+    141,
+    33
    ],
    "depth": 1,
    "parent": 17,
@@ -432,14 +432,14 @@
    "name": "button",
    "label": "1 session needs you",
    "rect": [
-    588,
-    546,
-    175,
-    24
+    902,
+    842,
+    260,
+    37
    ],
    "best": [
-    111,
-    23
+    171,
+    33
    ],
    "depth": 1,
    "parent": 17,
@@ -451,14 +451,14 @@
    "name": "button",
    "label": "Update 0.2.0 ready",
    "rect": [
-    768,
-    546,
-    166,
-    24
+    1167,
+    842,
+    240,
+    37
    ],
    "best": [
-    104,
-    23
+    161,
+    33
    ],
    "depth": 1,
    "parent": 17,
@@ -466,5 +466,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

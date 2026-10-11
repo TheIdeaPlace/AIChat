@@ -2,16 +2,16 @@
  "title": "Keyboard Shortcuts",
  "class": "ShortcutsDialog",
  "size": [
-  620,
-  520
+  930,
+  780
  ],
  "client": [
-  604,
-  481
+  908,
+  724
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    54,
-    16
+    80,
+    26
    ],
    "best": [
-    54,
-    16
+    80,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -37,16 +37,16 @@
   {
    "class": "TextCtrl",
    "name": "Keyboard shortcuts",
-   "label": "One window, three parts, in Tab order: the session list; the messages of the loaded session; and the reply box with Send and Stop (for a desktop app or terminal session, a read-only note saying where you reply, with Open in Claude and Continue Here as they apply, in the same place). Shift+Tab goes back the same way.\r\n\r\nMoving around:\r\n  Tab, Shift+Tab: Session list, messages, reply box, and back\r\n  Ctrl+1: Go to the session list\r\n  Ctrl+2: Go to the messages\r\n  Ctrl+3: Go to the reply box (or the note, for a read-only session)\r\n  F6, Shift+F6: Next or previous part of the window: session list, messages, reply box (when a session is loaded), status bar, and round again\r\n  Ctrl+9: Go to the status bar: what was last said, the loaded session, and buttons for how full the context is, sessions that need you and an update; Left and Right move between them, Tab leaves\r\n  Escape in the messages or the reply box: Back to the session list, on the same session\r\n  Backspace in the messages: Also back to the session list\r\n\r\nSession list:\r\n  Enter: Load that session and move to its messages\r\n  Ctrl+O: Open the selected session in the Claude desktop app\r\n  Ctrl+Shift+L: Copy Session Link: Enter copies a Markdown link that opens the session in The Chat Place; the list also has the bare link, and where they apply its Open in Claude link and claude.ai address\r\n  Ctrl+N: New Chat Place session\r\n  Ctrl+Shift+N: Continue the selected desktop app or terminal session here, as a copy you can reply to (the original isn't changed)\r\n  Ctrl+Shift+O: Change Permission Mode: auto, accept edits, manual or plan for the selected (or loaded) Chat Place session, from its next turn (File, Change Effort and Change Model are beside it)\r\n  F5: Refresh the list now and put it back in order (it also refreshes itself every few seconds, without moving rows while you're in it)\r\n  Alt+V, O: Sort Sessions: by status, newest first, oldest first, by title or by folder; the choice is remembered\r\n  Alt+V, H: Show Sessions: all, needs you or working, needs you, working, with a new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote Control, ungrouped (in no group), archived, or one of your groups\r\n  Alt+V, E: Session List Columns: choose what each session's line says and in what order, such as status first; in the dialog, Enter adds, Delete removes, and Alt+Up, Alt+Down, Alt+Home and Alt+End move\r\n  Ctrl+E: Export the selected (or loaded) session as Markdown, a web page or plain text\r\n  F2: Rename the selected session (a desktop app or terminal session's new name shows only in The Chat Place)\r\n  Applications key / Shift+F10: The session's menu: load, open in Claude, copy its link, rename, Remote Control, groups, export, hide or delete\r\n  Alt+F, O: Remote Control: reach the selected session from claude.ai and your phone (a desktop app session can be continued here with it on)\r\n  Ctrl+G: Add the selected session to a group (or a new one); File, Remove from Group and Manage Groups are on the File menu\r\n  Delete: Hide the selected session; View, Show Sessions, Hidden lists hidden sessions, and File, Bring Back Session returns one\r\n  Shift+Delete: Delete one of The Chat Place's own sessions permanently, transcript and all, after you confirm (desktop app and terminal sessions can only be hidden)\r\n  Ctrl+F: Show only sessions whose title, folder or what they need contains some text; Escape in the list shows them all again\r\n\r\nMessages:\r\n  Enter, or Applications key / Shift+F10 then Read Full Message: Read the whole message as a formatted page (move by heading, table, list and code block); Alt+P reads it as plain text instead; Escape comes back to it\r\n  Ctrl+C: Copy the whole message\r\n  Ctrl+Shift+C: Copy the message's last code block\r\n  Ctrl+Enter on a queued message: Send it now: Claude stops what it's doing and answers it\r\n  Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks: List, read and copy each code block\r\n  Ctrl+F, then F3 and Shift+F3: Find a message containing some text (its whole text, not just the first line), then the next or previous one\r\n  End: Newest message\r\n  Ctrl+L: Links: every link in the loaded session, newest first; Enter opens one in your browser, Ctrl+C copies its address, typing narrows the list (also from the session list and the reply box)\r\n  Ctrl+T: Show or hide tool activity in the loaded session\r\n  Ctrl+O: Open this session in the Claude desktop app\r\n\r\nReply box:\r\n  Ctrl+Enter: Send (Chat Place sessions only); you stay in the reply box. During a turn it queues the message and sends it when the turn ends\r\n  Ctrl+Shift+Enter: Send and save as a prompt: asks for the prompt's name (its first words to start with), saves it, then sends as Ctrl+Enter does; Escape at the name neither saves nor sends\r\n  Ctrl+Period: Stop the running turn; a queued message goes back in the reply box\r\n  Ctrl+/: Insert a slash command or one of your skills (type to search); it goes at the start of the reply box\r\n  Ctrl+Shift+F: Attach files or images to your next message (Attach Files button, Alt+T); Delete in the attachments list removes one\r\n  Ctrl+V with a picture copied: Attach the picture (a screenshot from Win+Shift+S, say)\r\n  Ctrl+Shift+M: Other machines: list your sessions on other computers and send one a message, through Claude in the loaded Chat Place session (it needs Remote Control on)\r\n  Ctrl+Shift+D: Changed files: what Claude changed since your latest message or in the whole session; Enter on a file reads its changes line by line\r\n  Ctrl+Shift+U: Usage and context: a list of how full the loaded session's context is, and how much of each of your plan's limits is used; Ctrl+C copies a line\r\n  Ctrl+Shift+T: Turn status: how long Claude has been working, on what, what is still running in the background, and whether a message is queued\r\n\r\nAnywhere:\r\n  Ctrl+Shift+S: Find in All Sessions: search the messages of every session in the list; Enter on a result loads that session on that message. Pressed again while it searches, it stops\r\n  Ctrl+Shift+A: Answer Claude: approve or deny a tool, answer its questions, or approve its plan (the loaded session first, then the one that has waited longest). Escape in the dialog answers later\r\n  Ctrl+Shift+K: What Claude knows about you: your instructions, memories, skills, subagents, commands and settings, to read or open in your editor\r\n  Ctrl+Shift+P: Prompts: your saved prompts, to use (Enter puts one in the reply box), add, edit, reorder or delete\r\n  F1: This list of shortcuts\r\n  Alt+H, G: The user guide, read by heading\r\n  Ctrl+Comma: Settings (announcements and speech)\r\n  Ctrl+Shift+R: Repeat the last announcement\r\n  Alt+F4: Quit",
+   "label": "One window, three parts, in Tab order: the session list; the messages of the loaded session; and the reply box with Send and Stop (for a desktop app or terminal session, a read-only note saying where you reply, with Open in Claude and Continue Here as they apply, in the same place). Shift+Tab goes back the same way.\r\n\r\nMoving around:\r\n  Tab, Shift+Tab: Session list, messages, reply box, and back\r\n  Ctrl+1: Go to the session list\r\n  Ctrl+2: Go to the messages\r\n  Ctrl+3: Go to the reply box (or the note, for a read-only session)\r\n  F6, Shift+F6: Next or previous part of the window: session list, messages, reply box (when a session is loaded), status bar, and round again\r\n  Ctrl+9: Go to the status bar: what was last said, the loaded session, and buttons for how full the context is, sessions that need you and an update; Left and Right move between them, Tab leaves\r\n  Escape in the messages or the reply box: Back to the session list, on the same session\r\n  Backspace in the messages: Also back to the session list\r\n\r\nSession list:\r\n  Enter: Load that session and move to its messages\r\n  Ctrl+O: Open the selected session in the Claude desktop app\r\n  Ctrl+Shift+L: Copy Session Link: Enter copies a Markdown link that opens the session in The Chat Place; the list also has the bare link, and where they apply its Open in Claude link and claude.ai address\r\n  Ctrl+N: New Chat Place session\r\n  Ctrl+Shift+N: Continue the selected desktop app or terminal session here, as a copy you can reply to (the original isn't changed)\r\n  Ctrl+Shift+O: Change Permission Mode: auto, accept edits, manual or plan for the selected (or loaded) Chat Place session, from its next turn (File, Change Effort and Change Model are beside it)\r\n  F5: Refresh the list now and put it back in order (it also refreshes itself every few seconds, without moving rows while you're in it)\r\n  Alt+V, O: Sort Sessions: by status, newest first, oldest first, by title or by folder; the choice is remembered\r\n  Alt+V, H: Show Sessions: all, needs you or working, needs you, working, with a new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote Control, ungrouped (in no group), archived, or one of your groups\r\n  Alt+V, E: Session List Columns: choose what each session's line says and in what order, such as status first; in the dialog, Enter adds, Delete removes, and Alt+Up, Alt+Down, Alt+Home and Alt+End move\r\n  Ctrl+E: Export the selected (or loaded) session as Markdown, a web page or plain text\r\n  F2: Rename the selected session (a desktop app or terminal session's new name shows only in The Chat Place)\r\n  Applications key / Shift+F10: The session's menu: load, open in Claude, copy its link, rename, Remote Control, groups, export, hide or delete\r\n  Alt+F, O: Remote Control: reach the selected session from claude.ai and your phone (a desktop app session can be continued here with it on)\r\n  Ctrl+G: Add the selected session to a group (or a new one); File, Remove from Group and Manage Groups are on the File menu\r\n  Delete: Hide the selected session; View, Show Sessions, Hidden lists hidden sessions, and File, Bring Back Session returns one\r\n  Shift+Delete: Delete one of The Chat Place's own sessions permanently, transcript and all, after you confirm (desktop app and terminal sessions can only be hidden)\r\n  Ctrl+F: Show only sessions whose title, folder or what they need contains some text; Escape in the list shows them all again\r\n\r\nMessages:\r\n  Enter, or Applications key / Shift+F10 then Read Full Message: Read the whole message as a formatted page (move by heading, table, list and code block); Alt+P reads it as plain text instead; Escape comes back to it\r\n  Ctrl+C: Copy the whole message\r\n  Ctrl+Shift+C: Copy the message's last code block\r\n  Ctrl+Enter on a queued message: Send it now: Claude stops what it's doing and answers it\r\n  Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks: List, read and copy each code block\r\n  Ctrl+F, then F3 and Shift+F3: Find a message containing some text (its whole text, not just the first line), then the next or previous one\r\n  End: Newest message\r\n  Ctrl+L: Links: every link in the loaded session, newest first; Enter opens one in your browser, Ctrl+C copies its address, typing narrows the list (also from the session list and the reply box)\r\n  Ctrl+T: Show or hide tool activity in the loaded session\r\n  Ctrl+O: Open this session in the Claude desktop app\r\n\r\nReply box:\r\n  Ctrl+Enter: Send (Chat Place sessions only); you stay in the reply box. During a turn it queues the message and sends it when the turn ends\r\n  Ctrl+Shift+Enter: Send and save as a prompt: asks for the prompt's name (its first words to start with), saves it, then sends as Ctrl+Enter does; Escape at the name neither saves nor sends\r\n  Ctrl+Period: Stop the running turn; a queued message goes back in the reply box\r\n  Ctrl+/: Insert a slash command or one of your skills (type to search); it goes at the start of the reply box\r\n  Ctrl+Shift+F: Attach files or images to your next message (Attach Files button, Alt+T); Delete in the attachments list removes one\r\n  Ctrl+V with a picture copied: Attach the picture (a screenshot from Win+Shift+S, say)\r\n  Ctrl+Shift+M: Other machines: list your sessions on other computers and send one a message, through Claude in the loaded Chat Place session (it needs Remote Control on)\r\n  Ctrl+Shift+D: Changed files: what Claude changed since your latest message or in the whole session; Enter on a file reads its changes line by line\r\n  Ctrl+Shift+U: Usage and context: a list of how full the loaded session's context is, and how much of each of your plan's limits is used; Ctrl+C copies a line\r\n  Ctrl+Shift+T: Turn status: how long Claude has been working, on what, what is still running in the background, and whether a message is queued\r\n\r\nAnywhere:\r\n  Ctrl+Shift+S: Find in All Sessions: search the messages of every session in the list; Enter on a result loads that session on that message. Pressed again while it searches, it stops\r\n  Ctrl+Shift+A: Answer Claude: approve or deny a tool, answer its questions, or approve its plan (the loaded session first, then the one that has waited longest). Escape in the dialog answers later\r\n  Ctrl+Shift+K: What Claude knows about you: your instructions, memories, skills, subagents, commands and settings, to read or open in your editor\r\n  Ctrl+Shift+P: Prompts: your saved prompts, to use (Enter puts one in the reply box), add, edit, reorder or delete\r\n  Alt+Enter: Properties: what can be known about the selected session (or, in the messages, the selected message), one line each; Ctrl+C copies a line. Option+Return on a Mac\r\n  F1: This list of shortcuts\r\n  Alt+H, G: The user guide, read by heading\r\n  Ctrl+Comma: Settings (announcements and speech)\r\n  Ctrl+Shift+R: Repeat the last announcement\r\n  Alt+F4: Quit",
    "rect": [
     10,
-    34,
-    588,
-    402
+    44,
+    892,
+    622
    ],
    "best": [
-    127,
-    158
+    191,
+    258
    ],
    "depth": 0,
    "parent": -1,
@@ -59,14 +59,14 @@
    "name": "button",
    "label": "&Close",
    "rect": [
-    521,
-    450,
-    75,
-    23
+    786,
+    680,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -74,5 +74,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }
