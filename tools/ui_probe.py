@@ -124,6 +124,29 @@ def _screen_copy(left, top, width, height) -> wx.Bitmap:
     return bitmap
 
 
+@contextlib.contextmanager
+def _on_top(window):
+    """The window above every other while the screen is copied, then back.
+    Raise() isn't enough: Windows won't let a background process come in
+    front of the window that has the foreground, and on a fresh VM that can
+    be its own Get Started or OneDrive window, which then came out in the
+    picture (#155)."""
+    user32 = ctypes.windll.user32
+    user32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+    hwnd = ctypes.c_void_p(window.GetHandle())
+    HWND_TOPMOST, HWND_NOTOPMOST = ctypes.c_void_p(-1), ctypes.c_void_p(-2)
+    SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
+    flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+    window.Raise()
+    user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags)
+    _pump(0.4)
+    try:
+        yield
+    finally:
+        user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+
+
 def _work_area():
     """The primary screen less the taskbar, in the calling thread's pixels."""
     rect = (ctypes.c_long * 4)()
@@ -160,8 +183,6 @@ def _capture_windows(window: wx.TopLevelWindow) -> tuple[wx.Bitmap, str]:
         bounds = _frame_bounds(hwnd) or physical
         stretched = (physical[2] - physical[0]) != (logical[2] - logical[0])
         if stretched:
-            window.Raise()
-            _pump(0.4)
             # Only what's on screen above the taskbar: a dialog taller than
             # the screen runs under it (#186), and the taskbar's own icons,
             # which differ run to run, would show as changes.
@@ -170,15 +191,15 @@ def _capture_windows(window: wx.TopLevelWindow) -> tuple[wx.Bitmap, str]:
             br, bb = min(bounds[2], wr), min(bounds[3], wb)
             if br <= bl or bb <= bt:
                 raise RuntimeError("the window is outside the screen's work area")
-            return _screen_copy(bl, bt, br - bl, bb - bt), "screen copy (stretched by Windows)"
+            with _on_top(window):
+                return _screen_copy(bl, bt, br - bl, bb - bt), "screen copy (stretched by Windows)"
     left, top, right, bottom = physical
     width, height = right - left, bottom - top
     bitmap = _print_window(window)
     method = "PrintWindow"
     if bitmap is None or _one_colour(bitmap):
-        window.Raise()
-        _pump(0.4)
-        bitmap = _screen_copy(left, top, width, height)
+        with _on_top(window):
+            bitmap = _screen_copy(left, top, width, height)
         method = "screen copy"
     bl, bt, br, bb = bounds
     crop = wx.Rect(bl - left, bt - top, br - bl, bb - bt)
@@ -380,7 +401,7 @@ def build_world(root: Path, patch=setattr, empty: bool = False, formatted_view: 
                          "A session whose title goes on and on to show what a very long title "
                          "does to the session list and the heading above the messages",
                          cwd=env["folders"]["Website"], ago=86_400_000)
-    fake_env.add_transcript(env, repo, "cli-a", [
+    transcript = fake_env.add_transcript(env, repo, "cli-a", [
         user_text("The upload test fails now and then. Can you find out why?"),
         assistant_block(text_block("I'll look at the test and the uploader."), "m1"),
         assistant_block(tool_use_block("Bash", {"command": "pytest tests/test_upload.py -q"},
@@ -388,6 +409,12 @@ def build_world(root: Path, patch=setattr, empty: bool = False, formatted_view: 
         tool_result("t1", "1 failed, 11 passed"),
         assistant_block(text_block(LONG_MESSAGE), "m3"),
         user_text("Thanks. Which branch name should the release use?")])
+    # Written a minute ago, as its session last worked. Written just now, it
+    # tied with the probe's own session for the most recent, and New
+    # Session's Folder box showed AIChat in one run and Scratch in the next
+    # (#155).
+    written = time.time() - 60
+    os.utime(transcript, (written, written))
     own_cwd = env["folders"]["Scratch"]
     edit_path = os.path.join(own_cwd, "uploader.py")
     fake_env.add_transcript(env, own_cwd, "own-1", [

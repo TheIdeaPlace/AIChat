@@ -26,8 +26,8 @@
     439
    ],
    "best": [
-    1166,
-    617
+    611,
+    677
    ],
    "depth": 0,
    "parent": -1,
@@ -60,7 +60,7 @@
    "rect": [
     10,
     34,
-    268,
+    378,
     399
    ],
    "best": [
@@ -84,9 +84,9 @@
    "name": "staticText",
    "label": "Visual probe, Scratch, working. Chat Place session on the default model.",
    "rect": [
-    292,
+    402,
     8,
-    684,
+    574,
     16
    ],
    "best": [
@@ -103,9 +103,9 @@
    "name": "staticText",
    "label": "&Messages in Visual probe (working, on the default model):",
    "rect": [
-    292,
+    402,
     32,
-    684,
+    574,
     16
    ],
    "best": [
@@ -122,10 +122,10 @@
    "name": "Messages in Visual probe (working, on the default model)",
    "label": "",
    "rect": [
-    294,
+    404,
     50,
-    684,
-    152
+    574,
+    132
    ],
    "best": [
     286,
@@ -147,14 +147,14 @@
    "name": "panel",
    "label": "panel",
    "rect": [
-    292,
-    208,
-    684,
-    169
+    402,
+    188,
+    574,
+    189
    ],
    "best": [
-    684,
-    169
+    351,
+    189
    ],
    "depth": 1,
    "parent": 0,
@@ -166,8 +166,8 @@
    "name": "staticText",
    "label": "&Your message (Ctrl+Enter sends):",
    "rect": [
-    292,
-    208,
+    402,
+    188,
     176,
     16
    ],
@@ -185,9 +185,9 @@
    "name": "Your message",
    "label": "",
    "rect": [
-    294,
-    230,
-    684,
+    404,
+    210,
+    574,
     120
    ],
    "best": [
@@ -205,8 +205,8 @@
    "name": "button",
    "label": "Sen&d",
    "rect": [
-    292,
-    354,
+    402,
+    334,
     75,
     23
    ],
@@ -224,8 +224,8 @@
    "name": "button",
    "label": "Sto&p",
    "rect": [
-    373,
-    354,
+    483,
+    334,
     75,
     23
    ],
@@ -243,8 +243,8 @@
    "name": "button",
    "label": "C&ommands...",
    "rect": [
-    454,
-    354,
+    564,
+    334,
     92,
     23
    ],
@@ -262,8 +262,8 @@
    "name": "button",
    "label": "A&ttach Files...",
    "rect": [
-    552,
-    354,
+    662,
+    334,
     91,
     23
    ],
@@ -281,13 +281,13 @@
    "name": "staticText",
    "label": "1 message queued. Claude is working (1 minute 15 seconds).",
    "rect": [
-    655,
-    357,
-    321,
+    402,
+    361,
+    574,
     16
    ],
    "best": [
-    321,
+    1,
     16
    ],
    "depth": 2,
@@ -300,7 +300,7 @@
    "name": "check",
    "label": "Show tool &activity",
    "rect": [
-    292,
+    402,
     385,
     116,
     15
@@ -319,7 +319,7 @@
    "name": "button",
    "label": "&New Session...",
    "rect": [
-    292,
+    402,
     408,
     96,
     23
@@ -338,7 +338,7 @@
    "name": "button",
    "label": "&Refresh",
    "rect": [
-    394,
+    504,
     408,
     75,
     23

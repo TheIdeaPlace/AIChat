@@ -26,8 +26,8 @@
     390
    ],
    "best": [
-    691,
-    617
+    611,
+    692
    ],
    "depth": 0,
    "parent": -1,
@@ -60,7 +60,7 @@
    "rect": [
     10,
     34,
-    200,
+    234,
     350
    ],
    "best": [
@@ -84,14 +84,14 @@
    "name": "staticText",
    "label": "Visual probe, Scratch, idle. Chat Place session on the default model.",
    "rect": [
-    224,
+    258,
     8,
-    392,
-    16
+    358,
+    31
    ],
    "best": [
-    356,
-    16
+    316,
+    31
    ],
    "depth": 1,
    "parent": 0,
@@ -103,9 +103,9 @@
    "name": "staticText",
    "label": "&Messages in Visual probe (idle, on the default model):",
    "rect": [
-    224,
-    32,
-    392,
+    258,
+    47,
+    358,
     16
    ],
    "best": [
@@ -122,10 +122,10 @@
    "name": "Messages in Visual probe (idle, on the default model)",
    "label": "",
    "rect": [
-    226,
-    50,
-    392,
-    103
+    260,
+    65,
+    358,
+    68
    ],
    "best": [
     286,
@@ -146,14 +146,14 @@
    "name": "panel",
    "label": "panel",
    "rect": [
-    224,
-    159,
-    392,
-    169
+    258,
+    139,
+    358,
+    189
    ],
    "best": [
-    399,
-    169
+    351,
+    189
    ],
    "depth": 1,
    "parent": 0,
@@ -165,8 +165,8 @@
    "name": "staticText",
    "label": "&Your message (Ctrl+Enter sends):",
    "rect": [
-    224,
-    159,
+    258,
+    139,
     176,
     16
    ],
@@ -184,9 +184,9 @@
    "name": "Your message",
    "label": "",
    "rect": [
-    226,
-    181,
-    392,
+    260,
+    161,
+    358,
     120
    ],
    "best": [
@@ -204,8 +204,8 @@
    "name": "button",
    "label": "Sen&d",
    "rect": [
-    224,
-    305,
+    258,
+    285,
     75,
     23
    ],
@@ -223,8 +223,8 @@
    "name": "button",
    "label": "Sto&p",
    "rect": [
-    305,
-    305,
+    339,
+    285,
     75,
     23
    ],
@@ -242,8 +242,8 @@
    "name": "button",
    "label": "C&ommands...",
    "rect": [
-    386,
-    305,
+    420,
+    285,
     92,
     23
    ],
@@ -261,8 +261,8 @@
    "name": "button",
    "label": "A&ttach Files...",
    "rect": [
-    484,
-    305,
+    518,
+    285,
     91,
     23
    ],
@@ -280,28 +280,26 @@
    "name": "staticText",
    "label": "Ready.",
    "rect": [
-    587,
-    308,
-    29,
+    258,
+    312,
+    358,
     16
    ],
    "best": [
-    36,
+    1,
     16
    ],
    "depth": 2,
    "parent": 6,
    "enabled": true,
-   "problems": [
-    "text cut off: smaller than its best size"
-   ]
+   "problems": []
   },
   {
    "class": "CheckBox",
    "name": "check",
    "label": "Show tool &activity",
    "rect": [
-    224,
+    258,
     336,
     116,
     15
@@ -320,7 +318,7 @@
    "name": "button",
    "label": "&New Session...",
    "rect": [
-    224,
+    258,
     359,
     96,
     23
@@ -339,7 +337,7 @@
    "name": "button",
    "label": "&Refresh",
    "rect": [
-    326,
+    360,
     359,
     75,
     23
