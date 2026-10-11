@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ntpath
 import os
+import platform
 import re
 import secrets
 import stat
@@ -128,6 +129,20 @@ def long_path(path: Path) -> Path:
     if text.startswith("\\\\"):
         return Path("\\\\?\\UNC\\" + text[2:])
     return Path("\\\\?\\" + text)
+
+
+def os_name() -> str:
+    """The system's name and version, as ``platform.platform()`` gives it.
+    That can fail on Windows: its WMI query sometimes comes back without the
+    fields it reads (KeyError: 'ProductType', seen on a freshly reset VM,
+    #155), and a bug report or a probe run isn't worth losing over it."""
+    try:
+        return platform.platform()
+    except Exception:  # noqa: BLE001
+        if sys.platform == "win32":  # platform.version() would ask WMI again
+            version = ".".join(str(n) for n in sys.getwindowsversion()[:3])
+            return f"Windows-{version} (platform.platform failed)"
+        return sys.platform
 
 
 def app_icon_path() -> Path:

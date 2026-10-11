@@ -79,3 +79,21 @@ def test_the_report_says_what_the_last_announcement_did():
     assert facts["Last announcement"] == route
     assert "Last announcement" not in dict(
         bugreport.environment(SpeechSettings(), {}, claude_version="x"))
+
+
+def _wmi_without_product_type():
+    raise KeyError("ProductType")
+
+
+def test_a_report_still_opens_when_windows_cant_say_its_version(monkeypatch):
+    # #155: on a freshly reset VM, platform.platform()'s WMI query came back
+    # without ProductType and raised, which would have stopped Report a Bug.
+    import platform
+    monkeypatch.setattr(platform, "platform", _wmi_without_product_type)
+    facts = dict(bugreport.environment(SpeechSettings(), {}, claude_version="2.1.292 (Claude Code)"))
+    system = facts["Windows" if sys.platform == "win32" else "macOS"]
+    if sys.platform == "win32":
+        major, minor, build = sys.getwindowsversion()[:3]
+        assert system == f"Windows-{major}.{minor}.{build} (platform.platform failed)"
+    else:
+        assert system == sys.platform

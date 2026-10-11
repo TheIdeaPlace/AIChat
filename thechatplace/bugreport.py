@@ -78,7 +78,7 @@ def environment(speech, counts: Dict[str, int], claude_version: Optional[str] = 
     frozen = bool(getattr(sys, "frozen", False))
     facts = [
         ("The Chat Place", f"{__version__} ({'installed build' if frozen else 'run from source'})"),
-        (_system_name(), platform.platform()),
+        (_system_name(), platform_paths.os_name()),
         ("Python", platform.python_version()),
         ("wxPython", wx_version),
         ("Claude Code", claude_version if claude_version is not None else claude_code_version()),

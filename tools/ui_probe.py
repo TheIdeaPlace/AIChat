@@ -48,6 +48,8 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 import wx  # noqa: E402
 
+from thechatplace import platform_paths  # noqa: E402
+
 IS_WINDOWS = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
 
@@ -1023,7 +1025,7 @@ def run(out: Path, tag: str, names, size) -> int:
     out.mkdir(parents=True, exist_ok=True)
     manifest_path = out / (f"manifest-{tag}.json" if tag else "manifest.json")
     manifest = {
-        "tag": tag, "platform": sys.platform, "os": platform.platform(),
+        "tag": tag, "platform": sys.platform, "os": platform_paths.os_name(),
         "wx": wx.version(), "python": platform.python_version(),
         # This Python's; a built app's own manifest may say otherwise.
         "dpi_awareness": _dpi_awareness(), "appearance": _system_appearance(),

@@ -20,6 +20,7 @@
   1000,
   720
  ],
+ "complete": true,
  "surfaces": {
   "main-start": {
    "kind": "window",
