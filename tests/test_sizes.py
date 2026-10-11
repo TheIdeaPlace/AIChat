@@ -116,12 +116,14 @@ def test_usage_is_as_wide_as_its_longest_line_at_any_scaling(app, monkeypatch):
     from thechatplace.ui import dialogs
     frame = wx.Frame(None)
     try:
-        monkeypatch.setattr(dialogs, "dip_width", lambda window, width: width * 2)  # as at 200%
-        monkeypatch.setattr(dialogs, "dialog_size", lambda parent, w, h: wx.Size(w * 2, h * 2))
+        monkeypatch.setattr(dialogs, "dip_width", lambda window, width: width * 5 // 4)  # as at 125%
+        monkeypatch.setattr(dialogs, "dialog_size", lambda parent, w, h: wx.Size(w * 5 // 4, h * 5 // 4))
         monkeypatch.setattr(dialogs, "screen_area", lambda window: wx.Rect(0, 0, 3840, 2000))
         dialog = dialogs.UsageDialog(frame, ["Short line"], lambda text: None)
         try:
-            assert dialog.GetSize().width == 1280  # its 640 design width, scaled
+            # Its 640 design width, scaled: small enough that Windows doesn't
+            # shrink it to fit CI's 1024-pixel screen.
+            assert dialog.GetSize().width == 800
         finally:
             dialog.Destroy()
     finally:
