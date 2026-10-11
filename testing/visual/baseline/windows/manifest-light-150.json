@@ -4,14 +4,14 @@
  "os": "Windows-11-10.0.26300-SP0",
  "wx": "4.3.1 msw (phoenix) wxWidgets 3.3.3",
  "python": "3.12.10",
- "dpi_awareness": "unaware",
+ "dpi_awareness": "per-monitor aware",
  "appearance": {
   "dark": false,
   "name": "",
   "scale": 150,
   "work_area": [
-   1280,
-   672
+   1920,
+   1008
   ],
   "high_contrast": false,
   "windows_apps_dark": false
@@ -29,10 +29,10 @@
    "title": "The Chat Place",
    "class": "MainFrame",
    "size": [
-    1000,
-    632
+    1500,
+    968
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Main window as it opens: session list, no session loaded"
   },
@@ -43,10 +43,10 @@
    "title": "Visual probe — The Chat Place",
    "class": "MainFrame",
    "size": [
-    1000,
-    632
+    1500,
+    968
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "An own session loaded: messages and the reply box"
   },
@@ -57,10 +57,10 @@
    "title": "Visual probe — The Chat Place",
    "class": "MainFrame",
    "size": [
-    1000,
-    632
+    1500,
+    968
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "An own session mid-turn, one more message queued and a draft typed"
   },
@@ -71,10 +71,10 @@
    "title": "Visual probe — The Chat Place",
    "class": "MainFrame",
    "size": [
-    1000,
-    632
+    1500,
+    968
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "An own session with two files attached to the next message"
   },
@@ -85,10 +85,10 @@
    "title": "Fix the flaky upload test — The Chat Place",
    "class": "MainFrame",
    "size": [
-    1000,
-    632
+    1500,
+    968
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "A desktop app session loaded: the read-only panel instead of a reply box"
   },
@@ -99,10 +99,10 @@
    "title": "Fix the flaky upload test — The Chat Place",
    "class": "MainFrame",
    "size": [
-    1000,
-    632
+    1500,
+    968
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Show tool activity turned on"
   },
@@ -113,10 +113,10 @@
    "title": "The Chat Place",
    "class": "MainFrame",
    "size": [
-    1000,
-    632
+    1500,
+    968
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "The session list with the Last message column (#146)"
   },
@@ -127,10 +127,10 @@
    "title": "Visual probe — The Chat Place",
    "class": "MainFrame",
    "size": [
-    1000,
-    632
+    1500,
+    968
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "The status bar with every button showing: context, needs you, update"
   },
@@ -141,10 +141,10 @@
    "title": "Visual probe — The Chat Place",
    "class": "MainFrame",
    "size": [
-    640,
-    480
+    960,
+    720
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "An own session in a 640 by 480 window"
   },
@@ -155,10 +155,10 @@
    "title": "Keyboard Shortcuts",
    "class": "FormattedMessageDialog",
    "size": [
-    820,
-    620
+    1230,
+    930
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Help, Keyboard Shortcuts (formatted page)"
   },
@@ -169,10 +169,10 @@
    "title": "Keyboard Shortcuts",
    "class": "ShortcutsDialog",
    "size": [
-    620,
-    520
+    930,
+    780
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Keyboard Shortcuts as plain text"
   },
@@ -183,10 +183,10 @@
    "title": "User Guide",
    "class": "FormattedMessageDialog",
    "size": [
-    820,
-    620
+    1230,
+    930
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Help, User Guide (formatted page)"
   },
@@ -197,10 +197,10 @@
    "title": "Message from Claude",
    "class": "FormattedMessageDialog",
    "size": [
-    820,
-    620
+    1230,
+    930
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "A message read as a formatted page: heading, list, code, table, link"
   },
@@ -211,10 +211,10 @@
    "title": "Message from Claude",
    "class": "MessageDialog",
    "size": [
-    720,
-    520
+    1080,
+    780
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "The same message as plain text"
   },
@@ -225,10 +225,10 @@
    "title": "Settings",
    "class": "SettingsDialog",
    "size": [
-    680,
-    517
+    1020,
+    729
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Settings"
   },
@@ -239,10 +239,10 @@
    "title": "New Chat Place Session",
    "class": "NewSessionDialog",
    "size": [
-    680,
-    620
+    1020,
+    930
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "File, New Session"
   },
@@ -253,10 +253,10 @@
    "title": "From GitHub",
    "class": "GitHubRepoDialog",
    "size": [
-    720,
-    520
+    1080,
+    780
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "New Session, From GitHub: your repositories"
   },
@@ -267,10 +267,10 @@
    "title": "Continue Here: Fix the flaky upload test",
    "class": "NewSessionDialog",
    "size": [
-    680,
-    620
+    1020,
+    930
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Continue Here (a desktop session)"
   },
@@ -281,10 +281,10 @@
    "title": "The Chat Place Update Installed",
    "class": "UpdateInstalledDialog",
    "size": [
-    272,
-    126
+    391,
+    166
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "After an update is installed"
   },
@@ -295,10 +295,10 @@
    "title": "Claude needs permission: Visual probe",
    "class": "PermissionDialog",
    "size": [
-    700,
-    540
+    1050,
+    810
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Claude asks permission to run a command"
   },
@@ -309,10 +309,10 @@
    "title": "Claude asks: Visual probe",
    "class": "QuestionDialog",
    "size": [
-    700,
-    377
+    1050,
+    523
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Claude asks questions (one choice and several choices)"
   },
@@ -323,10 +323,10 @@
    "title": "Claude's plan: Visual probe",
    "class": "PlanDialog",
    "size": [
-    760,
-    600
+    1140,
+    900
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Claude's plan to approve"
   },
@@ -337,10 +337,10 @@
    "title": "Manage Groups",
    "class": "ManageGroupsDialog",
    "size": [
-    480,
-    420
+    720,
+    630
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "File, Manage Groups"
   },
@@ -351,10 +351,10 @@
    "title": "Insert Command or Skill",
    "class": "CommandPickerDialog",
    "size": [
-    720,
-    520
+    1080,
+    780
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Insert Command or Skill"
   },
@@ -365,10 +365,10 @@
    "title": "Report a Bug",
    "class": "BugReportDialog",
    "size": [
-    660,
-    640
+    990,
+    960
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Help, Report a Bug"
   },
@@ -379,10 +379,10 @@
    "title": "Code Blocks",
    "class": "CodeBlocksDialog",
    "size": [
-    760,
-    560
+    1140,
+    840
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "A message's code blocks"
   },
@@ -393,10 +393,10 @@
    "title": "Links in Fix the flaky upload test: 1",
    "class": "LinksDialog",
    "size": [
-    760,
-    480
+    1140,
+    720
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "View, Links"
   },
@@ -407,10 +407,10 @@
    "title": "The Chat Place: 6 results for \"the\", Find in All Sessions",
    "class": "FindResultsDialog",
    "size": [
-    820,
-    520
+    1230,
+    780
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "View, Find in All Sessions: the results"
   },
@@ -421,10 +421,10 @@
    "title": "Changed Files: Visual probe",
    "class": "ChangesDialog",
    "size": [
-    800,
-    580
+    1200,
+    870
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "View, Changed Files"
   },
@@ -435,10 +435,10 @@
    "title": "Usage and Context",
    "class": "UsageDialog",
    "size": [
-    754,
-    360
+    1132,
+    540
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "View, Usage and Context"
   },
@@ -449,10 +449,10 @@
    "title": "What Claude Knows About You",
    "class": "AboutYouDialog",
    "size": [
-    860,
-    640
+    1290,
+    960
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "View, What Claude Knows About You"
   },
@@ -463,10 +463,10 @@
    "title": "Session List Columns",
    "class": "SessionColumnsDialog",
    "size": [
-    640,
-    560
+    960,
+    840
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "View, Session List Columns"
   },
@@ -477,10 +477,10 @@
    "title": "Prompts",
    "class": "PromptsDialog",
    "size": [
-    680,
-    560
+    1020,
+    840
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "File, Prompts"
   },
@@ -491,10 +491,10 @@
    "title": "Edit Prompt",
    "class": "PromptEditDialog",
    "size": [
-    620,
-    460
+    930,
+    690
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Editing a saved prompt"
   },
@@ -505,10 +505,10 @@
    "title": "Rename Session",
    "class": "TextEntryDialog",
    "size": [
-    346,
-    153
+    368,
+    228
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Rename Session (wx's own text entry dialog)"
   },
@@ -519,13 +519,13 @@
    "title": "The Chat Place",
    "class": "MainFrame",
    "size": [
-    1000,
-    632
+    1500,
+    968
    ],
-   "capture": "screen copy (stretched by Windows)",
+   "capture": "PrintWindow",
    "problems": [],
    "about": "Main window with no sessions at all (a first run)"
   }
  },
- "seconds": 104.5
+ "seconds": 115.3
 }

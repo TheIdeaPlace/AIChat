@@ -2,16 +2,16 @@
  "title": "Changed Files: Visual probe",
  "class": "ChangesDialog",
  "size": [
-  800,
-  580
+  1200,
+  870
  ],
  "client": [
-  784,
-  541
+  1178,
+  814
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     11,
-    109,
-    16
+    163,
+    26
    ],
    "best": [
-    109,
-    16
+    163,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -39,14 +39,14 @@
    "name": "Show changes from",
    "label": "",
    "rect": [
-    123,
+    177,
     8,
-    133,
-    23
+    196,
+    33
    ],
    "best": [
-    133,
-    23
+    196,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "&Files:",
    "rect": [
     8,
+    49,
     39,
-    27,
-    16
+    26
    ],
    "best": [
-    27,
-    16
+    39,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -79,13 +79,13 @@
    "label": "",
    "rect": [
     10,
-    57,
-    768,
-    130
+    77,
+    1162,
+    195
    ],
    "best": [
-    180,
-    130
+    273,
+    195
    ],
    "depth": 0,
    "parent": -1,
@@ -102,13 +102,13 @@
    "label": "C&hanges:",
    "rect": [
     8,
-    193,
-    50,
-    16
+    278,
+    73,
+    26
    ],
    "best": [
-    50,
-    16
+    73,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -121,13 +121,13 @@
    "label": "",
    "rect": [
     10,
-    211,
-    768,
-    293
+    306,
+    1162,
+    458
    ],
    "best": [
-    127,
-    240
+    191,
+    360
    ],
    "depth": 0,
    "parent": -1,
@@ -140,14 +140,14 @@
    "name": "button",
    "label": "C&lose",
    "rect": [
-    701,
-    510,
-    75,
-    23
+    1056,
+    770,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -155,5 +155,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

@@ -2,16 +2,16 @@
  "title": "The Chat Place Update Installed",
  "class": "UpdateInstalledDialog",
  "size": [
-  272,
-  126
+  391,
+  166
  ],
  "client": [
-  256,
-  87
+  369,
+  110
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     16,
     16,
-    194,
-    16
+    291,
+    26
    ],
    "best": [
-    194,
-    16
+    291,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "See &what's new in 0.2.0",
    "rect": [
     16,
-    48,
-    141,
-    23
+    58,
+    215,
+    36
    ],
    "best": [
-    141,
-    23
+    215,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -58,14 +58,14 @@
    "name": "button",
    "label": "&Close",
    "rect": [
-    165,
-    48,
-    75,
-    23
+    239,
+    58,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -73,5 +73,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

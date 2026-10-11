@@ -2,11 +2,11 @@
  "title": "Usage and Context",
  "class": "UsageDialog",
  "size": [
-  754,
+  751,
   360
  ],
  "client": [
-  738,
+  735,
   321
  ],
  "dpi": [
@@ -41,7 +41,7 @@
    "rect": [
     10,
     26,
-    722,
+    719,
     258
    ],
    "best": [
@@ -63,7 +63,7 @@
    "name": "button",
    "label": "&Copy",
    "rect": [
-    493,
+    490,
     290,
     75,
     23
@@ -82,7 +82,7 @@
    "name": "button",
    "label": "Copy &All",
    "rect": [
-    574,
+    571,
     290,
     75,
     23
@@ -101,7 +101,7 @@
    "name": "button",
    "label": "C&lose",
    "rect": [
-    655,
+    652,
     290,
     75,
     23

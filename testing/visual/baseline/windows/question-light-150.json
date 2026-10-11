@@ -2,16 +2,16 @@
  "title": "Claude asks: Visual probe",
  "class": "QuestionDialog",
  "size": [
-  700,
-  377
+  1050,
+  523
  ],
  "client": [
-  684,
-  338
+  1028,
+  467
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     4,
     4,
-    676,
-    291
+    1020,
+    407
    ],
    "best": [
-    304,
-    16
+    449,
+    25
    ],
    "depth": 0,
    "parent": -1,
@@ -41,12 +41,12 @@
    "rect": [
     10,
     10,
-    664,
-    122
+    1008,
+    175
    ],
    "best": [
-    292,
-    23
+    437,
+    33
    ],
    "depth": 1,
    "parent": 0,
@@ -58,14 +58,14 @@
    "name": "radioButton",
    "label": "release/0.2: Matches the last release",
    "rect": [
-    19,
-    31,
-    209,
-    15
+    22,
+    41,
+    317,
+    25
    ],
    "best": [
-    209,
-    15
+    317,
+    25
    ],
    "depth": 1,
    "parent": 0,
@@ -77,14 +77,14 @@
    "name": "radioButton",
    "label": "v0.2-prep: Shorter",
    "rect": [
-    19,
-    54,
-    116,
-    15
+    22,
+    74,
+    180,
+    25
    ],
    "best": [
-    116,
-    15
+    180,
+    25
    ],
    "depth": 1,
    "parent": 0,
@@ -96,14 +96,14 @@
    "name": "radioButton",
    "label": "Other (type below)",
    "rect": [
-    19,
-    77,
-    121,
-    15
+    22,
+    107,
+    184,
+    25
    ],
    "best": [
-    121,
-    15
+    184,
+    25
    ],
    "depth": 1,
    "parent": 0,
@@ -115,14 +115,14 @@
    "name": "Branch: your own answer",
    "label": "",
    "rect": [
-    21,
-    102,
-    646,
-    23
+    24,
+    142,
+    984,
+    33
    ],
    "best": [
-    110,
-    23
+    165,
+    33
    ],
    "depth": 1,
    "parent": 0,
@@ -136,13 +136,13 @@
    "label": "Checks: Which checks should run first?",
    "rect": [
     10,
-    144,
-    664,
-    145
+    197,
+    1008,
+    208
    ],
    "best": [
-    223,
-    23
+    333,
+    33
    ],
    "depth": 1,
    "parent": 0,
@@ -154,14 +154,14 @@
    "name": "check",
    "label": "Unit tests",
    "rect": [
-    19,
-    165,
-    71,
-    15
+    22,
+    228,
+    110,
+    25
    ],
    "best": [
-    71,
-    15
+    110,
+    25
    ],
    "depth": 1,
    "parent": 0,
@@ -173,14 +173,14 @@
    "name": "check",
    "label": "Smoke test",
    "rect": [
-    19,
-    188,
-    80,
-    15
+    22,
+    261,
+    125,
+    25
    ],
    "best": [
-    80,
-    15
+    125,
+    25
    ],
    "depth": 1,
    "parent": 0,
@@ -192,14 +192,14 @@
    "name": "check",
    "label": "Lint",
    "rect": [
-    19,
-    211,
-    42,
-    15
+    22,
+    294,
+    64,
+    25
    ],
    "best": [
-    42,
-    15
+    64,
+    25
    ],
    "depth": 1,
    "parent": 0,
@@ -211,14 +211,14 @@
    "name": "check",
    "label": "Other (type below)",
    "rect": [
-    19,
-    234,
-    121,
-    15
+    22,
+    327,
+    184,
+    25
    ],
    "best": [
-    121,
-    15
+    184,
+    25
    ],
    "depth": 1,
    "parent": 0,
@@ -230,14 +230,14 @@
    "name": "Checks: your own answer",
    "label": "",
    "rect": [
-    21,
-    259,
-    646,
-    23
+    24,
+    362,
+    984,
+    33
    ],
    "best": [
-    110,
-    23
+    165,
+    33
    ],
    "depth": 1,
    "parent": 0,
@@ -250,14 +250,14 @@
    "name": "button",
    "label": "&Send Answers",
    "rect": [
-    389,
-    307,
-    94,
-    23
+    590,
+    423,
+    144,
+    36
    ],
    "best": [
-    94,
-    23
+    144,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -269,14 +269,14 @@
    "name": "button",
    "label": "&Don't Answer",
    "rect": [
-    489,
-    307,
-    92,
-    23
+    740,
+    423,
+    140,
+    36
    ],
    "best": [
-    92,
-    23
+    140,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -288,14 +288,14 @@
    "name": "button",
    "label": "Answer &Later",
    "rect": [
-    587,
-    307,
-    89,
-    23
+    886,
+    423,
+    134,
+    36
    ],
    "best": [
-    89,
-    23
+    134,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -303,5 +303,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

@@ -4,7 +4,7 @@
  "os": "Windows-11-10.0.26300-SP0",
  "wx": "4.3.1 msw (phoenix) wxWidgets 3.3.3",
  "python": "3.12.10",
- "dpi_awareness": "unaware",
+ "dpi_awareness": "per-monitor aware",
  "appearance": {
   "dark": false,
   "name": "",
@@ -435,7 +435,7 @@
    "title": "Usage and Context",
    "class": "UsageDialog",
    "size": [
-    754,
+    751,
     360
    ],
    "capture": "PrintWindow",
@@ -527,5 +527,5 @@
    "about": "Main window with no sessions at all (a first run)"
   }
  },
- "seconds": 88.6
+ "seconds": 91.4
 }

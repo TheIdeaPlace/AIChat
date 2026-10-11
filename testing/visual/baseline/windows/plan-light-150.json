@@ -2,16 +2,16 @@
  "title": "Claude's plan: Visual probe",
  "class": "PlanDialog",
  "size": [
-  760,
-  600
+  1140,
+  900
  ],
  "client": [
-  744,
-  561
+  1118,
+  844
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    27,
-    16
+    38,
+    26
    ],
    "best": [
-    27,
-    16
+    38,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "# Plan\r\n\r\n1. Flush and close the progress file before signalling.\r\n2. Wait on the signal in the test.\r\n3. Run the suite ten times.\r\n",
    "rect": [
     10,
-    34,
-    728,
-    412
+    44,
+    1102,
+    652
    ],
    "best": [
-    127,
-    260
+    191,
+    390
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "If approved, carry on &in:",
    "rect": [
     8,
-    463,
-    126,
-    16
+    713,
+    190,
+    26
    ],
    "best": [
-    126,
-    16
+    190,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -78,14 +78,14 @@
    "name": "If approved, carry on in",
    "label": "",
    "rect": [
-    209,
-    460,
-    527,
-    23
+    302,
+    710,
+    808,
+    33
    ],
    "best": [
-    457,
-    23
+    683,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -99,13 +99,13 @@
    "label": "&What to change (for Keep Planning):",
    "rect": [
     8,
-    494,
-    193,
-    16
+    754,
+    286,
+    26
    ],
    "best": [
-    193,
-    16
+    286,
+    26
    ],
    "depth": 0,
    "parent": -1,
@@ -117,14 +117,14 @@
    "name": "What to change (for Keep Planning)",
    "label": "",
    "rect": [
-    211,
-    493,
-    527,
-    23
+    304,
+    753,
+    808,
+    33
    ],
    "best": [
-    110,
-    23
+    165,
+    33
    ],
    "depth": 0,
    "parent": -1,
@@ -137,14 +137,14 @@
    "name": "button",
    "label": "Read &Formatted...",
    "rect": [
-    331,
-    530,
-    114,
-    23
+    514,
+    800,
+    173,
+    36
    ],
    "best": [
-    114,
-    23
+    173,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -156,14 +156,14 @@
    "name": "button",
    "label": "&Approve",
    "rect": [
-    463,
-    530,
-    75,
-    23
+    705,
+    800,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -175,14 +175,14 @@
    "name": "button",
    "label": "&Keep Planning",
    "rect": [
-    544,
-    530,
-    97,
-    23
+    825,
+    800,
+    145,
+    36
    ],
    "best": [
-    97,
-    23
+    145,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -194,14 +194,14 @@
    "name": "button",
    "label": "Answer &Later",
    "rect": [
-    647,
-    530,
-    89,
-    23
+    976,
+    800,
+    134,
+    36
    ],
    "best": [
-    89,
-    23
+    134,
+    36
    ],
    "depth": 0,
    "parent": -1,
@@ -209,5 +209,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

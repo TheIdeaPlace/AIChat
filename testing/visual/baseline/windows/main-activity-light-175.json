@@ -2,16 +2,16 @@
  "title": "Fix the flaky upload test — The Chat Place",
  "class": "MainFrame",
  "size": [
-  1000,
-  529
+  1750,
+  956
  ],
  "client": [
-  984,
-  439
+  1726,
+  812
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     0,
     0,
-    984,
-    439
+    1726,
+    812
    ],
    "best": [
-    540,
-    632
+    915,
+    1083
    ],
    "depth": 0,
    "parent": -1,
@@ -41,12 +41,12 @@
    "rect": [
     8,
     8,
-    61,
-    16
+    107,
+    31
    ],
    "best": [
-    61,
-    16
+    107,
+    31
    ],
    "depth": 1,
    "parent": 0,
@@ -59,13 +59,13 @@
    "label": "",
    "rect": [
     10,
-    34,
-    378,
-    399
+    49,
+    674,
+    757
    ],
    "best": [
-    876,
-    64
+    1550,
+    124
    ],
    "depth": 1,
    "parent": 0,
@@ -84,14 +84,14 @@
    "name": "staticText",
    "label": "Fix the flaky upload test, AIChat, needs you: Pick a name for the release branch. Claude desktop app session, read-only.",
    "rect": [
-    402,
+    698,
     8,
-    574,
-    31
+    1020,
+    61
    ],
    "best": [
-    525,
-    31
+    928,
+    61
    ],
    "depth": 1,
    "parent": 0,
@@ -103,14 +103,14 @@
    "name": "staticText",
    "label": "&Messages in Fix the flaky upload test (needs you: Pick a name for the release branch, read-only):",
    "rect": [
-    402,
-    47,
-    574,
-    16
+    698,
+    77,
+    1020,
+    31
    ],
    "best": [
-    55,
-    16
+    97,
+    31
    ],
    "depth": 1,
    "parent": 0,
@@ -122,14 +122,14 @@
    "name": "Messages in Fix the flaky upload test (needs you: Pick a name for the release branch, read-only)",
    "label": "",
    "rect": [
-    404,
-    65,
-    574,
-    137
+    700,
+    110,
+    1020,
+    307
    ],
    "best": [
-    376,
-    94
+    656,
+    184
    ],
    "depth": 1,
    "parent": 0,
@@ -150,14 +150,14 @@
    "name": "panel",
    "label": "panel",
    "rect": [
-    402,
-    208,
-    574,
-    169
+    698,
+    423,
+    1020,
+    293
    ],
    "best": [
-    216,
-    169
+    371,
+    293
    ],
    "depth": 1,
    "parent": 0,
@@ -169,14 +169,14 @@
    "name": "staticText",
    "label": "About replying:",
    "rect": [
-    402,
-    208,
-    83,
-    16
+    698,
+    423,
+    143,
+    31
    ],
    "best": [
-    83,
-    16
+    143,
+    31
    ],
    "depth": 2,
    "parent": 6,
@@ -188,14 +188,14 @@
    "name": "About replying",
    "label": "This session belongs to the Claude desktop app, so you reply to it in Claude. The Chat Place only reads it: sending from here while the desktop app has it open could run two turns at once and tangle the conversation. Open in Claude switches the desktop app to it. Continue Here starts a Chat Place copy of it, with the whole conversation so far, that you can reply to here; the desktop app session isn't changed.",
    "rect": [
-    404,
-    230,
-    574,
-    120
+    700,
+    460,
+    1020,
+    210
    ],
    "best": [
-    127,
-    158
+    222,
+    308
    ],
    "depth": 2,
    "parent": 6,
@@ -208,14 +208,14 @@
    "name": "button",
    "label": "Open in &Claude",
    "rect": [
-    402,
-    354,
-    103,
-    23
+    698,
+    674,
+    180,
+    42
    ],
    "best": [
-    103,
-    23
+    180,
+    42
    ],
    "depth": 2,
    "parent": 6,
@@ -227,14 +227,14 @@
    "name": "button",
    "label": "Con&tinue Here...",
    "rect": [
-    511,
-    354,
-    107,
-    23
+    884,
+    674,
+    185,
+    42
    ],
    "best": [
-    107,
-    23
+    185,
+    42
    ],
    "depth": 2,
    "parent": 6,
@@ -246,14 +246,14 @@
    "name": "check",
    "label": "Show tool &activity",
    "rect": [
-    402,
-    385,
-    116,
-    15
+    698,
+    724,
+    205,
+    30
    ],
    "best": [
-    116,
-    15
+    205,
+    30
    ],
    "depth": 1,
    "parent": 0,
@@ -265,14 +265,14 @@
    "name": "button",
    "label": "&New Session...",
    "rect": [
-    402,
-    408,
-    96,
-    23
+    698,
+    762,
+    168,
+    42
    ],
    "best": [
-    96,
-    23
+    168,
+    42
    ],
    "depth": 1,
    "parent": 0,
@@ -284,14 +284,14 @@
    "name": "button",
    "label": "&Refresh",
    "rect": [
-    504,
-    408,
-    75,
-    23
+    872,
+    762,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 1,
    "parent": 0,
@@ -304,13 +304,13 @@
    "label": "",
    "rect": [
     0,
-    439,
-    984,
-    31
+    812,
+    1726,
+    46
    ],
    "best": [
-    301,
-    31
+    429,
+    46
    ],
    "depth": 0,
    "parent": -1,
@@ -323,13 +323,13 @@
    "label": "Tool activity shown in Fix the flaky upload test.",
    "rect": [
     2,
-    443,
-    464,
-    24
+    816,
+    833,
+    39
    ],
    "best": [
-    100,
-    80
+    175,
+    140
    ],
    "depth": 1,
    "parent": 14,
@@ -341,14 +341,14 @@
    "name": "Loaded session",
    "label": "Fix the flaky upload test: needs you, Pick a name for the release branch",
    "rect": [
-    471,
-    443,
-    312,
-    24
+    840,
+    816,
+    557,
+    39
    ],
    "best": [
-    100,
-    80
+    175,
+    140
    ],
    "depth": 1,
    "parent": 14,
@@ -360,14 +360,14 @@
    "name": "button",
    "label": "1 session needs you",
    "rect": [
-    788,
-    443,
-    146,
-    24
+    1402,
+    816,
+    251,
+    39
    ],
    "best": [
-    111,
-    23
+    197,
+    38
    ],
    "depth": 1,
    "parent": 14,
@@ -375,5 +375,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

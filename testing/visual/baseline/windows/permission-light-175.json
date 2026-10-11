@@ -2,16 +2,16 @@
  "title": "Claude needs permission: Visual probe",
  "class": "PermissionDialog",
  "size": [
-  700,
-  540
+  1225,
+  945
  ],
  "client": [
-  684,
-  501
+  1201,
+  881
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    46,
-    16
+    81,
+    31
    ],
    "best": [
-    46,
-    16
+    81,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "Claude wants to run git push origin release/0.2.\r\n\r\nBash command:\r\ngit push origin release/0.2",
    "rect": [
     10,
-    34,
-    668,
-    367
+    49,
+    1185,
+    683
    ],
    "best": [
-    127,
-    160
+    222,
+    280
    ],
    "depth": 0,
    "parent": -1,
@@ -60,13 +60,13 @@
    "label": "&Reason to give Claude if you deny (optional):",
    "rect": [
     8,
-    407,
-    238,
-    16
+    738,
+    416,
+    31
    ],
    "best": [
-    238,
-    16
+    416,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -79,13 +79,13 @@
    "label": "",
    "rect": [
     10,
-    433,
-    668,
-    23
+    779,
+    1185,
+    38
    ],
    "best": [
-    110,
-    23
+    192,
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -98,14 +98,14 @@
    "name": "button",
    "label": "&Allow",
    "rect": [
-    425,
-    470,
-    75,
-    23
+    759,
+    831,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -117,14 +117,14 @@
    "name": "button",
    "label": "&Deny",
    "rect": [
-    506,
-    470,
-    75,
-    23
+    898,
+    831,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -136,14 +136,14 @@
    "name": "button",
    "label": "Answer &Later",
    "rect": [
-    587,
-    470,
-    89,
-    23
+    1037,
+    831,
+    156,
+    42
    ],
    "best": [
-    89,
-    23
+    156,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -151,5 +151,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

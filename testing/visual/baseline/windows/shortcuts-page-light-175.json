@@ -2,16 +2,16 @@
  "title": "Keyboard Shortcuts",
  "class": "FormattedMessageDialog",
  "size": [
-  820,
-  620
+  1435,
+  956
  ],
  "client": [
-  804,
-  581
+  1411,
+  892
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     6,
     6,
-    796,
-    534
+    1403,
+    826
    ],
    "best": [
-    100,
-    80
+    175,
+    140
    ],
    "depth": 0,
    "parent": -1,
@@ -39,14 +39,14 @@
    "name": "button",
    "label": "Read as &Plain Text",
    "rect": [
-    600,
-    550,
-    115,
-    23
+    1059,
+    842,
+    205,
+    42
    ],
    "best": [
-    115,
-    23
+    205,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -58,14 +58,14 @@
    "name": "button",
    "label": "&Close",
    "rect": [
-    721,
-    550,
-    75,
-    23
+    1270,
+    842,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -73,5 +73,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

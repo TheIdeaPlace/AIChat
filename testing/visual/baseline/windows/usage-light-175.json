@@ -2,16 +2,16 @@
  "title": "Usage and Context",
  "class": "UsageDialog",
  "size": [
-  754,
-  360
+  1327,
+  630
  ],
  "client": [
-  738,
-  321
+  1303,
+  566
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     8,
     8,
-    101,
-    16
+    179,
+    31
    ],
    "best": [
-    101,
-    16
+    179,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -40,13 +40,13 @@
    "label": "",
    "rect": [
     10,
-    26,
-    722,
-    258
+    41,
+    1287,
+    469
    ],
    "best": [
-    736,
-    49
+    1297,
+    94
    ],
    "depth": 0,
    "parent": -1,
@@ -63,14 +63,14 @@
    "name": "button",
    "label": "&Copy",
    "rect": [
-    493,
-    290,
-    75,
-    23
+    884,
+    516,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -82,14 +82,14 @@
    "name": "button",
    "label": "Copy &All",
    "rect": [
-    574,
-    290,
-    75,
-    23
+    1023,
+    516,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -101,14 +101,14 @@
    "name": "button",
    "label": "C&lose",
    "rect": [
-    655,
-    290,
-    75,
-    23
+    1162,
+    516,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -116,5 +116,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

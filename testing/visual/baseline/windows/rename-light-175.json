@@ -2,16 +2,16 @@
  "title": "Rename Session",
  "class": "TextEntryDialog",
  "size": [
-  346,
-  153
+  376,
+  267
  ],
  "client": [
-  330,
-  114
+  352,
+  203
  ],
  "dpi": [
-  96,
-  96
+  168,
+  168
  ],
  "content_scale": 1.0,
  "controls": [
@@ -20,14 +20,14 @@
    "name": "staticText",
    "label": "New name for Visual probe:",
    "rect": [
-    10,
-    10,
-    147,
-    16
+    18,
+    18,
+    259,
+    31
    ],
    "best": [
-    147,
-    16
+    259,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -39,14 +39,14 @@
    "name": "text",
    "label": "Visual probe",
    "rect": [
-    17,
-    38,
+    28,
+    69,
     300,
-    23
+    38
    ],
    "best": [
     300,
-    23
+    38
    ],
    "depth": 0,
    "parent": -1,
@@ -59,14 +59,14 @@
    "name": "button",
    "label": "OK",
    "rect": [
-    158,
-    81,
-    75,
-    23
+    50,
+    143,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -78,14 +78,14 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    241,
-    81,
-    75,
-    23
+    195,
+    143,
+    133,
+    42
    ],
    "best": [
-    75,
-    23
+    133,
+    42
    ],
    "depth": 0,
    "parent": -1,
@@ -97,9 +97,9 @@
    "name": "staticLine",
    "label": "",
    "rect": [
-    11,
-    70,
-    310,
+    19,
+    124,
+    316,
     2
    ],
    "best": [
@@ -112,5 +112,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }

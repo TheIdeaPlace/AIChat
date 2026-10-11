@@ -23,8 +23,8 @@ looks like.
 | #180 | The Last message column (#146) is out of sight at the default window size | main-last-message |
 | #181 | Both lists show the same blue selection; only a faint dotted outline (1.89:1) says which has focus | Every main-window picture, light and dark |
 | #182 | A first run shows an empty white list and no word on how to start. **Fixed:** the messages say how to start | main-empty |
-| #185 | The app isn't DPI aware, so Windows stretches it at 150% and 175% and text is soft | light-150, light-175 |
-| #186 | At 175% on a 1080-pixel screen, tall dialogs run under the taskbar and their buttons can't be seen | new-session, continue-here, bug-report, about-you, plan and the formatted pages at 175% |
+| #185 | **Fixed:** The app wasn't DPI aware, so Windows stretched it at 150% and 175% and text was soft | light-150, light-175 |
+| #186 | **Fixed:** At 175% on a 1080-pixel screen, tall dialogs ran under the taskbar and their buttons couldn't be seen | new-session, continue-here, bug-report, about-you, plan and the formatted pages at 175% |
 
 Noted, not filed:
 - **The messages list:** it shows a message's first line as written, so a heading reads "Claude: ## What changed".

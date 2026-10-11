@@ -2,16 +2,16 @@
  "title": "The Chat Place",
  "class": "MainFrame",
  "size": [
-  1000,
-  632
+  1500,
+  968
  ],
  "client": [
-  984,
-  542
+  1478,
+  841
  ],
  "dpi": [
-  96,
-  96
+  144,
+  144
  ],
  "content_scale": 1.0,
  "controls": [
@@ -22,12 +22,12 @@
    "rect": [
     0,
     0,
-    984,
-    542
+    1478,
+    841
    ],
    "best": [
-    540,
-    167
+    790,
+    240
    ],
    "depth": 0,
    "parent": -1,
@@ -41,12 +41,12 @@
    "rect": [
     8,
     8,
-    61,
-    16
+    92,
+    26
    ],
    "best": [
-    61,
-    16
+    92,
+    26
    ],
    "depth": 1,
    "parent": 0,
@@ -59,13 +59,13 @@
    "label": "",
    "rect": [
     10,
-    34,
-    378,
-    502
+    44,
+    575,
+    791
    ],
    "best": [
-    200,
-    49
+    300,
+    79
    ],
    "depth": 1,
    "parent": 0,
@@ -79,14 +79,14 @@
    "name": "staticText",
    "label": "",
    "rect": [
-    402,
+    599,
     8,
-    574,
-    16
+    871,
+    26
    ],
    "best": [
     1,
-    16
+    26
    ],
    "depth": 1,
    "parent": 0,
@@ -98,14 +98,14 @@
    "name": "staticText",
    "label": "&Messages:",
    "rect": [
-    402,
-    32,
-    574,
-    16
+    599,
+    42,
+    871,
+    26
    ],
    "best": [
-    55,
-    16
+    83,
+    26
    ],
    "depth": 1,
    "parent": 0,
@@ -117,14 +117,14 @@
    "name": "Messages",
    "label": "",
    "rect": [
-    404,
-    50,
-    574,
-    424
+    601,
+    70,
+    871,
+    680
    ],
    "best": [
-    572,
-    49
+    859,
+    79
    ],
    "depth": 1,
    "parent": 0,
@@ -140,14 +140,14 @@
    "name": "check",
    "label": "Show tool &activity",
    "rect": [
-    402,
-    488,
-    116,
-    15
+    599,
+    764,
+    177,
+    25
    ],
    "best": [
-    116,
-    15
+    177,
+    25
    ],
    "depth": 1,
    "parent": 0,
@@ -159,14 +159,14 @@
    "name": "button",
    "label": "&New Session...",
    "rect": [
-    402,
-    511,
-    96,
-    23
+    599,
+    797,
+    145,
+    36
    ],
    "best": [
-    96,
-    23
+    145,
+    36
    ],
    "depth": 1,
    "parent": 0,
@@ -178,14 +178,14 @@
    "name": "button",
    "label": "&Refresh",
    "rect": [
-    504,
-    511,
-    75,
-    23
+    750,
+    797,
+    114,
+    36
    ],
    "best": [
-    75,
-    23
+    114,
+    36
    ],
    "depth": 1,
    "parent": 0,
@@ -198,13 +198,13 @@
    "label": "",
    "rect": [
     0,
-    542,
-    984,
-    31
+    841,
+    1478,
+    41
    ],
    "best": [
     129,
-    31
+    41
    ],
    "depth": 0,
    "parent": -1,
@@ -217,13 +217,13 @@
    "label": "0 sessions: 0 need you, 0 working.",
    "rect": [
     2,
-    546,
-    572,
-    24
+    845,
+    869,
+    34
    ],
    "best": [
-    100,
-    80
+    150,
+    120
    ],
    "depth": 1,
    "parent": 9,
@@ -235,14 +235,14 @@
    "name": "Loaded session",
    "label": "",
    "rect": [
-    579,
-    546,
-    355,
-    24
+    876,
+    845,
+    534,
+    34
    ],
    "best": [
-    100,
-    80
+    150,
+    120
    ],
    "depth": 1,
    "parent": 9,
@@ -250,5 +250,5 @@
    "problems": []
   }
  ],
- "capture": "screen copy (stretched by Windows)"
+ "capture": "PrintWindow"
 }
