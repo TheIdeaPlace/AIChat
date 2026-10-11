@@ -6701,10 +6701,13 @@ def test_delete_takes_a_recent_folder_off_the_list_and_goes_to_the_next(frame, e
                                                                         monkeypatch):
     """#215: Delete on a recent folder removes it, for good, and the next
     one takes its place; the last one gives way to the one before."""
+    import os
     from thechatplace.ui.dialogs import NewSessionDialog
-    folders = ["C:\\G\\a", "C:\\G\\b", "C:\\G\\c"]
+    # This system's own paths: what's spoken is the last part of one.
+    root = str(env["tmp"])
+    a, b, c = (os.path.join(root, name) for name in "abc")
     gone = []
-    dialog = NewSessionDialog(frame, "C:\\G", recent=folders, projects_root="C:\\G",
+    dialog = NewSessionDialog(frame, root, recent=[a, b, c], projects_root=root,
                               feedback=env["feedback"].append,
                               remove_recent=lambda f: gone.append(f) or True)
     monkeypatch.setattr(dialog, "refresh_repo", lambda: None)
@@ -6712,20 +6715,20 @@ def test_delete_takes_a_recent_folder_off_the_list_and_goes_to_the_next(frame, e
         dialog.folder.SetSelection(1)
         dialog.folder.SelectAll()  # as arrowing leaves it
         assert not _delete_key(dialog)
-        assert gone == ["C:\\G\\b"]
-        assert list(dialog.folder.GetStrings()) == ["C:\\G\\a", "C:\\G\\c"]
-        assert dialog.folder.GetValue() == "C:\\G\\c"
+        assert gone == [b]
+        assert list(dialog.folder.GetStrings()) == [a, c]
+        assert dialog.folder.GetValue() == c
         assert dialog.folder.GetSelection() == 1
-        assert dialog.folder.GetTextSelection() == (0, len("C:\\G\\c"))
+        assert dialog.folder.GetTextSelection() == (0, len(c))
         # Just what happened: the screen reader reads the folder now there.
         assert env["feedback"][-1] == "Removed b from recent folders."
         # The last one: the one before it comes up.
         assert not _delete_key(dialog)
-        assert dialog.folder.GetValue() == "C:\\G\\a"
+        assert dialog.folder.GetValue() == a
         assert not _delete_key(dialog)
-        assert dialog.folder.GetCount() == 0 and dialog.folder.GetValue() == "C:\\G"
+        assert dialog.folder.GetCount() == 0 and dialog.folder.GetValue() == root
         assert env["feedback"][-1] == "Removed a from recent folders. None left."
-        assert gone == ["C:\\G\\b", "C:\\G\\c", "C:\\G\\a"]
+        assert gone == [b, c, a]
         # Nothing left to remove: Delete is the box's own again.
         assert _delete_key(dialog)
     finally:
