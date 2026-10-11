@@ -1,0 +1,130 @@
+{
+ "title": "Properties of Visual probe",
+ "class": "PropertiesDialog",
+ "size": [
+  976,
+  360
+ ],
+ "client": [
+  960,
+  321
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Properties:",
+   "rect": [
+    8,
+    8,
+    57,
+    16
+   ],
+   "best": [
+    57,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Properties",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    944,
+    258
+   ],
+   "best": [
+    961,
+    154
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Title: Visual probe",
+    "Kind: Chat Place session",
+    "Folder: C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\properties\\Projects\\Scratch",
+    "Status: Idle",
+    "Started: 11 October 2026 at 14:05 (just now)",
+    "Last activity: 11 October 2026 at 14:05 (just now)",
+    "Model of the latest reply: Opus 5.5",
+    "Model chosen: the default model",
+    "Effort: Default (your Claude Code setting)",
+    "Permission mode: auto",
+    "Messages: 2",
+    "Your messages: 1"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    715,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &All",
+   "rect": [
+    796,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    877,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

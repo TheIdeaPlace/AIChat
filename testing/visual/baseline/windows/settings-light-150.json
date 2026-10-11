@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   1020,
-  729
+  775
  ],
  "client": [
   998,
-  673
+  719
  ],
  "dpi": [
   144,
@@ -323,12 +323,69 @@
    "value": "When your sessions finish a turn, or any session needs you"
   },
   {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Recent &folders New Session offers:",
+   "rect": [
+    10,
+    531,
+    274,
+    26
+   ],
+   "best": [
+    274,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "SpinCtrl",
+   "name": "Recent folders New Session offers",
+   "label": "",
+   "rect": [
+    292,
+    526,
+    74,
+    33
+   ],
+   "best": [
+    74,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lear Recent Folders",
+   "rect": [
+    374,
+    526,
+    193,
+    36
+   ],
+   "best": [
+    193,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "CheckBox",
    "name": "check",
    "label": "Turn on Remote &Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)",
    "rect": [
     10,
-    526,
+    572,
     937,
     50
    ],
@@ -347,7 +404,7 @@
    "label": "&Tell me when an update has been installed, with a link to what's new",
    "rect": [
     10,
-    586,
+    632,
     572,
     25
    ],
@@ -366,7 +423,7 @@
    "label": "OK",
    "rect": [
     747,
-    629,
+    675,
     114,
     36
    ],
@@ -385,7 +442,7 @@
    "label": "Cancel",
    "rect": [
     871,
-    629,
+    675,
     114,
     36
    ],

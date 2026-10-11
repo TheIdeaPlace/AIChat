@@ -20,7 +20,6 @@
   1000,
   720
  ],
- "complete": true,
  "surfaces": {
   "main-start": {
    "kind": "window",
@@ -226,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    517
+    550
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -442,6 +441,20 @@
    "problems": [],
    "about": "View, Usage and Context"
   },
+  "properties": {
+   "kind": "dialog",
+   "png": "properties-dark-100.png",
+   "json": "properties-dark-100.json",
+   "title": "Properties of Visual probe",
+   "class": "PropertiesDialog",
+   "size": [
+    976,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Properties of a session"
+  },
   "about-you": {
    "kind": "dialog",
    "png": "about-you-dark-100.png",
@@ -527,5 +540,5 @@
    "about": "Main window with no sessions at all (a first run)"
   }
  },
- "seconds": 91.4
+ "seconds": 91.3
 }

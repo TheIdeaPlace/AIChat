@@ -1,0 +1,130 @@
+{
+ "title": "Properties of Visual probe",
+ "class": "PropertiesDialog",
+ "size": [
+  1448,
+  540
+ ],
+ "client": [
+  1426,
+  484
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Properties:",
+   "rect": [
+    8,
+    8,
+    85,
+    26
+   ],
+   "best": [
+    85,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Properties",
+   "label": "",
+   "rect": [
+    10,
+    36,
+    1410,
+    398
+   ],
+   "best": [
+    1425,
+    254
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Title: Visual probe",
+    "Kind: Chat Place session",
+    "Folder: C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\properties\\Projects\\Scratch",
+    "Status: Idle",
+    "Started: 11 October 2026 at 14:05 (just now)",
+    "Last activity: 11 October 2026 at 14:05 (just now)",
+    "Model of the latest reply: Opus 5.5",
+    "Model chosen: the default model",
+    "Effort: Default (your Claude Code setting)",
+    "Permission mode: auto",
+    "Messages: 2",
+    "Your messages: 1"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    1064,
+    440,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &All",
+   "rect": [
+    1184,
+    440,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    1304,
+    440,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

@@ -390,6 +390,10 @@ def build_world(root: Path, patch=setattr, empty: bool = False, formatted_view: 
     patch(main_frame, "TurnRunner", fake_env.FakeRunner)
     patch(platform_paths, "find_claude", lambda: platform_paths.ClaudeLookup("claude.exe"))
     # Nor the real gh, for New Session's From GitHub (#154).
+    # A date and time read from the clock would change every picture of
+    # Properties (#214); the "(just now)" after it still comes from the data.
+    from thechatplace import properties
+    patch(properties, "_date", lambda moment: "11 October 2026 at 14:05")
     from thechatplace import workplaces
     patch(workplaces, "find_gh", lambda: "gh.exe")
     patch(workplaces, "list_github_repos", lambda gh, limit=0: [
