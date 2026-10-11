@@ -76,6 +76,7 @@ One window, three parts, in Tab order: the session list; the messages of the loa
 | Ctrl+Shift+A | Answer Claude: approve or deny a tool, answer its questions, or approve its plan (the loaded session first, then the one that has waited longest). Escape in the dialog answers later |
 | Ctrl+Shift+K | What Claude knows about you: your instructions, memories, skills, subagents, commands and settings, to read or open in your editor |
 | Ctrl+Shift+P | Prompts: your saved prompts, to use (Enter puts one in the reply box), add, edit, reorder or delete |
+| Alt+Enter | Properties: what can be known about the selected session (or, in the messages, the selected message), one line each; Ctrl+C copies a line. Option+Return on a Mac |
 | F1 | This list of shortcuts |
 | Alt+H, G | The user guide, read by heading |
 | Ctrl+Comma | Settings (announcements and speech) |

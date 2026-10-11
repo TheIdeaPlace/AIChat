@@ -238,7 +238,7 @@ def clean_fields(raw) -> List[str]:
     return fields or list(DEFAULT_FIELDS)
 
 
-def _how_long_ago(then_ms: int, now_ms: Optional[int]) -> str:
+def how_long_ago(then_ms: int, now_ms: Optional[int]) -> str:
     """'just now', '5 minutes ago', 'yesterday', '3 days ago'."""
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     seconds = max(0, (now_ms - then_ms) // 1000)
@@ -263,12 +263,12 @@ def describe_age(then_ms: int, now_ms: Optional[int] = None) -> str:
     """Last activity: 'active just now', 'active 3 days ago'."""
     if not then_ms:
         return "no activity recorded"
-    return f"active {_how_long_ago(then_ms, now_ms)}"
+    return f"active {how_long_ago(then_ms, now_ms)}"
 
 
 def describe_started(then_ms: int, now_ms: Optional[int] = None) -> str:
     """Started (#209): 'started 2 days ago', or nothing when it isn't known."""
-    return f"started {_how_long_ago(then_ms, now_ms)}" if then_ms else ""
+    return f"started {how_long_ago(then_ms, now_ms)}" if then_ms else ""
 
 
 #: How the session list can be ordered (View, Sort Sessions): (value, menu label).

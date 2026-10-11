@@ -127,6 +127,9 @@ SHORTCUTS = [
                          "your editor"),
         ("Ctrl+Shift+P", "Prompts: your saved prompts, to use (Enter puts one in the reply "
                          "box), add, edit, reorder or delete"),
+        ("Alt+Enter", "Properties: what can be known about the selected session (or, in the "
+                      "messages, the selected message), one line each; Ctrl+C copies a line. "
+                      "Option+Return on a Mac"),
         ("F1", "This list of shortcuts"),
         ("Alt+H, G", "The user guide, read by heading"),
         ("Ctrl+Comma", "Settings (announcements and speech)"),
