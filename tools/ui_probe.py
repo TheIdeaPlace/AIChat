@@ -132,19 +132,32 @@ def _on_top(window):
     be its own Get Started or OneDrive window, which then came out in the
     picture (#155)."""
     user32 = ctypes.windll.user32
-    user32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_int, ctypes.c_int, ctypes.c_uint]
     hwnd = ctypes.c_void_p(window.GetHandle())
-    HWND_TOPMOST, HWND_NOTOPMOST = ctypes.c_void_p(-1), ctypes.c_void_p(-2)
-    SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
-    flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
-    window.Raise()
-    user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags)
-    _pump(0.4)
+    GWL_EXSTYLE, WS_EX_TOPMOST = -20, 0x8
+    already = bool(user32.GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST)
+    flags = 0x1 | 0x2 | 0x10  # SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
     try:
+        window.Raise()
+        if not already and not _set_window_pos(hwnd, -1, flags):  # HWND_TOPMOST
+            print(f"  (couldn't put the window on top: error {ctypes.GetLastError()})")
+        _pump(0.4)
         yield
     finally:
-        user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+        if not already:
+            _set_window_pos(hwnd, -2, flags)  # HWND_NOTOPMOST
+
+
+_SetWindowPos = None
+
+
+def _set_window_pos(hwnd, after: int, flags: int) -> bool:
+    global _SetWindowPos
+    if _SetWindowPos is None:
+        _SetWindowPos = ctypes.WinDLL("user32", use_last_error=False).SetWindowPos
+        _SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                                  ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+        _SetWindowPos.restype = ctypes.c_bool
+    return _SetWindowPos(hwnd, ctypes.c_void_p(after), 0, 0, 0, 0, flags)
 
 
 def _work_area():
@@ -288,9 +301,9 @@ def describe(window: wx.TopLevelWindow) -> dict:
             if ellipsized and entry["label"]:
                 # Shortened is fine; too narrow to show even a little of it
                 # isn't: less than a third of its text, or of "W...".
-                needs = child.GetTextExtent(entry["label"].replace("&", "")).width
+                needs = child.GetTextExtent(wx.Control.RemoveMnemonics(entry["label"])).width
                 if screen.width + 1 < min(needs, max(needs // 3, child.GetTextExtent("W...").width)):
-                    entry["problems"].append("text hidden: too narrow to show any of it")
+                    entry["problems"].append("text hidden: too narrow to show more than a sliver of it")
             elif isinstance(child, _TEXT_CONTROLS) and entry["label"]:
                 if best.width > screen.width + 1 or best.height > screen.height + 1:
                     entry["problems"].append("text cut off: smaller than its best size")

@@ -38,7 +38,7 @@ The layout matches main-own, and the split stays where it is: the session list i
 
 ## main-attachments: An own session with two files attached to the next message
 
-This picture is the same as main-own, except that a small white list 48 tall appears under the Send/Stop/Commands/Attach Files row. It shows "screenshot of the error.png" (selected in blue) and "upload.log". To make room, the messages list drops to 269 tall. The attachment list has no heading of its own, so it looks like a third, unlabelled list sitting under the buttons.
+This picture is the same as main-own, except that a small white list 48 tall appears under the Send/Stop/Commands/Attach Files row and the "Ready." line below it. It shows "screenshot of the error.png" (selected in blue) and "upload.log". To make room, the messages list drops to 269 tall. The attachment list has no heading of its own, so it looks like a third, unlabelled list sitting under the buttons.
 
 **What looks off:** There is no visible label for the attachments list. The bottom of its border sits 6 pixels from the "Show tool activity" check box, which is tighter than the spacing elsewhere. Three lists now show a blue selected row at once (#181).
 

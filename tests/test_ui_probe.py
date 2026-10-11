@@ -215,18 +215,25 @@ def test_the_working_surface_says_working(opened, tmp_path, monkeypatch):
         ui_probe.close_frame(frame)
 
 
-@pytest.mark.parametrize("width, label, hidden", [
-    (1, "1 message queued. Claude is working (1 minute 15 seconds).", True),
-    (40, "1 message queued. Claude is working (1 minute 15 seconds).", True),
-    (300, "1 message queued. Claude is working (1 minute 15 seconds).", False),
-    (15, "OK", False),  # shown whole, however narrow the label
+LONG_STATUS = "1 message queued. Claude is working (1 minute 15 seconds)."
+
+
+# Widths from the label's own text, so the cases hold with any font and
+# scaling (a Mac's system font is larger than Windows' at 100%).
+@pytest.mark.parametrize("label, width, hidden", [
+    (LONG_STATUS, lambda text: 1, True),
+    (LONG_STATUS, lambda text: text.GetTextExtent("W...").width // 2, True),
+    (LONG_STATUS, lambda text: text.GetTextExtent(LONG_STATUS).width // 2, False),
+    (LONG_STATUS, lambda text: text.GetTextExtent(LONG_STATUS).width + 2, False),
+    # A short label a pixel too narrow for itself still shows nearly all of it.
+    ("OK", lambda text: text.GetTextExtent("OK").width - 1, False),
 ])
-def test_an_ellipsized_label_too_narrow_to_show_anything_is_flagged(app, width, label, hidden):
-    dialog = wx.Dialog(None, size=(500, 200))
+def test_an_ellipsized_label_too_narrow_to_show_anything_is_flagged(app, label, width, hidden):
+    dialog = wx.Dialog(None, size=(1000, 200))
     try:
-        text = wx.StaticText(dialog, label=label, pos=(10, 10), size=(width, 20),
+        text = wx.StaticText(dialog, label=label, pos=(10, 10),
                              style=wx.ST_ELLIPSIZE_END | wx.ST_NO_AUTORESIZE)
-        text.SetSize((width, 20))
+        text.SetSize((width(text), 20))
         info = ui_probe.describe(dialog)
         problems = next(c for c in info["controls"] if c["label"] == label)["problems"]
         assert any("too narrow" in p for p in problems) is hidden
@@ -239,7 +246,8 @@ def test_status_bar_text_is_shortened_with_an_ellipsis(app):
     from thechatplace.ui.statusbar import shown_text
     frame = wx.Frame(None)
     try:
-        dc = wx.ClientDC(frame)
+        bitmap = wx.Bitmap(10, 10)  # a memory DC: the frame is never shown
+        dc = wx.MemoryDC(bitmap)
         dc.SetFont(frame.GetFont())
         text = "Fix the flaky upload test: needs you, Pick a name for the release branch"
         assert shown_text(dc, text, 2000) == text

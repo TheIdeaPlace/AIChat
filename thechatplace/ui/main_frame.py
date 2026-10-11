@@ -665,7 +665,7 @@ class MainFrame(wx.Frame):
         if info is None:
             text = ""
         elif info.is_own and info.cli_session_id in self._runners:
-            text = f"{info.title}: {self.turn_status.GetLabel()}"
+            text = f"{info.title}: {self.turn_status.GetLabelText()}"
         else:
             state = info.state + (f", {info.detail}" if info.detail else "")
             text = f"{info.title}: {state}"
@@ -2211,8 +2211,8 @@ class MainFrame(wx.Frame):
             # One line: a question's own line breaks would hide the rest of
             # it on this single-line status (#179).
             label = " ".join(label.split())
-            if self.turn_status.GetLabel() != label:
-                self.turn_status.SetLabel(label)
+            if self.turn_status.GetLabelText() != label:
+                self.turn_status.SetLabelText(label)  # an & is shown, not an access key
         self._update_status_session()
 
     def _context(self, info: Optional[SessionInfo]):

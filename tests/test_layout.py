@@ -143,7 +143,7 @@ def test_the_split_stays_put_whatever_is_loaded(app, tmp_path, monkeypatch, size
     assert len(set(widths.values())) == 1, widths
 
 
-def test_the_turn_status_is_whole_for_screen_readers_and_readable(app, tmp_path, monkeypatch):
+def test_the_turn_status_fits_its_line_and_the_status_bar_has_it_whole(app, tmp_path, monkeypatch):
     """Not the regression test for #179 (the split test above is): this
     checks the status's own line is wide enough to read at the usual size."""
     env = ui_probe.build_world(tmp_path, monkeypatch.setattr, formatted_view=False)

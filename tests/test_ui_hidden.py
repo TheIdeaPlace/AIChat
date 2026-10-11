@@ -7920,3 +7920,15 @@ def test_continue_here_shows_the_start_of_its_title_and_all_its_note(frame, tmp_
             assert note.GetClientSize().height >= lines * note.GetCharHeight()
     finally:
         dialog.Destroy()
+
+
+def test_the_turn_status_is_one_line_and_keeps_its_ampersands(frame):
+    # #179: a command's line breaks would show only its first line on the
+    # single-line status (and stop Windows ending it in "..."), and an "&"
+    # was taken as an access key, so screen readers didn't hear it.
+    _waiting_turn(frame, _request(tool_input={"command": "npm i &&\nnpm test"}))
+    shown = frame.turn_status.GetLabelText()
+    assert "\n" not in shown and "npm i && npm test" in shown
+    assert frame.turn_status.GetLabel() == shown.replace("&", "&&")
+    session_part = frame.status_session.latest()
+    assert "\n" not in session_part and "npm i && npm test" in session_part
