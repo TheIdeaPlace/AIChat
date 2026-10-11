@@ -714,6 +714,11 @@ def d_usage(frame, env):
     return frame.on_usage
 
 
+def d_properties(frame, env):
+    _open(frame, "Visual probe")
+    return frame.on_properties
+
+
 def d_about_you(frame, env):
     home = env["tmp"] / "claude"
     (home / "skills" / "release").mkdir(parents=True, exist_ok=True)
@@ -783,6 +788,7 @@ SURFACES = {
     "find-all": ("dialog", d_find_all, "View, Find in All Sessions: the results"),
     "changes": ("dialog", d_changes, "View, Changed Files"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
+    "properties": ("dialog", d_properties, "View, Properties of the loaded session"),
     "about-you": ("dialog", d_about_you, "View, What Claude Knows About You"),
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
     "prompts": ("dialog", d_prompts, "File, Prompts"),
@@ -796,7 +802,9 @@ EMPTY_WORLD = {"main-empty"}
 
 #: Dialog classes the probe deliberately doesn't photograph, and why.
 #: ``tests/test_ui_probe.py`` fails on any dialog class in neither list.
-NOT_PHOTOGRAPHED = {}
+NOT_PHOTOGRAPHED = {
+    "LinesDialog": "the list Usage and Context and Properties are made from, shown as those",
+}
 
 #: Which of our dialog classes each dialog surface shows. "rename" shows
 #: wx's own TextEntryDialog.
@@ -822,6 +830,7 @@ DIALOG_CLASSES = {
     "find-all": "FindResultsDialog",
     "changes": "ChangesDialog",
     "usage": "UsageDialog",
+    "properties": "PropertiesDialog",
     "about-you": "AboutYouDialog",
     "session-columns": "SessionColumnsDialog",
     "prompts": "PromptsDialog",

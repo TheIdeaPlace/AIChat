@@ -1779,14 +1779,14 @@ class ChangesDialog(wx.Dialog):
         event.Skip()
 
 
-class UsageDialog(wx.Dialog):
-    """View, Usage and Context (Ctrl+Shift+U, #130): the loaded session's
-    context and each usage limit as a line of a list, to read by arrowing
-    rather than only hear in the system voice. Copy (or Ctrl+C in the list)
-    copies the selected line; Copy All copies every line."""
+class LinesDialog(wx.Dialog):
+    """Lines of a list, to read by arrowing rather than only hear in the
+    system voice. Copy (or Ctrl+C in the list) copies the selected line;
+    Copy All copies every line. ``label`` names the list, with its access
+    key."""
 
-    def __init__(self, parent, lines, copy):
-        super().__init__(parent, title="Usage and Context", size=(640, 360),
+    def __init__(self, parent, title, label, lines, copy):
+        super().__init__(parent, title=title, size=(640, 360),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._lines = list(lines)
         # A list's rows don't wrap, so the dialog is as wide as its longest
@@ -1798,9 +1798,9 @@ class UsageDialog(wx.Dialog):
             self.SetSize((width, 360))
         self._copy = copy
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(wx.StaticText(self, label="&Usage and context:"), 0, wx.LEFT | wx.TOP, 8)
+        sizer.Add(wx.StaticText(self, label=f"{label}:"), 0, wx.LEFT | wx.TOP, 8)
         self.list = wx.ListBox(self, style=wx.LB_SINGLE, choices=self._lines)
-        set_accessible_name(self.list, "Usage and context")
+        set_accessible_name(self.list, label.replace("&", ""))
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         # The same keys as Code Blocks: Alt+C copies, Alt+L closes.
@@ -1838,6 +1838,22 @@ class UsageDialog(wx.Dialog):
 
     def copy_all(self):
         self._copy("\n".join(self._lines), False)
+
+
+class UsageDialog(LinesDialog):
+    """View, Usage and Context (Ctrl+Shift+U, #130): the loaded session's
+    context and each usage limit as a line of a list."""
+
+    def __init__(self, parent, lines, copy):
+        super().__init__(parent, "Usage and Context", "&Usage and context", lines, copy)
+
+
+class PropertiesDialog(LinesDialog):
+    """View, Properties (Alt+Enter, #214): a session's or a message's
+    properties, one "Property: value" line each. The title says whose."""
+
+    def __init__(self, parent, title, lines, copy):
+        super().__init__(parent, title, "&Properties", lines, copy)
 
 
 class AboutYouDialog(wx.Dialog):

@@ -450,6 +450,18 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   90% or is reached, and when Claude Code compacts a conversation (the messages list shows
   "Conversation compacted" too). A turn that fails on a usage limit says so in plain words,
   with when it resets.
+- **Properties** (Alt+Enter, View menu, or the session's and the message's context menus; Option+Return
+  on a Mac) opens a list of "Property: value" lines, read and copied like Usage and Context. In the
+  session list it's the selected session; in the messages, the selected message; anywhere else,
+  the loaded session. A session's lines are its title, kind, folder, status, when it started and
+  was last active, the model of its latest reply (and, for The Chat Place's own, the model, effort
+  and permission mode chosen), how many messages, your messages, Claude's replies, tool calls,
+  links, code blocks and changed files it has, how full its context is, how many times it was
+  compacted, its groups, Remote Control, whether it's archived or hidden, its session and desktop
+  app IDs, and its transcript file and size. Its whole transcript is read for this, so the counts
+  don't depend on Show Tool Activity. A message's lines are who it's from, its date and time,
+  its position in the list ("12 of 40"), its lines, words and characters, its links and code
+  blocks, and its ID.
 - **Turn Status** (Ctrl+Shift+T) says how long Claude has been working on the current turn and
   what it last did, or, while Claude waits on background work, what is still running. There's no
   time limit on a turn; Stop (Ctrl+Period) ends it, along with anything it started, such as a
@@ -686,6 +698,7 @@ shows it as plain text instead.
 | Reply box | Ctrl+Period | Stop the running turn |
 | Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, or what is still running in the background |
 | Anywhere | Ctrl+Shift+A | Answer Claude: a permission request, a question or a plan |
+| Anywhere | Alt+Enter | Properties of the selected session, or in the messages the selected message |
 | Anywhere | F1 | Keyboard shortcuts |
 | Anywhere | Alt+H, G | The user guide |
 | Anywhere | Ctrl+Comma | Settings |

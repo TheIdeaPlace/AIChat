@@ -53,7 +53,7 @@ import wx
 from ..changes import by_file, summary_text
 from ..codeblocks import find_code_blocks
 from .. import (__version__, about_you, announce, attachments, bugreport, signin, export, hub, links,
-               platform_paths, remote, usage, workplaces)
+               platform_paths, properties, remote, usage, workplaces)
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
                           TurnRunner, allow_response, answer_questions_response,
@@ -80,7 +80,7 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         SessionInfo, field_short_name, group_view, in_view, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker
 from ..transcript import (ASSISTANT, ERROR, PEER, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT,
-                          ChatMessage, TranscriptReader)
+                          ChatMessage, TranscriptReader, read_transcript)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
 from . import mac_a11y
@@ -93,7 +93,7 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, Chang
                       FormattedMessageDialog, LinksDialog, WrappingText,
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
-                      SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
+                      PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
                       formatted_view_available, press_focused_button_on_a_mac)
 
 APP_NAME = "The Chat Place"
@@ -219,6 +219,7 @@ class MainFrame(wx.Frame):
         # for idle time, so a menu VO+Shift+M scheduled just before Cmd+Q
         # would otherwise still open, on a hidden window that has stopped.
         self._closing = False
+        self._properties_busy = False  # View, Properties reading a transcript (#214)
         self._claude_version = ""  # for bug reports; found in the background
         # Slash commands and skills per folder (#23), fetched in the background.
         self._commands: Dict[str, List[dict]] = {}  # by _folder_key
@@ -442,6 +443,10 @@ class MainFrame(wx.Frame):
         # its shortcut is the way in (#190).
         self._item(view, "Links...\tCtrl+L", lambda e: self.on_links())
         self._item(view, "Find in &All Sessions...\tCtrl+Shift+S", lambda e: self.on_find_all())
+        # Every letter of "Properties" is another item's access key already,
+        # so, as with Links, its shortcut is the way in (#214). Alt+Enter as
+        # in Explorer: the focused session, or the focused message.
+        self._item(view, "Properties...\tAlt+Enter", lambda e: self.on_properties())
         self.activity_item = view.AppendCheckItem(wx.ID_ANY, "Show &Tool Activity\tCtrl+T")
         self.Bind(wx.EVT_MENU, self.on_toggle_activity_menu, self.activity_item)
         self._item(view, "Sto&p Running Turn\tCtrl+.", self.on_stop)
@@ -1804,8 +1809,11 @@ class MainFrame(wx.Frame):
         has_code = message is not None and bool(find_code_blocks(message.text))
         blocks = menu.Append(wx.ID_ANY, "Code &Blocks...\tCtrl+Shift+B")
         copy_code = menu.Append(wx.ID_ANY, "Copy &Last Code Block\tCtrl+Shift+C")
+        props = menu.Append(wx.ID_ANY, "&Properties...\tAlt+Enter")
         read.Enable(message is not None)
         copy.Enable(message is not None)
+        props.Enable(message is not None)
+        menu.Bind(wx.EVT_MENU, lambda e: self.on_properties(), props)
         blocks.Enable(has_code)
         copy_code.Enable(has_code)
         menu.Bind(wx.EVT_MENU, lambda e: self.on_read_message(), read)
@@ -1864,6 +1872,73 @@ class MainFrame(wx.Frame):
                           wx.OK | wx.ICON_WARNING, self)
             return
         self._feedback(f"Opening {chosen.address}.")
+
+    def on_properties(self):
+        """View, Properties (Alt+Enter, #214): the focused message's
+        properties in the messages list; anywhere else, the session's
+        (_selected_session: the highlighted one in the session list, else
+        the loaded one). A session's need its whole transcript read, so
+        that's done in the background and the dialog opens when it's read."""
+        returning_to = wx.Window.FindFocus()
+        if returning_to is self.chat_list:
+            message = self._selected_message()
+            if message is None:
+                self._feedback("No message selected.")
+                return
+            visible = self._visible_messages()
+            lines = properties.message_properties(
+                message, self.chat_list.GetSelection() + 1, len(visible))
+            self._show_properties("Message Properties", lines, returning_to)
+            return
+        info = self._selected_session()
+        if info is None:
+            self._feedback("No session selected.")
+            return
+        if self._properties_busy:
+            return  # Alt+Enter twice: the first is still reading
+        self._properties_busy = True
+        own = self.store.get(info.cli_session_id) if info.is_own else None
+        own_window = self._windows.get(info.cli_session_id, 0) if info.is_own else 0
+        model_windows = dict(self._model_windows)
+
+        def work():
+            transcript, path, size = None, "", 0
+            try:
+                found = info.transcript_path()
+                if found is not None:
+                    path, size = properties.transcript_facts(found)
+                    if path:
+                        transcript = read_transcript(found)
+            except Exception:  # noqa: BLE001 - say what can be said without it
+                transcript = None
+            model = transcript.model if transcript is not None else ""
+            reported = own_window or model_windows.get(model, 0)
+            try:
+                lines = properties.session_properties(info, transcript, path, size, own,
+                                                      reported)
+            except Exception as exc:  # noqa: BLE001 - never leave the busy flag set
+                lines = [f"Couldn't read this session's properties: {exc}"]
+            wx.CallAfter(self._session_properties_read, info, lines, returning_to)
+
+        self._pool.submit(work)
+
+    def _session_properties_read(self, info, lines, returning_to):
+        self._properties_busy = False
+        if not self or self._closing:
+            return
+        self._show_properties(f"Properties of {info.title or 'Untitled session'}", lines,
+                              returning_to)
+
+    def _show_properties(self, title, lines, returning_to):
+        self._modal(PropertiesDialog(self, title, lines, self._copy_properties))
+        if returning_to:
+            returning_to.SetFocus()
+
+    def _copy_properties(self, text: str, one_line: bool):
+        if self._copy_text(text):
+            self._feedback("Copied the line." if one_line else "Copied the properties.")
+        else:
+            self._feedback("Couldn't open the clipboard.")
 
     def on_about_you(self):
         """View, What Claude Knows About You (Ctrl+Shift+K, #92): your
@@ -1991,6 +2066,8 @@ class MainFrame(wx.Frame):
             add("H&ide Session\tDelete", self.on_hide)
         if info.is_own:
             add("Delete Session &Permanently...\tShift+Delete", self.on_delete_permanently)
+        menu.AppendSeparator()
+        add("Pr&operties...\tAlt+Enter", self.on_properties)
         return menu, actions
 
     def _on_session_menu(self, event=None):
@@ -4925,6 +5002,12 @@ class MainFrame(wx.Frame):
             self._is_in_session_view(focus)
 
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            if event.AltDown() and not ctrl and not event.ShiftDown():
+                # Properties (#214). Here rather than left to the menu's
+                # accelerator: this hook runs first, and Enter in the
+                # messages list below would read the message instead.
+                self.on_properties()
+                return
             if ctrl and focus is self.reply_text:
                 if event.ShiftDown():
                     self.on_send_and_save()  # #131

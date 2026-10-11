@@ -7938,3 +7938,163 @@ def test_the_turn_status_is_one_line_and_keeps_its_ampersands(frame):
     assert frame.turn_status.GetLabel() == shown.replace("&", "&&")
     session_part = frame.status_session.latest()
     assert "\n" not in session_part and "npm i && npm test" in session_part
+
+
+# -- View, Properties (#214) ---------------------------------------------------------------
+
+
+def _properties(frame, monkeypatch, act=None):
+    """Dialogs Properties opens, never shown: title, list name, rows."""
+    seen = []
+
+    def modal(dialog):
+        seen.append(dict(title=dialog.GetTitle(), name=dialog.list.GetName(),
+                         selected=dialog.list.GetSelection(),
+                         rows=[dialog.list.GetString(i)
+                               for i in range(dialog.list.GetCount())]))
+        if act:
+            act(dialog)
+        dialog.Destroy()
+    monkeypatch.setattr(frame, "_modal", modal)
+    return seen
+
+
+def _alt_enter(frame, monkeypatch, focus):
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: focus))
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(wx.WXK_RETURN)
+    event.SetAltDown(True)
+    frame._on_char_hook(event)
+    return event.GetSkipped()
+
+
+def test_alt_enter_in_the_session_list_shows_the_session_properties(frame, env, monkeypatch):
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [
+        user_text("See https://example.com/a"),
+        assistant_block(text_block("Done"), message_id="m1"),
+        assistant_block(tool_use_block("Read", {"file_path": "a.py"}), message_id="m2"),
+        tool_result("toolu_1", "text")])
+    seen = _properties(frame, monkeypatch)
+    opened = []
+    monkeypatch.setattr(frame, "on_open_session", lambda *a: opened.append(True))
+    focused = []
+    monkeypatch.setattr(frame.session_list, "SetFocus", lambda: focused.append(True))
+    select(frame, "Quiet one")
+    assert not _alt_enter(frame, monkeypatch, frame.session_list)
+    assert pump(lambda: seen)
+    assert not opened  # Alt+Enter isn't Enter: the session isn't loaded
+    dialog = seen[0]
+    assert dialog["title"] == "Properties of Quiet one"
+    assert dialog["name"] == "Properties" and dialog["selected"] == 0
+    rows = dialog["rows"]
+    assert rows[0] == "Title: Quiet one"
+    assert "Kind: Desktop app Code session" in rows
+    assert "Messages: 2" in rows and "Tool calls: 1" in rows and "Links: 1" in rows
+    assert "Session ID: cli-a" in rows
+    assert any(r.startswith("Transcript: ") and r.endswith("cli-a.jsonl") for r in rows)
+    assert focused  # back on the list it came from
+    assert not frame._properties_busy
+
+
+def test_session_properties_without_a_transcript(frame, env, monkeypatch):
+    seen = _properties(frame, monkeypatch)
+    select(frame, "Blocked one")
+    _alt_enter(frame, monkeypatch, frame.session_list)
+    assert pump(lambda: seen)
+    rows = seen[0]["rows"]
+    assert "Status: needs you: Pick a name" in rows
+    assert "Transcript: not on disk" in rows
+    assert not any(r.startswith("Messages") for r in rows)
+
+
+def test_session_properties_survive_a_failing_read(frame, env, monkeypatch):
+    from thechatplace.ui import main_frame
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi")])
+
+    def broken(path):
+        raise OSError("locked")
+    monkeypatch.setattr(main_frame, "read_transcript", broken)
+    seen = _properties(frame, monkeypatch)
+    select(frame, "Quiet one")
+    _alt_enter(frame, monkeypatch, frame.session_list)
+    assert pump(lambda: seen)
+    assert "Transcript: not on disk" in seen[0]["rows"]
+    assert not frame._properties_busy  # Alt+Enter works again
+
+
+def test_alt_enter_in_the_messages_shows_the_message_properties(frame, env, monkeypatch):
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [
+        user_text("Hello there"), assistant_block(text_block("Hi\nback"), message_id="m1")])
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded)
+    read = []
+    monkeypatch.setattr(frame, "on_read_message", lambda: read.append(True))
+    seen = _properties(frame, monkeypatch)
+    frame.chat_list.SetSelection(1)
+    assert not _alt_enter(frame, monkeypatch, frame.chat_list)
+    assert not read  # Alt+Enter isn't Enter: the message isn't opened
+    rows = seen[0]["rows"]
+    assert seen[0]["title"] == "Message Properties"
+    assert rows[0] == "From: Claude"
+    assert "Position: 2 of 2" in rows and "Lines: 2" in rows and "Words: 2" in rows
+    # In the reply box it's the loaded session's.
+    _alt_enter(frame, monkeypatch, frame.reply_text)
+    assert pump(lambda: len(seen) == 2)
+    assert seen[1]["title"] == "Properties of Quiet one"
+
+
+def test_properties_with_nothing_selected(frame, env, monkeypatch):
+    seen = _properties(frame, monkeypatch)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    frame.on_properties()
+    assert env["feedback"][-1] == "No message selected."
+    frame.session_list.SetSelection(wx.NOT_FOUND)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    frame.on_properties()
+    assert env["feedback"][-1] == "No session selected."
+    assert not seen
+
+
+def test_properties_copies_lines_and_is_on_the_menus(frame, env, monkeypatch):
+    def act(dialog):
+        dialog.list.SetSelection(1)
+        dialog.copy_selected()
+        dialog.copy_all()
+    seen = _properties(frame, monkeypatch, act)
+    select(frame, "Quiet one")
+    _alt_enter(frame, monkeypatch, frame.session_list)
+    assert pump(lambda: seen)
+    assert env["copied"][-2] == seen[0]["rows"][1]
+    assert env["copied"][-1] == "\n".join(seen[0]["rows"])
+    assert env["feedback"][-2:] == ["Copied the line.", "Copied the properties."]
+    view = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(1).GetMenuItems()]
+    assert "Properties...\tAlt+Enter" in view
+    menu, actions = frame._session_menu()
+    try:
+        labels = [i.GetItemLabel() for i in menu.GetMenuItems()]
+        assert labels[-1] == "Pr&operties...\tAlt+Enter"
+        assert actions[menu.GetMenuItems()[-1].GetId()] == frame.on_properties
+    finally:
+        menu.Destroy()
+    menu = frame._message_menu()
+    try:
+        item = menu.GetMenuItems()[-1]
+        assert item.GetItemLabel() == "&Properties...\tAlt+Enter"
+        assert not item.IsEnabled()  # no message selected
+    finally:
+        menu.Destroy()
+
+
+def test_properties_dialog_is_named_for_screen_readers(frame):
+    from thechatplace.ui.dialogs import PropertiesDialog
+    dialog = PropertiesDialog(frame, "Properties of Quiet one", ["Title: Quiet one"],
+                              lambda text, one: None)
+    try:
+        assert dialog.GetTitle() == "Properties of Quiet one"
+        assert dialog.list.GetName() == "Properties"
+        labels = [c.GetLabel() for c in dialog.GetChildren() if isinstance(c, wx.StaticText)]
+        assert labels == ["&Properties:"]
+        assert dialog.GetEscapeId() == wx.ID_CANCEL
+    finally:
+        dialog.Destroy()

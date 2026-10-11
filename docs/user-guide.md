@@ -580,6 +580,14 @@ notification is shown.
   usage limits on its own line. Ctrl+C copies the selected line, Copy All (Alt+A) copies every
   line, and Escape closes the list. It's also said once, unasked, when the context passes 80%, or
   a limit passes 90%.
+- **Properties** (Alt+Enter, View menu, or the context menu) lists what can be known about a
+  session or a message, one "Property: value" line each. In the session list it's the selected
+  session: its kind, folder, status, when it started and was last active, its model, how many
+  messages, tool calls, links, code blocks and changed files it has, how full its context is, its
+  groups, its IDs and its transcript file. In the messages it's the selected message: who it's
+  from, when, where it is in the list, how many lines, words and characters, links and code blocks
+  it has. Elsewhere it's the loaded session. Ctrl+C copies the selected line, Copy All (Alt+A)
+  copies every line, and Escape closes the list. On a Mac the key is Option+Return.
 - **Export** (Ctrl+E) saves a session's conversation as Markdown, a web page or plain text.
 - **What Claude Knows About You** (Ctrl+Shift+K) lists what Claude Code keeps about you: your
   instructions (CLAUDE.md files), the memories it saved, your skills, subagents, commands and
