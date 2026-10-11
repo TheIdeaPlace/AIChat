@@ -60,13 +60,16 @@ def test_a_dialog_is_never_bigger_than_its_screen(app, monkeypatch):
     assert small == wx.Size(525, 350)  # fits: left as designed
 
 
-def test_no_dialog_has_a_raw_pixel_size():
+@pytest.mark.parametrize("module", ["dialogs.py", "main_frame.py", "statusbar.py", "notify.py"])
+def test_no_window_has_a_raw_pixel_size(module):
     """A size written as plain pixels would come out small at 150% (#185):
-    every dialog's size goes through dialog_size."""
+    sizes go through ui.sizes. (A 1-pixel minimum, which only lets a
+    control shrink, or a -1 by -1 one that clears it, needs no scaling.)"""
     import re
-    text = (ROOT / "thechatplace" / "ui" / "dialogs.py").read_text(encoding="utf-8")
-    assert re.findall(r"size=\(\d+, *\d+\)", text) == []
-    assert re.findall(r"SetMinSize\(\((?:-1|\d+), *\d{2,}\)\)", text) == []
+    text = (ROOT / "thechatplace" / "ui" / module).read_text(encoding="utf-8")
+    assert re.findall(r"size=\((?:-1|\d+), *\d+\)", text) == []
+    raw = re.findall(r"SetMinSize\(\((?:-1|\d+|[A-Z_]+), *(?:\d+|-1)\)\)", text)
+    assert [size for size in raw if size not in ("SetMinSize((1, -1))", "SetMinSize((-1, -1))")] == []
 
 
 def test_status_bar_widths_are_scaled_at_every_layout(app, monkeypatch):
@@ -86,5 +89,40 @@ def test_status_bar_widths_are_scaled_at_every_layout(app, monkeypatch):
         parts.layout()
         assert widths[-1] == [-3, 300]  # the button's 150 scaled; the share isn't
         assert button.IsShown()
+    finally:
+        frame.Destroy()
+
+
+def test_a_move_to_another_screen_keeps_the_status_bar_buttons_text(app):
+    """#185: refitting the bar after a scaling change measured on the live
+    Context button and left it blank, a nameless button to a screen reader."""
+    from thechatplace.ui.statusbar import StatusParts
+    frame = wx.Frame(None, size=(1000, 300))
+    try:
+        bar = frame.CreateStatusBar(1)
+        parts = StatusParts(bar)
+        parts.add_text("message", "Status", -3)
+        context = parts.add_button("context", 150, lambda: None)
+        parts.set("context", "Context 42% full")
+        parts._on_dpi_changed(wx.DPIChangedEvent())
+        assert context.GetLabel() == "Context 42% full"
+        assert context.IsShown()
+        assert bar.GetStatusText(1) == "Context 42% full"
+    finally:
+        frame.Destroy()
+
+
+def test_usage_is_as_wide_as_its_longest_line_at_any_scaling(app, monkeypatch):
+    from thechatplace.ui import dialogs
+    frame = wx.Frame(None)
+    try:
+        monkeypatch.setattr(dialogs, "dip_width", lambda window, width: width * 2)  # as at 200%
+        monkeypatch.setattr(dialogs, "dialog_size", lambda parent, w, h: wx.Size(w * 2, h * 2))
+        monkeypatch.setattr(dialogs, "screen_area", lambda window: wx.Rect(0, 0, 3840, 2000))
+        dialog = dialogs.UsageDialog(frame, ["Short line"], lambda text: None)
+        try:
+            assert dialog.GetSize().width == 1280  # its 640 design width, scaled
+        finally:
+            dialog.Destroy()
     finally:
         frame.Destroy()

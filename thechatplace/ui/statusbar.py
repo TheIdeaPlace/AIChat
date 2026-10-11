@@ -196,9 +196,15 @@ class StatusParts:
         controls need and adds the bar's own borders. Every button has the
         same font, so the first one's height does for all. (A Mac's status
         bar keeps its own fixed height whatever this asks.)"""
-        button.SetLabel("Ag")
-        needed = button.GetBestSize().height
-        button.SetLabel("")
+        # Measured on a button of its own: the one passed may be showing
+        # text, which a screen reader reads as its name (after a move to a
+        # screen with other scaling it's a live button, #185).
+        probe = wx.Button(self.bar, label="Ag")
+        probe.SetFont(button.GetFont())
+        try:
+            needed = probe.GetBestSize().height
+        finally:
+            probe.Destroy()
         before = self.bar.GetFieldRect(0).height
         self.bar.SetMinHeight(needed)
         self._fitted = True

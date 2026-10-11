@@ -251,7 +251,8 @@ class NewSessionDialog(wx.Dialog):
         dc.SetFont(self.note.GetFont())
         lines = sum(len(wordwrap(paragraph, width, dc).rstrip("\n").split("\n"))
                     for paragraph in self.note.GetValue().split("\n"))
-        self.note.SetMinSize((-1, self.note.GetCharHeight() * lines + 12))
+        # Plus the box's own padding, which grows with the scaling (#185).
+        self.note.SetMinSize((-1, self.note.GetCharHeight() * lines + dip_width(self, 12)))
         self.Layout()
 
     def _on_char_hook(self, event):
@@ -1880,11 +1881,13 @@ class LinesDialog(wx.Dialog):
         # A list's rows don't wrap, so the dialog is as wide as its longest
         # line, within the screen (#176: the context line was cut off).
         longest = max((self.GetTextExtent(line).width for line in self._lines), default=0)
-        screen = screen_area(self).width
+        # The parent's screen, as every dialog_size: an unshown dialog's own
+        # screen isn't settled yet.
+        screen = screen_area(parent).width
         # The room around a row: borders, the dialog's frame and a scroll
         # bar, which shows once the list is long enough to need one.
-        room = dip_width(self, 40) + wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self)
-        width = min(max(dip_width(self, 640), longest + room), screen - SCREEN_MARGIN)
+        room = dip_width(parent, 40) + wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self)
+        width = min(max(dip_width(parent, 640), longest + room), screen - SCREEN_MARGIN)
         if width != self.GetSize().width:
             self.SetSize((width, self.GetSize().height))
         self._copy = copy
