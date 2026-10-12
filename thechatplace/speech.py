@@ -15,7 +15,9 @@ voice (#98). When a screen reader is running, a Windows voice never speaks
 over it. Windows voices, and VoiceOver and ``say`` on macOS, go through
 ClaudeSpeak's engine scripts (TheWorkBench repo), bundled verbatim (IDT's
 copy, with its middle-of-the-scale default rates):
-``thechatplace/speech/speak-engine.ps1`` and ``speak-engine.sh``. This module
+``thechatplace/speech/speak-engine.ps1`` and ``speak-engine.sh``. On Linux,
+Orca is called from this process by ``orca.py``, and the system voice is
+speech-dispatcher, through ``speak-engine-linux.sh``. This module
 is the harness around them — settings, engine/voice enumeration, the
 detached speaker process, and interruption by killing the previous speaker
 before starting the next (the same process model ClaudeSpeak uses for its
@@ -24,7 +26,7 @@ Claude Code hook).
 Design rules inherited from that investigation, kept on purpose:
 
 * **Screen-reader routes never set voice or rate.** The user already chose
-  those in JAWS/NVDA/VoiceOver; overriding them is an accessibility defect,
+  those in JAWS/NVDA/VoiceOver/Orca; overriding them is an accessibility defect,
   not a feature.
 * **Speech never blocks and never raises.** The speaker is a detached hidden
   process; a failure leaves at most ``last-route.log`` in the temp dir.
@@ -99,6 +101,8 @@ RATE_PRESETS = {
     "onecore": {"slow": 1.0, "normal": 3.0, "fast": 4.5, "fastest": 6.0},
     "sapi": {"slow": -5, "normal": 0, "fast": 5, "fastest": 10},
     "say": {"slow": 120, "normal": 175, "fast": 300, "fastest": 450},
+    # speech-dispatcher's own scale, -100 to 100 around the voice's default.
+    "speechd": {"slow": -40, "normal": 0, "fast": 40, "fastest": 80},
 }
 
 RATE_PRESET_LABELS = ["default", "slow", "normal", "fast", "fastest"]
@@ -114,7 +118,7 @@ NOTIFY_LABELS = {
     NOTIFY_OFF: "Off",
 }
 
-_SCREEN_READER_ENGINES = {"auto", "jaws", "nvda", "voiceover"}
+_SCREEN_READER_ENGINES = {"auto", "jaws", "nvda", "voiceover", "orca"}
 #: Seconds a JAWS or NVDA call may take before the screen reader is treated
 #: as not answering. Both take the text in well under a tenth of a second.
 SCREEN_READER_TIMEOUT = 3.0
@@ -126,13 +130,22 @@ SCREEN_READER_FIRST_TIMEOUT = 15.0
 NOT_ANSWERING = "not spoken: the screen reader isn't answering"
 #: The engine settings that speak through JAWS or NVDA from this process (#98).
 _WINDOWS_SCREEN_READER_ENGINES = {"auto", "jaws", "nvda"}
+#: The engine settings that speak through Orca from this process (Linux).
+_LINUX_SCREEN_READER_ENGINES = {"auto", "orca"}
+IS_LINUX = sys.platform.startswith("linux")
+#: Full messages open as a formatted page unless you choose plain text. Not
+#: on Linux: Orca 48 with WebKitGTK read a page's headings but not its lines
+#: when tested, and the plain text box reads by line, word and character.
+FORMATTED_BY_DEFAULT = not IS_LINUX
+#: What speaks when no screen reader takes an announcement, for the log.
+SYSTEM_VOICE = "a Windows voice" if sys.platform == "win32" else "a system voice"
 
 
 @dataclass
 class SpeechOption:
     """One selectable entry for the Speech settings tab."""
 
-    engine: str  # auto | jaws | nvda | onecore | sapi | voiceover | say
+    engine: str  # auto | jaws | nvda | onecore | sapi | voiceover | say | orca | speechd
     voice: str  # match string for voice engines, "" otherwise
     label: str  # what the picker shows
 
@@ -162,8 +175,9 @@ class SpeechSettings:
     voice: str = ""
     rate_preset: str = "default"
     #: Read Full Message opens a formatted page (headings, lists, tables) when
-    #: Edge WebView2 is there, rather than the plain text box (issue #190).
-    formatted_messages: bool = True
+    #: Edge WebView2 (or on Linux WebKitGTK) is there, rather than the plain
+    #: text box (issue #190).
+    formatted_messages: bool = FORMATTED_BY_DEFAULT
     #: How the session list is sorted (View, Sort Sessions): a value from
     #: ``sessions.SORT_VALUES``. Kept here so the choice survives a restart.
     session_order: str = "status"
@@ -219,7 +233,7 @@ class SpeechSettings:
         settings.voice = str(raw.get("voice", ""))
         preset = str(raw.get("rate_preset", "default"))
         settings.rate_preset = preset if preset in RATE_PRESET_LABELS else "default"
-        settings.formatted_messages = bool(raw.get("formatted_messages", True))
+        settings.formatted_messages = bool(raw.get("formatted_messages", FORMATTED_BY_DEFAULT))
         from .sessions import SORT_STATUS, SORT_VALUES
         order = str(raw.get("session_order", SORT_STATUS))
         settings.session_order = order if order in SORT_VALUES else SORT_STATUS
@@ -265,6 +279,15 @@ class SpeechSettings:
 # ---------------------------------------------------------------------------
 
 
+def engine_script_names() -> List[str]:
+    """The speech scripts this platform runs, which a build must carry."""
+    if sys.platform == "win32":
+        return ["speak-engine.ps1", "speak-voices.ps1"]
+    if IS_LINUX:
+        return ["speak-engine-linux.sh"]
+    return ["speak-engine.sh", "speak-voices.sh"]
+
+
 def _script_dir() -> Path:
     if getattr(sys, "frozen", False):
         # `Path(x) or fallback` never reaches the fallback: Path("") is
@@ -304,6 +327,11 @@ def default_options() -> List[SpeechOption]:
         options += [
             SpeechOption("voiceover", "", "VoiceOver"),
             SpeechOption("say", "", "macOS system voice (default)"),
+        ]
+    elif IS_LINUX:
+        options += [
+            SpeechOption("orca", "", "Orca screen reader"),
+            SpeechOption("speechd", "", "speech-dispatcher voice (default)"),
         ]
     return options
 
@@ -361,13 +389,42 @@ def _parse_mac_voices(raw: str) -> List[SpeechOption]:
     return options
 
 
+def _voice_language() -> str:
+    """The two-letter language voices are offered in: the user's own
+    (``LANG``), or English when it's unset or "C"."""
+    for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(name, "")
+        if value:  # the first one set decides, as it does for the system
+            if value in ("C", "POSIX") or value.startswith("C."):
+                return "en"
+            return value[:2].lower()
+    return "en"
+
+
+def _parse_speechd_voices(raw: str, language: str = "en") -> List[SpeechOption]:
+    """Voices out of ``spd-say -L``: a NAME LANGUAGE VARIANT table. Only the
+    user's language, and no "+Variant" voices: espeak-ng alone lists over a
+    thousand."""
+    options: List[SpeechOption] = []
+    for line in raw.splitlines():
+        match = re.match(r"^\s*(.+?)\s{2,}([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*)\s+(\S+)\s*$", line)
+        if not match or match.group(1) == "NAME":
+            continue
+        name, locale = match.group(1).strip(), match.group(2)
+        if not locale.lower().startswith(language) or "+" in name:
+            continue
+        options.append(SpeechOption("speechd", name, f"{name} ({locale}) — speech-dispatcher voice"))
+    return options
+
+
 def list_speech_options(timeout: float = 25.0) -> List[SpeechOption]:
     """Probe this machine for speech routes. Falls back to defaults on error.
 
     Windows runs the bundled ClaudeSpeak probe (JAWS COM registration, NVDA
     controller DLL with a PE-architecture check, OneCore and SAPI voice
     lists). macOS asks ``say`` directly and checks for VoiceOver — no shell
-    probe, so there is no jq dependency for enumeration.
+    probe, so there is no jq dependency for enumeration. Linux asks
+    speech-dispatcher (``spd-say -L``).
     """
     try:
         if sys.platform == "win32":
@@ -392,6 +449,13 @@ def list_speech_options(timeout: float = 25.0) -> List[SpeechOption]:
             )
             if result.returncode == 0:
                 options.extend(_parse_mac_voices(result.stdout))
+            return options
+        elif IS_LINUX:
+            options = default_options()
+            result = subprocess.run(["spd-say", "-L"], capture_output=True, text=True,
+                                    timeout=timeout)
+            if result.returncode == 0:
+                options.extend(_parse_speechd_voices(result.stdout, _voice_language()))
             return options
     except Exception:
         # A failed probe (no PowerShell, timeout, malformed JSON) must
@@ -479,11 +543,20 @@ class Speaker:
         self.last_problem = ""
         self._reader_call: Optional[threading.Thread] = None
         self._readers_warm = False
+        #: Linux: ``(text, interrupt) -> bool``, which the window sets so
+        #: Orca can be reached through it while it's active (orca.py).
+        self.window_announcer: Optional[Callable[[str, bool], bool]] = None
 
     def _readers(self):
         if self._screen_readers is None:
-            from .screen_readers import ScreenReaders
-            self._screen_readers = ScreenReaders()
+            if IS_LINUX:
+                from .orca import Orca
+                self._screen_readers = Orca()
+            else:
+                from .screen_readers import ScreenReaders
+                self._screen_readers = ScreenReaders()
+        if hasattr(self._screen_readers, "window_announcer"):
+            self._screen_readers.window_announcer = self.window_announcer
         return self._screen_readers
 
     @property
@@ -503,6 +576,11 @@ class Speaker:
         if sys.platform == "darwin":
             return [
                 "/bin/bash", str(script_dir / "speak-engine.sh"),
+                "--path", str(text_file), "--config", str(config_file),
+            ]
+        if IS_LINUX:
+            return [
+                "/bin/bash", str(script_dir / "speak-engine-linux.sh"),
                 "--path", str(text_file), "--config", str(config_file),
             ]
         return None
@@ -540,6 +618,12 @@ class Speaker:
                 # Windows voice and can't reach for a screen reader itself.
                 request = (spoken, settings.engine, interrupt)
                 engine, voice, rate = "onecore", "", None
+            elif IS_LINUX and settings.engine in _LINUX_SCREEN_READER_ENGINES:
+                # Orca is called from this process; the script is the
+                # speech-dispatcher voice for when it isn't running or
+                # can't take the text.
+                request = (spoken, settings.engine, interrupt)
+                engine, voice, rate = "speechd", "", None
             config_file.write_text(
                 json.dumps(
                     {
@@ -631,10 +715,15 @@ class Speaker:
             self._settle(failure, problem=failure)
             return True
         if outcome is None:
-            self._settle("screen readers couldn't be checked, so a Windows voice")
+            self._settle(f"screen readers couldn't be checked, so {SYSTEM_VOICE}")
             return False
         if not outcome.running:
-            self._settle("no screen reader running, so a Windows voice")
+            self._settle(f"no screen reader running, so {SYSTEM_VOICE}")
+            return False
+        if getattr(outcome, "voice_allowed", False):
+            # Linux: Orca couldn't take it, and speech-dispatcher, which
+            # speaks one message at a time, may (orca.py).
+            self._settle(outcome.describe())
             return False
         self._settle(outcome.describe(),
                      problem=outcome.describe() if outcome.unreachable else "")

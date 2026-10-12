@@ -15,3 +15,4 @@ shipped.
 | Note | Issue |
 |---|---|
 | [speech-routing.md](speech-routing.md): how The Chat Place chooses what speaks, why NVDA users hear a Windows voice, and the options for fixing it | #98 |
+| [linux-port.md](linux-port.md): Linux and Orca: naming controls through ATK, reading message rows, which way announcements reach Orca, the formatted page, and what the AppImage keeps of the system's libraries | Linux port |

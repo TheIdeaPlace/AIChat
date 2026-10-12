@@ -252,12 +252,37 @@ def test_a_failed_hand_over_is_reported(tmp_path, monkeypatch):
 
 
 def test_registry_command_quotes_the_program_and_the_link():
-    assert links.scheme_command(r"C:\Users\k\AppData\Local\TheChatPlace\current\TheChatPlace.exe") \
+    assert links.scheme_command(r"C:\Users\k\AppData\Local\TheChatPlace\current\TheChatPlace.exe",
+                                "win32") \
         == '"C:\\Users\\k\\AppData\\Local\\TheChatPlace\\current\\TheChatPlace.exe" "%1"'
     with pytest.raises(ValueError):
-        links.scheme_command('C:\\a"b.exe')
+        links.scheme_command('C:\\a"b.exe', "win32")
     with pytest.raises(ValueError):
-        links.scheme_command("")
+        links.scheme_command("", "win32")
+
+
+def test_a_linux_desktop_entry_runs_the_appimage_with_the_link():
+    assert links.scheme_command("/home/k/Apps/TheChatPlace.AppImage", "linux") \
+        == "/home/k/Apps/TheChatPlace.AppImage %u"
+    # Quoted only where it has to be: xdg-open can't run a quoted program.
+    assert links.scheme_command("/home/k/My Apps/TheChatPlace.AppImage", "linux") \
+        == '"/home/k/My Apps/TheChatPlace.AppImage" %u'
+    # What an Exec line would need escaped is refused rather than escaped.
+    for bad in ('/home/k/a"b.AppImage', "/home/k/$HOME.AppImage", "/home/k/a`b`.AppImage",
+                "/home/k/a\\b.AppImage", "/home/k/100%.AppImage", ""):
+        with pytest.raises(ValueError):
+            links.scheme_command(bad, "linux")
+
+
+def test_only_an_appimage_registers_on_linux():
+    writes = []
+    exe = "/home/k/Apps/TheChatPlace.AppImage"
+    write = lambda command, icon: writes.append((command, icon))  # noqa: E731
+    assert links.ensure_registered(False, exe, lambda: None, write, "linux") == "not installed"
+    assert links.ensure_registered(True, exe, lambda: None, write, "linux") == "registered"
+    assert writes == [(f"{exe} %u", "")]
+    assert links.ensure_registered(True, exe, lambda: f"{exe} %u", write, "linux") == "current"
+    assert len(writes) == 1
 
 
 def test_only_an_installed_windows_copy_registers():
@@ -292,10 +317,10 @@ def test_uninstall_removes_only_this_copys_registration():
     removed = []
     exe = r"C:\Apps\TheChatPlace\current\TheChatPlace.exe"
     assert links.remove_registration(exe, lambda: f'"{exe.upper()}" "%1"',
-                                     lambda: removed.append(1))
+                                     lambda: removed.append(1), "win32")
     assert not links.remove_registration(exe, lambda: '"C:\\Other\\x.exe" "%1"',
-                                         lambda: removed.append(2))
-    assert not links.remove_registration(exe, lambda: None, lambda: removed.append(3))
+                                         lambda: removed.append(2), "win32")
+    assert not links.remove_registration(exe, lambda: None, lambda: removed.append(3), "win32")
     assert removed == [1]
 
 

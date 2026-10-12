@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-The Chat Place: a wxPython desktop app for Windows and macOS (Windows came first) that is a keyboard- and screen-reader-friendly
+The Chat Place: a wxPython desktop app for Windows, macOS and Linux (Windows came first) that is a keyboard- and screen-reader-friendly
 reader for Claude Code sessions. It lists the Claude desktop app's sessions, shows each as an
 arrowable conversation, announces when a session answers, and can run sessions of its own through
 `claude -p` (headless, stream-json) on the user's subscription, never an API key. Accessibility with
-JAWS and NVDA is the point of the app, so every UI change has to work by keyboard and be named and
-announced for a screen reader.
+JAWS and NVDA (VoiceOver on a Mac, Orca on Linux) is the point of the app, so every UI change has to
+work by keyboard and be named and announced for a screen reader.
 
 The README is the user-facing spec. It is long and detailed, and it lists the shortcuts, file
 locations and behaviour. Keep it in step with behaviour changes.
@@ -17,27 +17,37 @@ locations and behaviour. Keep it in step with behaviour changes.
 ## Commands
 
 ```
-./macsetup.sh  |  winsetup.bat                     # make .venv from requirements-build.txt (replaces an existing one)
+./macsetup.sh  |  winsetup.bat  |  ./linuxsetup.sh   # make .venv from requirements-build.txt (replaces an existing one)
 .venv/bin/python -m thechatplace                   # run from source (Windows: .venv\Scripts\pythonw TheChatPlace.pyw)
 .venv/bin/python -m pytest -q tests                # what CI runs, on Windows and macOS
 .venv/bin/python -m pytest tests/test_claude_cli.py -k resume   # one file / one test
 BuildAndRelease/MacBuilds/build_macos.sh           # tests, app, Velopack osx feed, .dmg; signed if the keychain has a Developer ID
 BuildAndRelease\WinBuilds\build_windows.cmd         # Windows: tests, app, Velopack installer and feed (always unsigned)
+BuildAndRelease/LinuxBuilds/build_linux.sh         # Linux: tests, app, Velopack AppImage and linux-<arch> feed (unsigned)
 python tools/check_version.py [vTAG]               # print version / check a tag against it
 powershell -File tools\ui_probe_vm.ps1 [-Variant light-100] [-Surface settings]  # visual probe, in the test VM (vmtest begin first)
 .venv/bin/python tools/ui_compare.py RUN_FOLDER [--accept]   # what changed against testing/visual/baseline/windows
 ```
 
 - Tests of Windows-only behaviour (made-up `C:\` paths, MSAA via `wx.Accessible`) are marked with
-  `windows_paths` / `msaa` / `windows_layout` from `tests/markers.py` and skip elsewhere. Use them for
-  new tests of that kind rather than letting the macOS CI job fail.
+  `windows_paths` / `msaa` / `windows_layout` from `tests/markers.py` and skip elsewhere; ATK names
+  (what Orca reads) with `atk`, which runs on Linux only. Use them for new tests of that kind
+  rather than letting another platform's CI job fail.
+- On Linux, `.venv` uses the distribution's wxPython (`--system-site-packages`; PyPI has no Linux
+  wheels), and the window tests need a display: `xvfb-run -a -s "-screen 0 1920x1080x24"` in CI.
 - PyInstaller is pinned in `requirements-build.txt`, and `vpk` must match the `velopack` version in
   `requirements.txt` (1.2.161) everywhere it's installed. The PyInstaller command lines live in
-  three places that must agree: `build_windows.cmd`, `build_macos.sh`, and the Windows job of
-  `release-thechatplace.yml` (the Mac job calls `build_macos.sh`).
+  four places that must agree: `build_windows.cmd`, `build_macos.sh`, `build_linux.sh`, and the
+  Windows job of `release-thechatplace.yml` (the Mac and Linux jobs call their scripts).
 - The built app supports `--smoke-test out.json`. It imports everything and checks the data files
-  (each platform's speech scripts; `WebView2Loader.dll` on Windows). A new lazily imported module
-  or data file needs adding to those command lines.
+  (each platform's speech scripts, `speech.engine_script_names()`; `WebView2Loader.dll` on Windows;
+  ATK on Linux). A new lazily imported module or data file needs adding to those command lines.
+- Linux build: after PyInstaller, `build_linux.sh` deletes every bundled library except Python's,
+  wxWidgets' and the image ones distributions name differently, so the app runs on the system's
+  GTK, accessibility bridge and WebKitGTK (what Orca reads). The build machine is then the oldest
+  Linux it runs on (Ubuntu 24.04 in CI). Never keep a library every distribution names alike
+  (OpenSSL broke Debian 13's libcurl). The AppImage needs FUSE 2 to run; the build smoke-tests it
+  with `APPIMAGE_EXTRACT_AND_RUN=1` and requires `"updater": "<version>"`.
 - Mac build (follows GHManage): sign inside-out with `sign.sh` (never `codesign --deep`), then
   `vpk pack --signDisableDeep` adds `Contents/MacOS/UpdateMac` and signs it and the bundle; the
   `.dmg` is made from the app in `TheChatPlace-osx-Portable.zip` (named "The Chat Place.app"),
@@ -53,8 +63,9 @@ powershell -File tools\ui_probe_vm.ps1 [-Variant light-100] [-Surface settings] 
 The version lives in one place: `__version__` in `thechatplace/__init__.py`. To release, bump it and
 add `release-notes/v<version>.md` in the same commit, then push the tag `v<version>`. The release
 workflow fails if the tag and `__version__` disagree, or if the notes file is missing. It builds
-Windows and macOS in parallel jobs, and a `publish` job makes the release only if both succeed
-(the Windows installer, portable zip and `windows` feed; the notarized `.dmg` and `osx` feed).
+Windows, macOS and Linux (x64 and arm64) in parallel jobs, and a `publish` job makes the release only
+if all succeed (the Windows installer, portable zip and `windows` feed; the notarized `.dmg` and
+`osx` feed; the two AppImages and `linux-x64` / `linux-arm64` feeds).
 Versions below 1.0 publish as pre-releases. Both platforms update through Velopack
 (`updater.CHANNEL`). Velopack calls every Mac app portable, so the portable check is Windows-only
 (`updater.PORTABLE_COPIES_EXIST`); applying it on a Mac silently stops all Mac updates.
@@ -84,9 +95,11 @@ formats are undocumented, and it never writes to them:
   Keep all knowledge of the transcript format in this module.
 - `hub.py`: gathers a whole `Snapshot` on a background thread and notices finished turns. It returns
   plain data.
-- `own_store.py`, `groups.py`: the app's own state in `%APPDATA%\TheChatPlace` (the only place it writes).
+- `own_store.py`, `groups.py`: the app's own state in `%APPDATA%\TheChatPlace` (`~/.config/TheChatPlace`
+  on Linux; the only place it writes, apart from the AppImage's desktop entry).
   `desktop_groups.py` reads the desktop app's groups without changing them.
-- `platform_paths.py`: **every** path and OS call (each has `win32` and `darwin` branches) (Windows job objects, pid checks, opening URLs,
+- `platform_paths.py`: **every** path and OS call (`win32`, `darwin` and Linux branches; Linux is
+  `sys.platform.startswith("linux")`) (Windows job objects, pid checks, opening URLs,
   finding `claude.exe`). OS-specific code goes here, so a port changes only this file and the speech
   scripts. Tests monkeypatch its functions (`desktop_sessions_dirs`, `projects_dir`,
   `app_data_dir`, …) to point at `tmp_path`.
@@ -110,8 +123,13 @@ UI only through `wx.CallAfter`. Timers drive list and chat refreshes. `a11y.py` 
 MSAA names, and through `mac_a11y.py` (ctypes, no PyObjC) VoiceOver names too, because wx's
 `SetName` reaches neither. `mac_a11y.py` is the one exception to "OS calls go in
 `platform_paths.py`": it needs a control's native view, and it also holds `activate_app`, which
-gives the app the menu bar (VO+M) when the window is raised. `announce.py` decides what is spoken, and `speech.py` plus `speech/*.ps1|*.sh` speak it
-through the screen reader or a system voice. `ui_text.py` holds UI text that can be tested without wx
+gives the app the menu bar (VO+M) when the window is raised. `gtk_a11y.py` is its Linux
+counterpart, for the same reason: names, roles and row descriptions for Orca through ATK on the
+native GTK widget (`GetGtkWidget()`), and announcements as ATK notifications from the window. `announce.py` decides what is spoken, and `speech.py` plus `speech/*.ps1|*.sh` speak it
+through the screen reader or a system voice. On Windows `screen_readers.py` reaches JAWS and NVDA
+from the app's process; on Linux `orca.py` reaches Orca (D-Bus `PresentMessage` on 49+, else the
+active window's ATK notification), and `speak-engine-linux.sh` is speech-dispatcher. See
+`dev-notes/linux-port.md`. `ui_text.py` holds UI text that can be tested without wx
 (the `LAYOUT` and `SHORTCUTS` lists, which the Help dialog and the README both show).
 
 **Other modules:** `updater.py` (Velopack updates for installed copies only, which refuse to run
@@ -139,7 +157,9 @@ Kelly can't see the screen, so how the app looks is checked by the visual probe,
   it in CI for cut-off text, overlaps and controls outside the window. Its `KNOWN` list holds only
   problems with a filed issue.
 - **Any change that can alter how something looks runs the probe** on the affected surfaces in the
-  test VM, at least `light-100` and one High Contrast variant. That's a change to `ui/`,
+  test VM, at least `light-100` and one High Contrast variant. On Linux the probe draws windows
+  through GTK under Xvfb, and `TCP_PROBE_ORCA=1` adds what Orca can reach on each surface
+  (`tools/atspi_audit.py`), flagging any control with no name. That's a change to `ui/`,
   `rendering.py`, `statusbar.py`, dialog sizes or labels, or a string a dialog shows.
 - **Then compare and review.** Run `tools/ui_compare.py` on the run. Review each changed picture
   with `tools/ui_review_prompt.md`, and say in the PR what changed and its verdict.

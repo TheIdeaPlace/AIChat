@@ -3,6 +3,8 @@
 The rest of the app asks this module where things live and how to do the
 few OS-level things it needs (is a process alive, open a URL with the shell).
 A Mac port should only have to touch this file and the speech scripts.
+Linux is the third: ``sys.platform`` there is "linux", and its paths follow
+the XDG base directories (``~/.config/TheChatPlace``).
 
 Locations, as found on Windows with Claude Code 2.1 and the Claude desktop
 app (none of this is documented, so every caller treats it as best effort):
@@ -17,6 +19,11 @@ app (none of this is documented, so every caller treats it as best effort):
 * Transcripts: ``%USERPROFILE%\\.claude\\projects\\<encoded cwd>\\<cliSessionId>.jsonl``
 * Live sessions: ``%USERPROFILE%\\.claude\\sessions\\<pid>.json``
 * The Chat Place's own files: ``%APPDATA%\\TheChatPlace\\``
+
+On a Mac the ``%APPDATA%`` folders are in ``~/Library/Application Support``,
+and on Linux in ``$XDG_CONFIG_HOME`` (``~/.config``). Anthropic makes no
+Claude desktop app for Linux, so there its folders are usually missing and
+the list has terminal sessions and The Chat Place's own.
 """
 from __future__ import annotations
 
@@ -137,12 +144,62 @@ def os_name() -> str:
     fields it reads (KeyError: 'ProductType', seen on a freshly reset VM,
     #155), and a bug report or a probe run isn't worth losing over it."""
     try:
+        if sys.platform.startswith("linux"):
+            return _linux_name()
         return platform.platform()
     except Exception:  # noqa: BLE001
         if sys.platform == "win32":  # platform.version() would ask WMI again
             version = ".".join(str(n) for n in sys.getwindowsversion()[:3])
             return f"Windows-{version} (platform.platform failed)"
         return sys.platform
+
+
+def _linux_name() -> str:
+    """"Debian GNU/Linux 13 (trixie), Linux-6.12.48-arm64-aarch64-with-
+    glibc2.41, X11": the distribution (the kernel alone says little), the
+    kernel and processor, and the display server, which decide what a bug
+    report can mean."""
+    try:
+        pretty = platform.freedesktop_os_release().get("PRETTY_NAME", "")
+    except OSError:
+        pretty = ""
+    session = os.environ.get("XDG_SESSION_TYPE", "")
+    session = {"x11": "X11", "wayland": "Wayland", "tty": ""}.get(session, session)
+    return ", ".join(part for part in (pretty, platform.platform(), session) if part)
+
+
+def set_program_name() -> None:
+    """Linux: the name the app goes by in the session, before the first
+    window. GTK otherwise takes the script's file name, so Orca called the
+    app "__main__.py", and the window couldn't be matched to its desktop
+    entry (``thechatplace.desktop``). Does nothing elsewhere."""
+    if not sys.platform.startswith("linux"):
+        return
+    import ctypes
+    try:
+        glib = ctypes.CDLL("libglib-2.0.so.0")
+        glib.g_set_prgname.argtypes = [ctypes.c_char_p]
+        glib.g_set_application_name.argtypes = [ctypes.c_char_p]
+        glib.g_set_prgname(b"thechatplace")
+        glib.g_set_application_name("The Chat Place".encode("utf-8"))
+    except (OSError, AttributeError):
+        pass
+
+
+def restore_system_library_path() -> None:
+    """Linux, built app: give the programs it starts the system's own
+    libraries. PyInstaller's launcher points ``LD_LIBRARY_PATH`` at the
+    libraries bundled with the app, and every child inherited it, so
+    ``claude``, ``git``, ``xdg-open`` and speech-dispatcher would have loaded
+    the app's copies of system libraries. The app itself is unaffected: the
+    loader reads the variable once, when the process starts."""
+    if not sys.platform.startswith("linux") or not getattr(sys, "frozen", False):
+        return
+    original = os.environ.pop("LD_LIBRARY_PATH_ORIG", None)
+    if original is not None:
+        os.environ["LD_LIBRARY_PATH"] = original
+    else:
+        os.environ.pop("LD_LIBRARY_PATH", None)
 
 
 def make_dpi_aware() -> None:
@@ -263,9 +320,14 @@ NOT_YOURS = -1
 def process_start(pid: int) -> Optional[int]:
     """When a running process started, as a Windows FILETIME (100 ns since
     1601): what Claude Code writes as ``procStart`` in its pid files.
-    ``NOT_YOURS`` when Windows won't say (access denied); None when it can't
-    be known (not Windows, no such process)."""
-    if sys.platform != "win32" or not isinstance(pid, int) or pid <= 0:
+    ``NOT_YOURS`` when Windows won't say (access denied), or on Linux when
+    another user owns it; None when it can't be known (a Mac, no such
+    process)."""
+    if not isinstance(pid, int) or pid <= 0:
+        return None
+    if sys.platform.startswith("linux"):
+        return _linux_process_start(pid)
+    if sys.platform != "win32":
         return None
     import ctypes
     from ctypes import wintypes
@@ -289,6 +351,30 @@ def process_start(pid: int) -> Optional[int]:
         return (created.dwHighDateTime << 32) | created.dwLowDateTime
     finally:
         kernel32.CloseHandle(handle)
+
+
+#: Seconds from 1601 (FILETIME's start) to 1970.
+_FILETIME_EPOCH_S = 11_644_473_600
+
+
+def _linux_process_start(pid: int, proc: str = "/proc") -> Optional[int]:
+    """``process_start`` from /proc: the start time in clock ticks after
+    boot (field 22 of ``stat``), plus the boot time (``btime``)."""
+    try:
+        if os.stat(f"{proc}/{pid}").st_uid != os.getuid():
+            return NOT_YOURS
+        with open(f"{proc}/{pid}/stat", "rb") as handle:
+            stat_line = handle.read().decode("ascii", "replace")
+        # The name, in brackets, can hold spaces and brackets of its own.
+        fields = stat_line[stat_line.rindex(")") + 2:].split()
+        ticks = int(fields[19])
+        with open(f"{proc}/stat", "rb") as handle:
+            boot = next(int(line.split()[1]) for line in handle.read().decode().splitlines()
+                        if line.startswith("btime "))
+        seconds = boot + ticks / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
+    return int((seconds + _FILETIME_EPOCH_S) * 10_000_000)
 
 
 def pid_alive(pid: int) -> bool:
@@ -335,9 +421,9 @@ def pid_alive(pid: int) -> bool:
 
 def running_process_names() -> set:
     """Lower-case executable names of the processes running in this Windows
-    session, e.g. ``nvda.exe``.
+    session, e.g. ``nvda.exe``; on Linux, of this user's processes (``orca``).
 
-    Windows only (an empty set elsewhere): speech uses it to tell "no screen
+    Windows and Linux (an empty set on a Mac): speech uses it to tell "no screen
     reader is running" from "a screen reader is running but didn't answer"
     (#98), and those two must not be confused, because only the first may fall
     back to a Windows voice. Only this session counts: JAWS and NVDA also run
@@ -345,6 +431,8 @@ def running_process_names() -> set:
     Remote Desktop), and those can't speak to this user, so counting them
     would silence every announcement. Never raises; a failure is an empty set.
     """
+    if sys.platform.startswith("linux"):
+        return set(_linux_processes().values())
     if sys.platform != "win32":
         return set()
     try:
@@ -396,6 +484,37 @@ def running_process_names() -> set:
         return names
     except Exception:  # noqa: BLE001 - best effort, see the docstring
         return set()
+
+
+def process_ids(name: str) -> set:
+    """Linux: the ids of this user's processes called ``name`` (an empty set
+    elsewhere). Speech remembers which Orca had no D-Bus service by its id."""
+    if not sys.platform.startswith("linux"):
+        return set()
+    return {pid for pid, each in _linux_processes().items() if each == name}
+
+
+def _linux_processes(proc: str = "/proc") -> dict:
+    """This user's processes, id to lower-case name: another user's Orca (on
+    the login screen, say) can't speak to this one. A script started by its
+    #! line is named after the script, so Orca, a Python program, is "orca"."""
+    found = {}
+    me = os.getuid()
+    try:
+        entries = os.listdir(proc)
+    except OSError:
+        return found
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        try:
+            if os.stat(f"{proc}/{entry}").st_uid != me:
+                continue
+            with open(f"{proc}/{entry}/comm", "rb") as handle:
+                found[int(entry)] = handle.read().decode("utf-8", "replace").strip().lower()
+        except OSError:
+            continue
+    return found
 
 
 def windows_locked() -> bool:
@@ -491,7 +610,7 @@ def edit_file(path: Path) -> None:
 
 
 def show_in_folder(path: Path) -> None:
-    """Show a file selected in Explorer or the Finder."""
+    """Show a file selected in Explorer, the Finder or the file manager."""
     import subprocess
 
     if sys.platform == "win32":
@@ -502,6 +621,18 @@ def show_in_folder(path: Path) -> None:
     elif sys.platform == "darwin":
         subprocess.Popen(["open", "-R", str(path)])
     else:
+        # The file selected, through the file manager's standard interface
+        # (Files, Dolphin, Caja, Nemo, Thunar); without one, its folder.
+        uri = Path(path).resolve().as_uri()
+        dbus_send = find_tool("dbus-send")
+        if dbus_send:
+            done = subprocess.run(
+                [dbus_send, "--session", "--print-reply", "--dest=org.freedesktop.FileManager1",
+                 "--type=method_call", "/org/freedesktop/FileManager1",
+                 "org.freedesktop.FileManager1.ShowItems", f"array:string:{uri}", "string:"],
+                capture_output=True, timeout=10)
+            if done.returncode == 0:
+                return
         subprocess.Popen(["xdg-open", str(Path(path).parent)])
 
 
@@ -540,8 +671,10 @@ def claude_install_help() -> str:
     if sys.platform == "win32":
         commands = (f"In PowerShell:\n    {INSTALL_PS1}\n"
                     f"Or in Command Prompt:\n    {INSTALL_CMD}")
-    else:
+    elif sys.platform == "darwin":
         commands = f"In Terminal:\n    {INSTALL_SH}"
+    else:
+        commands = f"In a terminal:\n    {INSTALL_SH}"
     return (f"To install it, run its native installer. {commands}\n"
             "Then run claude once to sign in, or use Claude Code Sign-in here again.")
 
@@ -551,15 +684,22 @@ def _native_candidates() -> List[Path]:
     started from the Finder gets only /usr/bin:/bin:/usr/sbin:/sbin, so
     on a Mac the Homebrew and npm folders are looked in by name; on Windows
     a PATH change made by an installer reaches the app only after signing
-    out and in again."""
+    out and in again; on Linux an app started from the desktop's menu gets
+    the session's PATH, without what the shell's profile adds."""
     home = Path.home()
     if sys.platform == "win32":
         local = os.environ.get("LOCALAPPDATA") or str(home / "AppData" / "Local")
         return [home / ".local" / "bin" / "claude.exe",
                 Path(local) / "Microsoft" / "WinGet" / "Links" / "claude.exe"]
-    return [home / ".local" / "bin" / "claude",
-            Path("/opt/homebrew/bin/claude"), Path("/usr/local/bin/claude"),
-            home / ".npm-global" / "bin" / "claude"]
+    if sys.platform == "darwin":
+        return [home / ".local" / "bin" / "claude",
+                Path("/opt/homebrew/bin/claude"), Path("/usr/local/bin/claude"),
+                home / ".npm-global" / "bin" / "claude"]
+    # Linux: the native installer's folder, which a desktop session's PATH
+    # often lacks (it's added by the shell's profile), then the usual others.
+    return [home / ".local" / "bin" / "claude", Path("/usr/local/bin/claude"),
+            home / ".npm-global" / "bin" / "claude",
+            Path("/home/linuxbrew/.linuxbrew/bin/claude"), Path("/usr/bin/claude")]
 
 
 #: What an npm shim runs: ``"%dp0%\node_modules\...\claude.exe"   %*``. Only a
@@ -683,11 +823,16 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
     """Run a command where the user can see and answer it: a new console
     window on Windows, a Terminal window on a Mac (from a ``.command`` file
     in the app's own folder, so no permission to control Terminal is
-    needed; started from the app it would have no window at all). Returns
-    the Popen on Windows, to wait for; None on a Mac, where the window
-    outlives ``open``. ``env`` is the Windows window's environment; Terminal
-    starts the user's own shell, whose profile may set the variables
-    ``env`` leaves out, so the script unsets ``clear`` and ``clear_prefixes``."""
+    needed; started from the app it would have no window at all), and on
+    Linux a terminal window running the same script (``linux_terminal``
+    picks the program). Returns the Popen on Windows, to wait for; None
+    elsewhere, where the window outlives the program that opened it (GNOME
+    Terminal hands the command to its server and exits at once). ``env`` is
+    the Windows window's environment; Terminal starts the user's own shell,
+    whose profile may set the variables ``env`` leaves out, and a Linux
+    terminal's server has an environment of its own, so the script unsets
+    ``clear`` and ``clear_prefixes``. Raises OSError if Linux has no
+    terminal program."""
     import shlex
     import subprocess
 
@@ -711,9 +856,59 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
               "else",
               '  echo "It didn\'t finish (exit code $status). You can close this window."',
               "fi"]
+    terminal = None
+    if sys.platform != "darwin":
+        # A Linux terminal closes when its command ends, before the result
+        # could be read.
+        lines.append("read -r -p 'Press Enter to close this window.' _")
+        terminal = linux_terminal(str(script))
+        if terminal is None:
+            raise OSError("no terminal program was found. Install one (GNOME Terminal, "
+                          "Konsole, MATE Terminal or another), or run this in yours: "
+                          + shlex.join(argv))
     script.write_text("\n".join(lines) + "\n", encoding="utf-8")
     script.chmod(0o700)
-    subprocess.Popen(["open", "-a", "Terminal", str(script)])
+    if terminal is None:
+        subprocess.Popen(["open", "-a", "Terminal", str(script)])
+    else:
+        subprocess.Popen(terminal, start_new_session=True, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return None
+
+
+#: Linux terminal programs, and what goes before the command each runs.
+#: Those with good screen reader support (the VTE terminals: GNOME Terminal,
+#: Console, Ptyxis, MATE, Xfce, Tilix; and Konsole) come before the rest;
+#: xterm, which Orca can't read, is last.
+_LINUX_TERMINALS = [
+    ("xdg-terminal-exec", []),          # the user's own choice, where it's set up
+    ("gnome-terminal", ["--"]), ("kgx", ["--"]), ("ptyxis", ["--"]),
+    ("mate-terminal", ["-x"]), ("xfce4-terminal", ["-x"]), ("konsole", ["-e"]),
+    ("tilix", ["-e"]), ("lxterminal", ["-e"]), ("qterminal", ["-e"]),
+    ("x-terminal-emulator", ["-e"]),    # Debian's choice of terminal
+    ("alacritty", ["-e"]), ("kitty", []), ("foot", []), ("wezterm", ["start", "--"]),
+    ("xterm", ["-e"]),
+]
+#: The terminal that comes with each desktop, tried first on it.
+_DESKTOP_TERMINALS = {"kde": "konsole", "mate": "mate-terminal", "xfce": "xfce4-terminal",
+                      "lxqt": "qterminal", "lxde": "lxterminal"}
+
+
+def linux_terminal(script: str, which=None, desktop: Optional[str] = None) -> Optional[List[str]]:
+    """The command that opens a terminal window running ``script``, or None
+    when there's no terminal program."""
+    import shutil
+
+    which = which or shutil.which
+    desktop = (os.environ.get("XDG_CURRENT_DESKTOP", "") if desktop is None else desktop).lower()
+    order = list(_LINUX_TERMINALS)
+    own = [program for name, program in _DESKTOP_TERMINALS.items() if name in desktop.split(":")]
+    # The desktop's own next, after only the user's choice (xdg-terminal-exec).
+    order.sort(key=lambda entry: (entry[0] != "xdg-terminal-exec", entry[0] not in own))
+    for program, before in order:
+        found = which(program)
+        if found:
+            return [found, *before, script]
     return None
 
 
@@ -1090,8 +1285,10 @@ URL_SCHEME_KEY = r"Software\Classes\thechatplace"
 
 
 def url_scheme_command() -> Optional[str]:
-    """The command Windows runs for a thechatplace:// link, or None if the
-    scheme isn't registered for this user (or this isn't Windows)."""
+    """The command Windows or Linux runs for a thechatplace:// link, or None
+    if the scheme isn't registered for this user (or this is a Mac)."""
+    if sys.platform.startswith("linux"):
+        return _desktop_entry_exec()
     if sys.platform != "win32":
         return None
     import winreg
@@ -1107,7 +1304,11 @@ def url_scheme_command() -> Optional[str]:
 
 def register_url_scheme(command: str, icon: str) -> None:
     """Register thechatplace:// for this user: Windows runs ``command`` with
-    the link. Raises OSError if the registry refuses."""
+    the link. Raises OSError if the registry refuses. On Linux, the desktop
+    entry (see ``write_desktop_entry``); ``icon`` is Windows'."""
+    if sys.platform.startswith("linux"):
+        write_desktop_entry(command)
+        return
     if sys.platform != "win32":
         return
     import winreg
@@ -1124,6 +1325,10 @@ def register_url_scheme(command: str, icon: str) -> None:
 
 def unregister_url_scheme() -> None:
     """Remove this user's thechatplace:// registration, if any. Never raises."""
+    if sys.platform.startswith("linux"):
+        for path in (desktop_entry_path(), _desktop_icon_path()):
+            _remove_quietly(path)
+        return
     if sys.platform != "win32":
         return
     import winreg
@@ -1133,3 +1338,83 @@ def unregister_url_scheme() -> None:
             winreg.DeleteKey(winreg.HKEY_CURRENT_USER, URL_SCHEME_KEY + sub)
         except OSError:
             pass
+
+
+# -- Linux desktop entry -------------------------------------------------------------------
+#
+# An AppImage is a single file that the desktop knows nothing about. Its
+# entry puts The Chat Place in the desktop's menu (found by name, like any
+# other program) and makes it the handler for thechatplace:// links. Written
+# only by an AppImage, pointing at that file (links.should_register).
+
+DESKTOP_ENTRY_NAME = "thechatplace.desktop"
+URL_SCHEME_MIME = "x-scheme-handler/thechatplace"
+
+
+def _data_home() -> Path:
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+
+
+def desktop_entry_path() -> Path:
+    return _data_home() / "applications" / DESKTOP_ENTRY_NAME
+
+
+def _desktop_icon_path() -> Path:
+    return _data_home() / "icons" / "hicolor" / "512x512" / "apps" / "thechatplace.png"
+
+
+def desktop_entry(command: str) -> str:
+    """The entry's text, running ``command`` (``"<AppImage>" %u``)."""
+    return "\n".join([
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=The Chat Place",
+        "GenericName=Claude Code Sessions",
+        "Comment=Claude Code sessions as keyboard and screen reader friendly lists",
+        f"Exec={command}",
+        "Icon=thechatplace",
+        "Terminal=false",
+        "Categories=Utility;Development;",
+        f"MimeType={URL_SCHEME_MIME};",
+        "StartupWMClass=thechatplace",
+        "",
+    ])
+
+
+def _desktop_entry_exec(path: Optional[Path] = None) -> Optional[str]:
+    try:
+        text = Path(path or desktop_entry_path()).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    for line in text.splitlines():
+        if line.startswith("Exec="):
+            return line[len("Exec="):]
+    return None
+
+
+def write_desktop_entry(command: str) -> None:
+    """Write the entry and the icon, and make the entry the handler for
+    thechatplace:// (through xdg-mime, which writes the user's
+    mimeapps.list). Raises OSError if the entry can't be written."""
+    import shutil
+    import subprocess
+
+    entry = desktop_entry_path()
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    temporary = entry.with_suffix(".tmp")
+    temporary.write_text(desktop_entry(command), encoding="utf-8")
+    os.replace(temporary, entry)
+    icon = _desktop_icon_path()
+    try:
+        icon.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(app_icon_path().with_suffix(".png"), icon)
+    except OSError:
+        pass  # the menu shows a stock icon; links still work
+    for argv in (["update-desktop-database", str(entry.parent)],
+                 ["xdg-mime", "default", DESKTOP_ENTRY_NAME, URL_SCHEME_MIME]):
+        program = find_tool(argv[0])
+        if program:
+            try:
+                subprocess.run([program, *argv[1:]], capture_output=True, timeout=20)
+            except (OSError, subprocess.SubprocessError):
+                pass

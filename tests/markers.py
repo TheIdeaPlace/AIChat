@@ -1,5 +1,6 @@
-"""Skips for tests that only make sense on Windows, the platform the app was
-built on first. The rest of the suite runs on macOS too (CI runs both)."""
+"""Skips for tests that only make sense on one platform: mostly Windows, the
+platform the app was built on first. The rest of the suite runs on macOS and
+Linux too (CI runs all three)."""
 import sys
 
 import pytest
@@ -24,3 +25,8 @@ windows_screen_readers = pytest.mark.skipif(
 #: controls and fonts are other sizes, so what's cut off there differs.
 windows_layout = pytest.mark.skipif(
     sys.platform != "win32", reason="layout is measured with Windows' controls and fonts")
+
+#: Names, roles and descriptions read back through ATK, what Orca gets on
+#: Linux (ui/gtk_a11y.py).
+atk = pytest.mark.skipif(not sys.platform.startswith("linux"),
+                         reason="ATK (Orca's names) is Linux-only")

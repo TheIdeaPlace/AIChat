@@ -160,22 +160,40 @@ def copy_choices(info, claude_url: str = "", remote_url: str = "",
     return choices
 
 
-# -- Windows registration (installed copies only) -----------------------------------------
+# -- Windows and Linux registration (installed copies only) -------------------------------
+#
+# Linux (#144 on Linux): an AppImage is the installed copy, and its desktop
+# entry (``~/.local/share/applications/thechatplace.desktop``) both puts it
+# in the desktop's menu and claims thechatplace:// for it. A Mac registers
+# through the app's Info.plist instead.
+
+#: Characters a path can't have in a Windows command or a desktop entry's
+#: Exec line without escaping, which isn't worth getting wrong.
+_UNQUOTABLE = {"win32": '"', "linux": '"`$\\\n%'}
 
 
-def scheme_command(executable: str) -> str:
-    """What Windows runs for a link: the app, quoted, and the link as its one
-    argument. Raises ValueError for a path a quote could break out of."""
-    if not executable or '"' in executable:
+def scheme_command(executable: str, platform: str = sys.platform) -> str:
+    """What Windows or Linux runs for a link: the app, quoted, and the link
+    as its one argument. Raises ValueError for a path a quote could break
+    out of."""
+    platform = "linux" if platform.startswith("linux") else platform
+    if not executable or any(c in executable for c in _UNQUOTABLE.get(platform, '"')):
         raise ValueError(f"can't register {executable!r}")
+    if platform == "linux":
+        # Quoted only when it must be: xdg-open, without a desktop of its
+        # own to ask, can't start a quoted program.
+        if re.search(r"[\s'<>~|&;*?#()]", executable):
+            return f'"{executable}" %u'
+        return f"{executable} %u"
     return f'"{executable}" "%1"'
 
 
 def should_register(installed: bool, platform: str = sys.platform) -> bool:
-    """Only an installed (Velopack) copy on Windows registers the scheme: a
-    portable copy or a source run would point every link at a copy that may
-    be deleted or moved, and take links from the installed one."""
-    return platform == "win32" and installed
+    """Only an installed copy registers the scheme: on Windows the one
+    Velopack installed, on Linux an AppImage. A portable copy or a source
+    run would point every link at a copy that may be deleted or moved, and
+    take links from the installed one."""
+    return (platform == "win32" or platform.startswith("linux")) and installed
 
 
 def ensure_registered(installed: bool, executable: str,
@@ -190,14 +208,14 @@ def ensure_registered(installed: bool, executable: str,
     read = read or platform_paths.url_scheme_command
     write = write or platform_paths.register_url_scheme
     try:
-        command = scheme_command(executable)
+        command = scheme_command(executable, platform)
     except ValueError as exc:
         return f"failed: {exc}"
     try:
         current = read()
         if current is not None and current.casefold() == command.casefold():
             return "current"
-        write(command, f'"{executable}",0')
+        write(command, f'"{executable}",0' if platform == "win32" else "")
     except OSError as exc:
         return f"failed: {exc}"
     return "registered"
@@ -205,13 +223,14 @@ def ensure_registered(installed: bool, executable: str,
 
 def remove_registration(executable: str,
                         read: Optional[Callable[[], Optional[str]]] = None,
-                        remove: Optional[Callable[[], None]] = None) -> bool:
+                        remove: Optional[Callable[[], None]] = None,
+                        platform: str = sys.platform) -> bool:
     """On uninstall: remove the registration if it's this copy's (it might
     be another install's, which is left alone). True if it was removed."""
     read = read or platform_paths.url_scheme_command
     remove = remove or platform_paths.unregister_url_scheme
     try:
-        ours = scheme_command(executable)
+        ours = scheme_command(executable, platform)
     except ValueError:
         return False
     current = read()
