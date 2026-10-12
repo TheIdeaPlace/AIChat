@@ -59,7 +59,7 @@ def check(executable: Optional[str] = None, run=subprocess.run) -> SignIn:
         return SignIn(False, problem=f"Claude Code ({executable}) didn't answer in 20 seconds")
     except (OSError, subprocess.SubprocessError) as exc:
         return SignIn(False, problem=f"Claude Code ({executable}) couldn't be started: {exc}")
-    data = _json_in(out.stdout or "")
+    data = _json_in(_plain(out.stdout or ""))
     if data is None:
         return SignIn(False, problem=_no_answer(executable, out))
     return SignIn(True, signed_in=bool(data.get("loggedIn")),
@@ -88,6 +88,18 @@ def _json_in(text: str) -> Optional[dict]:
 
 
 _LINE_STARTS = re.compile(r"^[\ufeff \t]*\{", re.MULTILINE)
+#: Terminal control codes: CSI ("ESC [2G", cursor to column 2), OSC (a
+#: window title, ended by BEL or ESC \) and other escapes ("ESC 7" and
+#: "ESC 8" save and restore the cursor, "ESC ( B" picks a character set).
+#: A user's claude printed "ESC [2G" right after its JSON answer, so the
+#: answer was taken as unreadable; one printed just before the "{" would hide
+#: it too. JSON can't hold a raw ESC, so none of the answer is ever removed.
+_TERMINAL_CODES = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[ -/]*[0-~])")
+
+
+def _plain(text: str) -> str:
+    """``text`` without terminal control codes."""
+    return _TERMINAL_CODES.sub("", text)
 
 
 def _no_answer(executable: str, out) -> str:
@@ -95,13 +107,15 @@ def _no_answer(executable: str, out) -> str:
     printed. A version from before ``auth status`` existed says "unknown
     command". An answer in JSON is spread over lines whose first is just
     "{", so when the JSON couldn't be read, quoting it would say nothing."""
-    # A byte-order mark isn't whitespace to strip(), and looks like nothing.
-    lines = (out.stderr or out.stdout or "").replace("\ufeff", "").splitlines()
+    # A byte-order mark isn't whitespace to strip(), and looks like nothing;
+    # nor is a terminal control code anything to read out.
+    stdout, stderr = _plain(out.stdout or ""), _plain(out.stderr or "")
+    lines = (stderr or stdout).replace("\ufeff", "").splitlines()
     said = next((line.strip() for line in lines if line.strip()), "")
     if "unknown" in said.lower() and ("command" in said.lower() or "option" in said.lower()):
         return (f"Claude Code ({executable}) is too old to say. Update it by running "
                 "claude update in a terminal, then try again")
-    if "{" in (out.stdout or ""):
+    if "{" in stdout:
         return (f"Claude Code ({executable}) gave an answer The Chat Place couldn't read "
                 f"(exit code {out.returncode}). Run claude auth status in a terminal to see it")
     if said:
