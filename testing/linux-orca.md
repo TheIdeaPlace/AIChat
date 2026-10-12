@@ -63,7 +63,7 @@ Each test says what to do and what you should hear. Note anything else, with the
     Help, Report a Bug shows the route ("spoke through Orca (D-Bus)", "(the window)", or "…, so
     speech-dispatcher").
 13. **Without Orca.** Quit Orca (Orca+Q), and repeat 11. A speech-dispatcher voice speaks it.
-    In Settings, the speech engine list offers the voices in your language and a rate.
+    It's speech-dispatcher's default voice; Settings offers a rate.
 
 ## Notifications
 

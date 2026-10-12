@@ -415,8 +415,9 @@ too).
   notifications from its window while you're in it; while you're in another window, they're
   spoken by speech-dispatcher, the speech server Orca uses too. speech-dispatcher says one
   thing at a time, so that voice never talks over Orca, and Orca's next words cut it off. With
-  Orca not running, Automatic is a speech-dispatcher voice; Settings lists the voices in your
-  language, and the rate. Help, Report a Bug says which way the last announcement went.
+  Orca not running, Automatic is speech-dispatcher's default voice; Settings chooses the rate,
+  and speech-dispatcher's own settings (`spd-conf`) the voice. Help, Report a Bug says which way
+  the last announcement went.
 - **The status bar** (F6, or Ctrl+9) has parts, as in QuickMail, and Left and Right move between
   them: what was last said, then the loaded session and what it's doing (read-only text), then
   buttons that appear when there's something to act on: how full the context is (Usage and
