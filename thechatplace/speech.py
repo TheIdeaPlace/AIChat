@@ -389,19 +389,42 @@ def _parse_mac_voices(raw: str) -> List[SpeechOption]:
     return options
 
 
+def _voice_language() -> str:
+    """The two-letter language voices are offered in: the user's own
+    (``LANG``), or English when it's unset or "C"."""
+    for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(name, "")
+        if value:  # the first one set decides, as it does for the system
+            if value in ("C", "POSIX") or value.startswith("C."):
+                return "en"
+            return value[:2].lower()
+    return "en"
+
+
+def _parse_speechd_voices(raw: str, language: str = "en") -> List[SpeechOption]:
+    """Voices out of ``spd-say -L``: a NAME LANGUAGE VARIANT table. Only the
+    user's language, and no "+Variant" voices: espeak-ng alone lists over a
+    thousand."""
+    options: List[SpeechOption] = []
+    for line in raw.splitlines():
+        match = re.match(r"^\s*(.+?)\s{2,}([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*)\s+(\S+)\s*$", line)
+        if not match or match.group(1) == "NAME":
+            continue
+        name, locale = match.group(1).strip(), match.group(2)
+        if not locale.lower().startswith(language) or "+" in name:
+            continue
+        options.append(SpeechOption("speechd", name, f"{name} ({locale}) — speech-dispatcher voice"))
+    return options
+
+
 def list_speech_options(timeout: float = 25.0) -> List[SpeechOption]:
     """Probe this machine for speech routes. Falls back to defaults on error.
 
     Windows runs the bundled ClaudeSpeak probe (JAWS COM registration, NVDA
     controller DLL with a PE-architecture check, OneCore and SAPI voice
     lists). macOS asks ``say`` directly and checks for VoiceOver — no shell
-    probe, so there is no jq dependency for enumeration.
-
-    Linux asks nothing: speech-dispatcher's default voice, and the user
-    chooses others in its own settings. Asking it for its voices (``spd-say
-    -L``) when the app started hung speech-dispatcher on an MNT Pocket Reform
-    (its default module, openevv, never answered), and with it Orca, which
-    speaks through the same server, so the user lost all speech.
+    probe, so there is no jq dependency for enumeration. Linux asks
+    speech-dispatcher (``spd-say -L``).
     """
     try:
         if sys.platform == "win32":
@@ -426,6 +449,13 @@ def list_speech_options(timeout: float = 25.0) -> List[SpeechOption]:
             )
             if result.returncode == 0:
                 options.extend(_parse_mac_voices(result.stdout))
+            return options
+        elif IS_LINUX:
+            options = default_options()
+            result = subprocess.run(["spd-say", "-L"], capture_output=True, text=True,
+                                    timeout=timeout)
+            if result.returncode == 0:
+                options.extend(_parse_speechd_voices(result.stdout, _voice_language()))
             return options
     except Exception:
         # A failed probe (no PowerShell, timeout, malformed JSON) must

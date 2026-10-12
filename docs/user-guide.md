@@ -583,7 +583,7 @@ On Linux, **Automatic** speaks through Orca, in Orca's voice and rate. Orca 49 a
 every announcement, whatever window you're in. Orca 48 and earlier take them while you're in The
 Chat Place; while you're in another window, speech-dispatcher speaks them, the speech server
 Orca uses too, which never talks over Orca. Without Orca, Automatic is a speech-dispatcher
-voice: Settings chooses its rate, and speech-dispatcher's own settings its voice.
+voice, and Settings chooses the voice and rate.
 
 When you're in another window, The Chat Place can show a notification: when one of its sessions
 finishes a turn, fails or needs you, when the session you have loaded finishes, or when a desktop

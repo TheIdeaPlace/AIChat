@@ -147,16 +147,31 @@ def test_the_desktop_entry_is_made_the_links_handler(tmp_path, monkeypatch):
 
 # -- speech: speech-dispatcher voices ------------------------------------------------------
 
-def test_linux_never_asks_speech_dispatcher_for_its_voices(monkeypatch):
-    """Asking hung speech-dispatcher, and Orca with it, on a Pocket Reform."""
-    import subprocess
-    monkeypatch.setattr(speech.sys, "platform", "linux")
-    monkeypatch.setattr(speech, "IS_LINUX", True)
+SPD_LIST = """\
+                     NAME                 LANGUAGE                  VARIANT
+                Afrikaans                       af                     none
+        English (America)                    en-US                     none
+   English (America)+Alex                    en-US                     Alex
+   English (Great Britain)                   en-GB                     none
+                   German                       de                     none
+"""
 
-    def refuse(*a, **k):
-        raise AssertionError(f"ran {a[0]}")
-    monkeypatch.setattr(subprocess, "run", refuse)
-    assert [o.engine for o in speech.list_speech_options()] == ["auto", "orca", "speechd"]
+
+def test_speech_dispatcher_voices_in_your_language_without_variants():
+    options = speech._parse_speechd_voices(SPD_LIST, "en")
+    assert [o.voice for o in options] == ["English (America)", "English (Great Britain)"]
+    assert all(o.engine == "speechd" and o.has_rate for o in options)
+    assert [o.voice for o in speech._parse_speechd_voices(SPD_LIST, "de")] == ["German"]
+
+
+def test_the_voice_language_is_yours_or_english(monkeypatch):
+    for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(name, raising=False)
+    assert speech._voice_language() == "en"
+    monkeypatch.setenv("LANG", "de_DE.UTF-8")
+    assert speech._voice_language() == "de"
+    monkeypatch.setenv("LC_ALL", "C.UTF-8")
+    assert speech._voice_language() == "en"
 
 
 def test_linux_offers_orca_and_speech_dispatcher(monkeypatch):
