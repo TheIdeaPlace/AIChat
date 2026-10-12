@@ -40,6 +40,24 @@ def test_not_signed_in_api_keys_and_no_answer():
         assert signin.describe(status).startswith("Couldn't tell whether Claude Code is signed in")
 
 
+def test_terminal_control_codes_around_the_answer_are_ignored():
+    """A user's claude ended its answer with ESC [2G (cursor to column 2),
+    which made it unreadable; a code just before the "{" must not hide it
+    either, and a code is never read out as what Claude Code said."""
+    answer = json.dumps({"loggedIn": True, "authMethod": "claude.ai",
+                         "apiProvider": "firstParty", "subscriptionType": "pro"}, indent=2)
+    for out in (answer + "\x1b[2G",
+                "\x1b[?25l" + answer + "\x1b[2G\x1b[K",
+                "\x1b]0;claude\x07" + answer + "\n\x1b[?25h",
+                "\x1b7" + answer + "\x1b8",
+                "\x1b(B" + answer):
+        status = signin.check("claude", run=_run(out))
+        assert status.known and status.signed_in and status.plan == "pro"
+    said = signin.describe(signin.check("/x/claude", run=_run(
+        stderr="\x1b[31merror: unknown command 'auth'\x1b[0m\n", code=1)))
+    assert "is too old to say" in said and "\x1b" not in said
+
+
 def test_a_notice_around_the_answer_is_skipped():
     """An install that prints a notice before or after its JSON (an npm
     install did) is still read; it was taken as saying only "{"."""
