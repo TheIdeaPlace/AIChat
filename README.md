@@ -19,8 +19,8 @@ as Help, Keyboard Shortcuts (F1) in the app.
 > installing an update needs two published releases, so it is first tried with 0.1.1. It has not
 > yet had a pass with NVDA. The Mac build is used with VoiceOver on Kelly's Mac, and since 0.1.2
 > the release workflow signs and notarizes it. The Linux build (AppImages for x64 and arm64) is
-> new in 0.1.7. It has been tested with Orca 48 on Debian 13 (arm64) in a virtual machine, but not
-> yet on a real Linux PC.
+> new in 0.1.7. It has been tested with Orca 51 on an MNT Pocket Reform, and with Orca 48 on Debian
+> 13 (arm64) in a virtual machine.
 
 A keyboard and screen reader friendly reader for Claude Code sessions. It lists every session the
 Claude desktop app has open, and the ones you started by typing `claude` in a terminal, shows each
