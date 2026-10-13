@@ -18,7 +18,9 @@ as Help, Keyboard Shortcuts (F1) in the app.
 > installer, uninstaller and update check have been tested in the vmtest VM. Downloading and
 > installing an update needs two published releases, so it is first tried with 0.1.1. It has not
 > yet had a pass with NVDA. The Mac build is used with VoiceOver on Kelly's Mac, and since 0.1.2
-> the release workflow signs and notarizes it.
+> the release workflow signs and notarizes it. The Linux build (AppImages for x64 and arm64) is
+> new in 0.1.7. It has been tested with Orca 51 on an MNT Pocket Reform, and with Orca 48 on Debian
+> 13 (arm64) in a virtual machine.
 
 A keyboard and screen reader friendly reader for Claude Code sessions. It lists every session the
 Claude desktop app has open, and the ones you started by typing `claude` in a terminal, shows each
@@ -40,7 +42,8 @@ session, and the **reply box** with Send and Stop. Shift+Tab goes back the same 
 session list is always there. **F6** and **Shift+F6** move between those parts and the **status
 bar**, which holds whatever was said last ("12 sessions: 1 need you", "Claude is using Bash.") in
 a read-only box to read by line, word and character; **Ctrl+9** goes straight there. The status
-bar isn't a Tab stop, and your screen reader's own read-status-bar key still works.
+bar isn't a Tab stop, and your screen reader's own read-status-bar key still works (Orca's
+too).
 
 - **Session list.** Each item reads its title, its repo folder, its state (needs you, working or
   idle), and when it was last active: "Fix the release build, QuickMail, needs you: Choose a
@@ -405,6 +408,15 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   again. Nothing is spoken through a screen reader while Windows is locked. Choosing JAWS or NVDA in
   Settings only decides which is tried first when both are running. On a Mac, Automatic speaks
   through VoiceOver when it's running, else a system voice.
+- **Which voice speaks on Linux.** Automatic, or Orca, speaks through Orca when it's running, in
+  Orca's own voice and rate, on its braille display too. Orca 49 and later take every
+  announcement through their D-Bus remote controller (`PresentMessage`), whatever window you're
+  in. Orca 45.2 to 48 take them only from the active window, so The Chat Place sends them as
+  notifications from its window while you're in it; while you're in another window, they're
+  spoken by speech-dispatcher, the speech server Orca uses too. speech-dispatcher says one
+  thing at a time, so that voice never talks over Orca, and Orca's next words cut it off. With
+  Orca not running, Automatic is a speech-dispatcher voice; Settings lists the voices in your
+  language, and the rate. Help, Report a Bug says which way the last announcement went.
 - **The status bar** (F6, or Ctrl+9) has parts, as in QuickMail, and Left and Right move between
   them: what was last said, then the loaded session and what it's doing (read-only text), then
   buttons that appear when there's something to act on: how full the context is (Usage and
@@ -423,8 +435,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
 - **Notifications** while you're in another window: when one of The Chat Place's own
   sessions finishes a turn, fails or needs you (a permission or a question), when a desktop app
   session starts needing you, and when the loaded session finishes. Choosing one brings
-  The Chat Place forward with that session loaded. Settings, Windows notifications (on a Mac,
-  Notifications) chooses every finished turn of its own sessions (the default), only when a
+  The Chat Place forward with that session loaded. Settings, Windows notifications (on a Mac
+  and on Linux, Notifications) chooses every finished turn of its own sessions (the default), only when a
   session needs you, or off. While you're in The Chat Place (or one of its dialogs), the
   announcement is enough and none are shown.
   - On Windows they're ordinary Windows notifications from The Chat Place's icon in the
@@ -434,6 +446,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     macOS asks once whether The Chat Place may send them (System Settings, Notifications changes
     that). Each one remembers its own session, so choosing an older one still opens the right
     session.
+  - On Linux they go to your desktop's notification server (GNOME's, KDE's, or any other that
+    follows the freedesktop.org standard), which Orca reads. Choosing one opens its session, as
+    on a Mac, where the notification server supports it.
 - **Changed Files** (Ctrl+Shift+D, View menu) lists the files Claude changed since your latest
   message, or in the whole session, each with its line counts ("main_frame.py, 40 lines added, 12
   removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a
@@ -497,12 +512,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
 
 ## Install
 
-You need Windows 10 or 11, or a Mac with Apple silicon, and **Claude Code installed with its
-native installer and signed in** to a Claude subscription (the `claude` command, the same login
-the desktop app uses). The Claude desktop app's own copy of Claude Code isn't on the PATH and
-isn't meant for other programs, so install the command as well, from a terminal:
+You need Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, see below),
+and **Claude Code installed with its native installer and signed in** to a Claude subscription
+(the `claude` command, the same login the desktop app uses). The Claude desktop app's own copy of
+Claude Code isn't on the PATH and isn't meant for other programs, so install the command as well,
+from a terminal:
 
-- Mac: `curl -fsSL https://claude.ai/install.sh | bash`
+- Mac and Linux: `curl -fsSL https://claude.ai/install.sh | bash`
 - Windows PowerShell: `irm https://claude.ai/install.ps1 | iex`
 - Windows Command Prompt:
   `curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd`
@@ -525,6 +541,34 @@ disk image is signed and notarized, so it opens without a warning. The first tim
 control VoiceOver; allow it, and turn on "Allow VoiceOver to be controlled with AppleScript" in
 VoiceOver Utility, General. Your sessions and settings are in
 `~/Library/Application Support/TheChatPlace`.
+
+**Linux.** Download `TheChatPlace-linux-x64.AppImage` (most PCs) or
+`TheChatPlace-linux-arm64.AppImage` (Arm PCs and boards, such as the MNT Reform and Pocket
+Reform) from the same release, put it where you keep programs (`~/Applications`,
+say), make it executable, and run it:
+
+```
+chmod +x ~/Applications/TheChatPlace-linux-arm64.AppImage
+~/Applications/TheChatPlace-linux-arm64.AppImage
+```
+
+The first start adds The Chat Place to your desktop's menu (a desktop entry in
+`~/.local/share/applications`) and makes it the handler for `thechatplace://` links. Your sessions
+and settings are in `~/.config/TheChatPlace`.
+
+It needs a Linux at least as new as Ubuntu 24.04, Debian 13 or Fedora 40, with GTK 3 (any
+desktop has it), and these, which most desktops have and the rest install in one line:
+
+- **FUSE 2**, which runs AppImages: `sudo apt install libfuse2t64` on Debian 13 and Ubuntu 24.04
+  (`libfuse2` on older ones), `sudo dnf install fuse-libs` on Fedora. Without it, an AppImage
+  still runs with `--appimage-extract-and-run`, but slower to start.
+- **Orca** (45.2 or later; 49 or later reads announcements from the background) and
+  **speech-dispatcher**: `sudo apt install orca speech-dispatcher`.
+- For formatted full messages (off by default on Linux; see Limitations), **WebKitGTK 4.1**:
+  `sudo apt install libwebkit2gtk-4.1-0`.
+
+Anthropic makes no Claude desktop app for Linux, so the list there has the sessions you started
+by typing `claude` in a terminal and The Chat Place's own.
 
 ## Updates
 
@@ -558,25 +602,28 @@ turn starts, a dialog opens, or you type a reply while it downloads, it asks aga
 update to be installed the next time The Chat Place starts.
 
 The Mac app updates the same way. Velopack's updater is inside the app itself, so it works
-wherever you keep it.
+wherever you keep it. So does the Linux AppImage: an update replaces the `.AppImage` file where
+it is (asking for your password, through pkexec, only if it's in a folder you can't write to).
 
 **Updating never touches your sessions or settings.** On Windows the app lives in
 `%LOCALAPPDATA%\TheChatPlace`, which Velopack replaces on update and removes on uninstall, and
 your data is in `%APPDATA%\TheChatPlace`. On a Mac, Velopack replaces the app itself, and your
-data is in `~/Library/Application Support/TheChatPlace`. The updater refuses to run if the data
+data is in `~/Library/Application Support/TheChatPlace`. On Linux, Velopack replaces the
+AppImage, and your data is in `~/.config/TheChatPlace`. The updater refuses to run if the data
 were ever inside what it replaces. What the updater did is logged in `update.log` in the data
 folder.
 
 The version is in Help, About. Releases come from tags named `v<version>`, and
-each release carries two Velopack update feeds, `windows` (`releases.windows.json`) and `osx`
-(`releases.osx.json`). The updater finds the newest `v*` release in this repository itself
+each release carries four Velopack update feeds, `windows` (`releases.windows.json`), `osx`
+(`releases.osx.json`), `linux-x64` and `linux-arm64` (one for each processor, since an AppImage
+holds programs for one). The updater finds the newest `v*` release in this repository itself
 and reads the feed from that release only (`REPO_URL`, `RELEASES_API`, `TAG_PREFIX` and `CHANNEL`
 in `thechatplace/updater.py`).
 
 ## Run from source (development)
 
-You need Python 3.11 to 3.13 (wxPython has wheels for those). The repo's virtual environment is
-`.venv` (ignored by git). The setup scripts make it, install everything the app, the tests and
+You need Python 3.11 to 3.13 (wxPython has wheels for those on Windows and the Mac; on Linux,
+see below). The repo's virtual environment is `.venv` (ignored by git). The setup scripts make it, install everything the app, the tests and
 the build need (`requirements-build.txt`), and check it all imports, as Image Description
 Toolkit's do. Each replaces an existing `.venv`.
 
@@ -584,6 +631,13 @@ Toolkit's do. Each replaces an existing `.venv`.
 |---|---|---|---|
 | Windows | `winsetup.bat` | `.venv\Scripts\pythonw TheChatPlace.pyw` | `.venv\Scripts\python -m pytest tests` |
 | Mac | `./macsetup.sh`, or double-click `macsetup.command` | `.venv/bin/python -m thechatplace` | `.venv/bin/python -m pytest tests` |
+| Linux | `./linuxsetup.sh` | `.venv/bin/python -m thechatplace` | `.venv/bin/python -m pytest tests` |
+
+wxPython publishes no Linux wheels, and building it takes an hour or more (longer on an Arm
+board), so on Linux `.venv` uses your distribution's: `linuxsetup.sh` makes it with
+`--system-site-packages` from the system's Python, and says what to install first if it's missing
+(`sudo apt install python3-venv python3-wxgtk4.0 python3-wxgtk-webview4.0` on Debian and Ubuntu).
+The window tests need a display; without one, run them under `xvfb-run -a`.
 
 `python -m thechatplace` works on Windows too. A copy run from source doesn't update itself; Help, Check
 for Updates says so, and names the newest release.
@@ -591,7 +645,7 @@ for Updates says so, and names the newest release.
 ### Build it yourself
 
 The build scripts are in `BuildAndRelease/`, laid out as in Image Description Toolkit:
-`MacBuilds/` and `WinBuilds/`. Each does what the release workflow's job for that platform does:
+`MacBuilds/`, `WinBuilds/` and `LinuxBuilds/`. Each does what the release workflow's job for that platform does:
 makes `.venv` if it isn't there, runs the tests, builds the app with PyInstaller, smoke-tests it,
 and packs it with Velopack, whose tool `vpk` needs the .NET SDK (the scripts install `vpk` at the
 version the workflow uses). Results go in `releases\` and `dist\`; give a folder to copy the
@@ -620,6 +674,24 @@ TCP_SIGN_CODE=0 BuildAndRelease/MacBuilds/build_macos.sh    unsigned
 TCP_NOTARIZE=1 BuildAndRelease/MacBuilds/build_macos.sh     signed and notarized (credentials: notarize.sh)
 ```
 
+**Linux.** `BuildAndRelease/LinuxBuilds/build_linux.sh` makes
+`releases/TheChatPlace-linux-<arch>.AppImage` and the `linux-<arch>` update feed, for the
+processor it runs on (x64 or arm64). It also needs objdump, the Python shared library and
+mksquashfs (`sudo apt install binutils libpython3-dev squashfs-tools`), and the .NET SDK
+(Microsoft's `dotnet-install.sh`, or your distribution's `dotnet-sdk` package).
+
+```
+BuildAndRelease/LinuxBuilds/build_linux.sh
+BuildAndRelease/LinuxBuilds/build_linux.sh ~/Desktop/builds   and copy the AppImage there
+```
+
+The app uses the desktop's own GTK, accessibility bridge, WebKitGTK and speech-dispatcher, never
+copies of them: those are what Orca reads, and what the desktop's theme and settings apply to. So
+after PyInstaller, the build takes back out every library it copied except Python's,
+wxWidgets' and a few small ones each distribution names differently. That makes the PC it's built
+on set the oldest Linux it runs on; the workflow builds on Ubuntu 24.04. Linux builds aren't
+signed.
+
 The Mac build follows GHManage's: the app is signed inside-out (`sign.sh`), `vpk pack` adds
 Velopack's updater (`UpdateMac`) and signs that and the bundle, and the disk image is made from
 the packed app, never from `dist/`. An app without `UpdateMac` runs perfectly and never updates
@@ -634,8 +706,8 @@ The version lives in one place, `__version__` in `thechatplace/__init__.py`. To 
    requirements), in one commit on main.
 2. Tag it `v<version>` and push the tag.
 
-`.github/workflows/release-thechatplace.yml` then builds both platforms side by side, and
-publishes one GitHub release (a pre-release before 1.0) only if both succeed:
+`.github/workflows/release-thechatplace.yml` then builds every platform side by side, and
+publishes one GitHub release (a pre-release before 1.0) only if all of them succeed:
 
 - **Windows:** runs the tests, fails if the tag and `__version__` disagree, builds the app with
   PyInstaller, smoke-tests the built exe, signs it with Azure Artifact Signing, packs the Velopack
@@ -647,6 +719,9 @@ publishes one GitHub release (a pre-release before 1.0) only if both succeed:
   `MACOS_CERTIFICATE_PASSWORD`, `NOTARY_KEY_P8`, `NOTARY_KEY_ID` and `NOTARY_ISSUER_ID`, which
   `The-Idea-Place-Projects/signing/sync-secrets.py` sets from the signing kit; a tag fails without
   them rather than publish an unsigned app.
+- **Linux:** runs `build_linux.sh` twice, on GitHub's Ubuntu 24.04 x64 and arm64 runners, with
+  Ubuntu's own wxPython, so each makes its AppImage and update feed. The AppImage must start and
+  know its version before it's kept.
 
 Run by hand or for a pull request, it does everything but publish, and keeps the files as
 workflow artifacts; tick "sign" on a hand run, or label a pull request `sign-build`, to sign (and
@@ -844,9 +919,16 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 - On a Mac, edit boxes, lists and
   choices have their names under VoiceOver, as under JAWS and NVDA. But the text a screen reader
   reads for each row of the messages list (the whole message) uses MSAA, which wxPython has only
-  on Windows, so VoiceOver reads the row's own text instead. The OS-specific parts are in
-  `thechatplace/platform_paths.py`, `thechatplace/ui/a11y.py`, `thechatplace/ui/mac_a11y.py` and
-  the speech scripts.
+  on Windows, so VoiceOver reads the row's own text instead. On Linux, Orca reads a row's own text
+  and then the rest of the message (from the row's accessible description). The OS-specific
+  parts are in `thechatplace/platform_paths.py`, `thechatplace/ui/a11y.py`,
+  `thechatplace/ui/mac_a11y.py`, `thechatplace/ui/gtk_a11y.py`, `thechatplace/orca.py` and the
+  speech scripts.
+- On Linux, Orca before 50 doesn't say a list's name ("Session list", "Messages in …") as you move
+  into it, only the row you land on; Orca's Where Am I says it. Orca 50 and later say it.
+- On Linux, full messages open as plain text unless you turn on the formatted page in Settings.
+  Tested with Orca 48 and WebKitGTK 2.50, the page's headings and landmarks could be moved
+  between, but Orca didn't read it line by line.
 - "Needs you" for desktop sessions depends on the desktop app's turn summary, which it doesn't
   always write. A session without one shows as idle once it stops working.
 - A desktop session's transcript can be gone if it's older than Claude Code's retention period
@@ -878,6 +960,7 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 | `thechatplace/rendering.py` | A message's markdown as a safe HTML page, for the formatted view |
 | `thechatplace/speech.py`, `thechatplace/speech/` | Speech, adapted from Image Description Toolkit (ClaudeSpeak's engine scripts) |
 | `thechatplace/screen_readers.py` | Speaking through JAWS and NVDA on Windows |
+| `thechatplace/orca.py` | Speaking through Orca on Linux |
 | `thechatplace/nvda/` | NV Access's NVDA Controller Client (LGPL 2.1, unmodified; see its README and `license.txt`) |
 | `thechatplace/platform_paths.py` | Every path and OS call |
 | `thechatplace/links.py` | `thechatplace://` links to sessions: making, reading and registering them |
@@ -886,8 +969,9 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 | `thechatplace/updater.py` | Velopack updates, adapted from GHManage's updater |
 | `tools/check_version.py` | Prints the version; checks a release tag against it |
 | `tools/make_version_info.py` | The Windows version resource for the built exe |
-| `winsetup.bat`, `macsetup.sh` (`.command`) | Set up `.venv` on Windows or a Mac |
+| `winsetup.bat`, `macsetup.sh` (`.command`), `linuxsetup.sh` | Set up `.venv` on Windows, a Mac or Linux |
 | `BuildAndRelease/WinBuilds/build_windows.cmd` | Build on Windows (unsigned) |
 | `BuildAndRelease/MacBuilds/` | Build on a Mac (`build_macos.sh`, `.command`), and its signing, notarizing, entitlements and disk image |
+| `BuildAndRelease/LinuxBuilds/build_linux.sh` | Build on Linux: the AppImage and update feed for the PC's processor |
 | `requirements-build.txt` | Everything a build needs; pins PyInstaller |
 | `release-notes/` | One file per release, used as the GitHub release's notes and the update's notes |

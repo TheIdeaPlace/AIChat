@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import getpass
+import os
 import sys
 import threading
 import time
@@ -80,7 +81,11 @@ def smoke_test(out_path: str) -> int:
         report["markdown"] = "<h2>" in message_page("t", "## x")
         import wx.html2
 
-        if sys.platform == "win32":
+        if sys.platform.startswith("linux"):
+            # Informational: WebKitGTK is the system's, when it's installed.
+            report["webkit_available"] = bool(
+                wx.html2.WebView.IsBackendAvailable(wx.html2.WebViewBackendWebKit))
+        elif sys.platform == "win32":
             loader = Path(wx.html2.__file__).parent / "WebView2Loader.dll"
             report["webview2_loader"] = loader.is_file()
             if not loader.is_file():
@@ -113,8 +118,7 @@ def smoke_test(out_path: str) -> int:
         except Exception as exc:  # noqa: BLE001
             report["updater"] = f"unavailable: {exc}"
     scripts = speech._script_dir()
-    extension = "ps1" if sys.platform == "win32" else "sh"
-    for name in (f"speak-engine.{extension}", f"speak-voices.{extension}"):
+    for name in speech.engine_script_names():
         if not (scripts / name).is_file():
             problems.append(f"missing speech script {scripts / name}")
     if sys.platform == "win32":
@@ -145,8 +149,14 @@ def smoke_test(out_path: str) -> int:
     report["links"] = links.parse_link(links.PREFIX + "smoke-test") == "smoke-test"
     if not report["links"]:
         problems.append("thechatplace:// links don't parse")
-    if sys.platform == "win32":
+    if sys.platform == "win32" or sys.platform.startswith("linux"):
         report["link_registration"] = platform_paths.url_scheme_command() or ""
+    if sys.platform.startswith("linux"):
+        # Orca's way in for names and announcements (ui/gtk_a11y.py).
+        from .ui import gtk_a11y
+        report["atk"] = gtk_a11y._load() is not None
+        if not report["atk"]:
+            problems.append("GTK 3 and ATK can't be loaded, so Orca gets no names")
     lookup = platform_paths.find_claude()
     report["claude"] = lookup.path or lookup.problem
     report["data_outside_install"] = updater.data_is_outside_install_dir()
@@ -162,17 +172,27 @@ def register_links_in_background() -> None:
     """Windows: make sure thechatplace:// links (#144) open this copy, if it's
     the installed one; Velopack's install hook does it too, but a copy
     installed before links existed, or a registration someone removed, is
-    put right here. A portable copy or a source run never registers. Off the
-    UI thread, and it never stops the app starting."""
-    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+    put right here. Linux: the same for an AppImage, whose desktop entry
+    also puts it in the desktop's menu; nothing installs one, so this is
+    where it's made. A portable copy or a source run never registers. Off
+    the UI thread, and it never stops the app starting."""
+    if not getattr(sys, "frozen", False):
+        return
+    if sys.platform.startswith("linux"):
+        # The AppImage file itself, not the program inside it, which is
+        # mounted somewhere new at every start.
+        executable, installed = os.environ.get("APPIMAGE", ""), bool(os.environ.get("APPIMAGE"))
+    elif sys.platform == "win32":
+        executable, installed = sys.executable, None
+    else:
         return
 
     def work():
         from . import links, updater
         try:
-            installed = updater.is_installed_copy(__version__)
+            known = installed if installed is not None else updater.is_installed_copy(__version__)
             updater.logger.info("link registration: %s",
-                                links.ensure_registered(installed, sys.executable))
+                                links.ensure_registered(known, executable))
         except Exception as exc:  # noqa: BLE001
             updater.logger.error("link registration failed: %s", exc)
 
@@ -191,6 +211,8 @@ def hand_link_to_running_copy(link: str) -> bool:
 
 def main(argv: Optional[list] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    # Linux, built app: what it starts gets the system's libraries.
+    platform_paths.restore_system_library_path()
     from . import links
 
     # Started with a thechatplace:// link (#144): that's all this start is
@@ -233,8 +255,10 @@ def main(argv: Optional[list] = None) -> int:
             else:
                 self.waiting.append(url)
 
-    # Before the first window: Windows then doesn't stretch the app (#185).
+    # Before the first window: Windows then doesn't stretch the app (#185),
+    # and Linux knows the app by its name.
     platform_paths.make_dpi_aware()
+    platform_paths.set_program_name()
     app = ChatPlaceApp(False)
     app.SetAppName(APP_TITLE)
     # One copy at a time: two would both run turns, announce everything

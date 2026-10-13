@@ -23,7 +23,7 @@ from records import (assistant_block, lines, text_block, tool_result, tool_use_b
 from markers import msaa, voiceover, windows_paths  # noqa: E402
 import fake_env  # noqa: E402
 from fake_env import (FAKE_COMMANDS, FakeRunner, add_desktop, add_transcript,  # noqa: E402,F401
-                      now_ms, pump)
+                      now_ms, pump, status_field)
 
 
 @pytest.fixture(scope="module")
@@ -691,7 +691,7 @@ def test_silent_level_still_puts_the_reply_in_the_status_bar(frame, env):
     frame._on_turn_event({"id": "own-1"}, "Hub probe",
                          TurnEvent("finished", text="All good. More text."))
     assert env["spoken"] == []
-    assert frame.GetStatusBar().GetStatusText() == "Hub probe finished. All good."
+    assert status_field(frame.GetStatusBar()) == "Hub probe finished. All good."
 
 
 # -- hide --------------------------------------------------------------------------------
@@ -1523,7 +1523,7 @@ def test_silent_level_reads_nothing_back(frame, env, fake_runner):
     frame.speech.announce = speech.ANNOUNCE_SILENT
     _start(frame, fake_runner, "quiet please")
     assert env["feedback"] == []  # silent speaks no confirmations at all
-    assert frame.GetStatusBar().GetStatusText() == "Sent. Hub probe is working."
+    assert status_field(frame.GetStatusBar()) == "Sent. Hub probe is working."
 
 
 def test_queued_message_is_read_once(frame, env, fake_runner):
@@ -2046,6 +2046,7 @@ def test_cowork_session_menu_remote_control_and_filter(frame, env, monkeypatch):
 
 
 def _load_reply(frame, env, text):
+    frame.speech.formatted_messages = True  # the setting's own default is off on Linux
     add_transcript(env, "C:\\G\\Repo", "cli-a", [
         user_text("Show me"), assistant_block(text_block(text), "m1")])
     select(frame, "Quiet one")
@@ -2205,7 +2206,7 @@ def test_shortcuts_and_messages_fall_back_to_the_text_box(frame, env, monkeypatc
     monkeypatch.setattr(main_frame, "FormattedMessageDialog", Broken)
     frame.on_shortcuts()
     assert len(texts) == 2
-    assert frame.GetStatusBar().GetStatusText() == "Couldn't show the formatted page: no runtime"
+    assert status_field(frame.GetStatusBar()) == "Couldn't show the formatted page: no runtime"
     # Read Full Message takes the same way back to its text box.
     from thechatplace.ui.dialogs import MessageDialog
     _load_reply(frame, env, "## Result")
@@ -2329,7 +2330,7 @@ def test_status_bar_parts_are_read_only_text_and_buttons(frame):
     frame._status("Hub probe: Claude is using Bash.")
     bar = frame.GetStatusBar()
     assert frame.status_text.GetLabel() == "Hub probe: Claude is using Bash."
-    assert bar.GetStatusText(0) == "Hub probe: Claude is using Bash."  # read-status-bar key
+    assert status_field(bar, 0) == "Hub probe: Claude is using Bash."  # read-status-bar key
     # Information: focusable static text, no caret, never a Tab stop.
     assert frame.status_text.GetParent() is bar
     assert not isinstance(frame.status_text, wx.TextCtrl)
@@ -2344,7 +2345,7 @@ def test_status_bar_parts_are_read_only_text_and_buttons(frame):
     select(frame, "Hub probe")
     frame.on_open_session()
     assert frame.status_session.GetLabel().startswith("Hub probe: ")
-    assert bar.GetStatusText(1) == frame.status_session.GetLabel()
+    assert status_field(bar, 1) == frame.status_session.GetLabel()
 
 
 def test_needs_you_button_goes_to_the_session(frame, env, monkeypatch):
@@ -3643,7 +3644,7 @@ def test_a_part_you_are_reading_waits_for_you(frame, monkeypatch):
     monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.status_text))
     frame._status("Second.")
     assert frame.status_text.GetLabel() == "First."  # not read out under you
-    assert frame.GetStatusBar().GetStatusText(0) == "Second."  # the read key has it
+    assert status_field(frame.GetStatusBar(), 0) == "Second."  # the read key has it
     frame.status_text._on_focus_change(wx.FocusEvent(wx.wxEVT_KILL_FOCUS))
     assert frame.status_text.GetLabel() == "Second."  # caught up on leaving
 
@@ -3651,7 +3652,7 @@ def test_a_part_you_are_reading_waits_for_you(frame, monkeypatch):
 def test_empty_parts_and_the_update_button_going_away(frame, env):
     from thechatplace.updater import AVAILABLE, CheckResult, CURRENT
     bar = frame.GetStatusBar()
-    assert bar.GetStatusText(1) == "No session loaded"
+    assert status_field(bar, 1) == "No session loaded"
     frame.updates = FakeUpdates(CheckResult(AVAILABLE, "0.1.0", "0.2.0"))
     run_check(frame, manual=False)
     assert frame.status_parts.get("update").IsShown()
@@ -3955,11 +3956,14 @@ def _boxes_and_their_controls(parent, sizer):
                 walk(inner)
     walk(sizer)
     children = list(parent.GetChildren())
-    handles = [c.GetHandle() for c in children]
+    # The id as well as the handle: on Linux a window that hasn't been shown
+    # has no handle yet (0 for all of them).
+    handles = [(c.GetHandle(), c.GetId()) for c in children]
     groups = []
     for box in boxes:
-        start = handles.index(box.GetHandle())
-        later = [handles.index(b.GetHandle()) for b in boxes if handles.index(b.GetHandle()) > start]
+        start = handles.index((box.GetHandle(), box.GetId()))
+        later = [handles.index((b.GetHandle(), b.GetId())) for b in boxes
+                 if handles.index((b.GetHandle(), b.GetId())) > start]
         end = min(later) if later else len(handles)
         controls = [c for c in list(parent.GetChildren())[start + 1:end]
                     if isinstance(c, (wx.RadioButton, wx.CheckBox, wx.TextCtrl))]
@@ -4309,7 +4313,11 @@ def test_the_reply_box_grows_with_the_window(frame):
     # list until the reply's share passes it; after that about a third goes
     # to the reply. CI's screen may let the window grow only a little.
     if large_frame - small_frame >= 150:
-        assert large - small >= (large_frame - small_frame) / 5
+        # Or already a third of the height it shares: Linux's taller buttons
+        # give the reply's panel a larger minimum, so it grows later.
+        shared = frame.chat_list.GetSize().height + frame.own_reply.GetSize().height
+        assert (large - small >= (large_frame - small_frame) / 5
+                or frame.own_reply.GetSize().height >= shared / 3 - 4)
     assert frame.chat_list.GetSize().height > frame.own_reply.GetSize().height
 
 
@@ -6030,7 +6038,7 @@ def test_update_installed_waits_for_a_free_main_window(frame, env, monkeypatch):
     assert shown == []
     # ...and on its last try says so on the status bar instead.
     frame._show_update_installed_when_free("0.1.4", 1)
-    assert frame.GetStatusBar().GetStatusText() == "The Chat Place was updated to 0.1.4."
+    assert status_field(frame.GetStatusBar()) == "The Chat Place was updated to 0.1.4."
     assert shown == [] and len(later) == 1
     # Shown, in front, nothing over it: free, but only shown once it was
     # free at the try before too (not the moment you switch back).

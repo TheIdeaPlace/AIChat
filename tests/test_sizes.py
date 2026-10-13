@@ -11,6 +11,7 @@ wx = pytest.importorskip("wx")
 
 from thechatplace import app as app_module  # noqa: E402
 from thechatplace.ui import sizes  # noqa: E402
+from fake_env import status_field  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -107,7 +108,7 @@ def test_a_move_to_another_screen_keeps_the_status_bar_buttons_text(app):
         parts._on_dpi_changed(wx.DPIChangedEvent())
         assert context.GetLabel() == "Context 42% full"
         assert context.IsShown()
-        assert bar.GetStatusText(1) == "Context 42% full"
+        assert status_field(bar, 1) == "Context 42% full"
     finally:
         frame.Destroy()
 

@@ -72,6 +72,29 @@ terminal (System Settings, Privacy & Security, Screen Recording):
 Switch to Dark appearance and run it again with `--tag mac-dark`. A Mac has no WebView2,
 so the formatted-page surfaces show the plain-text dialogs there, as the app does.
 
+## Linux: in a VM, with Orca's view too
+
+On Linux the probe draws each window through GTK (`gtk_widget_draw`), so it needs a display but
+not a desktop: a virtual one (Xvfb) does, and nothing else on the screen gets in the way. With
+`TCP_PROBE_ORCA=1` it also runs `tools/atspi_audit.py` on each surface while it's open: every
+control Orca can move to, with its role and the name Orca gets for it, saved as
+`<surface>-orca.json`. A control with no name is listed in the manifest's `problems` ("Orca: a
+table with no name"). The audit needs PyGObject and AT-SPI (`python3-gi gir1.2-atspi-2.0` on
+Debian and Ubuntu) and an accessibility bus (a desktop session, or `dbus-run-session` with
+`at-spi2-core` installed).
+
+```
+TCP_PROBE_ORCA=1 xvfb-run -a -s "-screen 0 1920x1080x24" \
+    .venv/bin/python tools/ui_probe.py --out /tmp/tcp-probe --tag linux-light
+```
+
+For dark and high contrast, set GTK's theme for the run: `GTK_THEME=Adwaita:dark` (tag
+`linux-dark`) and `GTK_THEME=HighContrastInverse` (tag `linux-hc`). The high contrast themes come
+with `gnome-themes-extra`; without it GTK falls back to another theme without saying so, so check
+the picture is high contrast before reviewing it as such. The formatted-page surfaces
+show WebKitGTK pages there. Linux has no baseline folder yet; compare a run with an earlier
+Linux run's folder, `--baseline <folder>`.
+
 ## Comparing with the baseline
 
 The pictures and descriptions of the last accepted run are in `testing/visual/baseline/windows/`,

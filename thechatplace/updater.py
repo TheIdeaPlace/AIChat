@@ -10,8 +10,10 @@ How it fits together
   found, as a ``CheckResult`` the UI turns into words. Nothing is downloaded
   until Kelly agrees: ``download()`` then ``apply_and_restart()``.
 
-The Chat Place publishes on two Velopack channels, ``windows`` and ``osx``
-(``CHANNEL`` picks this platform's): their feed files are
+The Chat Place publishes on four Velopack channels, ``windows``, ``osx``,
+``linux-x64`` and ``linux-arm64`` (``CHANNEL`` picks this platform's; Linux
+has one per processor, because an AppImage holds programs for one): their
+feed files are
 ``releases.<channel>.json`` and ``assets.<channel>.json``. The updater finds
 the newest ``v*`` release itself, rather than through Velopack's own GitHub
 source (which reads only the repo's 10 newest releases), and points Velopack
@@ -24,11 +26,16 @@ and the disk image is made from that packed app, so a copy dragged anywhere
 updates itself. Velopack calls every Mac app "portable", so the portable check
 that switches updates off is Windows-only (``PORTABLE_COPIES_EXIST``).
 
+On Linux the app is one AppImage file, and Velopack updates it by replacing
+that file (asking for a password through pkexec only if it's somewhere you
+can't write).
+
 Updating never touches The Chat Place's data. Velopack replaces the app
-(``%LOCALAPPDATA%\\TheChatPlace`` on Windows, the .app bundle on a Mac);
-sessions, settings and logs live in ``%APPDATA%\\TheChatPlace`` or
-``~/Library/Application Support/TheChatPlace``, which neither an update nor an
-uninstall goes near. ``data_is_outside_install_dir`` checks that.
+(``%LOCALAPPDATA%\\TheChatPlace`` on Windows, the .app bundle on a Mac, the
+.AppImage on Linux); sessions, settings and logs live in
+``%APPDATA%\\TheChatPlace``, ``~/Library/Application Support/TheChatPlace``
+or ``~/.config/TheChatPlace``, which neither an update nor an uninstall goes
+near. ``data_is_outside_install_dir`` checks that.
 """
 from __future__ import annotations
 
@@ -51,7 +58,20 @@ logger = logging.getLogger("thechatplace.updater")
 REPO_URL = "https://github.com/TheIdeaPlace/AIChat"
 RELEASES_API = "https://api.github.com/repos/TheIdeaPlace/AIChat/releases?per_page=100"
 TAG_PREFIX = "v"
-CHANNEL = "windows" if sys.platform == "win32" else "osx"
+
+
+def _channel(platform: str = sys.platform, machine: str = "") -> str:
+    """This platform's Velopack channel."""
+    if platform == "win32":
+        return "windows"
+    if platform == "darwin":
+        return "osx"
+    import platform as _platform
+    machine = (machine or _platform.machine()).lower()
+    return "linux-arm64" if machine in ("aarch64", "arm64") else "linux-x64"
+
+
+CHANNEL = _channel()
 INCLUDE_PRERELEASES = True
 #: Only Windows has portable copies (the zip) that mustn't update. Velopack's
 #: macOS locator reports IsPortable for every .app, so checking it there would
@@ -242,6 +262,7 @@ def data_is_outside_install_dir(data_dir: Optional[Path] = None,
             executable = Path(sys.executable).resolve()
             # Windows: the "current" folder inside the install root. Mac: the
             # .app bundle (TheChatPlace.app/Contents/MacOS/TheChatPlace).
+            # Linux: the folder the AppImage is mounted on while it runs.
             install_root = (executable.parents[2] if sys.platform == "darwin"
                             else executable.parent.parent)
         else:

@@ -83,9 +83,10 @@ from ..transcript import (ASSISTANT, ERROR, PEER, PLAN, QUESTION, QUEUED, TOOL, 
                           ChatMessage, TranscriptReader, read_transcript)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
-from . import mac_a11y
+from . import gtk_a11y, mac_a11y
 from .sizes import dialog_size, dip
-from .a11y import set_accessible_name, set_list_items_accessible, set_voiceover_menu
+from .a11y import (refresh_list_item, set_accessible_name, set_list_items_accessible,
+                   set_voiceover_menu)
 from .notify import Notifier
 from .statusbar import StatusParts
 from ..rendering import html_page, message_page
@@ -200,6 +201,9 @@ class MainFrame(wx.Frame):
         # A screen reader that's running but can't be reached is reported, not
         # covered by a Windows voice (#98).
         speaker.on_problem = lambda reason: wx.CallAfter(self._on_speech_problem, reason)
+        if gtk_a11y.IS_LINUX:
+            # Orca before 49 takes announcements only from the active window.
+            speaker.window_announcer = self._announce_through_window
 
         self._pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="hub")
         self._snapshot = Snapshot()
@@ -1681,6 +1685,7 @@ class MainFrame(wx.Frame):
             else:
                 self.chat_list.SetSelection(self._nearest_visible(selected_key, keys))
         self._chat_keys = keys
+        refresh_list_item(self.chat_list)  # Linux: the rest of the row's message, for Orca
 
     def _nearest_visible(self, key: Optional[str], visible_keys: List[str]) -> int:
         """Row of the last visible message at or before ``key`` in the full
@@ -2408,6 +2413,35 @@ class MainFrame(wx.Frame):
         dialogs (the frame alone says no while a dialog has the focus)."""
         return wx.GetActiveWindow() is not None
 
+    def _announce_through_window(self, text: str, interrupt: bool) -> bool:
+        """Linux: hand an announcement to Orca as a notification from The
+        Chat Place's active window, if it has one; Orca ignores those from
+        windows in the background (orca.py). Called on the speech thread: the
+        check and the notification happen on the UI thread, which it waits
+        for, a second at most. True if it was sent."""
+        lock, done, answer = threading.Lock(), threading.Event(), {}
+
+        def on_ui():
+            with lock:
+                if answer.get("too late"):
+                    return  # the speech thread has moved on to another voice
+                try:
+                    active = _active_top_level()
+                    answer["sent"] = bool(
+                        active is not None and not self._gone()
+                        and gtk_a11y.announce(active, text, interrupt))
+                except RuntimeError:  # the window was destroyed meanwhile
+                    answer["sent"] = False
+            done.set()
+
+        wx.CallAfter(on_ui)
+        if not done.wait(1.0):
+            with lock:
+                if "sent" not in answer:
+                    answer["too late"] = True
+                    return False
+        return answer.get("sent", False)
+
     @staticmethod
     def _open_modal() -> Optional[wx.Dialog]:
         """The modal wx dialog in front now (Code Blocks, Settings, a
@@ -2433,7 +2467,7 @@ class MainFrame(wx.Frame):
         # Only when the main window itself is active and disabled, which is
         # only ever the case behind a dialog: if the dialog came forward
         # properly, or you've switched away again, there is nothing to do.
-        if not self or self.IsEnabled() or wx.GetActiveWindow() is not self:
+        if not self or self.IsEnabled() or _active_top_level() is not self:
             return
         # Windows knows the innermost dialog, native ones included.
         if platform_paths.bring_last_popup_forward(self.GetHandle()):
@@ -4604,7 +4638,7 @@ class MainFrame(wx.Frame):
         if any(isinstance(w, wx.Dialog) and w.IsShown() and w.IsModal()
                for w in wx.GetTopLevelWindows()):
             return True
-        active = wx.GetActiveWindow()
+        active = _active_top_level()
         return active is not None and active is not self
 
     def _on_update_downloaded(self, result: CheckResult, ok: bool):
@@ -5228,6 +5262,7 @@ class MainFrame(wx.Frame):
         self.stop_timers()
         speaker.stop()
         speaker.on_problem = None
+        speaker.window_announcer = None
         self._notifier.close()  # its icon would keep the app running
         self._pool.shutdown(wait=False, cancel_futures=True)
         event.Skip()
@@ -5254,6 +5289,14 @@ class MainFrame(wx.Frame):
             timer = getattr(self, name, None)
             if timer is not None:
                 timer.Stop()
+
+
+def _active_top_level() -> Optional[wx.Window]:
+    """The active window, or None. ``wx.GetActiveWindow`` on Linux (wxGTK)
+    answers with the control that has the focus, not its window, so the main
+    window always looked covered by a dialog and an update never installed."""
+    active = wx.GetActiveWindow()
+    return wx.GetTopLevelParent(active) if active is not None else None
 
 
 def _folder_key(cwd: str) -> str:

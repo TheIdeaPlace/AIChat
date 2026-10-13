@@ -19,7 +19,7 @@ from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LE
                       SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import shortcuts_text
-from . import mac_a11y
+from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
@@ -689,6 +689,15 @@ class SettingsDialog(wx.Dialog):
                         "not just the open one")
         self.all_sessions.SetValue(speech.announce_all_sessions)
         outer.Add(self.all_sessions, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        if gtk_a11y.IS_LINUX:
+            # wxGTK makes a radio box's label the label of the control after
+            # it, at idle time, so Orca read this as "Announcements, Announce
+            # when...". It isn't one of Announcements' choices.
+            def unlink(event):
+                event.Skip()
+                if gtk_a11y.forget_labels(self.all_sessions):
+                    self.Unbind(wx.EVT_IDLE, handler=unlink)
+            self.Bind(wx.EVT_IDLE, unlink)
 
         self.own_messages = wx.CheckBox(
             self, label="Read your own &messages back when they're sent")
@@ -958,12 +967,37 @@ document.addEventListener('keydown', function (e) {
 }, true);
 """
 
+#: Linux: WebKitGTK puts the focus on its own widget, not in the page, and
+#: Orca then has nowhere to start reading. Focusing the message's first
+#: element (a heading, a paragraph) puts Orca in the page, in browse mode,
+#: with its caret on the first line. Focusing the page's main element
+#: instead left Orca's caret after the last line.
+_FOCUS_PAGE = """
+document.addEventListener('DOMContentLoaded', function () {
+  var main = document.querySelector('main') || document.body;
+  var first = main.firstElementChild || main;
+  first.setAttribute('tabindex', '-1');
+  first.focus();
+  window.getSelection().collapse(first, 0);
+});
+"""
+
+
+def _webview_backend():
+    """The web view the formatted page uses: Edge WebView2 on Windows, and
+    on Linux WebKitGTK, which Orca reads like a web page in a browser. A Mac
+    shows plain text."""
+    import wx.html2
+    if wx.Platform == "__WXGTK__":
+        return wx.html2.WebViewBackendWebKit
+    return wx.html2.WebViewBackendEdge
+
 
 def formatted_view_available() -> bool:
-    """Whether the Edge WebView2 runtime can show the formatted page."""
+    """Whether this computer's web view can show the formatted page."""
     try:
         import wx.html2
-        return bool(wx.html2.WebView.IsBackendAvailable(wx.html2.WebViewBackendEdge))
+        return bool(wx.html2.WebView.IsBackendAvailable(_webview_backend()))
     except Exception:  # noqa: BLE001 - no html2, no runtime: plain text
         return False
 
@@ -972,7 +1006,14 @@ def _prepare_webview_data_folder() -> None:
     """WebView2 keeps a profile folder. Its default is beside the program,
     which for an installed copy is the folder Velopack replaces on update, and
     for a source run may be Python's own folder. Put it in local app data
-    instead, before the first WebView is made."""
+    instead, before the first WebView is made.
+
+    Linux: WebKitGTK's DMA-BUF renderer draws a blank page with some
+    graphics drivers (seen on ARM boards and in virtual machines); a page of
+    text loses nothing without it."""
+    if wx.Platform == "__WXGTK__":
+        os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+        return
     if os.environ.get("WEBVIEW2_USER_DATA_FOLDER"):
         return
     local = os.environ.get("LOCALAPPDATA")
@@ -999,7 +1040,7 @@ class FormattedMessageDialog(wx.Dialog):
         self._loaded = False
         self.app_link = None  # a thechatplace:// link chosen in the page (#144)
         try:
-            self.view = wx.html2.WebView.New(self, backend=wx.html2.WebViewBackendEdge)
+            self.view = wx.html2.WebView.New(self, backend=_webview_backend())
         except Exception as exc:  # noqa: BLE001
             self.Destroy()
             raise RuntimeError(f"Couldn't show the formatted page: {exc}") from exc
@@ -1017,6 +1058,8 @@ class FormattedMessageDialog(wx.Dialog):
             self.view.EnableAccessToDevTools(False)
             self.view.AddScriptMessageHandler("hub")
             self.view.AddUserScript(_KEY_RELAY)
+            if wx.Platform == "__WXGTK__":
+                self.view.AddUserScript(_FOCUS_PAGE)
         except Exception:  # noqa: BLE001 - Escape still works from the buttons
             pass
         self.view.Bind(wx.html2.EVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, self._on_script_message)
@@ -1030,6 +1073,7 @@ class FormattedMessageDialog(wx.Dialog):
             self._loaded = True
             # Into the page, so the screen reader starts reading it.
             self.view.SetFocus()
+            gtk_a11y.focus_web_view(self.view)  # Linux: past wx's wrapper, into the page
 
     def _on_script_message(self, event):
         message = event.GetString()
@@ -1084,6 +1128,19 @@ def _fit_height(dialog, max_height: Optional[int] = None) -> None:
     target = min(dialog.GetSizer().GetMinSize().height + chrome, limit)
     if target != height:
         dialog.SetSize((width, target))
+        dialog.Layout()
+
+
+def _fit_width(dialog) -> None:
+    """Make ``dialog`` at least as wide as its controls need, up to the
+    screen's width. A row of buttons that fits on Windows can need more
+    room in another system's font (Prompts' seven, on Linux)."""
+    dialog.Layout()
+    width, height = dialog.GetSize()
+    chrome = width - dialog.GetClientSize().width
+    target = min(dialog.GetSizer().GetMinSize().width + chrome, screen_area(dialog).width)
+    if target > width:
+        dialog.SetSize((target, height))
         dialog.Layout()
 
 
@@ -1966,10 +2023,10 @@ class AboutYouDialog(wx.Dialog):
         self._kinds = list(kinds)
         self._items = []
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(wx.StaticText(self, label=(
+        sizer.Add(WrappingText(self, (
             "Read from Claude Code's own files on this computer. The Chat Place only reads "
             "them: Edit opens a file in your editor, and Reload shows your changes.")),
-            0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
+            0, wx.EXPAND | wx.LEFT | wx.TOP | wx.RIGHT, 8)
         sizer.Add(wx.StaticText(self, label="&Kind:"), 0, wx.LEFT | wx.TOP, 8)
         self.kinds = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.kinds, "Kind")
@@ -2413,6 +2470,7 @@ class PromptsDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Prompts:"), 0, wx.LEFT | wx.TOP, 8)
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
+        set_accessible_name(self.list, "Prompts")
         self.list.SetMinSize(dip(self, -1, 150))
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         sizer.Add(wx.StaticText(self, label="Te&xt:"), 0, wx.LEFT | wx.TOP, 8)
@@ -2433,6 +2491,7 @@ class PromptsDialog(wx.Dialog):
         row.Add(wx.Button(self, wx.ID_CANCEL, "&Close"), 0)
         sizer.Add(row, 0, wx.EXPAND | wx.ALL, 8)
         self.SetSizer(sizer)
+        _fit_width(self)
         self.SetEscapeId(wx.ID_CANCEL)
         self.use_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_use())
         self.new_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_new())
@@ -2466,6 +2525,7 @@ class PromptsDialog(wx.Dialog):
         # time), which SetName doesn't reach; for VoiceOver on the view.
         self.list.SetName(self._list_name())
         mac_a11y.set_label(self.list, self._list_name())
+        gtk_a11y.set_label(self.list, self._list_name())  # Orca
         # Always enabled, so the Tab order doesn't change; they say if
         # there's nothing to act on.
         self._show()

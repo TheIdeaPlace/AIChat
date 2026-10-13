@@ -3,7 +3,9 @@
 On a Mac each one is a macOS notification (wx's NotificationMessage, which
 macOS shows under The Chat Place's name, or Python's from source) that
 carries its own session: choosing any of them opens that session. macOS asks
-once whether the app may send them. The rest of this describes Windows.
+once whether the app may send them. Linux does the same: wx sends them
+through libnotify to the desktop's notification server, which Orca reads.
+The rest of this describes Windows.
 
 One notification-area icon, The Chat Place's own, created with the first
 notification and removed when the app closes. Windows shows its balloons as
@@ -40,12 +42,13 @@ def app_icon(size: int) -> "wx.Icon":
 #: Windows' own limits for a balloon's title and text.
 TITLE_LIMIT = 63
 TEXT_LIMIT = 255
-#: How many Mac notifications are kept, so choosing an older one still works.
+#: How many Mac and Linux notifications are kept, so choosing an older one
+#: still works.
 MAC_KEPT = 20
 
 #: What Settings calls them, and its label (N is the access key either way).
-SETTING_NAME = "Notifications" if sys.platform == "darwin" else "Windows notifications"
-SETTING_LABEL = "&Notifications:" if sys.platform == "darwin" else "Windows &notifications:"
+SETTING_NAME = "Windows notifications" if sys.platform == "win32" else "Notifications"
+SETTING_LABEL = "Windows &notifications:" if sys.platform == "win32" else "&Notifications:"
 
 _CLICK = wx.PyEventBinder(wx.adv.wxEVT_NOTIFICATION_MESSAGE_CLICK)
 
@@ -63,7 +66,8 @@ class Notifier:
         self._factory = factory or wx.adv.TaskBarIcon
         self._icon = None
         self._key: Optional[str] = None  # the latest notification's session
-        self._mac = sys.platform == "darwin" if mac is None else mac
+        # A Mac's and Linux's way: one NotificationMessage each.
+        self._mac = sys.platform != "win32" if mac is None else mac
         self._message_factory = message_factory or wx.adv.NotificationMessage
         self._messages: List = []  # the Mac notifications shown, newest last
 
