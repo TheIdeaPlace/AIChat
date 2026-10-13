@@ -42,6 +42,7 @@ value() {
 
 voice=$(value voice)
 rate=$(value rate)
+interrupt=$(value interrupt)
 
 WORKDIR="$(dirname "$path")"
 log_route() {
@@ -57,6 +58,10 @@ if command -v spd-say >/dev/null 2>&1; then
     [ -n "$voice" ] && args+=(-y "$voice")
     if [ -n "$rate" ]; then args+=(-r "${rate%.*}"); fi
     log_route speechd
+    # An interrupting utterance cancels what speech-dispatcher still has, here
+    # and in order, since the app's own cancel (Speaker.stop) isn't waited for
+    # and could land after this text.
+    [ "$interrupt" = "true" ] && spd-say -C >/dev/null 2>&1
     spd-say "${args[@]}" < "$path" && exit 0
 fi
 

@@ -399,3 +399,12 @@ def test_install_and_uninstall_hooks_register_and_remove(fake_velopack, monkeypa
         raise OSError("no")
     monkeypatch.setattr(links, "ensure_registered", broken)
     hooks["on_after_install_fast_callback"]("0.1.4")  # logged, never raised
+
+
+def test_linux_paths_that_differ_only_in_case_are_different_commands():
+    wrote = []
+    write = lambda command, icon: wrote.append(command)  # noqa: E731
+    stale = links.scheme_command("/opt/Apps/The Chat Place.AppImage", "linux")
+    assert links.ensure_registered(True, "/opt/apps/The Chat Place.AppImage", lambda: stale,
+                                   write, "linux") == "registered"
+    assert wrote

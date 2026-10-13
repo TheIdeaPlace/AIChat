@@ -68,8 +68,11 @@ speaks one message at a time, a TEXT message waits while a MESSAGE is spoken, an
 MESSAGE cancels it. Orca 48 users hear announcements from the background in speech-dispatcher's
 default voice, not Orca's.
 
-D-Bus is called through `busctl`, `gdbus` or `dbus-send`, whichever there is, so the app needs no
-D-Bus library. gdbus reads its arguments as GVariant text ("true" would be a boolean), so the
+D-Bus is called through libgio (ctypes, `orca._gio_present`), so the text goes in memory and not on
+a command line other users can read in `/proc`. Without libgio, `busctl`, `gdbus` or `dbus-send`,
+whichever there is. All the attempts for one announcement share a 1.5 s deadline (`orca.DEADLINE`),
+because the speaker drops the announcement after 3 s and the window announcer may take 1 s of
+that; the way that worked last is tried first. gdbus reads its arguments as GVariant text ("true" would be a boolean), so the
 text is quoted as a GVariant string. An Orca whose service doesn't exist (D-Bus says
 ServiceUnknown) isn't asked again until it restarts (another process id).
 
@@ -115,3 +118,7 @@ desktop to ask (a bare window manager) can't start a quoted program, though GIO 
 - A status bar part was given a height of -4 before the bar was laid out; GTK warns at every one.
 - On Linux the native status bar fields stay empty: wx draws GTK's status bar itself, Orca can't
   read their text, and it showed through the buttons, doubled.
+
+`Speaker.stop()` on Linux also runs `spd-say -C`, because killing `spd-say` doesn't stop text
+speech-dispatcher already has. `-C` cancels every client's messages, so Orca's own speech in
+progress is cut off too; it runs only when an engine process was running.

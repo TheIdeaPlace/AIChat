@@ -53,32 +53,32 @@ def test_gdbus_gets_the_text_as_a_string_whatever_it_looks_like():
 
 
 def test_no_dbus_tool_means_orca_cant_be_reached():
-    client = OrcaClient(run=FakeRun(), find=tools(), orca_pids=lambda: {10})
+    client = OrcaClient(gio=None, run=FakeRun(), find=tools(), orca_pids=lambda: {10})
     assert "busctl" in client.present("Hello")
 
 
 def test_presentmessage_speaks_through_orca():
     run = FakeRun(Done(0, "b true\n"))
-    client = OrcaClient(run=run, find=tools("busctl"), orca_pids=lambda: {10})
+    client = OrcaClient(gio=None, run=run, find=tools("busctl"), orca_pids=lambda: {10})
     assert client.present("Hello") is None
     assert len(run.calls) == 1
 
 
 def test_an_orca_without_the_service_is_asked_once():
     run = FakeRun(UNKNOWN, UNKNOWN)
-    client = OrcaClient(run=run, find=tools("busctl"), orca_pids=lambda: {10})
+    client = OrcaClient(gio=None, run=run, find=tools("busctl"), orca_pids=lambda: {10})
     assert client.present("One") == NO_SERVICE
     assert client.present("Two") == NO_SERVICE
     assert len(run.calls) == 2  # each name once, then not again
     # A new Orca (another process) is asked afresh.
-    client._orca_pids = lambda: {11}
+    client.orca_pids = lambda: {11}
     run.answers = [Done(0, "(true,)")]
     assert client.present("Three") is None
 
 
 def test_a_timeout_isnt_taken_for_an_old_orca():
     run = FakeRun(subprocess.TimeoutExpired("busctl", 5), Done(1, "", "Connection timed out"))
-    client = OrcaClient(run=run, find=tools("busctl"), orca_pids=lambda: {10})
+    client = OrcaClient(gio=None, run=run, find=tools("busctl"), orca_pids=lambda: {10})
     assert client.present("One") == "didn't answer on D-Bus"
     run.answers = [Done(0, "b true")]
     assert client.present("Two") is None
@@ -88,7 +88,7 @@ class FakeClient:
     def __init__(self, problem=None):
         self.problem, self.texts = problem, []
 
-    def present(self, text):
+    def present(self, text, pids=None):
         self.texts.append(text)
         return self.problem
 
@@ -135,3 +135,86 @@ def test_a_failing_window_announcer_never_raises():
         raise RuntimeError("gone")
     reader.window_announcer = broken
     assert reader.speak("Hello", "auto", True).voice_allowed
+
+
+# -- review findings (1, 4, 9) -------------------------------------------------------------
+
+def test_the_text_is_cut_in_bytes_not_characters():
+    text = "日本語" * 40_000  # 120,000 characters, 360,000 bytes
+    cut = orca._truncated(text)
+    assert len(cut.encode("utf-8")) <= orca.MESSAGE_LIMIT
+    assert text.startswith(cut) and len(cut) > 30_000
+
+
+def test_the_way_that_worked_is_tried_first_next_time():
+    run = FakeRun(Done(1, "", "no"), Done(0, "b true"), Done(0, "b true"))
+    client = OrcaClient(gio=None, run=run, find=tools("busctl", "gdbus"), orca_pids=lambda: {10})
+    assert client.present("One") is None  # busctl failed, then gdbus spoke
+    assert client.present("Two") is None
+    assert run.calls[2][0] == "/usr/bin/gdbus"
+
+
+def test_all_the_attempts_together_stay_within_the_deadline():
+    now = [0.0]
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        now[0] += 0.8  # each call hangs 0.8 s
+        raise subprocess.TimeoutExpired(argv[0], 0.8)
+    client = OrcaClient(gio=None, run=run, find=tools("busctl", "gdbus", "dbus-send"),
+                        orca_pids=lambda: {10}, clock=lambda: now[0])
+    assert client.present("Hello") == "didn't answer on D-Bus"
+    assert len(calls) == 2  # not six
+
+
+def test_libgio_takes_the_text_without_a_command_line():
+    calls = []
+
+    def gio(name, path, interface, text, timeout):
+        calls.append((name, text))
+        return True, ""
+    run = FakeRun()
+    client = OrcaClient(gio=gio, run=run, find=tools("busctl"), orca_pids=lambda: {10})
+    assert client.present("Hello") is None
+    assert calls == [("org.gnome.Orca1.Service", "Hello")] and run.calls == []
+
+
+def test_when_libgio_is_missing_a_dbus_tool_is_used():
+    run = FakeRun(Done(0, "b true"))
+    client = OrcaClient(gio=lambda *a: None, run=run, find=tools("busctl"), orca_pids=lambda: {10})
+    assert client.present("Hello") is None and len(run.calls) == 1
+
+
+def test_orca_is_looked_up_once_per_announcement():
+    scans = []
+    client = FakeClient()
+    client.orca_pids = lambda: scans.append(1) or {10}
+    outcome = Orca(client).speak("Hello", "auto", True)
+    assert outcome.spoke == "D-Bus" and len(scans) == 1
+
+
+def test_an_orca_without_the_service_is_asked_once_through_libgio_too():
+    calls = []
+
+    def gio(name, path, interface, text, timeout):
+        calls.append(name)
+        return False, "GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: not provided"
+    client = OrcaClient(gio=gio, run=FakeRun(), find=tools(), orca_pids=lambda: {10})
+    assert client.present("One") == NO_SERVICE
+    assert client.present("Two") == NO_SERVICE
+    assert len(calls) == 2  # each name once, then not again
+
+
+def test_the_libgio_name_that_worked_is_tried_first():
+    calls = []
+
+    def gio(name, path, interface, text, timeout):
+        calls.append(name)
+        return name == "org.gnome.Orca.Service", ""
+    client = OrcaClient(gio=gio, run=FakeRun(), find=tools(), orca_pids=lambda: {10})
+    assert client.present("One") is None
+    assert client._working == ("gio", "org.gnome.Orca.Service")
+    calls.clear()
+    assert client.present("Two") is None
+    assert calls == ["org.gnome.Orca.Service"]

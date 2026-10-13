@@ -625,15 +625,28 @@ def show_in_folder(path: Path) -> None:
         # (Files, Dolphin, Caja, Nemo, Thunar); without one, its folder.
         uri = Path(path).resolve().as_uri()
         dbus_send = find_tool("dbus-send")
-        if dbus_send:
-            done = subprocess.run(
-                [dbus_send, "--session", "--print-reply", "--dest=org.freedesktop.FileManager1",
-                 "--type=method_call", "/org/freedesktop/FileManager1",
-                 "org.freedesktop.FileManager1.ShowItems", f"array:string:{uri}", "string:"],
-                capture_output=True, timeout=10)
-            if done.returncode == 0:
-                return
-        subprocess.Popen(["xdg-open", str(Path(path).parent)])
+        # On a thread: dbus-send waits for a file manager that may be slow to
+        # start, and this is called from the UI thread.
+        def show():
+            if dbus_send:
+                try:
+                    done = subprocess.run(
+                        [dbus_send, "--session", "--print-reply",
+                         "--dest=org.freedesktop.FileManager1", "--type=method_call",
+                         "/org/freedesktop/FileManager1",
+                         "org.freedesktop.FileManager1.ShowItems", f"array:string:{uri}", "string:"],
+                        capture_output=True, timeout=10)
+                    if done.returncode == 0:
+                        return
+                except (OSError, subprocess.SubprocessError):
+                    pass  # no file manager answered: open the folder
+            try:
+                subprocess.Popen(["xdg-open", str(Path(path).parent)])
+            except OSError:
+                pass
+
+        import threading
+        threading.Thread(target=show, name="show-in-folder", daemon=True).start()
 
 
 class ClaudeLookup:

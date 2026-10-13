@@ -197,7 +197,12 @@ def test_a_rows_description_is_the_rest_of_its_message():
     assert rest("You: first line", "You: first line, and the rest.") == "and the rest."
     # The row shows the first line as written; the spoken text has it as words.
     assert rest("Claude: ## Plan", "Claude: Plan. Step one.") == "Step one."
-    assert rest("Claude: abc…", "Claude: abcdef more") == "more"  # shortened mid-word
+    # The word the row cuts is the first one the description says.
+    assert rest("Claude: abc…", "Claude: abcdef more") == "abcdef more"
+    # A "…" after a whole word cuts nothing.
+    assert rest("Claude: The plan has three steps…",
+                "Claude: The plan has three steps and more") == "and more"
+    assert rest("Claude: Let me think…", "Claude: Let me think… Now, step one") == "Now, step one"
     assert rest("You: hello", "You: hello") == ""
     assert rest("Tool: x", "Claude: other") == "Claude: other"  # no match: all of it
     assert rest("Loading messages…", "") == ""

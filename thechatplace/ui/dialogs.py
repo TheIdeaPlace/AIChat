@@ -2525,6 +2525,7 @@ class PromptsDialog(wx.Dialog):
         # time), which SetName doesn't reach; for VoiceOver on the view.
         self.list.SetName(self._list_name())
         mac_a11y.set_label(self.list, self._list_name())
+        gtk_a11y.set_label(self.list, self._list_name())  # Orca
         # Always enabled, so the Tab order doesn't change; they say if
         # there's nothing to act on.
         self._show()

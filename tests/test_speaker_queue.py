@@ -149,6 +149,27 @@ def test_an_announcement_stops_everything_in_flight_and_queued(tmp_path, monkeyp
     assert len(FakeEngine.started) == 2           # the queued confirmation was dropped
 
 
+@pytest.fixture(autouse=True)
+def cancels(monkeypatch):
+    """Never run a real spd-say: record the cancels instead."""
+    calls = []
+    monkeypatch.setattr(speech, "_cancel_speech_dispatcher", lambda: calls.append(1))
+    return calls
+
+
+def test_stop_cancels_speech_dispatcher_only_when_an_engine_was_running(
+        tmp_path, monkeypatch, cancels):
+    monkeypatch.setattr(speech, "IS_LINUX", True)
+    s = make(tmp_path, monkeypatch)
+    s.stop()
+    assert cancels == []
+    s.speak("one", SpeechSettings(), interrupt=False)
+    assert wait_until(lambda: len(FakeEngine.started) == 1)
+    assert FakeEngine.started[0].waiting.wait(5)
+    s.stop()
+    assert cancels == [1]
+
+
 def test_stop_kills_every_running_engine(tmp_path, monkeypatch):
     s = make(tmp_path, monkeypatch)
     s.speak("one", SpeechSettings(), interrupt=False)

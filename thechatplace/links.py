@@ -196,6 +196,12 @@ def should_register(installed: bool, platform: str = sys.platform) -> bool:
     return (platform == "win32" or platform.startswith("linux")) and installed
 
 
+def _same_command(a: str, b: str, platform: str) -> bool:
+    """Windows paths ignore case; Linux paths don't, so an AppImage moved to
+    a folder whose name differs only in case is a different command."""
+    return a.casefold() == b.casefold() if platform == "win32" else a == b
+
+
 def ensure_registered(installed: bool, executable: str,
                       read: Optional[Callable[[], Optional[str]]] = None,
                       write: Optional[Callable[[str, str], None]] = None,
@@ -213,7 +219,7 @@ def ensure_registered(installed: bool, executable: str,
         return f"failed: {exc}"
     try:
         current = read()
-        if current is not None and current.casefold() == command.casefold():
+        if current is not None and _same_command(current, command, platform):
             return "current"
         write(command, f'"{executable}",0' if platform == "win32" else "")
     except OSError as exc:
@@ -234,7 +240,7 @@ def remove_registration(executable: str,
     except ValueError:
         return False
     current = read()
-    if current is None or current.casefold() != ours.casefold():
+    if current is None or not _same_command(current, ours, platform):
         return False
     remove()
     return True

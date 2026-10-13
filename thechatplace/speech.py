@@ -42,6 +42,7 @@ import itertools
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -812,6 +813,8 @@ class Speaker:
             running, self._running = self._running, []
         for process in running:
             _kill_quietly(process)
+        if running and IS_LINUX:
+            _cancel_speech_dispatcher()
 
     def _log(self, text: str, settings: SpeechSettings, interrupt: bool) -> None:
         """One line per utterance in ``speech.log`` beside the engine files.
@@ -859,6 +862,19 @@ class Speaker:
                     pass
         except OSError:
             pass
+
+
+def _cancel_speech_dispatcher() -> None:
+    """Linux: killing ``spd-say`` doesn't stop text speech-dispatcher already
+    has, so it's told to cancel. Never raises, never waits."""
+    tool = shutil.which("spd-say")
+    if not tool:
+        return
+    try:
+        subprocess.Popen([tool, "-C"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
 
 
 def _kill_quietly(process) -> None:

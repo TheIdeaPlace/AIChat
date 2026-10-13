@@ -346,19 +346,22 @@ def rest_of(shown: str, full: str) -> str:
     if len(matches) < len(shown_words) or not all(
             same(i, m) for i, m in enumerate(matches[:len(shown_words)])):
         return full
-    return full[matches[len(shown_words) - 1].end():].lstrip(" .,;:!?—-…)]*_`").strip()
+    last = matches[len(shown_words) - 1]
+    # A word the "…" cut starts the rest, so it's spoken whole; a "…" after a
+    # whole word (the cut fell on a word boundary, or the line ends in one)
+    # cuts nothing, and the rest starts after the word.
+    cut = shortened and len(last.group(0)) > len(shown_words[-1])
+    start = last.start() if cut else last.end()
+    return full[start:].lstrip(" .,;:!?—-…)]*_`").strip()
 
 
-def _webkit_view_type():
-    """WebKitGTK's WebKitWebView type, from whichever WebKitGTK wx loaded."""
-    for name in ("libwebkit2gtk-4.1.so.0", "libwebkit2gtk-4.0.so.37", "libwebkitgtk-6.0.so.4"):
-        try:
-            webkit = ctypes.CDLL(name)
-        except OSError:
-            continue
-        webkit.webkit_web_view_get_type.restype = ctypes.c_size_t
-        return webkit.webkit_web_view_get_type()
-    return None
+def _webkit_view_type(gobject):
+    """WebKitGTK's WebKitWebView type, from the WebKitGTK wx already loaded.
+    Loading one by name could bring in a second, incompatible WebKitGTK
+    (libsoup 2 and 3 together, or GTK 4 into GTK 3), which aborts."""
+    gobject.g_type_from_name.restype = ctypes.c_size_t
+    gobject.g_type_from_name.argtypes = [ctypes.c_char_p]
+    return gobject.g_type_from_name(b"WebKitWebView") or None
 
 
 def focus_web_view(window) -> bool:
@@ -371,10 +374,12 @@ def focus_web_view(window) -> bool:
     try:
         libs = _load()
         top = _widget(window) if libs else None
-        view_type = _webkit_view_type() if top is not None else None
-        if not view_type:
+        if top is None:
             return False
         gtk, _atk, gobject, _glib = libs
+        view_type = _webkit_view_type(gobject)
+        if not view_type:
+            return False
 
         def find(widget, depth=0):
             if gobject.g_type_check_instance_is_a(widget, view_type):
