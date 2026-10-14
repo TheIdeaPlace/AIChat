@@ -8532,6 +8532,13 @@ def test_properties_dialog_is_named_for_screen_readers(frame):
         dialog.Destroy()
 
 
+def test_store_validation_failure_is_reported_without_escaping_event_handler(frame, env):
+    def invalid():
+        raise ValueError('synthetic duplicate session identity')
+    assert frame._store_write(invalid) is False
+    assert any('synthetic duplicate session identity' in line for line in env['spoken'])
+
+
 def test_unknown_provider_export_does_not_reach_claude_paths(frame, monkeypatch):
     info = dataclasses.replace(frame._snapshot.sessions[0], provider='missing')
     monkeypatch.setattr(type(info), 'transcript_path', lambda *_: pytest.fail('Foreign path lookup'))

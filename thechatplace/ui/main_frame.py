@@ -745,7 +745,7 @@ class MainFrame(wx.Frame):
         try:
             method(*args, **kwargs)
             return True
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             self._say(f"Couldn't save The Chat Place's session list: {exc}")
             return False
 

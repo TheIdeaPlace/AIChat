@@ -167,12 +167,13 @@ class OwnSessionStore:
     def load(self) -> None:
         self._sessions = {}
         self.load_error = ""
+        self._save_blocked = False
         try:
             foreign = self._files.read_foreign()
         except (OSError, ValueError) as exc:
-            self.load_error = f"Couldn't read provider sessions: {exc}. Changes won't be saved."
+            self.load_error = f"Couldn't read provider sessions ({self._files.foreign_path}): {exc}. Changes won't be saved."
             self._save_blocked = True
-            return
+            foreign = None
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except FileNotFoundError:
@@ -248,7 +249,7 @@ class OwnSessionStore:
         self._files.baseline(self._legacy_payload())
         # Evacuate the experimental mixed format before an older app can read
         # it again. Write the provider file first; a retry can merge duplicates.
-        if version == 2 or mixed:
+        if (version == 2 or mixed) and not self._save_blocked:
             self._needs_backup = True
             try:
                 self.save(force_legacy=True)
@@ -284,7 +285,7 @@ class OwnSessionStore:
 
     def save(self, *, force_legacy: bool = False) -> None:
         if self._save_blocked:
-            raise OSError(f"Not saving over the unreadable {self.path}.")
+            raise OSError(f"Changes cannot be saved: {self.load_error}")
         if self._needs_backup and self.path.exists():
             self.migration_backup = platform_paths.backup_session_store(self.path)
         foreign = {"version": 2, "sessions": [asdict(s) for s in self._sessions.values()

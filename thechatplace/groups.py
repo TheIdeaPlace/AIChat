@@ -82,14 +82,25 @@ class GroupStore:
                             not isinstance(k, str) or not foreign_key(k) for k in members):
                         raise ValueError("Invalid provider group members")
                     seen.add(name)
-                    if name not in self._groups:
+                    canonical = self.find(name)
+                    if canonical is None:
                         self._foreign_only_groups.add(name)
+                    else:
+                        name = canonical
                     target = self._groups.setdefault(name, [])
                     target.extend(k for k in members if k not in target)
+                order = extra.get('order')
+                if order is not None:
+                    if (not isinstance(order, list) or any(not isinstance(n, str) for n in order)
+                            or len(order) != len(set(order))):
+                        raise ValueError('Invalid provider group order')
+                    ordered = {n: self._groups[n] for n in order if n in self._groups}
+                    ordered.update(self._groups)
+                    self._groups = ordered
             if mixed:
                 self._files.save(self._payload(False), self._payload(True), force_legacy=True)
         except (OSError, ValueError) as exc:
-            self.load_error = f"Couldn't read or separate provider groups: {exc}"
+            self.load_error = f"Couldn't read or separate provider groups ({self._files.foreign_path}): {exc}"
 
     def _payload(self, foreign):
         groups = []
@@ -98,12 +109,15 @@ class GroupStore:
             keep_empty = not members and (foreign == (name in self._foreign_only_groups))
             if selected or keep_empty:
                 groups.append({"name": name, "sessions": selected})
-        return {"version": 1, "groups": groups}
+        payload = {"version": 1, "groups": groups}
+        if foreign:
+            payload['order'] = list(self._groups)
+        return payload
 
 
     def save(self) -> None:
         if self.load_error:
-            raise OSError(f"Not saving over the unreadable {self.path}.")
+            raise OSError(f"Changes cannot be saved: {self.load_error}")
         self._files.save(self._payload(False), self._payload(True))
 
     # -- reading --------------------------------------------------------------

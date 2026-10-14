@@ -66,7 +66,7 @@ class KeySetStore:
                 self._files.save(self._payload(self._keys, False),
                                  self._payload(self._keys, True), force_legacy=True)
         except (OSError, ValueError) as exc:
-            self.load_error = f"Couldn't read or separate provider preferences: {exc}"
+            self.load_error = f"Couldn't read or separate provider preferences ({self._files.foreign_path}): {exc}"
 
     def _payload(self, keys, foreign):
         return {"version": 1, self.FIELD: sorted(k for k in keys
@@ -95,7 +95,7 @@ class KeySetStore:
     def _change(self, keys: Set[str]) -> None:
         """Save, then keep: a change that can't be saved isn't made."""
         if self.load_error:
-            raise OSError(f"Not saving over the unreadable {self.path}.")
+            raise OSError(f"Changes cannot be saved: {self.load_error}")
         self._files.save(self._payload(keys, False), self._payload(keys, True))
         self._keys = set(keys)
 

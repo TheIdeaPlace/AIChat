@@ -68,7 +68,7 @@ class TitleStore:
                 self._files.save(self._payload(self._titles, False),
                                  self._payload(self._titles, True), force_legacy=True)
         except (OSError, ValueError) as exc:
-            self.load_error = f"Couldn't read or separate provider titles: {exc}"
+            self.load_error = f"Couldn't read or separate provider titles ({self._files.foreign_path}): {exc}"
 
     @staticmethod
     def _payload(titles, foreign):
@@ -100,6 +100,6 @@ class TitleStore:
     def _change(self, titles: Dict[str, str]) -> None:
         """Save, then keep: a change that can't be saved isn't made."""
         if self.load_error:
-            raise OSError(f"Not saving over the unreadable {self.path}.")
+            raise OSError(f"Changes cannot be saved: {self.load_error}")
         self._files.save(self._payload(titles, False), self._payload(titles, True))
         self._titles = dict(titles)
