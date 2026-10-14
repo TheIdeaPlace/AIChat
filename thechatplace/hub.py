@@ -14,7 +14,7 @@ from . import platform_paths
 from .providers.base import Snapshot
 from .providers.claude import ClaudeProvider, last_reply_from_tail
 from .own_store import OwnSession
-from .sessions import (IDLE, SORT_STATUS, WORKING, SessionInfo, load_live_status,
+from .sessions import ( SORT_STATUS, WORKING, SessionInfo, load_live_status,
                        sort_sessions)
 from .transcript import LastMessages, SessionFactsCache
 # The row's words for it: plain text, no wx, so this stays plain data.
@@ -114,20 +114,15 @@ def fill_last_message(info: SessionInfo, path: Optional[Path] = None,
     return last_message_line(message.label, message.text) if message else ""
 
 
-def finished_turns(previous: Dict[str, str], current: Iterable[SessionInfo],
-                   *, stale_providers: Optional[Set[str]] = None) -> List[SessionInfo]:
+def finished_turns(previous: Dict[str, str], current: Iterable[SessionInfo]) -> List[SessionInfo]:
     """Sessions that were working last time and are not now.
 
     ``previous`` maps session key -> state from the last snapshot. A session
-    that has vanished, been archived or comes from cached discovery is not
-    reported. Codex must explicitly become idle; unknown status and waiting
-    for an approval are not evidence that its turn finished (#184) (#171).
+    that has vanished, or been archived, is not reported.
     """
     ended = []
     for info in current:
-        if info.archived or info.provider in (stale_providers or ()):
-            continue
-        if info.provider == "codex" and info.state != IDLE:
+        if info.archived:
             continue
         if previous.get(info.key) == WORKING and info.state != WORKING:
             ended.append(info)

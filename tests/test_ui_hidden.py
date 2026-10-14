@@ -8356,9 +8356,14 @@ def test_session_properties_survive_a_failing_read(frame, env, monkeypatch):
     from thechatplace.ui import main_frame
     add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi")])
 
-    def broken(path):
-        raise OSError("locked")
-    monkeypatch.setattr(frame.sessions, "read", broken)
+    real = frame.sessions.open_reader_with_facts
+    def broken(info):
+        reader, path, size = real(info)
+        def fail_refresh():
+            raise OSError("locked")
+        reader.refresh = fail_refresh
+        return reader, path, size
+    monkeypatch.setattr(frame.sessions, "open_reader_with_facts", broken)
     seen = _properties(frame, monkeypatch)
     select(frame, "Quiet one")
     _alt_enter(frame, monkeypatch, frame.session_list)
@@ -8374,12 +8379,12 @@ def test_a_second_alt_enter_while_reading_is_ignored(frame, env, monkeypatch):
     from thechatplace.ui import main_frame
     add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi")])
     release = threading.Event()
-    real = frame.sessions.read
+    real = frame.sessions.open_reader_with_facts
 
     def slow(path):
         release.wait(5)
         return real(path)
-    monkeypatch.setattr(frame.sessions, "read", slow)
+    monkeypatch.setattr(frame.sessions, "open_reader_with_facts", slow)
     seen = _properties(frame, monkeypatch)
     select(frame, "Quiet one")
     _alt_enter(frame, monkeypatch, frame.session_list)
@@ -8525,3 +8530,9 @@ def test_properties_dialog_is_named_for_screen_readers(frame):
         assert dialog.GetEscapeId() == wx.ID_CANCEL
     finally:
         dialog.Destroy()
+
+
+def test_unknown_provider_export_does_not_reach_claude_paths(frame, monkeypatch):
+    info = dataclasses.replace(frame._snapshot.sessions[0], provider='missing')
+    monkeypatch.setattr(type(info), 'transcript_path', lambda *_: pytest.fail('Foreign path lookup'))
+    assert frame._export_source(info) == (None, None)

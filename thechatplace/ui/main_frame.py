@@ -828,7 +828,10 @@ class MainFrame(wx.Frame):
                     for info in ended:
                         if info.is_own or not info.cli_session_id:
                             continue  # own sessions announce from their own turn
-                        replies[info.key] = self.sessions.last_reply(info)
+                        try:
+                            replies[info.key] = self.sessions.last_reply(info)
+                        except Exception:
+                            replies[info.key] = ""
                 wx.CallAfter(self._apply_snapshot, snap, ended, replies, force, resort)
             except Exception as exc:  # noqa: BLE001
                 wx.CallAfter(self._snapshot_failed, exc)
@@ -1468,6 +1471,7 @@ class MainFrame(wx.Frame):
         self._reader_busy = True
 
         def work():
+            active_reader = reader
             try:
                 active_reader = reader if reader is not None else self.sessions.open_reader(info)
                 if active_reader is None:
@@ -1480,7 +1484,7 @@ class MainFrame(wx.Frame):
                              transcript.unreadable_lines, None,
                              list(transcript.edits), transcript.turns)
             except Exception as exc:  # noqa: BLE001
-                wx.CallAfter(self._apply_chat, generation, False, [], 0, exc)
+                wx.CallAfter(self._apply_reader_chat, generation, active_reader, False, [], 0, exc)
 
         self._pool.submit(work)
 
@@ -1922,10 +1926,10 @@ class MainFrame(wx.Frame):
         def work():
             transcript, path, size, error = None, "", 0, ""
             try:
-                found = info.transcript_path()
-                if found is not None:
-                    path, size = properties.transcript_facts(found)
-                transcript = self.sessions.read(info)
+                reader, path, size = self.sessions.open_reader_with_facts(info)
+                if reader is not None:
+                    reader.refresh()
+                    transcript = reader.transcript
             except Exception as exc:  # noqa: BLE001 - say what can be said without it
                 transcript, error = None, str(exc) or type(exc).__name__
             wx.CallAfter(self._session_properties_read, info, transcript, path, size, error,
@@ -2183,7 +2187,10 @@ class MainFrame(wx.Frame):
         (None, None) when the backend has no history."""
         if self._open is not None and info.key == self._open.key and self._chat_loaded:
             return [m for m in self._visible_messages() if m.kind != QUEUED], None
-        return None, info if self.sessions.has_history(info) else None
+        try:
+            return None, info if self.sessions.has_history(info) else None
+        except ValueError:
+            return None, None
 
     def on_export(self):
         """File, Export Session (Ctrl+E): save the conversation as

@@ -31,7 +31,6 @@ from .transcript import SessionFactsCache
 WORKING = "working"
 NEEDS_YOU = "needs you"
 IDLE = "idle"
-STATUS_UNAVAILABLE = "status unavailable"
 
 _STATE_ORDER = {NEEDS_YOU: 0, WORKING: 1, IDLE: 2}
 
@@ -308,7 +307,6 @@ VIEW_NEEDS_YOU = "needs"
 VIEW_WORKING = "working"
 VIEW_NEW_REPLY = "new_reply"
 VIEW_IDLE = "idle"
-STATUS_UNAVAILABLE = "status unavailable"
 VIEW_DESKTOP = "desktop"
 VIEW_COWORK = "cowork"
 VIEW_OWN = "own"

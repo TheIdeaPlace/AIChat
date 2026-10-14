@@ -95,3 +95,16 @@ def test_claude_adapter_rejects_foreign_session_before_path_lookup(monkeypatch):
         provider.open_reader(info("codex"))
     with pytest.raises(ValueError, match="Not a Claude session"):
         provider.last_reply(info("codex"))
+
+
+def test_last_reply_routes_colliding_ids_and_unknown_find_is_counted():
+    from thechatplace.search import Target, search_sessions
+    claude = FakeProvider('claude', 'Claude reply')
+    codex = FakeProvider('codex', 'Codex reply')
+    controller = SessionController([claude, codex])
+    assert controller.last_reply(info('claude')) == 'Claude reply'
+    assert controller.last_reply(info('codex')) == 'Codex reply'
+    targets = [Target('missing:one', 'Missing', lambda: None,
+                      read_history=lambda: controller.read(info('missing')))]
+    results = search_sessions(targets, 'reply')
+    assert results.unreadable == 1 and not results.matches
