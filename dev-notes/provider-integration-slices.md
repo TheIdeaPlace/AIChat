@@ -3,7 +3,8 @@
 The release requires owned Codex conversations and file-editing permission
 choices. Read-only history alone does not satisfy the release. Continue Here
 is optional; Steer is planned for later. Kelly tests Windows and Mac before
-release, and chooses when to merge and release.
+release, and chooses when to merge and release. New Codex chats default to
+workspace-write with on-request approvals; existing chats retain saved grants.
 
 1. Foundations: provider contracts, Claude discovery/history routing, worker
    callbacks and native GUI test infrastructure. No visible behavior change.

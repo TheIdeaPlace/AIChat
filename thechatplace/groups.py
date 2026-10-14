@@ -10,12 +10,11 @@ no groups of their own.
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from . import platform_paths
+from .provider_storage import PartitionedFile, foreign_key
 
 #: Longest group name kept; longer ones are cut.
 MAX_NAME = 60
@@ -29,6 +28,7 @@ def clean_name(name: str) -> str:
 class GroupStore:
     def __init__(self, path: Optional[Path] = None) -> None:
         self.path = Path(path) if path else platform_paths.app_data_dir() / "groups.json"
+        self._files = PartitionedFile(self.path)
         #: name -> session keys, in the order groups were made.
         self._groups: Dict[str, List[str]] = {}
         self.load_error = ""
@@ -38,11 +38,12 @@ class GroupStore:
 
     def load(self) -> None:
         self._groups = {}
+        self._foreign_only_groups = set()
         self.load_error = ""
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return
+            raw = {"version": 1, "groups": []}
         except (OSError, ValueError) as exc:
             self.load_error = f"Couldn't read your groups ({self.path}): {exc}"
             return
@@ -62,24 +63,48 @@ class GroupStore:
                 continue
             self._groups[name] = [m for m in members if isinstance(m, str) and m] \
                 if isinstance(members, list) else []
+        mixed = any(foreign_key(k) for m in self._groups.values() for k in m)
+        self._foreign_only_groups = {n for n, m in self._groups.items()
+                                     if m and all(foreign_key(k) for k in m)}
+        self._files.baseline(self._payload(False))
+        try:
+            extra = self._files.read_foreign()
+            if extra is not None:
+                values = extra.get("groups")
+                if extra.get("version") != 1 or not isinstance(values, list):
+                    raise ValueError("Invalid provider groups")
+                seen = set()
+                for item in values:
+                    if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+                        raise ValueError("Invalid provider group")
+                    name, members = clean_name(item["name"]), item.get("sessions")
+                    if not name or name in seen or not isinstance(members, list) or any(
+                            not isinstance(k, str) or not foreign_key(k) for k in members):
+                        raise ValueError("Invalid provider group members")
+                    seen.add(name)
+                    if name not in self._groups:
+                        self._foreign_only_groups.add(name)
+                    target = self._groups.setdefault(name, [])
+                    target.extend(k for k in members if k not in target)
+            if mixed:
+                self._files.save(self._payload(False), self._payload(True), force_legacy=True)
+        except (OSError, ValueError) as exc:
+            self.load_error = f"Couldn't read or separate provider groups: {exc}"
+
+    def _payload(self, foreign):
+        groups = []
+        for name, members in self._groups.items():
+            selected = [k for k in members if foreign_key(k) == foreign]
+            keep_empty = not members and (foreign == (name in self._foreign_only_groups))
+            if selected or keep_empty:
+                groups.append({"name": name, "sessions": selected})
+        return {"version": 1, "groups": groups}
+
 
     def save(self) -> None:
         if self.load_error:
             raise OSError(f"Not saving over the unreadable {self.path}.")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"version": 1, "groups": [{"name": n, "sessions": m}
-                                             for n, m in self._groups.items()]}
-        fd, tmp = tempfile.mkstemp(prefix="groups-", suffix=".tmp", dir=str(self.path.parent))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, indent=2)
-            os.replace(tmp, self.path)
-        except Exception:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        self._files.save(self._payload(False), self._payload(True))
 
     # -- reading --------------------------------------------------------------
 
@@ -99,14 +124,17 @@ class GroupStore:
 
     # -- changes (each saves; a change that can't be saved is undone) -------------
 
-    def _commit(self, groups: Dict[str, List[str]]) -> None:
+    def _commit(self, groups: Dict[str, List[str]], foreign_only=None) -> None:
         """Make ``groups`` the groups, if it can be saved."""
         before = self._groups
+        before_foreign = self._foreign_only_groups
+        self._foreign_only_groups = (before_foreign if foreign_only is None else foreign_only) & groups.keys()
         self._groups = groups
         try:
             self.save()
         except Exception:
             self._groups = before
+            self._foreign_only_groups = before_foreign
             raise
 
     def _copy(self) -> Dict[str, List[str]]:
@@ -133,7 +161,8 @@ class GroupStore:
         if clash and clash != old:
             raise ValueError(f"There's already a group called {clash}.")
         # Keep its place in the order.
-        self._commit({(new if n == old else n): list(m) for n, m in self._groups.items()})
+        foreign = {(new if n == old else n) for n in self._foreign_only_groups}
+        self._commit({(new if n == old else n): list(m) for n, m in self._groups.items()}, foreign)
         return new
 
     def delete(self, name: str) -> None:
