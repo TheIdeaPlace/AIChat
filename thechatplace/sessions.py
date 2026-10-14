@@ -81,6 +81,12 @@ class SessionInfo:
     #: in by the snapshot only while that column is shown ("" otherwise).
     last_message: str = ""
 
+    provider: str = "claude"
+
+    @property
+    def identity(self) -> tuple[str, str]:
+        return self.provider, self.cli_session_id or self.desktop_session_id
+
     @property
     def is_own(self) -> bool:
         return self.source == OWN
@@ -109,11 +115,11 @@ class SessionInfo:
 
     @property
     def can_open_in_claude(self) -> bool:
-        return bool(self.desktop_session_id)
+        return self.provider == "claude" and bool(self.desktop_session_id)
 
     def transcript_path(self) -> Optional[Path]:
         """Its transcript, or None when it isn't on disk (or has no cli id)."""
-        if not self.cli_session_id:
+        if self.provider != "claude" or not self.cli_session_id:
             return None
         root = self.claude_home / "projects" if self.claude_home is not None else None
         return platform_paths.transcript_path(self.cwd, self.cli_session_id, root)
@@ -123,7 +129,7 @@ class SessionInfo:
         where Claude Code puts it (no search of every project folder, as
         ``transcript_path`` does when that misses): this is asked of every
         session on every refresh of the list."""
-        if not self.cli_session_id or not platform_paths.is_safe_id(self.cli_session_id):
+        if self.provider != "claude" or not self.cli_session_id or not platform_paths.is_safe_id(self.cli_session_id):
             return 0
         root = self.claude_home / "projects" if self.claude_home is not None else None
         try:

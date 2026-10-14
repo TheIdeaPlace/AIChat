@@ -26,10 +26,90 @@ from fake_env import (FAKE_COMMANDS, FakeRunner, add_desktop, add_transcript,  #
                       now_ms, pump)
 
 
-@pytest.fixture(scope="module")
-def app():
-    instance = wx.App(False)
-    yield instance
+def test_reader_factory_runs_off_ui_thread_and_preserves_backend_speaker(frame, monkeypatch):
+    from thechatplace.transcript import ASSISTANT, ChatMessage, Transcript
+    from thechatplace.session_controller import SessionController
+
+    threads = []
+
+    class Reader:
+        transcript = Transcript(messages=[ChatMessage(ASSISTANT, "A reply", key="reply",
+                                                     assistant_name="Codex")])
+
+        def refresh(self):
+            return True
+
+    class Backend:
+        provider_id = "codex"
+
+        def open_reader(self, info):
+            threads.append(threading.current_thread())
+            return Reader()
+
+    # Use the controller without opening a foreign session's Claude-specific
+    # reply UI: this tests the read boundary while that UI is still being built.
+    frame.sessions = SessionController([Backend()])
+    frame._open = dataclasses.replace(frame._snapshot.sessions[0], provider="codex")
+    frame._reader = None
+    frame._chat_loaded = False
+    frame._refresh_chat()
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+    assert threads and threads[0] is not threading.main_thread()
+    assert frame._chat_messages[0].label == "Codex"
+
+
+def test_unloaded_export_uses_backend_availability_not_claude_files(frame, monkeypatch):
+    from thechatplace.session_controller import SessionController
+
+    class Backend:
+        provider_id = "codex"
+
+        def has_history(self, info):
+            return True
+
+    frame.sessions = SessionController([Backend()])
+    info = dataclasses.replace(frame._snapshot.sessions[0], provider="codex")
+    assert info.transcript_path() is None
+    assert frame._export_source(info) == (None, info)
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_switch_session_while_reader_factory_is_blocked(frame, monkeypatch, missing):
+    from thechatplace.transcript import ASSISTANT, ChatMessage, Transcript
+
+    entered, release = threading.Event(), threading.Event()
+    first, second = frame._snapshot.sessions[:2]
+
+    class Reader:
+        def __init__(self, text):
+            self.transcript = Transcript(messages=[ChatMessage(ASSISTANT, text, key=text)])
+
+        def refresh(self):
+            return True
+
+    def open_reader(info):
+        if info.key == first.key:
+            entered.set()
+            assert release.wait(5)
+            return None if missing else Reader("Stale reply")
+        return Reader("Current reply")
+
+    monkeypatch.setattr(frame.sessions, "open_reader", open_reader)
+    frame._open = first
+    frame._reader = None
+    frame._refresh_chat()
+    try:
+        assert entered.wait(5)
+        frame._open = second
+        frame._open_generation += 1
+        frame._reader = None
+        frame._chat_loaded = False
+        frame._refresh_chat()  # busy: the old callback must schedule this load
+    finally:
+        release.set()
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+    assert [m.text for m in frame._chat_messages] == ["Current reply"]
+    assert frame._reader.transcript.last_reply().text == "Current reply"
 
 
 @pytest.fixture
@@ -948,6 +1028,8 @@ def test_new_session_view_says_claude_is_starting(frame, env, fake_runner, monke
     assert frame.store.get(session_id).model == "opus"
     assert frame.session_heading.GetLabel().endswith("Chat Place session on Opus.")
     # Read back first, then the new session's view is announced after it.
+    assert pump(lambda: len(env["feedback"]) >= 2 and
+                env["feedback"][-1] == "Loaded Brand new work. No messages yet. Claude is starting this session.")
     assert env["feedback"][-2:] == [
         "Sent to Brand new work: Start the thing.",
         "Loaded Brand new work. No messages yet. Claude is starting this session."]
@@ -966,8 +1048,8 @@ def test_new_session_view_says_claude_is_starting(frame, env, fake_runner, monke
                          "Brand new work",
                          TurnEvent("failed", text="Not logged in.", is_error=True))
     frame._refresh_chat()
-    assert frame.chat_list.GetString(0).startswith("No messages yet. The first message "
-                                                   "didn't reach Claude")
+    assert pump(lambda: frame.chat_list.GetString(0).startswith(
+        "No messages yet. The first message didn't reach Claude"))
     assert frame.reply_text.GetValue() == "Start the thing"
 
 
@@ -2901,6 +2983,9 @@ def test_commands_never_open_by_themselves(frame, env, monkeypatch):
     from thechatplace.ui import main_frame
     select(frame, "Hub probe")
     frame.on_open_session()
+    # Reader creation is asynchronous (#184): finish the load announcement
+    # before checking the command-fetch announcement in isolation.
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
     assert pump(lambda: frame._commands)
     frame._commands.clear()
     monkeypatch.setattr("thechatplace.ui.main_frame.CommandPickerDialog",
@@ -8271,9 +8356,14 @@ def test_session_properties_survive_a_failing_read(frame, env, monkeypatch):
     from thechatplace.ui import main_frame
     add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi")])
 
-    def broken(path):
-        raise OSError("locked")
-    monkeypatch.setattr(main_frame, "read_transcript", broken)
+    real = frame.sessions.open_reader_with_facts
+    def broken(info):
+        reader, path, size = real(info)
+        def fail_refresh():
+            raise OSError("locked")
+        reader.refresh = fail_refresh
+        return reader, path, size
+    monkeypatch.setattr(frame.sessions, "open_reader_with_facts", broken)
     seen = _properties(frame, monkeypatch)
     select(frame, "Quiet one")
     _alt_enter(frame, monkeypatch, frame.session_list)
@@ -8289,12 +8379,12 @@ def test_a_second_alt_enter_while_reading_is_ignored(frame, env, monkeypatch):
     from thechatplace.ui import main_frame
     add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi")])
     release = threading.Event()
-    real = main_frame.read_transcript
+    real = frame.sessions.open_reader_with_facts
 
     def slow(path):
         release.wait(5)
         return real(path)
-    monkeypatch.setattr(main_frame, "read_transcript", slow)
+    monkeypatch.setattr(frame.sessions, "open_reader_with_facts", slow)
     seen = _properties(frame, monkeypatch)
     select(frame, "Quiet one")
     _alt_enter(frame, monkeypatch, frame.session_list)
@@ -8440,3 +8530,9 @@ def test_properties_dialog_is_named_for_screen_readers(frame):
         assert dialog.GetEscapeId() == wx.ID_CANCEL
     finally:
         dialog.Destroy()
+
+
+def test_unknown_provider_export_does_not_reach_claude_paths(frame, monkeypatch):
+    info = dataclasses.replace(frame._snapshot.sessions[0], provider='missing')
+    monkeypatch.setattr(type(info), 'transcript_path', lambda *_: pytest.fail('Foreign path lookup'))
+    assert frame._export_source(info) == (None, None)

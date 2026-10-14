@@ -16,12 +16,6 @@ sys.path.insert(0, str(ROOT / "tools"))
 import ui_probe  # noqa: E402
 
 
-@pytest.fixture(scope="module")
-def app():
-    instance = wx.App(False)
-    yield instance
-
-
 #: wx's own dialogs the probe photographs, which aren't classes of ours.
 WX_DIALOGS = {"TextEntryDialog"}
 

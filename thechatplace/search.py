@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Callable, Iterable, List, Optional
 
 from .export import message_moment
-from .transcript import TranscriptReader
+from .transcript import Transcript, TranscriptReader
 from .ui_text import markdown_as_text
 
 #: Enough to choose from; past it the list says there were more.
@@ -39,6 +39,8 @@ class Target:
     title: str
     find_transcript: Callable[[], Optional[Path]]
     with_activity: bool = False
+    #: Backends can supply history without a local Claude JSONL file (#184).
+    read_history: Optional[Callable[[], Optional[Transcript]]] = None
 
 
 @dataclass
@@ -155,14 +157,20 @@ def search_sessions(targets: Iterable[Target], text: str,
         if cancelled() or results.more:
             break
         try:
-            path = target.find_transcript()
-            if path is None or not path.is_file():
+            if target.read_history is not None:
+                history = target.read_history()
+            else:
+                path = target.find_transcript()
+                history = None
+                if path is not None and path.is_file():
+                    reader = TranscriptReader(path)
+                    reader.refresh()
+                    history = reader.transcript
+            if history is None:
                 results.unreadable += 1
                 progress(done)
                 continue
-            reader = TranscriptReader(path)
-            reader.refresh()
-            messages = reader.transcript.messages
+            messages = history.messages
         except Exception:  # noqa: BLE001 - counted, never raised
             results.unreadable += 1
             progress(done)

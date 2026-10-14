@@ -82,6 +82,8 @@ formats are undocumented, and it never writes to them:
 - `transcript.py`: the only module that knows the `.jsonl` transcript format. It must skip unknown
   record types and never crash on a bad line (it counts them instead), and it reads incrementally.
   Keep all knowledge of the transcript format in this module.
+- `providers/`: shared discovery/history contracts and the Claude adapter. Claude format knowledge stays at its adapter boundary.
+- `session_controller.py`: routes history reading by provider on workers. Reading never resumes a chat or sends a prompt.
 - `hub.py`: gathers a whole `Snapshot` on a background thread and notices finished turns. It returns
   plain data.
 - `own_store.py`, `groups.py`: the app's own state in `%APPDATA%\TheChatPlace` (the only place it writes).

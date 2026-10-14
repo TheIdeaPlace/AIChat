@@ -95,11 +95,16 @@ class ChatMessage:
     key: str = ""  # stable identity (record uuid, or message id for merged replies)
     #: For PEER messages: the session it came from, as that session named itself.
     sender: str = ""
+    #: Backend's spoken assistant name; Claude stays the default for legacy
+    #: transcripts. Keep it on the message for export and cross-session Find.
+    assistant_name: str = "Claude"
 
     @property
     def label(self) -> str:
         if self.kind == PEER and self.sender:
             return f"From {self.sender}"
+        if self.kind == ASSISTANT:
+            return self.assistant_name
         return LABELS.get(self.kind, self.kind.capitalize())
 
     @property

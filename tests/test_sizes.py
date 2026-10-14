@@ -15,12 +15,6 @@ from thechatplace.ui import sizes  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 
 
-@pytest.fixture(scope="module")
-def app():
-    instance = wx.App(False)
-    yield instance
-
-
 @pytest.mark.skipif(sys.platform != "win32", reason="DPI awareness is a Windows setting")
 def test_the_app_becomes_per_monitor_dpi_aware():
     # In a process of its own: awareness can be set once per process.
@@ -41,7 +35,9 @@ def test_dpi_awareness_comes_before_the_first_window():
 def test_design_sizes_become_screen_pixels(app):
     frame = wx.Frame(None)
     try:
-        scale = frame.GetDPIScaleFactor()
+        # Cocoa already scales window coordinates: Retina physical pixels
+        # are not the units used for window sizes. Windows needs conversion.
+        scale = frame.GetDPIScaleFactor() if wx.Platform == "__WXMSW__" else 1
         assert sizes.dip(frame, 680, 620) == wx.Size(round(680 * scale), round(620 * scale))
         assert sizes.dip(frame, -1, 120).width == -1  # "any width" stays so
         assert sizes.dip_width(frame, 150) == round(150 * scale)
