@@ -35,12 +35,6 @@ pytestmark = windows_layout
 KNOWN = {}
 
 
-@pytest.fixture(scope="module")
-def app():
-    instance = wx.App(False)
-    yield instance
-
-
 def _problems(window) -> list:
     window.Layout()
     info = ui_probe.describe(window)

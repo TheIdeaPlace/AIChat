@@ -8,6 +8,20 @@ sys.path.insert(0, str(HERE))
 import pytest  # noqa: E402
 
 
+@pytest.fixture(scope="session")
+def app():
+    """Keep one wx application alive across every GUI test module.
+
+    wx's native application is process-wide. Creating and releasing a
+    different Python wrapper per module can tear down Cocoa state while
+    later tests still use it. Import lazily so non-GUI tests need no wx.
+    GUI tests require an unsandboxed process with access to the desktop.
+    """
+    wx = pytest.importorskip("wx")
+    instance = wx.GetApp() or wx.App(False)
+    yield instance
+
+
 @pytest.fixture(autouse=True)
 def _fresh_last_messages(monkeypatch):
     """Each test starts with nothing remembered for the Last message column

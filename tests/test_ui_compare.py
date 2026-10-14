@@ -13,12 +13,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import ui_compare  # noqa: E402
 
 
-@pytest.fixture(scope="module")
-def app():
-    instance = wx.App(False)
-    yield instance
-
-
 def _control(cls, label, rect, **extra):
     return {"class": cls, "name": cls.lower(), "label": label, "rect": rect,
             "best": rect[2:], "depth": 0, "enabled": True, "problems": [], **extra}
