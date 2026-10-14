@@ -74,15 +74,31 @@ class GroupStore:
                 if extra.get("version") != 1 or not isinstance(values, list):
                     raise ValueError("Invalid provider groups")
                 seen = set()
+                renamed = {}
                 for item in values:
                     if not isinstance(item, dict) or not isinstance(item.get("name"), str):
                         raise ValueError("Invalid provider group")
                     name, members = clean_name(item["name"]), item.get("sessions")
-                    if not name or name in seen or not isinstance(members, list) or any(
+                    if not name or name.casefold() in seen or not isinstance(members, list) or any(
                             not isinstance(k, str) or not foreign_key(k) for k in members):
                         raise ValueError("Invalid provider group members")
-                    seen.add(name)
+                    seen.add(name.casefold())
                     canonical = self.find(name)
+                    anchor = item.get('legacy_sessions')
+                    if anchor is not None and (not isinstance(anchor, list) or any(
+                            not isinstance(k, str) or foreign_key(k) for k in anchor)):
+                        raise ValueError('Invalid legacy group anchor')
+                    if canonical is None and anchor:
+                        # 0.1.6 cannot rename the companion. Follow a rename
+                        # only when its unchanged Claude membership identifies
+                        # exactly one group; never guess from a shared member.
+                        candidates = [n for n, keys in self._groups.items()
+                            if set(k for k in keys if not foreign_key(k)) == set(anchor)]
+                        if len(candidates) > 1:
+                            raise ValueError('Ambiguous legacy group rename')
+                        if candidates:
+                            canonical = candidates[0]
+                            renamed[name] = canonical
                     if canonical is None:
                         self._foreign_only_groups.add(name)
                     else:
@@ -94,6 +110,7 @@ class GroupStore:
                     if (not isinstance(order, list) or any(not isinstance(n, str) for n in order)
                             or len(order) != len(set(order))):
                         raise ValueError('Invalid provider group order')
+                    order = [renamed.get(n, n) for n in order]
                     ordered = {n: self._groups[n] for n in order if n in self._groups}
                     ordered.update(self._groups)
                     self._groups = ordered
@@ -108,7 +125,10 @@ class GroupStore:
             selected = [k for k in members if foreign_key(k) == foreign]
             keep_empty = not members and (foreign == (name in self._foreign_only_groups))
             if selected or keep_empty:
-                groups.append({"name": name, "sessions": selected})
+                item = {"name": name, "sessions": selected}
+                if foreign:
+                    item['legacy_sessions'] = [k for k in members if not foreign_key(k)]
+                groups.append(item)
         payload = {"version": 1, "groups": groups}
         if foreign:
             payload['order'] = list(self._groups)

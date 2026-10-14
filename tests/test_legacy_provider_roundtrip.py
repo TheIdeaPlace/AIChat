@@ -201,3 +201,39 @@ def test_future_backend_metadata_is_not_written_to_legacy_file(tmp_path):
     store.add('future-agent:one')
     assert OldHidden(path).keys() == []
     assert HiddenStore(path).keys() == ['future-agent:one']
+
+
+def test_016_rename_of_mixed_group_keeps_provider_members_together(tmp_path):
+    path = tmp_path / 'groups.json'
+    groups = GroupStore(path)
+    groups.create('Work')
+    groups.add('Work', 'own:one')
+    groups.add('Work', 'codex:one')
+    old = OldGroups(path)
+    old.rename('Work', 'Renamed')
+    loaded = GroupStore(path)
+    assert not loaded.load_error
+    assert loaded.names() == ['Renamed']
+    assert loaded.members('Renamed') == ['own:one', 'codex:one']
+    loaded.save()
+    assert OldGroups(path).members('Renamed') == ['own:one']
+    assert GroupStore(path).members('Renamed') == ['own:one', 'codex:one']
+
+
+def test_ambiguous_old_group_rename_does_not_move_foreign_members_or_overwrite(tmp_path):
+    path = tmp_path / 'groups.json'
+    groups = GroupStore(path)
+    groups.create('Work')
+    groups.add('Work', 'own:one')
+    groups.add('Work', 'codex:one')
+    old = OldGroups(path)
+    old.rename('Work', 'One')
+    old.create('Two')
+    old.add('Two', 'own:one')
+    companion = path.with_name('provider-groups.json')
+    before = path.read_bytes(), companion.read_bytes()
+    loaded = GroupStore(path)
+    assert 'Ambiguous' in loaded.load_error
+    with pytest.raises(OSError):
+        loaded.save()
+    assert (path.read_bytes(), companion.read_bytes()) == before
