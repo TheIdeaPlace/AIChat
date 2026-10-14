@@ -11,12 +11,11 @@ fill every other session with them.
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 from typing import List, Optional, Set
 
 from . import platform_paths
+from .provider_storage import PartitionedFile, foreign_key
 
 
 class KeySetStore:
@@ -33,6 +32,7 @@ class KeySetStore:
         if not (self.FILE and self.FIELD):
             raise TypeError("A KeySetStore needs a FILE and a FIELD.")
         self.path = Path(path) if path else platform_paths.app_data_dir() / self.FILE
+        self._files = PartitionedFile(self.path)
         self._keys: Set[str] = set()
         self.load_error = ""
         self.load()
@@ -43,7 +43,7 @@ class KeySetStore:
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return
+            raw = {"version": 1, self.FIELD: []}
         except (OSError, ValueError) as exc:
             self.load_error = f"Couldn't read {self.READ} ({self.path}): {exc}"
             return
@@ -53,6 +53,25 @@ class KeySetStore:
                                "expected format, so The Chat Place won't change it.")
             return
         self._keys = {k for k in keys if isinstance(k, str) and k}
+        self._files.baseline(self._payload(self._keys, False))
+        try:
+            extra = self._files.read_foreign()
+            if extra is not None:
+                values = extra.get(self.FIELD)
+                if extra.get("version") != 1 or not isinstance(values, list) or any(
+                        not isinstance(k, str) or not foreign_key(k) for k in values):
+                    raise ValueError("Invalid provider session keys")
+                self._keys.update(values)
+            if any(foreign_key(k) for k in keys if isinstance(k, str)):
+                self._files.save(self._payload(self._keys, False),
+                                 self._payload(self._keys, True), force_legacy=True)
+        except (OSError, ValueError) as exc:
+            self.load_error = f"Couldn't read or separate provider preferences ({self._files.foreign_path}): {exc}"
+
+    def _payload(self, keys, foreign):
+        return {"version": 1, self.FIELD: sorted(k for k in keys
+                                                 if foreign_key(k) == foreign)}
+
 
     def keys(self) -> List[str]:
         return sorted(self._keys)
@@ -76,19 +95,8 @@ class KeySetStore:
     def _change(self, keys: Set[str]) -> None:
         """Save, then keep: a change that can't be saved isn't made."""
         if self.load_error:
-            raise OSError(f"Not saving over the unreadable {self.path}.")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=self.FIELD + "-", suffix=".tmp", dir=str(self.path.parent))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump({"version": 1, self.FIELD: sorted(keys)}, handle, indent=2)
-            os.replace(tmp, self.path)
-        except OSError:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+            raise OSError(f"Changes cannot be saved: {self.load_error}")
+        self._files.save(self._payload(keys, False), self._payload(keys, True))
         self._keys = set(keys)
 
 

@@ -84,6 +84,7 @@ formats are undocumented, and it never writes to them:
   Keep all knowledge of the transcript format in this module.
 - `providers/`: shared discovery/history contracts and the Claude adapter. Claude format knowledge stays at its adapter boundary.
 - `session_controller.py`: routes history reading by provider on workers. Reading never resumes a chat or sends a prompt.
+- `provider_storage.py`: atomic companion stores keep foreign records out of the version-1 Claude files understood by 0.1.6. Preserve originals on migration failures; provider-only edits must not overwrite another release's newer Claude data.
 - `hub.py`: gathers a whole `Snapshot` on a background thread and notices finished turns. It returns
   plain data.
 - `own_store.py`, `groups.py`: the app's own state in `%APPDATA%\TheChatPlace` (the only place it writes).

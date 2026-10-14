@@ -1133,3 +1133,20 @@ def unregister_url_scheme() -> None:
             winreg.DeleteKey(winreg.HKEY_CURRENT_USER, URL_SCHEME_KEY + sub)
         except OSError:
             pass
+
+
+def backup_session_store(path: Path) -> Path:
+    """Keep a complete unique original before migrating TCP's own store."""
+    import tempfile
+
+    fd, name = tempfile.mkstemp(prefix="sessions-v1-backup-", suffix=".json",
+                                dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(path.read_bytes())
+            handle.flush()
+            os.fsync(handle.fileno())
+    except Exception:
+        os.unlink(name)
+        raise
+    return Path(name)
