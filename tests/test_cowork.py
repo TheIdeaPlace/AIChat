@@ -54,7 +54,7 @@ def test_cowork_sessions_are_read_only_desktop_sessions(tmp_path):
         (DESKTOP, "local_cw1", "Sort the receipts", "cli-cw1")
     assert info.cowork and not info.is_own
     assert info.desktop_session_id == "local_cw1" and info.can_open_in_claude
-    assert info.list_line(NOW).endswith("Cowork session")
+    assert info.list_line(NOW).endswith("Cowork session, Claude")
     # The --resume guard knows its id, as it knows every desktop app id.
     assert result.desktop_cli_ids == {"cli-cw1"}
     # And knows it's a Cowork one, which can't even be copied here.

@@ -5,9 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 The Chat Place: a wxPython desktop app for Windows and macOS (Windows came first) that is a keyboard- and screen-reader-friendly
-reader for Claude Code sessions. It lists the Claude desktop app's sessions, shows each as an
-arrowable conversation, announces when a session answers, and can run sessions of its own through
-`claude -p` (headless, stream-json) on the user's subscription, never an API key. Accessibility with
+home for AI sessions in one list, with Claude and Codex now and more providers planned. It shows
+arrowable conversations, announces replies and drives sessions of its own through provider
+adapters. Claude uses `claude -p`; Codex uses app-server with ChatGPT sign-in. Neither uses an
+API key. Shared UI and guide text must be neutral or name the provider. Provider is which AI;
+Kind is where the session started. Preserve legacy Claude storage/defaults only at its adapter
+and compatibility boundaries. Accessibility with
 JAWS and NVDA is the point of the app, so every UI change has to work by keyboard and be named and
 announced for a screen reader.
 
@@ -79,12 +82,21 @@ Versions below 1.0 publish as pre-releases. Both platforms update through Velopa
 formats are undocumented, and it never writes to them:
 - `sessions.py`: the desktop app's session metadata (`claude-code-sessions/**/local_*.json`, both
   the regular and the Microsoft Store locations) and live busy/idle state (`~/.claude/sessions/<pid>.json`).
-- `transcript.py`: the only module that knows the `.jsonl` transcript format. It must skip unknown
+- `transcript.py`: the module that knows Claude's `.jsonl` transcript format. It must skip unknown
   record types and never crash on a bad line (it counts them instead), and it reads incrementally.
-  Keep all knowledge of the transcript format in this module.
-- `providers/`: shared discovery/history contracts and the Claude adapter. Claude format knowledge stays at its adapter boundary.
-- `session_controller.py`: routes history reading by provider on workers. Reading never resumes a chat or sends a prompt.
-- `provider_storage.py`: atomic companion stores keep foreign records out of the version-1 Claude files understood by 0.1.6. Preserve originals on migration failures; provider-only edits must not overwrite another release's newer Claude data.
+  Keep Claude transcript-format knowledge here; other backend formats belong in their adapters.
+- `providers/`: backend contracts, Claude discovery/history, and Codex's managed stdio app-server.
+  Codex history is read through app-server, never parsed from raw rollout files. Owned Codex
+  lifecycle, execution, requests and queues stay in the backend; only verified owned chats can send.
+- `session_controller.py`: routes discovery, readers, capabilities and owned actions by backend.
+  The window must never route foreign IDs through Claude runners or transcript paths.
+- `provider_storage.py`: atomic companion stores keep foreign records out of the legacy Claude
+  files understood by older releases. Preserve originals on migration failures; provider-only edits
+  must not overwrite another release's newer Claude data.
+  Native identity is backend plus native ID, separate from presentation keys and ownership.
+  Imported chats (#228) will additionally need source-computer identity; do not collapse them
+  into local ownership. Provider readers need not read external files: a tool-free backend such
+  as Ollama (#224) can keep TCP-owned history and leave agent capabilities disabled.
 - `hub.py`: gathers a whole `Snapshot` on a background thread and notices finished turns. It returns
   plain data.
 - `own_store.py`, `groups.py`: the app's own state in `%APPDATA%\TheChatPlace` (the only place it writes).

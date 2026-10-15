@@ -16,7 +16,8 @@ LAYOUT = (
     "loaded session; and the reply box with Send and Stop (for a desktop app or "
     "terminal session, a read-only note saying where you reply, with provider-specific actions "
     "and Continue Here as they apply, in the same place). "
-    "Shift+Tab goes back the same way."
+    "Shift+Tab goes back the same way. Provider (which AI) and Kind (where the session started) "
+    "are default session-list columns; View, Session List Columns can remove or reorder them."
 )
 
 #: Every shortcut, grouped. The Help dialog and the README both list these.

@@ -185,7 +185,7 @@ def test_list_line_reads_every_part():
                        cli_session_id="x", state=NEEDS_YOU, detail="2 tools were refused",
                        last_activity_ms=NOW - 120_000, unread=True)
     assert info.list_line(NOW) == ("Probe, Repo, needs you: 2 tools were refused, new reply, "
-                                   "active 2 minutes ago, Chat Place session")
+                                   "active 2 minutes ago, Chat Place session, Claude")
 
 
 # -- hub.collect ------------------------------------------------------------------
