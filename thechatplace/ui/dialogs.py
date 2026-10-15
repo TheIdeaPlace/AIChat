@@ -117,7 +117,7 @@ class NewSessionDialog(wx.Dialog):
         self._control_provider = "claude"
         self._claude_choices = None
         self._codex_models = ()
-        self._codex_choices = (0, 0, 1)
+        self._codex_choices = (0, 0, 0 if continue_from else 1)
         self._codex_model_error = False
         self._codex_models_loaded = False
         if len(self._providers) > 1:
@@ -544,14 +544,14 @@ class NewSessionDialog(wx.Dialog):
                            "Can edit files in this folder; asks before anything else"])
             self.mode.SetSelection(self._codex_choices[2])
             self.mode.Enable()
-            self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and an advertised effort, "
+            self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and effort level, "
                 "or leave the configured defaults. "
                 "Choose read-only or allow edits in this folder. Both ask before allowing work "
-                "outside their sandbox; requests appear in Answer. Permissions are verified before sending." +
+                "outside their selected file access; requests appear in Answer. Permissions are verified before sending." +
                 (" Model choices could not be loaded; configured defaults remain available." if self._codex_model_error else
                  " Model choices load in the background." if not self._codex_models_loaded else ""))
             if self.continuing:
-                note = "The copy starts from the last saved point with the permissions selected here. Approval policy: on request."
+                note = "The copy starts from the last saved point with the permissions selected here. Codex asks when additional access is needed."
                 if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
                     note = "This chat may still be working in Codex. " + note
                 self.note.SetValue(note + "\n\n" + self.note.GetValue())

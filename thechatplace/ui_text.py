@@ -44,7 +44,7 @@ SHORTCUTS = [
         ("Ctrl+N", "New Chat Place session"),
         ("Ctrl+Shift+N", "Continue the selected desktop app or terminal session here, as a "
                          "copy you can reply to (the original isn't changed)"),
-        ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes or verified Codex read-only/folder editing for the "
+        ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes or Codex file access for the "
                          "selected (or loaded) Chat Place session, from its next turn (File, "
                          "Change Effort and Change Model are beside it)"),
         ("F5", "Refresh the list now and put it back in order (it also refreshes itself "
@@ -125,8 +125,8 @@ SHORTCUTS = [
                          "list; Enter on a result loads that session on that message. Pressed "
                          "again while it searches, it stops"),
         ("Ctrl+Shift+A", "Answer: approve or deny a tool, answer the provider's questions, or "
-                         "approve its plan (the loaded session first, then the one that has "
-                         "waited longest). Escape in the dialog answers later"),
+                         "approve its plan (the loaded session first, then another chat "
+                         "waiting for an answer). Escape in the dialog answers later"),
         ("Ctrl+Shift+K", "What Claude knows about you: your instructions, memories, "
                          "skills, subagents, commands and settings, to read or open in "
                          "your editor"),

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import wx
 
-from ..providers.codex_requests import QUESTIONS
+from ..providers.codex_requests import QUESTIONS, COMMAND
 from ..providers.codex_rpc import CodexRpcError
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE
 from .. import announce
@@ -78,7 +78,7 @@ class CodexChats:
                     else self.sessions.create_owned('codex', folder, title, **options))
         def done(record, error):
             if error:
-                self._feedback('Could not create this Codex chat. Check Codex sign-in and configuration.')
+                self._feedback(record or 'Could not create this Codex chat. Check Codex sign-in and configuration.')
                 return
             if not self._store_write(self.store.add, record):
                 self._feedback('Codex created the chat, but it could not be saved here. Open it in Codex.')
@@ -184,7 +184,7 @@ class CodexChats:
         def done(_result, error):
             self._feedback((_result or 'Could not stop or recover this Codex chat. Check its state in Codex.') if error
                            else 'Codex chat reconnected after verifying its previous turn ended. No message was resent.' if _result
-                           else 'Stop requested. Codex will confirm when the turn ends.')
+                           else 'Stop requested. If the turn does not finish, press Stop again to check whether Codex has ended it.')
             self._update_send_state()
         def stop_or_recover():
             try:
@@ -256,7 +256,12 @@ class CodexChats:
         if state.notice and (previous is None or previous.notice != state.notice):
             self._say(f'{record.title}: {state.notice}', interrupt=False)
         if state.requests and not state.problem and (previous is None or previous.requests != state.requests):
-            self._say(f'{record.title}: Codex needs your answer. {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
+            request = state.requests[0]
+            summary = ('Question: ' + request.questions[0].text if request.method == QUESTIONS and request.questions
+                       else 'Command: ' + request.command if request.method == COMMAND else 'File changes need approval.')
+            summary = ' '.join(summary.split())[:200]
+            self._say(f'{record.title}: Codex needs your answer. {summary} {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
+            self._notify(key, f'{record.title} needs you', summary, needs_you=True)
         finished = (state.native_id, state.turn_id)
         fresh_terminal = (state.turn_id and state.outcome in ('completed', 'failed', 'interrupted')
                           and finished not in self._codex_finished)
@@ -272,6 +277,9 @@ class CodexChats:
             if reply:
                 text = announce.reply_text(record.title, reply, self.speech.announce)
             self._say(text, interrupt=False)
+            if state.outcome != 'interrupted':
+                self._notify(key, f'{record.title}: Codex ' + ('answered' if state.outcome == 'completed' else state.outcome),
+                             text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
         if state.unsent:
             # Queue this after interrupting error/reply speech, so the news

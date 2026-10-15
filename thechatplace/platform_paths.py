@@ -1199,7 +1199,10 @@ def codex_workspace_root(cwd: str) -> str:
     if not path.is_absolute():
         raise ValueError("Codex workspace-write requires an absolute folder")
     root = path.resolve(strict=True)
-    if not root.is_dir() or root == Path(root.anchor):
+    home = Path.home().resolve()
+    if (not root.is_dir() or root == Path(root.anchor) or root == home
+            or root in home.parents or os.path.ismount(root)
+            or sys.platform == 'darwin' and root == Path('/Volumes')):
         raise ValueError("Codex workspace-write requires a project folder")
     return str(root)
 

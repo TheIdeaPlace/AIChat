@@ -54,16 +54,23 @@ is optional. Steer and the reading pane are outside this release.
   (Ctrl+Shift+O). Both must use verified effective policy and persisted canonical
   grants; changing policy must wait for an idle chat and keep sends blocked
   until verification and saving complete.
-- Complete independent re-review of foundations/storage and the owned/model/
-  policy changes. Finish slices 3–5 and require green Windows/Mac tests and
-  packaged smoke checks on the exact candidate.
+- Foundations, storage and reading have merged through independent review.
+  Finish owned-chat #255 re-review and the Provider-default slice; require green
+  Windows/Mac tests and packaged smoke checks on the exact candidate.
+- Verify inherited Codex execution approval rules before declaring folder-access
+  behavior release-ready (#257). External MCP servers, apps and plugins are disabled per chat without changing
+  global settings. Thread-specific inventory must confirm disabled servers and
+  zero tools before granting runtime ownership and before sending. The native
+  Mac folder-edit command passed with two configured servers disabled.
+  Case-insensitive Mac path identity remains a fail-closed follow-up (#256).
 - Repeat the passed native Mac file-edit check on Windows: a real Codex turn must edit a harmless file in a disposable selected
   folder. Confirm file scope, approvals/questions, Stop, queued text recovery
   and restarting with the saved grant. Ephemeral lifecycle policy checks alone
   do not establish that file editing works.
 - Match README, shipped guide, shortcuts, open release notes and Properties/
   Turn status to the shipped behavior. Keep unimplemented controls out of help.
-- Kelly's hands-on acceptance on Windows and Mac, including screen readers and
+- Kelly's hands-on acceptance on Windows and Mac, including Claude read-back
+  through the new noninterrupting VoiceOver announcement path, screen readers and
   keyboard focus. Windows probe/visual follow-up is tracked in #226; its deferral
   does not count as an accepted visual baseline.
 - Merge only after the required reviews/acceptance. Bump/version/tag and release

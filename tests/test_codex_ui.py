@@ -35,8 +35,11 @@ class Window(CodexChats):
         self.store = SimpleNamespace(get=lambda *a, **k: self.record, update=lambda *a, **k: None)
         self.speech = SimpleNamespace(announce='full', announce_own=True)
         self.said = []
+        self.notified = []
         self.work = []
         self.sessions = SimpleNamespace(owned_action=lambda *a: None)
+    def _notify(self, *args, **kwargs):
+        self.notified.append((args, kwargs))
     def _gone(self):
         return False
     def _codex_work(self, action, done):
@@ -344,3 +347,27 @@ def test_terminal_usage_queries_coalesce_one_followup_for_newer_threshold():
     done(action(), False)
     assert w.said == ['80 percent', '100 percent']
     assert not w.work and not w._codex_usage_check_pending
+
+
+def test_codex_requests_and_completion_notify_once_with_short_request_summary():
+    from thechatplace.providers.codex_requests import CodexRequest, COMMAND
+    w = Window()
+    request = CodexRequest('r', COMMAND, 'owned', 'turn', 'cmd', command='git status')
+    waiting = CodexChatState('owned', 'needs you', 'turn', 'inProgress', requests=(request,))
+    w._on_codex_update(waiting)
+    w._on_codex_update(waiting)
+    assert len(w.notified) == 1 and w.notified[0][1] == {'needs_you': True}
+    assert 'git status' in w.said[-1]
+    done = CodexChatState('owned', 'idle', 'turn', 'completed', replies=(('a', 'Done'),))
+    w._on_codex_update(done)
+    w._on_codex_update(done)
+    assert len(w.notified) == 2 and 'Done' in w.notified[-1][0][-1]
+
+
+def test_failed_codex_turn_is_a_needs_you_notification_but_stop_is_quiet():
+    w = Window()
+    w._on_codex_update(CodexChatState('owned', 'idle', 'failed', 'failed'))
+    assert w.notified[-1][1] == {'needs_you': True}
+    before = len(w.notified)
+    w._on_codex_update(CodexChatState('owned', 'idle', 'stopped', 'interrupted'))
+    assert len(w.notified) == before

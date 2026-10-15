@@ -470,14 +470,14 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   For a Codex chat, the same command reads current ChatGPT account limits in the
   background, including used and remaining percentages and reported reset times.
   Limits are shared across your Codex chats. Missing values are shown as not reported.
-  Owned Codex chats also show the latest reported model request's input, output
+  Codex chats started here also show the latest reported model request's input, output
   and total tokens, separately from cumulative usage. When Codex reports its
   context window, the latest request's percentage appears here and in the status
-  bar; at 80% TCP warns once until the next compaction. After an owned Codex
-  turn ends, TCP checks account limits in the background and warns at 80% and
+  bar; at 80% The Chat Place warns once until the next compaction. After an owned Codex
+  turn ends, The Chat Place checks account limits in the background and warns at 80% and
   100%, once per allowance and reset window, without interrupting read-back. These values become
   available only after this connection receives a usage report. Missing windows
-  stay not reported; TCP never substitutes Claude's counts or model defaults.
+  stay not reported; The Chat Place never substitutes Claude's counts or model defaults.
 - **Properties** (Alt+Enter, View menu, or the session's and the message's context menus; Option+Return
   on a Mac) opens a list of "Property: value" lines, read and copied like Usage and Context. In the
   session list it's the selected session; in the messages, the selected message; anywhere else,
@@ -535,16 +535,27 @@ support text replies, Stop, queued messages and Answer (Ctrl+Shift+A) for
 one-time permissions and questions. Externally started Codex chats remain read-only. Turning the
 option off and restarting hides Codex without removing its saved preferences.
 Quitting The Chat Place requests a stop for its running Codex replies.
-Revisiting a chat preserves its running turn. TCP refuses to resume a saved
+Revisiting a chat preserves its running turn. The Chat Place refuses to resume a saved
 chat whose latest turn is unfinished or uncertain. If the connection is lost,
 use Stop to check the native turn and reconnect once it has ended. No message
 is resent. Selecting the chat again does not automatically reconnect. If
-Codex still reports unfinished work, TCP refuses recovery and says why.
-Requests TCP cannot present safely are declined with a notice; they do not
+Codex still reports unfinished work, The Chat Place refuses recovery and says why.
+Requests The Chat Place cannot present safely are declined with a notice; they do not
 disconnect the chat. Turn Status keeps that notice available.
 Turn Status (Ctrl+Shift+T) reports elapsed time and latest activity, and sent
 messages follow the same read-back setting as Claude. Only chats in the local Codex catalog are listed. A status Codex cannot verify
 is omitted from default rows and remains available in Properties and the Status column.
+
+
+Continue Here starts a Codex copy read-only. You can select folder editing for
+a project folder, but the home folder, its parents and volume roots cannot be
+used as writable folders. If Stop is acknowledged but the turn stays open,
+press Stop again to check Codex's saved turn status without resending anything.
+
+The Chat Place disables external tools (MCP servers, apps and plugins) for
+Codex chats started here because those tools can reach beyond the selected
+folder. It checks that they are disabled before sending. Your global Codex
+configuration stays unchanged; existing chats can still be read.
 
 ## Install
 

@@ -41,6 +41,8 @@ class Connection:
         self.calls.append((method, params))
         if method == 'account/read':
             return {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
+        if method == 'mcpServerStatus/list':
+            return {'data': [], 'nextCursor': None}
         if method == 'config/read':
             return {'config': {}}
         if method == 'thread/read':

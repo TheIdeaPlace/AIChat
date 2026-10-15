@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from .. import platform_paths
 from ..own_store import OwnSession
 from ..sessions import SessionInfo
-from .codex_rpc import CodexRpcError, CodexTurnRejected, ReadOnlyCodexConnection
+from .codex_rpc import codex_tool_overrides, verify_codex_tools, CodexRpcError, CodexTurnRejected, ReadOnlyCodexConnection
 from .codex_models import read_models
 from .codex_policy import CodexPolicy
 
@@ -61,6 +61,7 @@ class CodexOwnedThreads:
         config = self.connection.request("config/read", {"cwd": cwd, "includeLayers": False}).get("config")
         if not isinstance(config, dict):
             raise CodexRpcError("Codex configuration unavailable")
+        tools = codex_tool_overrides(config)
         providers = config.get("model_providers", {})
         if (config.get("model_provider") not in (None, "openai")
                 or config.get("forced_login_method") not in (None, "chatgpt")
@@ -68,6 +69,8 @@ class CodexOwnedThreads:
                 or config.get("chatgpt_base_url") not in (None, CHATGPT_BASE_URL)
                 or not isinstance(providers, dict) or "openai" in providers):
             raise CodexRpcError("Codex owned chats require the default ChatGPT route")
+
+        return tools
 
     def _create(self, method, cwd, title, *, native_id=None, ephemeral=False, model=None, effort=None,
                 sandbox='read-only', approval_policy='on-request'):
@@ -84,7 +87,7 @@ class CodexOwnedThreads:
         policy = CodexPolicy.choose(cwd, sandbox, approval_policy)
         if policy.workspace_root:
             cwd = policy.workspace_root
-        self._preflight(cwd)
+        tools = self._preflight(cwd)
         if method == 'thread/resume':
             # Resume changes the loaded thread. Inspect persisted turn state
             # first, even after restarting TCP; never overwrite unfinished work.
@@ -111,6 +114,7 @@ class CodexOwnedThreads:
                       "forced_login_method": "chatgpt", "openai_base_url": None,
                       "chatgpt_base_url": CHATGPT_BASE_URL, "approvals_reviewer": "user"}}
         params['config'].update(policy.config())
+        params['config'].update(tools)
         if native_id is not None:
             params["threadId"] = native_id
         if model is not None:
@@ -139,6 +143,7 @@ class CodexOwnedThreads:
             # Never grant a runtime proof from a partial or mismatched response.
             # No prompt has been sent; uncertain creation is never replayed.
             raise CodexRpcError("Codex owned chat configuration could not be verified")
+        verify_codex_tools(self.connection, actual_id)
         created = thread.get("createdAt")
         created_ms = created * 1000 if type(created) is int and created >= 0 else 0
         proof = CodexOwnedThread(actual_id, policy.workspace_root or result["cwd"], result["model"], title,

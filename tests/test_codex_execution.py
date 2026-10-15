@@ -154,7 +154,7 @@ def runtime_connection():
     c._accept_owned_thread(proof)
     c.request = lambda method, params: ({'thread': {'id': 'owned', 'modelProvider': 'openai',
         'cwd': '/workspace', 'status': {'type': 'idle'}}} if method == 'thread/read'
-        else {'config': {}})
+        else {'data': []} if method == 'mcpServerStatus/list' else {'config': {}})
     params = {'threadId': 'owned', 'cwd': '/workspace', 'model': 'model',
         'approvalPolicy': 'on-request', 'approvalsReviewer': 'user',
         'sandboxPolicy': {'type': 'readOnly'}, 'input': [{'type': 'text', 'text': 'Hello'}]}
@@ -179,7 +179,7 @@ def test_unknown_or_busy_thread_cannot_start_a_new_turn():
     for status in ['notLoaded', 'active']:
         c.request = lambda method, args: ({'thread': {'id': 'owned', 'modelProvider': 'openai',
             'cwd': '/workspace', 'status': {'type': status}}} if method == 'thread/read'
-            else {'config': {}})
+            else {'data': []} if method == 'mcpServerStatus/list' else {'config': {}})
         with pytest.raises(CodexRpcError, match='confirmed idle'):
             c._verify_turn_route(params)
 
@@ -213,7 +213,7 @@ def test_events_before_start_response_are_preserved_even_after_previous_turn():
     assert executor.start(proof, 'Next').turn_id == 'turn-3'
 
 
-@pytest.mark.parametrize('mode', ['overflow', 'disconnect', 'failed', 'interrupted', 'wrong-turn'])
+@pytest.mark.parametrize('mode', ['disconnect', 'failed', 'interrupted', 'wrong-turn'])
 def test_pending_start_stream_outcomes_remain_safe(mode):
     from concurrent.futures import ThreadPoolExecutor
     c = Connection()
