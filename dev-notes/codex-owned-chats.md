@@ -60,3 +60,26 @@ and its 189 focused tests. Mac case canonicalization is tracked in #256; inherit
 execution approval rules remain a release gate in #257. Windows visual comparisons
 and manual focus/VoiceOver checks remain in #226, including Message dialog labels
 and non-interrupting Claude read-back. No new screenshot baseline is claimed here.
+
+### Re-review #28: preserve the spoken final answer
+
+Diffs now use a separate bounded character counter from replies. Completed
+replies displace older commentary when needed, retaining the newest answer
+within the reply item/character limits. Regression coverage includes five
+250 KB diffs followed by a final answer, plus commentary/item saturation.
+Independent review passed 69 event/execution/recovery tests; the combined
+focused UI/docs run passed 92 with one Windows-only skip. A final focused
+policy/events/recovery pass was 63 passed with one Windows-only skip.
+
+Guide terminology no longer says owned chat, native turn or advertised choices.
+Windows-only regression coverage refuses home, its parent and both C:/D: drive
+roots. File identity checks also refuse case aliases of home and its parents;
+full Mac folder-case canonicalization remains tracked in #256.
+
+A native disposable trusted-project allow rule reproduced #257: an otherwise
+verified workspace-write/on-request turn wrote a harmless marker outside its
+selected project without any approval request. The matching control without
+an allow rule did not create the marker. Both chats were cleaned through
+official archive/delete APIs and temporary test trees removed. CLI version
+0.162.0-alpha.17.2 rejects app-server --ignore-rules; the documented option is
+for exec only. This remains a release gate, with evidence on #257.

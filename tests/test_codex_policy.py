@@ -3,6 +3,8 @@ from dataclasses import replace
 
 import pytest
 
+from tests.markers import windows_paths
+
 from thechatplace.providers.codex_policy import CodexPolicy
 from thechatplace.providers.codex_rpc import CodexRpcError
 
@@ -93,3 +95,28 @@ def test_home_and_its_parents_cannot_be_write_scopes(tmp_path, monkeypatch):
             CodexPolicy.choose(str(root), 'workspace-write')
     assert CodexPolicy.choose(str(project), 'workspace-write').workspace_root == str(project)
     assert CodexPolicy.choose(str(home), 'read-only').sandbox == 'read-only'
+
+
+@windows_paths
+def test_windows_home_parents_and_drive_roots_are_not_write_scopes(monkeypatch):
+    from pathlib import Path
+    from thechatplace import platform_paths
+    monkeypatch.setattr(Path, 'home', lambda: Path(r'C:\Users\name'))
+    monkeypatch.setattr(Path, 'resolve', lambda self, strict=False: self)
+    monkeypatch.setattr(Path, 'is_dir', lambda self: True)
+    monkeypatch.setattr(platform_paths.os.path, 'ismount', lambda root: False)
+    for folder in [r'C:\Users\name', r'C:\Users', 'C:\\', 'D:\\']:
+        with pytest.raises(ValueError, match='project folder'):
+            CodexPolicy.choose(folder, 'workspace-write')
+
+
+def test_home_identity_alias_cannot_be_a_writable_project(tmp_path, monkeypatch):
+    from pathlib import Path
+    home = tmp_path / 'person'; home.mkdir()
+    alias = tmp_path / 'another-spelling'; alias.mkdir()
+    monkeypatch.setattr(Path, 'home', lambda: home)
+    original = Path.samefile
+    monkeypatch.setattr(Path, 'samefile', lambda self, other: (
+        True if self == alias and other == home else original(self, other)))
+    with pytest.raises(ValueError, match='project folder'):
+        CodexPolicy.choose(str(alias), 'workspace-write')

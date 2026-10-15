@@ -1201,7 +1201,9 @@ def codex_workspace_root(cwd: str) -> str:
     root = path.resolve(strict=True)
     home = Path.home().resolve()
     if (not root.is_dir() or root == Path(root.anchor) or root == home
-            or root in home.parents or os.path.ismount(root)
+            or root in home.parents
+            or any(root.samefile(folder) for folder in (home, *home.parents))
+            or os.path.ismount(root)
             or sys.platform == 'darwin' and root == Path('/Volumes')):
         raise ValueError("Codex workspace-write requires a project folder")
     return str(root)
