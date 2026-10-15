@@ -1,3 +1,4 @@
+from pathlib import Path
 from copy import deepcopy
 
 import pytest
@@ -28,7 +29,8 @@ class Connection:
         if method == 'account/read':
             return self.account
         if method == 'config/read':
-            return {'config': self.config}
+            return {'config': self.config, 'layers': [{'name': {'type': 'project',
+                'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]}
         if method == 'thread/turns/list':
             return {'data': []}
         return deepcopy(self.result)
@@ -37,8 +39,8 @@ class Connection:
 def test_new_owned_thread_pins_runtime_options_and_returns_fresh_store_records():
     connection = Connection()
     lease = CodexOwnedThreads(connection).start('/workspace', 'Local title')
-    assert [m for m, p in connection.calls] == ['account/read', 'config/read', 'thread/start', 'mcpServerStatus/list']
-    params = connection.calls[-2][1]
+    assert [m for m, p in connection.calls] == ['account/read', 'config/read', 'thread/start', 'config/read', 'mcpServerStatus/list']
+    params = connection.calls[-3][1]
     assert params['modelProvider'] == 'openai' and not params['ephemeral']
     assert params['config'] == {'model_provider': 'openai', 'model_providers': {},
         'forced_login_method': 'chatgpt', 'openai_base_url': None,
@@ -56,8 +58,8 @@ def test_external_chat_is_forked_into_another_identity_and_not_resumed():
     connection = Connection()
     lease = CodexOwnedThreads(connection).fork(source, 'Copy')
     assert lease.native_id != source.cli_session_id and source.title == 'Source'
-    assert connection.calls[-2][0] == 'thread/fork'
-    assert connection.calls[-2][1]['threadId'] == 'source'
+    assert connection.calls[-3][0] == 'thread/fork'
+    assert connection.calls[-3][1]['threadId'] == 'source'
     assert not any(m == 'thread/resume' for m, p in connection.calls)
 
 
@@ -66,9 +68,9 @@ def test_owned_resume_retains_native_identity_and_chosen_model():
     record = OwnSession('owned', 'Owned', '/workspace', provider='codex', provider_options={'model': 'gpt-default'})
     lease = CodexOwnedThreads(connection).resume(record)
     assert lease.native_id == 'owned'
-    assert connection.calls[-2][0] == 'thread/resume'
-    assert connection.calls[-2][1]['model'] == 'gpt-default'
-    assert 'ephemeral' not in connection.calls[-2][1]
+    assert connection.calls[-3][0] == 'thread/resume'
+    assert connection.calls[-3][1]['model'] == 'gpt-default'
+    assert 'ephemeral' not in connection.calls[-3][1]
 
 
 @pytest.mark.parametrize('status,latest', [('active', []), ('notLoaded', [{'status': 'inProgress'}]),
@@ -189,12 +191,12 @@ def test_selected_model_and_effort_are_verified_persisted_and_restored():
     connection = ModelConnection(result)
     lifecycle = CodexOwnedThreads(connection)
     proof = lifecycle.start('/workspace', 'Owned', model='gpt-default', effort='future-effort')
-    assert connection.calls[-2][1]['config']['model_reasoning_effort'] == 'future-effort'
+    assert connection.calls[-3][1]['config']['model_reasoning_effort'] == 'future-effort'
     assert proof.effort == 'future-effort'
     record = proof.record()
     assert record.provider_options['effort'] == 'future-effort'
     assert lifecycle.resume(record).effort == 'future-effort'
-    assert connection.calls[-2][0] == 'thread/resume'
+    assert connection.calls[-3][0] == 'thread/resume'
 
 
 @pytest.mark.parametrize('model,effort', [('removed', None), ('gpt-default', 'removed-effort')])
@@ -225,9 +227,9 @@ def test_fork_pins_selection_without_resuming_the_source():
     source = SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source', provider='codex')
     proof = CodexOwnedThreads(connection).fork(source, 'Copy', model='gpt-default', effort='future-effort')
     assert proof.native_id == 'new-owned'
-    assert connection.calls[-2][0] == 'thread/fork'
-    assert connection.calls[-2][1]['threadId'] == 'source'
-    assert connection.calls[-2][1]['config']['model_reasoning_effort'] == 'future-effort'
+    assert connection.calls[-3][0] == 'thread/fork'
+    assert connection.calls[-3][1]['threadId'] == 'source'
+    assert connection.calls[-3][1]['config']['model_reasoning_effort'] == 'future-effort'
     assert not any(method == 'thread/resume' for method, _ in connection.calls)
 
 
@@ -239,13 +241,13 @@ def test_workspace_policy_is_pinned_persisted_and_restored_without_extra_roots(t
     connection = Connection(result)
     lifecycle = CodexOwnedThreads(connection)
     proof = lifecycle.start(str(tmp_path), 'Owned', sandbox='workspace-write', approval_policy='never')
-    assert connection.calls[-2][1]['sandbox'] == 'workspace-write'
-    assert connection.calls[-2][1]['config']['sandbox_workspace_write']['writable_roots'] == []
+    assert connection.calls[-3][1]['sandbox'] == 'workspace-write'
+    assert connection.calls[-3][1]['config']['sandbox_workspace_write']['writable_roots'] == []
     record = proof.record()
     assert record.provider_options['sandbox'] == 'workspace-write'
     assert record.provider_options['approval_policy'] == 'never'
     assert lifecycle.resume(record).policy == policy
-    assert connection.calls[-2][0] == 'thread/resume'
+    assert connection.calls[-3][0] == 'thread/resume'
 
 
 @pytest.mark.parametrize('selection', [{'sandbox': 'danger-full-access'}, {'approval_policy': 'on-failure'}])
@@ -309,14 +311,14 @@ def test_unscoped_mcp_tools_are_refused_before_creation(servers):
 def test_explicitly_disabled_mcp_tools_do_not_block_creation():
     connection = Connection(config={'mcp_servers': {'remote': {'enabled': False}}})
     CodexOwnedThreads(connection).start('/workspace', 'Title')
-    assert connection.calls[-2][0] == 'thread/start'
+    assert connection.calls[-3][0] == 'thread/start'
 
 
 def test_configured_external_tools_are_disabled_in_thread_without_global_edits():
     config = {'mcp_servers': {'remote': {'enabled': True, 'url': 'synthetic'}}}
     connection = Connection(config=config)
     CodexOwnedThreads(connection).start('/workspace', 'Title')
-    overrides = connection.calls[-2][1]['config']
+    overrides = connection.calls[-3][1]['config']
     assert overrides['mcp_servers'] == {'remote': {'enabled': False}}
     assert overrides['features'] == {'plugins': False, 'apps': False}
     assert config['mcp_servers']['remote']['enabled'] is True

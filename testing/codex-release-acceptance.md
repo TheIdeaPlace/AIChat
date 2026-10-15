@@ -62,6 +62,14 @@ is optional. Steer and the reading pane are outside this release.
   global settings. Thread-specific inventory must confirm disabled servers and
   zero tools before granting runtime ownership and before sending. The native
   Mac folder-edit command passed with two configured servers disabled.
+  A separate candidate guard refuses any command-rule file beside active user,
+  system or project layers before lifecycle, after lifecycle, and before turns.
+  It deliberately refuses prompt-only/deny-only files too. The native bypass
+  reproduction is now refused before sending, but the current user's global
+  rule file also prevents a clean-folder lifecycle. Review this compatibility
+  cost and remaining filesystem-snapshot limitations before accepting #257.
+  Do not claim upstream per-thread rule isolation or close the release gate
+  solely because the guard tests pass.
   Case-insensitive Mac path identity remains a fail-closed follow-up (#256).
 - Repeat the passed native Mac file-edit check on Windows: a real Codex turn must edit a harmless file in a disposable selected
   folder. Confirm file scope, approvals/questions, Stop, queued text recovery
