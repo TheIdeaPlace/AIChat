@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    reviewers:
+      - kellylford
+    assignees:
+      - kellylford
+    ignore:
+      # The velopack library reads what the vpk tool writes, so the two must stay on the same
+      # version. vpk is pinned in release-thechatplace.yml, which Dependabot can't see, so move
+      # both together by hand.
+      - dependency-name: velopack
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    reviewers:
+      - kellylford
+    assignees:
+      - kellylford
