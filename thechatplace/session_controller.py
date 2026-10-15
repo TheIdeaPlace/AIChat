@@ -11,7 +11,7 @@ import threading
 
 from .providers.base import ConversationProvider, ConversationReader, SessionCapabilities
 from .providers.discovery import DiscoveryRegistry
-from .sessions import OWN, SessionInfo, sort_sessions
+from .sessions import OWN, STATUS_UNAVAILABLE, SessionInfo, sort_sessions
 from .own_store import OwnSession
 from .transcript import Transcript
 
@@ -105,7 +105,7 @@ class SessionController:
             info = indexed.get(record.identity)
             if info is None:
                 info = record.to_info()
-                info.state, info.detail = "status unavailable", ""
+                info.state, info.detail = STATUS_UNAVAILABLE, ""
                 snapshot.sessions.append(info)
                 indexed[record.identity] = info
             info.source = OWN
@@ -144,13 +144,55 @@ class SessionController:
         reader.refresh()
         return reader.transcript
 
+    def last_reply(self, session: SessionInfo) -> str:
+        return self._provider(session).last_reply(session)
+
     def open_reader_with_facts(self, session):
         backend = self._provider(session)
         open_reader = getattr(backend, "open_reader_with_facts", None)
         return open_reader(session) if callable(open_reader) else (self.open_reader(session), "", 0)
 
-    def last_reply(self, session: SessionInfo) -> str:
-        return self._provider(session).last_reply(session)
+    def can_create(self, provider):
+        backend = self._providers.get(provider)
+        return not self._closed and backend is not None and bool(getattr(backend, "can_create", lambda: False)())
+
+    def usage_lines(self, session):
+        backend = self._provider(session)
+        method = getattr(backend, 'usage_lines', None)
+        if not callable(method):
+            raise ValueError('This provider cannot report usage')
+        return method(session)
+
+    def usage_warnings(self, session):
+        method = getattr(self._provider(session), 'usage_warnings', None)
+        return method(session) if callable(method) else ()
+
+    def model_choices(self, provider):
+        backend = self._providers.get(provider)
+        if self._closed or backend is None or not callable(getattr(backend, 'model_choices', None)):
+            raise ValueError("This provider cannot list model choices")
+        return backend.model_choices()
+
+    def create_owned(self, provider, cwd, title, **options):
+        if not self.can_create(provider):
+            raise ValueError("This provider cannot create chats")
+        return self._providers[provider].create_owned(cwd, title, **options)
+
+    def fork_owned(self, source, title, **options):
+        if not self.capabilities(source).fork:
+            raise ValueError("This provider cannot continue this chat")
+        return self._provider(source).fork_owned(source, title, **options)
+
+    def owned_action(self, action, record, *args):
+        if action not in ("prepare", "reopen", "send", "stop", "answer", "ready", "prepare_policy", "finish_policy"):
+            raise ValueError("Unsupported owned chat action")
+        if not isinstance(record, OwnSession) or record.provider == "claude":
+            raise ValueError("Foreign owned chat required")
+        backend = self._provider(record.to_info())
+        method = getattr(backend, "owned_ready" if action == "ready" else action + "_owned", None)
+        if not callable(method):
+            raise ValueError("This provider cannot perform that action")
+        return method(record, *args)
 
     def close(self):
         """Close every registered backend even if one cleanup fails."""

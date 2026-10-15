@@ -1,5 +1,14 @@
 """Typed streaming data; no UI calls, tool permissions or inference (#184)."""
 from dataclasses import dataclass
+import time
+from .codex_tokens import CodexTokenUsage, decode_tokens
+
+
+@dataclass(frozen=True)
+class CodexTokenUsageEvent:
+    thread_id: str
+    turn_id: str
+    usage: CodexTokenUsage
 
 
 @dataclass(frozen=True)
@@ -32,9 +41,19 @@ def decode_event(method, params):
     rather than assuming deltas describe the final reply. Backend error bodies
     are not copied into these displayable events.
     """
+    if method == 'thread/tokenUsage/updated':
+        if not isinstance(params, dict):
+            return None
+        tokens = decode_tokens(params.get('tokenUsage'))
+        if tokens is None:
+            return None
+        try:
+            return CodexTokenUsageEvent(_id(params.get('threadId')), _id(params.get('turnId')), tokens)
+        except ValueError:
+            return None
     deltas = {"item/agentMessage/delta": "text_delta",
               "item/commandExecution/outputDelta": "tool_output_delta"}
-    if method not in (*deltas, "turn/started", "turn/completed", "item/completed"):
+    if method not in (*deltas, "turn/started", "turn/completed", "item/completed", "item/started"):
         return None
     if not isinstance(params, dict):
         raise ValueError("Invalid Codex event parameters")
@@ -42,11 +61,47 @@ def decode_event(method, params):
     if method in deltas:
         return CodexEvent(deltas[method], thread_id, _id(params.get("turnId")),
                           _id(params.get("itemId")), _text(params.get("delta")))
-    if method == "item/completed":
+    if method in ("item/completed", "item/started"):
         item = params.get("item")
         if not isinstance(item, dict):
             raise ValueError("Invalid Codex completed item")
-        if item.get("type") != "agentMessage":
+        if item.get('type') == 'contextCompaction' and method == 'item/completed':
+            try:
+                return CodexEvent('context_compacted', thread_id, _id(params.get('turnId')), _id(item.get('id')))
+            except ValueError:
+                return None
+        activity = {"reasoning": "Thinking.", "mcpToolCall": "Using an MCP tool.",
+                    "webSearch": "Searching the web.", "commandExecution": "Running a command.",
+                    "agentMessage": "Writing a reply."}
+        if item.get("type") in activity and (method == "item/started" or item.get("type") != "agentMessage"):
+            text = activity[item["type"]] if method == "item/started" else "Codex is working."
+            if item["type"] == "commandExecution" and method == "item/started":
+                command = " ".join(_text(item.get("command", "")).split())
+                if command:
+                    text = "Running command: " + command[:200]
+            return CodexEvent("activity", thread_id, _id(params.get("turnId")),
+                              _id(item.get("id")), text)
+        if item.get("type") == "fileChange":
+            changes = item.get("changes")
+            if not isinstance(changes, list) or len(changes) > 128:
+                raise ValueError("Invalid Codex file changes")
+            pieces = []
+            for change in changes:
+                if not isinstance(change, dict):
+                    raise ValueError("Invalid Codex file change")
+                kind = change.get("kind")
+                if not isinstance(kind, dict) or kind.get("type") not in ("add", "delete", "update"):
+                    raise ValueError("Invalid Codex file change kind")
+                path = _text(change.get("path"))
+                if not path.strip():
+                    raise ValueError("Invalid Codex file change path")
+                heading = f"{kind['type'].capitalize()}: {path}"
+                if kind.get("move_path") is not None:
+                    heading += "\nMove to: " + _text(kind["move_path"])
+                pieces.append(heading + "\n" + _text(change.get("diff")))
+            return CodexEvent("file_changes", thread_id, _id(params.get("turnId")),
+                              _id(item.get("id")), _text("\n\n".join(pieces)))
+        if item.get("type") != "agentMessage" or method == "item/started":
             return None  # tool/question conversion is a separate checkpoint
         return CodexEvent("text_completed", thread_id, _id(params.get("turnId")),
                           _id(item.get("id")), _text(item.get("text")))
@@ -78,10 +133,17 @@ class CodexTurnBuffer:
         self._texts = {}
         self._final = set()
         self._characters = 0
+        self._file_changes = {}
+        self.started_at = time.monotonic()
+        self.activity = "Codex is working."
 
     @property
     def replies(self):
         return tuple(self._texts.items())  # immutable snapshot, stable item order
+
+    @property
+    def file_changes(self):
+        return tuple(self._file_changes.items())
 
     def disconnect(self):
         if self.status == "inProgress":
@@ -103,6 +165,28 @@ class CodexTurnBuffer:
                 raise ValueError("Codex reply is incomplete; reconcile history")
             self.status = event.status
             return True
+        if event.kind == "file_changes":
+            try:
+                item_id, text = _id(event.item_id), _text(event.text)
+                characters = self._characters - len(self._file_changes.get(item_id, "")) + len(text)
+                if characters > self.MAX_TEXT or (item_id not in self._file_changes
+                                                   and len(self._file_changes) >= self.MAX_ITEMS):
+                    raise ValueError("Codex file change limit reached")
+                self._file_changes[item_id] = text
+                self._characters = characters
+                self.activity = "Reviewing file changes."
+                return True
+            except ValueError:
+                self.disconnect()
+                raise
+        if event.kind == "activity":
+            try:
+                _id(event.item_id)
+                self.activity = _text(event.text)
+                return True
+            except ValueError:
+                self.disconnect()
+                raise
         if event.kind not in ("text_delta", "text_completed"):
             return False
         try:
@@ -120,6 +204,7 @@ class CodexTurnBuffer:
             self.disconnect()
             raise ValueError("Codex reply buffer limit reached; reconcile history")
         self._texts[item_id] = replacement
+        self.activity = "Writing a reply."
         self._characters = characters
         if event.kind == "text_completed":
             self._final.add(item_id)

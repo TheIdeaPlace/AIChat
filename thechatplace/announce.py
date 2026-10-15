@@ -10,7 +10,7 @@ from typing import Optional
 
 from .speech import (ANNOUNCE_FULL, ANNOUNCE_SILENT, ANNOUNCE_SUMMARY, CODE_NOTE,
                      strip_for_speech, without_code_blocks)
-from .sessions import NEEDS_YOU
+from .sessions import NEEDS_YOU, STATUS_UNAVAILABLE
 
 
 #: Words a full stop follows without ending the sentence ("e.g. the docs").
@@ -72,7 +72,7 @@ def peer_text(title: str, sender: str, message: str, level: str) -> Optional[str
 
 def turn_end_text(title: str, state: str, detail: str, reply: str, level: str) -> Optional[str]:
     """A session finished a turn (used for sessions The Chat Place only watches)."""
-    if level == ANNOUNCE_SILENT:
+    if level == ANNOUNCE_SILENT or state == STATUS_UNAVAILABLE:
         return None
     head = f"{title} finished"
     if state == NEEDS_YOU:

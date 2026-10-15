@@ -47,6 +47,51 @@ def test_handshake_partial_utf8_lines_and_context_cleanup(server):
         connection.request("thread/list", {})
 
 
+@pytest.mark.parametrize('scenario', ['owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown'])
+def test_runtime_midturn_request_hang_and_protocol_failure_use_real_stdio(server, scenario, tmp_path, monkeypatch):
+    import time
+    from thechatplace.providers.codex_execution import CodexExecutionConnection
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    start, _ = server
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: tmp_path / 'errors.log')
+    connection = CodexExecutionConnection(scenario, start=start, initialize=False)
+    service = CodexChatRuntime(factory=lambda exe: connection)
+    def wait(predicate):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(.01)
+        assert predicate()
+    try:
+        record = service.create('/workspace', 'Synthetic owned chat')
+        service.send(record, 'Synthetic prompt')
+        if scenario in ('owned-turn-unsupported', 'owned-turn-unknown'):
+            wait(lambda: service.snapshot('owned').outcome == 'completed')
+            state = service.snapshot('owned')
+            kind = 'command approval' if scenario == 'owned-turn-unsupported' else 'request'
+            assert f'unsupported Codex {kind} was declined' in state.notice
+            assert not connection.closed and not state.problem
+            return
+        if scenario in ('owned-turn-approval', 'owned-turn-command-output'):
+            wait(lambda: service.snapshot('owned').requests)
+            request = service.snapshot('owned').requests[0]
+            assert service.snapshot('owned').state == 'needs you'
+            service.prepare(record)
+            service.answer(record, request, request.approval_answer('decline'))
+            wait(lambda: service.snapshot('owned').outcome == 'completed')
+        else:
+            for _ in range(5):
+                service.prepare(record)
+                assert service.snapshot('owned').outcome == 'inProgress'
+            assert service.send(record, 'Queued synthetic prompt')
+            assert service.stop(record) == ('Queued synthetic prompt',)
+            wait(lambda: service.snapshot('owned').outcome == 'interrupted')
+            assert not service.snapshot('owned').queued
+    finally:
+        service.close()
+
+
 def test_interleaved_notifications_and_reverse_responses_route_by_id(server):
     start, _ = server
     with ReadOnlyCodexConnection(start=start) as connection, ThreadPoolExecutor(2) as pool:
@@ -564,6 +609,145 @@ def test_default_reader_keeps_ignoring_notifications_without_enabling_execution(
         assert connection.pop_event() is None and not connection.closed
         with pytest.raises(ValueError):
             connection.request("turn/start", {})
+
+
+def test_turn_accepts_explicit_canonical_chatgpt_route(server):
+    start, _ = server
+    with FutureTurnConnection('account-route-canonical-chatgpt', start=start) as connection:
+        assert connection.request('turn/start', {'threadId': 'synthetic'})['echo']['threadId'] == 'synthetic'
+
+
+def request_transport():
+    import queue
+    connection = ReadOnlyCodexConnection.__new__(ReadOnlyCodexConnection)
+    connection._lock = threading.Lock()
+    connection._closed = False
+    connection._receive_events = True
+    connection._receive_requests = True
+    connection._server_pending = {}
+    connection._events = queue.Queue(maxsize=32)
+    connection._token_events = {}
+    connection._outgoing = queue.Queue()
+    connection._accept_server_request = lambda request: request.thread_id == 'owned'
+    connection.request = lambda method, params: {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
+    return connection
+
+
+def approval_message(request_id='approval', thread='owned'):
+    return {'id': request_id, 'method': 'item/commandExecution/requestApproval',
+            'params': {'threadId': thread, 'turnId': 'turn', 'itemId': 'command',
+                       'command': 'synthetic command', 'cwd': '/workspace'}}
+
+
+def test_unconsumed_command_output_cannot_fill_the_control_event_queue():
+    connection = request_transport()
+    for _ in range(256):
+        connection._receive({'method': 'item/commandExecution/outputDelta', 'params': {
+            'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command', 'delta': 'synthetic output'}})
+    assert connection._events.empty() and not connection.closed
+    connection._receive(approval_message())
+    assert connection.pop_event().request_id == 'approval'
+
+
+def test_server_approval_response_is_validated_and_routed_once_by_rpc_identity():
+    import json
+    connection = request_transport()
+    connection._receive(approval_message())
+    request = connection.pop_event()
+    with pytest.raises(ValueError):
+        connection.respond_request(request, {'decision': 'acceptForSession'})
+    assert connection._outgoing.empty()
+    connection.respond_request(request, request.approval_answer('accept'))
+    assert json.loads(connection._outgoing.get()) == {'id': 'approval', 'result': {'decision': 'accept'}}
+    with pytest.raises(CodexRpcError, match='no longer waiting'):
+        connection.respond_request(request, {'decision': 'decline'})
+
+
+def test_same_item_multiple_callbacks_remain_distinct_and_terminal_invalidates_answers():
+    connection = request_transport()
+    connection._receive(approval_message('first'))
+    connection._receive(approval_message('second'))
+    one, two = connection.pop_event(), connection.pop_event()
+    assert one.item_id == two.item_id and one.request_id != two.request_id
+    connection._receive({'method': 'turn/completed', 'params': {
+        'threadId': 'owned', 'turn': {'id': 'turn', 'status': 'interrupted'}}})
+    with pytest.raises(CodexRpcError, match='no longer waiting'):
+        connection.respond_request(one, {'decision': 'accept'})
+    assert connection._outgoing.empty()
+
+
+def test_api_sign_in_cannot_grant_approval_even_for_a_waiting_owned_request():
+    connection = request_transport()
+    connection._receive(approval_message())
+    request = connection.pop_event()
+    connection.request = lambda method, params: {'account': {'type': 'apiKey'}, 'requiresOpenaiAuth': True}
+    with pytest.raises(CodexRpcError, match='ChatGPT sign-in'):
+        connection.respond_request(request, {'decision': 'accept'})
+    assert connection._outgoing.empty()
+    connection.respond_request(request, {'decision': 'decline'})
+
+
+def test_unowned_duplicate_and_overflowing_requests_are_rejected():
+    connection = request_transport()
+    with pytest.raises(ValueError):
+        connection._receive(approval_message(thread='external'))
+    connection._receive(approval_message())
+    with pytest.raises(ValueError):
+        connection._receive(approval_message())
+    connection.pop_event()
+    for index in range(31):
+        connection._receive(approval_message(index))
+        connection.pop_event()
+    with pytest.raises(ValueError):
+        connection._receive(approval_message('overflow'))
+
+
+@pytest.mark.parametrize('known', [False, True])
+def test_unsupported_request_gets_error_without_permission_or_private_payload(known):
+    import json
+    from thechatplace.providers.codex_requests import CodexRequestDeclined
+    connection = request_transport()
+    message = approval_message()
+    if known:
+        message['params']['additionalPermissions'] = {'private': 'credentials'}
+    else:
+        message['method'] = 'private/new-method'
+        message['params'] = {'private': 'credentials'}
+    connection._receive(message)
+    answer = json.loads(connection._outgoing.get())
+    assert answer['id'] == message['id'] and answer['error']['code'] == (-32602 if known else -32601)
+    assert 'result' not in answer and 'private' not in json.dumps(answer)
+    assert isinstance(connection.pop_event(), CodexRequestDeclined)
+    assert not connection.closed and not connection._server_pending
+    connection._receive(approval_message('next'))
+    assert connection.pop_event().request_id == 'next'
+
+
+def test_stdio_server_request_and_answer_keep_client_response_ids_independent(server):
+    class ApprovalConnection(ReadOnlyCodexConnection):
+        def _accept_server_request(self, request):
+            return request.thread_id == 'owned'
+    start, _ = server
+    with ApprovalConnection(start=start, receive_events=True, receive_requests=True) as c:
+        c.request('thread/read', {'mode': 'approval-receive'})
+        request = c.pop_event()
+        assert request.request_id == 'server-approval'
+        c.respond_request(request, request.approval_answer('decline'))
+        result = c.request('thread/read', {'mode': 'approval-response'})
+        assert result['serverAnswer'] == {'id': 'server-approval', 'result': {'decision': 'decline'}}
+
+
+def test_backend_resolved_request_cannot_be_answered_again():
+    connection = request_transport()
+    connection._receive(approval_message())
+    request = connection.pop_event()
+    connection._receive({'method': 'serverRequest/resolved', 'params': {
+        'threadId': 'owned', 'requestId': request.request_id}})
+    event = connection.pop_event()
+    assert event.request_id == request.request_id
+    with pytest.raises(CodexRpcError, match='no longer waiting'):
+        connection.respond_request(request, {'decision': 'accept'})
+    assert connection._outgoing.empty()
 
 
 def test_shutdown_during_buffered_handshake_write_closes_both_pipes(server):

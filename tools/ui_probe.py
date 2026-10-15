@@ -595,6 +595,31 @@ def s_main_codex_filter(frame, env):
     frame._apply_view(VIEW_CODEX)
 
 
+def s_main_codex_owned(frame, env):
+    import dataclasses
+    from types import SimpleNamespace
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import WORKING
+    import fake_env
+
+    s_main_codex(frame, env)
+    info = frame._open
+    record = OwnSession(info.cli_session_id, info.title, info.cwd, provider="codex")
+    frame.store.add(record)
+    state = CodexChatState(info.cli_session_id, WORKING, "turn", "inProgress",
+                           queued=("Run the unit tests next.",))
+    frame.sessions._providers["codex"].runtime = SimpleNamespace(
+        known=lambda native: True, snapshot=lambda native: state,
+        ready=lambda record: True, close=lambda: None)
+    frame._codex_states[info.key] = state
+    frame.open_session(dataclasses.replace(record.to_info(), state=WORKING))
+    fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy
+                  and not frame._codex_preparing, timeout=10)
+    frame.reply_text.SetValue("Draft of a message still being typed")
+    frame._update_send_state()
+
+
 def s_main_codex_last_message(frame, env):
     from thechatplace.sessions import FIELD_LAST_MESSAGE, FIELD_PROVIDER, VIEW_CODEX
 
@@ -603,6 +628,38 @@ def s_main_codex_last_message(frame, env):
     frame.sessions._providers["codex"].fill_last_messages(
         s for s in frame._snapshot.sessions if s.provider == "codex")
     frame._apply_view(VIEW_CODEX)
+
+
+def s_main_codex_interrupted(frame, env):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    from thechatplace.sessions import STATUS_UNAVAILABLE
+    s_main_codex_owned(frame, env)
+    reason = CodexConnectionFailure.REASONS['unsupported_request']
+    state = CodexChatState(frame._open.cli_session_id, STATUS_UNAVAILABLE, 'turn', 'unknown', problem=reason)
+    frame.sessions._providers['codex'].runtime.snapshot = lambda native: state
+    frame.sessions._providers['codex'].runtime.ready = lambda record: False
+    frame._on_codex_update(state)
+    info = next(info for info in frame._snapshot.sessions if info.key == frame._open.key)
+    info.state, info.detail = STATUS_UNAVAILABLE, reason
+    frame._refresh_list_in_place(rewrite=True)
+
+
+def s_main_codex_request_declined(frame, env):
+    import dataclasses
+    from thechatplace.providers.codex_requests import CodexRequestDeclined
+    s_main_codex_owned(frame, env)
+    state = dataclasses.replace(frame._codex_states[frame._open.key], notice=CodexRequestDeclined().text)
+    frame._on_codex_update(state)
+
+
+def s_main_codex_context(frame, env):
+    import dataclasses
+    from thechatplace.providers.codex_tokens import CodexTokenUsage
+    s_main_codex_owned(frame, env)
+    state = dataclasses.replace(frame._codex_states[frame._open.key],
+                                token_usage=CodexTokenUsage(80000, 5000, 85000, 250000, 100000))
+    frame._on_codex_update(state)
 
 
 def s_main_codex_unavailable(frame, env):
@@ -678,6 +735,52 @@ def d_new_session(frame, env):
     return frame.on_new_session
 
 
+def d_codex_new(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
+                                                providers=("claude", "codex"), provider="codex"))
+
+
+def d_codex_mode(frame, env):
+    dialog = wx.SingleChoiceDialog(frame, 'Codex permissions for a Chat Place session. Folder: Scratch.',
+        'Change Permission Mode', ['Read-only; asks before allowing changes',
+        'Can edit files in this folder; asks before anything else'])
+    dialog.SetSelection(1)
+    return lambda: frame._modal(dialog)
+
+
+def d_codex_owned_properties(frame, env):
+    from thechatplace.own_store import OwnSession
+    from thechatplace.properties import session_properties
+    record = OwnSession('synthetic-policy', 'Codex policy preview', str(env['folders']['Scratch']), provider='codex',
+        provider_options={'model': 'Synthetic model', 'effort': 'high', 'sandbox': 'workspace-write',
+            'approval_policy': 'on-request', 'workspace_root': str(env['folders']['Scratch'])})
+    rows = session_properties(record.to_info(), own=record)
+    return lambda: frame._show_properties('Codex policy preview', rows, None)
+
+
+def d_codex_continue(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.sessions import WORKING
+    return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
+        continue_from="Codex still working", providers=("codex",), provider="codex", source_state=WORKING))
+
+
+def d_codex_models(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.providers.codex_models import CodexModel
+    def show():
+        dialog = NewSessionDialog(frame, env["folders"]["Scratch"],
+                                  providers=("claude", "codex"), provider="codex")
+        dialog._set_codex_models((CodexModel('synthetic', 'Synthetic Codex model',
+            ('low', 'medium', 'high', 'xhigh'), 'medium', True),), False)
+        dialog.model.SetSelection(1)
+        dialog._on_codex_model()
+        dialog.effort_choice.SetSelection(4)
+        frame._modal(dialog)
+    return show
+
+
 def d_github_repos(frame, env):
     """New Session, From GitHub: opened from inside New Session, so built
     here directly, as New Session builds it."""
@@ -713,6 +816,33 @@ def d_question(frame, env):
          "options": [{"label": "Unit tests"}, {"label": "Smoke test"}, {"label": "Lint"}]}]},
         "q1"))
     return frame.on_answer
+
+
+def d_codex_permission(frame, env):
+    from thechatplace.providers.codex_requests import CodexRequest, COMMAND
+    from thechatplace.ui.dialogs import CodexPermissionDialog
+    request = CodexRequest(1, COMMAND, "probe", "turn", "item",
+                           command="git status --short", cwd=env["tmp"].as_posix(),
+                           reason="Inspect the working directory before continuing")
+    return lambda: frame._modal(CodexPermissionDialog(frame, "Codex preview", request))
+
+
+def d_codex_files(frame, env):
+    from thechatplace.providers.codex_requests import CodexRequest, FILES
+    from thechatplace.ui.dialogs import CodexPermissionDialog
+    request = CodexRequest(2, FILES, "probe", "turn", "files")
+    detail = "Update: app.py\n@@ -1 +1 @@\n-print('old')\n+print('new')"
+    return lambda: frame._modal(CodexPermissionDialog(frame, "Codex preview", request, detail))
+
+
+def d_codex_question(frame, env):
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import QuestionDialog
+    request = SimpleNamespace(questions=lambda: [
+        {"id": "choice", "header": "Checks", "question": "Which checks should run?",
+         "options": [{"label": "Unit tests"}, {"label": "Smoke test"}]},
+        {"id": "secret", "header": "Secret", "question": "Enter the test secret.", "isSecret": True}])
+    return lambda: frame._modal(QuestionDialog(frame, "Codex preview", request, provider="Codex"))
 
 
 def d_plan(frame, env):
@@ -775,6 +905,16 @@ def d_usage(frame, env):
     return frame.on_usage
 
 
+def d_usage_codex(frame, env):
+    from thechatplace.ui.dialogs import UsageDialog
+    from thechatplace.providers.codex_usage import usage_lines
+    from thechatplace.providers.codex_tokens import CodexTokenUsage, context_lines
+    lines = context_lines(CodexTokenUsage(70000, 5000, 75000, 250000, 100000)) + usage_lines({
+        'rateLimits': {'primary': {'usedPercent': 25, 'windowDurationMins': 300},
+                       'secondary': {'usedPercent': 40, 'windowDurationMins': 10080}}})
+    return lambda: frame._modal(UsageDialog(frame, lines, frame._copy_usage))
+
+
 def d_properties(frame, env):
     """Highlighted in the session list, not loaded: then the session's
     properties are shown wherever focus is, never a message's."""
@@ -832,6 +972,14 @@ SURFACES = {
                      "A desktop app session loaded: the read-only panel instead of a reply box"),
     "main-codex": ("window", s_main_codex,
                    "Synthetic Codex history in the shared window: read-only controls and Codex labels"),
+    "main-codex-owned": ("window", s_main_codex_owned,
+                         "Owned Codex chat with send/stop controls, queued text and a draft"),
+    "main-codex-interrupted": ("window", s_main_codex_interrupted,
+                               "Interrupted Codex chat with a safe reason and explicit Stop recovery"),
+    "main-codex-request-declined": ("window", s_main_codex_request_declined,
+                                    "Working Codex chat after an unsupported request was safely declined"),
+    "main-codex-context": ("window", s_main_codex_context,
+                           "Owned Codex chat with reported live context and a queued warning"),
     "main-codex-filter": ("window", s_main_codex_filter,
                           "Synthetic Codex-only list with explicit Provider column"),
     "main-codex-last-message": ("window", s_main_codex_last_message,
@@ -852,10 +1000,18 @@ SURFACES = {
     "message-plain": ("dialog", d_message_plain, "The same message as plain text"),
     "settings": ("dialog", d_settings, "Settings"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
+    "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
+    "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
+    "properties-codex-owned": ("dialog", d_codex_owned_properties, "Verified owned Codex model and filesystem scope"),
+    "codex-models": ("dialog", d_codex_models, "New Codex chat with advertised model and effort choices"),
+    "codex-continue": ("dialog", d_codex_continue, "Continue a possibly active Codex chat with explicit runtime policy"),
     "github-repos": ("dialog", d_github_repos, "New Session, From GitHub: your repositories"),
     "continue-here": ("dialog", d_continue_here, "Continue Here (a desktop session)"),
     "update-installed": ("dialog", d_update_installed, "After an update is installed"),
     "permission": ("dialog", d_permission, "Claude asks permission to run a command"),
+    "codex-permission": ("dialog", d_codex_permission, "Codex asks for one-time command permission"),
+    "codex-files": ("dialog", d_codex_files, "Codex file changes to review before allowing"),
+    "codex-question": ("dialog", d_codex_question, "Codex choices and a masked secret answer"),
     "question": ("dialog", d_question, "Claude asks questions (one choice and several choices)"),
     "plan": ("dialog", d_plan, "Claude's plan to approve"),
     "manage-groups": ("dialog", d_manage_groups, "File, Manage Groups"),
@@ -866,6 +1022,7 @@ SURFACES = {
     "find-all": ("dialog", d_find_all, "View, Find in All Sessions: the results"),
     "changes": ("dialog", d_changes, "View, Changed Files"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
+    "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
     "properties": ("dialog", d_properties, "View, Properties of a session"),
     "properties-codex": ("dialog", d_properties_codex,
                          "Properties of a synthetic Codex chat with provider-specific history labels"),
@@ -896,10 +1053,18 @@ DIALOG_CLASSES = {
     "message-plain": "MessageDialog",
     "settings": "SettingsDialog",
     "new-session": "NewSessionDialog",
+    "codex-new": "NewSessionDialog",
+    "codex-models": "NewSessionDialog",
+    "codex-change-mode": "SingleChoiceDialog",
+    "properties-codex-owned": "PropertiesDialog",
+    "codex-continue": "NewSessionDialog",
     "github-repos": "GitHubRepoDialog",
     "continue-here": "NewSessionDialog",
     "update-installed": "UpdateInstalledDialog",
     "permission": "PermissionDialog",
+    "codex-permission": "CodexPermissionDialog",
+    "codex-files": "CodexPermissionDialog",
+    "codex-question": "QuestionDialog",
     "question": "QuestionDialog",
     "plan": "PlanDialog",
     "manage-groups": "ManageGroupsDialog",
@@ -910,6 +1075,7 @@ DIALOG_CLASSES = {
     "find-all": "FindResultsDialog",
     "changes": "ChangesDialog",
     "usage": "UsageDialog",
+    "usage-codex": "UsageDialog",
     "properties": "PropertiesDialog",
     "properties-codex": "PropertiesDialog",
     "about-you": "AboutYouDialog",
