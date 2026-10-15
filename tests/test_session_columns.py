@@ -53,8 +53,8 @@ def test_cowork_and_chat_place_kind_is_one_column():
 
 
 def test_every_column_has_a_name_and_a_short_name():
-    # Every column is shown by default but Started (#209) and Last message (#146), added last.
-    assert FIELD_IDS == DEFAULT_FIELDS + ["started", "last_message"]
+    # Optional provider, Started and Last message columns preserve legacy defaults.
+    assert FIELD_IDS == DEFAULT_FIELDS + ["provider", "started", "last_message"]
     assert len(set(FIELD_IDS)) == len(FIELDS)
     assert field_short_name("last_message") == "Last message"
     assert field_short_name("status") == "Status"
@@ -149,3 +149,40 @@ def test_status_views_are_in_the_menu_and_remembered(tmp_path):
 def test_show_sessions_access_keys_are_all_different():
     keys = [label[label.index("&") + 1].lower() for _v, label in VIEWS]
     assert len(keys) == len(set(keys))
+
+
+def test_optional_provider_column_does_not_change_saved_claude_rows():
+    from thechatplace.sessions import FIELD_PROVIDER
+
+    assert FIELD_PROVIDER not in DEFAULT_FIELDS
+    assert _info().field_values()[FIELD_PROVIDER] == "Claude"
+    codex = _info(provider="codex", key="codex:x")
+    assert codex.field_values()[FIELD_PROVIDER] == "Codex"
+    assert "Codex" in codex.list_line(fields=["title", FIELD_PROVIDER])
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_provider_views_match_backend_and_keep_hidden_archived_rules(provider):
+    info = _info(provider=provider)
+    assert in_view(info, "provider:" + provider)
+    assert not in_view(info, "provider:" + ("codex" if provider == "claude" else "claude"))
+    info.archived = True
+    assert not in_view(info, "provider:" + provider)
+    info.archived = False
+    info.hidden = True
+    assert not in_view(info, "provider:" + provider)
+
+
+def test_codex_unknown_state_is_not_an_idle_chat():
+    assert not in_view(_info(provider="codex", state="status unavailable"), "idle")
+    assert in_view(_info(provider="codex", state="idle"), "idle")
+
+
+def test_codex_unknown_state_omitted_from_default_row_but_available_as_selected_column():
+    info = _info(provider='codex', state='status unavailable')
+    assert 'status unavailable' not in info.list_line(NOW)
+    assert 'status unavailable' not in info.list_line(NOW, DEFAULT_FIELDS)
+    assert 'status unavailable' in info.list_line(NOW, ['title', 'status'])
+    assert info.field_values(NOW)['status'] == 'status unavailable'
+    info.state = 'idle'
+    assert 'idle' in info.list_line(NOW)

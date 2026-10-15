@@ -150,6 +150,8 @@ _TERMINAL_NOTE = (
 
 def kind_name(info: SessionInfo) -> str:
     """What a session is, for "<title> is a terminal session: ...". """
+    if info.provider != "claude":
+        return f"a {info.provider.capitalize()} chat"
     if info.is_own:
         return "a Chat Place session"
     if info.is_terminal:
@@ -184,7 +186,8 @@ class MainFrame(wx.Frame):
                  sessions: Optional[SessionController] = None):
         super().__init__(None, title=APP_NAME, size=_fitting_size(1000, 720))
         self.store = store or OwnSessionStore()
-        self.sessions = sessions or SessionController([ClaudeConversations()])
+        self._provider_cleanup = None
+        self._provider_cleanup_failed = False
         self.groups = GroupStore()
         self.prompts = PromptStore()  # saved prompts (#131)
         self.hidden = HiddenStore()
@@ -200,6 +203,13 @@ class MainFrame(wx.Frame):
         self._update_available = ""
         self._menu_open = False  # a menu is open: no dialog over it (#141)
         self.speech = SpeechSettings.load()
+        if sessions is None:
+            providers = [ClaudeConversations()]
+            if self.speech.codex_enabled:
+                from ..providers.codex import CodexProvider
+                providers.append(CodexProvider())
+            sessions = SessionController(providers)
+        self.sessions = sessions
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -680,7 +690,7 @@ class MainFrame(wx.Frame):
         info = self._open
         if info is None:
             text = ""
-        elif info.is_own and info.cli_session_id in self._runners:
+        elif info.is_own and info.provider == "claude" and info.cli_session_id in self._runners:
             text = f"{info.title}: {self.turn_status.GetLabelText()}"
         else:
             state = info.state + (f", {info.detail}" if info.detail else "")
@@ -793,6 +803,23 @@ class MainFrame(wx.Frame):
                 return info
         return None
 
+    def _require_capability(self, capability: str, info: Optional[SessionInfo]) -> bool:
+        """Keep keyboard handlers from reaching another provider's native ID.
+
+        Context/ownership checks still run in each handler; capability support
+        cannot replace the existing desktop read-only safeguards (#184) (#171).
+        """
+        if info is None:
+            return True  # preserve the handler's existing no-session feedback
+        try:
+            supported = getattr(self.sessions.capabilities(info), capability, False)
+        except ValueError:
+            supported = False
+        if not supported:
+            self._feedback(f"{info.provider.capitalize()} chats are read-only here; "
+                           f"reply in {info.provider.capitalize()}.")
+        return supported
+
     # ----------------------------------------------------------- session list
 
     def refresh_sessions(self, force: bool = False, resort: bool = False):
@@ -809,7 +836,10 @@ class MainFrame(wx.Frame):
             self._pending_refresh = (force or previous[0], resort or previous[1])
             return
         self._snapshot_busy = True
-        own = [OwnSession(**vars(s)) for s in self.store.all()]
+        from copy import deepcopy
+
+        owned = deepcopy(self.store.all(provider=None))
+        own = [s for s in owned if s.provider == "claude"]
         running = set(self._runners)
         background = {sid for sid, runner in self._runners.items()
                       if getattr(runner, "waiting_on_background", False)}
@@ -820,13 +850,16 @@ class MainFrame(wx.Frame):
 
         def work():
             try:
-                snap = collect(own, running, waiting=waiting, order=order,
-                               last_messages=last_messages, background=background)
-                ended = finished_turns(self._previous_states, snap.sessions)
+                snap = self.sessions.collect(
+                    lambda: collect(own, running, waiting=waiting, order=order,
+                                    last_messages=last_messages, background=background),
+                    order, owned=owned, last_messages=last_messages)
+                ended = finished_turns(self._previous_states, snap.sessions,
+                                       stale_providers=snap.stale_providers)
                 replies = {}
                 if not self._first_snapshot and self.speech.announce_all_sessions:
                     for info in ended:
-                        if info.is_own or not info.cli_session_id:
+                        if info.provider != "claude" or info.is_own or not info.cli_session_id:
                             continue  # own sessions announce from their own turn
                         try:
                             replies[info.key] = self.sessions.last_reply(info)
@@ -854,7 +887,7 @@ class MainFrame(wx.Frame):
             return
         previous_desktop_groups = self._snapshot.desktop_groups
         self._snapshot = snap
-        self._previous_states = {s.key: s.state for s in snap.sessions}
+        self._previous_states = snap.fresh_states(self._previous_states)
         # Hidden sessions (File, Hide Session) are out of everything here:
         # counts, announcements and notifications as well as the list.
         for info in snap.sessions:
@@ -864,11 +897,11 @@ class MainFrame(wx.Frame):
             elif info.is_own:
                 # From the store as it is now: a read that began before a
                 # rename would otherwise bring the old name back.
-                own = self.store.get(info.cli_session_id)
+                own = self.store.get(info.cli_session_id, provider=info.provider)
                 if own is not None:
                     info.title = own.title
                     # On Remote Control (#96): in that view, and its row says so.
-                    info.remote = self._remote_shown(own)
+                    info.remote = info.provider == "claude" and self._remote_shown(own)
         ended = [info for info in ended if info.key not in self.hidden]
         if not snap.desktop_groups.read_ok:
             snap.desktop_groups = previous_desktop_groups  # keep the last good read
@@ -889,14 +922,14 @@ class MainFrame(wx.Frame):
         first = self._first_snapshot
         if not first:
             for info in ended:
-                if info.is_own:
+                if info.is_own and info.provider == "claude":
                     continue  # its own turn says so, with more to say
                 if info.state == NEEDS_YOU:
                     self._notify(info.key, f"{info.title} needs you",
-                                 info.detail or "Claude is waiting for you.", needs_you=True)
+                                 info.detail or f"{info.provider.capitalize()} is waiting for you.", needs_you=True)
                 elif self._open is not None and info.key == self._open.key:
                     self._notify(info.key, f"{info.title} finished",
-                                 replies.get(info.key, "") or "Claude finished its turn.")
+                                 replies.get(info.key, "") or f"{info.provider.capitalize()} finished its turn.")
         self._first_snapshot = False
         keep_order = (not resort and not first
                       and wx.Window.FindFocus() is self.session_list)
@@ -913,7 +946,8 @@ class MainFrame(wx.Frame):
         self._update_session_list(shown, keep_order=keep_order)
         self._update_list_label(len(shown))
 
-        if not first and self._open is not None and not self._open.is_own and any(
+        if not first and self._open is not None and not (
+                self._open.is_own and self._open.provider == "claude") and any(
                 info.key == self._open.key for info in ended):
             # The loaded desktop session announces its own messages, and
             # then what the turn changed.
@@ -921,7 +955,7 @@ class MainFrame(wx.Frame):
             self._refresh_chat()
         if not first and self.speech.announce_all_sessions:
             for info in ended:
-                if info.is_own:
+                if info.is_own and info.provider == "claude":
                     continue
                 if self._open is not None and info.key == self._open.key:
                     continue
@@ -951,12 +985,20 @@ class MainFrame(wx.Frame):
                 text += f" Showing {what}: {len(shown)}."
             if snap.unreadable_files:
                 text += f" Couldn't read {snap.unreadable_files} session files."
+            if snap.stale_providers:
+                names = ", ".join(p.capitalize() for p in sorted(snap.stale_providers))
+                text += f" {names} discovery unavailable; listed chats may be out of date."
             if force and not first:
                 self._feedback(text)  # F5: Kelly asked
             else:
                 self._status(text)
         if first and self._pending_link is not None:
             wx.CallAfter(self._open_pending_link)  # a link it was started with (#144)
+        for provider in sorted(snap.newly_failed_providers):
+            # The registry keeps useful cached rows; explain their freshness
+            # once per outage without exposing private backend diagnostics.
+            self._feedback(f"{provider.capitalize()} session discovery is unavailable. "
+                           "Its listed chats may be out of date.")
         self._run_pending_refresh()
 
     def _update_session_list(self, sessions: List[SessionInfo], keep_order: bool = False,
@@ -1127,7 +1169,8 @@ class MainFrame(wx.Frame):
         if info.is_own:
             prompt = f"New name for {info.title}:"
         else:
-            keeper = "Claude Code" if info.is_terminal else "the Claude desktop app"
+            keeper = (info.provider.capitalize() if info.provider != "claude" else
+                      "Claude Code" if info.is_terminal else "the Claude desktop app")
             prompt = (f"New name for {info.title}. It shows only in The Chat Place; "
                       f"{keeper} keeps its own name for it. Leave it empty to go "
                       "back to that name.")
@@ -1148,14 +1191,16 @@ class MainFrame(wx.Frame):
             if not title:
                 self._feedback("A Chat Place session needs a name; it wasn't changed.")
                 return
-            if self.store.get(info.cli_session_id) is None:
+            if self.store.get(info.cli_session_id, provider=info.provider) is None:
                 # Its first turn is just reporting its id; there's nothing to rename yet.
                 self._feedback(f"Couldn't rename {old} just now. Try again in a moment.")
                 return
-            if not self._store_write(self.store.update, info.cli_session_id, title=title):
+            if not self._store_write(self.store.update, info.cli_session_id,
+                                     provider=info.provider, title=title):
                 return
         else:
-            keeper = "Claude Code's" if info.is_terminal else "the desktop app's"
+            keeper = (f"{info.provider.capitalize()}'s" if info.provider != "claude" else
+                      "Claude Code's" if info.is_terminal else "the desktop app's")
             if not title and info.key not in self.titles:
                 self._feedback(f"{old} already has {keeper} name.")
                 return
@@ -1186,6 +1231,8 @@ class MainFrame(wx.Frame):
         first and then find it in the Hidden view was a hunt nobody could
         guess, and the confirmation (No by default) is the safeguard."""
         info = self._selected_session()
+        if info is not None and info.provider != "claude" and not self._require_capability("delete", info):
+            return
         if info is None:
             self._feedback("No session selected.")
             return
@@ -1297,7 +1344,7 @@ class MainFrame(wx.Frame):
         self.open_session(info)
 
     def _save_draft(self):
-        if self._open is not None and self._open.is_own:
+        if self._open is not None and self._open.is_own and self._open.provider == "claude":
             self._drafts[self._open.cli_session_id] = self.reply_text.GetValue()
 
     def open_session(self, info: SessionInfo):
@@ -1305,7 +1352,8 @@ class MainFrame(wx.Frame):
         self._clear_activity()  # another session's tool calls aren't news here
         self._open = info
         self._sync_activity_controls(info.key in self.tool_activity)
-        self.reply_text.SetValue(self._drafts.get(info.cli_session_id, "") if info.is_own else "")
+        self.reply_text.SetValue(self._drafts.get(info.cli_session_id, "")
+                                 if info.is_own and info.provider == "claude" else "")
         self._open_generation += 1
         self._reader = None
         self._chat_messages = []
@@ -1316,17 +1364,22 @@ class MainFrame(wx.Frame):
         self._chat_loaded = False
         self._announce_load = True
         if info.is_own and info.unread:
-            self._store_write(self.store.update, info.cli_session_id, unread=False)
+            self._store_write(self.store.update, info.cli_session_id,
+                              provider=info.provider, unread=False)
             info.unread = False
         self.chat_list.Set(["Loading messages\u2026"])
         self.chat_list.SetSelection(0)
         self._update_messages_label()
-        self.own_reply.Show(info.is_own)
-        self.desktop_reply.Show(not info.is_own)
-        if not info.is_own:
-            self.desktop_note.SetValue(_COWORK_NOTE if info.cowork else
+        editable = info.is_own and info.provider == "claude"
+        self.own_reply.Show(editable)
+        self.desktop_reply.Show(not editable)
+        if not editable:
+            self.desktop_note.SetValue(
+                "This is a Codex chat. The Chat Place currently reads its local history. "
+                "Reply in Codex." if info.provider == "codex" else
+                _COWORK_NOTE if info.cowork else
                                        _TERMINAL_NOTE if info.is_terminal else _DESKTOP_NOTE)
-            self.continue_btn.Show(not info.cowork)
+            self.continue_btn.Show(info.provider == "claude" and not info.cowork)
             # Only the desktop app's sessions can be opened in it.
             self.reply_claude_btn.Show(info.can_open_in_claude)
             self.desktop_reply.Layout()
@@ -1339,7 +1392,7 @@ class MainFrame(wx.Frame):
                 self.session_list.SetSelection(row)
         self.SetTitle(f"{info.title} \u2014 {APP_NAME}")
         self._show_attachments()
-        if info.is_own and _folder_key(info.cwd) not in self._commands:
+        if editable and _folder_key(info.cwd) not in self._commands:
             self._fetch_commands(info.cwd)  # ready by the time you want them
         self.chat_list.SetFocus()
         self._refresh_chat()
@@ -1402,7 +1455,7 @@ class MainFrame(wx.Frame):
         if self._open is None:
             self._feedback("No session loaded.")
             self.session_list.SetFocus()
-        elif self._open.is_own:
+        elif self._open.is_own and self._open.provider == "claude":
             self.reply_text.SetFocus()
         else:
             self.desktop_note.SetFocus()
@@ -1411,7 +1464,9 @@ class MainFrame(wx.Frame):
         info = self._open
         if info is None:
             return
-        if info.is_own:
+        if info.provider != "claude":
+            kind = f"{info.provider.capitalize()} chat, read-only"
+        elif info.is_own:
             kind = "Chat Place session"
         elif info.cowork:
             kind = "Claude desktop app Cowork session, read-only"
@@ -1419,8 +1474,8 @@ class MainFrame(wx.Frame):
             kind = "Terminal session, read-only"
         else:
             kind = "Claude desktop app session, read-only"
-        if info.is_own:
-            own = self.store.get(info.cli_session_id)
+        if info.is_own and info.provider == "claude":
+            own = self.store.get(info.cli_session_id, provider=info.provider)
             if own is not None:
                 kind += f" on {model_label(own.model)}"
                 if own.effort:
@@ -1433,7 +1488,7 @@ class MainFrame(wx.Frame):
                     kind += f", continued from {own.forked_from}"
                 if self._remote_control_on(own):
                     kind += ", Remote Control on"
-        elif info.remote:
+        elif info.remote and info.provider == "claude":
             kind += ", on Remote Control in the desktop app"
         state = info.state + (f": {info.detail}" if info.detail else "")
         self.session_heading.set_text(f"{info.title}, {info.repo}, {state}. {kind}.")
@@ -1448,12 +1503,15 @@ class MainFrame(wx.Frame):
             return
         state = info.state + (f": {info.detail}" if info.detail else "")
         kind = ", read-only"
-        if info.is_own:
+        if info.is_own and info.provider == "claude":
             # The model goes here too: this is what's heard on arriving in
             # the messages; the heading above is never focused.
-            own = self.store.get(info.cli_session_id)
+            own = self.store.get(info.cli_session_id, provider=info.provider)
             kind = f", on {model_label(own.model)}" if own is not None else ""
-        label = f"Messages in {info.title} ({state}{kind})"
+        if info.provider == "codex" and info.state == "status unavailable":
+            state = ""
+        description = state + kind if state else kind.lstrip(", ")
+        label = f"Messages in {info.title} ({description})"
         if self.messages_label.GetLabel() != f"&{label}:":
             self.messages_label.SetLabel(f"&{label}:")
             set_accessible_name(self.chat_list, label)
@@ -1507,8 +1565,10 @@ class MainFrame(wx.Frame):
             return
         self._select_on_load = None  # nothing to find a message in
         self._chat_loaded = True
-        own = self.store.get(info.cli_session_id) if info.is_own else None
-        if info.is_own and (info.cli_session_id in self._runners
+        own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
+        if info.provider != "claude":
+            line = f"Chat history is unavailable from {info.provider.capitalize()}. Try refreshing."
+        elif info.is_own and (info.cli_session_id in self._runners
                             or (own is not None and not own.started)):
             line = ("No messages yet. Claude is starting this session."
                     if info.cli_session_id in self._runners else
@@ -1547,7 +1607,10 @@ class MainFrame(wx.Frame):
         if error is not None:
             self._select_on_load = None
             if not self._chat_loaded:
-                self.chat_list.Set([f"Couldn't read this transcript: {error}"])
+                line = ("Couldn't load this Codex chat. Try again, or open it in Codex to read it."
+                        if self._open.provider == "codex"
+                        else f"Couldn't read this transcript: {error}")
+                self.chat_list.Set([line])
                 self._chat_keys = []
                 self.chat_list.SetSelection(0)
                 self._chat_loaded = True
@@ -1590,7 +1653,7 @@ class MainFrame(wx.Frame):
                                           self.speech.announce)
                 if text:
                     self._say(text)
-        if self._open.is_own:
+        if self._open.is_own and self._open.provider == "claude":
             return  # its turn announces the reply when it finishes
         if self._show_activity:
             # A desktop session's tool calls, as they reach its transcript (#12).
@@ -1950,7 +2013,7 @@ class MainFrame(wx.Frame):
             self._feedback("Properties: another window is open. Close it and press "
                            "Alt+Enter again.")
             return
-        own = self.store.get(info.cli_session_id) if info.is_own else None
+        own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
         model = transcript.model if transcript is not None else ""
         try:
             lines = properties.session_properties(
@@ -1976,7 +2039,8 @@ class MainFrame(wx.Frame):
         """View, What Claude Knows About You (Ctrl+Shift+K, #92): your
         instructions, memories, skills and the rest, read from Claude Code's
         files, with the projects your sessions work in."""
-        cwds = sorted({s.cwd for s in self._snapshot.sessions if s.cwd})
+        cwds = sorted({s.cwd for s in self._snapshot.sessions
+                       if s.cwd and s.provider == "claude"})
         self._feedback("Reading what Claude knows about you…")
         # On the pool: a session folder on a disconnected or network drive
         # can take seconds to answer.
@@ -2203,8 +2267,10 @@ class MainFrame(wx.Frame):
             return
         messages, transcript = self._export_source(info)
         if not messages and transcript is None:
-            wx.MessageBox(f"{info.title} has no messages to export (its transcript isn't on "
-                          "disk).", APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
+            note = (f"{info.title} has no messages to export. Try loading the chat again."
+                    if info.provider == "codex" else
+                    f"{info.title} has no messages to export (its transcript isn't on disk).")
+            wx.MessageBox(note, APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
             return
         documents = os.path.join(os.path.expanduser("~"), "Documents")
         dialog = wx.FileDialog(
@@ -2247,7 +2313,8 @@ class MainFrame(wx.Frame):
                     items = [m for m in history.messages
                              if show_activity or not m.is_activity] if history else []
                 if not items:
-                    raise OSError("the transcript has no messages")
+                    raise OSError("the chat has no messages" if info.provider == "codex"
+                                  else "the transcript has no messages")
                 text = export.render(fmt, title, items, folder=folder)
                 with open(path, "w", encoding="utf-8", newline="\n") as handle:
                     handle.write(text)
@@ -2298,10 +2365,10 @@ class MainFrame(wx.Frame):
         running = info is not None and info.cli_session_id in self._runners
         # Always enabled: a disabled button drops out of the Tab order, and
         # Send and Stop must stay where Kelly's fingers expect them.
-        own = bool(info and info.is_own)
+        own = bool(info and info.is_own and info.provider == "claude")
         self.send_btn.Enable(own)
         self.stop_btn.Enable(own)
-        if info is not None and info.is_own:
+        if own:
             waiting = self._pending.get(info.cli_session_id)
             runner = self._runners.get(info.cli_session_id)
             if running and waiting:
@@ -2328,7 +2395,7 @@ class MainFrame(wx.Frame):
 
     def _context(self, info: Optional[SessionInfo]):
         """(tokens, window) for a session, from its transcript as read."""
-        if info is None or self._reader is None or self._open is None \
+        if info is None or info.provider != "claude" or self._reader is None or self._open is None \
                 or info.key != self._open.key:
             return 0, 0
         transcript = self._reader.transcript
@@ -2339,6 +2406,8 @@ class MainFrame(wx.Frame):
     def _reported_window(self, info: SessionInfo, model: str) -> int:
         """The context window Claude Code reported for this session (one of
         ours) or, failing that, for its model; 0 if neither."""
+        if info.provider != "claude":
+            return 0
         return (self._windows.get(info.cli_session_id, 0) if info.is_own else 0) or \
             self._model_windows.get(model, 0)
 
@@ -2349,6 +2418,8 @@ class MainFrame(wx.Frame):
         left someone who can't follow the system voice (#98) nothing to
         read. The dialog's title and the focused line are what a screen
         reader says, so nothing is spoken on top."""
+        if not self._require_capability("usage", self._open):
+            return
         context = None
         if self._open is not None:
             context = (self._open.title, *self._context(self._open))
@@ -2366,6 +2437,8 @@ class MainFrame(wx.Frame):
         your latest message, or in the whole session, and each change to read
         by line. From the transcript, so desktop sessions work too."""
         info = self._open
+        if not self._require_capability("changes", info):
+            return
         if info is None:
             self._feedback("Load a session first.")
             return
@@ -2500,10 +2573,12 @@ class MainFrame(wx.Frame):
         and then bare. Enter on the first copies a Markdown link that opens
         it in The Chat Place."""
         info = self._selected_session()
+        if not self._require_capability("share_link", info):
+            return
         if info is None:
             self._feedback("No session selected.")
             return
-        own = self.store.get(info.cli_session_id) if info.is_own else None
+        own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
         # Before its first turn starts, Claude may still give it another id.
         started = not info.is_own or (own is not None and own.started)
         choices = links.copy_choices(
@@ -2629,13 +2704,15 @@ class MainFrame(wx.Frame):
         the selected session from its next turn. While a turn runs, the
         session can be reached from claude.ai and your other devices."""
         info = self._selected_session()
+        if not self._require_capability("remote_control", info):
+            return
         if info is None:
             self._feedback("No session selected.")
             return
         if not info.is_own:
             self._desktop_remote_control(info)
             return
-        own = self.store.get(info.cli_session_id)
+        own = self.store.get(info.cli_session_id, provider=info.provider)
         if own is None:
             self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
             return
@@ -2661,7 +2738,7 @@ class MainFrame(wx.Frame):
         if not self._store_write(self.store.update, info.cli_session_id,
                                  remote_control=values[index]):
             return
-        own = self.store.get(info.cli_session_id)
+        own = self.store.get(info.cli_session_id, provider=info.provider)
         on = self._remote_control_on(own)
         for each in self._snapshot.sessions:
             if each.key == info.key:
@@ -2678,13 +2755,15 @@ class MainFrame(wx.Frame):
         Only Claude can reach them (ListAgents, SendMessage), and only with
         Remote Control on; see remote.py for why it's done this way."""
         info = self._open
+        if not self._require_capability("remote_control", info):
+            return
         if info is None or not info.is_own:
             wx.MessageBox("Other machines are reached through one of The Chat Place's own "
                           "sessions with Remote Control on. Load one first, or start one "
                           "with File, New Session.", APP_NAME,
                           wx.OK | wx.ICON_INFORMATION, self)
             return
-        own = self.store.get(info.cli_session_id)
+        own = self.store.get(info.cli_session_id, provider=info.provider)
         if own is None:
             self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
             return
@@ -2822,6 +2901,8 @@ class MainFrame(wx.Frame):
         item; None (and why, said) for a session whose ``what`` is set
         elsewhere."""
         info = self._selected_session()
+        if info is not None and info.provider != "claude" and not self._require_capability("options", info):
+            return None
         if info is None:
             self._feedback("No session selected.")
             return None
@@ -2830,7 +2911,7 @@ class MainFrame(wx.Frame):
             self._feedback(f"{info.title} is {kind_name(info)}: its {what} is set in the "
                            f"{where}.")
             return None
-        own = self.store.get(info.cli_session_id)
+        own = self.store.get(info.cli_session_id, provider=info.provider)
         if own is None:
             self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
             return None
@@ -2950,6 +3031,8 @@ class MainFrame(wx.Frame):
     def on_turn_status(self, _event=None):
         """How long the running turn has taken, and what it is doing."""
         info = self._open
+        if info is not None and info.provider != "claude" and not self._require_capability("send", info):
+            return
         runner = self._runners.get(info.cli_session_id) if info else None
         if runner is not None and self._pending.get(info.cli_session_id):
             request = self._pending[info.cli_session_id][0]
@@ -2987,7 +3070,7 @@ class MainFrame(wx.Frame):
     def _next_waiting_session(self) -> Optional[str]:
         """The loaded session if it is waiting, otherwise the one that has
         waited longest."""
-        if (self._open is not None and self._open.is_own
+        if (self._open is not None and self._open.is_own and self._open.provider == "claude"
                 and self._pending.get(self._open.cli_session_id)):
             return self._open.cli_session_id
         return next((sid for sid, queue in self._pending.items() if queue), None)
@@ -2995,7 +3078,7 @@ class MainFrame(wx.Frame):
     def on_answer(self):
         session_id = self._next_waiting_session()
         if session_id is None:
-            self._feedback("Claude isn't waiting for an answer.")
+            self._feedback("No session is waiting for an answer.")
             return
         request = self._pending[session_id][0]
         own = self.store.get(session_id)
@@ -3141,6 +3224,8 @@ class MainFrame(wx.Frame):
     def on_attach_files(self):
         """Attach files or images to the next message (Ctrl+Shift+F)."""
         info = self._open
+        if info is not None and info.provider != "claude" and not self._require_capability("attachments", info):
+            return
         if info is None or not info.is_own:
             self._feedback("Attachments are for The Chat Place's own sessions: load one first.")
             return
@@ -3175,7 +3260,8 @@ class MainFrame(wx.Frame):
     def _show_attachments(self):
         """The loaded session's attachments, under the reply box."""
         info = self._open
-        paths = self._attachments.get(info.cli_session_id, []) if info and info.is_own else []
+        paths = (self._attachments.get(info.cli_session_id, [])
+                 if info and info.is_own and info.provider == "claude" else [])
         if paths:
             self.attach_list.Set([os.path.basename(p) for p in paths])
             self.attach_list.SetSelection(0)
@@ -3189,6 +3275,8 @@ class MainFrame(wx.Frame):
     def _on_attach_key(self, event):
         if event.GetKeyCode() not in (wx.WXK_DELETE, wx.WXK_BACK) or self._open is None:
             event.Skip()
+            return
+        if self._open.provider != "claude" and not self._require_capability("attachments", self._open):
             return
         paths = self._attachments.get(self._open.cli_session_id, [])
         index = self.attach_list.GetSelection()
@@ -3207,7 +3295,8 @@ class MainFrame(wx.Frame):
         """Ctrl+V with a picture on the clipboard (a screenshot from
         Win+Shift+S, say) attaches it; text pastes as usual."""
         info = self._open
-        bitmap = self._clipboard_image() if info is not None and info.is_own else None
+        bitmap = (self._clipboard_image()
+                  if info is not None and info.is_own and info.provider == "claude" else None)
         if bitmap is None:
             event.Skip()
             return
@@ -3243,6 +3332,8 @@ class MainFrame(wx.Frame):
         ``remote_control`` "on" puts the copy on Remote Control from its
         first turn (#96)."""
         info = self._selected_session()
+        if info is not None and info.provider != "claude" and not self._require_capability("fork", info):
+            return
         if info is None:
             self._feedback("No session selected.")
             return
@@ -3308,6 +3399,8 @@ class MainFrame(wx.Frame):
 
     def on_send(self, _event=None):
         info = self._open
+        if info is not None and info.provider != "claude" and not self._require_capability("send", info):
+            return
         if info is None or not info.is_own:
             return
         message = self.reply_text.GetValue().strip()
@@ -3485,7 +3578,8 @@ class MainFrame(wx.Frame):
                                     self._said_problems):
                     if session_id in per_session:
                         per_session[reported] = per_session.pop(session_id)
-                if self._open is not None and self._open.cli_session_id == session_id:
+                if (self._open is not None and self._open.provider == "claude"
+                        and self._open.cli_session_id == session_id):
                     self._open.cli_session_id = reported
                     self._open.key = f"own:{reported}"
                     # The old reader points at the old id's transcript.
@@ -3500,7 +3594,8 @@ class MainFrame(wx.Frame):
                 self._store_write(self.store.update, session_id, started=True)
             self._status(f"{title}: Claude is working.")
             return
-        is_open_now = self._open is not None and self._open.cli_session_id == session_id
+        is_open_now = (self._open is not None and self._open.provider == "claude"
+                       and self._open.cli_session_id == session_id)
         if event.kind == "tool":
             self._status(f"{title}: Claude is using {event.text}.")
             if is_open_now and self._show_activity:
@@ -3584,7 +3679,8 @@ class MainFrame(wx.Frame):
             runner = self._runners.pop(session_id, None)
             denials = event.denials or self._denials.pop(session_id, [])
             self._denials.pop(session_id, None)
-            is_open = self._open is not None and self._open.cli_session_id == session_id
+            is_open = (self._open is not None and self._open.provider == "claude"
+                       and self._open.cli_session_id == session_id)
             self._update_send_state()
             # Text to give back, oldest first: a first message that never
             # reached Claude, then anything queued behind it.
@@ -3729,7 +3825,7 @@ class MainFrame(wx.Frame):
     def _queued_rows(self) -> List[ChatMessage]:
         """The loaded session's queued messages, as rows after its messages."""
         info = self._open
-        if info is None or not info.is_own:
+        if info is None or not info.is_own or info.provider != "claude":
             return []
         return [ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")
                 for i, text in enumerate(self._queued.get(info.cli_session_id, []))]
@@ -3743,8 +3839,10 @@ class MainFrame(wx.Frame):
 
     def remove_queued(self):
         """Remove the selected queued message (Delete, or the context menu)."""
-        index = self._selected_queued()
         info = self._open
+        if info is not None and info.provider != "claude" and not self._require_capability("send", info):
+            return
+        index = self._selected_queued()
         if index is None or info is None:
             return
         waiting = self._queued.get(info.cli_session_id, [])
@@ -3764,8 +3862,10 @@ class MainFrame(wx.Frame):
         """Send the selected queued message now: Claude stops what it's doing
         and takes it straight away, in the same turn, as the desktop app's
         Send Now does."""
-        index = self._selected_queued()
         info = self._open
+        if info is not None and info.provider != "claude" and not self._require_capability("send", info):
+            return
+        index = self._selected_queued()
         if index is None or info is None:
             return
         runner = self._runners.get(info.cli_session_id)
@@ -3797,8 +3897,10 @@ class MainFrame(wx.Frame):
     def edit_queued(self):
         """Take the selected queued message back into the reply box, to
         change it and send it again."""
-        index = self._selected_queued()
         info = self._open
+        if info is not None and info.provider != "claude" and not self._require_capability("send", info):
+            return
+        index = self._selected_queued()
         if index is None or info is None:
             return
         waiting = self._queued.get(info.cli_session_id, [])
@@ -3830,6 +3932,8 @@ class MainFrame(wx.Frame):
 
     def on_stop(self, _event=None):
         info = self._open
+        if info is not None and info.provider != "claude" and not self._require_capability("send", info):
+            return
         runner = self._runners.get(info.cli_session_id) if info else None
         if runner is None:
             self._feedback("Nothing is running.")
@@ -4430,6 +4534,7 @@ class MainFrame(wx.Frame):
                        "in it again.")
 
     def on_settings(self, _event=None):
+        previous_codex = self.speech.codex_enabled
         options = self._speech_options or default_options()
         dialog = SettingsDialog(self, self.speech, options,
                                 clear_recent=self._clear_recent_folders)
@@ -4444,7 +4549,9 @@ class MainFrame(wx.Frame):
         except OSError as exc:
             wx.MessageBox(f"Couldn't save settings: {exc}", APP_NAME,
                           wx.OK | wx.ICON_WARNING, self)
-        self._feedback("Settings saved.")
+        self._feedback("Settings saved." + (
+            " Restart The Chat Place to change Codex discovery."
+            if previous_codex != self.speech.codex_enabled else ""))
         # The Remote Control default shows in rows and the heading (#96).
         self.refresh_sessions()
         self._update_heading()
@@ -4722,6 +4829,8 @@ class MainFrame(wx.Frame):
         Code's slash commands or your skills; it goes at the start of the
         reply box, ready to finish and send."""
         info = self._open
+        if info is not None and info.provider != "claude" and not self._require_capability("send", info):
+            return
         if info is None or not info.is_own:
             self._feedback("Commands and skills are for The Chat Place's own sessions: load one "
                            "first.")
@@ -4773,6 +4882,8 @@ class MainFrame(wx.Frame):
         if self._open is None:
             return ("Load one of The Chat Place's own sessions first: a prompt goes into "
                     "its reply box.")
+        if self._open.provider != "claude":
+            return f"This chat is read-only here. Reply in {self._open.provider.capitalize()}."
         if not self._open.is_own:
             return (f"This is {kind_name(self._open)}, which The Chat Place only reads. "
                     "Load one of The Chat Place's own sessions to use a prompt in its reply "
@@ -5251,7 +5362,29 @@ class MainFrame(wx.Frame):
         speaker.on_problem = None
         self._notifier.close()  # its icon would keep the app running
         self._pool.shutdown(wait=False, cancel_futures=True)
+        self._close_providers()
         event.Skip()
+
+    def _close_providers(self):
+        """Keep backend cleanup alive after wx exits, without blocking it.
+
+        A dedicated worker cannot be cancelled along with queued history reads.
+        It never calls wx or schedules a callback to the closing window
+        (#184) (#171).
+        """
+        if self._provider_cleanup is not None:
+            return
+        controller = self.sessions
+
+        def close():
+            try:
+                controller.close()
+            except Exception:  # noqa: BLE001 - controller already tried every backend
+                self._provider_cleanup_failed = True
+
+        self._provider_cleanup = threading.Thread(
+            target=close, name="provider-cleanup", daemon=False)
+        self._provider_cleanup.start()
 
     def _gone(self) -> bool:
         """True once the window is destroyed or being destroyed. A Mac

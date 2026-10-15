@@ -190,6 +190,8 @@ class SpeechSettings:
     last_run_version: str = ""
     #: How many recent folders New Session offers (#215); 0 offers none.
     recent_folder_limit: int = 20
+    #: Local Codex catalog/history, opt-in on the integration branch (#184).
+    codex_enabled: bool = False
 
     @property
     def enabled(self) -> bool:
@@ -232,6 +234,7 @@ class SpeechSettings:
         notify = str(raw.get("notifications", NOTIFY_ALL))
         settings.notifications = notify if notify in NOTIFY_LEVELS else NOTIFY_ALL
         settings.remote_control = raw.get("remote_control") is True
+        settings.codex_enabled = raw.get("codex_enabled") is True
         from .sessions import clean_fields
         settings.session_fields = clean_fields(raw.get("session_fields"))
         settings.update_installed_notice = raw.get("update_installed_notice") is not False

@@ -71,6 +71,8 @@ def smoke_test(out_path: str) -> int:
 
         report["wx"] = wx.version()
         from .ui import main_frame  # noqa: F401 - imported to prove it's bundled
+        from .providers.codex import CodexProvider  # noqa: F401 - no process on import
+        report["codex_reader"] = True
     except Exception as exc:  # noqa: BLE001
         problems.append(f"wx/ui: {exc}")
     try:

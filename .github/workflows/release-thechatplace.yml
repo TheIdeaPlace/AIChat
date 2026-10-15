@@ -86,7 +86,7 @@ jobs:
 
       # Before anything is built or signed, so a failing test stops a release.
       - name: Test
-        run: python -m pytest -q tests
+        run: python -m pytest -v tests
 
       # One version, in thechatplace/__init__.py. A tag that disagrees fails here, before anything
       # is built: the updater compares installed and published versions, so they must match.
@@ -114,7 +114,7 @@ jobs:
         run: |
           python tools/make_version_info.py
           python -m PyInstaller --noconfirm --clean --noconsole --onedir --name TheChatPlace `
-            --version-file build/version_info.txt --hidden-import velopack --collect-binaries wx `
+            --version-file build/version_info.txt --hidden-import velopack --hidden-import thechatplace.providers.codex --collect-binaries wx `
             --icon thechatplace/assets/app.ico `
             --add-data "thechatplace/assets;thechatplace/assets" `
             --add-data "thechatplace/speech;thechatplace/speech" `
