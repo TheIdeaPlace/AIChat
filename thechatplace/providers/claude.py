@@ -84,6 +84,18 @@ class ClaudeProvider:
 class ClaudeConversations:
     provider_id = "claude"
 
+    def capabilities(self, session):
+        from .base import SessionCapabilities
+
+        if session.provider != self.provider_id:
+            raise ValueError("Not a Claude session")
+        own = session.is_own
+        return SessionCapabilities(
+            send=own, fork=not own and not session.cowork and bool(session.cli_session_id),
+            delete=own, attachments=own, usage=True, changes=True,
+            instructions=True, remote_control=True, desktop_link=session.can_open_in_claude,
+            share_link=True, options=own, approvals=True)
+
     def has_history(self, session) -> bool:
         if session.provider != self.provider_id:
             raise ValueError("Not a Claude session")

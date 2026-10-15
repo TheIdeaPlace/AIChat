@@ -54,6 +54,8 @@ def describe_size(size: int) -> str:
 
 
 def session_kind(info: SessionInfo) -> str:
+    if info.provider != "claude":
+        return f"{info.provider.capitalize()} chat"
     if info.is_own:
         return "Chat Place session"
     if info.is_terminal:
@@ -89,27 +91,30 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     lines.append(f"Started: {describe_ms(info.created_ms, now_ms)}")
     lines.append(f"Last activity: {describe_ms(info.last_activity_ms, now_ms)}")
     if transcript is not None and transcript.model:
-        lines.append(f"Model of the latest reply: {model_spoken(transcript.model)}")
-    if own is not None:
+        model = model_spoken(transcript.model) if info.provider == "claude" else transcript.model
+        lines.append(f"Model of the latest reply: {model}")
+    if own is not None and info.provider == "claude":
         lines.append(f"Model chosen: {model_label(own.model)}")
         lines.append(f"Effort: {EFFORT_LABELS.get(own.effort, own.effort)}")
     mode = own.permission_mode if own is not None else info.permission_mode
-    if mode:
+    if mode and info.provider == "claude":
         lines.append(f"Permission mode: {mode_label(mode)}")
     if transcript is not None:
         conversation = _conversation(transcript)
         lines.append(f"Messages: {len(conversation):,}")
         lines.append(f"Your messages: {sum(1 for m in conversation if m.kind == USER):,}")
-        lines.append("Claude's replies: "
+        lines.append(f"{info.provider.capitalize()}'s replies: "
                      f"{sum(1 for m in conversation if m.kind == ASSISTANT):,}")
         lines.append(f"Tool calls: {sum(1 for m in transcript.messages if m.kind == TOOL):,}")
         lines.append(f"Links: {len(find_links(conversation)):,}")
         blocks = sum(len(find_code_blocks(m.text)) for m in conversation)
         lines.append(f"Code blocks: {blocks:,}")
-        lines.append(f"Files changed: {len(by_file(transcript.edits)):,}")
+        if info.provider == "claude":
+            lines.append(f"Files changed: {len(by_file(transcript.edits)):,}")
         if transcript.context_tokens:
             tokens = transcript.context_tokens
-            window = usage.context_window(transcript.model, tokens, reported_window)
+            window = (usage.context_window(transcript.model, tokens, reported_window)
+                      if info.provider == "claude" else 0)
             if window:
                 share = round(usage.context_share(tokens, window) * 100)
                 lines.append(f"Context: {share}% full, {tokens:,} of {window:,} tokens")
@@ -121,7 +126,8 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         if transcript.unreadable_lines:
             lines.append(f"Unreadable transcript lines: {transcript.unreadable_lines:,}")
     lines.append(f"Groups: {', '.join(info.groups) if info.groups else 'none'}")
-    lines.append(f"Remote Control: {'on' if info.remote else 'off'}")
+    if info.provider == "claude":
+        lines.append(f"Remote Control: {'on' if info.remote else 'off'}")
     if info.unread:
         lines.append("New reply: yes")
     if info.archived:
@@ -139,6 +145,9 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         if transcript is None:
             # Locked by another program, say: there, but not read.
             lines.append(f"Transcript read: failed ({read_error or 'unknown error'})")
+    elif info.provider != "claude":
+        lines.append(f"History: {'read' if transcript is not None else 'unavailable'} "
+                     f"from {info.provider.capitalize()}")
     else:
         lines.append("Transcript: not on disk")
     return lines

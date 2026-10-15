@@ -173,3 +173,20 @@ def test_transcript_facts(tmp_path):
     path.write_text("abc", encoding="utf-8")
     assert properties.transcript_facts(path) == (str(path), 3)
     assert properties.transcript_facts(tmp_path / "missing.jsonl") == ("", 0)
+
+
+def test_codex_properties_do_not_invent_claude_models_policies_or_usage():
+    from thechatplace.transcript import Transcript
+
+    info = _info(source=OWN, provider="codex", key="codex:cli-a", desktop_session_id="")
+    own = OwnSession("cli-a", "Codex", info.cwd, provider="codex")
+    transcript = Transcript(messages=[ChatMessage(ASSISTANT, "Reply", assistant_name="Codex")],
+                            model="synthetic-codex-model", context_tokens=123)
+    result = properties.session_properties(info, transcript, "", 0, own, 200000, now_ms=NOW_MS)
+    assert "Kind: Codex chat" in result
+    assert "Codex's replies: 1" in result
+    assert "Model of the latest reply: synthetic-codex-model" in result
+    assert "History: read from Codex" in result
+    assert not any(line.startswith(("Permission mode:", "Remote Control:", "Model chosen:",
+                                    "Files changed:")) for line in result)
+    assert not any("% full" in line or "Claude" in line for line in result)

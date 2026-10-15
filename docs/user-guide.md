@@ -12,6 +12,28 @@ Help, Keyboard Shortcuts (F1).
 The Chat Place is an independent project by Kelly Ford. It works with Claude Code and the Claude
 desktop app, but it isn't made, sponsored or endorsed by Anthropic, and isn't affiliated with it.
 
+## Local Codex history preview
+
+On the Codex integration branch, open Settings and enable
+**Include local Codex chats (read-only; restart required)**. Save, quit The Chat Place and reopen it.
+A native Codex CLI must be available and signed in to ChatGPT. Local Claude and
+Codex chats share one list, and selecting a Codex chat opens its history
+automatically. Read, Find and export work; reply in Codex while sending,
+approvals and queues are being implemented. Turn the option off and restart
+to hide Codex without deleting its saved preferences.
+
+View, Show Sessions offers **Claude Chats** and **Codex Chats** filters. View,
+Session List Columns offers an optional **Provider** column. Existing column
+choices stay unchanged. The optional Last message column also reads Codex:
+short lines fill in small background batches and remain cached during outages.
+Cloud-only coverage and a supported released CLI
+minimum are not established. Unavailable Codex status is not counted as idle.
+Unknown status is omitted from default rows and message titles; Properties and
+selected State columns retain it. Long Codex chats load in the background; the
+message list says Loading messages until the full chat is ready. Find, export
+and Last message use the same complete history.
+
+
 ## Before you start
 
 You need:

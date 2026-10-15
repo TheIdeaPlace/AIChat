@@ -20,6 +20,11 @@ workspace-write with on-request approvals; existing chats retain saved grants.
 5. Neutral defaults: Provider and Kind columns, saved-column migration and
    neutral shared labels, with its own user-visible release entry.
 
+Foundations (#244) and storage (#245) are merged. Slice 3 starts from main
+815c864 and retains its native-identity/store-preservation fixes. Its history
+provider cannot start/resume a chat or send inference; owned execution remains
+a required later slice, not an optional release feature.
+
 Each branch is based on the preceding slice, passes independently and receives
 review and Windows/Mac CI. #225 stays a draft integration reference until the
 stack lands. Slice 1 is based on remote main 067a76d and preserves its shipping

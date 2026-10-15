@@ -559,6 +559,62 @@ def s_main_desktop(frame, env):
     _open(frame, "Fix the flaky upload test")
 
 
+def s_main_codex(frame, env):
+    """Synthetic prototype only; no installed CLI/account or UI opt-in."""
+    import dataclasses
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.providers.codex import CodexProvider, session_from_thread
+    from thechatplace.session_controller import SessionController
+
+    thread = {"id": "synthetic-codex", "name": "Codex history preview",
+              "cwd": env["folders"]["Scratch"], "createdAt": 1, "updatedAt": 2,
+              "status": {"type": "notLoaded"}, "turns": [{"id": "turn", "items": [
+                  {"id": "user", "type": "userMessage", "content": [
+                      {"type": "text", "text": "Explain the upload test."}]},
+                  {"id": "answer", "type": "agentMessage", "text": LONG_MESSAGE}]}]}
+
+    class Connection:
+        def request(self, method, params):
+            if method != "thread/read":
+                raise RuntimeError("Unexpected prototype request")
+            return {"thread": thread}
+
+    frame._list_timer.Stop()  # keep the injected fixture, never enable live discovery
+    frame.sessions = SessionController([ClaudeConversations(), CodexProvider(Connection())])
+    snapshot = dataclasses.replace(frame._snapshot,
+                                   sessions=[*frame._snapshot.sessions, session_from_thread(thread, False)])
+    frame._apply_snapshot(snapshot, [], {}, False)
+    _open(frame, "Codex history preview")
+
+
+def s_main_codex_filter(frame, env):
+    from thechatplace.sessions import FIELD_PROVIDER, VIEW_CODEX
+
+    s_main_codex(frame, env)
+    frame.speech.session_fields = ["title", FIELD_PROVIDER, "folder", "status"]
+    frame._apply_view(VIEW_CODEX)
+
+
+def s_main_codex_last_message(frame, env):
+    from thechatplace.sessions import FIELD_LAST_MESSAGE, FIELD_PROVIDER, VIEW_CODEX
+
+    s_main_codex(frame, env)
+    frame.speech.session_fields = ["title", FIELD_PROVIDER, FIELD_LAST_MESSAGE]
+    frame.sessions._providers["codex"].fill_last_messages(
+        s for s in frame._snapshot.sessions if s.provider == "codex")
+    frame._apply_view(VIEW_CODEX)
+
+
+def s_main_codex_unavailable(frame, env):
+    import dataclasses
+
+    s_main_codex(frame, env)
+    snapshot = dataclasses.replace(frame._snapshot, stale_providers={"codex"},
+                                  provider_errors={"codex": "Session discovery unavailable"},
+                                  newly_failed_providers={"codex"})
+    frame._apply_snapshot(snapshot, [], {}, False)
+
+
 def s_main_activity(frame, env):
     _open(frame, "Fix the flaky upload test")
     frame.activity_check.SetValue(True)
@@ -727,6 +783,12 @@ def d_properties(frame, env):
     return frame.on_properties
 
 
+def d_properties_codex(frame, env):
+    s_main_codex(frame, env)
+    frame.session_list.SetFocus()
+    return frame.on_properties
+
+
 def d_about_you(frame, env):
     home = env["tmp"] / "claude"
     (home / "skills" / "release").mkdir(parents=True, exist_ok=True)
@@ -768,6 +830,14 @@ SURFACES = {
                          "An own session with two files attached to the next message"),
     "main-desktop": ("window", s_main_desktop,
                      "A desktop app session loaded: the read-only panel instead of a reply box"),
+    "main-codex": ("window", s_main_codex,
+                   "Synthetic Codex history in the shared window: read-only controls and Codex labels"),
+    "main-codex-filter": ("window", s_main_codex_filter,
+                          "Synthetic Codex-only list with explicit Provider column"),
+    "main-codex-last-message": ("window", s_main_codex_last_message,
+                                "Synthetic Codex last-message column populated through the adapter"),
+    "main-codex-unavailable": ("window", s_main_codex_unavailable,
+                               "Cached synthetic Codex history with a redacted discovery outage notice"),
     "main-activity": ("window", s_main_activity, "Show tool activity turned on"),
     "main-last-message": ("window", s_main_last_message,
                           "The session list with the Last message column (#146)"),
@@ -797,6 +867,8 @@ SURFACES = {
     "changes": ("dialog", d_changes, "View, Changed Files"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
     "properties": ("dialog", d_properties, "View, Properties of a session"),
+    "properties-codex": ("dialog", d_properties_codex,
+                         "Properties of a synthetic Codex chat with provider-specific history labels"),
     "about-you": ("dialog", d_about_you, "View, What Claude Knows About You"),
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
     "prompts": ("dialog", d_prompts, "File, Prompts"),
@@ -839,6 +911,7 @@ DIALOG_CLASSES = {
     "changes": "ChangesDialog",
     "usage": "UsageDialog",
     "properties": "PropertiesDialog",
+    "properties-codex": "PropertiesDialog",
     "about-you": "AboutYouDialog",
     "session-columns": "SessionColumnsDialog",
     "prompts": "PromptsDialog",

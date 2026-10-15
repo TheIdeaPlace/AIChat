@@ -57,8 +57,7 @@ def test_other_backend_never_uses_claude_transcript_paths(monkeypatch):
 def test_claude_discovery_ignores_foreign_owned_records_with_colliding_ids(tmp_path, monkeypatch):
     monkeypatch.setattr(hub, "terminal_projects_dir", lambda: tmp_path / "projects")
     claude = OwnSession("same", "Claude owned", str(tmp_path))
-    from types import SimpleNamespace
-    codex = SimpleNamespace(provider="codex", cli_session_id="same")
+    codex = OwnSession("same", "Codex owned", str(tmp_path), provider="codex")
     snapshot = hub.collect([claude, codex], {"same"}, desktop_dir=tmp_path / "desktop",
                            live_dir=tmp_path / "live")
     assert [(s.provider, s.key, s.title) for s in snapshot.sessions] == [

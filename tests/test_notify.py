@@ -9,11 +9,6 @@ import wx.adv  # noqa: E402
 from thechatplace.ui import notify  # noqa: E402
 
 
-@pytest.fixture(scope="module")
-def app():
-    return wx.GetApp() or wx.App(False)
-
-
 class FakeIcon:
     made = []
 
@@ -125,3 +120,8 @@ def test_the_apps_own_icon_is_shipped_and_used(app):
     bundle = wx.IconBundle(str(path))
     assert bundle.GetIconCount() >= 5
     assert notify.app_icon(16).GetWidth() == 16
+
+
+@pytest.fixture(scope="module")
+def app():
+    return wx.GetApp() or wx.App(False)

@@ -5,6 +5,37 @@ from records import assistant_block, lines, text_block, tool_use_block, user_tex
 
 from thechatplace import search
 from thechatplace.search import Target, describe_moment, search_sessions, snippet
+from thechatplace.transcript import ASSISTANT, TOOL, ChatMessage, Transcript
+
+
+def test_backend_history_search_needs_no_claude_file_and_keeps_speaker():
+    history = Transcript(messages=[
+        ChatMessage(ASSISTANT, "Migration ready", key="item-1", assistant_name="Codex"),
+        ChatMessage(TOOL, "Migration tool", key="tool-1"),
+    ])
+
+    def wrong_path():
+        raise AssertionError("Backend history must not look for a Claude file")
+
+    target = Target("codex:one", "Build", wrong_path, read_history=lambda: history)
+    results = search_sessions([target], "migration")
+    assert [(m.message_key, m.who) for m in results.matches] == [("item-1", "Codex")]
+    assert results.searched == 1 and results.unreadable == 0
+    target.with_activity = True
+    assert len(search_sessions([target], "migration").matches) == 2
+
+
+def test_unavailable_backend_history_does_not_stop_other_searches(tmp_path):
+    def broken():
+        raise OSError("Backend disconnected")
+
+    good = _transcript(tmp_path, "good", user_text("hello"))
+    targets = [Target("codex:missing", "Missing", lambda: None, read_history=lambda: None),
+               Target("codex:broken", "Broken", lambda: None, read_history=broken),
+               _target("claude:good", "Good", good)]
+    results = search_sessions(targets, "hello")
+    assert results.unreadable == 2 and results.searched == 1
+    assert results.matches[0].title == "Good"
 
 
 def _transcript(tmp_path, name, *records):

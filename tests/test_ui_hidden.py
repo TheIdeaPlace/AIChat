@@ -26,6 +26,93 @@ from fake_env import (FAKE_COMMANDS, FakeRunner, add_desktop, add_transcript,  #
                       now_ms, pump)
 
 
+def test_window_close_starts_provider_cleanup_off_ui_thread(frame):
+    from thechatplace.session_controller import SessionController
+
+    entered, release = threading.Event(), threading.Event()
+    threads = []
+
+    class Backend:
+        provider_id = "codex"
+
+        def close(self):
+            threads.append(threading.current_thread())
+            entered.set()
+            assert release.wait(5)
+
+    class CloseEvent:
+        skipped = False
+
+        def CanVeto(self):
+            return False
+
+        def Skip(self):
+            self.skipped = True
+
+    frame.sessions = SessionController([Backend()])
+    event = CloseEvent()
+    try:
+        frame._on_close(event)
+        assert event.skipped
+        assert entered.wait(2)
+        assert threads == [frame._provider_cleanup]
+        assert threads[0] is not threading.current_thread()
+        assert not threads[0].daemon
+        frame._close_providers()
+        assert len(threads) == 1
+    finally:
+        release.set()
+        frame._provider_cleanup.join(5)
+    assert not frame._provider_cleanup.is_alive()
+    assert not frame._provider_cleanup_failed
+
+
+def test_provider_cleanup_failure_does_not_skip_other_backends(frame):
+    from thechatplace.session_controller import SessionController
+
+    closed = []
+
+    class Backend:
+        def __init__(self, provider_id):
+            self.provider_id = provider_id
+
+        def close(self):
+            closed.append(self.provider_id)
+            if self.provider_id == "codex":
+                raise RuntimeError("private backend diagnostic")
+
+    frame.sessions = SessionController([Backend("codex"), Backend("claude")])
+    frame._close_providers()
+    frame._provider_cleanup.join(5)
+    assert not frame._provider_cleanup.is_alive()
+    assert closed == ["codex", "claude"]
+    assert frame._provider_cleanup_failed
+
+
+def test_stale_provider_refresh_and_recovery_do_not_announce_finished_chat(frame, monkeypatch):
+    from thechatplace.sessions import IDLE, WORKING, SessionInfo
+    from thechatplace.ui import main_frame
+
+    settle(frame)
+    codex = SessionInfo("external", "codex:one", "Codex chat", "", "one",
+                        provider="codex", state=IDLE)
+    snapshots = [hub.Snapshot(sessions=[codex], stale_providers={"codex"}),
+                 hub.Snapshot(sessions=[codex])]
+    frame._previous_states = {codex.key: WORKING}
+    frame._first_snapshot = False
+    frame.speech.announce_all_sessions = True
+    replies = []
+    monkeypatch.setattr(frame.sessions, "collect", lambda *args, **kwargs: snapshots.pop(0))
+    monkeypatch.setattr(frame.sessions, "last_reply", lambda info: replies.append(info.key) or "Done")
+    frame.refresh_sessions()
+    assert pump(lambda: not frame._snapshot_busy)
+    assert codex.key not in frame._previous_states
+    frame.refresh_sessions()
+    assert pump(lambda: not frame._snapshot_busy)
+    assert frame._previous_states == {codex.key: IDLE}
+    assert replies == []
+
+
 def test_reader_factory_runs_off_ui_thread_and_preserves_backend_speaker(frame, monkeypatch):
     from thechatplace.transcript import ASSISTANT, ChatMessage, Transcript
     from thechatplace.session_controller import SessionController
@@ -725,6 +812,9 @@ def test_a_cancelled_quit_leaves_the_window_working(frame, env, fake_runner, mon
     frame._on_close(event)
     assert event.GetVeto() and not frame._closing
     assert not fake_runner.instances[0].cancelled
+    assert frame._provider_cleanup is None
+    # The synthetic runner has no transcript yet, but routing remains usable.
+    assert frame.sessions.has_history(frame._open) is False
 
 
 def test_store_write_failure_is_reported_and_send_state_still_updates(frame, env,
@@ -1726,7 +1816,7 @@ def test_answering_sends_the_response_and_announces_the_next(frame, env, monkeyp
     assert [r[0] for r in runner.responses] == ["r1", "r2"]
     assert frame._pending["own-1"] == []
     frame.on_answer()
-    assert env["feedback"][-1] == "Claude isn't waiting for an answer."
+    assert env["feedback"][-1] == "No session is waiting for an answer."
 
 
 def test_answer_later_leaves_it_waiting(frame, env, monkeypatch):
@@ -5455,7 +5545,7 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
         assert dialog.shown.GetString(0) == "Title"
         # Started (#209) and Last message (#146) aren't shown by default.
         assert list(dialog.available.GetStrings()) == [
-            "Started (when the session began)", "Last message"]
+            "Provider (Claude or Codex)", "Started (when the session began)", "Last message"]
         assert dialog.preview.GetValue().startswith("Blocked one, Repo, needs you")
         dialog.shown.SetSelection(2)  # Status
         dialog.move_to_end(top=True)
@@ -5510,16 +5600,19 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert said[-1] == "Columns reset to the default: 10 shown, title first."
         assert dialog.fields()[0] == "title" and len(dialog.fields()) == 10
         assert list(dialog.available.GetStrings()) == [
-            "Started (when the session began)", "Last message"]
+            "Provider (Claude or Codex)", "Started (when the session began)", "Last message"]
         dialog.available.SetSelection(0)
         dialog.add()
-        assert said[-1] == "Started added, 11 of 11."
+        assert said[-1] == "Provider added, 11 of 11."
+        dialog.available.SetSelection(0)
+        dialog.add()
+        assert said[-1] == "Started added, 12 of 12."
         # Adding the last one left moves you to Shown, on it.
         dialog.available.SetSelection(0)
         focused.clear()
         dialog.add()
-        assert said[-1] == "Last message added, 12 of 12."
-        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 11
+        assert said[-1] == "Last message added, 13 of 13."
+        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 12
         assert list(dialog.available.GetStrings()) == ["Every column is shown."]
         dialog.add()
         assert said[-1] == "Every column is shown already."
@@ -8376,15 +8469,14 @@ def test_session_properties_survive_a_failing_read(frame, env, monkeypatch):
 
 
 def test_a_second_alt_enter_while_reading_is_ignored(frame, env, monkeypatch):
-    from thechatplace.ui import main_frame
     add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi")])
     release = threading.Event()
-    real = frame.sessions.open_reader_with_facts
+    real = frame.sessions.read
 
     def slow(path):
         release.wait(5)
         return real(path)
-    monkeypatch.setattr(frame.sessions, "open_reader_with_facts", slow)
+    monkeypatch.setattr(frame.sessions, "read", slow)
     seen = _properties(frame, monkeypatch)
     select(frame, "Quiet one")
     _alt_enter(frame, monkeypatch, frame.session_list)
@@ -8532,6 +8624,274 @@ def test_properties_dialog_is_named_for_screen_readers(frame):
         dialog.Destroy()
 
 
+@pytest.mark.parametrize("handler", ["on_send", "on_stop", "on_continue_here",
+    "on_remote_control", "on_other_machines", "on_usage", "on_changes", "on_copy_session_link",
+    "on_delete_permanently", "on_attach_files", "on_insert_command", "on_turn_status",
+    "remove_queued", "send_queued_now", "edit_queued"])
+def test_codex_commands_never_reach_claude_with_colliding_id(frame, monkeypatch, handler):
+    from types import SimpleNamespace
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.session_controller import SessionController
+
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    foreign = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    calls = []
+
+    class NeverConnect:
+        def request(self, *args):
+            raise AssertionError("Command guard must not perform RPC")
+
+    frame.sessions = SessionController([ClaudeConversations(), CodexProvider(NeverConnect())])
+    frame._open = foreign
+    monkeypatch.setattr(frame, "_selected_session", lambda: foreign)
+    frame._runners[owned.cli_session_id] = SimpleNamespace(cancel=lambda: calls.append("cancel"))
+    frame._pending[owned.cli_session_id] = [object()]
+    monkeypatch.setattr(frame, "_feedback", calls.append)
+    getattr(frame, handler)()
+    assert len(calls) == 1 and "isn't available for Codex" in calls[0]
+    assert frame.store.get(owned.cli_session_id).title == owned.title
+    frame._runners.clear()
+    frame._pending.clear()
+
+
+def test_codex_drafts_and_queues_do_not_reuse_claude_native_id(frame):
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    frame._open = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._drafts[owned.cli_session_id] = "Claude draft"
+    frame._queued[owned.cli_session_id] = ["Claude queued prompt"]
+    frame.reply_text.SetValue("Foreign text")
+    frame._save_draft()
+    assert frame._drafts[owned.cli_session_id] == "Claude draft"
+    assert frame._queued_rows() == []
+    frame._update_send_state()
+    assert not frame.send_btn.IsEnabled() and not frame.stop_btn.IsEnabled()
+
+
+def test_owned_codex_rename_uses_provider_identity(frame):
+    from thechatplace.own_store import OwnSession
+
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    codex = OwnSession(owned.cli_session_id, "Owned Codex", owned.cwd, provider="codex")
+    frame.store.add(codex)
+    frame.rename_session(codex.to_info(), "Renamed Codex")
+    assert frame.store.get(owned.cli_session_id).title == owned.title
+    assert frame.store.get(owned.cli_session_id, "codex").title == "Renamed Codex"
+
+
+@pytest.mark.parametrize("owned", [False, True])
+def test_codex_history_uses_read_only_panel_and_own_provider_metadata(frame, monkeypatch, owned):
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.session_controller import SessionController
+    from thechatplace.sessions import OWN
+
+    settle(frame)
+    claude = next(s for s in frame._snapshot.sessions if s.is_own)
+    foreign = dataclasses.replace(claude, provider="codex", key=f"codex:{claude.cli_session_id}",
+                                  source=OWN if owned else "external", unread=True)
+
+    class Connection:
+        def request(self, method, params):
+            assert method == "thread/read"
+            return {"thread": {"id": foreign.cli_session_id, "turns": []}}
+
+    frame.sessions = SessionController([ClaudeConversations(), CodexProvider(Connection())])
+    original_unread = frame.store.get(claude.cli_session_id).unread
+    frame._drafts[claude.cli_session_id] = "Claude draft"
+    frame.open_session(foreign)
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+    assert not frame.own_reply.IsShown()
+    assert frame.desktop_reply.IsShown()
+    assert "Reply in Codex" in frame.desktop_note.GetValue()
+    assert not frame.continue_btn.IsShown() and not frame.reply_claude_btn.IsShown()
+    assert not frame.send_btn.IsEnabled() and not frame.stop_btn.IsEnabled()
+    assert not frame.reply_text.GetValue()
+    assert "read-only" in frame.messages_label.GetLabelText()
+    assert frame._prompt_refused()
+    assert frame.store.get(claude.cli_session_id).unread == original_unread
+
+
+@pytest.mark.parametrize("owned", [False, True])
+def test_codex_history_announces_new_reply_once_without_a_claude_runner(frame, env, owned):
+    from thechatplace.sessions import OWN
+    from thechatplace.transcript import ASSISTANT, ChatMessage
+
+    settle(frame)
+    claude = next(s for s in frame._snapshot.sessions if s.is_own)
+    frame._open = dataclasses.replace(claude, provider="codex", title="Codex history",
+                                     key="codex:synthetic", source=OWN if owned else "external")
+    frame._chat_loaded = True
+    message = ChatMessage(ASSISTANT, "The Codex result.", "", "codex-reply")
+    env["spoken"].clear()
+    frame._apply_chat(frame._open_generation, True, [message], 0, None)
+    frame._apply_chat(frame._open_generation, True, [message], 0, None)
+    assert sum("The Codex result" in text for text in env["spoken"]) == 1
+
+
+def test_window_refresh_uses_shared_discovery_and_preserves_rows_during_codex_outage(frame, monkeypatch):
+    from thechatplace.providers.base import Snapshot
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.session_controller import SessionController
+    from thechatplace.sessions import SessionInfo
+
+    settle(frame)
+    threads = []
+
+    class Backend:
+        provider_id = "codex"
+        failed = False
+
+        def collect(self):
+            threads.append(threading.current_thread())
+            if self.failed:
+                raise RuntimeError("private backend details")
+            return Snapshot(sessions=[SessionInfo("external", "codex:synthetic",
+                "Synthetic Codex", "", "synthetic", provider="codex")])
+
+    backend = Backend()
+    frame.sessions = SessionController([ClaudeConversations(), backend])
+    frame.refresh_sessions()
+    assert pump(lambda: not frame._snapshot_busy)
+    claude_keys = {s.key for s in frame._snapshot.sessions if s.provider == "claude"}
+    assert claude_keys and "codex:synthetic" in frame._list_keys
+    backend.failed = True
+    frame.refresh_sessions()
+    assert pump(lambda: not frame._snapshot_busy)
+    assert "codex:synthetic" in frame._list_keys
+    assert {s.key for s in frame._snapshot.sessions if s.provider == "claude"} == claude_keys
+    assert frame._snapshot.stale_providers == {"codex"}
+    assert frame._snapshot.newly_failed_providers == {"codex"}
+    assert "private" not in str(frame._snapshot.provider_errors)
+    backend.failed = False
+    frame.refresh_sessions()
+    assert pump(lambda: not frame._snapshot_busy)
+    assert not frame._snapshot.stale_providers
+    assert all(t is not threading.main_thread() for t in threads)
+
+
+def test_claude_discovery_outage_is_reported_once_and_recovers(frame, env, monkeypatch):
+    from thechatplace.ui import main_frame
+
+    settle(frame)
+    real_collect = main_frame.collect
+    keys = set(frame._list_keys)
+    env["feedback"].clear()
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("private path and credential")
+
+    monkeypatch.setattr(main_frame, "collect", broken)
+    for _ in range(2):
+        frame.refresh_sessions()
+        assert pump(lambda: not frame._snapshot_busy)
+        assert set(frame._list_keys) == keys
+    outages = [text for text in env["feedback"] if "discovery is unavailable" in text]
+    assert len(outages) == 1 and "Claude" in outages[0] and "out of date" in outages[0]
+    assert "private" not in str(env["feedback"])
+    monkeypatch.setattr(main_frame, "collect", real_collect)
+    frame.refresh_sessions()
+    assert pump(lambda: not frame._snapshot_busy)
+    assert not frame._snapshot.stale_providers
+    monkeypatch.setattr(main_frame, "collect", broken)
+    frame.refresh_sessions()
+    assert pump(lambda: not frame._snapshot_busy)
+    assert sum("discovery is unavailable" in text for text in env["feedback"]) == 2
+
+
+def test_settings_codex_option_is_named_and_read_only(frame):
+    from thechatplace.ui.dialogs import SettingsDialog
+
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        assert "Codex" in dialog.codex_enabled.GetLabelText()
+        assert "read-only" in dialog.codex_enabled.GetLabelText()
+        assert not dialog.get_settings().codex_enabled
+        dialog.codex_enabled.SetValue(True)
+        assert dialog.get_settings().codex_enabled
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_opt_in_startup_lists_and_opens_synthetic_codex_history(env, monkeypatch, enabled):
+    from thechatplace.providers import codex
+    from thechatplace.ui.main_frame import MainFrame
+
+    calls = []
+    real_provider = codex.CodexProvider
+    thread = {"id": "synthetic", "name": "Codex fixture", "cwd": "/synthetic",
+        "status": {"type": "notLoaded"}, "turns": [{"id": "turn", "items": [
+            {"type": "agentMessage", "id": "answer", "text": "Synthetic reply"}]}]}
+
+    class Connection:
+        def request(self, method, params):
+            calls.append(method)
+            if method == "thread/list":
+                return {"data": [] if params["archived"] else [thread], "nextCursor": None}
+            assert method == "thread/read"
+            return {"thread": thread}
+
+    monkeypatch.setattr(codex, "CodexProvider", lambda: real_provider(Connection()))
+    speech.SpeechSettings(codex_enabled=enabled).save()
+    add_desktop(env, "local_a", "cli-a", "Claude fixture")
+    window = MainFrame(store=OwnSessionStore(env["tmp"] / "own.json"), check_updates_at_start=False)
+    try:
+        assert pump(lambda: not window._first_snapshot and not window._snapshot_busy)
+        assert any(s.provider == "claude" for s in window._snapshot.sessions)
+        foreign = [s for s in window._snapshot.sessions if s.provider == "codex"]
+        assert bool(foreign) is enabled
+        if enabled:
+            assert "Codex chat" in window.session_list.GetString(window._list_keys.index("codex:synthetic"))
+            window.speech.session_fields = ["title", "provider", "status"]
+            window.on_view("provider:codex")
+            assert window._list_keys == ["codex:synthetic"]
+            assert ", Codex," in window.session_list.GetString(0)
+            window.on_view("provider:claude")
+            assert window._list_keys == ["local_a"]
+            window.on_view("provider:codex")
+            window.open_session(foreign[0])
+            assert pump(lambda: window._chat_loaded and not window._reader_busy)
+            assert window.chat_list.GetString(0).startswith("Codex:")
+            assert window.desktop_reply.IsShown() and not window.own_reply.IsShown()
+        else:
+            assert not calls
+    finally:
+        window.stop_timers()
+        window._pool.shutdown(wait=True)
+        wx.GetApp().ProcessPendingEvents()
+        window.sessions.close()
+        window.Destroy()
+        wx.GetApp().ProcessPendingEvents()
+
+
+@pytest.mark.parametrize('state,heard', [('status unavailable', False), ('idle', True)])
+def test_codex_messages_name_preserves_read_only_and_known_status(frame, state, heard):
+    settle(frame)
+    info = next(iter(frame._snapshot.sessions))
+    frame._open = dataclasses.replace(info, provider='codex', state=state,
+                                     detail='', title='Codex reading', key='codex:fixture')
+    frame._update_messages_label()
+    label = frame.messages_label.GetLabelText()
+    assert 'read-only' in label and 'Codex reading' in label
+    assert ('status unavailable' in label) is False
+    assert ('idle' in label) is heard
+
+
+def test_codex_read_failure_is_plain_and_hides_private_backend_error(frame):
+    settle(frame)
+    info = next(iter(frame._snapshot.sessions))
+    frame._open = dataclasses.replace(info, provider='codex', key='codex:fixture')
+    frame._chat_loaded = False
+    frame._apply_chat(frame._open_generation, False, [], 0,
+                     ValueError('private payload transcript pagination'))
+    line = frame.chat_list.GetString(0)
+    assert line == "Couldn't load this Codex chat. Try again, or open it in Codex to read it."
+
+
 def test_store_validation_failure_is_reported_without_escaping_event_handler(frame, env):
     def invalid():
         raise ValueError('synthetic duplicate session identity')
@@ -8543,3 +8903,20 @@ def test_unknown_provider_export_does_not_reach_claude_paths(frame, monkeypatch)
     info = dataclasses.replace(frame._snapshot.sessions[0], provider='missing')
     monkeypatch.setattr(type(info), 'transcript_path', lambda *_: pytest.fail('Foreign path lookup'))
     assert frame._export_source(info) == (None, None)
+
+
+def test_answer_targets_waiting_claude_chat_while_reading_codex(frame, monkeypatch):
+    settle(frame)
+    owned = next(info for info in frame._snapshot.sessions if info.is_own)
+    frame._open = dataclasses.replace(owned, provider='codex', key='codex:' + owned.cli_session_id)
+    request = _request()
+    frame._pending[owned.cli_session_id] = [request]
+    asked, answered = [], []
+    def ask(title, actual_request, record):
+        asked.append((actual_request, record.provider))
+        return {}, 'Answered', {}
+    monkeypatch.setattr(frame, '_ask', ask)
+    monkeypatch.setattr(frame, '_apply_answer', lambda native_id, *args: answered.append(native_id))
+    frame.on_answer()
+    assert asked == [(request, 'claude')] and answered == [owned.cli_session_id]
+    frame._pending.clear()

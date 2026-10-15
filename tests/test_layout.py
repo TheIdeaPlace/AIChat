@@ -63,7 +63,9 @@ def test_each_surface_lays_out_cleanly(name, app, tmp_path, monkeypatch):
         fake_env.pump(lambda: False, timeout=0.3)
         measured.append(_problems(dialog))
         return wx.ID_CANCEL
-    for cls in (wx.Dialog, wx.TextEntryDialog):
+    # Native common dialogs override ShowModal rather than inheriting the
+    # patched wx.Dialog method. Intercept each one or CI opens a real modal.
+    for cls in (wx.Dialog, wx.TextEntryDialog, wx.SingleChoiceDialog):
         monkeypatch.setattr(cls, "ShowModal", measure)
     empty = name in ui_probe.EMPTY_WORLD
     env = ui_probe.build_world(tmp_path, monkeypatch.setattr, empty=empty, formatted_view=False)

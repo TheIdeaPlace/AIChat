@@ -786,6 +786,12 @@ class SettingsDialog(wx.Dialog):
         self.remote_control.SetValue(speech.remote_control)
         outer.Add(self.remote_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        self.codex_enabled = wx.CheckBox(self, label=_wrapped(
+            self, "Include local Code&x chats (read-only; restart required)",
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
+        self.codex_enabled.SetValue(speech.codex_enabled)
+        outer.Add(self.codex_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         # #141: the dialog at the first start after an update.
         self.update_notice = wx.CheckBox(
             self, label="&Tell me when an update has been installed, with a link to what's new")
@@ -856,6 +862,7 @@ class SettingsDialog(wx.Dialog):
                                    notifications=NOTIFY_LEVELS[max(
                                        self.notify_choice.GetSelection(), 0)],
                                    remote_control=self.remote_control.GetValue(),
+                                   codex_enabled=self.codex_enabled.GetValue(),
                                    update_installed_notice=self.update_notice.GetValue(),
                                    recent_folder_limit=self.recent_limit.GetValue())
 

@@ -80,11 +80,13 @@ class SessionInfo:
     #: The Last message column (#146), "Claude: ..." or "You: ...", filled
     #: in by the snapshot only while that column is shown ("" otherwise).
     last_message: str = ""
-
+    #: Agent backend, separate from where a session was discovered. Existing
+    #: Claude keys stay unchanged so groups, hidden rows and titles survive.
     provider: str = "claude"
 
     @property
     def identity(self) -> tuple[str, str]:
+        """Backend-aware identity for new controller state."""
         return self.provider, self.cli_session_id or self.desktop_session_id
 
     @property
@@ -129,7 +131,8 @@ class SessionInfo:
         where Claude Code puts it (no search of every project folder, as
         ``transcript_path`` does when that misses): this is asked of every
         session on every refresh of the list."""
-        if self.provider != "claude" or not self.cli_session_id or not platform_paths.is_safe_id(self.cli_session_id):
+        if (self.provider != "claude" or not self.cli_session_id
+                or not platform_paths.is_safe_id(self.cli_session_id)):
             return 0
         root = self.claude_home / "projects" if self.claude_home is not None else None
         try:
@@ -146,7 +149,10 @@ class SessionInfo:
         something to say. A row never comes out empty: with nothing to say
         in any shown column, it reads the title."""
         values = self.field_values(now_ms)
-        order = DEFAULT_FIELDS if fields is None else fields
+        order = DEFAULT_FIELDS if fields is None else list(fields)
+        if (self.provider == "codex" and self.state == "status unavailable"
+                and order == DEFAULT_FIELDS):
+            values[FIELD_STATUS] = ""
         parts = [values[f] for f in order if values.get(f)]
         return ", ".join(parts) or values[FIELD_TITLE]
 
@@ -156,6 +162,8 @@ class SessionInfo:
         if self.detail:
             state = f"{state}: {self.detail}"
         kind = []
+        if self.provider != "claude":
+            kind.append(f"{self.provider.capitalize()} chat")
         if self.is_own:
             kind.append("Chat Place session")
         if self.cowork:
@@ -168,6 +176,7 @@ class SessionInfo:
                       + ", ".join(self.groups))
         return {
             FIELD_TITLE: self.title or "Untitled session",
+            FIELD_PROVIDER: self.provider.capitalize(),
             FIELD_FOLDER: self.repo,
             FIELD_STATUS: state,
             FIELD_NEW_REPLY: "new reply" if self.unread else "",
@@ -188,6 +197,7 @@ class SessionInfo:
 #: of that string, and View, Session List Columns chooses which parts and in
 #: what order. The ids are saved in settings.json; never rename one.
 FIELD_TITLE = "title"
+FIELD_PROVIDER = "provider"
 FIELD_FOLDER = "folder"
 FIELD_STATUS = "status"
 FIELD_NEW_REPLY = "new_reply"
@@ -210,6 +220,7 @@ FIELDS = [
     (FIELD_ARCHIVED, "Archived"),
     (FIELD_HIDDEN, "Hidden"),
     (FIELD_GROUPS, "Groups"),
+    (FIELD_PROVIDER, "Provider (Claude or Codex)"),
     (FIELD_STARTED, "Started (when the session began)"),
     (FIELD_LAST_MESSAGE, "Last message"),
 ]
@@ -218,7 +229,7 @@ FIELD_NAMES = dict(FIELDS)
 #: Columns there are but rows don't read until you add them: Last message
 #: (#146) reads each session's transcript, and makes every row long; Started
 #: (#209) is there for those who want it, not news for everyone.
-OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE)
+OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE, FIELD_PROVIDER)
 #: The columns rows read unless you choose otherwise, in the order they
 #: have always been read. A saved order lists its columns, so one saved
 #: before a column was added doesn't gain it.
@@ -315,6 +326,8 @@ VIEW_REMOTE = "remote"
 VIEW_UNGROUPED = "ungrouped"
 VIEW_ARCHIVED = "archived"
 VIEW_HIDDEN = "hidden"
+VIEW_CLAUDE = "provider:claude"
+VIEW_CODEX = "provider:codex"
 GROUP_VIEW_PREFIX = "group:"
 VIEWS = [
     (VIEW_ALL, "&All Sessions"),
@@ -329,11 +342,14 @@ VIEWS = [
     (VIEW_TERMINAL, "&Terminal Sessions"),
     (VIEW_REMOTE, "&Remote Control Sessions"),
     (VIEW_UNGROUPED, "&Ungrouped"),
+    (VIEW_CLAUDE, "C&laude Chats"),
+    (VIEW_CODEX, "Code&x Chats"),
     (VIEW_ARCHIVED, "Archi&ved"),
     (VIEW_HIDDEN, "&Hidden"),
 ]
 #: Said and shown in the list's name: "showing needs you or working".
-VIEW_SPOKEN = {VIEW_ALL: "all sessions", VIEW_ACTIVE: "needs you or working",
+VIEW_SPOKEN = {VIEW_CLAUDE: "Claude chats", VIEW_CODEX: "Codex chats",
+               VIEW_ALL: "all sessions", VIEW_ACTIVE: "needs you or working",
                VIEW_NEEDS_YOU: "needs you", VIEW_WORKING: "working sessions",
                VIEW_NEW_REPLY: "sessions with a new reply", VIEW_IDLE: "idle sessions",
                VIEW_DESKTOP: "desktop app sessions",
@@ -368,6 +384,8 @@ def in_view(info: SessionInfo, view: str) -> bool:
         return info.archived
     if info.archived:
         return False
+    if view in (VIEW_CLAUDE, VIEW_CODEX):
+        return info.provider == view.removeprefix("provider:")
     if view == VIEW_ACTIVE:
         return info.state in (NEEDS_YOU, WORKING)
     if view == VIEW_NEEDS_YOU:
@@ -377,7 +395,8 @@ def in_view(info: SessionInfo, view: str) -> bool:
     if view == VIEW_NEW_REPLY:
         return info.unread
     if view == VIEW_IDLE:
-        return info.state not in (NEEDS_YOU, WORKING)
+        return (info.state == IDLE if info.provider != "claude"
+                else info.state not in (NEEDS_YOU, WORKING))
     if view == VIEW_DESKTOP:
         return info.source == DESKTOP
     if view == VIEW_COWORK:

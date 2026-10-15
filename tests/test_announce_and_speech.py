@@ -283,3 +283,13 @@ def test_what_is_still_running_in_the_background():
         "Still running in the background: Build; Watch CI."
     assert background_text([]) == "Still running in the background."
     assert background_text(["", " "]) == "Still running in the background."
+
+
+@pytest.mark.parametrize("value", [True, False, "true", 1, None])
+def test_codex_discovery_is_strictly_opt_in_and_persists(tmp_path, value):
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"codex_enabled": value}))
+    settings = SpeechSettings.load(path)
+    assert settings.codex_enabled is (value is True)
+    settings.save(path)
+    assert SpeechSettings.load(path).codex_enabled is (value is True)
