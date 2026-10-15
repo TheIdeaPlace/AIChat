@@ -817,14 +817,28 @@ def test_final_pipe_flush_only_tolerates_completed_cleanup(monkeypatch, platform
 
 
 def test_late_timeout_reply_does_not_close_other_requests(server):
-    import time
+    import threading
     start, _ = server
     with ReadOnlyCodexConnection(start=start) as connection:
+        late_received = threading.Event()
+        late_id = connection._next_id + 1
+        original_receive = connection._receive
+
+        def receive(message):
+            original_receive(message)
+            if message.get('id') == late_id:
+                late_received.set()
+
+        connection._receive = receive
+        normal_timeout = connection._timeout
         connection._timeout = .05
         with pytest.raises(CodexRpcError, match='timed out'):
             connection.request('thread/read', {'mode': 'late'})
+        # Only the intentionally delayed request has a short deadline. CI may
+        # schedule an unrelated healthy response later than 50 milliseconds.
+        connection._timeout = normal_timeout
         assert connection.request('thread/list', {}) == {'echo': {}}
-        time.sleep(.3)
+        assert late_received.wait(5), 'synthetic late reply was not observed'
         assert not connection.closed and connection._reader.is_alive()
         assert connection.request('thread/list', {}) == {'echo': {}}
 
