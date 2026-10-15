@@ -535,12 +535,12 @@ still listed.
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.
 
-The parts are called columns: Title, Folder, Status, New reply, Last activity,
-Kind (desktop app, Cowork, terminal or The Chat Place), Remote Control, Archived,
-Hidden and Groups, all read at first. Provider (Claude or Codex), Started and
-Last message are read only once you add them. Provider says which AI; Kind says
-where the session started. Saved column choices remain unchanged. A column with
-nothing to say for a session is left out of its line.
+The parts are called columns: Title, Folder, Status, New reply, Last activity, Kind (desktop app,
+Cowork, terminal or The Chat Place), Remote Control, Archived, Hidden, Groups and Provider (Claude
+or Codex), all read at first. Started and Last message are read only once you add them. Provider
+says which AI; Kind says where the session started. Older saved choices gain Provider once, at
+the end, without changing their other columns. If you remove Provider afterward, it stays removed. A column with nothing to say for
+a session, such as New reply when there isn't one, is simply left out of that line.
 
 **Last activity** ("active 5 minutes ago") is the last time the session did anything, even in the
 middle of a long turn, or while it's being run outside The Chat Place. How long the turn now
@@ -561,7 +561,7 @@ a title; Ctrl+F still finds a session.
 The dialog has two lists. **Available columns** (Alt+V in the dialog) are the ones not read;
 **Shown columns** (Alt+S) are the ones read, in order. The buttons Add, Remove, Move Up, Move
 Down, Move to Top, Move to Bottom and Reset to Default do what they say, and each tells you what
-happened ("Status moved to top, 1 of 10"). The keys work too:
+happened ("Status moved to top, 1 of 11"). The keys work too:
 
 - **Enter** in Available columns adds the column to the end of the line.
 - **Delete** in Shown columns removes one (on a Mac, Delete or Fn+Delete). At least one column

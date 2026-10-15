@@ -259,7 +259,7 @@ def test_list_order_and_lines(frame):
     items = list(frame.session_list.GetStrings())
     assert items[0].startswith("Blocked one, Repo, needs you: Pick a name")
     assert items[1].startswith("Hub probe, Scratch, idle")
-    assert items[1].endswith("Chat Place session")
+    assert items[1].endswith("Chat Place session, Claude")
     assert items[2].startswith("Quiet one, Repo, idle, active 1 minute ago")
     assert frame.session_list.GetSelection() == 0
 
@@ -2041,7 +2041,7 @@ def test_cowork_session_reads_opens_in_claude_and_wont_continue(frame, env, fake
     frame.refresh_sessions(force=True, resort=True)
     settle(frame)
     row = select(frame, "Sort the receipts")
-    assert frame.session_list.GetString(row).endswith("Cowork session")
+    assert frame.session_list.GetString(row).endswith("Cowork session, Claude")
     frame.on_open_session()
     assert pump(lambda: frame._chat_loaded and frame.chat_list.GetCount() == 2)
     assert "It's 42 dollars." in frame.chat_list.GetString(1)
@@ -2803,7 +2803,7 @@ def test_show_sessions_filters_names_the_list_and_remembers(frame, env):
     assert speech.SpeechSettings.load().session_view == "needs"
     frame.on_view("archived")
     assert _titles(frame) == ["Old work"]
-    assert frame.session_list.GetString(0).endswith(", archived")
+    assert frame.session_list.GetString(0).endswith(", archived, Claude")
     frame.on_view("own")
     assert _titles(frame) == ["Hub probe"]
     frame.on_view("all")
@@ -2828,7 +2828,7 @@ def test_add_to_a_new_group_then_show_it_then_remove(frame, env, monkeypatch):
     assert env["feedback"][-1] == "Added Quiet one to Work."
     assert frame.groups.names() == ["Work"] and frame.groups.members("Work") == ["local_a"]
     row = [s for s in frame.session_list.GetStrings() if s.startswith("Quiet one")][0]
-    assert row.endswith(", group Work")
+    assert row.endswith(", group Work, Claude")
     assert "group:Work" in frame.view_items
     frame.on_view("group:Work")
     assert _titles(frame) == ["Quiet one"]
@@ -5545,28 +5545,28 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
         assert dialog.shown.GetString(0) == "Title"
         # Started (#209) and Last message (#146) aren't shown by default.
         assert list(dialog.available.GetStrings()) == [
-            "Provider (Claude or Codex)", "Started (when the session began)", "Last message"]
+            "Started (when the session began)", "Last message"]
         assert dialog.preview.GetValue().startswith("Blocked one, Repo, needs you")
         dialog.shown.SetSelection(2)  # Status
         dialog.move_to_end(top=True)
-        assert said[-1] == "Status moved to top, 1 of 10."
+        assert said[-1] == "Status moved to top, 1 of 11."
         assert dialog.fields()[:3] == ["status", "title", "folder"]
         assert dialog.shown.GetSelection() == 0 and focused[-1] == "shown"
         assert dialog.preview.GetValue().startswith("needs you: Pick a name, Blocked one")
         dialog.move(-1)
         assert said[-1] == "Status is already at the top."
         dialog.move(1)
-        assert said[-1] == "Status moved down, 2 of 10." and dialog.shown.GetSelection() == 1
+        assert said[-1] == "Status moved down, 2 of 11." and dialog.shown.GetSelection() == 1
         dialog.move_to_end(top=False)
-        assert said[-1] == "Status moved to bottom, 10 of 10."
-        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 9
+        assert said[-1] == "Status moved to bottom, 11 of 11."
+        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 10
         dialog.move(1)
         assert said[-1] == "Status is already at the bottom."
         # The keys do the same, in the Shown list only.
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_HOME, alt=True)
-        assert said[-1] == "Status moved to top, 1 of 10."
+        assert said[-1] == "Status moved to top, 1 of 11."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DOWN, alt=True)
-        assert said[-1] == "Status moved down, 2 of 10."
+        assert said[-1] == "Status moved down, 2 of 11."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_UP, alt=True)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_END, alt=True)
         assert dialog.fields()[-1] == "status"
@@ -5597,10 +5597,13 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.shown.GetSelection() == 1  # on what it added
         assert dialog.available.GetString(0) == "Folder"
         dialog.reset()
-        assert said[-1] == "Columns reset to the default: 10 shown, title first."
-        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 10
+        assert said[-1] == "Columns reset to the default: 11 shown, title first."
+        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 11
         assert list(dialog.available.GetStrings()) == [
-            "Provider (Claude or Codex)", "Started (when the session began)", "Last message"]
+            "Started (when the session began)", "Last message"]
+        dialog.shown.SetSelection(dialog.fields().index("provider"))
+        dialog.remove()
+        assert said[-1] == "Provider removed. 10 columns shown."
         dialog.available.SetSelection(0)
         dialog.add()
         assert said[-1] == "Provider added, 11 of 11."
@@ -8842,7 +8845,7 @@ def test_opt_in_startup_lists_and_opens_synthetic_codex_history(env, monkeypatch
         foreign = [s for s in window._snapshot.sessions if s.provider == "codex"]
         assert bool(foreign) is enabled
         if enabled:
-            assert "external session" in window.session_list.GetString(window._list_keys.index("codex:synthetic"))
+            assert "external session, Codex" in window.session_list.GetString(window._list_keys.index("codex:synthetic"))
             window.speech.session_fields = ["title", "provider", "status"]
             window.on_view("provider:codex")
             assert window._list_keys == ["codex:synthetic"]

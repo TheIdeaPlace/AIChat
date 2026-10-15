@@ -115,8 +115,8 @@ def test_view_names_and_row_text():
     assert view_spoken(group_view("Work")) == "group Work"
     assert view_spoken("bogus") == "all sessions"
     line = _info("x", archived=True, groups=("Work", "Home")).list_line(0)
-    assert line.endswith(", archived, groups Work, Home")
-    assert _info("y", groups=("Work",)).list_line(0).endswith(", group Work")
+    assert line.endswith(", archived, groups Work, Home, Claude")
+    assert _info("y", groups=("Work",)).list_line(0).endswith(", group Work, Claude")
 
 
 def _write(folder, local, **extra):

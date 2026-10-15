@@ -68,11 +68,10 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   **View, Session List Columns** (Alt+V, E) chooses what each line says and in what order, so
   it can start with the status rather than the title. The columns are Title, Folder,
   Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
-  Remote Control, Archived, Hidden and Groups, all shown at first, and **Started**, **Last message**
-  and **Provider (Claude or Codex)**, which aren't shown
+  Remote Control, Archived, Hidden, Groups and Provider (Claude or Codex), all shown at first, and **Started** and **Last message**, which aren't shown
   until you add them. Provider says which AI; Kind says where the session started. Other
   clients may be identified as an editor, command-line or external session. Saved custom choices
-  remain unchanged. A column with nothing to say for a session is left out of its line. Last
+  gain Provider once without changing their other columns; removing it afterward is remembered. A column with nothing to say for a session is left out of its line. Last
   activity is the last time the session did anything. While a session is working or waiting on
   you, that's when its transcript was last written, so one working through a long turn, or run
   outside The Chat Place, reads "active just now" rather than the time the turn began (#209);
