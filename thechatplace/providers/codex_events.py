@@ -138,6 +138,7 @@ class CodexTurnBuffer:
         self._final = set()
         self._characters = 0
         self._file_changes = {}
+        self._file_characters = 0
         self.truncated = False
         self.started_at = time.monotonic()
         self.activity = "Codex is working."
@@ -178,11 +179,11 @@ class CodexTurnBuffer:
                 if item_id not in self._file_changes and len(self._file_changes) >= self.MAX_ITEMS:
                     self.truncated = True
                     return True
-                remaining = max(0, self.MAX_TEXT - self._characters + len(self._file_changes.get(item_id, "")))
+                remaining = max(0, self.MAX_TEXT - self._file_characters + len(self._file_changes.get(item_id, "")))
                 if len(text) > remaining:
                     self.truncated = True
                     text = text[:remaining]
-                self._characters += len(text) - len(self._file_changes.get(item_id, ""))
+                self._file_characters += len(text) - len(self._file_changes.get(item_id, ""))
                 self._file_changes[item_id] = text
                 self.activity = "Reviewing file changes."
                 return True
@@ -208,6 +209,18 @@ class CodexTurnBuffer:
             return False  # completed item is authoritative, including late deltas
         previous = self._texts.get(item_id, "")
         replacement = previous + text if event.kind == "text_delta" else text
+        # Keep finished answers available for background speech even after a
+        # long commentary stream. Diffs have their own independent budget.
+        if event.kind == 'text_completed':
+            for old_id in tuple(self._texts):
+                if (len(self._texts) < self.MAX_ITEMS or item_id in self._texts) and (
+                        self._characters - len(previous) + len(replacement) <= self.MAX_TEXT):
+                    break
+                if old_id == item_id:
+                    continue
+                self._characters -= len(self._texts.pop(old_id))
+                self._final.discard(old_id)
+                self.truncated = True
         if item_id not in self._texts and len(self._texts) >= self.MAX_ITEMS:
             self.truncated = True
             return True

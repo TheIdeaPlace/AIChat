@@ -480,7 +480,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   on a Mac) opens a list of "Property: value" lines, read and copied like Usage and Context. In the
   session list it's the selected session; in the messages, the selected message; anywhere else,
   the loaded session. A session's lines are its title, provider, kind, folder, status, when it started and
-  was last active, the model of its latest reply (for supported owned chats, the model, effort
+  was last active, the model of its latest reply (for supported chats started here, the model, effort
   and permission mode chosen), how many messages, your messages, the provider's replies, tool calls,
   links, code blocks and changed files it has, how full its context is, how many times it was
   compacted, its groups, Remote Control, whether it's archived or hidden, its session and desktop
@@ -522,20 +522,20 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
 alongside Claude chats. A native Codex CLI must be available and signed in to
 ChatGPT. Selecting a Codex chat automatically opens its history; messages,
 formatted reading, Find and export use Codex. New Session offers a Provider choice: choose Codex to start a chat here.
-Model and Effort offer Codex's advertised choices in New Session and Continue Here. Leave
+Model and Effort offer the model and effort choices available in Codex in New Session and Continue Here. Leave
 Configured Codex model/effort selected to use its settings. Effort choices follow the selected
 model; choices load in the background and are rechecked before the chat starts. If loading fails,
 configured defaults remain available. New Codex chats default to editing files in their selected folder with on-request approvals.
-Choose read-only in New Session, or change an idle owned chat with File, Change
+Choose read-only in New Session, or change an idle chat started here with File, Change
 Permission Mode (Ctrl+Shift+O). Existing chats retain their saved permissions.
-Continue Here copies a local Codex chat into a new owned chat. Owned chats
+Continue Here copies a local Codex chat into a new chat started here. These chats
 support text replies, Stop, queued messages and Answer (Ctrl+Shift+A) for
 one-time permissions and questions. Externally started Codex chats remain read-only. Turning the
 option off and restarting hides Codex without removing its saved preferences.
 Quitting The Chat Place requests a stop for its running Codex replies.
 Revisiting a chat preserves its running turn. The Chat Place refuses to resume a saved
 chat whose latest turn is unfinished or uncertain. If the connection is lost,
-use Stop to check the native turn and reconnect once it has ended. No message
+use Stop to check the saved turn and reconnect once it has ended. No message
 is resent. Selecting the chat again does not automatically reconnect. If
 Codex still reports unfinished work, The Chat Place refuses recovery and says why.
 Requests The Chat Place cannot present safely are declined with a notice; they do not

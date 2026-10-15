@@ -152,3 +152,27 @@ def test_malformed_activity_requires_reconciliation():
     with pytest.raises(ValueError):
         buffer.apply(CodexEvent('activity', 'chat', 'turn', 'item', None))
     assert buffer.needs_reconciliation
+
+
+def test_large_diffs_cannot_consume_the_final_spoken_answer():
+    buffer = CodexTurnBuffer('chat', 'turn')
+    for index in range(5):
+        buffer.apply(CodexEvent('file_changes', 'chat', 'turn', f'diff-{index}', 'x' * 250000))
+    buffer.apply(CodexEvent('text_completed', 'chat', 'turn', 'answer', 'FINAL ANSWER: done.'))
+    buffer.apply(CodexEvent('turn_completed', 'chat', 'turn', status='completed'))
+    assert ('answer', 'FINAL ANSWER: done.') in buffer.replies
+    assert buffer._file_characters <= buffer.MAX_TEXT
+    assert buffer._characters == len('FINAL ANSWER: done.')
+    assert buffer.truncated and buffer.status == 'completed'
+
+
+@pytest.mark.parametrize('limit', ['MAX_TEXT', 'MAX_ITEMS'])
+def test_finished_answer_displaces_old_commentary_at_display_limit(limit):
+    buffer = CodexTurnBuffer('chat', 'turn')
+    setattr(buffer, limit, 2)
+    buffer.apply(CodexEvent('text_completed', 'chat', 'turn', 'first', 'A'))
+    buffer.apply(CodexEvent('text_completed', 'chat', 'turn', 'second', 'B'))
+    buffer.apply(CodexEvent('text_completed', 'chat', 'turn', 'answer', 'OK'))
+    assert ('answer', 'OK') in buffer.replies
+    assert buffer._characters <= buffer.MAX_TEXT
+    assert len(buffer._texts) <= buffer.MAX_ITEMS
