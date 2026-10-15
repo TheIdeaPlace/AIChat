@@ -25,16 +25,25 @@ class Snapshot:
     provider_errors: Dict[str, str] = field(default_factory=dict)
     newly_failed_providers: Set[str] = field(default_factory=set)
 
-    def fresh_states(self) -> Dict[str, str]:
+    pending_providers: Set[str] = field(default_factory=set)
+
+    def fresh_states(self, previous=None) -> Dict[str, str]:
         """Comparable states only; outages must not create finished turns.
 
         Dropping unknown/stale states also prevents a recovery from comparing
         idle with working remembered before the outage (#184) (#171).
         """
-        return {session.key: session.state for session in self.sessions
+        states = {session.key: session.state for session in self.sessions
                 if session.provider not in self.stale_providers
                 and (session.provider != "codex"
                      or session.state in (IDLE, WORKING, NEEDS_YOU))}
+        # A normal background refresh must not erase working->idle comparison.
+        # Cached rows themselves never become fresh evidence of completion.
+        if previous:
+            states.update({session.key: previous[session.key] for session in self.sessions
+                           if session.provider in self.pending_providers
+                           and session.key in previous})
+        return states
 
 
 class SessionProvider(Protocol):

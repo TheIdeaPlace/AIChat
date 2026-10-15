@@ -35,7 +35,7 @@ reading more histories.
 
 ## Command-line reader
 
-This development preview on `codex/codex-integration-plan` lists the local
+This development preview on `codex/provider-reading` lists the local
 Codex app-server catalog and exports one chat through the same adapter and
 managed backend being built for The Chat Place. No build is needed: use the
 existing development virtual environment. The in-app opt-in is described above.
@@ -67,7 +67,7 @@ are resumed/forked, and the managed process closes after each command.
 
 Only top-level chats in the local app-server catalog are listed. Cloud-only
 coverage is not established. Unknown status remains in Properties and selected
-State columns, but is omitted from default rows and spoken message titles.
+Status columns, but is omitted from default rows and spoken message titles.
 Long chats load every history page before displaying messages or exporting.
 While loading, the message list says Loading messages. Try Find, export and the
 Last message column on a long chat; a failed load must never appear complete.

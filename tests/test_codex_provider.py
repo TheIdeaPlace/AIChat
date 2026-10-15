@@ -20,9 +20,23 @@ def history(native_id="one"):
     ]}])
 
 
+def history_pages(data):
+    turns = data["turns"]
+    return [{"thread": {k: v for k, v in data.items() if k != "turns"}},
+            {"data": [{**t, "items": [], "itemsView": "notLoaded"} for t in turns]},
+            {"data": [{"turnId": t["id"], "item": item}
+                      for t in turns for item in t["items"]]}]
+
+
 class Connection:
     def __init__(self, responses):
-        self.responses, self.calls = list(responses), []
+        self.responses, self.calls = [], []
+        for response in responses:
+            data = response.get("thread", {})
+            if data.get("turns") and data.get("historyMode") != "paginated":
+                self.responses.extend(history_pages(data))
+            else:
+                self.responses.append(response)
 
     def request(self, method, params):
         self.calls.append((method, params))
@@ -54,7 +68,7 @@ def test_repeated_cursor_fails_instead_of_looping():
 
 
 def test_reads_backend_history_without_resume_or_claude_paths():
-    connection = Connection([{"thread": history()}] * 3)
+    connection = Connection(history_pages(history()) + [{"thread": thread()}] + history_pages(history()))
     provider = CodexProvider(connection)
     info = SessionInfo("external", "codex:one", "Build", "/example", "one", provider="codex")
     reader = provider.open_reader(info)
@@ -64,8 +78,9 @@ def test_reads_backend_history_without_resume_or_claude_paths():
         (USER, "Hi"), (TOOL, "pytest"), (TOOL_RESULT, "Passed"), (ASSISTANT, "Ready")]
     assert reader.transcript.last_reply().label == "Codex"
     assert provider.last_reply(info) == "Ready"
-    assert all(method == "thread/read" and params["includeTurns"]
-               for method, params in connection.calls)
+    assert all(not params["includeTurns"] for method, params in connection.calls
+               if method == "thread/read")
+    assert {m for m, _ in connection.calls} == {"thread/read", "thread/turns/list", "thread/items/list"}
 
 
 def test_read_rejects_wrong_thread_without_replacing_history():
@@ -169,9 +184,10 @@ def test_last_message_cache_is_bounded_fair_and_invalidated_by_activity():
         calls = []
 
         def request(self, method, params):
-            assert method == "thread/read"
-            self.calls.append(params["threadId"])
-            return {"thread": history(params["threadId"])}
+            if method == "thread/read":
+                self.calls.append(params["threadId"])
+            pages = history_pages(history(params["threadId"]))
+            return pages[{"thread/read": 0, "thread/turns/list": 1, "thread/items/list": 2}[method]]
 
     connection = Histories()
     provider = CodexProvider(connection)
@@ -223,7 +239,7 @@ def test_last_message_cache_refreshes_unchanged_rows_after_deadline(monkeypatch)
     provider.fill_last_messages(rows)
     monkeypatch.setattr(codex, "time", SimpleNamespace(monotonic=lambda: 31))
     provider.fill_last_messages(rows)
-    assert len(connection.calls) == 2 and rows[0].last_message == "Codex: Ready"
+    assert len(connection.calls) == 6 and rows[0].last_message == "Codex: Ready"
 
 
 def test_controller_optional_column_preserves_cache_on_outage_without_history_reads():
@@ -240,8 +256,8 @@ def test_controller_optional_column_preserves_cache_on_outage_without_history_re
                 if self.failed:
                     raise RuntimeError("private error")
                 return {"data": [] if params["archived"] else [thread()], "nextCursor": None}
-            assert method == "thread/read"
-            return {"thread": history()}
+            return history_pages(history())[
+                {"thread/read": 0, "thread/turns/list": 1, "thread/items/list": 2}[method]]
 
     connection = Catalog()
     provider = CodexProvider(connection)
@@ -272,7 +288,8 @@ def test_inflight_last_message_cannot_repopulate_cleared_cache(action):
             self.calls += 1
             entered.set()
             assert release.wait(5)
-            return {"thread": history()}
+            return history_pages(history())[
+                {"thread/read": 0, "thread/turns/list": 1, "thread/items/list": 2}[method]]
 
         def close(self):
             release.set()
@@ -292,7 +309,7 @@ def test_inflight_last_message_cannot_repopulate_cleared_cache(action):
     assert rows[0].last_message == ""
     if action == "close":
         provider.fill_last_messages(rows)
-        assert connection.calls == 1
+        assert connection.calls == 3
 
 
 def paginated_pages():
@@ -334,6 +351,7 @@ def test_paginated_failure_does_not_replace_previously_complete_history(page):
     info = SessionInfo('external', 'codex:one', 'Build', '', 'one', provider='codex')
     reader = CodexProvider(connection).open_reader(info)
     reader.refresh()
+    reader._history_checked = 0
     with pytest.raises(ValueError):
         reader.refresh()
     assert reader.transcript.last_reply().text == 'Ready'
@@ -378,3 +396,48 @@ def test_long_chat_controller_paths_support_find_export_and_last_message():
     assert 'First' in rendered and 'Reply' in rendered and 'Newest' in rendered
     provider.fill_last_messages([info])
     assert 'Newest' in info.last_message
+
+
+def test_failed_last_message_waits_for_activity_change_even_after_cache_deadline(monkeypatch):
+    from thechatplace.providers import codex
+    clock = [100.0]
+    monkeypatch.setattr(codex.time, "monotonic", lambda: clock[0])
+    class Broken:
+        calls = 0
+        def request(self, method, params):
+            self.calls += 1
+            raise ValueError("synthetic oversized history")
+    connection = Broken()
+    provider = CodexProvider(connection)
+    rows = [codex.session_from_thread(thread(), False)]
+    provider.fill_last_messages(rows)
+    clock[0] += 3600
+    provider.fill_last_messages(rows)
+    assert connection.calls == 1
+    rows[0].last_activity_ms += 1
+    provider.fill_last_messages(rows)
+    assert connection.calls == 2
+
+
+def test_legacy_metadata_refresh_does_not_reload_unchanged_history():
+    connection = Connection(history_pages(history()) + [{"thread": thread(historyMode="legacy")}])
+    reader = CodexProvider(connection).open_reader(
+        SessionInfo("external", "codex:one", "Build", "", "one", provider="codex"))
+    assert reader.refresh()
+    assert not reader.refresh()
+    assert [m for m, p in connection.calls] == [
+        "thread/read", "thread/turns/list", "thread/items/list", "thread/read"]
+    assert all(not p["includeTurns"] for m, p in connection.calls if m == "thread/read")
+
+
+def test_reader_failed_pages_back_off_until_metadata_changes():
+    connection = Connection([{"thread": thread()}, {"data": None},
+                             {"thread": thread()}] + history_pages({**history(), "updatedAt": 201}))
+    reader = CodexProvider(connection).open_reader(
+        SessionInfo("external", "codex:one", "Build", "", "one", provider="codex"))
+    for _ in range(2):
+        with pytest.raises(ValueError, match="Couldn't load"):
+            reader.refresh()
+    assert [m for m, p in connection.calls] == ["thread/read", "thread/turns/list", "thread/read"]
+    assert reader.refresh()
+    assert reader.transcript.last_reply().text == "Ready"

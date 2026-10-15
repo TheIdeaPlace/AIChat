@@ -165,6 +165,7 @@ class CodexReader:
         self.transcript = Transcript()
         self._history_stamp = None
         self._history_checked = 0.0
+        self._failed_stamp = None
 
     def _pages(self, method, **options):
         cursor, seen = None, set()
@@ -217,19 +218,25 @@ class CodexReader:
 
     def _refresh(self) -> bool:
         response = self.connection.request("thread/read", {"threadId": self.native_id,
-                                                         "includeTurns": True})
+                                                         "includeTurns": False})
         thread = response.get("thread")
         if not isinstance(thread, dict) or thread.get("id") != self.native_id:
             raise ValueError("Codex returned a different or missing thread")
-        if thread.get("historyMode") == "paginated":
-            stamp = (thread.get("updatedAt"), thread.get("status"))
-            if (self._history_stamp == stamp and self._history_checked
-                    and time.monotonic() - self._history_checked < 30):
-                return False
+        stamp = (thread.get("updatedAt"), thread.get("status"))
+        if (self._history_stamp == stamp and self._history_checked
+                and time.monotonic() - self._history_checked < 30):
+            return False
+        if self._failed_stamp == stamp:
+            raise ValueError("History unavailable until the chat changes")
+        # Legacy threads can be enormous too. Never ask for an unbounded inline
+        # transcript: both history modes use the official bounded page APIs.
+        try:
             thread = self._paginated_thread(thread)
-        else:
-            stamp = None
-        history = transcript_from_thread(thread)
+            history = transcript_from_thread(thread)
+        except Exception:
+            self._failed_stamp = stamp
+            raise
+        self._failed_stamp = None
         changed = history != self.transcript
         self.transcript = history
         self._history_stamp = stamp
@@ -304,7 +311,7 @@ class CodexProvider:
             info = rows[index]
             cached = cache.get(info.identity)
             if (cached and cached[0] == info.last_activity_ms
-                    and now - cached[1] < self.LAST_MESSAGE_SECONDS):
+                    and (cached[3] or now - cached[1] < self.LAST_MESSAGE_SECONDS)):
                 continue
             failed = False
             try:
@@ -319,7 +326,7 @@ class CodexProvider:
                 if self._last_closed or generation != self._last_generation:
                     return  # a hidden column/closed owner cannot regain old reads
                 info.last_message = line
-                self._last_messages[info.identity] = (info.last_activity_ms, now, line)
+                self._last_messages[info.identity] = (info.last_activity_ms, now, line, failed)
                 self._last_messages.move_to_end(info.identity)
                 while len(self._last_messages) > self.MAX_LAST_MESSAGES:
                     self._last_messages.popitem(last=False)

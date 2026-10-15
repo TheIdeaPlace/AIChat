@@ -50,7 +50,7 @@ def main(argv=None):
         print(text)
     except Exception:  # noqa: BLE001 - never print RPC payloads or credentials
         print("Could not read Codex history. Check the native CLI and local chat availability. "
-              "Partial or paginated histories are not supported yet.", file=sys.stderr)
+              "Check that the installed Codex CLI supports paged history reads.", file=sys.stderr)
         result = 1
     finally:
         try:

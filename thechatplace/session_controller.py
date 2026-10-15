@@ -59,25 +59,24 @@ class SessionController:
                 raise ValueError("Session controller closed")
             self._claude_discovery.collect_current = claude_collect
             try:
-                snapshot = self._discovery.collect(order)
+                snapshot = self._discovery.collect(order, last_messages=last_messages)
                 if self._closed:
                     raise ValueError("Session controller closed")
                 self._merge_owned(snapshot, owned)
                 for provider_id, provider in self._providers.items():
                     if provider_id == "claude":
                         continue
-                    if last_messages and provider_id not in snapshot.stale_providers:
-                        fill = getattr(provider, "fill_last_messages", None)
-                        if fill is not None:
-                            fill(s for s in snapshot.sessions if s.provider == provider_id)
-                    elif last_messages:
+                    if last_messages:
                         cached = getattr(provider, "cached_last_messages", None)
                         if cached is not None:
                             cached(s for s in snapshot.sessions if s.provider == provider_id)
-                    elif not last_messages:
+                    else:
                         forget = getattr(provider, "forget_last_messages", None)
                         if forget is not None:
                             forget()
+                        for info in snapshot.sessions:
+                            if info.provider == provider_id:
+                                info.last_message = ""
                 if self._closed:
                     raise ValueError("Session controller closed")
                 snapshot.sessions = sort_sessions(snapshot.sessions, order)
@@ -149,7 +148,6 @@ class SessionController:
         backend = self._provider(session)
         open_reader = getattr(backend, "open_reader_with_facts", None)
         return open_reader(session) if callable(open_reader) else (self.open_reader(session), "", 0)
-
 
     def last_reply(self, session: SessionInfo) -> str:
         return self._provider(session).last_reply(session)

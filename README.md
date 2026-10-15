@@ -42,21 +42,6 @@ bar**, which holds whatever was said last ("12 sessions: 1 need you", "Claude is
 a read-only box to read by line, word and character; **Ctrl+9** goes straight there. The status
 bar isn't a Tab stop, and your screen reader's own read-status-bar key still works.
 
-On the Codex integration branch, Settings offers **Include local Codex chats
-(read-only; restart required)**. Enable it and restart to list local Codex chats
-alongside Claude chats. A native Codex CLI must be available and signed in to
-ChatGPT. Selecting a Codex chat automatically opens its history; messages,
-formatted reading, Find and export use Codex. Reply in Codex for now: sending,
-Continue Here, approvals and queues are not available for Codex yet. Turning the
-option off and restarting hides Codex without removing its saved preferences.
-Only the local catalog is covered; cloud-only chats and a supported released
-CLI minimum have not been established. Codex chats show an unavailable status
-when the backend cannot verify their live state. **View, Show Sessions** offers
-**Claude Chats** and **Codex Chats** filters. **View, Session List Columns** offers
-an optional **Provider** column; existing column choices stay unchanged. The
-optional Last message column populates Codex lines in small background batches
-and retains cached lines during discovery outages.
-
 - **Session list.** Each item reads its title, its repo folder, its state (needs you, working or
   idle), and when it was last active: "Fix the release build, QuickMail, needs you: Choose a
   version number, active 1 minute ago". By default sessions that need you come first, then
@@ -78,11 +63,13 @@ and retains cached lines during discovery outages.
   hidden), hidden (the ones you've hidden), or one of your groups. The list's name says what it
   shows and how many ("Session list, needs you, 2 of 139"), and the choice is remembered.
   Choosing one keeps you on the same session when it's still listed.
+  **Claude Chats** and **Codex Chats** filter by provider. These views remain
+  available with the preview off; Codex Chats is empty until it is enabled.
   **View, Session List Columns** (Alt+V, E) chooses what each line says and in what order, so
   it can start with the status rather than the title. The columns are Title, Folder,
   Status, New reply, Last activity, Kind (Chat Place, Cowork or terminal), Remote Control, Archived,
   Hidden and Groups, all shown at first, and **Started** and **Last message**, which aren't shown
-  until you add them; a column with nothing to say for a session is left out of its line. Last
+  until you add them, along with the optional **Provider** column (which AI); a column with nothing to say for a session is left out of its line. Last
   activity is the last time the session did anything. While a session is working or waiting on
   you, that's when its transcript was last written, so one working through a long turn, or run
   outside The Chat Place, reads "active just now" rather than the time the turn began (#209);
@@ -512,6 +499,15 @@ and retains cached lines during discovery outages.
   page with it filled in; **Copy Report** only copies it. Filing on GitHub needs access to the
   repository; anyone else can Copy Report and email it to support@theideaplace.net.
 
+**Settings: local Codex history.** Enable **Include local Codex chats (read-only;
+restart required)**, save and restart to list local Codex chats alongside Claude.
+A native Codex CLI must be available and signed in to ChatGPT. Selecting a Codex
+chat opens its messages; formatted reading, Find and export work too. Reply in
+Codex: sending, Continue Here, approvals and queues are unavailable in this preview.
+Turn the option off and restart to hide Codex while keeping its saved preferences.
+Only chats in the local Codex catalog are listed. A status that Codex cannot verify
+is omitted from default rows and remains available in Properties and the Status column.
+
 ## Install
 
 You need Windows 10 or 11, or a Mac with Apple silicon, and **Claude Code installed with its
@@ -749,12 +745,10 @@ Everything it reads is on your own PC, so reading costs nothing.
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json`. If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
 | Errors | `%APPDATA%\TheChatPlace\error.log`: anything that went wrong unexpectedly, with its traceback |
 
-When using the Codex integration branch alongside 0.1.6, Claude sessions stay in
-`sessions.json`. Codex sessions and their settings use `provider-sessions.json`;
-their groups, hidden state, custom names and Show Tool Activity preferences use
-separate `provider-*.json` files. Version 0.1.6 does not read or rewrite those
-files. A group changed in 0.1.6 affects its Claude membership; its saved Codex
-membership remains available in the integration branch.
+Claude sessions stay in `sessions.json`. Codex sessions and their settings use
+`provider-sessions.json`; their groups, hidden state, custom names and Show Tool
+Activity preferences use separate `provider-*.json` files. Older versions retain
+their Claude data without reading or rewriting those Codex preferences.
 
 None of these formats is documented, and Claude Code says the transcript format changes between
 versions. So all the knowledge of it is in one small module (`thechatplace/transcript.py`) that

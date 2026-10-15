@@ -8650,7 +8650,7 @@ def test_codex_commands_never_reach_claude_with_colliding_id(frame, monkeypatch,
     frame._pending[owned.cli_session_id] = [object()]
     monkeypatch.setattr(frame, "_feedback", calls.append)
     getattr(frame, handler)()
-    assert len(calls) == 1 and "isn't available for Codex" in calls[0]
+    assert len(calls) == 1 and "Codex chats are read-only here" in calls[0]
     assert frame.store.get(owned.cli_session_id).title == owned.title
     frame._runners.clear()
     frame._pending.clear()
@@ -8696,8 +8696,11 @@ def test_codex_history_uses_read_only_panel_and_own_provider_metadata(frame, mon
 
     class Connection:
         def request(self, method, params):
-            assert method == "thread/read"
-            return {"thread": {"id": foreign.cli_session_id, "turns": []}}
+            if method == "thread/read":
+                assert params["includeTurns"] is False
+                return {"thread": {"id": foreign.cli_session_id, "updatedAt": 1}}
+            assert method in ("thread/turns/list", "thread/items/list")
+            return {"data": []}
 
     frame.sessions = SessionController([ClaudeConversations(), CodexProvider(Connection())])
     original_unread = frame.store.get(claude.cli_session_id).unread
@@ -8773,33 +8776,23 @@ def test_window_refresh_uses_shared_discovery_and_preserves_rows_during_codex_ou
     assert all(t is not threading.main_thread() for t in threads)
 
 
-def test_claude_discovery_outage_is_reported_once_and_recovers(frame, env, monkeypatch):
+def test_claude_discovery_failure_preserves_rows_groups_and_first_summary(frame, monkeypatch):
     from thechatplace.ui import main_frame
-
     settle(frame)
-    real_collect = main_frame.collect
-    keys = set(frame._list_keys)
-    env["feedback"].clear()
-
+    previous = frame._snapshot
+    keys = list(frame._list_keys)
+    first = frame._first_snapshot
+    statuses = []
+    monkeypatch.setattr(frame, "_status", statuses.append)
     def broken(*args, **kwargs):
-        raise RuntimeError("private path and credential")
-
-    monkeypatch.setattr(main_frame, "collect", broken)
-    for _ in range(2):
-        frame.refresh_sessions()
-        assert pump(lambda: not frame._snapshot_busy)
-        assert set(frame._list_keys) == keys
-    outages = [text for text in env["feedback"] if "discovery is unavailable" in text]
-    assert len(outages) == 1 and "Claude" in outages[0] and "out of date" in outages[0]
-    assert "private" not in str(env["feedback"])
-    monkeypatch.setattr(main_frame, "collect", real_collect)
-    frame.refresh_sessions()
-    assert pump(lambda: not frame._snapshot_busy)
-    assert not frame._snapshot.stale_providers
+        raise OSError("synthetic discovery failure")
     monkeypatch.setattr(main_frame, "collect", broken)
     frame.refresh_sessions()
     assert pump(lambda: not frame._snapshot_busy)
-    assert sum("discovery is unavailable" in text for text in env["feedback"]) == 2
+    assert frame._snapshot is previous
+    assert frame._list_keys == keys
+    assert frame._first_snapshot == first
+    assert statuses == ["Couldn't read the session list: synthetic discovery failure"]
 
 
 def test_settings_codex_option_is_named_and_read_only(frame):
@@ -8832,8 +8825,13 @@ def test_opt_in_startup_lists_and_opens_synthetic_codex_history(env, monkeypatch
             calls.append(method)
             if method == "thread/list":
                 return {"data": [] if params["archived"] else [thread], "nextCursor": None}
-            assert method == "thread/read"
-            return {"thread": thread}
+            if method == "thread/read":
+                assert params["includeTurns"] is False
+                return {"thread": {k: v for k, v in thread.items() if k != "turns"}}
+            if method == "thread/turns/list":
+                return {"data": [{"id": "turn", "items": [], "itemsView": "notLoaded"}]}
+            assert method == "thread/items/list"
+            return {"data": [{"turnId": "turn", "item": thread["turns"][0]["items"][0]}]}
 
     monkeypatch.setattr(codex, "CodexProvider", lambda: real_provider(Connection()))
     speech.SpeechSettings(codex_enabled=enabled).save()
@@ -8920,3 +8918,60 @@ def test_answer_targets_waiting_claude_chat_while_reading_codex(frame, monkeypat
     frame.on_answer()
     assert asked == [(request, 'claude')] and answered == [owned.cli_session_id]
     frame._pending.clear()
+
+
+@pytest.mark.parametrize("provider", ["codex", "ollama"])
+def test_foreign_prompt_refusal_names_its_provider(frame, provider):
+    settle(frame)
+    info = frame._snapshot.sessions[0]
+    frame._open = dataclasses.replace(info, provider=provider)
+    assert frame._prompt_refused() == f"This chat is read-only here. Reply in {provider.capitalize()}."
+
+
+@pytest.mark.parametrize("provider", ["codex", "ollama"])
+def test_foreign_rename_names_provider_in_dialog_and_feedback(frame, monkeypatch, env, provider):
+    from thechatplace.ui import main_frame
+    settle(frame)
+    info = dataclasses.replace(frame._snapshot.sessions[0], provider=provider,
+                               key=f"{provider}:synthetic", source="external")
+    prompts = []
+    class Entry:
+        def __init__(self, parent, prompt, title, value): prompts.append(prompt)
+        def SetMaxLength(self, size): pass
+        def ShowModal(self): return wx.ID_CANCEL
+        def Destroy(self): pass
+    monkeypatch.setattr(main_frame.wx, "TextEntryDialog", Entry)
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    frame.on_rename()
+    assert f"{provider.capitalize()} keeps its own name" in prompts[0]
+    assert "Claude desktop" not in prompts[0]
+    frame.rename_session(info, "")
+    assert f"{provider.capitalize()}'s name" in env["feedback"][-1]
+
+
+def test_codex_pending_refresh_preserves_completion_without_blocking_history_read(frame, monkeypatch):
+    from thechatplace.sessions import SessionInfo, WORKING, IDLE
+    settle(frame)
+    codex = SessionInfo("external", "codex:pending", "Pending fixture", "", "pending",
+                        provider="codex", state=WORKING)
+    snapshots = [hub.Snapshot(sessions=[codex], stale_providers={"codex"},
+                             pending_providers={"codex"}),
+                 hub.Snapshot(sessions=[dataclasses.replace(codex, state=IDLE)])]
+    frame._previous_states = {codex.key: WORKING}
+    frame._first_snapshot = False
+    frame._open = codex
+    frame.speech.announce_all_sessions = True
+    notices, reads = [], []
+    monkeypatch.setattr(frame.sessions, "collect", lambda *a, **kw: snapshots.pop(0))
+    monkeypatch.setattr(frame.sessions, "last_reply", lambda info: reads.append(info.key))
+    monkeypatch.setattr(frame, "_notify", lambda *a, **kw: notices.append(a))
+    monkeypatch.setattr(frame, "_refresh_chat", lambda: None)
+    frame.refresh_sessions()
+    assert pump(lambda: not frame._snapshot_busy)
+    assert frame._previous_states == {codex.key: WORKING}
+    assert not notices
+    frame.refresh_sessions()
+    assert pump(lambda: not frame._snapshot_busy)
+    assert frame._previous_states == {codex.key: IDLE}
+    assert any("finished" in notice[1] for notice in notices)
+    assert not reads

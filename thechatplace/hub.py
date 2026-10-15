@@ -12,7 +12,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from . import platform_paths
 from .providers.base import Snapshot
-from .providers.claude import ClaudeProvider, last_reply_from_tail  # noqa: F401
+from .providers.claude import ClaudeProvider, last_reply_from_tail
 from .own_store import OwnSession
 from .sessions import (IDLE, SORT_STATUS, WORKING, SessionInfo, load_live_status,
                        sort_sessions)

@@ -157,3 +157,66 @@ def test_fresh_codex_idle_can_complete_but_claude_waiting_keeps_existing_behavio
     claude.state = NEEDS_YOU
     result = finished_turns({codex.key: WORKING, claude.key: WORKING}, [codex, claude])
     assert result == [codex, claude]
+
+
+@pytest.mark.parametrize("last_messages", [False, True])
+def test_pending_foreign_worker_never_delays_claude_or_announces_false_outage(last_messages):
+    import threading
+    import time
+    entered, release = threading.Event(), threading.Event()
+    class Slow(Provider):
+        calls = 0
+        def collect(self):
+            self.calls += 1
+            if not last_messages:
+                entered.set()
+                assert release.wait(5)
+            return self.snapshot
+        def fill_last_messages(self, rows):
+            entered.set()
+            assert release.wait(5)
+            rows[0].last_message = "Codex: cached"
+    codex = Slow("codex", Snapshot(sessions=[session("codex")]))
+    claude = Provider("claude", Snapshot(sessions=[session("claude")]))
+    registry = DiscoveryRegistry([claude, codex])
+    try:
+        for i in range(3):
+            claude.snapshot.sessions[0].last_activity_ms = i
+            start = time.monotonic()
+            result = registry.collect(last_messages=last_messages)
+            assert time.monotonic() - start < 1
+            assert result.sessions[0].last_activity_ms == i
+            assert result.stale_providers == {"codex"}
+            assert not result.newly_failed_providers and not result.provider_errors
+        assert entered.is_set() and codex.calls == 1
+    finally:
+        release.set()
+    assert registry._jobs["codex"][0].wait(2)
+    result = registry.collect(last_messages=last_messages)
+    assert not result.stale_providers and len(result.sessions) == 2
+    if last_messages:
+        assert next(s for s in result.sessions if s.provider == "codex").last_message == "Codex: cached"
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_claude_failure_reaches_original_snapshot_failure_path(cached):
+    claude = Provider("claude", Snapshot(sessions=[session("claude")]))
+    registry = DiscoveryRegistry([claude])
+    if cached:
+        registry.collect()
+    claude.error = OSError("synthetic Claude read failure")
+    with pytest.raises(OSError, match="synthetic Claude read failure"):
+        registry.collect()
+
+
+def test_normal_pending_refresh_keeps_completion_comparison_but_outage_drops_it():
+    codex = session("codex")
+    codex.state = WORKING
+    previous = Snapshot(sessions=[codex]).fresh_states()
+    pending = Snapshot(sessions=[codex], stale_providers={"codex"}, pending_providers={"codex"})
+    assert not finished_turns(previous, pending.sessions, stale_providers=pending.stale_providers)
+    previous = pending.fresh_states(previous)
+    codex.state = IDLE
+    assert finished_turns(previous, [codex]) == [codex]
+    outage = Snapshot(sessions=[codex], stale_providers={"codex"})
+    assert not outage.fresh_states(previous)

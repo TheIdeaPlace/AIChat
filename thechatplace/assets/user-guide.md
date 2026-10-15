@@ -1,6 +1,6 @@
 # The Chat Place User Guide
 
-The Chat Place is a keyboard and screen reader friendly home for your Claude Code chats. It lists
+The Chat Place is a keyboard and screen reader friendly home for your AI chats. It lists
 the sessions the Claude desktop app has, shows each one as a conversation you can arrow through,
 tells you when a session answers, and can run sessions of its own that you read and reply to
 entirely from here.
@@ -11,28 +11,6 @@ Help, Keyboard Shortcuts (F1).
 
 The Chat Place is an independent project by Kelly Ford. It works with Claude Code and the Claude
 desktop app, but it isn't made, sponsored or endorsed by Anthropic, and isn't affiliated with it.
-
-## Local Codex history preview
-
-On the Codex integration branch, open Settings and enable
-**Include local Codex chats (read-only; restart required)**. Save, quit The Chat Place and reopen it.
-A native Codex CLI must be available and signed in to ChatGPT. Local Claude and
-Codex chats share one list, and selecting a Codex chat opens its history
-automatically. Read, Find and export work; reply in Codex while sending,
-approvals and queues are being implemented. Turn the option off and restart
-to hide Codex without deleting its saved preferences.
-
-View, Show Sessions offers **Claude Chats** and **Codex Chats** filters. View,
-Session List Columns offers an optional **Provider** column. Existing column
-choices stay unchanged. The optional Last message column also reads Codex:
-short lines fill in small background batches and remain cached during outages.
-Cloud-only coverage and a supported released CLI
-minimum are not established. Unavailable Codex status is not counted as idle.
-Unknown status is omitted from default rows and message titles; Properties and
-selected State columns retain it. Long Codex chats load in the background; the
-message list says Loading messages until the full chat is ready. Find, export
-and Last message use the same complete history.
-
 
 ## Before you start
 
@@ -478,6 +456,8 @@ you or are working; just the ones that need you; just the working ones; the ones
 you haven't read yet; the idle ones; desktop app sessions (Code and Cowork); just
 Cowork sessions; The Chat Place's own; terminal sessions; Remote Control sessions; ungrouped sessions; archived
 ones; hidden ones; or one of your groups.
+**Claude Chats** and **Codex Chats** filter by provider. These views remain
+available when the preview is off; Codex Chats is empty until it is enabled.
 **View, Sort Sessions** (Alt+V, O) chooses the order: by status, newest first, oldest first, by
 title, or by folder. Both choices are remembered, and you stay on the same session when it's
 still listed.
@@ -492,6 +472,12 @@ The parts are called columns: Title, Folder, Status, New reply, Last activity, K
 Cowork or terminal session), Remote Control, Archived, Hidden and Groups, all read at first, and
 Started and Last message, which are read only once you add them. A column with nothing to say for
 a session, such as New reply when there isn't one, is simply left out of that line.
+
+The optional **Provider** column says which AI, such as Claude or Codex. It
+remains available with the preview off, and existing column choices are kept.
+Codex status that cannot be verified is omitted from default rows; Properties
+and the Status column can still show it. The optional Last message column fills
+Codex lines in small background batches and retains cached lines during outages.
 
 **Last activity** ("active 5 minutes ago") is the last time the session did anything, even in the
 middle of a long turn, or while it's being run outside The Chat Place. How long the turn now
@@ -591,6 +577,17 @@ the notification brings The Chat Place forward with that session loaded. Setting
 notifications (on a Mac, Notifications) chooses every finished turn (the default), only when a
 session needs you, or off. While you're in The Chat Place, the announcement is enough and no
 notification is shown.
+
+### Local Codex history in Settings
+
+Enable **Include local Codex chats (read-only; restart required)** in Settings,
+save and restart. A native Codex CLI must be available and signed in to ChatGPT.
+Local Claude and Codex chats share one list. Selecting a Codex chat opens its
+history; formatted reading, Find and export work too. Reply in Codex: sending,
+approvals, Continue Here and queues are unavailable in this preview. Turn the
+option off and restart to hide Codex without deleting its preferences. Only
+chats in the local Codex catalog are listed. Long histories load in the background;
+the message list says Loading messages until the complete history is ready.
 
 ## More things you can do
 
@@ -784,6 +781,8 @@ support@theideaplace.net.
 - The Chat Place never writes to the desktop app's files or to any conversation. The only files it
   writes are its own: on Windows in `%APPDATA%\TheChatPlace`, on a Mac in
   `~/Library/Application Support/TheChatPlace`. The conversations themselves are Claude Code's.
+- Codex preferences use separate `provider-*.json` files in the same app data
+  folder, so older versions keep their Claude data without rewriting Codex data.
 - With VoiceOver, each line of the messages list reads as it's shown, "You:" or "Claude:" and
   the first line, not the whole message, because reading the whole message on each line uses a
   Windows feature. Enter opens the whole message.

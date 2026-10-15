@@ -816,7 +816,8 @@ class MainFrame(wx.Frame):
         except ValueError:
             supported = False
         if not supported:
-            self._feedback(f"This action isn't available for {info.provider.capitalize()} chats yet.")
+            self._feedback(f"{info.provider.capitalize()} chats are read-only here; "
+                           f"reply in {info.provider.capitalize()}.")
         return supported
 
     # ----------------------------------------------------------- session list
@@ -858,7 +859,7 @@ class MainFrame(wx.Frame):
                 replies = {}
                 if not self._first_snapshot and self.speech.announce_all_sessions:
                     for info in ended:
-                        if (info.is_own and info.provider == "claude") or not info.cli_session_id:
+                        if info.provider != "claude" or info.is_own or not info.cli_session_id:
                             continue  # own sessions announce from their own turn
                         try:
                             replies[info.key] = self.sessions.last_reply(info)
@@ -886,7 +887,7 @@ class MainFrame(wx.Frame):
             return
         previous_desktop_groups = self._snapshot.desktop_groups
         self._snapshot = snap
-        self._previous_states = snap.fresh_states()
+        self._previous_states = snap.fresh_states(self._previous_states)
         # Hidden sessions (File, Hide Session) are out of everything here:
         # counts, announcements and notifications as well as the list.
         for info in snap.sessions:
@@ -1168,7 +1169,8 @@ class MainFrame(wx.Frame):
         if info.is_own:
             prompt = f"New name for {info.title}:"
         else:
-            keeper = "Claude Code" if info.is_terminal else "the Claude desktop app"
+            keeper = (info.provider.capitalize() if info.provider != "claude" else
+                      "Claude Code" if info.is_terminal else "the Claude desktop app")
             prompt = (f"New name for {info.title}. It shows only in The Chat Place; "
                       f"{keeper} keeps its own name for it. Leave it empty to go "
                       "back to that name.")
@@ -1197,7 +1199,8 @@ class MainFrame(wx.Frame):
                                      provider=info.provider, title=title):
                 return
         else:
-            keeper = "Claude Code's" if info.is_terminal else "the desktop app's"
+            keeper = (f"{info.provider.capitalize()}'s" if info.provider != "claude" else
+                      "Claude Code's" if info.is_terminal else "the desktop app's")
             if not title and info.key not in self.titles:
                 self._feedback(f"{old} already has {keeper} name.")
                 return
@@ -4880,7 +4883,7 @@ class MainFrame(wx.Frame):
             return ("Load one of The Chat Place's own sessions first: a prompt goes into "
                     "its reply box.")
         if self._open.provider != "claude":
-            return "This chat is read-only here. Reply in Codex."
+            return f"This chat is read-only here. Reply in {self._open.provider.capitalize()}."
         if not self._open.is_own:
             return (f"This is {kind_name(self._open)}, which The Chat Place only reads. "
                     "Load one of The Chat Place's own sessions to use a prompt in its reply "

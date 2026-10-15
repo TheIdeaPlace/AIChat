@@ -18,13 +18,18 @@ class Connection:
                   "createdAt": 1, "updatedAt": 2, "status": {"type": "idle"}}
         if method == "thread/list":
             return {"data": [] if params["archived"] else [thread], "nextCursor": None}
-        assert method == "thread/read"
         thread["turns"] = [{"id": "turn", "items": [
             {"id": "user", "type": "userMessage", "content": [{"type": "text", "text": "Hello"}]},
             {"id": "answer", "type": "agentMessage", "text": "Synthetic reply"}]}]
+        if method == "thread/read":
+            assert params["includeTurns"] is False
+            return {"thread": {k: v for k, v in thread.items() if k != "turns"}}
         if self.partial:
-            thread["historyMode"] = "paginated"
-        return {"thread": thread}
+            return {"data": None}
+        if method == "thread/turns/list":
+            return {"data": [{"id": "turn", "items": [], "itemsView": "notLoaded"}]}
+        assert method == "thread/items/list"
+        return {"data": [{"turnId": "turn", "item": i} for i in thread["turns"][0]["items"]]}
 
 
 @pytest.mark.parametrize("fmt", ["txt", "md", "html"])
@@ -34,7 +39,7 @@ def test_preview_lists_and_exports_history_with_codex_labels(fmt):
     assert json.loads(read_codex.read(provider))[0]["id"] == "synthetic"
     rendered = read_codex.read(provider, "synthetic", fmt)
     assert "Synthetic reply" in rendered and "Codex" in rendered and "Hello" in rendered
-    assert set(connection.methods) == {"thread/list", "thread/read"}
+    assert set(connection.methods) == {"thread/list", "thread/read", "thread/turns/list", "thread/items/list"}
 
 
 def test_preview_rejects_partial_history_and_unknown_ids():
