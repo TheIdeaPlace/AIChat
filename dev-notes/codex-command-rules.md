@@ -52,3 +52,41 @@ not change PR #255's reviewed head or its CI candidate.
 
 Full native Mac validation: **2,021 passed, 88 skipped**. The separate branch
 will receive Windows/Mac workflow checks before any merge request is opened.
+
+## Selected direction after Kelly's functionality guidance
+
+Kelly delegated the choice on October 15: choose the approach that gives users
+most Codex functionality inside The Chat Place. Choose an application-managed
+Codex setup for execution rather than requiring people to remove ordinary
+Codex rule files. Keep the conservative guard as a verification layer.
+
+Implement in reviewable phases:
+
+1. Add an explicit application-managed home to process startup. Preserve the
+   existing home for discovery/history of external chats. The managed directory
+   lives under The Chat Place's own data folder; never copy authentication or
+   global settings into it. Native probes use disposable directories and do not
+   start login or inference.
+2. Add ChatGPT-only sign-in through official account/login/start and cancellation.
+   Give accessible progress/cancel feedback, show the account being used, and
+   keep login URLs/tokens out of diagnostics. No API-key or external-token modes.
+3. Route managed execution, its discovery/history and account usage to the
+   managed connection. Keep external history on its current read-only connection.
+   Persist an explicit setup marker; never silently resume a legacy chat in a
+   different home. Missing/ambiguous identities must fail clearly without replay.
+4. Preserve one combined session list, Provider/Kind, model/effort, permission
+   changes, queue/Stop, approvals/questions and announcements. Continue Here
+   across homes remains optional unless a supported official operation is
+   established; no raw rollout reading or copying.
+5. Prove native file editing and outside-folder approval behavior with the
+   managed setup, then Windows/Mac tests, packaging, visual/manual acceptance
+   and independent review. Keep #257 open until these gates pass.
+
+Official authentication documentation places file credentials under CODEX_HOME
+and supports managed ChatGPT browser/device login through app-server. This is
+an additional setup/sign-in if needed, not token extraction from another client.
+A separate home does not inherently suppress system rules or trusted project
+rules, so verify active layers and retain the conservative refusal guard.
+
+Do not switch the default runtime to this home until sign-in, history routing
+and existing-record behavior are implemented and tested together.
