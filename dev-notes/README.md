@@ -19,3 +19,5 @@ shipped.
 - [Provider integration review slices](provider-integration-slices.md): release scope, layer boundaries and review gates (#184, #171, #225).
 
 - [Owned Codex chats](codex-owned-chats.md): execution, policy and review evidence (#184, #171, #225).
+
+- [Codex integration plan](codex-integration-plan.md): implementation history and validation evidence (#184, #171, #225).
