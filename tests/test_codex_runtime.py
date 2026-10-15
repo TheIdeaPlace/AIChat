@@ -1,3 +1,4 @@
+from pathlib import Path
 from collections import deque
 from dataclasses import replace
 import threading
@@ -44,7 +45,8 @@ class Connection:
         if method == 'mcpServerStatus/list':
             return {'data': [], 'nextCursor': None}
         if method == 'config/read':
-            return {'config': {}}
+            return {'config': {}, 'layers': [{'name': {'type': 'project',
+                'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]}
         if method == 'thread/read':
             return response(params['threadId'])
         if method == 'thread/turns/list':

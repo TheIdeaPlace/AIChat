@@ -556,6 +556,12 @@ Codex chats started here because those tools can reach beyond the selected
 folder. It checks that they are disabled before sending. Your global Codex
 configuration stays unchanged; existing chats can still be read.
 
+Saved Codex command rules can allow commands to access other folders without
+asking. The Chat Place refuses to start or send a Codex chat when active
+command-rule files are present or cannot be checked. This conservative check
+also refuses files containing only prompt or deny rules. Existing chats can
+still be read. The Chat Place does not remove or edit your rules.
+
 ## Install
 
 You need Windows 10 or 11, or a Mac with Apple silicon. For Codex chats, the preview needs a

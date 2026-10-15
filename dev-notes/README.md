@@ -19,3 +19,5 @@ shipped.
 - [Provider integration review slices](provider-integration-slices.md): release scope, layer boundaries and review gates (#184, #171, #225).
 
 - [Owned Codex chats](codex-owned-chats.md): execution, policy and review evidence (#184, #171, #225).
+
+- [Codex saved command rules](codex-command-rules.md): native boundary reproduction, conservative refusal candidate and release decision (#257).

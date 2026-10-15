@@ -851,3 +851,19 @@ def test_uncertain_inference_timeout_still_fails_closed(server, method):
         with pytest.raises(CodexRpcError, match='timed out'):
             connection.request(method, {'threadId': 'synthetic', 'mode': 'hang'})
         assert connection.closed
+
+
+def test_new_saved_rules_never_put_another_turn_on_the_wire(server, tmp_path):
+    start, _ = server
+    with FutureTurnConnection('account-route-rule-files', start=start) as connection:
+        params = {'threadId': 'synthetic', 'cwd': str(tmp_path)}
+        connection.request('turn/start', params)
+        after_first = connection._next_id
+        rules = tmp_path / 'rules'; rules.mkdir()
+        (rules / 'new.rules').write_text('synthetic')
+        with pytest.raises(CodexRpcError, match='saved command rules'):
+            connection.request('turn/start', params)
+        # Account, metadata, config and tool inventory were checked; inference
+        # never consumed its own request ID. The first turn remains connected.
+        assert connection._next_id == after_first + 4
+        assert not connection.closed

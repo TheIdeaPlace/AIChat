@@ -54,12 +54,18 @@ class CodexTurnRejected(CodexRpcError):
         'verified_thread': 'Codex turn requires a verified thread',
         'configuration': 'Codex turn configuration is unavailable',
         'provider': 'Codex turns require the built-in OpenAI provider',
+        'command_rules': 'Codex has saved command rules, or The Chat Place could not check them. Saved rules can skip approval or access other folders. No new turn was sent.',
         'mcp_tools': 'Codex external tools could not be disabled for this chat. No new turn was sent.',
     }
 
     def __init__(self, code):
         self.code = code if code in self.REASONS else 'preflight_failed'
         super().__init__(self.REASONS[self.code])
+
+
+def verify_codex_rule_layers(result):
+    if not platform_paths.codex_rule_layers_clear(result.get('layers')):
+        raise CodexTurnRejected('command_rules')
 
 
 def codex_tool_overrides(config):
@@ -317,7 +323,7 @@ class ReadOnlyCodexConnection:
         cwd = params.get("cwd", thread.get("cwd"))
         if not isinstance(cwd, str) or not cwd.strip():
             raise CodexRpcError("Codex turn configuration is unavailable")
-        result = self.request("config/read", {"cwd": cwd, "includeLayers": False})
+        result = self.request("config/read", {"cwd": cwd, "includeLayers": True})
         config = result.get("config")
         if not isinstance(config, dict):
             raise CodexRpcError("Codex turn configuration is unavailable")
@@ -331,6 +337,7 @@ class ReadOnlyCodexConnection:
             # Reject rather than silently changing a user's configured route.
             # The older CLI allowed overriding built-in provider definitions.
             raise CodexRpcError("Codex turns require the default ChatGPT billing route")
+        verify_codex_rule_layers(result)
 
     def _encode(self, message):
         payload = (json.dumps(message, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
