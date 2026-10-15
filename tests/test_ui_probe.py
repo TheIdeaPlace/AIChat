@@ -17,7 +17,7 @@ import ui_probe  # noqa: E402
 
 
 #: wx's own dialogs the probe photographs, which aren't classes of ours.
-WX_DIALOGS = {"TextEntryDialog"}
+WX_DIALOGS = {"TextEntryDialog", "SingleChoiceDialog"}
 
 
 def test_every_dialog_is_photographed_or_says_why_not():
@@ -44,7 +44,7 @@ def opened(tmp_path, monkeypatch, app):
     def record(self):
         shown.append(type(self).__name__)
         return wx.ID_CANCEL
-    for cls in (wx.Dialog, wx.TextEntryDialog):
+    for cls in (wx.Dialog, wx.TextEntryDialog, wx.SingleChoiceDialog):
         monkeypatch.setattr(cls, "ShowModal", record)
     return shown
 

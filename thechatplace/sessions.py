@@ -31,8 +31,9 @@ from .transcript import SessionFactsCache
 WORKING = "working"
 NEEDS_YOU = "needs you"
 IDLE = "idle"
+STATUS_UNAVAILABLE = "status unavailable"
 
-_STATE_ORDER = {NEEDS_YOU: 0, WORKING: 1, IDLE: 2}
+_STATE_ORDER = {NEEDS_YOU: 0, WORKING: 1, IDLE: 2, STATUS_UNAVAILABLE: 3}
 
 #: postTurnSummary.status_category values that mean "waiting on Kelly".
 _NEEDS_YOU_CATEGORIES = {"blocked", "review_ready", "needs_input", "waiting",
@@ -45,7 +46,7 @@ TERMINAL = "terminal"
 
 @dataclass
 class SessionInfo:
-    source: str                 # DESKTOP, OWN or TERMINAL
+    source: str                 # DESKTOP, OWN, TERMINAL or a provider-advertised origin
     key: str                    # unique in the list: local_ id, own:<cli id> or terminal:<cli id>
     title: str
     cwd: str
@@ -86,7 +87,11 @@ class SessionInfo:
 
     @property
     def identity(self) -> tuple[str, str]:
-        """Backend-aware identity for new controller state."""
+        """Backend and native ID; presentation keys never become native IDs.
+
+        Claude desktop metadata has its own native ID before a CLI ID exists.
+        A record lacking either identity cannot represent a resumable chat.
+        """
         return self.provider, self.cli_session_id or self.desktop_session_id
 
     @property
@@ -96,6 +101,17 @@ class SessionInfo:
     @property
     def is_terminal(self) -> bool:
         return self.source == TERMINAL
+
+    @property
+    def kind_label(self) -> str:
+        """Where a chat originated, independent of which AI provides it."""
+        if self.is_own:
+            return "Chat Place session"
+        if self.cowork:
+            return "Cowork session"
+        return {DESKTOP: "desktop app session", TERMINAL: "terminal session",
+                "editor": "editor session", "command_line": "command-line session",
+                "app_server": "other app session"}.get(self.source, "external session")
 
     @property
     def repo(self) -> str:
@@ -150,8 +166,8 @@ class SessionInfo:
         in any shown column, it reads the title."""
         values = self.field_values(now_ms)
         order = DEFAULT_FIELDS if fields is None else list(fields)
-        if (self.provider == "codex" and self.state == "status unavailable"
-                and order == DEFAULT_FIELDS):
+        if (self.provider == "codex" and self.state == STATUS_UNAVAILABLE
+                and not self.detail and order == DEFAULT_FIELDS):
             values[FIELD_STATUS] = ""
         parts = [values[f] for f in order if values.get(f)]
         return ", ".join(parts) or values[FIELD_TITLE]
@@ -161,15 +177,6 @@ class SessionInfo:
         state = self.state
         if self.detail:
             state = f"{state}: {self.detail}"
-        kind = []
-        if self.provider != "claude":
-            kind.append(f"{self.provider.capitalize()} chat")
-        if self.is_own:
-            kind.append("Chat Place session")
-        if self.cowork:
-            kind.append("Cowork session")
-        if self.is_terminal:
-            kind.append("terminal session")
         groups = ""
         if self.groups:
             groups = (("group " if len(self.groups) == 1 else "groups ")
@@ -182,7 +189,7 @@ class SessionInfo:
             FIELD_NEW_REPLY: "new reply" if self.unread else "",
             FIELD_ACTIVITY: describe_age(self.last_activity_ms, now_ms),
             FIELD_STARTED: describe_started(self.created_ms, now_ms),
-            FIELD_KIND: ", ".join(kind),
+            FIELD_KIND: self.kind_label,
             # #96: say which can be reached from claude.ai
             FIELD_REMOTE: "Remote Control" if self.remote else "",
             FIELD_ARCHIVED: "archived" if self.archived else "",
@@ -215,7 +222,7 @@ FIELDS = [
     (FIELD_STATUS, "Status (needs you, working or idle)"),
     (FIELD_NEW_REPLY, "New reply"),
     (FIELD_ACTIVITY, "Last activity"),
-    (FIELD_KIND, "Kind (Chat Place, Cowork or terminal)"),
+    (FIELD_KIND, "Kind (desktop app, Cowork, terminal or The Chat Place)"),
     (FIELD_REMOTE, "Remote Control"),
     (FIELD_ARCHIVED, "Archived"),
     (FIELD_HIDDEN, "Hidden"),
@@ -231,8 +238,8 @@ FIELD_NAMES = dict(FIELDS)
 #: (#209) is there for those who want it, not news for everyone.
 OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE, FIELD_PROVIDER)
 #: The columns rows read unless you choose otherwise, in the order they
-#: have always been read. A saved order lists its columns, so one saved
-#: before a column was added doesn't gain it.
+#: are read. Saved column choices retain their existing order; Provider is
+#: optional until the separate default-column migration lands.
 DEFAULT_FIELDS = [f for f in FIELD_IDS if f not in OPTIONAL_FIELDS]
 
 
@@ -395,6 +402,8 @@ def in_view(info: SessionInfo, view: str) -> bool:
     if view == VIEW_NEW_REPLY:
         return info.unread
     if view == VIEW_IDLE:
+        if info.state == STATUS_UNAVAILABLE:
+            return False
         return (info.state == IDLE if info.provider != "claude"
                 else info.state not in (NEEDS_YOU, WORKING))
     if view == VIEW_DESKTOP:

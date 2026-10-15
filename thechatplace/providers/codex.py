@@ -1,8 +1,8 @@
-"""Read-only Codex history through app-server, never raw rollout files (#184).
+"""Codex history and optional owned execution through app-server (#184).
 
 The caller supplies an initialized RPC connection. This adapter deliberately
-has no resume, start, archive or delete requests; externally discovered chats
-must remain read-only until the owned-session execution phase.
+uses a separate verified runtime for start/fork/resume and text turns.
+Externally discovered chats remain read-only; raw rollout files are never read.
 """
 from __future__ import annotations
 
@@ -12,11 +12,14 @@ import threading
 import time
 from typing import Protocol
 
-from ..sessions import IDLE, NEEDS_YOU, WORKING, SessionInfo
+from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE, TERMINAL, SessionInfo
 from ..transcript import ASSISTANT, ERROR, PLAN, TOOL, TOOL_RESULT, USER, ChatMessage, Transcript
 from ..ui_text import last_message_line
 from .base import Snapshot
 from .codex_connection import ManagedCodexConnection
+from .codex_models import read_models
+from .codex_usage import read_usage, read_warnings
+from .codex_tokens import context_lines
 
 
 class RpcConnection(Protocol):
@@ -50,7 +53,7 @@ def session_from_thread(thread: dict, archived: bool) -> SessionInfo:
     kind = status.get("type")
     # This process cannot prove that a thread not loaded here is idle in
     # another client. Keep that uncertainty visible, never guess from age.
-    state, detail = "status unavailable", ""
+    state, detail = STATUS_UNAVAILABLE, ""
     if kind == "idle":
         state = IDLE
     elif kind == "active":
@@ -63,7 +66,11 @@ def session_from_thread(thread: dict, archived: bool) -> SessionInfo:
     elif kind == "systemError":
         state, detail = NEEDS_YOU, "Codex reported an error"
     title = _text(thread.get("name")) or _text(thread.get("preview"))
-    return SessionInfo("external", f"codex:{native_id}", title.split("\n", 1)[0] or "Untitled session",
+    origin = thread.get("source")
+    source = ({"cli": TERMINAL, "vscode": "editor", "exec": "command_line",
+               "appServer": "app_server"}.get(origin, "external")
+              if isinstance(origin, str) else "external")
+    return SessionInfo(source, f"codex:{native_id}", title.split("\n", 1)[0] or "Untitled session",
                        _text(thread.get("cwd")), native_id, provider="codex",
                        state=state, detail=detail, archived=archived,
                        created_ms=_time(thread.get("createdAt")),
@@ -250,7 +257,8 @@ class CodexProvider:
     MAX_LAST_MESSAGES = 256
     LAST_MESSAGE_SECONDS = 30
 
-    def __init__(self, connection: RpcConnection | None = None, *, executable=None):
+    def __init__(self, connection: RpcConnection | None = None, *, executable=None,
+                 execution=False, on_update=lambda state: None, runtime=None):
         self.connection = (connection if connection is not None
                            else ManagedCodexConnection(executable))
         self._last_messages = OrderedDict()
@@ -258,14 +266,29 @@ class CodexProvider:
         self._last_cursor = 0
         self._last_generation = 0
         self._last_closed = False
+        self.runtime = runtime
+        if execution and runtime is None:
+            from .codex_runtime import CodexChatRuntime
+            self.runtime = CodexChatRuntime(on_update, executable=executable)
+
+    def model_choices(self):
+        """Worker-only discovery; never creates or resumes an owned chat."""
+        return read_models(self.connection)
 
     def close(self):
         with self._last_lock:
             self._last_closed = True
         self.forget_last_messages()
-        close = getattr(self.connection, "close", None)
-        if close is not None:
-            close()
+        failures = []
+        for owner in (self.connection, self.runtime):
+            close = getattr(owner, "close", None)
+            if close is not None:
+                try:
+                    close()
+                except Exception:
+                    failures.append(True)
+        if failures:
+            raise ValueError("Codex cleanup failed")
 
     def forget_last_messages(self):
         with self._last_lock:
@@ -364,6 +387,13 @@ class CodexProvider:
                 if not isinstance(cursor, str) or not cursor or cursor in cursors:
                     raise ValueError("Codex returned invalid or repeated pagination cursor")
                 cursors.add(cursor)
+        if self.runtime is not None:
+            for info in sessions:
+                if self.runtime.known(info.cli_session_id):
+                    state = self.runtime.snapshot(info.cli_session_id)
+                    info.state = state.state
+                    if getattr(state, 'problem', ''):
+                        info.detail = state.problem
         return Snapshot(sessions=sessions)
 
     def _check(self, session):
@@ -374,9 +404,64 @@ class CodexProvider:
         from .base import SessionCapabilities
 
         self._check(session)
-        # Persisted ownership cannot enable a turn before the execution gates
-        # (subscription, provider configuration and concurrency) are complete.
-        return SessionCapabilities()
+        # Persisted ownership alone cannot send: runtime proofs and fresh
+        # subscription/configuration/concurrency gates remain at execution.
+        enabled = self.runtime is not None
+        return SessionCapabilities(usage=True, send=enabled and session.is_own, fork=enabled,
+                                   approvals=enabled and session.is_own)
+
+    def usage_lines(self, session):
+        self._check(session)
+        state = (self.runtime.snapshot(session.cli_session_id) if self.runtime is not None
+                 and self.runtime.known(session.cli_session_id) else None)
+        tokens = state.token_usage if state is not None else None
+        lines = context_lines(tokens)
+        if state is not None and (state.problem or state.state == STATUS_UNAVAILABLE) and tokens is not None:
+            lines.append('Last reported usage before the connection became unavailable; it may be out of date.')
+        return lines + read_usage(self.connection)
+
+    def usage_warnings(self, session):
+        self._check(session)
+        return read_warnings(self.connection)
+
+    def can_create(self):
+        return self.runtime is not None
+
+    def create_owned(self, cwd, title, *, model=None, effort=None, sandbox=None, approval_policy=None):
+        options = {key: value for key, value in (('sandbox', sandbox), ('approval_policy', approval_policy))
+                   if value is not None}
+        return self.runtime.create(cwd, title, model=model, effort=effort, **options)
+
+    def fork_owned(self, source, title, *, model=None, effort=None, sandbox=None, approval_policy=None):
+        options = {key: value for key, value in (('sandbox', sandbox), ('approval_policy', approval_policy))
+                   if value is not None}
+        return self.runtime.fork(source, title, model=model, effort=effort, **options)
+
+    def prepare_policy_owned(self, record, sandbox, approval_policy):
+        return self.runtime.prepare_policy(record, sandbox, approval_policy)
+
+    def finish_policy_owned(self, record, change, saved):
+        if record.cli_session_id != change.proof.native_id:
+            raise ValueError('Codex permission change belongs to another chat')
+        return self.runtime.finish_policy(change, saved)
+
+    def reopen_owned(self, record):
+        return self.runtime.reopen(record)
+
+    def prepare_owned(self, record):
+        return self.runtime.prepare(record)
+
+    def send_owned(self, record, text):
+        return self.runtime.send(record, text)
+
+    def stop_owned(self, record):
+        return self.runtime.stop(record)
+
+    def answer_owned(self, record, request, result):
+        return self.runtime.answer(record, request, result)
+
+    def owned_ready(self, record):
+        return self.runtime is not None and self.runtime.ready(record)
 
     def has_history(self, session) -> bool:
         self._check(session)

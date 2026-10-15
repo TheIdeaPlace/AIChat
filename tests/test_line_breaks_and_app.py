@@ -2,7 +2,8 @@
 import json
 import sys
 
-from thechatplace import app, hub
+from thechatplace import app
+from thechatplace.providers.claude import last_reply_from_tail
 from thechatplace.transcript import TranscriptReader, read_transcript, split_jsonl
 
 from records import assistant_block, text_block, user_text
@@ -45,7 +46,7 @@ def test_last_reply_from_tail_with_separators(tmp_path):
     path = tmp_path / "t.jsonl"
     path.write_bytes(raw_line(user_text("q"))
                      + raw_line(assistant_block(text_block(f"the{LS}reply"), "m")))
-    assert hub.last_reply_from_tail(path) == f"the{LS}reply"
+    assert last_reply_from_tail(path) == f"the{LS}reply"
 
 
 def test_crlf_transcripts_still_parse(tmp_path):

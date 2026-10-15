@@ -48,7 +48,7 @@ def test_session_properties_count_the_whole_transcript():
     # Every line is "Property: value".
     assert all(": " in row for row in rows)
     assert rows[0] == "Title: Quiet one"
-    assert _value(rows, "Kind") == "Desktop app Code session"
+    assert _value(rows, "Kind") == "Desktop app session"
     assert _value(rows, "Folder") == "C:\\G\\Repo"
     assert _value(rows, "Status") == "Idle"
     assert _value(rows, "Started").endswith("(2 days ago)")
@@ -102,7 +102,7 @@ def test_own_and_cowork_sessions():
     assert "Model chosen: " in "\n".join(rows)
     cowork = properties.session_properties(
         _info(cowork=True, cowork_folder="", cwd="C:\\x\\outputs"), None, now_ms=NOW_MS)
-    assert _value(cowork, "Kind") == "Desktop app Cowork session"
+    assert _value(cowork, "Kind") == "Cowork session"
     assert _value(cowork, "Folder") == "none"
     assert _value(cowork, "Working folder") == "C:\\x\\outputs"
 
@@ -183,10 +183,12 @@ def test_codex_properties_do_not_invent_claude_models_policies_or_usage():
     transcript = Transcript(messages=[ChatMessage(ASSISTANT, "Reply", assistant_name="Codex")],
                             model="synthetic-codex-model", context_tokens=123)
     result = properties.session_properties(info, transcript, "", 0, own, 200000, now_ms=NOW_MS)
-    assert "Kind: Codex chat" in result
+    assert "Kind: Chat Place session" in result
     assert "Codex's replies: 1" in result
     assert "Model of the latest reply: synthetic-codex-model" in result
+    assert "Model chosen: configured Codex model" in result
+    assert "Sandbox: read-only" in result
     assert "History: read from Codex" in result
-    assert not any(line.startswith(("Permission mode:", "Remote Control:", "Model chosen:",
+    assert not any(line.startswith(("Permission mode:", "Remote Control:",
                                     "Files changed:")) for line in result)
     assert not any("% full" in line or "Claude" in line for line in result)

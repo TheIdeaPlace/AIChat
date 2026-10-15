@@ -109,3 +109,46 @@ def test_buffer_limits_fail_without_partial_update_or_retry(limit):
         buffer.apply(CodexEvent("text_delta", "chat", "turn", "second", "B"))
     assert buffer.replies == (("first", "A"),)
     assert buffer.status == "unknown" and buffer.needs_reconciliation
+
+
+@pytest.mark.parametrize('method', ['item/started', 'item/completed'])
+def test_file_approval_details_are_bounded_and_scoped_to_turn_and_item(method):
+    event = decode_event(method, {'threadId': 'chat', 'turnId': 'turn', 'item': {
+        'type': 'fileChange', 'id': 'files', 'changes': [
+            {'path': 'old.py', 'kind': {'type': 'update', 'move_path': 'new.py'}, 'diff': '+new'}]}})
+    buffer = CodexTurnBuffer('chat', 'turn')
+    assert buffer.apply(event)
+    assert buffer.file_changes == (('files', 'Update: old.py\nMove to: new.py\n+new'),)
+    assert not CodexTurnBuffer('other', 'turn').apply(event)
+    assert not CodexTurnBuffer('chat', 'other').apply(event)
+    buffer.MAX_TEXT = 1
+    with pytest.raises(ValueError, match='limit'):
+        buffer.apply(event)
+    assert buffer.status == 'unknown' and buffer.needs_reconciliation
+
+
+@pytest.mark.parametrize('changes', [None, [{'path': 'file', 'kind': {'type': 'unknown'}, 'diff': ''}],
+                                    [{'path': '', 'kind': {'type': 'add'}, 'diff': ''}]])
+def test_missing_or_unknown_file_details_fail_closed(changes):
+    with pytest.raises(ValueError):
+        decode_event('item/started', {'threadId': 'chat', 'turnId': 'turn', 'item': {
+            'type': 'fileChange', 'id': 'files', 'changes': changes}})
+
+
+def test_command_activity_is_turn_scoped_bounded_and_has_elapsed_origin():
+    event = decode_event('item/started', {'threadId': 'chat', 'turnId': 'turn', 'item': {
+        'type': 'commandExecution', 'id': 'command', 'command': 'git status\n--short'}})
+    buffer = CodexTurnBuffer('chat', 'turn')
+    assert buffer.started_at > 0 and buffer.apply(event)
+    assert buffer.activity == 'Running command: git status --short'
+    assert not CodexTurnBuffer('other', 'turn').apply(event)
+    done = decode_event('item/completed', {'threadId': 'chat', 'turnId': 'turn', 'item': {
+        'type': 'commandExecution', 'id': 'command', 'command': 'git status'}})
+    assert buffer.apply(done) and buffer.activity == 'Codex is working.'
+
+
+def test_malformed_activity_requires_reconciliation():
+    buffer = CodexTurnBuffer('chat', 'turn')
+    with pytest.raises(ValueError):
+        buffer.apply(CodexEvent('activity', 'chat', 'turn', 'item', None))
+    assert buffer.needs_reconciliation

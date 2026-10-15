@@ -53,6 +53,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     # No real claude --version (bug reports) or clipboard.
     from thechatplace import bugreport
     from thechatplace.ui import dialogs, main_frame
+    patch(main_frame.mac_a11y, "queue_announcement", lambda *args: False)
     patch(bugreport, "claude_code_version", lambda: "2.1.286 (Claude Code)")
     copied = []
     patch(main_frame.MainFrame, "_copy_text",

@@ -245,7 +245,7 @@ def test_capabilities_do_not_grant_codex_write_access_from_ownership():
     owned_claude, owned_codex = info(), info("codex")
     assert controller.capabilities(owned_claude).send
     assert controller.capabilities(owned_claude).delete
-    assert controller.capabilities(owned_codex) == SessionCapabilities()
+    assert controller.capabilities(owned_codex) == SessionCapabilities(usage=True)
     assert not controller.capabilities(owned_codex).fork
     external = SessionInfo("external", "external:one", "External", "", "one")
     assert controller.capabilities(external).fork
@@ -323,6 +323,25 @@ def test_owned_foreign_missing_catalog_is_unknown_and_disabled_provider_stays_hi
     assert result.key == "codex:same" and result.is_own and result.unread
     assert result.state == "status unavailable" and not snap.fresh_states()
     assert not controller.capabilities(result).send
+
+
+def test_properties_resolves_claude_path_once_and_reads_that_file(tmp_path, monkeypatch):
+    from thechatplace.providers.claude import ClaudeConversations
+    from records import assistant_block, text_block, lines
+    path = tmp_path / 'same.jsonl'
+    path.write_text('\n'.join(lines(assistant_block(text_block('Same file'), 'm'))) + '\n')
+    info = SessionInfo('desktop', 'local_native', 'Fixture', '', 'native')
+    calls = []
+    def resolve(self):
+        calls.append(self.identity)
+        return path
+    monkeypatch.setattr(SessionInfo, 'transcript_path', resolve)
+    controller = SessionController([ClaudeConversations()])
+    reader, name, size = controller.open_reader_with_facts(info)
+    reader.refresh()
+    assert calls == [('claude', 'native')]
+    assert reader.transcript.messages[-1].text == 'Same file'
+    assert name == str(path) and size == path.stat().st_size
 
 
 def test_last_reply_routes_colliding_ids_and_unknown_find_is_counted():

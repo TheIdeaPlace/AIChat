@@ -12,6 +12,8 @@ pair = []
 initialized = False
 account_reads = 0
 config_reads = 0
+server_answer = None
+owned_active = False
 
 
 def emit(message, partial=False):
@@ -31,6 +33,13 @@ def emit(message, partial=False):
 for line in sys.stdin:
     request = json.loads(line)
     method = request.get("method")
+    if method is None and ('result' in request or 'error' in request):
+        server_answer = request
+        if len(sys.argv) > 1 and sys.argv[1] in ('owned-turn-approval', 'owned-turn-command-output', 'owned-turn-unsupported', 'owned-turn-unknown'):
+            owned_active = False
+            emit({'method': 'turn/completed', 'params': {'threadId': 'owned',
+                  'turn': {'id': 'turn', 'status': 'completed'}}})
+        continue
     if method == "initialize":
         if len(sys.argv) > 1 and sys.argv[1] == "hang-init":
             continue
@@ -61,6 +70,45 @@ for line in sys.stdin:
         emit({"id": request["id"], "result": result})
         continue
     scenario = sys.argv[1] if len(sys.argv) > 1 else ""
+    if scenario in ('owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown'):
+        if method == 'account/read':
+            result = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
+        elif method == 'config/read':
+            result = {'config': {}}
+        elif method == 'thread/start':
+            result = {'thread': {'id': 'owned', 'createdAt': 1, 'status': {'type': 'idle'}, 'ephemeral': False},
+                      'cwd': '/workspace', 'model': 'synthetic', 'modelProvider': 'openai',
+                      'sandbox': {'type': 'readOnly'}, 'approvalPolicy': 'on-request', 'approvalsReviewer': 'user'}
+        elif method == 'thread/read':
+            result = {'thread': {'id': 'owned', 'modelProvider': 'openai', 'cwd': '/workspace',
+                                'status': {'type': 'active' if owned_active else 'idle'}}}
+        elif method == 'turn/start':
+            owned_active = True
+            emit({'id': request['id'], 'result': {'turn': {'id': 'turn', 'status': 'inProgress'}}})
+            if scenario == 'owned-turn-command-output':
+                for _ in range(256):
+                    emit({'method': 'item/commandExecution/outputDelta', 'params': {
+                        'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command', 'delta': 'synthetic output\n'}})
+            if scenario != 'owned-turn-hang':
+                details = {'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command',
+                           'command': 'synthetic command', 'cwd': '/workspace',
+                           'additionalPermissions': None, 'availableDecisions': None}
+                if scenario == 'owned-turn-unsupported':
+                    details['kind'] = 'stdin'
+                emit({'id': 'approval', 'method': 'future/unsupportedRequest' if scenario == 'owned-turn-unknown'
+                      else 'item/commandExecution/requestApproval', 'params': details})
+            continue
+        elif method == 'turn/interrupt':
+            owned_active = False
+            emit({'id': request['id'], 'result': {}})
+            emit({'method': 'turn/completed', 'params': {'threadId': 'owned',
+                  'turn': {'id': 'turn', 'status': 'interrupted'}}})
+            continue
+        else:
+            emit({'id': request['id'], 'error': {'message': 'unsupported synthetic method'}})
+            continue
+        emit({'id': request['id'], 'result': result})
+        continue
     if scenario.startswith("account-") and method == "thread/read":
         thread = {"id": params["threadId"], "modelProvider": "openai", "cwd": "/synthetic"}
         if scenario == "account-route-provider":
@@ -75,6 +123,8 @@ for line in sys.stdin:
         config_reads += 1
         config = {}
         kind = scenario.removeprefix("account-route-")
+        if kind == "canonical-chatgpt":
+            config["chatgpt_base_url"] = "https://chatgpt.com/backend-api/"
         if kind in ("openai_base_url", "chatgpt_base_url", "model_provider", "forced_login_method"):
             config[kind] = "alternate"
         if kind == "builtin-override":
@@ -90,6 +140,13 @@ for line in sys.stdin:
         emit({"id": request["id"], "result": {"config": config, "echo": params}})
         continue
     mode = params.get("mode")
+    if mode == 'approval-receive':
+        emit({'id': 'server-approval', 'method': 'item/commandExecution/requestApproval',
+              'params': {'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command',
+                         'command': 'synthetic command', 'cwd': '/workspace'}}, partial=True)
+    if mode == 'approval-response':
+        emit({'id': request['id'], 'result': {'serverAnswer': server_answer}})
+        continue
     if mode in ("events", "event-overflow", "bad-event"):
         if mode == "bad-event":
             emit({"method": "item/agentMessage/delta", "params": {"threadId": "one"}})

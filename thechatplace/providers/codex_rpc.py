@@ -13,11 +13,44 @@ import queue
 import threading
 
 from .. import __version__, platform_paths
-from .codex_events import decode_event
+from .codex_events import decode_event, CodexTokenUsageEvent
+from .codex_requests import decode_request, decode_resolved, CodexRequestDeclined, COMMAND, FILES, QUESTIONS
 
 
 class CodexRpcError(RuntimeError):
     """Public diagnostics never include raw RPC payloads or stderr."""
+
+
+class CodexConnectionFailure(CodexRpcError):
+    """Fixed connection reasons, never server payloads or exception text."""
+    REASONS = {
+        'stream_closed': 'Codex connection interrupted: the stream closed; reconcile chat history.',
+        'request_timeout': 'Codex connection interrupted: a request timed out; reconcile chat history.',
+        'write_failed': 'Codex connection interrupted: a request could not be written; reconcile chat history.',
+        'invalid_protocol': 'Codex connection interrupted: an invalid protocol message was received; reconcile chat history.',
+        'unsupported_request': 'Codex connection interrupted: an unsupported approval or question was received; reconcile chat history.',
+    }
+
+    def __init__(self, code):
+        self.code = code if code in self.REASONS else 'invalid_protocol'
+        super().__init__(self.REASONS[self.code])
+
+
+class CodexTurnRejected(CodexRpcError):
+    """The inference request was never queued; fixed reasons are safe to report."""
+    REASONS = {
+        'chatgpt_required': 'Codex turns require ChatGPT sign-in.',
+        'not_idle': 'This Codex chat is not confirmed idle. No new turn was sent.',
+        'preflight_failed': 'Codex could not verify this chat before sending. No new turn was sent.',
+        'billing_route': 'Codex turns require the default ChatGPT billing route',
+        'verified_thread': 'Codex turn requires a verified thread',
+        'configuration': 'Codex turn configuration is unavailable',
+        'provider': 'Codex turns require the built-in OpenAI provider',
+    }
+
+    def __init__(self, code):
+        self.code = code if code in self.REASONS else 'preflight_failed'
+        super().__init__(self.REASONS[self.code])
 
 
 @dataclass
@@ -28,21 +61,26 @@ class _Pending:
 
 
 class ReadOnlyCodexConnection:
-    METHODS = frozenset({"account/read", "thread/list", "thread/read", "config/read",
-                         "thread/turns/list", "thread/items/list"})
+    METHODS = frozenset({"account/read", "account/rateLimits/read", "thread/list", "thread/read", "config/read",
+                         "thread/turns/list", "thread/items/list", "model/list"})
     MAX_FRAME = 32 * 1024 * 1024
     MAX_REQUEST = 64 * 1024
     MAX_PENDING = 32
     MAX_EVENTS = 32
 
     def __init__(self, executable=None, *, timeout=20.0, start=None, initialize=True,
-                 receive_events=False):
+                 receive_events=False, receive_requests=False):
         if timeout <= 0:
             raise ValueError("Codex request timeout must be positive")
         if type(receive_events) is not bool:
             raise ValueError("Codex event selection must be boolean")
+        if type(receive_requests) is not bool or (receive_requests and not receive_events):
+            raise ValueError("Codex requests require an event consumer")
+        self._receive_requests = receive_requests
+        self._server_pending = {}
         self._receive_events = receive_events
         self._events = queue.Queue(maxsize=self.MAX_EVENTS)
+        self._token_events = {}
         self._timeout = timeout
         self._lock = threading.Lock()
         self._initialize_lock = threading.Lock()
@@ -50,6 +88,7 @@ class ReadOnlyCodexConnection:
         self._pending: dict[int, _Pending] = {}
         self._next_id = 0
         self._closed = False
+        self._failure = None
         self._cleanup_done = threading.Event()
         self._cleanup_failed = False
         self._outgoing = queue.Queue()
@@ -105,11 +144,30 @@ class ReadOnlyCodexConnection:
         """Nonblocking worker consumption; a broken stream needs reconciliation."""
         with self._lock:
             if self._closed:
-                raise CodexRpcError("Codex stream closed; reconcile chat history")
+                raise getattr(self, '_failure', None) or CodexConnectionFailure('stream_closed')
             try:
                 return self._events.get_nowait()
             except queue.Empty:
-                return None
+                pending = getattr(self, '_token_events', {})
+                return pending.pop(next(iter(pending))) if pending else None
+
+    def _accept_server_request(self, request):
+        return False  # read-only callers never receive executable approvals
+
+    def respond_request(self, request, result):
+        result = request.validate_answer(result)
+        if result.get("decision") == "accept":
+            account = self.request("account/read", {"refreshToken": True})
+            if (not isinstance(account.get("account"), dict)
+                    or account["account"].get("type") != "chatgpt"
+                    or account.get("requiresOpenaiAuth") is not True):
+                raise CodexRpcError("Codex approvals require ChatGPT sign-in")
+        payload = self._encode({"id": request.request_id, "result": result})
+        with self._lock:
+            if self._closed or self._server_pending.get(request.request_id) is not request:
+                raise CodexRpcError("Codex request is no longer waiting")
+            self._outgoing.put(payload)
+            del self._server_pending[request.request_id]
 
     def _request(self, method, params):
         if not isinstance(params, dict):
@@ -118,12 +176,19 @@ class ReadOnlyCodexConnection:
             # Guard the wire boundary even when execution is added to METHODS.
             # Never cache this across turns or check a different connection:
             # sign-in/provider state can change while the server stays alive.
-            account = self.request("account/read", {"refreshToken": True})
-            if (not isinstance(account.get("account"), dict)
-                    or account["account"].get("type") != "chatgpt"
-                    or account.get("requiresOpenaiAuth") is not True):
-                raise CodexRpcError("Codex turns require ChatGPT sign-in")
-            self._verify_turn_route(params)
+            try:
+                account = self.request("account/read", {"refreshToken": True})
+                if (not isinstance(account.get("account"), dict)
+                        or account["account"].get("type") != "chatgpt"
+                        or account.get("requiresOpenaiAuth") is not True):
+                    raise CodexTurnRejected('chatgpt_required')
+                self._verify_turn_route(params)
+            except CodexTurnRejected:
+                raise
+            except Exception as error:
+                code = next((code for code, message in CodexTurnRejected.REASONS.items()
+                             if type(error) is CodexRpcError and str(error) == message), 'preflight_failed')
+                raise CodexTurnRejected(code) from None
         pending = _Pending()
         with self._lock:
             if self._closed:
@@ -137,7 +202,7 @@ class ReadOnlyCodexConnection:
             self._outgoing.put(payload)
         if not pending.ready.wait(self._timeout):
             self._fail("Codex request timed out")
-            raise CodexRpcError("Codex request timed out")
+            raise CodexConnectionFailure('request_timeout')
         if pending.error:
             raise pending.error
         return pending.result
@@ -168,8 +233,8 @@ class ReadOnlyCodexConnection:
         providers = config.get("model_providers", {})
         if (config.get("model_provider") not in (None, "openai")
                 or config.get("forced_login_method") not in (None, "chatgpt")
-                or any(config.get(key) is not None for key in
-                       ("openai_base_url", "chatgpt_base_url"))
+                or config.get("openai_base_url") is not None
+                or config.get("chatgpt_base_url") not in (None, "https://chatgpt.com/backend-api/")
                 or not isinstance(providers, dict) or "openai" in providers):
             # Reject rather than silently changing a user's configured route.
             # The older CLI allowed overriding built-in provider definitions.
@@ -214,11 +279,61 @@ class ReadOnlyCodexConnection:
         if not isinstance(message, dict):
             raise ValueError("Invalid protocol object")
         if "method" in message:
-            if not isinstance(message["method"], str) or "id" in message:
+            if not isinstance(message["method"], str):
                 raise ValueError("Unexpected server request")
+            if "id" in message:
+                if not self._receive_requests:
+                    raise ValueError("Unexpected server request")
+                try:
+                    request = decode_request(message["id"], message["method"], message.get("params"))
+                except ValueError:
+                    self._decline_unsupported_request(message)
+                    return
+                if not self._accept_server_request(request):
+                    raise ValueError("Unowned Codex request")
+                with self._lock:
+                    if (request.request_id in self._server_pending
+                            or len(self._server_pending) >= self.MAX_EVENTS):
+                        raise ValueError("Codex request limit exceeded")
+                    self._server_pending[request.request_id] = request
+                try:
+                    self._events.put_nowait(request)
+                except queue.Full:
+                    raise ValueError("Codex request queue overflow") from None
+                return
             if self._receive_events:
-                event = decode_event(message["method"], message.get("params"))
+                if self._receive_requests and message["method"] == "serverRequest/resolved":
+                    event = decode_resolved(message.get("params"))
+                    with self._lock:
+                        request = self._server_pending.get(event.request_id)
+                        if request is not None and request.thread_id != event.thread_id:
+                            raise ValueError("Codex resolution belongs to another chat")
+                        self._server_pending.pop(event.request_id, None)
+                else:
+                    event = decode_event(message["method"], message.get("params"))
                 if event is not None:
+                    if isinstance(event, CodexTokenUsageEvent):
+                        # Optional counters are replaceable snapshots. Keep
+                        # them out of the bounded approval/completion queue.
+                        with self._lock:
+                            key = (event.thread_id, event.turn_id)
+                            pending = self._token_events
+                            if key not in pending and len(pending) >= self.MAX_EVENTS:
+                                pending.pop(next(iter(pending)))
+                            pending[key] = event
+                        return
+                    if getattr(event, 'kind', None) == 'context_compacted':
+                        with self._lock:
+                            self._token_events.pop((event.thread_id, event.turn_id), None)
+                    # Command stdout is read from completed history, not this
+                    # runtime's reply/approval queue. Unconsumed output bursts
+                    # must not crowd out Stop, approvals or completion (#247).
+                    if getattr(event, 'kind', None) == 'tool_output_delta':
+                        return
+                    if getattr(event, "kind", None) == "turn_completed":
+                        with self._lock:
+                            self._server_pending = {key: request for key, request in self._server_pending.items()
+                                if (request.thread_id, request.turn_id) != (event.thread_id, event.turn_id)}
                     try:
                         self._events.put_nowait(event)
                     except queue.Full:
@@ -244,15 +359,42 @@ class ReadOnlyCodexConnection:
             del self._pending[request_id]
             pending.ready.set()
 
+    def _decline_unsupported_request(self, message):
+        identity = message['id']
+        if (not (type(identity) is int or isinstance(identity, str))
+                or isinstance(identity, str) and (not identity.strip() or len(identity) > 256)):
+            raise ValueError('Invalid Codex request identity')
+        # Error responses grant nothing. Do not echo params, command text or
+        # an untrusted method name into logs or speech (#247).
+        code = -32602 if message['method'] in (COMMAND, FILES, QUESTIONS) else -32601
+        payload = self._encode({'id': identity, 'error': {
+            'code': code, 'message': 'The Chat Place does not support this request or its permission scope.'}})
+        with self._lock:
+            if self._closed or identity in self._server_pending:
+                raise ValueError('Duplicate or expired Codex request identity')
+            self._outgoing.put(payload)
+        try:
+            kind = {COMMAND: 'command approval', FILES: 'file approval', QUESTIONS: 'question'}.get(message['method'], 'request')
+            self._events.put_nowait(CodexRequestDeclined(kind))
+        except queue.Full:
+            raise ValueError('Codex request notice queue overflow') from None
+
     def _fail(self, reason):
         with self._lock:
             if self._closed:
                 return
             self._closed = True
+            code = {'Codex request timed out': 'request_timeout',
+                    'Codex connection closed': 'stream_closed',
+                    'Codex connection write failed': 'write_failed',
+                    'Codex unsupported server request': 'unsupported_request'}.get(reason, 'invalid_protocol')
+            self._failure = CodexConnectionFailure(code)
             for pending in self._pending.values():
-                pending.error = CodexRpcError(reason)
+                pending.error = self._failure
                 pending.ready.set()
             self._pending.clear()
+            self._server_pending.clear()
+            getattr(self, '_token_events', {}).clear()
             self._outgoing.put(None)
         try:
             self._process.close()
