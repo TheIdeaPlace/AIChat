@@ -123,7 +123,7 @@ def test_rpc_error_is_redacted_and_other_requests_remain_usable(server):
         assert connection.request("thread/list", {}) == {"echo": {}}
 
 
-def test_timeout_fails_all_waiters_and_does_not_replay_requests(server):
+def test_timeout_isolates_waiters_and_does_not_replay_requests(server):
     start, owned = server
     with ReadOnlyCodexConnection(start=start, timeout=1) as connection, ThreadPoolExecutor(2) as pool:
         first = pool.submit(connection.request, "thread/read", {"mode": "hang", "threadId": "one"})
@@ -131,9 +131,12 @@ def test_timeout_fails_all_waiters_and_does_not_replay_requests(server):
         for future in (first, second):
             with pytest.raises(CodexRpcError, match="timed out"):
                 future.result(timeout=5)
-        assert len(owned) == 1 and owned[0].process.poll() is not None
-        with pytest.raises(CodexRpcError, match="closed"):
-            connection.request("thread/list", {})
+        assert len(owned) == 1 and owned[0].process.poll() is None
+        assert not connection.closed
+        assert connection.request("thread/list", {}) == {"echo": {}}
+        for request_id in tuple(connection._abandoned):
+            connection._receive({"id": request_id, "result": {"late": True}})
+        assert not connection.closed
 
 
 def test_shutdown_unblocks_pending_read_without_waiting_for_timeout(server):
@@ -526,19 +529,19 @@ def test_future_turn_checks_account_each_time_on_same_connection(server):
             "threadId": "synthetic"}
         with pytest.raises(CodexRpcError, match="ChatGPT sign-in"):
             connection.request("turn/start", {"threadId": "synthetic"})
-        assert connection._next_id == 6  # second turn never reaches the wire
+        assert connection._next_id == 7  # second turn never reaches the wire
 
 
 @pytest.mark.parametrize("kind", ["provider", "wrong-id", "missing-cwd", "openai_base_url",
     "chatgpt_base_url", "model_provider", "forced_login_method", "builtin-override",
-    "malformed-providers", "malformed-config"])
+    "malformed-providers", "malformed-config", "mcp"])
 @pytest.mark.parametrize("method", ["turn/start", "turn/steer"])
 def test_future_turn_rejects_alternate_or_unverified_route(server, kind, method):
     start, _ = server
     with FutureTurnConnection("account-route-" + kind, start=start) as connection:
         with pytest.raises(CodexRpcError):
             connection.request(method, {"threadId": "synthetic"})
-        assert connection._next_id <= 4  # initialize, account, metadata, config; no turn
+        assert connection._next_id <= 5  # initialize, account, metadata, config; no turn
 
 
 def test_future_turn_rechecks_configuration_before_each_send(server):
@@ -547,7 +550,7 @@ def test_future_turn_rechecks_configuration_before_each_send(server):
         connection.request("turn/start", {"threadId": "synthetic"})
         with pytest.raises(CodexRpcError, match="billing route"):
             connection.request("turn/start", {"threadId": "synthetic"})
-        assert connection._next_id == 8  # changed second route never sends a turn
+        assert connection._next_id == 10  # changed second route never sends a turn
 
 
 @pytest.mark.parametrize("thread_id", [None, "", "  ", 123])
@@ -565,7 +568,7 @@ def test_future_turn_checks_the_requested_working_directory(server):
         connection.request("turn/start", {"threadId": "synthetic"})
         with pytest.raises(CodexRpcError, match="billing route"):
             connection.request("turn/start", {"threadId": "synthetic", "cwd": "/alternate"})
-        assert connection._next_id == 8
+        assert connection._next_id == 10
 
 
 @pytest.mark.parametrize("cwd", [None, "", "  ", 42])
@@ -584,13 +587,15 @@ def test_opt_in_events_preserve_interleaved_chat_ids_and_authoritative_final_tex
         events = []
         while (event := connection.pop_event()) is not None:
             events.append(event)
-        assert [e.thread_id for e in events] == ["one", "one", "two", "one", "one", "two"]
-        assert events[1].text == "Draft" and events[3].text == "Final result"
+        finals = [e for e in events if e.kind == 'text_completed']
+        assert len(finals) == 1 and finals[0].thread_id == 'one'
+        assert finals[0].text == 'Final result'
+        assert events.index(finals[0]) < next(i for i,e in enumerate(events) if e.kind == 'turn_completed' and e.thread_id == 'one')
         assert events[-1].status == "interrupted" and "private" not in repr(events)
         assert connection.pop_event() is None
 
 
-@pytest.mark.parametrize("mode", ["bad-event", "event-overflow"])
+@pytest.mark.parametrize("mode", ["bad-event"])
 def test_opt_in_stream_disconnects_rather_than_losing_or_misrouting_events(server, mode):
     start, _ = server
     with ReadOnlyCodexConnection(start=start, receive_events=True) as connection:
@@ -627,6 +632,10 @@ def request_transport():
     connection._server_pending = {}
     connection._events = queue.Queue(maxsize=32)
     connection._token_events = {}
+    connection._display_events = {}
+    connection._display_truncated = {}
+    connection._deferred_event = None
+    connection._retired_turns = {}
     connection._outgoing = queue.Queue()
     connection._accept_server_request = lambda request: request.thread_id == 'owned'
     connection.request = lambda method, params: {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
@@ -805,3 +814,26 @@ def test_final_pipe_flush_only_tolerates_completed_cleanup(monkeypatch, platform
         with pytest.raises(OSError):
             child.close()
     assert stdout.closed
+
+
+def test_late_timeout_reply_does_not_close_other_requests(server):
+    import time
+    start, _ = server
+    with ReadOnlyCodexConnection(start=start) as connection:
+        connection._timeout = .05
+        with pytest.raises(CodexRpcError, match='timed out'):
+            connection.request('thread/read', {'mode': 'late'})
+        assert connection.request('thread/list', {}) == {'echo': {}}
+        time.sleep(.3)
+        assert not connection.closed and connection._reader.is_alive()
+        assert connection.request('thread/list', {}) == {'echo': {}}
+
+
+@pytest.mark.parametrize('method', ['turn/start', 'turn/steer'])
+def test_uncertain_inference_timeout_still_fails_closed(server, method):
+    start, _ = server
+    with FutureTurnConnection('account-chatgpt', start=start) as connection:
+        connection._timeout = .1
+        with pytest.raises(CodexRpcError, match='timed out'):
+            connection.request(method, {'threadId': 'synthetic', 'mode': 'hang'})
+        assert connection.closed

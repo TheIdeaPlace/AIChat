@@ -28,3 +28,35 @@ Validation: full native Mac 1,957 passed, 87 skipped; final runtime/policy/UI/do
 the integration branch used disposable chats/folders and official cleanup APIs.
 Windows screenshots and keyboard/speech acceptance remain required by #226 and
 testing/codex-release-acceptance.md. This commit is not release authorization.
+
+## PR #255 review corrections
+
+Claude review #27 reproduced lifecycle failures. Reply deltas now coalesce per
+item; oversized presentation is truncated rather than disconnecting every chat.
+Repeated Stop reconciles the same terminal native turn without resume or replay,
+and retires its late approvals. Queue recovery rechecks the current turn under
+the runtime lock so a stale interrupted snapshot cannot recover newly queued text.
+Ordinary RPC timeouts abandon only that request and ignore late responses; an
+uncertain inference timeout still closes the connection.
+
+Runtime-announced Codex chats no longer receive duplicate discovery speech.
+Approvals/questions and completions produce desktop notifications, and requests
+include a bounded command, file-change or question summary. Continue Here starts
+read-only; home folders, their parents and volume roots cannot receive write
+access. The deleted provider-label regression tests are restored. User text,
+Answer priority wording and release notes now describe the actual behavior.
+
+External MCP tools are disabled per chat, including app/plugin sources, without
+changing global configuration. A thread-specific inventory must prove all servers
+disabled with no tools before runtime ownership and before every turn. A native
+ephemeral probe reported both configured servers disabled and zero tools. The
+real command regression then completed a disposable in-folder file edit through
+53 readiness checks during its turn, with token usage and context window reported.
+Its disposable chat was removed through official archive/delete methods.
+
+Independent runtime and UI reviews found no remaining blockers after the queue
+snapshot race was fixed. A separate policy review approved external-tool isolation
+and its 189 focused tests. Mac case canonicalization is tracked in #256; inherited
+execution approval rules remain a release gate in #257. Windows visual comparisons
+and manual focus/VoiceOver checks remain in #226, including Message dialog labels
+and non-interrupting Claude read-back. No new screenshot baseline is claimed here.

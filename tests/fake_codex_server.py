@@ -70,6 +70,10 @@ for line in sys.stdin:
         emit({"id": request["id"], "result": result})
         continue
     scenario = sys.argv[1] if len(sys.argv) > 1 else ""
+    if method == 'mcpServerStatus/list':
+        rows = [{'runtimeStatus': 'connected', 'tools': {}}] if scenario == 'account-route-mcp' else []
+        emit({'id': request['id'], 'result': {'data': rows, 'nextCursor': None}})
+        continue
     if scenario in ('owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown'):
         if method == 'account/read':
             result = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
@@ -131,6 +135,8 @@ for line in sys.stdin:
             config["model_providers"] = {"openai": {"env_key": "ALTERNATE_KEY"}}
         if kind == "malformed-providers":
             config["model_providers"] = []
+        if kind == "mcp":
+            config['mcp_servers'] = {'synthetic': {}}
         if kind == "malformed-config":
             config = None
         if kind == "changed" and config_reads > 1:
@@ -163,6 +169,9 @@ for line in sys.stdin:
                 ("turn/completed", {"threadId": "one", "turn": {"id": "a", "status": "completed"}}),
                 ("turn/completed", {"threadId": "two", "turn": {"id": "b", "status": "interrupted", "error": {"message": "private secret"}}})]:
                 emit({"method": notification, "params": data}, partial=True)
+    if mode == "late":
+        threading.Timer(.2, lambda identity=request['id']: emit({'id': identity, 'result': {'late': True}})).start()
+        continue
     if mode == "hang":
         continue
     if mode == "exit":

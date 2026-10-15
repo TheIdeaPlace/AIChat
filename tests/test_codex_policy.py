@@ -80,3 +80,16 @@ def test_removed_workspace_cannot_retain_write_permission(tmp_path):
     folder.rmdir()
     with pytest.raises(CodexRpcError, match='workspace could not be verified'):
         policy.verify_workspace(str(folder))
+
+
+def test_home_and_its_parents_cannot_be_write_scopes(tmp_path, monkeypatch):
+    from pathlib import Path
+    home = tmp_path / 'users' / 'person'
+    home.mkdir(parents=True)
+    project = home / 'project'; project.mkdir()
+    monkeypatch.setattr(Path, 'home', lambda: home)
+    for root in (home, home.parent, tmp_path):
+        with pytest.raises(ValueError):
+            CodexPolicy.choose(str(root), 'workspace-write')
+    assert CodexPolicy.choose(str(project), 'workspace-write').workspace_root == str(project)
+    assert CodexPolicy.choose(str(home), 'read-only').sandbox == 'read-only'

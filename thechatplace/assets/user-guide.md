@@ -305,7 +305,7 @@ about a step you didn't hear. When the turn ends, or the session needs you, it's
 
 Kind describes the source, independently of Provider. Codex also identifies terminal, editor
 and command-line origins when it knows them; other or unknown clients remain external sessions.
-An owned Codex chat is a Chat Place session, just like an owned Claude chat.
+An Codex chat started here is a Chat Place session, just like an owned Claude chat.
 
 The Claude-specific desktop and Cowork actions are shown in this table:
 
@@ -328,16 +328,27 @@ Codex chat into a new owned chat. Owned chats support text replies, Stop,
 queued messages and Answer (Ctrl+Shift+A) for permissions and questions. Turn the option off and restart
 to hide Codex without deleting its saved preferences. Quitting The Chat Place
 requests a stop for its running Codex replies too. Revisiting a chat preserves
-its running turn. TCP refuses to resume a saved chat whose latest turn is
+its running turn. The Chat Place refuses to resume a saved chat whose latest turn is
 unfinished or uncertain. If the connection is lost, use Stop to check the
 native turn and reconnect once it has ended. No message is resent. Selecting
 the chat again does not automatically reconnect. If Codex still reports
-unfinished work, TCP refuses recovery and says why. Requests TCP cannot present
+unfinished work, The Chat Place refuses recovery and says why. Requests The Chat Place cannot present
 safely are declined with a notice without disconnecting the chat; Turn Status
 keeps the notice available. Turn Status (Ctrl+Shift+T)
 reports elapsed time and the latest activity. Your messages are read back
 according to the same announcement setting used for Claude chats. If a send
 cannot be confirmed, reopen the chat to read its history before sending again.
+
+
+Continue Here starts a Codex copy read-only. You can select folder editing for
+a project folder, but the home folder, its parents and volume roots cannot be
+used as writable folders. If Stop is acknowledged but the turn stays open,
+press Stop again to check Codex's saved turn status without resending anything.
+
+The Chat Place disables external tools (MCP servers, apps and plugins) for
+Codex chats started here because those tools can reach beyond the selected
+folder. It checks that they are disabled before sending. Your global Codex
+configuration stays unchanged; existing chats can still be read.
 
 ## Starting a session and replying
 
@@ -350,7 +361,7 @@ one of its supported efforts. Choices are rechecked when the chat starts. If the
 loaded, configured defaults remain available. Continue Here offers the same choices. Codex
 defaults to editing files in its selected folder with on-request approvals. Choose
 read-only in New Session, or use File, Change Permission Mode (Ctrl+Shift+O) on
-an idle owned Codex chat. Existing chats keep their saved permissions. The model names and
+an idle Codex chat started here. Existing chats keep their saved permissions. The model names and
 permission modes below describe Claude chats. Then fill in:
 
 - **Folder:** the project folder the session works in. It starts at the folder you used most recently.
@@ -411,7 +422,7 @@ mode you chose here, unless that was plan.
 Desktop app and terminal sessions are set in Claude or in the terminal, so for them these items
 say so and change nothing.
 
-For an owned Codex chat, **Change Permission Mode** changes an idle chat between
+For an Codex chat started here, **Change Permission Mode** changes an idle chat between
 read-only and editing files in its selected folder with on-request approvals.
 Existing saved permissions stay in effect until the change is verified and saved.
 Choose Codex model and effort in New Session or Continue Here; changing them
@@ -469,7 +480,7 @@ need it:
 
 ## Answering permissions and questions
 
-**Answer** (Ctrl+Shift+A, File, Answer) handles the loaded owned chat first. Codex permission
+**Answer** (Ctrl+Shift+A, File, Answer) handles the loaded chat first. Codex permission
 requests offer one-time approval, refusal, Stop Turn or Answer Later; questions show the provider
 and keep secret answers masked. Decline and Stop Turn stops the turn. New Session and Change Permission Mode offer read-only or editing files in the
 selected folder, both with on-request approvals. Finish or Stop active work and
@@ -659,15 +670,15 @@ notification is shown.
 View, Usage and Context (Ctrl+Shift+U) reads current Codex account limits in
 the background. Arrow through the used/remaining percentages and reset times,
 and use the same Copy/Copy All controls. Limits are shared across your Codex
-chats. Missing values say not reported. Owned Codex chats also show the latest
+chats. Missing values say not reported. Codex chats started here also show the latest
 reported model request's input, output and total tokens separately from cumulative
 usage. When Codex reports its context window, the latest request's percentage
-appears here and in the status bar; at 80% TCP warns once until the next compaction.
+appears here and in the status bar; at 80% The Chat Place warns once until the next compaction.
 After an owned Codex turn ends, account limits are checked in the background.
-TCP warns at 80% and 100%, once per allowance and reset window, without
+The Chat Place warns at 80% and 100%, once per allowance and reset window, without
 interrupting read-back.
 These values are available only after this connection receives a usage report.
-Missing windows stay not reported; TCP never substitutes Claude's counts or model
+Missing windows stay not reported; The Chat Place never substitutes Claude's counts or model
 defaults.
 
 ## Links to sessions

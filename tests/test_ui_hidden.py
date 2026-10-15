@@ -9018,7 +9018,8 @@ def test_codex_continue_note_names_source_uncertainty_and_runtime_policy(frame):
         note = dialog.note.GetValue()
         assert 'may still be working in Codex' in note
         assert 'last saved point' in note and 'permissions selected here' in note
-        assert 'Approval policy: on request' in note
+        assert 'Codex asks when additional access is needed' in note
+        assert dialog.codex_policy()['sandbox'] == 'read-only'
     finally:
         dialog.Destroy()
 
@@ -9398,3 +9399,57 @@ def test_codex_pending_refresh_preserves_completion_without_blocking_history_rea
     assert frame._previous_states == {codex.key: IDLE}
     assert any("finished" in notice[1] for notice in notices)
     assert not reads
+
+
+@pytest.mark.parametrize("provider", ["codex", "ollama"])
+def test_foreign_prompt_refusal_names_its_provider(frame, provider):
+    settle(frame)
+    info = frame._snapshot.sessions[0]
+    frame._open = dataclasses.replace(info, provider=provider)
+    assert frame._prompt_refused() == f"This chat is read-only here. Reply in {provider.capitalize()}."
+
+
+
+@pytest.mark.parametrize("provider", ["codex", "ollama"])
+def test_foreign_rename_names_provider_in_dialog_and_feedback(frame, monkeypatch, env, provider):
+    from thechatplace.ui import main_frame
+    settle(frame)
+    info = dataclasses.replace(frame._snapshot.sessions[0], provider=provider,
+                               key=f"{provider}:synthetic", source="external")
+    prompts = []
+    class Entry:
+        def __init__(self, parent, prompt, title, value): prompts.append(prompt)
+        def SetMaxLength(self, size): pass
+        def ShowModal(self): return wx.ID_CANCEL
+        def Destroy(self): pass
+    monkeypatch.setattr(main_frame.wx, "TextEntryDialog", Entry)
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    frame.on_rename()
+    assert f"{provider.capitalize()} keeps its own name" in prompts[0]
+    assert "Claude desktop" not in prompts[0]
+    frame.rename_session(info, "")
+    assert f"{provider.capitalize()}'s name" in env["feedback"][-1]
+
+
+
+def test_owned_codex_background_reply_is_not_reannounced_by_discovery(frame, monkeypatch):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.own_store import OwnSession
+    settle(frame)
+    record = OwnSession('codex-background', 'Codex background', '/workspace', provider='codex')
+    frame.store.add(record)
+    info = record.to_info()
+    frame._previous_states = {info.key: 'working'}
+    frame._first_snapshot = False
+    frame.speech.announce_all_sessions = True
+    spoken, notices = [], []
+    monkeypatch.setattr(frame, '_say', lambda text, **kw: spoken.append((text, kw)))
+    monkeypatch.setattr(frame, '_notify', lambda *a, **kw: notices.append((a, kw)))
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **kw: None)
+    monkeypatch.setattr(frame, '_check_codex_usage', lambda info: None)
+    frame._on_codex_update(CodexChatState(record.cli_session_id, 'idle', 'turn', 'completed',
+                                        replies=(('reply', 'A complete reply'),)))
+    frame._apply_snapshot(hub.Snapshot(sessions=[info]), [info], {}, False)
+    assert len(spoken) == 1 and spoken[0][1] == {'interrupt': False}
+    assert 'A complete reply' in spoken[0][0]
+    assert len(notices) == 1

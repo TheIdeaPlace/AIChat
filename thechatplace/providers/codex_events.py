@@ -27,11 +27,13 @@ def _id(value):
     return value
 
 
-def _text(value):
-    # A bounded queue must also bound each entry, including final item text.
-    if not isinstance(value, str) or len(value) > 256 * 1024:
+DISPLAY_NOTE = '\n[Display truncated; open the chat history to read the rest.]'
+
+
+def _text(value, limit=256 * 1024):
+    if not isinstance(value, str):
         raise ValueError("Invalid Codex event text")
-    return value
+    return value if len(value) <= limit else value[:max(0, limit-len(DISPLAY_NOTE))] + DISPLAY_NOTE[:limit]
 
 
 def decode_event(method, params):
@@ -83,10 +85,10 @@ def decode_event(method, params):
                               _id(item.get("id")), text)
         if item.get("type") == "fileChange":
             changes = item.get("changes")
-            if not isinstance(changes, list) or len(changes) > 128:
+            if not isinstance(changes, list):
                 raise ValueError("Invalid Codex file changes")
             pieces = []
-            for change in changes:
+            for change in changes[:128]:
                 if not isinstance(change, dict):
                     raise ValueError("Invalid Codex file change")
                 kind = change.get("kind")
@@ -99,6 +101,8 @@ def decode_event(method, params):
                 if kind.get("move_path") is not None:
                     heading += "\nMove to: " + _text(kind["move_path"])
                 pieces.append(heading + "\n" + _text(change.get("diff")))
+            if len(changes) > 128:
+                pieces.append(DISPLAY_NOTE)
             return CodexEvent("file_changes", thread_id, _id(params.get("turnId")),
                               _id(item.get("id")), _text("\n\n".join(pieces)))
         if item.get("type") != "agentMessage" or method == "item/started":
@@ -134,12 +138,13 @@ class CodexTurnBuffer:
         self._final = set()
         self._characters = 0
         self._file_changes = {}
+        self.truncated = False
         self.started_at = time.monotonic()
         self.activity = "Codex is working."
 
     @property
     def replies(self):
-        return tuple(self._texts.items())  # immutable snapshot, stable item order
+        return tuple(self._texts.items()) + ((("display-limit", DISPLAY_NOTE.strip()),) if self.truncated else ())
 
     @property
     def file_changes(self):
@@ -156,24 +161,29 @@ class CodexTurnBuffer:
         if ((event.thread_id, event.turn_id) != (self.thread_id, self.turn_id)
                 or self.status != "inProgress"):
             return False
+        if event.kind == 'display_truncated':
+            self.truncated = True
+            return True
         if event.kind == "turn_completed":
             if event.status not in ("completed", "failed", "interrupted"):
                 self.disconnect()
                 raise ValueError("Invalid Codex terminal outcome")
             if event.status == "completed" and self._texts.keys() - self._final:
-                self.disconnect()
-                raise ValueError("Codex reply is incomplete; reconcile history")
+                self.truncated = True  # terminal identity is authoritative; refresh full history
             self.status = event.status
             return True
         if event.kind == "file_changes":
             try:
                 item_id, text = _id(event.item_id), _text(event.text)
-                characters = self._characters - len(self._file_changes.get(item_id, "")) + len(text)
-                if characters > self.MAX_TEXT or (item_id not in self._file_changes
-                                                   and len(self._file_changes) >= self.MAX_ITEMS):
-                    raise ValueError("Codex file change limit reached")
+                if item_id not in self._file_changes and len(self._file_changes) >= self.MAX_ITEMS:
+                    self.truncated = True
+                    return True
+                remaining = max(0, self.MAX_TEXT - self._characters + len(self._file_changes.get(item_id, "")))
+                if len(text) > remaining:
+                    self.truncated = True
+                    text = text[:remaining]
+                self._characters += len(text) - len(self._file_changes.get(item_id, ""))
                 self._file_changes[item_id] = text
-                self._characters = characters
                 self.activity = "Reviewing file changes."
                 return True
             except ValueError:
@@ -198,11 +208,14 @@ class CodexTurnBuffer:
             return False  # completed item is authoritative, including late deltas
         previous = self._texts.get(item_id, "")
         replacement = previous + text if event.kind == "text_delta" else text
+        if item_id not in self._texts and len(self._texts) >= self.MAX_ITEMS:
+            self.truncated = True
+            return True
+        remaining = max(0, self.MAX_TEXT - self._characters + len(previous))
+        if len(replacement) > remaining:
+            self.truncated = True
+            replacement = replacement[:remaining]
         characters = self._characters - len(previous) + len(replacement)
-        if (characters > self.MAX_TEXT
-                or (item_id not in self._texts and len(self._texts) >= self.MAX_ITEMS)):
-            self.disconnect()
-            raise ValueError("Codex reply buffer limit reached; reconcile history")
         self._texts[item_id] = replacement
         self.activity = "Writing a reply."
         self._characters = characters

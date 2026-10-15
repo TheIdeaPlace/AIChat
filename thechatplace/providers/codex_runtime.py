@@ -57,6 +57,7 @@ class CodexChatRuntime:
         self._queues = {}
         self._sending = set()
         self._stopping = set()
+        self._flushed_turns = {}
         self._reopening = set()
         self._policy_changes = {}
         self._pending_dispatch = {}
@@ -325,6 +326,7 @@ class CodexChatRuntime:
         with self._lock:
             if proof.native_id in self._reopening or self._proofs.get(proof.native_id) is not proof:
                 raise CodexRpcError('Reopen this Codex chat before stopping')
+            repeated = proof.native_id in self._stopping and proof.native_id not in self._sending
             pending = self._pending_dispatch.pop(proof.native_id, None)
             unsent = ((pending[1],) if pending is not None else ()) + tuple(self._queues.pop(proof.native_id, ()))
             if pending is not None:
@@ -332,7 +334,12 @@ class CodexChatRuntime:
             if proof.native_id in self._sending or executor.snapshot(proof).status == 'inProgress':
                 self._stopping.add(proof.native_id)
         try:
-            executor.interrupt(proof)
+            if repeated:
+                executor.reconcile_stop(proof)
+                with self._lock:
+                    self._stopping.discard(proof.native_id)
+            else:
+                executor.interrupt(proof)
         finally:
             if not proof.connection.owns_runtime(proof):
                 with self._lock:
@@ -365,14 +372,22 @@ class CodexChatRuntime:
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():
             state = self.snapshot(native_id)
-            if state.problem or state.outcome in ('failed', 'interrupted', 'unknown'):
-                with self._lock:
+            with self._lock:
+                terminal = (state.turn_id, state.outcome)
+                proof = self._proofs.get(native_id)
+                current = self._executor.snapshot(proof) if proof is not None and self._executor is not None else None
+                same_turn = current is not None and (current.turn_id, current.status) == terminal
+                fresh_terminal = (same_turn and native_id not in self._sending
+                    and state.outcome in ('failed', 'interrupted', 'unknown')
+                    and self._flushed_turns.get(native_id) != terminal)
+                if (state.problem and self._problems.get(native_id) == state.problem) or fresh_terminal:
+                    self._flushed_turns[native_id] = terminal
                     pending = self._pending_dispatch.pop(native_id, None)
                     if pending is not None:
                         self._sending.discard(native_id)
                     unsent = (tuple(unsent) + ((pending[1],) if pending is not None else ())
                               + tuple(self._queues.pop(native_id, ())))
-                state = self.snapshot(native_id)
+            state = self.snapshot(native_id)
             if unsent:
                 state = self.snapshot(native_id, unsent=unsent)
             try:

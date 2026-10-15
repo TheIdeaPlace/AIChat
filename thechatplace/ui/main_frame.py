@@ -897,6 +897,9 @@ class MainFrame(CodexChats, wx.Frame):
             (force, resort), self._pending_refresh = self._pending_refresh, None
             self.refresh_sessions(force=force, resort=resort)
 
+    def _runtime_announces(self, info):
+        return info.is_own and (info.provider == 'claude' or info.key in self._codex_states)
+
     def _apply_snapshot(self, snap: Snapshot, ended, replies, force, resort=False):
         self._snapshot_busy = False
         if self._gone():
@@ -938,7 +941,7 @@ class MainFrame(CodexChats, wx.Frame):
         first = self._first_snapshot
         if not first:
             for info in ended:
-                if info.is_own and info.provider == "claude":
+                if self._runtime_announces(info):
                     continue  # its own turn says so, with more to say
                 if info.state == NEEDS_YOU:
                     self._notify(info.key, f"{info.title} needs you",
@@ -963,7 +966,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._update_list_label(len(shown))
 
         if not first and self._open is not None and not (
-                self._open.is_own and self._open.provider == "claude") and any(
+                self._runtime_announces(self._open)) and any(
                 info.key == self._open.key for info in ended):
             # The loaded desktop session announces its own messages, and
             # then what the turn changed.
@@ -971,7 +974,7 @@ class MainFrame(CodexChats, wx.Frame):
             self._refresh_chat()
         if not first and self.speech.announce_all_sessions:
             for info in ended:
-                if info.is_own and info.provider == "claude":
+                if self._runtime_announces(info):
                     continue
                 if self._open is not None and info.key == self._open.key:
                     continue

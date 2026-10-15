@@ -1,8 +1,8 @@
 """Verified owned text turns, typed requests and session-scoped interruption."""
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from .codex_events import CodexTurnBuffer, CodexTokenUsageEvent
+from .codex_events import CodexTurnBuffer, CodexTokenUsageEvent, CodexEvent, _text
 from .codex_tokens import CodexTokenUsage
 from .codex_owned import CodexLifecycleConnection
 from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure
@@ -98,6 +98,7 @@ class CodexTurnExecutor:
         self._token_usage = {}
         self._context_epochs = {}
         self._compactions = {}
+        self._reconciled_turns = {}
 
     def start(self, proof, text):
         if not self.connection.owns_runtime(proof):
@@ -162,6 +163,50 @@ class CodexTurnExecutor:
         self.connection.request('turn/interrupt', {'threadId': proof.native_id, 'turnId': turn_id})
         return True
 
+    def reconcile_stop(self, proof):
+        """Read-only confirmation of the exact turn; never resume or replay."""
+        if not self.connection.owns_runtime(proof):
+            raise CodexRpcError('Codex execution requires a verified owned chat')
+        with self._lock:
+            buffer = self._turns.get(proof.native_id)
+            if buffer is None or buffer.status != 'inProgress':
+                return True
+            turn_id = buffer.turn_id
+        response = self.connection.request('thread/read',
+            {'threadId': proof.native_id, 'includeTurns': False})
+        thread = response.get('thread')
+        if (not isinstance(thread, dict) or thread.get('id') != proof.native_id
+                or not isinstance(thread.get('status'), dict) or thread['status'].get('type') != 'idle'):
+            raise CodexRpcError('Codex has not confirmed that this turn stopped. Try Stop again later.')
+        page = self.connection.request('thread/turns/list',
+            {'threadId': proof.native_id, 'sortDirection': 'desc', 'limit': 1, 'itemsView': 'notLoaded'})
+        turns = page.get('data')
+        if (not isinstance(turns, list) or len(turns) != 1 or not isinstance(turns[0], dict)
+                or turns[0].get('id') != turn_id
+                or turns[0].get('status') not in ('completed', 'failed', 'interrupted')):
+            raise CodexRpcError('Codex has not confirmed that this turn stopped. Try Stop again later.')
+        with self._lock:
+            if not self.connection.owns_runtime(proof):
+                raise CodexRpcError('Codex connection changed while checking Stop')
+            current = self._turns.get(proof.native_id)
+            if current is not buffer or current.turn_id != turn_id:
+                raise CodexRpcError('Codex turn changed while checking Stop')
+            if buffer.status == 'inProgress':
+                # Full history is refreshed by the UI; partial live text is not
+                # represented as an authoritative completed reply.
+                for key in buffer._texts.keys() - buffer._final:
+                    del buffer._texts[key]
+                buffer.status = turns[0]['status']
+                if len(self._reconciled_turns) >= 128:
+                    self._reconciled_turns.pop(next(iter(self._reconciled_turns)))
+                self._reconciled_turns[(proof.native_id, turn_id)] = True
+                self._busy.discard(proof.native_id)
+                self._requests = {k: r for k, r in self._requests.items() if r.thread_id != proof.native_id}
+        forget = getattr(self.connection, 'forget_turn_requests', None)
+        if callable(forget):
+            forget(proof.native_id, turn_id)
+        return True
+
     def waiting(self, proof):
         if not self.connection.owns_runtime(proof):
             return ()
@@ -222,6 +267,8 @@ class CodexTurnExecutor:
                 return True
             return False
         if isinstance(event, CodexRequest):
+            if (event.thread_id, event.turn_id) in self._reconciled_turns:
+                return False  # queued before read-only Stop confirmation; never grant it
             if ((event.thread_id, event.turn_id) != (buffer.thread_id, buffer.turn_id)
                     or buffer.status != 'inProgress'):
                 raise CodexRpcError('Codex request does not match an active turn')
@@ -253,9 +300,31 @@ class CodexTurnExecutor:
                         continue
                     pending = self._pending_events.get(event.thread_id)
                     if pending is not None:
-                        if len(pending) >= 32:
-                            raise CodexRpcError('Codex startup event limit reached')
-                        pending.append(event)
+                        presentation = isinstance(event, CodexEvent) and event.kind in (
+                            'text_delta', 'text_completed', 'activity', 'file_changes', 'display_truncated')
+                        if presentation:
+                            for index, old in enumerate(pending):
+                                if (isinstance(old, CodexEvent) and old.turn_id == event.turn_id
+                                        and old.item_id == event.item_id and old.kind in (
+                                            ('text_delta', 'text_completed') if event.kind in ('text_delta', 'text_completed') else (event.kind,))):
+                                    if event.kind == 'text_delta' and old.kind == 'text_completed':
+                                        break
+                                    pending[index] = (replace(event, text=_text(old.text + event.text))
+                                        if event.kind == old.kind == 'text_delta' else event)
+                                    break
+                            else:
+                                displays = [i for i, old in enumerate(pending) if isinstance(old, CodexEvent)
+                                            and old.kind in ('text_delta', 'text_completed', 'activity', 'file_changes')]
+                                if len(displays) >= 128:
+                                    pending.pop(displays[0])
+                                    if not any(getattr(e, 'kind', '') == 'display_truncated' for e in pending):
+                                        pending.append(CodexEvent('display_truncated', event.thread_id, event.turn_id))
+                                pending.append(event)
+                        else:
+                            controls = sum(not isinstance(e, CodexEvent) or e.kind in ('turn_started', 'turn_completed') for e in pending)
+                            if controls >= 32:
+                                raise CodexRpcError('Codex startup event limit reached')
+                            pending.append(event)
                         continue
                     buffer = self._turns.get(event.thread_id)
                     if buffer is None and isinstance(event, CodexRequest):
