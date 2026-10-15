@@ -1,5 +1,7 @@
 """A message's markdown as a small HTML page, for a screen reader's browse
-mode (issue #190).
+mode (issue #190). Windows shows it in Edge WebView2, a Mac in the system's
+WebKit (#119), where VoiceOver moves through it with the rotor and VO+Command
+keys.
 
 Claude writes markdown: headings, lists, tables, code. In a plain text box a
 table is a run of pipes and a heading is "##". As a web page the screen
@@ -60,7 +62,7 @@ LANGUAGE_NAMES = {
 #: measures all of it.
 _STYLE = """
 :root { color-scheme: light dark; }
-body { font: 100%/1.5 "Segoe UI", sans-serif; margin: 1em 1.5em; max-width: 60em;
+body { font: 100%/1.5 "Segoe UI", -apple-system, sans-serif; margin: 1em 1.5em; max-width: 60em;
        overflow-wrap: break-word; }
 pre { white-space: pre-wrap; background: #f3f3f3; padding: .6em; border-radius: 4px; }
 code { font-family: Consolas, monospace; }

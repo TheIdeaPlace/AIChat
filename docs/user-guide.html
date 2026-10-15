@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>The Chat Place User Guide</title><style>
 :root { color-scheme: light dark; }
-body { font: 100%/1.5 "Segoe UI", sans-serif; margin: 1em 1.5em; max-width: 60em;
+body { font: 100%/1.5 "Segoe UI", -apple-system, sans-serif; margin: 1em 1.5em; max-width: 60em;
        overflow-wrap: break-word; }
 pre { white-space: pre-wrap; background: #f3f3f3; padding: .6em; border-radius: 4px; }
 code { font-family: Consolas, monospace; }
@@ -114,8 +114,11 @@ Settings, Reading messages.</p>
 mode moves by heading (H), table (T), list (L) and code block (each code block is a region: R in
 JAWS, D in NVDA). Links open in your browser. <strong>Read as Plain Text</strong> (Alt+P) shows the message in
 a plain text box instead, to read by line, word and character. Escape closes either one and puts
-you back on the same message. The formatted page needs Microsoft's Edge WebView2 runtime, which
-comes with Windows 11. On a Mac, and on Windows without it, Enter opens the plain text box.</p>
+you back on the same message. On Windows the formatted page needs Microsoft's Edge WebView2
+runtime, which comes with Windows 11; without it, Enter opens the plain text box.</p>
+<p>On a Mac the page works the same way. VoiceOver's rotor (VO+U) lists its headings, tables, links
+and landmarks, VO+Command+H moves by heading, and with Quick Nav on, H, T and L work as above.
+Read as Plain Text is Option+P, and Command+W closes the page as well as Escape.</p>
 <p>Other things you can do with a message:</p>
 <ul>
 <li><strong>Ctrl+C</strong> copies the whole message.</li>
@@ -415,7 +418,7 @@ the list. Press <strong>Ctrl+Shift+A</strong> to answer:</p>
   so pressing Enter by mistake never allows anything, and you can give a reason Claude reads.</li>
 <li><strong>A question:</strong> each question is a group of choices, with Other and a box for your own answer.
   Send Answers, or Don't Answer.</li>
-<li><strong>A plan:</strong> read it (on Windows, Read Formatted shows it as a page, by heading), then <strong>Approve</strong>, choosing
+<li><strong>A plan:</strong> read it (Read Formatted shows it as a page, by heading), then <strong>Approve</strong>, choosing
   how Claude carries on, or <strong>Keep Planning</strong>, the default, with what to change.</li>
 </ul>
 <p><strong>Escape answers later.</strong> Nothing is allowed or refused by waiting: the turn keeps waiting, and
