@@ -10,10 +10,13 @@ def key_name(shortcut: str, platform=None) -> str:
     """Translate app-authored key names, before inserting any chat/user text."""
     if (platform or sys.platform) != "darwin":
         return shortcut
-    shortcut = shortcut.replace("Alt+F4", "Cmd+Q").replace("Applications key / ", "")
-    shortcut = re.sub(r"Alt\+[FVH],\s*[A-Za-z]", "menu bar (VO+M)", shortcut)
+    shortcut = shortcut.replace(", Alt+T)", ")")
+    shortcut = shortcut.replace("Alt+F4", "Cmd+Q").replace("Alt+Tab", "Cmd+Tab").replace("Applications key / ", "")
+    shortcut = re.sub(r"Alt\+([FVH]),\s*[A-Za-z]",
+                      lambda match: {"F": "File", "V": "View", "H": "Help"}[match.group(1)] + " menu (VO+M)", shortcut)
     text = re.sub(r"\bEnter\b", "Return", shortcut.replace("Ctrl+", "Cmd+").replace("Alt+", "Option+"))
-    return text.replace("Win+Shift+S", "Control+Cmd+Shift+4")
+    return (text.replace("Win+Shift+S", "Control+Cmd+Shift+4")
+            .replace(" Option+Return on a Mac", ""))
 
 
 SHORTCUTS_PLATFORM_NOTE = (
@@ -130,7 +133,7 @@ SHORTCUTS = [
         ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box"),
         ("Ctrl+/", "Insert a Claude slash command or one of your skills (type to search); it goes at "
                    "the start of the reply box"),
-        ("Ctrl+Shift+F", "Attach files or images to your next Claude message (Attach Files button); "
+        ("Ctrl+Shift+F", "Attach files or images to your next Claude message (Attach Files button, Alt+T); "
                          "Delete in the attachments list removes one"),
         ("Ctrl+V with a picture copied", "Attach the picture to a Claude message (a screenshot from Win+Shift+S, "
                                          "say)"),
