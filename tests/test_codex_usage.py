@@ -3,14 +3,20 @@ import pytest
 from thechatplace.providers.codex_usage import read_usage, usage_lines
 from thechatplace.providers.codex_rpc import CodexRpcError, ReadOnlyCodexConnection
 
+# Realistic epoch seconds (#286): tiny values like 1000 turn into a local time
+# before 1970 on a PC west of UTC, which Windows refuses to convert.
+NOW = 1_800_000_000
+RESET = NOW + 3 * 3600
+LATER = NOW + 6 * 3600
+
 
 def bucket(percent=25):
-    return {'primary': {'usedPercent': percent, 'windowDurationMins': 300, 'resetsAt': 1000}}
+    return {'primary': {'usedPercent': percent, 'windowDurationMins': 300, 'resetsAt': RESET}}
 
 
 def test_named_buckets_take_precedence_over_legacy_duplicate():
     lines = usage_lines({'rateLimits': bucket(99), 'rateLimitsByLimitId': {
-        'one': dict(bucket(), limitName='Codex'), 'two': bucket(50)}}, now=100)
+        'one': dict(bucket(), limitName='Codex'), 'two': bucket(50)}}, now=NOW)
     assert sum('5-hour limit' in line for line in lines) == 2
     assert any('25% used, 75% remaining' in line for line in lines)
     assert not any('99%' in line for line in lines)
@@ -18,7 +24,7 @@ def test_named_buckets_take_precedence_over_legacy_duplicate():
 
 @pytest.mark.parametrize('value', [None, True, -1, 101, float('nan'), 10**1000, '25'])
 def test_missing_or_invalid_usage_is_not_zero(value):
-    lines = usage_lines({'rateLimits': bucket(value)}, now=100)
+    lines = usage_lines({'rateLimits': bucket(value)}, now=NOW)
     assert any('usage not reported' in line for line in lines)
     assert not any('0% used' in line for line in lines)
 
@@ -55,38 +61,38 @@ def test_account_warning_thresholds_reset_and_named_buckets():
     from thechatplace.providers.codex_usage import usage_warnings
     response = {'rateLimits': bucket(100), 'rateLimitsByLimitId': {
         'main': dict(bucket(80), limitName='Codex', secondary={
-            'usedPercent': 100, 'windowDurationMins': 10080, 'resetsAt': 2000})}}
-    warnings = usage_warnings(response, now=100)
+            'usedPercent': 100, 'windowDurationMins': 10080, 'resetsAt': LATER})}}
+    warnings = usage_warnings(response, now=NOW)
     assert len(warnings) == 2
-    assert warnings[0].key == ('main', 'primary', 300, 1000, 80)
+    assert warnings[0].key == ('main', 'primary', 300, RESET, 80)
     assert warnings[1].key[-1] == 100
     assert '80% used, 20% remaining' in warnings[0].text
     assert '100% used, 0% remaining' in warnings[1].text
     assert 'resets' in warnings[0].text
-    assert usage_warnings(response, now=3000) == ()
+    assert usage_warnings(response, now=LATER + 1) == ()
 
 
 @pytest.mark.parametrize('value', [None, True, -1, 79.9, 101, float('nan'), float('inf'), 10**1000, '80'])
 def test_unreported_invalid_or_low_account_usage_never_warns(value):
     from thechatplace.providers.codex_usage import usage_warnings
-    assert usage_warnings({'rateLimits': bucket(value)}, now=100) == ()
+    assert usage_warnings({'rateLimits': bucket(value)}, now=NOW) == ()
 
 
 def test_warning_identity_changes_only_at_threshold_or_reset():
     from thechatplace.providers.codex_usage import usage_warnings
-    def warning(percent, reset=1000):
+    def warning(percent, reset=RESET):
         data = bucket(percent)
         data['primary']['resetsAt'] = reset
-        return usage_warnings({'rateLimits': data}, now=100)[0]
+        return usage_warnings({'rateLimits': data}, now=NOW)[0]
     assert warning(80).key == warning(99).key
     assert warning(100).key != warning(99).key
-    assert warning(80, 2000).key != warning(80).key
+    assert warning(80, LATER).key != warning(80).key
     assert warning(80, None).key[-2] is None
 
 
 def test_warning_labels_cannot_inject_terminal_controls():
     from thechatplace.providers.codex_usage import usage_warnings
-    warning, = usage_warnings({'rateLimits': dict(bucket(90), limitName='private\x1bvalue')}, now=100)
+    warning, = usage_warnings({'rateLimits': dict(bucket(90), limitName='private\x1bvalue')}, now=NOW)
     assert warning.text.startswith('Codex account usage:')
     assert 'private' not in warning.text
 
