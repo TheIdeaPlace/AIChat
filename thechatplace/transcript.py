@@ -635,7 +635,12 @@ class TranscriptReader:
                     self._offset, self._anchor = 0, b""
                     self._parser = TranscriptParser()
                 self._file_id, self._head = identity, head
-                self._stamp = (stat.st_dev, stat.st_ino, size, stat.st_mtime_ns, stat.st_ctime_ns)
+                # Keep the path's own stat, the one the next refresh compares
+                # against. On Windows fstat of the open handle can differ from
+                # stat of the path (#275), so an unchanged file looked changed
+                # and was reopened every time. Taken before opening, it is
+                # conservative: any later write changes the next path stat.
+                self._stamp = stamp
                 if size == self._offset:
                     return rewritten
                 handle.seek(self._offset)
