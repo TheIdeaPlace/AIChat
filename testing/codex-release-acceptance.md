@@ -9,7 +9,7 @@ is optional. Steer and the reading pane are outside this release.
 
 Owned chats (#255) and Provider defaults (#271) are merged, following foundations,
 storage and reading. Saved-rule disclosure/project refusal (#272), Mac shortcut
-names (#274), and Claude command/compaction feedback have separate review slices.
+names (#274), and Claude command/compaction feedback (#275) have separate review slices.
 Require green Windows/Mac tests and packaging on the final merged candidate.
 
 ## Kelly's remaining hands-on checks
