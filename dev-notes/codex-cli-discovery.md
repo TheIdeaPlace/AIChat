@@ -27,3 +27,26 @@ checkbox change records the explicit choice even if it is toggled back.
 The changed Settings surface has probes for installed and missing Codex. The Mac
 capture attempt returned a blank picture; it is not visual acceptance. Windows
 light-100 and High Contrast pictures/comparison/contrast remain under #226.
+
+## Windows ChatGPT app and Codex's own packages (#283)
+
+Checked on Kelly's Windows 11 ARM64 PC on October 16, 2026. The Store package
+`OpenAI.ChatGPT-Desktop` 1.2026.190.0 ships only `app\ChatGPT Classic.exe` and
+`app.asar` (alias `chatgpt-classic.exe`); it bundles no Codex binary and its
+archive mentions Codex only as a `/codex` web route. On Windows Codex comes from
+the separate Codex app (`OpenAI.Codex`, relocated to `%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>`,
+already a candidate), the npm CLI, or Codex's installer
+([install.ps1](https://github.com/openai/codex/blob/main/scripts/install/install.ps1)).
+
+The installer unpacks into `releases\.staging.*`, moves it into `releases\`, then
+retargets the `current` junction, so `CODEX_HOME\packages\<root>\current` is
+always a complete release. Roots: `standalone` (the CLI; its visible
+`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin` junction may be elsewhere) and
+`app-server-daemon` (daemon-only installs, no command on PATH;
+[README](https://github.com/openai/codex/blob/main/codex-rs/app-server-daemon/README.md)).
+Both are candidates through `current` only, never by sorting version folders. On
+this PC `app-server-daemon\current\bin\codex.exe` is `codex-cli 0.162.1` and has
+`app-server`. `CODEX_HOME\.sandbox-bin\codex.exe` is the Windows sandbox's
+ACL'd helper copy (`windows-sandbox-rs/src/helper_materialization.rs`) and is
+deliberately not a candidate. Order: PATH, CLI installs, Codex app copy, npm
+payload, then the daemon package last.
