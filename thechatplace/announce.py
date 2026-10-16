@@ -10,7 +10,7 @@ from typing import Optional
 
 from .speech import (ANNOUNCE_FULL, ANNOUNCE_SILENT, ANNOUNCE_SUMMARY, CODE_NOTE,
                      strip_for_speech, without_code_blocks)
-from .sessions import NEEDS_YOU, STATUS_UNAVAILABLE
+from .sessions import NEEDS_YOU, STATUS_UNAVAILABLE, state_with_detail
 
 
 #: Words a full stop follows without ending the sentence ("e.g. the docs").
@@ -76,7 +76,7 @@ def turn_end_text(title: str, state: str, detail: str, reply: str, level: str) -
         return None
     head = f"{title} finished"
     if state == NEEDS_YOU:
-        head = f"{title} needs you" + (f": {detail}" if detail else "")
+        head = state_with_detail(f"{title} needs you", detail)
     head += "."
     if not (reply or "").strip():
         return head

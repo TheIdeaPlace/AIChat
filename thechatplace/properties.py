@@ -18,7 +18,7 @@ from .claude_cli import EFFORT_LABELS, mode_label, model_label, model_spoken
 from .codeblocks import find_code_blocks
 from .export import message_moment
 from .message_links import find_links
-from .sessions import SessionInfo, how_long_ago
+from .sessions import STATUS_UNAVAILABLE, SessionInfo, how_long_ago, state_with_detail
 from .transcript import ASSISTANT, QUEUED, TOOL, USER, ChatMessage, Transcript
 from . import usage
 from .ui_text import codex_effort_label
@@ -91,7 +91,10 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"Working folder: {info.cwd or 'not recorded'}")
     else:
         lines.append(f"Folder: {info.cwd or 'not recorded'}")
-    status = info.state + (f": {info.detail}" if info.detail else "")
+    # The state word follows "Status: ", so the "status unavailable" state
+    # would say the word twice there (#290); the list and heading keep it.
+    state = "unavailable" if info.state == STATUS_UNAVAILABLE else info.state
+    status = state_with_detail(state, info.detail)
     lines.append(f"Status: {status[:1].upper()}{status[1:]}")
     lines.append(f"Started: {describe_ms(info.created_ms, now_ms)}")
     lines.append(f"Last activity: {describe_ms(info.last_activity_ms, now_ms)}")

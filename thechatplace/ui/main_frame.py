@@ -80,7 +80,7 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         DESKTOP, NEEDS_YOU, OWN, SORT_ORDERS,
                         SORT_SPOKEN, VIEW_ALL, VIEW_ARCHIVED, VIEW_HIDDEN, VIEW_NEEDS_YOU, VIEWS,
                         WORKING, STATUS_UNAVAILABLE,
-                        SessionInfo, field_short_name, group_view, in_view, view_spoken)
+                        SessionInfo, field_short_name, group_view, in_view, state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
                           PEER, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT, ChatMessage,
@@ -709,7 +709,7 @@ class MainFrame(CodexChats, wx.Frame):
         elif info.is_own and info.provider == "claude" and info.cli_session_id in self._runners:
             text = f"{info.title}: {self.turn_status.GetLabelText()}"
         else:
-            state = info.state + (f", {info.detail}" if info.detail else "")
+            state = state_with_detail(info.state, info.detail, ", ")
             text = f"{info.title}: {state}"
         self.status_parts.set("session", text)
 
@@ -1547,7 +1547,7 @@ class MainFrame(CodexChats, wx.Frame):
                     kind += ", Remote Control on"
         elif info.remote and info.provider == "claude":
             kind += ", on Remote Control in the desktop app"
-        state = info.state + (f": {info.detail}" if info.detail else "")
+        state = state_with_detail(info.state, info.detail)
         self.session_heading.set_text(f"{info.title}, {info.repo}, {state}. {kind}.")
         self._update_messages_label()
         self._update_status_session()
@@ -1558,7 +1558,7 @@ class MainFrame(CodexChats, wx.Frame):
         info = self._open
         if info is None:
             return
-        state = info.state + (f": {info.detail}" if info.detail else "")
+        state = state_with_detail(info.state, info.detail)
         kind = ", read-only"
         if info.is_own and info.provider == "claude":
             # The model goes here too: this is what's heard on arriving in
