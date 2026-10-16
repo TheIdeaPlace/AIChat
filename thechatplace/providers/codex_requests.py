@@ -8,6 +8,7 @@ approval, and may add ``additionalPermissions`` (extra folders or network) or
 plain words is shown; anything else is declined, with a fixed reason (#284).
 """
 from dataclasses import dataclass, field
+import unicodedata
 
 from .codex_events import _id
 
@@ -18,11 +19,17 @@ QUESTIONS = 'item/tool/requestUserInput'
 ACCEPT, ACCEPT_SESSION, DECLINE, CANCEL = 'accept', 'acceptForSession', 'decline', 'cancel'
 #: The command decisions this app can send. Codex lists the ones it allows
 #: for each request (``availableDecisions``); only those are offered.
-COMMAND_DECISIONS = (ACCEPT, ACCEPT_SESSION, DECLINE, CANCEL)
+#: ``acceptForSession`` is decoded but never offered or sent: Codex keeps
+#: that approval for its whole in-memory session, and Change Permission Mode
+#: on a loaded chat doesn't start a new one, so it would outlive a switch to
+#: read-only (#284, follow-up #298).
+COMMAND_DECISIONS = (ACCEPT, DECLINE, CANCEL)
 #: Decisions that save a lasting Codex rule ("always allow this command" or
 #: "always allow/block this host"). Left out on purpose (#284): a saved rule
 #: outlives the chat and is exactly what the rule-file checks guard (#257).
 SAVED_RULE_DECISIONS = frozenset({'acceptWithExecpolicyAmendment', 'applyNetworkPolicyAmendment'})
+#: Codex offers that keep allowing something after this one request.
+LASTING_DECISIONS = SAVED_RULE_DECISIONS | {ACCEPT_SESSION}
 LOCAL_ENVIRONMENT = 'local'
 NETWORK_PROTOCOLS = {'http': 'HTTP', 'https': 'HTTPS', 'socks5Tcp': 'SOCKS5 TCP', 'socks5Udp': 'SOCKS5 UDP'}
 ACCESS_WORDS = {'read': 'Read access to', 'write': 'Write access to', 'deny': 'No access to'}
@@ -31,8 +38,13 @@ SPECIAL_PATHS = {'root': 'every file on this computer',
                  'project_roots': "the chat's project folder",
                  'tmpdir': 'the temporary folder', 'slash_tmp': '/tmp'}
 MAX_EXTRA_ACCESS = 64
-SAVED_RULE_NOTE = ('Codex also offered to save a rule so this is allowed from now on. The Chat Place '
-                   "leaves that out: nothing you choose here is saved as a rule.")
+SAVED_RULE_NOTE = ('Codex also offered to keep allowing this, for the rest of the session or from now on. '
+                   'The Chat Place leaves that out: your answer covers this request only.')
+#: A command approval with no extra access listed is normally a request to
+#: run outside the sandbox altogether (on-request policy), so approving it
+#: gives the command full access. Codex's own reason text may not say so.
+SANDBOX_NOTE = ("If you allow it, this command may run outside the chat's folder sandbox, "
+                "where it can change any file you can and use the network.")
 
 
 class CodexUnsupportedRequest(ValueError):
@@ -55,20 +67,28 @@ DECLINED_REASONS = {
     'permissions': ("Codex asked for a kind of extra access The Chat Place can't describe yet, "
                     "so it was declined."),
     'choices': "Codex offered no answers The Chat Place can give, so the request was declined.",
+    'rules': "Codex offered a saved rule The Chat Place couldn't read, so the request was declined.",
 }
 
 
 @dataclass(frozen=True)
 class CodexRequestDeclined:
-    """A connection-level notice with no server text or executable answer."""
+    """A connection-level notice with no server text or executable answer.
+
+    ``thread_id`` is the chat the request named, when it named one validly,
+    so only that chat shows the notice.
+    """
     kind: str = 'request'
     reason: str = ''
+    thread_id: str = ''
 
     def __post_init__(self):
         if self.kind not in ('request', 'command approval', 'file approval', 'question'):
             raise ValueError('Invalid Codex declined-request kind')
         if self.reason and self.reason not in DECLINED_REASONS:
             raise ValueError('Invalid Codex declined-request reason')
+        if self.thread_id:
+            _id(self.thread_id)
 
     @property
     def text(self):
@@ -149,23 +169,17 @@ class CodexRequest:
             return bool(self.command.strip() or self.network_host)
         return self.method == FILES and bool(file_detail) and not self.grant_root
 
+    @property
+    def outside_sandbox(self):
+        """A command approval naming no extra access: likely a full escalation."""
+        return self.method == COMMAND and not self.extra_access and not self.network_host
+
     def choice_text(self, decision):
-        """(button label with its access key, what it does in full)."""
-        if decision == ACCEPT:
-            return '&Allow Once', 'Allow this once.'
-        if decision == ACCEPT_SESSION:
-            if self.network_host:
-                what = f'allow network access to {self.network_host}'
-            elif self.extra_access:
-                what = 'allow this extra access'
-            else:
-                what = "don't ask again for this command"
-            return 'Allow for &This Session', f'Allow, and {what} for the rest of this Codex session.'
-        if decision == DECLINE:
-            return '&Deny', 'Deny. Codex carries on without it.'
-        if decision == CANCEL:
-            return 'Deny and &Stop Turn', 'Deny and stop this turn.'
-        raise ValueError('Unsupported Codex approval choice')
+        """The button label for a decision, with its access key."""
+        labels = {ACCEPT: '&Allow Once', DECLINE: '&Deny', CANCEL: 'Deny and &Stop Turn'}
+        if decision not in labels:
+            raise ValueError('Unsupported Codex approval choice')
+        return labels[decision]
 
     def detail(self, file_detail=''):
         """The whole request in plain words, as the approval dialog shows it."""
@@ -179,6 +193,8 @@ class CodexRequest:
                 parts.append('Folder:\n' + self.cwd)
             if self.extra_access:
                 parts.append('This also needs:\n' + '\n'.join(self.extra_access))
+            if self.outside_sandbox:
+                parts.append(SANDBOX_NOTE)
         else:
             parts = [file_detail or "The requested file changes aren't available to review. Deny or stop this turn."]
         if self.reason:
@@ -188,8 +204,6 @@ class CodexRequest:
                          + "\nThe Chat Place can't grant that, so Allow isn't offered.")
         if self.saved_rule_offered:
             parts.append(SAVED_RULE_NOTE)
-        if ACCEPT_SESSION in self.offered():
-            parts.append('Allow for This Session: ' + self.choice_text(ACCEPT_SESSION)[1])
         return '\n\n'.join(parts)
 
     def summary(self):
@@ -200,14 +214,16 @@ class CodexRequest:
             return 'File changes need approval.'
         if self.network_host and not self.command.strip():
             return f'Network access to {self.network_host}.'
-        if self.extra_access or self.network_host:
+        if self.network_host:
+            return f'Command needing network access to {self.network_host}: ' + self.command
+        if self.extra_access:
             return 'Command with extra access: ' + self.command
-        return 'Command: ' + self.command
+        return 'Command that may run outside the sandbox: ' + self.command
 
     def approval_answer(self, decision):
         if (self.method not in (COMMAND, FILES) or not isinstance(decision, str)
                 or decision not in self.offered()):
-            # Only what Codex listed, and never a saved rule (#284).
+            # Only what Codex listed, and never a lasting approval (#284).
             raise ValueError('Unsupported Codex approval choice')
         return {'decision': decision}
 
@@ -257,35 +273,36 @@ def _keys(value, allowed, required=()):
     return value
 
 
+def _shown(value, *, limit=8192, spaces=True):
+    """Server text shown as one line of the request: never blank, and never
+    a control or format character, so a path can't fake lines in the dialog.
+    """
+    if (not isinstance(value, str) or not value.strip() or len(value) > limit
+            or any(unicodedata.category(c) in ('Cc', 'Cf', 'Zl', 'Zp') for c in value)
+            or not spaces and any(c.isspace() for c in value)):
+        raise _permission_error()
+    return value
+
+
 def _path_words(path):
     """One FileSystemPath in plain words; anything unknown is refused."""
     kind = path.get('type') if isinstance(path, dict) else None
-    try:
-        if kind == 'path':
-            return _text(_keys(path, ('type', 'path'), ('type', 'path'))['path'])
-        if kind == 'glob_pattern':
-            return 'files matching ' + _text(_keys(path, ('type', 'pattern'), ('type', 'pattern'))['pattern'])
-        if kind == 'special':
-            value = _keys(path, ('type', 'value'), ('type', 'value'))['value']
-            special = value.get('kind') if isinstance(value, dict) else None
-            special = special if isinstance(special, str) else None
-            if special == 'unknown':
-                value = _keys(value, ('kind', 'path', 'subpath'), ('kind', 'path'))
-                words = _text(value['path'])
-            elif special == 'project_roots':
-                value = _keys(value, ('kind', 'subpath'), ('kind',))
-                words = SPECIAL_PATHS[special]
-            elif special in SPECIAL_PATHS:
-                _keys(value, ('kind',), ('kind',))
-                return SPECIAL_PATHS[special]
-            else:
-                raise _permission_error()
-            subpath = _text(value.get('subpath'), optional=True)
-            return words + (f', under {subpath}' if subpath else '')
-    except CodexUnsupportedRequest:
-        raise
-    except ValueError:
-        raise _permission_error() from None
+    if kind == 'path':
+        return _shown(_keys(path, ('type', 'path'), ('type', 'path'))['path'])
+    if kind == 'glob_pattern':
+        return 'files matching ' + _shown(_keys(path, ('type', 'pattern'), ('type', 'pattern'))['pattern'])
+    if kind == 'special':
+        value = _keys(path, ('type', 'value'), ('type', 'value'))['value']
+        special = value.get('kind') if isinstance(value, dict) else None
+        special = special if isinstance(special, str) else None
+        if special == 'project_roots':
+            subpath = _keys(value, ('kind', 'subpath'), ('kind',)).get('subpath')
+            words = SPECIAL_PATHS[special]
+            return words if subpath is None else f'{_shown(subpath)} in {words}'
+        # Kind "unknown" carries a token, not a place anyone can check.
+        if special in SPECIAL_PATHS:
+            _keys(value, ('kind',), ('kind',))
+            return SPECIAL_PATHS[special]
     raise _permission_error()
 
 
@@ -308,10 +325,7 @@ def _extra_access(value):
             if not isinstance(paths, list):
                 raise _permission_error()
             for path in paths:
-                try:
-                    lines.append(f'{ACCESS_WORDS[access]} {_text(path)}')
-                except ValueError:
-                    raise _permission_error() from None
+                lines.append(f'{ACCESS_WORDS[access]} {_shown(path)}')
         entries = files.get('entries')
         if entries is not None:
             if not isinstance(entries, list):
@@ -327,7 +341,7 @@ def _extra_access(value):
         if enabled is not None and type(enabled) is not bool:
             raise _permission_error()
         if enabled:
-            lines.append('Network access')
+            lines.append('Network access to any site')
     if len(lines) > MAX_EXTRA_ACCESS or sum(len(line) for line in lines) > 64 * 1024:
         raise _permission_error()
     return tuple(lines), True
@@ -339,25 +353,17 @@ def _network_context(value):
     context = _keys(value, ('host', 'protocol'), ('host', 'protocol'))
     if not isinstance(context['protocol'], str) or context['protocol'] not in NETWORK_PROTOCOLS:
         raise _permission_error()
-    try:
-        host = _text(context['host'], limit=512)
-    except ValueError:
-        raise _permission_error() from None
-    if not host.strip():
-        raise _permission_error()
-    return host, NETWORK_PROTOCOLS[context['protocol']]
+    return _shown(context['host'], limit=512, spaces=False), NETWORK_PROTOCOLS[context['protocol']]
 
 
 def _decisions(value, network, extra):
-    """The offered decisions, and whether Codex also offered a saved rule.
+    """The offered decisions, and whether Codex also offered a lasting one.
 
-    Without a list, follow Codex's own defaults for the request (minus saved
-    rules); an ordinary command keeps this app's one-time set.
+    Without a list, follow Codex's own defaults for the request (minus the
+    lasting ones); an ordinary command keeps this app's one-time set.
     """
     if value is None:
-        if network:
-            return (ACCEPT, ACCEPT_SESSION, CANCEL), False
-        if extra:
+        if network or extra:
             return (ACCEPT, CANCEL), False
         return (ACCEPT, DECLINE, CANCEL), False
     if not isinstance(value, list) or not 1 <= len(value) <= 16:
@@ -368,6 +374,7 @@ def _decisions(value, network, extra):
             # A decision newer than this release is never offered.
             if decision in COMMAND_DECISIONS and decision not in offered:
                 offered.append(decision)
+            saved = saved or decision == ACCEPT_SESSION
         elif isinstance(decision, dict) and len(decision) == 1:
             saved = saved or next(iter(decision)) in SAVED_RULE_DECISIONS
         else:
@@ -392,7 +399,7 @@ def _decode_command(common, params):
         proposed = params.get(name)
         if proposed is not None and (not isinstance(proposed, list) or len(proposed) > 256
                                      or any(not isinstance(item, kinds) for item in proposed)):
-            raise ValueError('Invalid Codex proposed rule')
+            raise CodexUnsupportedRequest('Invalid Codex proposed rule', 'rules')
     # A network approval names a host and may carry no command at all.
     command = _text(params.get('command'), optional=bool(host))
     cwd = _text(params.get('cwd'), optional=bool(host))

@@ -2,8 +2,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from thechatplace.providers.codex_requests import (COMMAND, FILES, QUESTIONS, SAVED_RULE_NOTE, CodexRequestDeclined,
-                                                   CodexUnsupportedRequest, decode_request)
+from thechatplace.providers.codex_requests import (COMMAND, FILES, QUESTIONS, SANDBOX_NOTE, SAVED_RULE_NOTE,
+                                                   CodexRequestDeclined, CodexUnsupportedRequest, decode_request)
 
 
 def params(**extra):
@@ -50,8 +50,10 @@ def test_real_escalation_offers_only_listed_one_time_decisions_and_never_a_saved
             request.validate_answer({'decision': choice})
     detail = request.detail()
     assert 'Command:\ngit checkout -b probe' in detail and 'Folder:\n/workspace' in detail
-    assert 'HEAD.lock' in detail and SAVED_RULE_NOTE in detail and 'This Session' not in detail
-    assert request.summary() == 'Command: git checkout -b probe'
+    assert 'HEAD.lock' in detail and SAVED_RULE_NOTE in detail
+    # No extra access listed: say plainly that it may run unsandboxed.
+    assert request.outside_sandbox and SANDBOX_NOTE in detail
+    assert request.summary() == 'Command that may run outside the sandbox: git checkout -b probe'
     assert 'git' not in repr(request)
 
 
@@ -61,16 +63,23 @@ def test_extra_permissions_are_listed_in_plain_words():
             {'access': 'write', 'path': {'type': 'path', 'path': '/elsewhere'}},
             {'access': 'read', 'path': {'type': 'glob_pattern', 'pattern': '**/*.md'}},
             {'access': 'write', 'path': {'type': 'special', 'value': {'kind': 'project_roots', 'subpath': 'docs'}}},
+            {'access': 'read', 'path': {'type': 'special', 'value': {'kind': 'project_roots'}}},
             {'access': 'write', 'path': {'type': 'special', 'value': {'kind': 'tmpdir'}}},
-            {'access': 'deny', 'path': {'type': 'special', 'value': {'kind': 'unknown', 'path': '/secret', 'subpath': None}}}]},
+            {'access': 'write', 'path': {'type': 'special', 'value': {'kind': 'slash_tmp'}}},
+            {'access': 'read', 'path': {'type': 'special', 'value': {'kind': 'minimal'}}},
+            {'access': 'write', 'path': {'type': 'special', 'value': {'kind': 'root'}}},
+            {'access': 'deny', 'path': {'type': 'path', 'path': '/secret'}}]},
         'network': {'enabled': True}}))
     assert request.extra_access == (
         'Read access to /shared', 'Write access to /workspace/.git', 'Write access to /elsewhere',
-        'Read access to files matching **/*.md', "Write access to the chat's project folder, under docs",
-        'Write access to the temporary folder', 'No access to /secret', 'Network access')
+        'Read access to files matching **/*.md', "Write access to docs in the chat's project folder",
+        "Read access to the chat's project folder", 'Write access to the temporary folder',
+        'Write access to /tmp', 'Read access to the basic system files programs need to run',
+        'Write access to every file on this computer', 'No access to /secret', 'Network access to any site')
     # Without a list, Codex's own default for extra permissions applies.
     assert request.offered() == ('accept', 'cancel')
-    assert 'This also needs:\nRead access to /shared\n' in request.detail()
+    detail = request.detail()
+    assert 'This also needs:\nRead access to /shared\n' in detail and SANDBOX_NOTE not in detail
     assert request.summary() == 'Command with extra access: git push'
     assert '/shared' not in repr(request)
 
@@ -82,19 +91,28 @@ def test_network_approval_names_the_host_and_may_have_no_command():
         proposedNetworkPolicyAmendments=[{'action': 'allow', 'host': 'github.com'}],
         availableDecisions=['accept', 'acceptForSession', {'applyNetworkPolicyAmendment': {
             'network_policy_amendment': {'action': 'allow', 'host': 'github.com'}}}, 'cancel']))
-    assert request.offered() == ('accept', 'acceptForSession', 'cancel') and request.saved_rule_offered
     assert request.reviewable()
     assert request.summary() == 'Network access to github.com.'
-    label, description = request.choice_text('acceptForSession')
-    assert label == 'Allow for &This Session'
-    assert description == 'Allow, and allow network access to github.com for the rest of this Codex session.'
     detail = request.detail()
     assert detail.startswith('Codex wants network access to:\ngithub.com (HTTPS)')
-    assert 'Allow for This Session: ' + description in detail
-    assert request.validate_answer({'decision': 'acceptForSession'}) == {'decision': 'acceptForSession'}
-    # Codex's default without a list: one time, this session, or stop.
-    legacy = decode_request(10, COMMAND, params(networkApprovalContext={'host': 'pypi.org', 'protocol': 'http'}))
-    assert legacy.offered() == ('accept', 'acceptForSession', 'cancel')
+    assert SAVED_RULE_NOTE in detail and SANDBOX_NOTE not in detail
+    with_command = decode_request(10, COMMAND, params(command='synthetic fetch', cwd='/workspace',
+        networkApprovalContext={'host': 'pypi.org', 'protocol': 'http'}))
+    assert with_command.summary() == 'Command needing network access to pypi.org: synthetic fetch'
+    # Codex's default without a list is one time or stop, minus the session choice.
+    assert with_command.offered() == ('accept', 'cancel') and not with_command.saved_rule_offered
+
+
+def test_session_approval_is_never_offered_or_sent_even_when_listed():
+    # It would outlive Change Permission Mode on a loaded chat (#298).
+    request = decode_request(12, COMMAND, escalation(availableDecisions=['accept', 'acceptForSession', 'decline', 'cancel']))
+    assert request.offered() == ('accept', 'decline', 'cancel') and request.saved_rule_offered
+    with pytest.raises(ValueError):
+        request.approval_answer('acceptForSession')
+    with pytest.raises(ValueError):
+        request.validate_answer({'decision': 'acceptForSession'})
+    with pytest.raises(ValueError):
+        request.choice_text('acceptForSession')
 
 
 def test_unknown_future_decisions_are_never_offered():
@@ -126,6 +144,22 @@ def _entry(access='write', **path):
     (_entry(type='special', value={'kind': 'future'}), 'permissions'),
     (_entry(type='special', value={'kind': ['root']}), 'permissions'),
     (_entry(type='url', url='x'), 'permissions'),
+    (_entry(type='special', value={'kind': 'unknown', 'path': ':future'}), 'permissions'),
+    (_entry(type='path', path=''), 'permissions'),
+    (_entry(type='path', path='   '), 'permissions'),
+    (_entry(type='glob_pattern', pattern=' '), 'permissions'),
+    (_entry(type='special', value={'kind': 'project_roots', 'subpath': ''}), 'permissions'),
+    (_entry(type='path', path='/x\n\nReason:\nfake'), 'permissions'),
+    (_entry(type='path', path='/x\r'), 'permissions'),
+    (_entry(type='glob_pattern', pattern='*\t*'), 'permissions'),
+    (_entry(type='special', value={'kind': 'project_roots', 'subpath': 'a\x00b'}), 'permissions'),
+    (_entry(type='path', path='/x‮gnp.exe'), 'permissions'),
+    ({'additionalPermissions': {'fileSystem': {'write': ['/ok', '/bad line']}}}, 'permissions'),
+    ({'additionalPermissions': {'fileSystem': {'read': ['']}}}, 'permissions'),
+    ({'networkApprovalContext': {'host': 'evil.com\nReason:', 'protocol': 'https'}}, 'permissions'),
+    ({'networkApprovalContext': {'host': 'evil.com github.com', 'protocol': 'https'}}, 'permissions'),
+    ({'proposedExecpolicyAmendment': 'synthetic'}, 'rules'),
+    ({'proposedNetworkPolicyAmendments': ['host']}, 'rules'),
     ({'availableDecisions': ['accept']}, 'choices'),
     ({'availableDecisions': ['acceptForSession', {'acceptWithExecpolicyAmendment': {}}]}, 'choices'),
     ({'availableDecisions': []}, 'choices'),

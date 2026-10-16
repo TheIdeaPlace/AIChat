@@ -750,7 +750,7 @@ def test_declined_command_says_which_kind_and_why(extra, words):
     assert not connection.closed
 
 
-def test_extra_access_request_is_queued_and_session_approval_needs_chatgpt_sign_in():
+def test_extra_access_request_is_queued_and_only_one_time_answers_are_sent():
     import json
     connection = request_transport()
     message = approval_message()
@@ -758,16 +758,29 @@ def test_extra_access_request_is_queued_and_session_approval_needs_chatgpt_sign_
                              availableDecisions=['accept', 'acceptForSession', 'cancel'])
     connection._receive(message)
     request = connection.pop_event()
-    assert request.extra_access == ('Network access',)
-    with pytest.raises(ValueError):
-        connection.respond_request(request, {'decision': 'decline'})  # not listed by Codex
+    assert request.extra_access == ('Network access to any site',)
+    for decision in ('decline', 'acceptForSession'):  # not listed / never sent (#298)
+        with pytest.raises(ValueError):
+            connection.respond_request(request, {'decision': decision})
     connection.request = lambda method, params: {'account': {'type': 'apiKey'}, 'requiresOpenaiAuth': True}
     with pytest.raises(CodexRpcError, match='ChatGPT sign-in'):
-        connection.respond_request(request, {'decision': 'acceptForSession'})
+        connection.respond_request(request, {'decision': 'accept'})
     assert connection._outgoing.empty()
     connection.request = lambda method, params: {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
-    connection.respond_request(request, {'decision': 'acceptForSession'})
-    assert json.loads(connection._outgoing.get()) == {'id': 'approval', 'result': {'decision': 'acceptForSession'}}
+    connection.respond_request(request, {'decision': 'accept'})
+    assert json.loads(connection._outgoing.get()) == {'id': 'approval', 'result': {'decision': 'accept'}}
+
+
+@pytest.mark.parametrize('extra,reason', [
+    ({'additionalPermissions': {'fileSystem': {'write': ['/x\nfake']}}}, 'permissions'),
+    ({'availableDecisions': ['accept']}, 'choices')])
+def test_declined_notice_names_the_requesting_chat_and_reason(extra, reason):
+    connection = request_transport()
+    message = approval_message()
+    message['params'].update(extra)
+    connection._receive(message)
+    notice = connection.pop_event()
+    assert (notice.reason, notice.thread_id) == (reason, 'owned')
 
 
 def test_stdio_server_request_and_answer_keep_client_response_ids_independent(server):

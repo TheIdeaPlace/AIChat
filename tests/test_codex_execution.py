@@ -261,6 +261,22 @@ def test_pending_start_stream_outcomes_remain_safe(mode):
                 assert executor.start(proof, 'Next').turn_id == 'turn-2'
 
 
+def test_declined_notice_goes_only_to_the_chat_it_names():
+    from thechatplace.providers.codex_requests import CodexRequestDeclined
+    c = Connection()
+    one, two = c.proof('one'), c.proof('two')
+    executor = CodexTurnExecutor(c)
+    executor.start(one, 'A'), executor.start(two, 'B')
+    c.events.append(CodexRequestDeclined('command approval', 'remote', 'one'))
+    assert executor.drain() == frozenset({'one'})
+    assert 'this computer' in executor.snapshot(one).notice and not executor.snapshot(two).notice
+    c.events.append(CodexRequestDeclined('command approval', 'remote', 'external'))
+    assert executor.drain() == frozenset()
+    # A request naming no valid chat still reaches every running chat.
+    c.events.append(CodexRequestDeclined())
+    assert executor.drain() == frozenset({'one', 'two'})
+
+
 def test_requests_stay_on_matching_chat_and_cannot_be_answered_after_completion():
     from thechatplace.providers.codex_requests import COMMAND, decode_request
     c = Connection()

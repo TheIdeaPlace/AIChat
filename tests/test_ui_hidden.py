@@ -8943,10 +8943,12 @@ def test_codex_command_approval_offers_only_listed_choices_and_reads_extra_acces
     try:
         assert list(dialog.buttons) == ['accept', 'cancel']
         assert [b.GetLabel() for b in dialog.buttons.values()] == ['&Allow Once', 'Deny and &Stop Turn']
-        assert dialog.GetDefaultItem() is dialog.buttons['cancel']
+        # No Deny on offer: a stray Enter answers later rather than stopping the turn.
+        assert dialog.GetDefaultItem().GetId() == wx.ID_CANCEL
         text = dialog.request_text.GetValue()
         assert 'This also needs:\nWrite access to /workspace/.git' in text and SAVED_RULE_NOTE in text
         dialog.buttons['cancel'].Command(wx.CommandEvent(wx.wxEVT_BUTTON))
+        assert dialog.choice == 'cancel'
     finally:
         dialog.Destroy()
     network = decode_request(2, COMMAND, dict(base, command=None, cwd=None,
@@ -8954,12 +8956,20 @@ def test_codex_command_approval_offers_only_listed_choices_and_reads_extra_acces
         availableDecisions=['accept', 'acceptForSession', 'decline', 'cancel']))
     dialog = CodexPermissionDialog(frame, 'Owned', network)
     try:
-        assert list(dialog.buttons) == ['accept', 'acceptForSession', 'decline', 'cancel']
+        # Allow for This Session is never offered (#298).
+        assert list(dialog.buttons) == ['accept', 'decline', 'cancel']
         assert dialog.allow.IsEnabled() and dialog.GetDefaultItem() is dialog.buttons['decline']
-        session = dialog.buttons['acceptForSession']
-        assert session.GetName() == ('Allow, and allow network access to github.com '
-                                     'for the rest of this Codex session.')
         assert dialog.request_text.GetValue().startswith('Codex wants network access to:\ngithub.com (HTTPS)')
+        # Escape is Answer Later: nothing chosen, nothing sent.
+        assert dialog.GetEscapeId() == wx.ID_CANCEL and dialog.choice == ''
+    finally:
+        dialog.Destroy()
+    blank = decode_request(3, COMMAND, dict(base, command='   ', cwd='/workspace',
+                                            networkApprovalContext={'host': 'h.example', 'protocol': 'http'}))
+    unreviewable = dataclasses.replace(blank, network_host='')
+    dialog = CodexPermissionDialog(frame, 'Owned', unreviewable)
+    try:
+        assert not dialog.allow.IsEnabled()
     finally:
         dialog.Destroy()
 

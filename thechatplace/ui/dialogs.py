@@ -1428,11 +1428,12 @@ class PermissionDialog(wx.Dialog):
 
 
 class CodexPermissionDialog(wx.Dialog):
-    """Codex decisions: only the ones Codex listed, never a saved rule (#284).
+    """Codex decisions: only the one-time ones Codex listed (#284).
 
     The request text says everything being asked for, including extra access
-    (folders, network) beyond the chat's own folder. A refusal is the default
-    button, so a stray Enter refuses.
+    (folders, network) beyond the chat's own folder. Deny is the default
+    button when offered; otherwise Answer Later is, so a stray Enter never
+    allows anything or stops the turn.
     """
     def __init__(self, parent, session_title, request, file_detail=""):
         super().__init__(parent, title=f"Codex needs permission: {session_title}",
@@ -1445,26 +1446,19 @@ class CodexPermissionDialog(wx.Dialog):
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         reviewable = request.reviewable(file_detail)
-        offered = request.offered()
-        default = "decline" if "decline" in offered else "cancel"
         self.buttons = {}
-        for decision in offered:
-            label, description = request.choice_text(decision)
-            button = wx.Button(self, label=label)
-            if decision.startswith("accept"):
+        for decision in request.offered():
+            button = wx.Button(self, label=request.choice_text(decision))
+            if decision == "accept":
                 # Nothing to review means nothing to allow.
                 button.Enable(reviewable)
-            if decision == "acceptForSession":
-                # The label is short; say what it does in full.
-                button.SetToolTip(description)
-                set_accessible_name(button, description)
-            if decision == default:
-                button.SetDefault()
             row.Add(button, 0, wx.RIGHT, 6)
             button.Bind(wx.EVT_BUTTON, lambda event, choice=decision: self._choose(choice))
             self.buttons[decision] = button
         self.allow = self.buttons.get("accept")
-        row.Add(wx.Button(self, wx.ID_CANCEL, "Answer &Later"), 0)
+        later = wx.Button(self, wx.ID_CANCEL, "Answer &Later")
+        row.Add(later, 0)
+        self.buttons.get("decline", later).SetDefault()
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)

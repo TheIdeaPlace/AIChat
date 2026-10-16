@@ -570,14 +570,17 @@ chat whose latest turn is unfinished or uncertain. If the connection is lost,
 use Stop to check the saved turn and reconnect once it has ended. No message
 is resent. Selecting the chat again does not automatically reconnect. If
 Codex still reports unfinished work, The Chat Place refuses recovery and says why.
-When Codex needs more than the chat's folder, such as writing to Git's `.git` folder,
-another folder or network access, Answer shows the command, its folder, Codex's reason
-and a "This also needs" list of the extra access in plain words; a network request names
-the host. Only the answers Codex offers for that request are shown: Allow Once, Allow for
-This Session (no more asking for this command, host or access until Codex restarts),
-Deny (Codex carries on without it) and Deny and Stop Turn. A refusal is the default
-button. When Codex offers to save an "always allow" rule, the dialog says so, but The
-Chat Place leaves that choice out and never saves a rule.
+Answer shows the command, its folder and Codex's reason. When Codex names extra access
+it needs, such as writing to Git's `.git` folder, another folder or the network, a
+"This also needs" list says what, in plain words; a network request names the host. When
+it names none, the request is usually to run the command outside the chat's folder
+sandbox, and the dialog says so: if you allow it, the command can change any file you can
+and use the network. Only the one-time answers Codex offers for that request are shown:
+Allow Once, Deny (Codex carries on without it) and Deny and Stop Turn, plus Answer Later.
+Deny is the default button when it's offered; otherwise Answer Later is. When Codex offers
+to keep allowing something (for the rest of the session, or as a saved "always allow"
+rule), the dialog says so, but The Chat Place leaves that out: each answer covers one
+request.
 Requests The Chat Place cannot present safely, such as typing into a command that's
 already running or running a command somewhere other than this computer, are declined
 with a notice that says which kind and why; they do not disconnect the chat. Turn Status

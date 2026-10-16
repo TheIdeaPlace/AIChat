@@ -294,6 +294,9 @@ class CodexTurnExecutor:
                     if isinstance(event, CodexRequestDeclined):
                         affected = set(self._pending_events) | {native for native, buffer in self._turns.items()
                                                                if buffer.status == 'inProgress'}
+                        if event.thread_id:
+                            # Only the chat the request named, if it's one of ours (#284).
+                            affected &= {event.thread_id}
                         for native in affected:
                             self._notices[native] = event.text
                         changed.update(affected)

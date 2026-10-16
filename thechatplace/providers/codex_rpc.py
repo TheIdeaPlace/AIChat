@@ -501,7 +501,12 @@ class ReadOnlyCodexConnection:
             self._outgoing.put(payload)
         try:
             kind = {COMMAND: 'command approval', FILES: 'file approval', QUESTIONS: 'question'}.get(message['method'], 'request')
-            self._events.put_nowait(CodexRequestDeclined(kind, reason if kind == 'command approval' else ''))
+            params = message.get('params')
+            thread = params.get('threadId') if isinstance(params, dict) else None
+            if not isinstance(thread, str) or not thread.strip() or len(thread) > 256:
+                thread = ''  # unknown chat: every running chat hears about it
+            self._events.put_nowait(CodexRequestDeclined(
+                kind, reason if kind == 'command approval' else '', thread))
         except queue.Full:
             raise ValueError('Codex request notice queue overflow') from None
 
