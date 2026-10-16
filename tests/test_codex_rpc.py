@@ -970,9 +970,11 @@ def test_windows_standalone_package_respects_absolute_codex_home(tmp_path, monke
     _native_exe(tmp_path / ".codex/packages/standalone/current" / layout)
     assert platform_paths.find_codex(which=lambda _: None) == str(native)
     # A relative CODEX_HOME would depend on the working folder; use the default.
-    monkeypatch.setenv("CODEX_HOME", "relative")
-    assert platform_paths.find_codex(which=lambda _: None) == str(
-        tmp_path / ".codex/packages/standalone/current" / layout)
+    # A network share is never launched from either.
+    for ignored in ("relative", r"\\server\share\codex"):
+        monkeypatch.setenv("CODEX_HOME", ignored)
+        assert platform_paths.find_codex(which=lambda _: None) == str(
+            tmp_path / ".codex/packages/standalone/current" / layout)
 
 
 @windows_paths

@@ -50,3 +50,6 @@ this PC `app-server-daemon\current\bin\codex.exe` is `codex-cli 0.162.1` and has
 ACL'd helper copy (`windows-sandbox-rs/src/helper_materialization.rs`) and is
 deliberately not a candidate. Order: PATH, CLI installs, Codex app copy, npm
 payload, then the daemon package last.
+A running app-server keeps its release's codex.exe locked, so a daemon update
+retargets `current` without disturbing it; the next launch uses the new release.
+A relative or UNC `CODEX_HOME` falls back to `~/.codex`.

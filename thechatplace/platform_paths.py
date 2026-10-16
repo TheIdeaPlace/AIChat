@@ -1192,8 +1192,11 @@ def _codex_package_candidates(home: Path, name: str):
     sandbox helper copy and is deliberately not a candidate.
     """
     configured = os.environ.get("CODEX_HOME")
-    root = (Path(configured) if configured and os.path.isabs(configured)
-            else home / ".codex") / "packages"
+    # A relative or network (UNC) CODEX_HOME falls back to the default, as
+    # codex_rule_inventory refuses network paths: never launch from a share.
+    usable = (configured and os.path.isabs(configured)
+              and not configured.startswith(("//", "\\\\")))
+    root = (Path(configured) if usable else home / ".codex") / "packages"
     standalone = [root / "standalone/current/bin" / name,
                   root / "standalone/current" / name]
     return standalone, [root / "app-server-daemon/current/bin" / name]

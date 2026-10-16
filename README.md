@@ -548,9 +548,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   page with it filled in; **Copy Report** only copies it. Filing on GitHub needs access to the
   repository; anyone else can Copy Report and email it to support@theideaplace.net.
 
-**Codex chats appear automatically** when a native Codex CLI is installed, including the
-copy bundled with the ChatGPT app on Mac, the Codex app's copy on Windows, and the copy Codex's
-own installer keeps in your `.codex` folder, and signed in to ChatGPT. Settings offers
+**Codex chats appear automatically** when a native Codex CLI is installed and signed in to
+ChatGPT. That includes the copy bundled with the ChatGPT app on Mac, the Codex app's copy on
+Windows, and the copy Codex's own installer keeps in your `.codex` folder. Settings offers
 **Include Codex chats (restart required)** to turn them off or on explicitly; your choice
 is kept. Without Codex installed, no Codex process starts, and Settings says to install
 the Codex app or CLI, then restart. Selecting a Codex chat automatically opens its history; messages,
