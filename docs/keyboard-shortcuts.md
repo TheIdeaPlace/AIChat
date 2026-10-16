@@ -2,6 +2,8 @@
 
 One window, three parts, in Tab order: the session list; the messages of the loaded session; and the reply box with Send and Stop (for a desktop app or terminal session, a read-only note saying where you reply, with provider-specific actions and Continue Here as they apply, in the same place). Shift+Tab goes back the same way. Provider (which AI) and Kind (where the session started) are default session-list columns; View, Session List Columns can remove or reorder them.
 
+This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver: VO+M), rather than Windows Alt menu sequences.
+
 ## Moving around
 
 | Keys | What it does |

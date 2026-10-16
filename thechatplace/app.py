@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import __version__, platform_paths
+from .ui_text import key_name
 
 APP_TITLE = "The Chat Place"
 
@@ -254,7 +255,7 @@ def main(argv: Optional[list] = None) -> int:
             platform_paths.bring_window_forward(is_hub_window_title)
             return 0
         if not platform_paths.bring_window_forward(is_hub_window_title):
-            wx.MessageBox("The Chat Place is already running. Switch to it with Alt+Tab.",
+            wx.MessageBox(key_name("The Chat Place is already running. Switch to it with Alt+Tab."),
                           APP_TITLE, wx.OK | wx.ICON_INFORMATION)
         return 0
     frame = MainFrame()

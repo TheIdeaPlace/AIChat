@@ -11,6 +11,8 @@ import time
 
 import pytest
 
+from thechatplace.ui_text import key_name
+
 wx = pytest.importorskip("wx")
 
 from thechatplace import hub, platform_paths, speech  # noqa: E402
@@ -1791,10 +1793,10 @@ def _waiting_turn(frame, *requests):
 
 def test_permission_request_is_announced_and_the_session_needs_you(frame, env):
     _waiting_turn(frame, _request())
-    assert env["spoken"][-1] == ("Hub probe needs you. Claude wants to run git push. "
-                                 "Ctrl+Shift+A answers.")
-    assert frame.turn_status.GetLabel() == ("Waiting for you: Claude wants to run git push. "
-                                            "Ctrl+Shift+A answers.")
+    assert env["spoken"][-1] == (key_name("Hub probe needs you. Claude wants to run git push. "
+                                 "Ctrl+Shift+A answers."))
+    assert frame.turn_status.GetLabel() == (key_name("Waiting for you: Claude wants to run git push. "
+                                            "Ctrl+Shift+A answers."))
     settle(frame)
     row = [s for s in frame.session_list.GetStrings() if s.startswith("Hub probe")][0]
     assert "needs you: Claude wants to run git push" in row
@@ -1810,8 +1812,8 @@ def test_answering_sends_the_response_and_announces_the_next(frame, env, monkeyp
         allow_response(request), "Allowed.", {}))
     frame.on_answer()
     assert runner.responses == [("r1", {"behavior": "allow", "updatedInput": first.input})]
-    assert env["feedback"][-1] == ("Allowed. Next: Claude wants to run git tag v1. "
-                                   "Ctrl+Shift+A answers.")
+    assert env["feedback"][-1] == (key_name("Allowed. Next: Claude wants to run git tag v1. "
+                                   "Ctrl+Shift+A answers."))
     frame.on_answer()
     assert [r[0] for r in runner.responses] == ["r1", "r2"]
     assert frame._pending["own-1"] == []
@@ -3082,7 +3084,7 @@ def test_commands_never_open_by_themselves(frame, env, monkeypatch):
                         lambda *a: pytest.fail("opened by itself"))
     frame.on_insert_command()
     assert env["feedback"][-1] == "Getting the commands for this folder."
-    assert pump(lambda: env["feedback"][-1] == "Commands are ready: press Ctrl+/ or Commands.")
+    assert pump(lambda: env["feedback"][-1] == key_name("Commands are ready: press Ctrl+/ or Commands."))
     frame._commands.clear()
     monkeypatch.setattr(main_frame, "fetch_commands", lambda exe, cwd: [])
     frame.on_insert_command()
@@ -3629,8 +3631,8 @@ def test_changed_files_view_and_turn_end_summary(frame, env, monkeypatch):
     frame._refresh_chat()
     assert pump(lambda: any("Changed 1 file" in t for t in env["feedback"]))
     assert env["spoken"][-1] == "Quiet one replied. All done."
-    assert env["feedback"][-1] == ("Quiet one: Changed 1 file: README.md, created, 1 line. "
-                                   "Ctrl+Shift+D shows the changes.")
+    assert env["feedback"][-1] == (key_name("Quiet one: Changed 1 file: README.md, created, 1 line. "
+                                   "Ctrl+Shift+D shows the changes."))
     assert not frame._changes_due
     # Another turn with no changes (a background task's, say): nothing again.
     count = len(env["feedback"])
@@ -3718,7 +3720,7 @@ def test_notifications_for_permissions_desktop_sessions_and_stops(frame, env, mo
     _waiting_turn(frame, _request("r1"), _request("r2"))
     # One notification for the first request; the second waits behind it.
     assert env["notified"] == [("Hub probe needs you",
-                                "Claude wants to run git push. Ctrl+Shift+A answers.",
+                                key_name("Claude wants to run git push. Ctrl+Shift+A answers."),
                                 "own:own-1")]
     # Stopping it yourself isn't news.
     runner = frame._runners["own-1"]
@@ -5336,7 +5338,7 @@ def test_other_machines_refresh_asks_claude_for_the_list(frame, env, fake_runner
     assert seen["c"] == ["Refresh the list (asks Claude)"]
     runner = fake_runner.instances[-1]
     assert "Call ListAgents" in runner.prompt and runner.remote_control
-    assert "Ctrl+Shift+M again" in env["feedback"][-1]
+    assert key_name("Ctrl+Shift+M again") in env["feedback"][-1]
 
 
 def test_other_machines_sends_your_words_to_the_chosen_session(frame, env, fake_runner,
@@ -5353,7 +5355,7 @@ def test_other_machines_sends_your_words_to_the_chosen_session(frame, env, fake_
     frame.on_other_machines()
     assert seen["c"] == ["Surface Hub, offline", "Mac work, idle",
                          "Refresh the list (asks Claude)"]
-    assert _FakeTextDialog.prompt == "Message to Mac work (Enter sends):"
+    assert _FakeTextDialog.prompt == key_name("Message to Mac work (Enter sends):")
     runner = fake_runner.instances[-1]
     assert '"Mac work"' in runner.prompt
     assert runner.prompt.endswith("<<<MESSAGE\nWhat's your hostname?\nMESSAGE>>>")
@@ -6008,7 +6010,7 @@ def test_ctrl_shift_enter_whose_send_fails_says_the_prompt_is_saved(
     frame.on_send_and_save()
     assert fake_runner.instances == [] and frame.prompts.names() == ["Important"]
     assert "No Claude Code." in env["boxes"][-1]
-    assert env["feedback"][-1] == "The prompt Important is saved; press Ctrl+Enter to send."
+    assert env["feedback"][-1] == key_name("The prompt Important is saved; press Ctrl+Enter to send.")
 
 
 def test_ctrl_shift_enter_when_the_reply_changes_meanwhile(
@@ -7283,7 +7285,7 @@ def test_from_github_lists_filters_and_uses_a_clone(frame, env, monkeypatch):
         dialog.search.SetValue("me/alpha")
         assert dialog.list.GetStrings() == ["me/Alpha: First tool"]
         dialog.search.SetValue("someone/Else")
-        assert dialog.list.GetString(0) == "Not one of yours: Enter uses someone/Else."
+        assert dialog.list.GetString(0) == key_name("Not one of yours: Enter uses someone/Else.")
         assert dialog.chosen_repo() == "someone/Else"
         dialog.search.SetValue("nothing here")
         dialog.choose()
@@ -7927,7 +7929,7 @@ def _find_all(frame, monkeypatch, text, act=None):
     assert pump(lambda: not frame._find_all_busy)
     if frame._find_all_waiting is not None:
         # A hidden window isn't active, so the results wait for Ctrl+Shift+S.
-        assert env_said(frame).endswith("Press Ctrl+Shift+S to see them.")
+        assert env_said(frame).endswith(key_name("Press Ctrl+Shift+S to see them."))
         frame.on_find_all()
     return seen
 
@@ -8011,9 +8013,9 @@ def test_results_that_arrive_while_you_are_elsewhere_wait(frame, env, monkeypatc
     frame.on_find_all()
     assert pump(lambda: not frame._find_all_busy)
     assert frame._find_all_waiting is not None
-    assert frame._last_announcement == ('1 message in 1 session contains "needle". Searched 1 '
+    assert frame._last_announcement == (key_name('1 message in 1 session contains "needle". Searched 1 '
                                         "session. 2 had no transcript to read. Press "
-                                        "Ctrl+Shift+S to see them.")
+                                        "Ctrl+Shift+S to see them."))
 
 
 
@@ -8107,8 +8109,8 @@ def test_a_result_thats_a_hidden_tool_call_says_so(frame, env, monkeypatch):
     assert pump(lambda: frame._chat_loaded)
     tool = frame._chat_messages[1]
     frame._go_to_match(Match(frame._open.key, "Quiet one", tool.key, "Tool", "", "grep needle", 1))
-    assert env["feedback"][-1] == ("1 message. The message found isn't in the list now; if it "
-                                   "was a tool call, Ctrl+T shows them.")
+    assert env["feedback"][-1] == (key_name("1 message. The message found isn't in the list now; if it "
+                                   "was a tool call, Ctrl+T shows them."))
 
 
 def test_a_result_in_a_session_without_its_transcript_forgets_the_target(frame, env):
@@ -8275,7 +8277,7 @@ def test_with_no_sessions_the_messages_say_how_to_start_one(env):
         window.refresh_sessions(force=True)
         assert pump(lambda: window.session_list.GetCount() == 1)
         assert window.chat_list.GetStrings() == [
-            "No session loaded. Choose one in the session list and press Enter."]
+            key_name("No session loaded. Choose one in the session list and press Enter.")]
     finally:
         window.stop_timers()
         window._pool.shutdown(wait=True)
@@ -9512,3 +9514,12 @@ def test_closed_codex_properties_ignore_late_rule_result(frame, monkeypatch):
     frame._session_properties_read(info, None, '', 0, '', None)
     assert len(callbacks) == 1
     callbacks[0](4, False)  # No deleted native control is touched.
+
+def test_permission_hint_translates_only_authored_keys(frame, env):
+    frame._runners['own-1'] = FakeRunner([], '', '', None)
+    request = _request(tool_input={'command': 'echo Ctrl+N'})
+    frame._on_turn_event({'id': 'own-1'}, 'Title Ctrl+N',
+                         TurnEvent('permission', text=request.summary(), request=request))
+    spoken = env['spoken'][-1]
+    assert 'Title Ctrl+N' in spoken and 'echo Ctrl+N' in spoken
+    assert key_name('Ctrl+Shift+A') + ' answers.' in spoken

@@ -170,7 +170,7 @@ LIST_MIN_WIDTH = 200
 #: Short enough to fit the list at the window's usual size, as a list's rows
 #: don't wrap.
 NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
-                   + ("Cmd+N" if wx.Platform == "__WXMAC__" else "Ctrl+N")
+                   + key_name("Ctrl+N")
                    + "), in a supported desktop app or in a terminal.")
 
 
@@ -425,7 +425,7 @@ class MainFrame(CodexChats, wx.Frame):
         # window-wide), so it's in the label without a tab, still read out.
         self._item(session, "Prompts...\tCtrl+Shift+P", lambda e: self.on_prompts())
         # wx turns Ctrl into Cmd only in a tab accelerator, so say it here.
-        keys = "Cmd+Shift+Return" if wx.Platform == "__WXMAC__" else "Ctrl+Shift+Enter"
+        keys = key_name("Ctrl+Shift+Enter")
         self._item(session, f"Send and Save as Prompt... ({keys})",
                    lambda e: self.on_send_and_save())
         session.AppendSeparator()
@@ -557,7 +557,7 @@ class MainFrame(CodexChats, wx.Frame):
         self.own_reply = wx.Panel(root)
         osizer = wx.BoxSizer(wx.VERTICAL)
         osizer.Add(wx.StaticText(self.own_reply,
-                                 label="&Your message (Ctrl+Enter sends):"), 0, wx.BOTTOM, 4)
+                                 label=key_name("&Your message (Ctrl+Enter sends):")), 0, wx.BOTTOM, 4)
         # TE_RICH2 on purpose: checked in the vmtest VM (wxPython 4.3.1), a
         # plain multiline EDIT reports its contents as its accessible name,
         # while a RichEdit takes its name from the label before it.
@@ -1465,7 +1465,7 @@ class MainFrame(CodexChats, wx.Frame):
         # it isn't a first run.
         if not self._first_snapshot and not self._snapshot.sessions:
             return NO_SESSIONS_YET
-        return "No session loaded. Choose one in the session list and press Enter."
+        return key_name("No session loaded. Choose one in the session list and press Enter.")
 
     def _sync_no_session_line(self):
         """The line above, kept right as sessions come and go."""
@@ -2059,8 +2059,8 @@ class MainFrame(CodexChats, wx.Frame):
         if self._open_modal() is not None:
             # Another dialog opened while the transcript was read: don't
             # stack this one on it and send focus behind it.
-            self._feedback("Properties: another window is open. Close it and press "
-                           "Alt+Enter again.")
+            self._feedback(key_name("Properties: another window is open. Close it and press "
+                           "Alt+Enter again."))
             return
         own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
         model = transcript.model if transcript is not None else ""
@@ -2460,7 +2460,7 @@ class MainFrame(CodexChats, wx.Frame):
             waiting = self._pending.get(info.cli_session_id)
             runner = self._runners.get(info.cli_session_id)
             if running and waiting:
-                label = f"Waiting for you: {waiting[0].summary()}. Ctrl+Shift+A answers."
+                label = f"Waiting for you: {waiting[0].summary()}. {key_name('Ctrl+Shift+A')} answers."
             elif running and getattr(runner, "waiting_on_background", False):
                 # Answered; kept open only so the work can finish (#161).
                 label = (f"Claude answered. {announce.background_text(runner.background_tasks)} "
@@ -2582,7 +2582,7 @@ class MainFrame(CodexChats, wx.Frame):
         summary = summary_text(fresh)
         if not summary:
             return
-        text = f"{self._open.title}: {summary} Ctrl+Shift+D shows the changes."
+        text = f"{self._open.title}: {summary} {key_name('Ctrl+Shift+D')} shows the changes."
         if self.speech.announce == ANNOUNCE_FULL:
             self._feedback(text)  # queued behind the reply, not cutting it off
         else:
@@ -2895,13 +2895,12 @@ class MainFrame(CodexChats, wx.Frame):
             return
         if index == len(sessions):
             self._send_generated(info, remote.LIST_PROMPT,
-                                 f"Asking Claude in {info.title} for your other computers' "
-                                 "sessions. Ctrl+Shift+M again once it has answered.")
+                                 f"Asking Claude in {info.title} for your other computers' sessions. {key_name('Ctrl+Shift+M')} again once it has answered.")
             return
         target = sessions[index]
         address = remote.addresses(sessions)[index]
         # One line, so Enter sends.
-        dialog = wx.TextEntryDialog(self, f"Message to {target.name} (Enter sends):",
+        dialog = wx.TextEntryDialog(self, f"Message to {target.name} ({key_name('Enter')} sends):",
                                     "Other Machines", "")
         try:
             if dialog.ShowModal() != wx.ID_OK:
@@ -3159,8 +3158,7 @@ class MainFrame(CodexChats, wx.Frame):
         runner = self._runners.get(info.cli_session_id) if info else None
         if runner is not None and self._pending.get(info.cli_session_id):
             request = self._pending[info.cli_session_id][0]
-            self._feedback(f"{info.title} is waiting for you: {request.summary()}. "
-                           "Ctrl+Shift+A answers.")
+            self._feedback(f"{info.title} is waiting for you: {request.summary()}. {key_name('Ctrl+Shift+A')} answers.")
             return
         if runner is not None and getattr(runner, "waiting_on_background", False):
             self._feedback(f"{info.title}: Claude answered. "
@@ -3219,7 +3217,7 @@ class MainFrame(CodexChats, wx.Frame):
         title = own.title if own else "A session"
         decision = self._ask(title, request, own)
         if decision is None:
-            self._feedback("Not answered yet. Claude is still waiting; Ctrl+Shift+A answers.")
+            self._feedback(key_name("Not answered yet. Claude is still waiting; Ctrl+Shift+A answers."))
             return
         response, said, changes = decision
         self._apply_answer(session_id, request, response, said, changes)
@@ -3300,7 +3298,7 @@ class MainFrame(CodexChats, wx.Frame):
             self._store_write(self.store.update, session_id, **changes)
             self._update_heading()
         if queue:
-            said += f" Next: {queue[0].summary()}. Ctrl+Shift+A answers."
+            said += f" Next: {queue[0].summary()}. {key_name('Ctrl+Shift+A')} answers."
         self._feedback(said)
         self._update_send_state()
         self.refresh_sessions()
@@ -3825,10 +3823,9 @@ class MainFrame(CodexChats, wx.Frame):
             queue = self._pending.setdefault(session_id, [])
             queue.append(event.request)
             if len(queue) == 1:
-                self._say(f"{title} needs you. {event.request.summary()}. "
-                          "Ctrl+Shift+A answers.")
+                self._say(f"{title} needs you. {event.request.summary()}. {key_name('Ctrl+Shift+A')} answers.")
                 self._notify(self._own_key(session_id), f"{title} needs you",
-                             f"{event.request.summary()}. Ctrl+Shift+A answers.",
+                             f"{event.request.summary()}. {key_name('Ctrl+Shift+A')} answers.",
                              needs_you=True)
             else:
                 self._status(f"{title}: {len(queue)} things are waiting for you.")
@@ -4307,7 +4304,7 @@ class MainFrame(CodexChats, wx.Frame):
 
     def _find_in_messages(self):
         if self._open is None:
-            self._feedback("No session loaded. In the session list, Ctrl+F finds sessions.")
+            self._feedback(key_name("No session loaded. In the session list, Ctrl+F finds sessions."))
             return
         returning_to = wx.Window.FindFocus()
         text = self._ask_text("Find in Messages", "Find messages containing:", self._find_text)
@@ -4364,7 +4361,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._find_all_focus = returning_to
         count = len(targets)
         self._feedback(f'Searching {count} session{"s" if count != 1 else ""} for "{text}". '
-                       "Ctrl+Shift+S again stops.")
+                       f'{key_name("Ctrl+Shift+S")} again stops.')
         self._stop_find_all_timer()
         self._find_all_timer = wx.CallLater(FIND_ALL_PROGRESS_MS, self._say_find_all_progress,
                                             run, count)
@@ -4427,7 +4424,7 @@ class MainFrame(CodexChats, wx.Frame):
             self._open_find_results(results)
             return
         self._find_all_waiting = (time.monotonic(), results)
-        self._say(f"{results.summary()} Press Ctrl+Shift+S to see them.")
+        self._say(f"{results.summary()} Press {key_name('Ctrl+Shift+S')} to see them.")
 
     def _open_find_results(self, results):
         returning_to = wx.Window.FindFocus()
@@ -4473,9 +4470,7 @@ class MainFrame(CodexChats, wx.Frame):
         where = f"Loaded {match.title}. " if loaded else ""
         if row is None or row >= self.chat_list.GetCount():
             count = sum(1 for m in visible if m.kind != QUEUED)
-            self._feedback(f"{where}{count} message{'s' if count != 1 else ''}. The message "
-                           "found isn't in the list now; "
-                           "if it was a tool call, Ctrl+T shows them.")
+            self._feedback(f"{where}{count} message{('s' if count != 1 else '')}. The message found isn't in the list now; if it was a tool call, {key_name('Ctrl+T')} shows them.")
             return False
         self.chat_list.SetSelection(row)
         self.chat_list.SetFocus()
@@ -5053,7 +5048,7 @@ class MainFrame(CodexChats, wx.Frame):
                 # Said, never opened by itself: a dialog appearing a moment
                 # later would take keys you were typing elsewhere.
                 if _folder_key(info.cwd) in self._commands:
-                    self._feedback("Commands are ready: press Ctrl+/ or Commands.")
+                    self._feedback(key_name("Commands are ready: press Ctrl+/ or Commands."))
                 else:
                     self._feedback("Couldn't get the commands from Claude Code.")
             self._fetch_commands(info.cwd, then=when_ready)
@@ -5169,9 +5164,9 @@ class MainFrame(CodexChats, wx.Frame):
                 # Something came into the reply box while the name was asked
                 # (a queued message given back when its send failed): what
                 # would be sent is no longer what would be saved.
-                wx.MessageBox("The reply box changed while the name was being asked, so "
+                wx.MessageBox(key_name("The reply box changed while the name was being asked, so "
                               "nothing was saved or sent. Check it, then press "
-                              "Ctrl+Shift+Enter again.", "Send and Save as Prompt",
+                              "Ctrl+Shift+Enter again."), "Send and Save as Prompt",
                               wx.OK | wx.ICON_INFORMATION, self)
                 self.reply_text.SetFocus()
                 return
@@ -5194,7 +5189,7 @@ class MainFrame(CodexChats, wx.Frame):
         if clean_prompt_text(self.reply_text.GetValue()) == text:
             # Send refused (it said why) and left the text: pressing
             # Ctrl+Shift+Enter again would save the prompt twice.
-            self._feedback(f"The prompt {saved} is saved; press Ctrl+Enter to send.")
+            self._feedback(f"The prompt {saved} is saved; press {key_name('Ctrl+Enter')} to send.")
 
     def on_report_bug(self):
         """Help, Report a Bug (#28): what happened, plus non-sensitive facts

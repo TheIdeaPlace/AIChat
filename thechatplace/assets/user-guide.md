@@ -1,5 +1,9 @@
 # The Chat Place User Guide
 
+This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
+Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
+VO+M), rather than Windows Alt menu sequences.
+
 The Chat Place is a keyboard and screen reader friendly home for your AI chats. Claude and
 Codex sessions share one list: read, find and export conversations, hear replies, and send
 messages in chats started here. Provider tells you which AI; Kind tells you where the session
