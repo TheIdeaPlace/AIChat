@@ -80,7 +80,7 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         DESKTOP, NEEDS_YOU, OWN, SORT_ORDERS,
                         SORT_SPOKEN, VIEW_ALL, VIEW_ARCHIVED, VIEW_HIDDEN, VIEW_NEEDS_YOU, VIEWS,
                         WORKING, STATUS_UNAVAILABLE,
-                        SessionInfo, field_short_name, group_view, in_view, view_spoken)
+                        SessionInfo, field_short_name, group_view, in_view, end_sentence, state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
                           PEER, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT, ChatMessage,
@@ -709,7 +709,7 @@ class MainFrame(CodexChats, wx.Frame):
         elif info.is_own and info.provider == "claude" and info.cli_session_id in self._runners:
             text = f"{info.title}: {self.turn_status.GetLabelText()}"
         else:
-            state = info.state + (f", {info.detail}" if info.detail else "")
+            state = state_with_detail(info.state, info.detail, ", ")
             text = f"{info.title}: {state}"
         self.status_parts.set("session", text)
 
@@ -1547,8 +1547,8 @@ class MainFrame(CodexChats, wx.Frame):
                     kind += ", Remote Control on"
         elif info.remote and info.provider == "claude":
             kind += ", on Remote Control in the desktop app"
-        state = info.state + (f": {info.detail}" if info.detail else "")
-        self.session_heading.set_text(f"{info.title}, {info.repo}, {state}. {kind}.")
+        state = state_with_detail(info.state, info.detail)
+        self.session_heading.set_text(f"{end_sentence(f'{info.title}, {info.repo}, {state}')} {kind}.")
         self._update_messages_label()
         self._update_status_session()
 
@@ -1558,7 +1558,7 @@ class MainFrame(CodexChats, wx.Frame):
         info = self._open
         if info is None:
             return
-        state = info.state + (f": {info.detail}" if info.detail else "")
+        state = state_with_detail(info.state, info.detail)
         kind = ", read-only"
         if info.is_own and info.provider == "claude":
             # The model goes here too: this is what's heard on arriving in
@@ -2582,7 +2582,7 @@ class MainFrame(CodexChats, wx.Frame):
             waiting = self._pending.get(info.cli_session_id)
             runner = self._runners.get(info.cli_session_id)
             if running and waiting:
-                label = f"Waiting for you: {waiting[0].summary()}. {key_name('Ctrl+Shift+A')} answers."
+                label = f"{end_sentence('Waiting for you: ' + waiting[0].summary())} {key_name('Ctrl+Shift+A')} answers."
             elif running and getattr(runner, "waiting_on_background", False):
                 # Answered; kept open only so the work can finish (#161).
                 label = (f"Claude answered. {announce.background_text(runner.background_tasks)} "

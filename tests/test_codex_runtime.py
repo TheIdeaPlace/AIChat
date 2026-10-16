@@ -551,7 +551,9 @@ def test_permission_change_to_downgraded_sandbox_blocks_with_the_sandbox_reason(
         assert refused.value.code == 'sandbox_unavailable'
         assert not service.ready(record)
         assert 'Windows sandbox' in service._problems[record.cli_session_id]
-        assert 'reload this chat' in service._problems[record.cli_session_id]
+        assert 'usually means' in service._problems[record.cli_session_id]
+        assert service._problems[record.cli_session_id].endswith('Reload this chat before sending.')
+        assert 'reload' not in str(refused.value).lower()
     finally:
         service.close()
 

@@ -329,3 +329,34 @@ def test_unavailable_state_has_explicit_order_and_never_counts_as_idle():
     idle = _info('idle', IDLE, 1)
     assert [s.key for s in sort_sessions([unknown, idle], SORT_STATUS)] == ['idle', 'unknown']
     assert not in_view(unknown, VIEW_IDLE)
+
+
+def test_a_detail_that_ends_in_a_full_stop_does_not_double_the_punctuation():
+    """#291: Codex's connection problems end in a full stop, and the row,
+    heading and status bar each put their own punctuation after the detail."""
+    from thechatplace.sessions import STATUS_UNAVAILABLE, SessionInfo, state_with_detail
+    reason = "Codex connection interrupted: the stream closed; reconcile chat history."
+    assert state_with_detail(STATUS_UNAVAILABLE, reason) == (
+        "status unavailable: Codex connection interrupted: the stream closed; "
+        "reconcile chat history")
+    assert state_with_detail("working", "running tests", ", ") == "working, running tests"
+    assert state_with_detail("idle", "") == "idle"
+    assert state_with_detail("idle", "  ") == "idle"
+    assert state_with_detail("working", "thinking...") == "working: thinking..."
+    info = SessionInfo(source=OWN, key="codex:a", title="Scratch", cwd="/synthetic/repo",
+                       cli_session_id="a", provider="codex", state=STATUS_UNAVAILABLE,
+                       detail=reason)
+    line = info.list_line(fields=["status", "title"])
+    assert "history, Scratch" in line and ".." not in line and "., " not in line
+
+
+def test_a_sentence_that_already_ends_in_punctuation_gets_no_full_stop_after_it():
+    """#291 review: "Claude asks: Which file?" must not read "file?." in the heading."""
+    from thechatplace.sessions import NEEDS_YOU, end_sentence, state_with_detail
+    assert end_sentence(state_with_detail(NEEDS_YOU, "Claude asks: Which file?")) == (
+        "needs you: Claude asks: Which file?")
+    assert end_sentence(state_with_detail("working", "thinking...")) == "working: thinking..."
+    assert end_sentence(state_with_detail("working", "thinking…")) == "working: thinking…"
+    assert end_sentence(state_with_detail("working", "Done!")) == "working: Done!"
+    assert end_sentence(state_with_detail("idle", "Saved.")) == "idle: Saved."
+    assert end_sentence("idle") == "idle."

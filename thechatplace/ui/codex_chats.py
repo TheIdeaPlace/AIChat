@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import wx
 
 from ..providers.codex_requests import QUESTIONS
-from ..providers.codex_rpc import CodexRpcError
+from ..providers.codex_rpc import CodexRpcError, CodexTurnRejected
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE
 from .. import announce
 from ..claude_cli import describe_elapsed
@@ -81,7 +81,10 @@ class CodexChats:
                     else self.sessions.create_owned('codex', folder, title, **options))
         def done(record, error):
             if error:
-                self._feedback(record or 'Could not create this Codex chat. Check Codex sign-in and configuration.')
+                text = record or 'Could not create this Codex chat. Check Codex sign-in and configuration.'
+                if message:
+                    text = self._keep_first_message(message) + ' ' + text
+                self._feedback(text)
                 return
             if not self._store_write(self.store.add, record):
                 self._feedback('Codex created the chat, but it could not be saved here. Open it in Codex.')
@@ -94,6 +97,20 @@ class CodexChats:
                 self._codex_drafts.pop(record.to_info().key, None)
                 self._send_codex_owned(record, message)
         self._codex_work(create, done)
+
+    def _keep_first_message(self, message):
+        """New Session is gone when Codex refuses, so keep its first message
+        somewhere reachable and say where, first, before the reason (#257).
+        Only an editable chat shows the message box; otherwise it would be
+        hidden and overwritten by the next chat opened, so use the clipboard."""
+        info = self._open
+        if self._can_edit(info):
+            self._give_back(info.cli_session_id, message, True)
+            self._save_draft()
+            return f'No Codex chat was started. Your first message is in the message box of {info.title}.'
+        if self._copy_text(message):
+            return 'No Codex chat was started. Your first message is copied to the clipboard.'
+        return "No Codex chat was started, and your first message couldn't be kept."
 
     def _change_codex_permissions(self, info):
         if not info.is_own or not self.sessions.can_create('codex'):
@@ -154,6 +171,10 @@ class CodexChats:
             self._codex_preparation_running.discard(key)
             self._codex_preparing.pop(key, None)
             if error:
+                if isinstance(_result, str) and _result.startswith(CodexTurnRejected.REASONS['sandbox_unavailable']):
+                    # A saved folder-editing chat reopened read-only: reloading
+                    # it after fixing the sandbox prepares it again (#257).
+                    _result += ' Reload this chat to try again.'
                 self._feedback(_result or 'Could not prepare this Codex chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in Codex before restarting TCP.')
             self._update_send_state()
         self._codex_work(prepare, done)

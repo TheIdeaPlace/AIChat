@@ -58,7 +58,9 @@ class CodexTurnRejected(CodexRpcError):
         'command_rules': 'The Chat Place could not check Codex saved command rules. No new turn was sent.',
         'project_rules': 'This folder supplies Codex saved command rules. Choose a folder without project rules, or move those rules out of the project before trying again. No new turn was sent.',
         'mcp_tools': 'Codex external tools could not be disabled for this chat. No new turn was sent.',
-        'sandbox_unavailable': "Codex's Windows sandbox isn't set up, so Codex can only read files and this chat can't edit its folder. Set it up with Set up Agent sandbox in the Codex app, or with the windows sandbox setting in Codex's config.toml, then try again or reload this chat. Or choose read-only. No new turn was sent.",
+        # Likely, not certain: Codex also falls back to read-only when managed
+        # requirements allow only read-only, or a profile can't be met (#257).
+        'sandbox_unavailable': "Codex reported this chat as read-only, so it can't edit its folder. This usually means Codex's Windows sandbox isn't set up: set it up with Set up Agent sandbox in the Codex app, or with the windows sandbox setting in Codex's config.toml. Otherwise your Codex settings may allow only read-only. Try again, or choose read-only. No new turn was sent.",
     }
 
     def __init__(self, code):

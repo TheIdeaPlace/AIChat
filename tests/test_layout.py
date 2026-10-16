@@ -156,3 +156,76 @@ def test_the_turn_status_fits_its_line_and_the_status_bar_has_it_whole(app, tmp_
         assert label in frame.status_session.latest()
     finally:
         ui_probe.close_frame(frame)
+
+
+def _inspect_dialog(name, tmp_path, monkeypatch, inspect):
+    """Open the probe's dialog surface ``name`` hidden and give it to
+    ``inspect`` while it's up."""
+    _kind, function, _about = ui_probe.SURFACES[name]
+    done = []
+
+    def show(dialog):
+        fake_env.pump(lambda: False, timeout=0.3)
+        dialog.Layout()
+        inspect(dialog)
+        done.append(True)
+        return wx.ID_CANCEL
+    monkeypatch.setattr(wx.Dialog, "ShowModal", show)
+    env = ui_probe.build_world(tmp_path, monkeypatch.setattr, formatted_view=False)
+    frame = ui_probe.build_frame(env)
+    frame.SetSize(ui_probe.DEFAULT_SIZE)
+    try:
+        function(frame, env)()
+        assert fake_env.pump(lambda: done, timeout=10), f"{name} opened no dialog"
+    finally:
+        ui_probe.close_frame(frame)
+
+
+def test_every_column_name_fits_its_list_in_session_list_columns(app, tmp_path, monkeypatch):
+    """#289: a list box has no sideways scroll bar, and "Kind (desktop app,
+    Cowork, terminal or The Chat Place)" ran past the Shown list's edge."""
+    from thechatplace.sessions import FIELD_NAMES
+
+    def inspect(dialog):
+        scroll = wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, dialog)
+        for box in (dialog.available, dialog.shown):
+            room = box.GetClientSize().width - scroll
+            for name in FIELD_NAMES.values():
+                assert box.GetTextExtent(name).width < room, (box.GetName(), name)
+    _inspect_dialog("session-columns", tmp_path, monkeypatch, inspect)
+
+
+@pytest.mark.parametrize("name", ["links", "lists-commands"])
+def test_the_lists_pages_line_up_with_kinds_and_close(name, app, tmp_path, monkeypatch):
+    """#288: each page's buttons ended 14 pixels left of Close, and its
+    controls sat 8 pixels further in than Kinds."""
+    def inspect(dialog):
+        def edges(window):
+            rect = window.GetScreenRect()
+            return rect.x, rect.x + rect.width
+        close = dialog.FindWindowById(wx.ID_CANCEL)
+        page = dialog.current()
+        kinds_left, kinds_right = edges(dialog.kinds)
+        assert edges(page.copy_btn if page.markdown_btn is None else page.markdown_btn)[1] \
+            == edges(close)[1]
+        assert edges(page.filter) == (kinds_left, kinds_right)
+        assert edges(page.list) == (kinds_left, kinds_right)
+    _inspect_dialog(name, tmp_path, monkeypatch, inspect)
+
+
+def test_an_interrupted_codex_chat_says_its_problem_with_one_full_stop(app, tmp_path, monkeypatch):
+    """#291: the heading read "reconcile chat history.. Codex chat." because
+    the problem ends in a full stop and the heading adds its own."""
+    env = ui_probe.build_world(tmp_path, monkeypatch.setattr, formatted_view=False)
+    frame = ui_probe.build_frame(env)
+    frame.SetSize(ui_probe.DEFAULT_SIZE)
+    try:
+        ui_probe.s_main_codex_interrupted(frame, env)
+        frame._update_heading()
+        heading = frame.session_heading.GetLabel()
+        assert "reconcile chat history. Codex chat" in heading
+        for text in (heading, frame.messages_label.GetLabel(), frame.status_session.latest(),
+                     frame.session_list.GetString(frame.session_list.GetSelection())):
+            assert ".." not in text and "., " not in text and ".," not in text, text
+    finally:
+        ui_probe.close_frame(frame)

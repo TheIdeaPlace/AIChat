@@ -200,3 +200,24 @@ def test_rule_check_refusal_is_distinct_from_not_checked_and_has_no_count():
     rows = saved_rule_lines(7, error='Project rules were refused. Rules folder: /synthetic/.codex/rules')
     assert 'refused' in rows[0] and '/synthetic/.codex/rules' in rows[0]
     assert not any('in effect: 7' in row or 'not checked' in row for row in rows)
+
+
+def test_a_codex_chat_whose_state_is_not_known_says_unavailable_once():
+    """#290: the state "status unavailable" after "Status: " said the word twice."""
+    from thechatplace.sessions import STATUS_UNAVAILABLE
+    info = _info(source=OWN, provider="codex", key="codex:cli-a", desktop_session_id="",
+                 state=STATUS_UNAVAILABLE)
+    result = properties.session_properties(info, None, "", 0, None, 0, now_ms=NOW_MS)
+    assert "Status: Unavailable" in result
+    assert not any("Status unavailable" in line for line in result)
+    info.detail = "Codex connection interrupted: the stream closed; reconcile chat history."
+    result = properties.session_properties(info, None, "", 0, None, 0, now_ms=NOW_MS)
+    assert ("Status: Unavailable: Codex connection interrupted: the stream closed; "
+            "reconcile chat history") in result
+
+
+def test_other_states_still_read_as_before():
+    from thechatplace.sessions import NEEDS_YOU
+    result = properties.session_properties(_info(state=NEEDS_YOU, detail="Approve Bash"), None,
+                                           "", 0, None, 0, now_ms=NOW_MS)
+    assert "Status: Needs you: Approve Bash" in result

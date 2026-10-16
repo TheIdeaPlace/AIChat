@@ -113,15 +113,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Commands you've told Codex to always allow will run without asking, even outside this folder. ",
+   "label": "Commands you've told Codex to always allow will run without asking and outside this folder's limits, ",
    "rect": [
     15,
     110,
-    502,
+    534,
     16
    ],
    "best": [
-    502,
+    534,
     16
    ],
    "depth": 0,
@@ -132,15 +132,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Project-supplied command rules are refused.",
+   "label": "including the network. Project-supplied command rules are refused.",
    "rect": [
     15,
     126,
-    238,
+    360,
     16
    ],
    "best": [
-    238,
+    360,
     16
    ],
    "depth": 0,
