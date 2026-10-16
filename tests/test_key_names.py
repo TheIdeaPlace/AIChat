@@ -10,6 +10,8 @@ def test_key_names_on_each_platform():
     assert key_name('Ctrl+Enter / Alt+Enter', 'darwin') == 'Cmd+Return / Option+Return'
     assert key_name('Press Enter to start.', 'darwin') == 'Press Return to start.'
     assert key_name('Ctrl+Shift+A / Alt+Enter', 'win32') == 'Ctrl+Shift+A / Alt+Enter'
+    assert key_name('Win+Shift+S', 'darwin') == 'Control+Cmd+Shift+4'
+    assert key_name('Applications key / Shift+F10', 'darwin') == 'Shift+F10'
     assert key_name('Alt+F4', 'darwin') == 'Cmd+Q'
     assert key_name('Alt+V, E', 'darwin') == 'menu bar (VO+M)'
     assert key_name('Enterprise folder', 'darwin') == 'Enterprise folder'

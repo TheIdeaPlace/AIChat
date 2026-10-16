@@ -63,7 +63,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Shift+Enter | Send and save as a prompt: asks for the prompt's name (its first words to start with), saves it, then sends as Ctrl+Enter does; Escape at the name neither saves nor sends |
 | Ctrl+Period | Stop the running turn; a queued message goes back in the reply box |
 | Ctrl+/ | Insert a Claude slash command or one of your skills (type to search); it goes at the start of the reply box |
-| Ctrl+Shift+F | Attach files or images to your next Claude message (Attach Files button, Alt+T); Delete in the attachments list removes one |
+| Ctrl+Shift+F | Attach files or images to your next Claude message (Attach Files button); Delete in the attachments list removes one |
 | Ctrl+V with a picture copied | Attach the picture to a Claude message (a screenshot from Win+Shift+S, say) |
 | Ctrl+Shift+M | Other machines: list your sessions on other computers and send one a message, through Claude in the loaded Chat Place session (it needs Remote Control on) |
 | Ctrl+Shift+D | Changed files (Claude chats): what changed since your latest message or in the whole session; Enter on a file reads its changes line by line |
