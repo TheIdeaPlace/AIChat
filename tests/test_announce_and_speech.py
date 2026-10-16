@@ -125,7 +125,7 @@ def test_speech_settings_bad_values(tmp_path):
 
 
 def test_shortcut_list_has_the_essentials():
-    text = shortcuts_text()
+    text = shortcuts_text(platform="win32")
     for needle in ("Enter", "Ctrl+O", "Ctrl+N", "F5", "Escape", "Ctrl+Enter", "F1", "Ctrl+T"):
         assert needle in text
 

@@ -1,5 +1,9 @@
 # The Chat Place
 
+This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
+Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
+VO+M), rather than Windows Alt menu sequences.
+
 A keyboard and screen reader friendly home for your AI chats, together in one session list.
 
 The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by

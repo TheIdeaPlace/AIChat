@@ -6,9 +6,20 @@ import sys
 from typing import List
 
 
-def key_name(shortcut: str) -> str:
-    """Name wx's primary accelerator modifier on this platform."""
-    return shortcut.replace("Ctrl+", "Cmd+") if sys.platform == "darwin" else shortcut
+def key_name(shortcut: str, platform=None) -> str:
+    """Translate app-authored key names, before inserting any chat/user text."""
+    if (platform or sys.platform) != "darwin":
+        return shortcut
+    shortcut = shortcut.replace("Alt+F4", "Cmd+Q")
+    shortcut = re.sub(r"Alt\+[FVH],\s*[A-Za-z]", "menu bar (VO+M)", shortcut)
+    return re.sub(r"\bEnter\b", "Return", shortcut.replace("Ctrl+", "Cmd+").replace("Alt+", "Option+"))
+
+
+SHORTCUTS_PLATFORM_NOTE = (
+    "This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, "
+    "Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver: VO+M), "
+    "rather than Windows Alt menu sequences."
+)
 
 CODEX_SAVED_RULES_NOTE = (
     "Commands you've told Codex to always allow will run without asking, even outside this folder. "
@@ -222,13 +233,15 @@ def last_message_line(label: str, text: str) -> str:
     return f"{label}: {plain}" if plain else ""
 
 
-def shortcuts_html() -> str:
+def shortcuts_html(*, platform=None) -> str:
     """The same list as a page body: a heading and a table per group, with
     the keys as row headers, so a screen reader moves by heading (H) and
     reads each key with what it does as it moves through a table."""
     import html
 
     parts = ["<h1>Keyboard shortcuts</h1>", f"<p>{html.escape(LAYOUT)}</p>"]
+    if platform == "all":
+        parts.append(f"<p>{html.escape(SHORTCUTS_PLATFORM_NOTE)}</p>")
     for number, (group, items) in enumerate(SHORTCUTS, start=1):
         # The table takes its name from the heading above it, so the group
         # is named once, not as a heading and again as a separate label.
@@ -237,17 +250,23 @@ def shortcuts_html() -> str:
                      '<thead><tr><th scope="col">Keys</th><th scope="col">What it does</th>'
                      "</tr></thead><tbody>")
         for key, action in items:
+            if platform != "all":
+                key, action = key_name(key, platform), key_name(action, platform)
             parts.append(f'<tr><th scope="row">{html.escape(key)}</th>'
                          f"<td>{html.escape(action)}</td></tr>")
         parts.append("</tbody></table>")
     return "\n".join(parts)
 
 
-def shortcuts_text() -> str:
+def shortcuts_text(*, platform=None) -> str:
     lines: List[str] = [LAYOUT, ""]
+    if platform == "all":
+        lines += [SHORTCUTS_PLATFORM_NOTE, ""]
     for group, items in SHORTCUTS:
         lines.append(f"{group}:")
         for key, action in items:
+            if platform != "all":
+                key, action = key_name(key, platform), key_name(action, platform)
             lines.append(f"  {key}: {action}")
         lines.append("")
     return "\n".join(lines).rstrip()

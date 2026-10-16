@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT))
 
 from thechatplace.platform_paths import user_guide_path  # noqa: E402
 from thechatplace.rendering import html_page, markdown_to_html  # noqa: E402
-from thechatplace.ui_text import LAYOUT, SHORTCUTS, shortcuts_html, shortcuts_text  # noqa: E402
+from thechatplace.ui_text import LAYOUT, SHORTCUTS, SHORTCUTS_PLATFORM_NOTE, shortcuts_html, shortcuts_text  # noqa: E402
 
 DOCS = ROOT / "docs"
 TITLE = "The Chat Place keyboard shortcuts"
@@ -34,7 +34,7 @@ GUIDE_TITLE = "The Chat Place User Guide"
 
 
 def _markdown() -> str:
-    lines = [f"# {TITLE}", "", LAYOUT, ""]
+    lines = [f"# {TITLE}", "", LAYOUT, "", SHORTCUTS_PLATFORM_NOTE, ""]
     for group, items in SHORTCUTS:
         lines += [f"## {group}", "", "| Keys | What it does |", "| --- | --- |"]
         for key, action in items:
@@ -76,9 +76,9 @@ def documents() -> Dict[str, str]:
     """Each file's name and what it should hold."""
     guide = user_guide_path().read_text(encoding="utf-8")
     return {
-        "keyboard-shortcuts.html": html_page(TITLE, shortcuts_html()) + "\n",
+        "keyboard-shortcuts.html": html_page(TITLE, shortcuts_html(platform="all")) + "\n",
         "keyboard-shortcuts.md": _markdown(),
-        "keyboard-shortcuts.txt": f"{TITLE}\n\n{shortcuts_text()}\n",
+        "keyboard-shortcuts.txt": f"{TITLE}\n\n{shortcuts_text(platform='all')}\n",
         "user-guide.html": html_page(GUIDE_TITLE, _with_contents(markdown_to_html(guide))) + "\n",
         "user-guide.md": guide,
     }

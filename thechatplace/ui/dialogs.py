@@ -20,7 +20,7 @@ from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, fi
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
                       SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
-from ..ui_text import shortcuts_text, codex_effort_label
+from ..ui_text import shortcuts_text, codex_effort_label, key_name
 from . import mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import set_accessible_name, set_list_items_accessible
@@ -46,12 +46,12 @@ class ShortcutsDialog(wx.Dialog):
 
 
 PERMISSION_NOTE = (
-    "The permission mode decides what Claude may do without asking. When Claude "
+    key_name("The permission mode decides what Claude may do without asking. When Claude "
     "asks for permission, asks you a question or has a plan for you to approve, "
     "the turn waits: The Chat Place announces it, the session shows as needing "
     "you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that "
     "don't support effort levels ignore it. File, Change Permission Mode and Change "
-    "Effort change them later.")
+    "Effort change them later."))
 
 
 def codex_permission_prompt(parent, title, folder):
@@ -729,8 +729,7 @@ class GitHubRepoDialog(wx.Dialog):
         elif not self._loaded:
             self.list.Set(["Loading your repositories…"])
         elif workplaces.parse_repo(self.search.GetValue()):
-            self.list.Set([f"Not one of yours: Enter uses "
-                           f"{workplaces.parse_repo(self.search.GetValue())}."])
+            self.list.Set([f"Not one of yours: {key_name('Enter')} uses {workplaces.parse_repo(self.search.GetValue())}."])
         elif self._error:
             # In the list, where Tab and the arrows reach it: the status
             # line below isn't in the tab order.
