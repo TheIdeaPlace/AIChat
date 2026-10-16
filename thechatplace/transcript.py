@@ -105,6 +105,11 @@ class ChatMessage:
     #: Backend's spoken assistant name; Claude stays the default for legacy
     #: transcripts. Keep it on the message for export and cross-session Find.
     assistant_name: str = "Claude"
+    #: The turn it belongs to: your message that started it and everything
+    #: up to your next one share a number (Transcript.turns). The Lists
+    #: dialog's "This message" scope uses it for files, commands and
+    #: decisions (#279).
+    turn: int = 0
 
     @property
     def label(self) -> str:
@@ -133,6 +138,24 @@ class ChatMessage:
         return f"{self.label}:\n{self.text}"
 
 
+#: The tools whose calls are listed as commands (#279): Claude Code's shell.
+COMMAND_TOOLS = frozenset({"Bash", "PowerShell"})
+
+
+@dataclass
+class ToolCommand:
+    """A shell command Claude ran (#279): what it said it was doing, the
+    command, and its output once the result arrives."""
+    command: str
+    description: str = ""
+    output: str = ""
+    failed: bool = False
+    finished: bool = False
+    turn: int = 0
+    timestamp: str = ""
+    key: str = ""
+
+
 @dataclass
 class Transcript:
     messages: List[ChatMessage] = field(default_factory=list)
@@ -149,6 +172,8 @@ class Transcript:
     turns: int = 0
     #: Files Claude changed, in order (#18).
     edits: List[FileEdit] = field(default_factory=list)
+    #: Shell commands Claude ran, in order (#279).
+    commands: List[ToolCommand] = field(default_factory=list)
 
     def latest_turn_edits(self) -> List[FileEdit]:
         """The changes made since your latest message."""
@@ -224,6 +249,7 @@ class TranscriptParser:
         self.transcript = Transcript()
         self._tool_names: Dict[str, str] = {}  # tool_use_id -> tool name
         self._edit_inputs: Dict[str, Tuple[str, dict]] = {}  # file-changing calls
+        self._commands: Dict[str, ToolCommand] = {}  # shell calls awaiting a result
         self._last_assistant_id: Optional[str] = None
 
     # -- public -------------------------------------------------------------
@@ -293,7 +319,8 @@ class TranscriptParser:
     def _add(self, kind: str, text: str, record: dict, key: str = "") -> ChatMessage:
         item = ChatMessage(kind=kind, text=text.strip(),
                            timestamp=str(record.get("timestamp") or ""),
-                           key=key or str(record.get("uuid") or ""))
+                           key=key or str(record.get("uuid") or ""),
+                           turn=self.transcript.turns)
         self.transcript.messages.append(item)
         return item
 
@@ -377,6 +404,8 @@ class TranscriptParser:
             added = self._peer(peer[0], peer[1], record)
             if added:
                 self.transcript.turns += 1
+                for item in added:
+                    item.turn = self.transcript.turns  # it starts the new turn
             return added
         output = re.fullmatch(r"\s*<local-command-(stdout|stderr)>(.*?)</local-command-\1>\s*", text, re.DOTALL)
         if output:
@@ -403,6 +432,12 @@ class TranscriptParser:
         tool_id = str(block.get("tool_use_id") or "")
         name = self._tool_names.get(tool_id, "")
         body = _plain_text(block.get("content"))
+        command = self._commands.pop(tool_id, None)
+        if command is not None:
+            # Cleaned and bounded as command output is in the messages list.
+            command.output = clean_command_output(body)
+            command.failed = bool(block.get("is_error"))
+            command.finished = True
         edit_call = self._edit_inputs.pop(tool_id, None)
         if edit_call is not None and not block.get("is_error"):
             edit = edit_from_tool(edit_call[0], edit_call[1], record.get("toolUseResult"),
@@ -470,6 +505,16 @@ class TranscriptParser:
         tool_input = block.get("input") if isinstance(block.get("input"), dict) else {}
         if tool_id and name in EDIT_TOOLS:
             self._edit_inputs[tool_id] = (name, tool_input)
+        if (name in COMMAND_TOOLS and isinstance(tool_input.get("command"), str)
+                and tool_input["command"].strip()):
+            command = ToolCommand(command=tool_input["command"].strip(),
+                                  description=str(tool_input.get("description") or "").strip(),
+                                  turn=self.transcript.turns,
+                                  timestamp=str(record.get("timestamp") or ""),
+                                  key=f"{record.get('uuid')}:{tool_id}")
+            self.transcript.commands.append(command)
+            if tool_id:
+                self._commands[tool_id] = command
         key = f"{record.get('uuid')}:{tool_id}"
         if name == "AskUserQuestion":
             return self._add(QUESTION, _format_questions(tool_input), record, key=key)

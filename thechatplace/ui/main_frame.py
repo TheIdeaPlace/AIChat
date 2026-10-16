@@ -50,7 +50,7 @@ from typing import Dict, List, Optional, Tuple
 
 import wx
 
-from ..changes import by_file, summary_text
+from ..changes import summary_text
 from ..codeblocks import find_code_blocks
 from .. import (__version__, about_you, announce, attachments, bugreport, signin, export, hub, links,
                platform_paths, properties, remote, usage, workplaces)
@@ -65,7 +65,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           normalize_permission_mode)
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
                    forget_last_messages)
-from ..message_links import find_links
+from .. import lists
 from ..session_controller import SessionController
 from ..providers.base import ConversationReader
 from ..providers.claude import ClaudeConversations
@@ -95,8 +95,8 @@ from .statusbar import StatusParts
 from .codex_chats import CodexChats
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
-from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, ChangesDialog, CodeBlocksDialog, FindResultsDialog,
-                      FormattedMessageDialog, LinksDialog, WrappingText,
+from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, FindResultsDialog,
+                      FormattedMessageDialog, ListsDialog, WrappingText,
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
@@ -295,6 +295,10 @@ class MainFrame(CodexChats, wx.Frame):
         # copied with its messages, and how many changes have been said.
         self._changes_due = False
         self._chat_edits: list = []
+        #: Shell commands Claude ran in the loaded chat (#279).
+        self._chat_commands: list = []
+        #: The Lists tab used last, where Ctrl+Shift+I opens (#279).
+        self._lists_category = lists.CODE
         self._chat_turns = 0
         self._edits_said = 0
         self._notifier = Notifier(self._go_to_session, APP_NAME)
@@ -472,6 +476,9 @@ class MainFrame(CodexChats, wx.Frame):
         # Every letter of "Links" is another item's access key already, so
         # its shortcut is the way in (#190).
         self._item(view, "Links...\tCtrl+L", lambda e: self.on_links())
+        # One dialog, a tab per kind of thing in the chat (#279). As with
+        # Links, every letter is taken, so its shortcut is the way in.
+        self._item(view, "Lists...\tCtrl+Shift+I", lambda e: self.on_lists())
         self._item(view, "Find in &All Sessions...\tCtrl+Shift+S", lambda e: self.on_find_all())
         # Every letter of "Properties" is another item's access key already,
         # so, as with Links, its shortcut is the way in (#214). Alt+Enter as
@@ -1399,6 +1406,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._chat_messages = []
         self._chat_keys = []
         self._chat_edits, self._chat_turns, self._edits_said = [], 0, 0
+        self._chat_commands = []
         self._changes_due = False
         self._spoken.clear()
         self._chat_loaded = False
@@ -1597,7 +1605,8 @@ class MainFrame(CodexChats, wx.Frame):
                 copies = [dataclasses.replace(m) for m in transcript.messages]
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, changed, copies,
                              transcript.unreadable_lines, None,
-                             list(transcript.edits), transcript.turns)
+                             list(transcript.edits), transcript.turns,
+                             list(transcript.commands))
             except Exception as exc:  # noqa: BLE001
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, False, [], 0, exc)
 
@@ -1698,7 +1707,7 @@ class MainFrame(CodexChats, wx.Frame):
             self._status(f"{title}: Claude Code command {'failed' if failed else 'finished'}.")
 
     def _apply_chat(self, generation, changed, messages, unreadable, error,
-                    edits=None, turns=0):
+                    edits=None, turns=0, commands=None):
         self._reader_busy = False
         pending, self._chat_refresh_pending = self._chat_refresh_pending, False
         if self._gone() or self._closing or self._open is None:
@@ -1726,6 +1735,8 @@ class MainFrame(CodexChats, wx.Frame):
         first_load = not self._chat_loaded
         if edits is not None:
             self._chat_edits, self._chat_turns = edits, turns
+        if commands is not None:
+            self._chat_commands = commands
         if first_load:
             self._edits_said = len(self._chat_edits)  # what's there is old news
         if not changed and not first_load:
@@ -2024,7 +2035,7 @@ class MainFrame(CodexChats, wx.Frame):
         copy.Enable(message is not None)
         props.Enable(message is not None)
         menu.Bind(wx.EVT_MENU, lambda e: self.on_properties(), props)
-        blocks.Enable(has_code)
+        blocks.Enable(message is not None)
         copy_code.Enable(has_code)
         menu.Bind(wx.EVT_MENU, lambda e: self.on_read_message(), read)
         menu.Bind(wx.EVT_MENU, lambda e: self._copy_message(), copy)
@@ -2033,23 +2044,25 @@ class MainFrame(CodexChats, wx.Frame):
         return menu
 
     def on_code_blocks(self):
-        """The selected message's code blocks (#17): each listed by language
-        and size, its code to read by line, and Copy for just that block."""
-        message = self._selected_message()
-        if message is None:
+        """The selected message's code blocks (#17), on the Lists dialog's
+        Code Blocks tab (#279)."""
+        if self._selected_message() is None:
             self._feedback("No message selected.")
             return
-        blocks = find_code_blocks(message.text)
-        if not blocks:
-            self._feedback("This message has no code blocks.")
-            return
-        self._modal(CodeBlocksDialog(self, blocks, self._copy_code_block))
-        self.chat_list.SetFocus()
+        self.on_lists(lists.CODE, lists.SCOPE_MESSAGE)
 
     def on_links(self):
-        """View, Links (Ctrl+L, #190): the links in the loaded session's
-        messages, as the list shows them (tool calls and results only with
-        Show Tool Activity on), to open in the browser or copy."""
+        """View, Links (Ctrl+L, #190): every link in the chat, on the Lists
+        dialog's Links tab (#279)."""
+        self.on_lists(lists.LINKS, lists.SCOPE_CHAT)
+
+    def on_lists(self, category: Optional[str] = None, scope: Optional[str] = None):
+        """View, Lists (Ctrl+Shift+I, #279): code blocks, links, changed
+        files, commands and decisions, a tab each, for the selected message
+        or the whole chat. It opens on the tab used last; Code Blocks,
+        Links and Changed Files open it on their own tab. The messages are
+        as the list shows them (tool calls and results only with Show Tool
+        Activity on)."""
         info = self._open
         if info is None:
             self._feedback("No session loaded.")
@@ -2057,23 +2070,59 @@ class MainFrame(CodexChats, wx.Frame):
         if not self._chat_loaded:
             self._feedback("The messages are still loading.")
             return
-        found = find_links(m for m in self._visible_messages() if m.kind != QUEUED)
-        if not found:
-            self._feedback("No links in this session.")
-            return
-        returning_to = wx.Window.FindFocus()
-        dialog = LinksDialog(self, info.title, found, self._copy_text, self._feedback)
+        category = category or self._lists_category
+        messages = [m for m in self._visible_messages() if m.kind != QUEUED]
+        selected = self._selected_message() or (messages[-1] if messages else None)
+        # A queued message isn't in a turn yet: its files, commands and
+        # decisions are the latest turn's.
+        turn = self._chat_turns if selected is not None and selected.kind == QUEUED else None
+        if scope is None:
+            scope = lists.SCOPE_CHAT
         try:
-            dialog.ShowModal()
-            chosen = dialog.chosen
+            files_supported = bool(getattr(self.sessions.capabilities(info), "changes", False))
+        except ValueError:
+            files_supported = False
+        edits = list(self._chat_edits) if files_supported else []
+        commands = list(self._chat_commands)
+        cwd = info.cwd
+        # What only Claude's transcripts carry yet: say so rather than show
+        # an empty list that reads as "none" (#279).
+        unavailable = {}
+        provider = info.provider.capitalize()
+        if not files_supported:
+            unavailable[lists.FILES] = f"Changed files aren't listed for {provider} chats yet."
+        if info.provider != "claude":
+            unavailable[lists.COMMANDS] = f"Commands aren't listed for {provider} chats yet."
+            unavailable[lists.DECISIONS] = f"Decisions aren't listed for {provider} chats yet."
+
+        def build(tab, tab_scope):
+            return lists.build(tab, tab_scope, messages, selected, edits, commands,
+                               lambda f: self._describe_changed_file(f, cwd), turn)
+
+        returning_to = wx.Window.FindFocus()
+        dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
+                             category=category, scope=scope, unavailable=unavailable)
+        try:
+            self._show_lists(dialog)
+            chosen = dialog.chosen_link
+            self._lists_category = dialog.category
         finally:
             dialog.Destroy()
         if returning_to:
             returning_to.SetFocus()
-        if chosen is None:
-            return
+        if chosen is not None:
+            self._open_found_link(chosen)
+
+    def _show_lists(self, dialog):
+        """Show View, Lists modally. Tests replace this to act on the dialog
+        without showing it."""
+        return dialog.ShowModal()
+
+    def _open_found_link(self, chosen):
+        """A link chosen in Lists: The Chat Place's own links here, never the
+        shell; others in the browser."""
         if chosen.is_session_link:
-            self.open_link(chosen.url)  # The Chat Place's own, never the shell
+            self.open_link(chosen.url)
             return
         try:
             platform_paths.open_url(chosen.url)
@@ -2610,25 +2659,19 @@ class MainFrame(CodexChats, wx.Frame):
             self._feedback("Couldn't open the clipboard.")
 
     def on_changes(self):
-        """View, Changed Files (Ctrl+Shift+D): the files Claude changed since
-        your latest message, or in the whole session, and each change to read
-        by line. From the transcript, so desktop sessions work too."""
+        """View, Changed Files (Ctrl+Shift+D): the files Claude changed, on
+        the Lists dialog's Changed Files tab (#279): in the selected
+        message's turn (your latest, if none is selected) if it changed any,
+        else in the whole chat. From the transcript, so desktop sessions
+        work too."""
         info = self._open
         if not self._require_capability("changes", info):
             return
-        if info is None:
-            self._feedback("Load a session first.")
-            return
-        if not self._chat_loaded:
-            self._feedback(f"{info.title} is still loading.")
-            return
-        everything = by_file(self._chat_edits)
-        if not everything:
-            self._feedback(f"{info.title}: Claude hasn't changed any files in this session.")
-            return
-        latest = by_file([e for e in self._chat_edits if e.turn == self._chat_turns])
-        self._modal(ChangesDialog(self, info.title, latest, everything,
-                                  lambda f: self._describe_changed_file(f, info.cwd)))
+        selected = self._selected_message()
+        turn = selected.turn if selected is not None and selected.kind != QUEUED else self._chat_turns
+        scope = (lists.SCOPE_MESSAGE if any(e.turn == turn for e in self._chat_edits)
+                 else lists.SCOPE_CHAT)
+        self.on_lists(lists.FILES, scope)
 
     @staticmethod
     def _describe_changed_file(changed, cwd: str) -> str:

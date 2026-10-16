@@ -914,6 +914,20 @@ def d_changes(frame, env):
     return frame.on_changes
 
 
+def d_lists_commands(frame, env):
+    """View, Lists on its Commands tab (#279)."""
+    from thechatplace import lists
+    _open(frame, "Visual probe")
+    return lambda: frame.on_lists(lists.COMMANDS, lists.SCOPE_CHAT)
+
+
+def d_lists_decisions(frame, env):
+    """View, Lists on its Decisions tab (#279)."""
+    from thechatplace import lists
+    _open(frame, "Fix the flaky upload test")
+    return lambda: frame.on_lists(lists.DECISIONS, lists.SCOPE_CHAT)
+
+
 def d_usage(frame, env):
     _open(frame, "Visual probe")
     return frame.on_usage
@@ -1033,10 +1047,12 @@ SURFACES = {
     "manage-groups": ("dialog", d_manage_groups, "File, Manage Groups"),
     "command-picker": ("dialog", d_command_picker, "Insert Command or Skill"),
     "bug-report": ("dialog", d_bug_report, "Help, Report a Bug"),
-    "code-blocks": ("dialog", d_code_blocks, "A message's code blocks"),
-    "links": ("dialog", d_links, "View, Links"),
+    "code-blocks": ("dialog", d_code_blocks, "View, Lists: a message's code blocks"),
+    "links": ("dialog", d_links, "View, Lists: Links"),
     "find-all": ("dialog", d_find_all, "View, Find in All Sessions: the results"),
-    "changes": ("dialog", d_changes, "View, Changed Files"),
+    "changes": ("dialog", d_changes, "View, Lists: Changed Files"),
+    "lists-commands": ("dialog", d_lists_commands, "View, Lists: Commands"),
+    "lists-decisions": ("dialog", d_lists_decisions, "View, Lists: Decisions"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
     "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
     "properties": ("dialog", d_properties, "View, Properties of a session"),
@@ -1086,10 +1102,12 @@ DIALOG_CLASSES = {
     "manage-groups": "ManageGroupsDialog",
     "command-picker": "CommandPickerDialog",
     "bug-report": "BugReportDialog",
-    "code-blocks": "CodeBlocksDialog",
-    "links": "LinksDialog",
+    "code-blocks": "ListsDialog",
+    "links": "ListsDialog",
     "find-all": "FindResultsDialog",
-    "changes": "ChangesDialog",
+    "changes": "ListsDialog",
+    "lists-commands": "ListsDialog",
+    "lists-decisions": "ListsDialog",
     "usage": "UsageDialog",
     "usage-codex": "UsageDialog",
     "properties": "PropertiesDialog",
