@@ -48,11 +48,11 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+C | Copy the whole message |
 | Ctrl+Shift+C | Copy the message's last code block |
 | Ctrl+Enter on a queued message | Send it now (Claude chats): Claude stops what it's doing and answers it |
-| Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks | Lists, on the Code Blocks tab for this message: read and copy each code block |
+| Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks | Lists, on Code Blocks for this message: read and copy each code block |
 | Ctrl+F, then F3 and Shift+F3 | Find a message containing some text (its whole text, not just the first line), then the next or previous one |
 | End | Newest message |
-| Ctrl+Shift+I | Lists: code blocks, links, changed files, commands and decisions, a tab each, for this message or the whole chat; it opens on the tab you used last. Ctrl+Tab and Ctrl+Shift+Tab change the tab and stay on its list; Enter reads an item in full (a link opens), Ctrl+C copies, typing narrows the list (also from the session list and the reply box) |
-| Ctrl+L | Lists, on the Links tab for the whole chat: Enter opens a link in your browser, Ctrl+C copies its address (also from the session list and the reply box) |
+| Ctrl+Shift+I | Lists: code blocks, links, changed files, commands and decisions, for this message or the whole chat; it opens on the kind you used last, and the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a Mac) and Ctrl+1 to Ctrl+5 go straight to one; Enter reads an item in full (a link opens), Ctrl+C copies, typing narrows the list (also from the session list and the reply box) |
+| Ctrl+L | Lists, on Links for the whole chat: Enter opens a link in your browser, Ctrl+C copies its address (also from the session list and the reply box) |
 | Ctrl+T | Show or hide tool activity in the loaded session |
 | Ctrl+O | Open this session in the Claude desktop app |
 
@@ -67,7 +67,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Shift+F | Attach files or images to your next Claude message (Attach Files button, Alt+T); Delete in the attachments list removes one |
 | Ctrl+V with a picture copied | Attach the picture to a Claude message (a screenshot from Win+Shift+S, say) |
 | Ctrl+Shift+M | Other machines: list your sessions on other computers and send one a message, through Claude in the loaded Chat Place session (it needs Remote Control on) |
-| Ctrl+Shift+D | Lists, on the Changed Files tab (Claude chats): what changed in the selected message's turn (your latest, if none is selected) or in the whole chat; Enter on a file reads its changes line by line |
+| Ctrl+Shift+D | Lists, on Changed Files (Claude chats): what changed in the selected message's turn (your latest, if none is selected) or in the whole chat; Enter on a file reads its changes line by line |
 | Ctrl+Shift+U | Usage and context: read the active provider's reported context and account allowances and reset times; Ctrl+C copies a line |
 | Ctrl+Shift+T | Turn status: how long the provider has been working, on what, what is still running in the background, and whether a message is queued |
 

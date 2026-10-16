@@ -9690,52 +9690,99 @@ def _lists_for_test(frame):
     return dialog, built, focused
 
 
-def _tab_key(dialog, code, control=True, shift=False):
+def _tab_key(dialog, code, control=True, shift=False, command=False):
+    """A key in the Lists dialog: ``control`` is the Control key (Ctrl on
+    Windows), ``command`` wx's ControlDown (Command on a Mac, Ctrl elsewhere)."""
     event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
     event.SetKeyCode(code)
     event.SetRawControlDown(control)
+    event.SetControlDown(command)
     event.SetShiftDown(shift)
     dialog._on_char_hook(event)
 
 
-def test_lists_ctrl_tab_changes_tabs_and_stays_on_the_list(frame):
-    dialog, built, focused = _lists_for_test(frame)
+def test_lists_kinds_are_a_list_with_counts_and_every_kind_is_built(frame):
+    dialog, built, _focused = _lists_for_test(frame)
     try:
-        assert dialog.category == "links" and built == [("links", "chat")]
-        _tab_key(dialog, wx.WXK_TAB)
-        assert dialog.category == "files" and focused[-1] == "files"
-        assert list(dialog.current().list.GetStrings()) == ["files one"]
-        _tab_key(dialog, wx.WXK_TAB, shift=True)
-        _tab_key(dialog, wx.WXK_TAB, shift=True)
-        assert dialog.category == "code" and focused[-1] == "code"
-        _tab_key(dialog, wx.WXK_TAB, shift=True)  # wraps to the last tab
-        assert dialog.category == "decisions"
-        _tab_key(dialog, wx.WXK_PAGEDOWN)  # Ctrl+Page Down too, and wraps
-        assert dialog.category == "code"
-        # Each tab is built once, when first shown.
-        assert [b[0] for b in built].count("files") == 1
+        assert dialog.category == "links"
+        assert sorted(b[0] for b in built) == sorted(["code", "links", "files", "commands",
+                                                      "decisions"])
+        assert list(dialog.kinds.GetStrings()) == ["Code Blocks (1)", "Links (1)",
+                                                   "Changed Files (1)", "Commands (1)",
+                                                   "Decisions (1)"]
+        assert dialog.kinds.GetSelection() == 1
+        # Arrowing the Kinds list shows that kind below it.
+        dialog.kinds.SetSelection(3)
+        dialog.kinds.ProcessEvent(wx.CommandEvent(wx.wxEVT_LISTBOX, dialog.kinds.GetId()))
+        assert dialog.category == "commands" and dialog.book.GetSelection() == 3
     finally:
         dialog.Destroy()
 
 
-def test_lists_enter_on_the_tab_strip_goes_to_its_list(frame, monkeypatch):
+def test_lists_keys_change_kind_and_stay_on_the_list(frame):
+    dialog, _built, focused = _lists_for_test(frame)
+    dialog.platform = "win32"
+    try:
+        _tab_key(dialog, wx.WXK_TAB, command=True)  # Ctrl+Tab
+        assert dialog.category == "files" and focused[-1] == "files"
+        _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)
+        _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)
+        assert dialog.category == "code"
+        _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)  # wraps to the last
+        assert dialog.category == "decisions"
+        _tab_key(dialog, wx.WXK_PAGEDOWN, control=False, command=True)  # Ctrl+Page Down
+        assert dialog.category == "code"
+        # A Mac's Cmd+Shift+] and Cmd+Shift+[ (the key may come shifted).
+        _tab_key(dialog, ord("}"), control=False, command=True, shift=True)
+        assert dialog.category == "links"
+        _tab_key(dialog, ord("["), control=False, command=True, shift=True)
+        assert dialog.category == "code"
+        # Ctrl+1 to Ctrl+5 (Cmd on a Mac) go straight to a kind.
+        _tab_key(dialog, ord("4"), control=False, command=True)
+        assert dialog.category == "commands" and focused[-1] == "commands"
+        assert dialog.kinds.GetSelection() == 3
+        # A plain digit is just typing.
+        _tab_key(dialog, ord("2"), control=False)
+        assert dialog.category == "commands"
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_leave_control_tab_to_macos(frame):
+    """On a Mac, Control+Tab is the system's own "next group of controls"
+    key, which a list takes before the dialog sees it; it's left to macOS
+    everywhere rather than working only sometimes (#280). Cmd+Shift+] and
+    [ switch kinds instead."""
+    dialog, _built, _focused = _lists_for_test(frame)
+    dialog.platform = "darwin"
+    try:
+        for command in (False, True):  # the Control key, or Command
+            _tab_key(dialog, wx.WXK_TAB, control=True, command=command)
+            assert dialog.category == "links"
+        _tab_key(dialog, ord("]"), control=False, command=True, shift=True)
+        assert dialog.category == "files"
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_enter_on_a_kind_goes_to_its_list(frame):
     dialog, _built, focused = _lists_for_test(frame)
     try:
-        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.notebook))
-        _tab_key(dialog, wx.WXK_RETURN, control=False)
+        event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
+        event.SetKeyCode(wx.WXK_RETURN)
+        dialog._on_kinds_key(event)
         assert focused == ["links"]
     finally:
         dialog.Destroy()
 
 
-def test_lists_scope_rebuilds_the_tabs(frame):
+def test_lists_scope_rebuilds_every_kind(frame):
     dialog, built, _focused = _lists_for_test(frame)
     try:
-        dialog.select_category(3, focus_list=False)  # Commands, built for the chat
+        built.clear()
         dialog.set_scope("message")
-        assert built[-1] == ("commands", "message")
-        dialog.select_category(1, focus_list=False)  # Links: rebuilt for the new scope
-        assert built[-1] == ("links", "message")
+        assert sorted(built) == sorted((c, "message") for c in
+                                       ("code", "links", "files", "commands", "decisions"))
     finally:
         dialog.Destroy()
 

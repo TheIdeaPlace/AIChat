@@ -198,8 +198,8 @@ window, or another app), the list doesn't jump in front of you. You hear how man
 until you choose another view of the list, or until you start a new search. With no match, you
 hear "No messages contain …" and no list opens.</p>
 <h3>Lists: code blocks, links, files, commands and decisions</h3>
-<p><strong>Ctrl+Shift+I</strong> (View, Lists) opens one dialog with a tab for each kind of thing in a chat, from
-the session list, the messages or the reply box:</p>
+<p><strong>Ctrl+Shift+I</strong> (View, Lists) opens one dialog listing each kind of thing in a chat, from the
+session list, the messages or the reply box:</p>
 <ul>
 <li><strong>Code Blocks:</strong> each code block, by language and size, with its code to read.</li>
 <li><strong>Links:</strong> each link, its words and where it goes, then who wrote it and roughly when.</li>
@@ -213,34 +213,42 @@ the session list, the messages or the reply box:</p>
 links, "this message" is the selected message. For files, commands and decisions, it's the
 selected message's turn: from your message to Claude's reply. Links, commands and decisions
 list the newest first; code blocks and files are in the order they appear.</p>
-<p>The tab strip is a Tab stop: arrow along it to change the tab, and Enter moves to the tab's list.
-<strong>Ctrl+Tab</strong> and <strong>Ctrl+Shift+Tab</strong> (also Ctrl+Page Down and Ctrl+Page Up) change the tab from
-anywhere and leave you on its list. On a Mac, that's the Control key, as in other Mac apps' tabs.
-Lists opens on the tab you used last. Some keys open it on their own tab:</p>
+<p>The kinds are a list of their own, <strong>Kinds</strong> (Alt+K), above the items, each with how many it
+has: "Commands (12)". Tab and Shift+Tab reach it like any other list. Arrow through it and the
+items below change to that kind; <strong>Enter</strong> moves to that kind's list. From anywhere in Lists,
+these change the kind and leave you on its list:</p>
+<ul>
+<li><strong>On Windows:</strong> <strong>Ctrl+Tab</strong> and <strong>Ctrl+Shift+Tab</strong>, or <strong>Ctrl+Page Down</strong> and <strong>Ctrl+Page Up</strong>.</li>
+<li><strong>On a Mac:</strong> <strong>Cmd+Shift+]</strong> and <strong>Cmd+Shift+[</strong>, as for tabs in Safari and Finder. Control+Tab
+  is left to macOS, which uses it to move between groups of controls.</li>
+<li><strong>Ctrl+1</strong> to <strong>Ctrl+5</strong> (<strong>Cmd+1</strong> to <strong>Cmd+5</strong> on a Mac) go straight to Code Blocks, Links,
+  Changed Files, Commands or Decisions.</li>
+</ul>
+<p>Lists opens on the kind you used last. Some keys open it on their own kind:</p>
 <ul>
 <li><strong>Ctrl+Shift+B</strong> in the messages: Code Blocks, for the selected message.</li>
 <li><strong>Ctrl+L</strong> (View, Links): Links, for the whole chat.</li>
 <li><strong>Ctrl+Shift+D</strong> (View, Changed Files): Changed Files, for the selected message's turn (your
   latest message's, if none is selected) if it changed any files, otherwise for the whole chat.</li>
 </ul>
-<p>On every tab:</p>
+<p>For every kind:</p>
 <ul>
-<li><strong>Enter</strong> reads the item in full in the Details box below the list. On the Links tab, Enter (or
+<li><strong>Enter</strong> reads the item in full in the Details box below the list. For links, Enter (or
   Open) opens the link in your browser and closes Lists.</li>
 <li><strong>Ctrl+C</strong> (or Copy) copies the item: the code, the link's address, the file's path, the
-  command, or your answer. You hear what was copied. On the Links tab, <strong>Ctrl+Shift+C</strong> (or Copy as
+  command, or your answer. You hear what was copied. For links, <strong>Ctrl+Shift+C</strong> (or Copy as
   Markdown) copies a Markdown link.</li>
 <li><strong>Type</strong> to narrow the list: the letters go into the Filter box (Alt+F), and the list's label
   says how many match, such as "Links (2 of 12)". Down Arrow goes back to the list.</li>
 <li><strong>Escape</strong> closes Lists and puts you back where you were.</li>
 </ul>
-<p>A tab with nothing to list says so, for example "No commands in this chat." Each link is listed
+<p>A kind with nothing to list says so, for example "No commands in this chat." Each link is listed
 once, at its newest mention. A long address is shortened to its site and its end, but the whole
 address is always what's opened or copied. A link in a code block or in inline code says "in
 code". Only web, email and session links open; anything else, such as a file path, is marked
 "copy only" and says why if you try to open it. Links in tool calls and results are listed only
 with Show Tool Activity on. Changed files, commands and decisions are listed for Claude chats
-for now; in a Codex chat those tabs say so.</p>
+for now; in a Codex chat those kinds say so.</p>
 <h2 id="kinds-of-session">Kinds of session</h2>
 <p>The session list holds four kinds of session, depending on where each was started. You read
 every kind the same way: arrow to it and press <strong>Enter</strong>. What differs is where you reply.</p>
@@ -646,7 +654,7 @@ session needs you, or off. While you're in The Chat Place, the announcement is e
 notification is shown.</p>
 <h2 id="more-things-you-can-do">More things you can do</h2>
 <ul>
-<li><strong>Changed Files</strong> (Ctrl+Shift+D) opens Lists on its Changed Files tab: the files Claude changed
+<li><strong>Changed Files</strong> (Ctrl+Shift+D) opens Lists on Changed Files: the files Claude changed
   in the selected message's turn (your latest, if none is selected), or in the whole chat, with
   how many lines were added and removed.
   Enter on a file reads its changes line by line. It works for desktop app sessions too.</li>

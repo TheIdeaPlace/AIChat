@@ -223,8 +223,8 @@ hear "No messages contain …" and no list opens.
 
 ### Lists: code blocks, links, files, commands and decisions
 
-**Ctrl+Shift+I** (View, Lists) opens one dialog with a tab for each kind of thing in a chat, from
-the session list, the messages or the reply box:
+**Ctrl+Shift+I** (View, Lists) opens one dialog listing each kind of thing in a chat, from the
+session list, the messages or the reply box:
 
 - **Code Blocks:** each code block, by language and size, with its code to read.
 - **Links:** each link, its words and where it goes, then who wrote it and roughly when.
@@ -239,34 +239,42 @@ links, "this message" is the selected message. For files, commands and decisions
 selected message's turn: from your message to Claude's reply. Links, commands and decisions
 list the newest first; code blocks and files are in the order they appear.
 
-The tab strip is a Tab stop: arrow along it to change the tab, and Enter moves to the tab's list.
-**Ctrl+Tab** and **Ctrl+Shift+Tab** (also Ctrl+Page Down and Ctrl+Page Up) change the tab from
-anywhere and leave you on its list. On a Mac, that's the Control key, as in other Mac apps' tabs.
-Lists opens on the tab you used last. Some keys open it on their own tab:
+The kinds are a list of their own, **Kinds** (Alt+K), above the items, each with how many it
+has: "Commands (12)". Tab and Shift+Tab reach it like any other list. Arrow through it and the
+items below change to that kind; **Enter** moves to that kind's list. From anywhere in Lists,
+these change the kind and leave you on its list:
+
+- **On Windows:** **Ctrl+Tab** and **Ctrl+Shift+Tab**, or **Ctrl+Page Down** and **Ctrl+Page Up**.
+- **On a Mac:** **Cmd+Shift+]** and **Cmd+Shift+[**, as for tabs in Safari and Finder. Control+Tab
+  is left to macOS, which uses it to move between groups of controls.
+- **Ctrl+1** to **Ctrl+5** (**Cmd+1** to **Cmd+5** on a Mac) go straight to Code Blocks, Links,
+  Changed Files, Commands or Decisions.
+
+Lists opens on the kind you used last. Some keys open it on their own kind:
 
 - **Ctrl+Shift+B** in the messages: Code Blocks, for the selected message.
 - **Ctrl+L** (View, Links): Links, for the whole chat.
 - **Ctrl+Shift+D** (View, Changed Files): Changed Files, for the selected message's turn (your
   latest message's, if none is selected) if it changed any files, otherwise for the whole chat.
 
-On every tab:
+For every kind:
 
-- **Enter** reads the item in full in the Details box below the list. On the Links tab, Enter (or
+- **Enter** reads the item in full in the Details box below the list. For links, Enter (or
   Open) opens the link in your browser and closes Lists.
 - **Ctrl+C** (or Copy) copies the item: the code, the link's address, the file's path, the
-  command, or your answer. You hear what was copied. On the Links tab, **Ctrl+Shift+C** (or Copy as
+  command, or your answer. You hear what was copied. For links, **Ctrl+Shift+C** (or Copy as
   Markdown) copies a Markdown link.
 - **Type** to narrow the list: the letters go into the Filter box (Alt+F), and the list's label
   says how many match, such as "Links (2 of 12)". Down Arrow goes back to the list.
 - **Escape** closes Lists and puts you back where you were.
 
-A tab with nothing to list says so, for example "No commands in this chat." Each link is listed
+A kind with nothing to list says so, for example "No commands in this chat." Each link is listed
 once, at its newest mention. A long address is shortened to its site and its end, but the whole
 address is always what's opened or copied. A link in a code block or in inline code says "in
 code". Only web, email and session links open; anything else, such as a file path, is marked
 "copy only" and says why if you try to open it. Links in tool calls and results are listed only
 with Show Tool Activity on. Changed files, commands and decisions are listed for Claude chats
-for now; in a Codex chat those tabs say so.
+for now; in a Codex chat those kinds say so.
 
 ## Kinds of session
 
@@ -704,7 +712,7 @@ notification is shown.
 
 ## More things you can do
 
-- **Changed Files** (Ctrl+Shift+D) opens Lists on its Changed Files tab: the files Claude changed
+- **Changed Files** (Ctrl+Shift+D) opens Lists on Changed Files: the files Claude changed
   in the selected message's turn (your latest, if none is selected), or in the whole chat, with
   how many lines were added and removed.
   Enter on a file reads its changes line by line. It works for desktop app sessions too.

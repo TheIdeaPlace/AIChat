@@ -2852,31 +2852,36 @@ class ListsPage(wx.Panel):
 
 
 class ListsDialog(wx.Dialog):
-    """View, Lists (Ctrl+Shift+I, #279): everything of one kind in a chat,
-    a tab per kind: Code Blocks, Links, Changed Files, Commands, Decisions.
+    """View, Lists (Ctrl+Shift+I, #279): everything of one kind in a chat:
+    Code Blocks, Links, Changed Files, Commands and Decisions.
 
-    "Show items from" chooses this message or the whole chat. The tab strip
-    is a Tab stop, and arrowing along it changes the tab; Enter on it moves
-    to the tab's list. Ctrl+Tab and Ctrl+Shift+Tab (also Ctrl+Page Down and
-    Page Up) change the tab from anywhere and leave focus on its list. On a
-    Mac that's the Control key, as in other Mac apps' tabs.
+    The kinds are a list of their own at the top, each with its count, so
+    Tab and Shift+Tab always reach it on Windows and on a Mac (a native tab
+    strip isn't a Tab stop on a Mac, #280). Arrowing it shows that kind
+    below; Enter goes to its list. From anywhere in the dialog, the next or
+    previous kind is Ctrl+Tab / Ctrl+Shift+Tab or Ctrl+Page Down / Page Up
+    on Windows, and Cmd+Shift+] / Cmd+Shift+[ on a Mac; Ctrl+1 to Ctrl+5
+    (Cmd on a Mac) go straight to one. Each leaves you on that kind's list.
 
-    ``build(category, scope)`` gives a tab's ``lists.ListItem`` list. A link
+    "Show items from" chooses this message or the whole chat.
+    ``build(category, scope)`` gives a kind's ``lists.ListItem`` list. A link
     chosen with Open is in ``chosen_link`` once the dialog has closed.
     """
 
     def __init__(self, parent, title: str, build, copy, feedback,
                  category: str = lists.CODE, scope: str = lists.SCOPE_CHAT,
                  unavailable=None):
-        super().__init__(parent, title=f"Lists: {title}", size=dialog_size(parent, 820, 620),
+        super().__init__(parent, title=f"Lists: {title}", size=dialog_size(parent, 820, 660),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._build = build
-        #: Tabs this chat can't fill yet, and the line each says instead of
+        #: Kinds this chat can't fill yet, and the line each says instead of
         #: an empty list that would look like "none" (a Codex chat's commands).
         self.unavailable = dict(unavailable or {})
         self.copy = copy  # (text) -> bool
         self.feedback = feedback
         self.chosen_link = None
+        #: Which platform's keys switch kinds (tests choose either).
+        self.platform = sys.platform
         self.scope = scope if scope in dict(lists.SCOPES) else lists.SCOPE_CHAT
         sizer = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -2887,29 +2892,41 @@ class ListsDialog(wx.Dialog):
         self.scope_choice.SetSelection([s for s, _l in lists.SCOPES].index(self.scope))
         row.Add(self.scope_choice, 0)
         sizer.Add(row, 0, wx.ALL, 8)
-        self.notebook = wx.Notebook(self)
-        set_accessible_name(self.notebook, "Lists")
+        sizer.Add(wx.StaticText(self, label="&Kinds:"), 0, wx.LEFT, 8)
+        self.kinds = wx.ListBox(self, style=wx.LB_SINGLE,
+                                choices=[lists.TITLES[c] for c in lists.CATEGORY_IDS])
+        set_accessible_name(self.kinds, "Kinds")
+        self.kinds.SetMinSize(dip(self, -1, 96))
+        sizer.Add(self.kinds, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        # The kinds' pages, one shown at a time; the Kinds list chooses.
+        self.book = wx.Simplebook(self)
         self.pages = []
         for tab in lists.CATEGORY_IDS:
-            page = ListsPage(self.notebook, self, tab)
-            self.notebook.AddPage(page, lists.TITLES[tab])
+            page = ListsPage(self.book, self, tab)
+            self.book.AddPage(page, lists.TITLES[tab])
             self.pages.append(page)
-        sizer.Add(self.notebook, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        sizer.Add(self.book, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         buttons = wx.BoxSizer(wx.HORIZONTAL)
-        # Alt+S is Show items from; every page has Filter, List, Details
-        # and Copy, and Links Open and Markdown, so E it is.
+        # Alt+S is Show items from and Alt+K Kinds; every page has Filter,
+        # List, Details and Copy, and Links Open and Markdown, so E it is.
         buttons.Add(wx.Button(self, wx.ID_CANCEL, "Clos&e"), 0)
         sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
         self.scope_choice.Bind(wx.EVT_CHOICE, lambda e: self.set_scope(
             lists.SCOPES[self.scope_choice.GetSelection()][0]))
-        self.notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self._on_page_changed)
+        self.kinds.Bind(wx.EVT_LISTBOX, lambda e: self._show_kind(self.kinds.GetSelection()))
+        self.kinds.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.current().list.SetFocus())
+        self.kinds.Bind(wx.EVT_KEY_DOWN, self._on_kinds_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
-        # The tab shown, kept here rather than asked of the tab control.
+        # Only the controls take focus, never the panels around them (with
+        # real keys on a Mac, Control+Tab landed on the book itself, #280).
+        self.book.SetCanFocus(False)
+        for page in self.pages:
+            page.SetCanFocus(False)
         self._index = lists.CATEGORY_IDS.index(category) if category in lists.CATEGORY_IDS else 0
-        self.notebook.ChangeSelection(self._index)  # no event: filled just below
-        self.current().fill(self._build(self.current().category, self.scope))
+        self._fill_all()
+        self._show_kind(self._index)
         wx.CallAfter(lambda: self and self.current().list.SetFocus())
 
     @property
@@ -2919,48 +2936,86 @@ class ListsDialog(wx.Dialog):
     def current(self) -> ListsPage:
         return self.pages[self._index]
 
-    def set_scope(self, scope: str):
-        """Every tab now shows ``scope``: the current one at once, the others
-        when they're next shown."""
-        self.scope = scope
+    def _fill_all(self):
+        """Every kind, for the current scope, so the Kinds list can say how
+        many each has."""
         for page in self.pages:
-            page.filled = False
-        self.current().fill(self._build(self.current().category, scope))
+            page.fill(self._build(page.category, self.scope))
+        self._label_kinds()
+
+    def _label_kinds(self):
+        for index, page in enumerate(self.pages):
+            if page.category in self.unavailable and not page.items:
+                text = f"{page.title}, not available"
+            else:
+                text = f"{page.title} ({len(page.items)})"
+            if self.kinds.GetString(index) != text:
+                self.kinds.SetString(index, text)
+
+    def set_scope(self, scope: str):
+        """Every kind now shows ``scope``."""
+        self.scope = scope
+        self._fill_all()
+
+    def _show_kind(self, index: int):
+        if not 0 <= index < len(self.pages):
+            return
+        self._index = index
+        # Showing another page moves focus into it, so arrowing the Kinds
+        # list would leave it (found with real keys on a Mac, #280). Keep
+        # the focus where it was unless that control is now hidden.
+        focus = wx.Window.FindFocus()
+        if self.kinds.GetSelection() != index:
+            self.kinds.SetSelection(index)
+        if self.book.GetSelection() != index:
+            self.book.ChangeSelection(index)
+        self.Layout()
+        if focus is self.kinds and wx.Window.FindFocus() is not self.kinds:
+            self.kinds.SetFocus()
 
     def select_category(self, index: int, focus_list: bool = True):
-        self._index = index % len(self.pages)
-        self.notebook.ChangeSelection(self._index)
-        self._ensure_filled()
+        """Show the kind at ``index`` (wrapping around), and go to its list."""
+        self._show_kind(index % len(self.pages))
         if focus_list:
             self.current().list.SetFocus()
 
-    def _ensure_filled(self):
-        page = self.current()
-        if not page.filled:
-            page.fill(self._build(page.category, self.scope))
-
-    def _on_page_changed(self, event):
-        if 0 <= event.GetSelection() < len(self.pages):
-            self._index = event.GetSelection()
-        self._ensure_filled()
+    def _on_kinds_key(self, event):
+        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and not event.HasAnyModifiers():
+            self.current().list.SetFocus()  # Enter on a kind: into its list
+            return
         event.Skip()
 
     def _on_char_hook(self, event):
-        key = event.GetKeyCode()
-        # The real Control key on a Mac too (wx's ControlDown there is
-        # Command), as Mac tabs switch with Control+Tab.
-        ctrl = event.RawControlDown() and not event.AltDown()
-        if ctrl and key == wx.WXK_TAB:
-            self.select_category(self._index + (-1 if event.ShiftDown() else 1))
-            return
-        if ctrl and not event.ShiftDown() and key in (wx.WXK_PAGEDOWN, wx.WXK_PAGEUP):
-            self.select_category(self._index + (1 if key == wx.WXK_PAGEDOWN else -1))
-            return
-        if (key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and not event.HasAnyModifiers()
-                and wx.Window.FindFocus() is self.notebook):
-            self.current().list.SetFocus()  # Enter on the tab strip: into its list
+        step = self._switch_step(event, self.platform)
+        if step is not None:
+            kind, value = step
+            self.select_category(value if kind == "to" else self._index + value)
             return
         event.Skip()
+
+    @staticmethod
+    def _switch_step(event, platform=None):
+        """("by", ±1) for the next or previous kind, ("to", n) for kind n,
+        or None. wx's ControlDown is Command on a Mac and Ctrl elsewhere.
+
+        Ctrl+Tab is Windows' tab key. On a Mac, Control+Tab is the system's
+        own "next group of controls" key, and a list takes it before the
+        dialog sees it, so it's left to macOS everywhere rather than working
+        only sometimes (tested with real keys, #280); Cmd+Shift+] and [ are
+        the Mac's tab keys."""
+        key = event.GetKeyCode()
+        command = event.ControlDown() and not event.AltDown()
+        if ((platform or sys.platform) != "darwin" and command and key == wx.WXK_TAB):
+            return ("by", -1 if event.ShiftDown() else 1)
+        if command and not event.ShiftDown() and key in (wx.WXK_PAGEDOWN, wx.WXK_PAGEUP):
+            return ("by", 1 if key == wx.WXK_PAGEDOWN else -1)
+        if command and event.ShiftDown() and key in (ord("]"), ord("}")):
+            return ("by", 1)
+        if command and event.ShiftDown() and key in (ord("["), ord("{")):
+            return ("by", -1)
+        if command and not event.ShiftDown() and ord("1") <= key < ord("1") + len(lists.CATEGORY_IDS):
+            return ("to", key - ord("1"))
+        return None
 
 
 class FindResultsDialog(wx.Dialog):
