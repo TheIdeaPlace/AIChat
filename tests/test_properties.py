@@ -192,3 +192,11 @@ def test_codex_properties_do_not_invent_claude_models_policies_or_usage():
     assert not any(line.startswith(("Permission mode:", "Remote Control:",
                                     "Files changed:")) for line in result)
     assert not any("% full" in line or "Claude" in line for line in result)
+
+
+def test_rule_check_refusal_is_distinct_from_not_checked_and_has_no_count():
+    from thechatplace.properties import saved_rule_lines
+    assert saved_rule_lines(pending=True) == ['Saved command rules: checking...']
+    rows = saved_rule_lines(7, error='Project rules were refused. Rules folder: /synthetic/.codex/rules')
+    assert 'refused' in rows[0] and '/synthetic/.codex/rules' in rows[0]
+    assert not any('in effect: 7' in row or 'not checked' in row for row in rows)

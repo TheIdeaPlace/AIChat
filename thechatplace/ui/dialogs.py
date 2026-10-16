@@ -54,6 +54,19 @@ PERMISSION_NOTE = (
     "Effort change them later.")
 
 
+def codex_permission_prompt(parent, title, folder):
+    """Wrap only the native picker's prompt, using its actual GUI font (#257)."""
+    from wx.lib.wordwrap import wordwrap
+    from ..ui_text import CODEX_SAVED_RULES_NOTE
+    dc = wx.ClientDC(parent)
+    dc.SetFont(wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT))
+    width = min(dip_width(parent, 560), screen_area(parent).width - dip_width(parent, 80))
+    text = (f'Codex permissions for {title}.\nFolder: {folder}.\n'
+            'Finish or Stop active work first.\n\n' + CODEX_SAVED_RULES_NOTE)
+    return '\n'.join(wordwrap(line, width, dc, breakLongWords=True).rstrip('\n')
+                     for line in text.split('\n'))
+
+
 CONTINUE_NOTE = (
     "This starts a Chat Place session that is a copy of this session, with its "
     "whole conversation so far, so you can carry on and reply here. The original, "

@@ -35,7 +35,9 @@ The scan permits at most 64 layers and 4,096 directory entries.
 
 New Session reads the selected folder's inventory on a worker and ignores stale
 callbacks. Change Permission Mode always displays the saved-rule exception.
-Properties reads a current count on a worker; unavailable inventory stays unknown.
+Properties opens after its normal transcript read and checks rules on a separate
+worker, updating its rows without moving focus. Refusals show the safe reason and
+folder rather than implying no check took place. Closed dialogs ignore late results.
 No authentication, configuration or rule file is modified. No persistent approval
 amendment is granted. Network, write-root and ChatGPT billing checks are retained.
 
@@ -56,3 +58,11 @@ The initial Mac probe captured three of four affected surfaces; final sequential
 captures repeatedly returned blank images. No final visual-pass claim is made.
 Windows light/high-contrast capture/comparison and screen-reader acceptance
 remain required under #226. PR #272 and issue #257 track review and acceptance.
+
+Claude review #37 follow-up: permission-change preparation keeps the safe project
+rule refusal in runtime status and UI feedback. The native picker alone wraps
+its long title/folder/disclosure with measured GUI-font widths; New Session keeps
+normal paragraphs. The probe now includes a deliberately long title and nested
+folder. Regression checks cover delayed/refused/closed Properties updates and
+permission-change reason preservation. Windows verbatim-path/native acceptance
+remains explicit under #226.

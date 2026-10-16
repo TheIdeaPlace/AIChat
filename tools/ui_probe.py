@@ -743,8 +743,10 @@ def d_codex_new(frame, env):
 
 
 def d_codex_mode(frame, env):
-    from thechatplace.ui_text import CODEX_SAVED_RULES_NOTE
-    dialog = wx.SingleChoiceDialog(frame, 'Codex permissions for a Chat Place session.\nFolder: Scratch.\n\n' + CODEX_SAVED_RULES_NOTE,
+    from thechatplace.ui.dialogs import codex_permission_prompt
+    title = 'Review saved command rules for a deliberately long synthetic chat title'
+    folder = str(Path(env['folders']['Scratch']) / 'long-synthetic-project-folder' / 'nested-folder-for-permission-review')
+    dialog = wx.SingleChoiceDialog(frame, codex_permission_prompt(frame, title, folder),
         'Change Permission Mode', ['Read-only; asks before allowing changes',
         'Can edit files in this folder; asks before anything else'])
     dialog.SetSelection(1)

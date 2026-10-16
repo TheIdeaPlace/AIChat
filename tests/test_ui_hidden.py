@@ -9460,3 +9460,55 @@ def test_owned_codex_background_reply_is_not_reannounced_by_discovery(frame, mon
     assert len(spoken) == 1 and spoken[0][1] == {'interrupt': False}
     assert 'A complete reply' in spoken[0][0]
     assert len(notices) == 1
+
+
+def test_codex_permission_picker_wraps_long_names_without_breaking_new_session_note(frame):
+    from thechatplace.ui.dialogs import codex_permission_prompt
+    from thechatplace.ui.sizes import dip_width, screen_area
+    from thechatplace.ui_text import CODEX_SAVED_RULES_NOTE
+    text = codex_permission_prompt(frame, 'Synthetic long title ' * 8,
+                                   '/synthetic/' + 'long-project-folder/' * 15)
+    dc = wx.ClientDC(frame)
+    dc.SetFont(wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT))
+    width = min(dip_width(frame, 560), screen_area(frame).width - dip_width(frame, 80))
+    assert all(dc.GetTextExtent(line).width <= width + 1 for line in text.splitlines())
+    assert '\n' not in CODEX_SAVED_RULES_NOTE
+
+
+def test_codex_properties_open_before_rule_check_and_show_refusal(frame, monkeypatch):
+    import threading
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    entered, release = threading.Event(), threading.Event()
+    def check(provider, folder):
+        entered.set()
+        assert release.wait(5)
+        error = CodexTurnRejected('project_rules')
+        error.rules_folder = '/synthetic/project/.codex/rules'
+        raise error
+    monkeypatch.setattr(frame.sessions, 'saved_rule_count', check)
+    def modal(dialog):
+        assert any('checking...' in row for row in dialog._lines)
+        assert entered.wait(2)  # The dialog already exists while the count is blocked.
+        release.set()
+        assert pump(lambda: any('saved command rules' in row for row in dialog._lines))
+        assert any('/synthetic/project/.codex/rules' in row for row in dialog._lines)
+        assert not any('not checked' in row for row in dialog._lines)
+        dialog.Destroy()
+    monkeypatch.setattr(frame, '_modal', modal)
+    info = OwnSession('synthetic-rule-properties', 'Synthetic', '/synthetic', provider='codex').to_info()
+    try:
+        frame._session_properties_read(info, None, '', 0, '', None)
+    finally:
+        release.set()
+
+
+def test_closed_codex_properties_ignore_late_rule_result(frame, monkeypatch):
+    callbacks = []
+    monkeypatch.setattr(frame, '_load_codex_rules', lambda folder, done: callbacks.append(done))
+    monkeypatch.setattr(frame, '_modal', lambda dialog: dialog.Destroy())
+    from thechatplace.own_store import OwnSession
+    info = OwnSession('synthetic-closed-properties', 'Synthetic', '/synthetic', provider='codex').to_info()
+    frame._session_properties_read(info, None, '', 0, '', None)
+    assert len(callbacks) == 1
+    callbacks[0](4, False)  # No deleted native control is touched.

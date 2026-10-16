@@ -619,3 +619,26 @@ def test_send_during_rejection_recovery_does_not_join_a_stranded_queue():
         assert service.snapshot(record.cli_session_id).outcome == 'inProgress'
     finally:
         service.close()
+
+
+def test_permission_change_keeps_project_rule_refusal_reason(tmp_path, monkeypatch):
+    from tests.test_codex_rule_guard import layer
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    service, connection, record = policy_runtime(tmp_path)
+    rules = tmp_path / 'rules'; rules.mkdir()
+    (rules / 'saved.rules').write_text('synthetic')
+    request = connection.request
+    def configured(method, params):
+        result = request(method, params)
+        if method == 'config/read':
+            result['layers'] = [layer(tmp_path)]
+        return result
+    monkeypatch.setattr(connection, 'request', configured)
+    try:
+        with pytest.raises(CodexTurnRejected):
+            service.prepare_policy(record, 'workspace-write', 'on-request')
+        problem = service.snapshot(record.cli_session_id).problem
+        assert 'project' in problem and str(rules) in problem
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+    finally:
+        service.close()

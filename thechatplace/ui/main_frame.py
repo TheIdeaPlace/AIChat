@@ -2037,12 +2037,6 @@ class MainFrame(CodexChats, wx.Frame):
 
         def work():
             transcript, path, size, error = None, "", 0, ""
-            rule_count = None
-            try:
-                if info.provider == "codex":
-                    rule_count = self.sessions.saved_rule_count("codex", info.cwd)
-            except Exception:
-                pass  # Properties must still open when inventory cannot be checked.
             try:
                 reader, path, size = self.sessions.open_reader_with_facts(info)
                 if reader is not None:
@@ -2051,14 +2045,14 @@ class MainFrame(CodexChats, wx.Frame):
             except Exception as exc:  # noqa: BLE001 - say what can be said without it
                 transcript, error = None, str(exc) or type(exc).__name__
             wx.CallAfter(self._session_properties_read, info, transcript, path, size, error,
-                         returning_to, rule_count)
+                         returning_to)
 
         try:
             self._pool.submit(work)
         except RuntimeError:  # the pool is shut down: the window is closing
             self._properties_busy = False
 
-    def _session_properties_read(self, info, transcript, path, size, error, returning_to, rule_count=None):
+    def _session_properties_read(self, info, transcript, path, size, error, returning_to):
         self._properties_busy = False
         if self._gone() or self._closing:
             return
@@ -2073,16 +2067,39 @@ class MainFrame(CodexChats, wx.Frame):
         try:
             lines = properties.session_properties(
                 info, transcript, path, size, own, self._reported_window(info, model),
-                read_error=error, saved_rule_count=rule_count)
+                read_error=error)
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
         self._show_properties(f"Properties of {info.title or 'Untitled session'}", lines,
-                              returning_to)
+                              returning_to, codex_info=info if info.provider == 'codex' else None)
 
-    def _show_properties(self, title, lines, returning_to):
-        self._modal(PropertiesDialog(self, title, lines, self._copy_properties))
+    def _show_properties(self, title, lines, returning_to, codex_info=None):
+        if codex_info is not None:
+            lines = self._rule_property_rows(lines, properties.saved_rule_lines(pending=True))
+        dialog = PropertiesDialog(self, title, lines, self._copy_properties)
+        if codex_info is not None:
+            def rules_ready(result, failed):
+                if not dialog or dialog.IsBeingDeleted():
+                    return
+                rows = properties.saved_rule_lines(
+                    None if failed else result,
+                    (result or 'Codex command rules could not be checked.') if failed else '')
+                selected = dialog.list.GetSelection()
+                dialog._lines = self._rule_property_rows(dialog._lines, rows)
+                dialog.list.Set(dialog._lines)
+                if dialog._lines:
+                    dialog.list.SetSelection(min(max(selected, 0), len(dialog._lines) - 1))
+            self._load_codex_rules(codex_info.cwd, rules_ready)
+        self._modal(dialog)
         if returning_to:
             returning_to.SetFocus()
+
+    @staticmethod
+    def _rule_property_rows(lines, rows):
+        prefixes = ('Saved user/system rule files', 'Saved command rules')
+        index = next((i for i, line in enumerate(lines) if line.startswith(prefixes)), len(lines))
+        kept = [line for line in lines if not line.startswith(prefixes)]
+        return kept[:index] + rows + kept[index:]
 
     def _copy_properties(self, text: str, one_line: bool):
         if self._copy_text(text):

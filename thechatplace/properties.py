@@ -64,6 +64,16 @@ def _conversation(transcript: Transcript) -> List[ChatMessage]:
     return [m for m in transcript.messages if not m.is_activity and m.kind != QUEUED]
 
 
+def saved_rule_lines(count=None, error='', *, pending=False):
+    if error:
+        return ['Saved command rules check: ' + error]
+    if pending:
+        return ['Saved command rules: checking...']
+    if type(count) is int and count >= 0:
+        return [f'Saved user/system rule files in effect: {count}']
+    return ['Saved user/system rule files: not checked']
+
+
 def session_properties(info: SessionInfo, transcript: Optional[Transcript] = None,
                        transcript_path: Optional[str] = None, transcript_size: int = 0,
                        own=None, reported_window: int = 0,
@@ -101,9 +111,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         if sandbox == 'workspace-write':
             lines.append('Writable folder: ' + options.get('workspace_root', 'not verified'))
     if info.provider == "codex":
-        lines.append(f"Saved user/system rule files in effect: {saved_rule_count}"
-                     if type(saved_rule_count) is int and saved_rule_count >= 0
-                     else "Saved user/system rule files: not checked")
+        lines.extend(saved_rule_lines(saved_rule_count))
     mode = own.permission_mode if own is not None else info.permission_mode
     if mode and info.provider == "claude":
         lines.append(f"Permission mode: {mode_label(mode)}")

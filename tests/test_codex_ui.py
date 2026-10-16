@@ -393,3 +393,16 @@ def test_saved_rule_inventory_ignores_stale_and_closed_dialog_callbacks():
     calls[1][1](9, False)
     NewSessionDialog._refresh_rules(dialog)
     assert dialog._rule_count == 2 and len(calls) == 2
+
+
+def test_permission_change_feedback_keeps_the_safe_refusal(monkeypatch):
+    from thechatplace.ui import codex_chats
+    w = Window()
+    w._codex_policy_pending = set()
+    w.sessions = SimpleNamespace(can_create=lambda provider: True)
+    w._change_setting = lambda *args: ('workspace-write', 'on-request')
+    monkeypatch.setattr(codex_chats, 'codex_permission_prompt', lambda *args: 'Synthetic prompt')
+    w._change_codex_permissions(w._open)
+    reason = 'Project rules were refused. Rules folder: /synthetic/.codex/rules'
+    w.work[0][1](reason, True)
+    assert w.said[-1] == reason

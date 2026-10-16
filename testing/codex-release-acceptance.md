@@ -55,7 +55,7 @@ is optional. Steer and the reading pane are outside this release.
   grants; changing policy must wait for an idle chat and keep sends blocked
   until verification and saving complete.
 - Foundations, storage and reading have merged through independent review.
-  Finish owned-chat #255 merge and the Provider-default slice; require green
+  Owned-chat #255 and Provider-default #271 are merged; require green
   Windows/Mac tests and packaged smoke checks on the exact candidate.
 - Verify inherited Codex execution approval rules before declaring folder-access
   behavior release-ready (#257). External MCP servers, apps and plugins are disabled per chat without changing
@@ -68,7 +68,10 @@ is optional. Steer and the reading pane are outside this release.
   Verify a synthetic user rule remains usable and disclosed, and project rules
   prevent sending with the rules-folder name and recovery guidance. Do not claim
   upstream per-thread rule isolation: inventory checks are filesystem snapshots.
-  Case-insensitive Mac path identity remains a fail-closed follow-up (#256).
+  Verify native Windows rule inventories for ordinary drive paths and local
+  verbatim (`\\?\`) paths during #226; do not mistake a refused inventory for
+  an unchecked or empty one. Case-insensitive Mac path identity remains a
+  fail-closed follow-up (#256).
 - Repeat the passed native Mac file-edit check on Windows: a real Codex turn must edit a harmless file in a disposable selected
   folder. Confirm file scope, approvals/questions, Stop, queued text recovery
   and restarting with the saved grant. Ephemeral lifecycle policy checks alone
