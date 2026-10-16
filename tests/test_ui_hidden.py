@@ -286,7 +286,7 @@ def test_focused_list_keeps_its_order_until_f5(frame, env, monkeypatch):
     settle(frame)
     rows = [s.split(",")[0] for s in frame.session_list.GetStrings()]
     assert rows == before + ["Brand new"]           # nothing moved, new one at the end
-    assert frame.session_list.GetStringSelection().startswith("Quiet one, Repo, needs you")
+    assert frame.session_list.GetStringSelection().startswith("Quiet one, Claude, Repo, needs you")
     frame.refresh_sessions(force=True, resort=True)  # F5
     assert pump(lambda: frame.session_list.GetString(0).startswith("Quiet one"))
     assert frame.session_list.GetStringSelection().startswith("Quiet one")
@@ -2440,7 +2440,7 @@ def test_saved_sort_order_is_used_and_checked_at_start(env):
     try:
         assert pump(lambda: window.session_list.GetCount() == 2)
         assert [o for o, item in window.sort_items.items() if item.IsChecked()] == ["folder"]
-        assert window.session_list.GetString(0).startswith("Other, Alpha")
+        assert window.session_list.GetString(0).startswith("Other, Claude, Alpha")
     finally:
         window.stop_timers()
         window._pool.shutdown(wait=True)
@@ -2903,7 +2903,7 @@ def test_a_session_leaving_the_view_stays_while_you_are_on_it(frame, env, monkey
     add_desktop(env, "local_b", "cli-b", "Blocked one")  # it no longer needs you
     frame.refresh_sessions()
     settle(frame)
-    assert frame.session_list.GetStringSelection().startswith("Blocked one, Repo, idle")
+    assert frame.session_list.GetStringSelection().startswith("Blocked one, Claude, Repo, idle")
     frame.refresh_sessions(resort=True)  # F5: the view is put right
     settle(frame)
     assert frame.session_list.GetCount() == 0
@@ -5435,7 +5435,7 @@ def test_session_list_columns_reorder_the_rows_at_once_and_are_remembered(frame,
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Chooses)
     frame.on_session_columns()
     assert seen["sample"].title == "Blocked one"  # the preview shows the selected session
-    assert seen["fields"][:3] == ["title", "folder", "status"]
+    assert seen["fields"][:4] == ["title", "provider", "folder", "status"]
     assert frame.session_list.GetStringSelection() == "needs you: Pick a name, Blocked one"
     assert sorted(frame.session_list.GetStrings()) == [
         "idle, Hub probe", "idle, Quiet one", "needs you: Pick a name, Blocked one"]
@@ -5651,7 +5651,7 @@ def test_columns_preview_has_a_sample_when_nothing_is_selected(frame, env, monke
             pass
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Looks)
     frame.on_session_columns()
-    assert seen["line"].startswith("Example session, Example, needs you: Choose a version "
+    assert seen["line"].startswith("Example session, Claude, Example, needs you: Choose a version "
                                    "number, new reply, active 2 minutes ago")
 
 
