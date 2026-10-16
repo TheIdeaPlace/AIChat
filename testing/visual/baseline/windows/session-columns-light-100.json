@@ -107,7 +107,7 @@
     265
    ],
    "best": [
-    241,
+    335,
     200
    ],
    "depth": 0,
@@ -116,11 +116,12 @@
    "problems": [],
    "items": [
     "Title",
+    "Provider (Claude or Codex)",
     "Folder",
     "Status (needs you, working or idle)",
     "New reply",
     "Last activity",
-    "Kind (Chat Place, Cowork or terminal)",
+    "Kind (desktop app, Cowork, terminal or The Chat Place)",
     "Remote Control",
     "Archived",
     "Hidden",
@@ -292,13 +293,13 @@
    ],
    "best": [
     127,
-    98
+    128
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Fix the flaky upload test, AIChat, needs you: Pick a name for the release branch, active 1 minute ago"
+   "value": "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app session"
   },
   {
    "class": "Button",

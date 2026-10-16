@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   680,
-  550
+  590
  ],
  "client": [
   664,
-  511
+  551
  ],
  "dpi": [
   96,
@@ -401,10 +401,29 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "&Tell me when an update has been installed, with a link to what's new",
+   "label": "Include Code&x chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then\nrestart.",
    "rect": [
     10,
     447,
+    619,
+    30
+   ],
+   "best": [
+    619,
+    30
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "&Tell me when an update has been installed, with a link to what's new",
+   "rect": [
+    10,
+    487,
     382,
     15
    ],
@@ -423,7 +442,7 @@
    "label": "OK",
    "rect": [
     494,
-    480,
+    520,
     75,
     23
    ],
@@ -442,7 +461,7 @@
    "label": "Cancel",
    "rect": [
     577,
-    480,
+    520,
     75,
     23
    ],
