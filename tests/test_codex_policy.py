@@ -37,22 +37,39 @@ def test_broader_or_unverified_returned_policies_are_rejected(tmp_path, field, v
         policy.verify(response)
 
 
-def test_downgraded_workspace_write_is_refused_with_a_safe_reason(tmp_path):
-    # Codex on Windows reports read-only for workspace-write until its Agent
+def test_downgraded_workspace_write_is_refused_with_a_safe_reason(tmp_path, monkeypatch):
+    # Codex on Windows reports read-only for workspace-write until its Windows
     # sandbox is set up (#257). Still refused, never granted, but explained.
+    from thechatplace import platform_paths
     from thechatplace.codex_diagnostics import safe_reason
     from thechatplace.providers.codex_rpc import CodexTurnRejected
+    monkeypatch.setattr(platform_paths, 'codex_downgrades_workspace_write', lambda: True)
     policy = CodexPolicy.choose(str(tmp_path), 'workspace-write')
     response = result(policy)
     response['sandbox'] = {'type': 'readOnly', 'networkAccess': False}
     with pytest.raises(CodexTurnRejected) as refused:
         policy.verify(response)
     assert refused.value.code == 'sandbox_unavailable'
-    assert 'Agent sandbox' in safe_reason(refused.value)
-    # A read-only answer with a different approval policy stays a generic refusal.
-    response['approvalPolicy'] = 'never'
-    with pytest.raises(CodexRpcError, match='policy could not be verified'):
+    assert 'Windows sandbox' in safe_reason(refused.value)
+    assert 'config.toml' in safe_reason(refused.value)
+
+
+@pytest.mark.parametrize('change', ['approval', 'cwd', 'network', 'mac'])
+def test_other_read_only_mismatches_keep_the_generic_refusal(tmp_path, monkeypatch, change):
+    from thechatplace import platform_paths
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    monkeypatch.setattr(platform_paths, 'codex_downgrades_workspace_write', lambda: change != 'mac')
+    policy = CodexPolicy.choose(str(tmp_path), 'workspace-write')
+    response = result(policy)
+    response['sandbox'] = {'type': 'readOnly', 'networkAccess': change == 'network'}
+    if change == 'approval':
+        response['approvalPolicy'] = 'never'
+    if change == 'cwd':
+        other = tmp_path / 'other'; other.mkdir()
+        response['cwd'] = str(other)
+    with pytest.raises(CodexRpcError, match='policy could not be verified') as refused:
         policy.verify(response)
+    assert type(refused.value) is not CodexTurnRejected
 
 
 def test_wrong_cwd_or_approval_cannot_grant_a_proof(tmp_path):

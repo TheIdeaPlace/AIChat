@@ -600,10 +600,11 @@ project rules out before trying again. It also refuses to start or send when the
 rule inventory cannot be checked. Existing chats can still be read. The Chat Place
 does not remove or edit rules, change your Codex settings, or save approval amendments.
 
-On Windows, Codex can edit a folder only after its Agent sandbox is set up in the
-Codex app. Until then Codex reports chats as read-only, and The Chat Place says so
-instead of starting a folder-editing chat; choose read-only or set up the sandbox
-and try again.
+On Windows, Codex can edit a folder only after its Windows sandbox is set up:
+use Set up Agent sandbox in the Codex app, or, with only the command-line tool, add
+`[windows]` and `sandbox = "elevated"` (or `"unelevated"`) to `~/.codex/config.toml`.
+Until then Codex reports chats as read-only, and The Chat Place says so instead of
+giving the chat folder editing; choose read-only, or set up the sandbox and try again.
 
 ## Install
 
