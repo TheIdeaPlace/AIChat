@@ -1,7 +1,14 @@
 # How The Chat Place looks
 
 Written from the visual probe's pictures (#155), on made-up data, on 2026-10-10.
+Updated on 2026-10-16 for 0.1.7 (#283, #226) from light-100 and hc-aquatic-100 pictures of
+every screen changed or added since 0.1.6: the Codex screens, Lists, Settings, Session List
+Columns, the help pages and the main window.
 Regenerate it with `tools/ui_review_prompt.md` whenever screens change.
+
+**Since 0.1.6, in every main-window picture:** each session row now says which AI it is
+straight after the title ("Fix the flaky upload test, Claude, AIChat, needs you: ..."), so
+less of the rest of the row fits in the 378-wide list. Nothing else in those windows moved.
 
 Every light-100 picture was opened, along with the dark, High Contrast and scaled pictures named below. Sizes come from the probe's JSON and are in pixels at 100% scale. Colours were sampled from the pictures; contrast ratios are WCAG ratios.
 
@@ -109,9 +116,15 @@ This is a 720 by 520 dialog. "Claude said:" heads a white read-only text box 688
 
 ## settings: Settings
 
-This is a 680 by 550 dialog. At the top, a framed group, "Announcements", runs the full width with three radio buttons: "Full: read the whole reply" (chosen, with the focus outline), "Summary: the session's name and the reply's first sentence" and "Silent: status bar only". Below it are two ticked check boxes, then a second framed group, "Reading messages", with two more ticked boxes. Then come label-and-dropdown rows. "Speech engine" has a dropdown 555 wide, "Automatic (your screen reader, or a system voice when none is running)". "Speaking rate" has a small greyed-out "Default" dropdown, followed on its own line by the note "Voice and rate follow your screen reader's own settings." "Windows notifications" has a dropdown 335 wide, "When your sessions finish a turn, or any session needs you". Under it, "Recent folders New Session offers:" has a small number box showing 20 and a "Clear Recent Folders" button beside it (#215). Two final check boxes follow. The Remote Control one (unticked) wraps its label onto two lines (624 by 30): "Turn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices." and "Their conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)". The last, "Tell me when an update has been installed, with a link to what's new", is ticked. "OK" (blue-outlined, the default) and "Cancel" sit at the bottom right, 8 pixels above the dialog's bottom edge.
+This is a 680 by 590 dialog (550 in 0.1.6; the Codex check box added 40). At the top, a framed group, "Announcements", runs the full width with three radio buttons: "Full: read the whole reply" (chosen, with the focus outline), "Summary: the session's name and the reply's first sentence" and "Silent: status bar only". Below it are two ticked check boxes, then a second framed group, "Reading messages", with two more ticked boxes. Then come label-and-dropdown rows. "Speech engine" has a dropdown 555 wide, "Automatic (your screen reader, or a system voice when none is running)". "Speaking rate" has a small greyed-out "Default" dropdown, followed on its own line by the note "Voice and rate follow your screen reader's own settings." "Windows notifications" has a dropdown 335 wide, "When your sessions finish a turn, or any session needs you". Under it, "Recent folders New Session offers:" has a small number box showing 20 and a "Clear Recent Folders" button beside it (#215). Two final check boxes follow. The Remote Control one (unticked) wraps its label onto two lines (624 by 30): "Turn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices." and "Their conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)". Under it, the unticked "Include Codex chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then restart." also wraps onto two lines, with "restart." alone on the second. The last, "Tell me when an update has been installed, with a link to what's new", is ticked. "OK" (blue-outlined, the default) and "Cancel" sit at the bottom right, 8 pixels above the dialog's bottom edge.
 
 **What looks off:** The dropdown widths are uneven (555, 68 and 335), and the Windows notifications dropdown starts at x=140 while the two above it start at x=99. The whole dialog now fits its contents, with no empty band below the buttons.
+
+## settings-codex: Settings with Codex automatically included
+
+The same dialog, 680 by 575, on a computer where Codex is found. The Codex check box is ticked and its label is one line, "Include Codex chats (restart required)", so the dialog is 15 pixels shorter than settings and everything below the check box moves up. In High Contrast Aquatic both Settings pictures follow the theme: near-black background (#202020), white text (16.3:1), white group frames and check boxes, and OK filled light aqua.
+
+**What looks off:** Nothing.
 
 ## new-session: File, New Session
 
@@ -217,9 +230,9 @@ This is a 976 by 360 dialog titled "Properties of Visual probe", laid out like U
 
 ## session-columns: View, Session List Columns
 
-This is a 640 by 560 dialog. A two-line intro runs across the top (608 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what" and "each session is doing before its title.". Below it are two equal lists side by side, each 296 by 265: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with ten rows (Title, Folder, Status..., Groups). Both have a selected row; the right one has the focus outline. Under them is a row of six buttons, "Add", "Remove", "Move Up", "Move Down", "Move to Top" and "Move to Bottom", then a very wide "Reset to Default" button (537 wide). "Preview of the selected session's line:" heads a 60-tall read-only box. "OK" (default) and "Cancel" are at the bottom right.
+This is a 640 by 560 dialog. A two-line intro runs across the top (608 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what" and "each session is doing before its title.". Below it are two equal lists side by side, each 296 by 265: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with eleven rows: Title, "Provider (Claude or Codex)", Folder, "Status (needs you, working or idle)", New reply, Last activity, "Kind (desktop app, Cowork, terminal or The Chat Place", Remote Control, Archived, Hidden and Groups. The Kind row is cut at the list's right edge before its closing bracket (#289). The preview box at the bottom wraps onto two lines: "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago," and "desktop app session". Both have a selected row; the right one has the focus outline. Under them is a row of six buttons, "Add", "Remove", "Move Up", "Move Down", "Move to Top" and "Move to Bottom", then a very wide "Reset to Default" button (537 wide). "Preview of the selected session's line:" heads a 60-tall read-only box. "OK" (default) and "Cancel" are at the bottom right.
 
-**What looks off:** The button row and Reset button stop at x=545 while the lists reach 618, so they look misaligned. The 537-wide Reset button is unlike any other button in the app.
+**What looks off:** The Kind row doesn't fit the list (#289). The button row and Reset button stop at x=545 while the lists reach 618, so they look misaligned. The 537-wide Reset button is unlike any other button in the app.
 
 ## prompts: File, Prompts
 

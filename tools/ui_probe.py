@@ -633,7 +633,9 @@ def s_main_codex_owned(frame, env):
                            queued=("Run the unit tests next.",))
     frame.sessions._providers["codex"].runtime = SimpleNamespace(
         known=lambda native: True, snapshot=lambda native: state,
-        ready=lambda record: True, close=lambda: None)
+        ready=lambda record: True, close=lambda: None,
+        # A chat past its first turn reads through discovery (#285).
+        history_route=lambda native: None)
     frame._codex_states[info.key] = state
     frame.open_session(dataclasses.replace(record.to_info(), state=WORKING))
     fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy
