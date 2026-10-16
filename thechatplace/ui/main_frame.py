@@ -2037,6 +2037,12 @@ class MainFrame(CodexChats, wx.Frame):
 
         def work():
             transcript, path, size, error = None, "", 0, ""
+            rule_count = None
+            try:
+                if info.provider == "codex":
+                    rule_count = self.sessions.saved_rule_count("codex", info.cwd)
+            except Exception:
+                pass  # Properties must still open when inventory cannot be checked.
             try:
                 reader, path, size = self.sessions.open_reader_with_facts(info)
                 if reader is not None:
@@ -2045,14 +2051,14 @@ class MainFrame(CodexChats, wx.Frame):
             except Exception as exc:  # noqa: BLE001 - say what can be said without it
                 transcript, error = None, str(exc) or type(exc).__name__
             wx.CallAfter(self._session_properties_read, info, transcript, path, size, error,
-                         returning_to)
+                         returning_to, rule_count)
 
         try:
             self._pool.submit(work)
         except RuntimeError:  # the pool is shut down: the window is closing
             self._properties_busy = False
 
-    def _session_properties_read(self, info, transcript, path, size, error, returning_to):
+    def _session_properties_read(self, info, transcript, path, size, error, returning_to, rule_count=None):
         self._properties_busy = False
         if self._gone() or self._closing:
             return
@@ -2067,7 +2073,7 @@ class MainFrame(CodexChats, wx.Frame):
         try:
             lines = properties.session_properties(
                 info, transcript, path, size, own, self._reported_window(info, model),
-                read_error=error)
+                read_error=error, saved_rule_count=rule_count)
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
         self._show_properties(f"Properties of {info.title or 'Untitled session'}", lines,
@@ -3311,7 +3317,8 @@ class MainFrame(CodexChats, wx.Frame):
             recent = [root] + recent if limit else []
         provider_options = ({"providers": (("claude", "codex") if lookup.path else ("codex",)),
                              "provider": self.speech.new_session_provider,
-                             "load_models": self._load_codex_models}
+                             "load_models": self._load_codex_models,
+                             "load_rules": self._load_codex_rules}
                             if codex_available else {})
         dialog = NewSessionDialog(self, root, recent=recent, projects_root=root,
                                   feedback=self._feedback,
@@ -3473,7 +3480,7 @@ class MainFrame(CodexChats, wx.Frame):
         if info.provider == "codex":
             dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
                                       providers=("codex",), provider="codex", source_state=info.state,
-                                      load_models=self._load_codex_models, feedback=self._feedback)
+                                      load_models=self._load_codex_models, load_rules=self._load_codex_rules, feedback=self._feedback)
             try:
                 if dialog.ShowModal() != wx.ID_OK:
                     return

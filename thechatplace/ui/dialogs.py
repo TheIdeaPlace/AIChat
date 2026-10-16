@@ -90,7 +90,7 @@ class NewSessionDialog(wx.Dialog):
 
     def __init__(self, parent, default_folder: str, continue_from: str = "",
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
-                 remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None):
+                 remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None):
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
@@ -116,6 +116,10 @@ class NewSessionDialog(wx.Dialog):
         self.provider_choice = None
         self._control_provider = "claude"
         self._claude_choices = None
+        self._load_rules = load_rules
+        self._rules_for = None
+        self._rule_count = None
+        self._rules_error = ""
         self._codex_models = ()
         self._codex_choices = (0, 0, 0 if continue_from else 1)
         self._codex_model_error = False
@@ -366,6 +370,7 @@ class NewSessionDialog(wx.Dialog):
     def refresh_repo(self):
         """Read the folder's git repository again, if the folder changed:
         the branches offered, and what Work In says about the folder."""
+        self._refresh_rules()
         if self.continuing:
             return
         folder = self.folder.GetValue().strip()
@@ -529,6 +534,7 @@ class NewSessionDialog(wx.Dialog):
                 if self.provider_choice is not None else self._provider)
 
     def _on_provider(self, _event=None):
+        wx.CallAfter(self._refresh_rules)
         provider = self.provider()
         if self._control_provider == "claude":
             self._claude_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
@@ -547,11 +553,12 @@ class NewSessionDialog(wx.Dialog):
             self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and effort level, "
                 "or leave the configured defaults. "
                 "Choose read-only or allow edits in this folder. Both ask before allowing work "
-                "outside their selected file access; requests appear in Answer. Permissions are verified before sending." +
+                "outside their selected file access, except for your saved always-allow commands. Requests appear in Answer. "
+                "Permissions are verified before sending. " + self._saved_rules_note() +
                 (" Model choices could not be loaded; configured defaults remain available." if self._codex_model_error else
                  " Model choices load in the background." if not self._codex_models_loaded else ""))
             if self.continuing:
-                note = "The copy starts from the last saved point with the permissions selected here. Codex asks when additional access is needed."
+                note = "The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply."
                 if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
                     note = "This chat may still be working in Codex. " + note
                 self.note.SetValue(note + "\n\n" + self.note.GetValue())
@@ -584,6 +591,28 @@ class NewSessionDialog(wx.Dialog):
         self.effort_choice.Set(["Configured Codex effort"] + [codex_effort_label(value) for value in efforts])
         self.effort_choice.SetSelection(0)
         self.effort_choice.Enable(bool(efforts))
+
+    def _saved_rules_note(self):
+        from ..ui_text import codex_saved_rules_text
+        return self._rules_error or codex_saved_rules_text(self._rule_count)
+
+    def _refresh_rules(self):
+        if not self or self.IsBeingDeleted():
+            return
+        if self._load_rules is None or self.provider() != 'codex':
+            return
+        folder = self.folder.GetValue().strip()
+        if folder == self._rules_for:
+            return
+        self._rules_for, self._rule_count, self._rules_error = folder, None, ''
+        self._on_provider()  # Stop displaying the previous folder's count immediately.
+        def done(count, error):
+            if not self or self.IsBeingDeleted() or folder != self._rules_for:
+                return
+            self._rule_count = None if error else count
+            self._rules_error = (count or 'Saved command rules could not be checked.') if error else ''
+            self._on_provider()
+        self._load_rules(folder, done)
 
     def _set_codex_models(self, models, error):
         # An asynchronous catalog can arrive after Cancel/Destroy. It must not

@@ -354,11 +354,17 @@ Codex chats started here because those tools can reach beyond the selected
 folder. It checks that they are disabled before sending. Your global Codex
 configuration stays unchanged; existing chats can still be read.
 
-Saved Codex command rules can allow commands to access other folders without
-asking. The Chat Place refuses to start or send a Codex chat when active
-command-rule files are present or cannot be checked. This conservative check
-also refuses files containing only prompt or deny rules. Existing chats can
-still be read. The Chat Place does not remove or edit your rules.
+Codex keeps your own saved command rules in effect, including user rules such
+as `~/.codex/rules/default.rules` and system rules installed for your computer.
+Commands you've told Codex to always allow will run without asking, even outside
+this folder. New Session and Change Permission Mode explain this; Properties
+shows the number of active user/system rule files, without showing their contents.
+
+The Chat Place refuses rules supplied by a project: `.codex/rules` in the selected
+folder or its parent projects. Choose a folder without those rules, or move the
+project rules out before trying again. It also refuses to start or send when the
+rule inventory cannot be checked. Existing chats can still be read. The Chat Place
+does not remove or edit rules, change your Codex settings, or save approval amendments.
 
 ## Starting a session and replying
 

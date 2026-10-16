@@ -10,7 +10,7 @@ from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE
 from .. import announce
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
-from ..ui_text import key_name
+from ..ui_text import key_name, CODEX_SAVED_RULES_NOTE
 from .dialogs import CodexPermissionDialog, QuestionDialog
 
 
@@ -67,6 +67,9 @@ class CodexChats:
             current = self._codex_drafts.get(key, '')
             self._codex_drafts[key] = text + ('\n\n' + current if current else '')
 
+    def _load_codex_rules(self, folder, callback):
+        self._codex_work(lambda: self.sessions.saved_rule_count('codex', folder), callback)
+
     def _load_codex_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
@@ -105,7 +108,7 @@ class CodexChats:
         current = (record.provider_options.get('sandbox', 'read-only'),
                    record.provider_options.get('approval_policy', 'on-request'))
         selected = self._change_setting('Change Permission Mode',
-            f'Codex permissions for {info.title}. Folder: {record.cwd}. Finish or Stop active work first.',
+            f'Codex permissions for {info.title}. Folder: {record.cwd}. Finish or Stop active work first. ' + CODEX_SAVED_RULES_NOTE,
             choices, current)
         if selected is None:
             return

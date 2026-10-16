@@ -54,7 +54,8 @@ class CodexTurnRejected(CodexRpcError):
         'verified_thread': 'Codex turn requires a verified thread',
         'configuration': 'Codex turn configuration is unavailable',
         'provider': 'Codex turns require the built-in OpenAI provider',
-        'command_rules': 'Codex has saved command rules, or The Chat Place could not check them. Saved rules can skip approval or access other folders. No new turn was sent.',
+        'command_rules': 'The Chat Place could not check Codex saved command rules. No new turn was sent.',
+        'project_rules': 'This folder supplies Codex saved command rules. Choose a folder without project rules, or move those rules out of the project before trying again. No new turn was sent.',
         'mcp_tools': 'Codex external tools could not be disabled for this chat. No new turn was sent.',
     }
 
@@ -64,8 +65,14 @@ class CodexTurnRejected(CodexRpcError):
 
 
 def verify_codex_rule_layers(result):
-    if not platform_paths.codex_rule_layers_clear(result.get('layers')):
+    count, blocked = platform_paths.codex_rule_inventory(result.get('layers'))
+    if count is None:
         raise CodexTurnRejected('command_rules')
+    if blocked:
+        error = CodexTurnRejected('project_rules')
+        error.rules_folder = blocked
+        raise error
+    return count
 
 
 def codex_tool_overrides(config):

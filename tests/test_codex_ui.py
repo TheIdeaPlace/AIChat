@@ -371,3 +371,25 @@ def test_failed_codex_turn_is_a_needs_you_notification_but_stop_is_quiet():
     before = len(w.notified)
     w._on_codex_update(CodexChatState('owned', 'idle', 'stopped', 'interrupted'))
     assert len(w.notified) == before
+
+
+def test_saved_rule_inventory_ignores_stale_and_closed_dialog_callbacks():
+    from thechatplace.ui.dialogs import NewSessionDialog
+    calls, updates = [], []
+    dialog = SimpleNamespace(
+        IsBeingDeleted=lambda: False, provider=lambda: 'codex', folder=Text('/first'),
+        _load_rules=lambda folder, done: calls.append((folder, done)),
+        _rules_for=None, _rule_count=8, _rules_error='',
+        _on_provider=lambda: updates.append(True))
+    NewSessionDialog._refresh_rules(dialog)
+    assert dialog._rule_count is None
+    dialog.folder.SetValue('/second')
+    NewSessionDialog._refresh_rules(dialog)
+    calls[0][1](5, False)
+    assert dialog._rule_count is None
+    calls[1][1](2, False)
+    assert dialog._rule_count == 2
+    dialog.IsBeingDeleted = lambda: True
+    calls[1][1](9, False)
+    NewSessionDialog._refresh_rules(dialog)
+    assert dialog._rule_count == 2 and len(calls) == 2

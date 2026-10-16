@@ -10,6 +10,18 @@ def key_name(shortcut: str) -> str:
     """Name wx's primary accelerator modifier on this platform."""
     return shortcut.replace("Ctrl+", "Cmd+") if sys.platform == "darwin" else shortcut
 
+CODEX_SAVED_RULES_NOTE = (
+    "Commands you've told Codex to always allow will run without asking, even outside this folder. "
+    "Project-supplied command rules are refused."
+)
+
+
+def codex_saved_rules_text(count):
+    if type(count) is int and count >= 0:
+        return f"Saved user/system rule files in effect: {count}. " + (CODEX_SAVED_RULES_NOTE if count else "")
+    return "Saved command rules have not been checked. " + CODEX_SAVED_RULES_NOTE
+
+
 #: The window, in Tab order. The Help dialog and the README both describe it.
 LAYOUT = (
     "One window, three parts, in Tab order: the session list; the messages of the "

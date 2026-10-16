@@ -22,33 +22,25 @@ invent a config key, change CODEX_HOME, copy authentication, or alter user rules
 to make the test pass. Upstream main corroborates this version's behavior but
 does not establish compatibility across CLI versions.
 
-## Separate refusal candidate
+## Revised rule-source policy
 
-The candidate uses config/read with includeLayers and the exact selected cwd.
-It checks active system/user file parents and project dotCodexFolder/rules,
-matching upstream loading. Disabled known layers are skipped. Unknown sources,
-missing/malformed inventories, nonabsolute/network paths, unreadable directories,
-symlinked rules directories and bounded-scan overflow refuse the action. Any
-.rules entry is refused, without parsing Starlark; even prompt-only/deny-only
-files block new chats. The scan permits at most 64 layers and 4,096 directory entries.
-Checks run before lifecycle, after lifecycle before granting a runtime proof,
-and before each turn. All OS/filesystem work remains in platform_paths.
+Kelly's decision, relayed in Claude mailbox #30 on October 15: retain user and
+system rule files, disclose their effect, and refuse project-supplied rules.
+The revised inventory counts direct user/system `.rules` entries without reading
+or publishing their contents. Project entries are refused with their folder and
+recovery guidance before lifecycle, after lifecycle and before every turn.
+Unknown/malformed/unreadable inventories, network paths, symlinked rule directories
+and bounded-scan overflow remain fail-closed. Disabled known layers are skipped.
+The scan permits at most 64 layers and 4,096 directory entries.
 
-Independent source/code review found no blocking implementation defect and
-passed 234 focused tests. Added requested coverage for a symlinked rules folder,
-all known sources without rule folders, and rules appearing after ownership
-before an actual inference request can consume an ID; 134 focused tests pass.
+New Session reads the selected folder's inventory on a worker and ignores stale
+callbacks. Change Permission Mode always displays the saved-rule exception.
+Properties reads a current count on a worker; unavailable inventory stays unknown.
+No authentication, configuration or rule file is modified. No persistent approval
+amendment is granted. Network, write-root and ChatGPT billing checks are retained.
 
-The guarded native reproduction is refused before a prompt is sent. The current
-user's active global layer contains one rule file, so even a clean temporary
-folder's lifecycle is refused. That compatibility cost must be explicit; no
-claim of a successful native rule-free lifecycle is made on this machine.
-
-This is a filesystem snapshot refusal, not upstream runtime isolation. It cannot
-retroactively bless old ungated proofs or remove all races involving changes
-during a turn. Keep #257 open pending review of the product tradeoff, supported
-CLI-version behavior and Windows/native acceptance. The separate branch does
-not change PR #255's reviewed head or its CI candidate.
-
-Full native Mac validation: **2,021 passed, 88 skipped**. The separate branch
-will receive Windows/Mac workflow checks before any merge request is opened.
+This is a filesystem snapshot check, not upstream runtime isolation. Rule changes
+during an active turn can race the snapshot. The policy deliberately respects
+user/system rules, including always-allow commands outside the selected folder.
+Project rules remain forbidden. Native Windows/Mac acceptance and the #226 visual
+matrix remain release gates; automated checks alone do not close #257.

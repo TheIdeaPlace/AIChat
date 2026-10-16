@@ -17,11 +17,14 @@ def layer(folder, kind='project', **extra):
 
 
 @pytest.mark.parametrize('kind', ['project', 'user', 'system'])
-def test_every_supported_active_layer_refuses_any_rule_file(tmp_path, kind):
+def test_project_rules_refused_and_user_system_rules_counted(tmp_path, kind):
     rules = tmp_path / 'rules'; rules.mkdir()
     assert platform_paths.codex_rule_layers_clear([layer(tmp_path, kind)])
     (rules / 'saved.rules').write_text('prefix_rule(pattern=["synthetic"],decision="allow")')
-    assert not platform_paths.codex_rule_layers_clear([layer(tmp_path, kind)])
+    count, blocked = platform_paths.codex_rule_inventory([layer(tmp_path, kind)])
+    assert count == (0 if kind == 'project' else 1)
+    assert bool(blocked) is (kind == 'project')
+    assert platform_paths.codex_rule_layers_clear([layer(tmp_path, kind)]) is (kind != 'project')
     assert platform_paths.codex_rule_layers_clear([layer(tmp_path, kind, disabledReason='untrusted')])
 
 
@@ -113,3 +116,47 @@ def test_recognized_sources_without_rule_folders_do_not_scan_disk(kind, monkeypa
     def unexpected(path): raise AssertionError('source has no rules directory')
     monkeypatch.setattr(platform_paths.os, 'scandir', unexpected)
     assert platform_paths.codex_rule_layers_clear([{'name': {'type': kind}}])
+
+
+def test_user_rules_do_not_block_owned_lifecycle(tmp_path):
+    rules = tmp_path / 'rules'; rules.mkdir()
+    (rules / 'saved.rules').write_text('synthetic')
+    class UserRules(Connection):
+        def request(self, method, params):
+            result = super().request(method, params)
+            if method == 'config/read':
+                result['layers'] = [layer(tmp_path, 'user')]
+            return result
+    c = UserRules()
+    proof = CodexOwnedThreads(c).start(str(tmp_path), 'Synthetic')
+    assert proof.native_id
+    assert any(method == 'thread/start' for method, _ in c.calls)
+
+
+def test_project_refusal_discloses_folder_but_diagnostics_do_not(tmp_path):
+    from thechatplace.providers.codex_rpc import verify_codex_rule_layers
+    from thechatplace.codex_diagnostics import safe_reason
+    rules = tmp_path / 'rules'; rules.mkdir()
+    (rules / 'saved.rules').write_text('synthetic')
+    with pytest.raises(CodexRpcError) as caught:
+        verify_codex_rule_layers({'layers': [layer(tmp_path)]})
+    assert caught.value.code == 'project_rules'
+    assert str(rules) in safe_reason(caught.value)
+    assert 'Choose a folder' in safe_reason(caught.value)
+
+
+def test_rule_disclosure_has_count_and_plain_warning():
+    from thechatplace.ui_text import codex_saved_rules_text
+    text = codex_saved_rules_text(2)
+    assert '2' in text and 'without asking, even outside this folder' in text
+    assert 'not been checked' in codex_saved_rules_text(None)
+    assert '0' in codex_saved_rules_text(0)
+
+
+def test_properties_show_only_rule_count():
+    from thechatplace.own_store import OwnSession
+    from thechatplace.properties import session_properties
+    record = OwnSession('synthetic', 'Synthetic', '/workspace', provider='codex')
+    lines = session_properties(record.to_info(), own=record, saved_rule_count=3)
+    assert 'Saved user/system rule files in effect: 3' in lines
+    assert not any('default.rules' in line for line in lines)

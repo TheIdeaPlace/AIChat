@@ -15,7 +15,12 @@ _CONNECTION = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ Codex connection fail
 
 def safe_reason(error):
     if type(error) in (CodexTurnRejected, CodexConnectionFailure, CodexRequestTimeout):
-        return type(error).REASONS.get(error.code, '')
+        text = type(error).REASONS.get(error.code, '')
+        if type(error) is CodexTurnRejected and error.code == 'project_rules':
+            folder = getattr(error, 'rules_folder', '')
+            if isinstance(folder, str) and len(folder) <= 32768 and not any(ord(c) < 32 for c in folder):
+                text += ' Rules folder: ' + folder
+        return text
     return ''
 
 

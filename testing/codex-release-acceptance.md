@@ -55,21 +55,19 @@ is optional. Steer and the reading pane are outside this release.
   grants; changing policy must wait for an idle chat and keep sends blocked
   until verification and saving complete.
 - Foundations, storage and reading have merged through independent review.
-  Finish owned-chat #255 re-review and the Provider-default slice; require green
+  Finish owned-chat #255 merge and the Provider-default slice; require green
   Windows/Mac tests and packaged smoke checks on the exact candidate.
 - Verify inherited Codex execution approval rules before declaring folder-access
   behavior release-ready (#257). External MCP servers, apps and plugins are disabled per chat without changing
   global settings. Thread-specific inventory must confirm disabled servers and
   zero tools before granting runtime ownership and before sending. The native
   Mac folder-edit command passed with two configured servers disabled.
-  A separate candidate guard refuses any command-rule file beside active user,
-  system or project layers before lifecycle, after lifecycle, and before turns.
-  It deliberately refuses prompt-only/deny-only files too. The native bypass
-  reproduction is now refused before sending, but the current user's global
-  rule file also prevents a clean-folder lifecycle. Review this compatibility
-  cost and remaining filesystem-snapshot limitations before accepting #257.
-  Do not claim upstream per-thread rule isolation or close the release gate
-  solely because the guard tests pass.
+  Decision recorded October 15: keep user/system rules active and disclose their
+  effect in New Session, Change Permission Mode and Properties; refuse project
+  rules and malformed/unreadable inventories before lifecycle and every turn.
+  Verify a synthetic user rule remains usable and disclosed, and project rules
+  prevent sending with the rules-folder name and recovery guidance. Do not claim
+  upstream per-thread rule isolation: inventory checks are filesystem snapshots.
   Case-insensitive Mac path identity remains a fail-closed follow-up (#256).
 - Repeat the passed native Mac file-edit check on Windows: a real Codex turn must edit a harmless file in a disposable selected
   folder. Confirm file scope, approvals/questions, Stop, queued text recovery
