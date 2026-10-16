@@ -184,21 +184,27 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   WebView2 runtime, which comes with Windows 11; without it, the text box opens. Nothing in the
   page is fetched from the internet, and HTML in a message is shown as text, never run. **Lists**
   (View, Lists, **Ctrl+Shift+I**, from the session list, the messages or the reply box, #279) is
-  one dialog with a tab for each kind of thing in a chat: **Code Blocks**, **Links**, **Changed
+  one dialog for each kind of thing in a chat: **Code Blocks**, **Links**, **Changed
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
   yet", and its output) and **Decisions** (each question Claude asked, with your answer). **Show
   items from** (Alt+S) chooses This message or The whole chat; for files, commands and decisions,
   "this message" is the selected message's turn, from your message to Claude's reply. Links,
-  commands and decisions list the newest first; code blocks and files are in the order they appear. The tab strip is a Tab stop (arrow to change the tab, Enter goes to its list), and
-  **Ctrl+Tab** and **Ctrl+Shift+Tab** (also Ctrl+Page Down and Page Up; the Control key on a Mac
-  too) change the tab from anywhere and stay on its list. It opens on the tab you used last.
+  commands and decisions list the newest first; code blocks and files are in the order they appear.
+  The kinds are a list of their own, **Kinds**
+  (Alt+K), each with its count ("Commands (12)"), which Tab and Shift+Tab reach on Windows and on a
+  Mac; arrowing it changes the items shown, and Enter goes to them. From anywhere in Lists,
+  **Ctrl+Tab** and **Ctrl+Shift+Tab** or **Ctrl+Page Down** and **Page Up** on Windows, and
+  **Cmd+Shift+]** and **Cmd+Shift+[** or **Cmd+Page Down** and **Page Up** on a Mac, change the
+  kind and stay on its list (Control+Tab is left to macOS, which uses it to move between groups of
+  controls; where ] and [ need Option, use Cmd+Page Down and Up); on Windows, **Ctrl+1** to
+  **Ctrl+5** go straight to one. It opens on the kind you used last.
   **Ctrl+Shift+B** opens it on Code Blocks for the selected message, **Ctrl+L** on Links for the
   whole chat, and **Ctrl+Shift+D** on Changed Files, for the selected message's turn (or your
   latest) if it changed any files, else for the whole chat. Enter reads an item in full in the Details box
   (on Links, Enter or Open opens the link in your browser and closes Lists); Ctrl+C (or Copy)
   copies it (the code, the address, the file's path, the command or your answer), and on Links
   Ctrl+Shift+C (or Copy as Markdown) copies a Markdown link. Typing narrows the list (the letters go
-  to its Filter box); Down Arrow comes back. A tab with nothing says so ("No commands in this
+  to its Filter box); Down Arrow comes back. A kind with nothing says so ("No commands in this
   chat."). **Ctrl+Shift+C** copies the message's last code block straight away. A link reads as
   its words and then where it goes, a bare address as itself (a long one shortened to its site and
   its end), then who wrote it and roughly when, and "in code" for one in a code block or inline
@@ -207,7 +213,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Only web, email and session links open; anything else, such as a file: path, is marked "copy
   only" and says why if you try. Links in tool calls and results are listed only with Show Tool
   Activity on. Changed files, commands and decisions are listed for Claude chats for now; in a
-  Codex chat those tabs say so. Question cards read as
+  Codex chat those kinds say so. Question cards read as
   "Claude asked: Which version?" with the options in the full text,
   then "You answered: ...". Refused tools read "Permission denied: ...". Tool calls and tool
   results are hidden unless you turn on Show Tool Activity (Ctrl+T). It's set for each session and
@@ -468,7 +474,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     macOS asks once whether The Chat Place may send them (System Settings, Notifications changes
     that). Each one remembers its own session, so choosing an older one still opens the right
     session.
-- **Changed Files** (Ctrl+Shift+D, View menu) opens Lists on its Changed Files tab: the files
+- **Changed Files** (Ctrl+Shift+D, View menu) opens Lists on Changed Files: the files
   Claude changed in the selected message's turn (your latest, if none is selected), or in the
   whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
   removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a

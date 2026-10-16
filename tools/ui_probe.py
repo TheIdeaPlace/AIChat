@@ -915,14 +915,14 @@ def d_changes(frame, env):
 
 
 def d_lists_commands(frame, env):
-    """View, Lists on its Commands tab (#279)."""
+    """View, Lists on Commands (#279)."""
     from thechatplace import lists
     _open(frame, "Visual probe")
     return lambda: frame.on_lists(lists.COMMANDS, lists.SCOPE_CHAT)
 
 
 def d_lists_decisions(frame, env):
-    """View, Lists on its Decisions tab (#279)."""
+    """View, Lists on Decisions (#279)."""
     from thechatplace import lists
     _open(frame, "Fix the flaky upload test")
     return lambda: frame.on_lists(lists.DECISIONS, lists.SCOPE_CHAT)

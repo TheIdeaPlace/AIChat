@@ -113,17 +113,19 @@ SHORTCUTS = [
         ("Ctrl+Enter on a queued message", "Send it now (Claude chats): Claude stops what it's doing and "
                                            "answers it"),
         ("Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks",
-         "Lists, on the Code Blocks tab for this message: read and copy each code block"),
+         "Lists, on Code Blocks for this message: read and copy each code block"),
         ("Ctrl+F, then F3 and Shift+F3", "Find a message containing some text (its whole "
                                          "text, not just the first line), then the next or "
                                          "previous one"),
         ("End", "Newest message"),
-        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands and decisions, a tab "
-                         "each, for this message or the whole chat; it opens on the tab you used "
-                         "last. Ctrl+Tab and Ctrl+Shift+Tab change the tab and stay on its list; "
-                         "Enter reads an item in full (a link opens), Ctrl+C copies, typing "
-                         "narrows the list (also from the session list and the reply box)"),
-        ("Ctrl+L", "Lists, on the Links tab for the whole chat: Enter opens a link in your "
+        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands and decisions, for "
+                         "this message or the whole chat; it opens on the kind you used last, and "
+                         "the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down "
+                         "and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a "
+                         "Mac, and Control+Tab on Windows); Enter reads an item in full "
+                         "(a link opens), Ctrl+C copies, typing narrows the list (also from the "
+                         "session list and the reply box)"),
+        ("Ctrl+L", "Lists, on Links for the whole chat: Enter opens a link in your "
                    "browser, Ctrl+C copies its address (also from the session list and the "
                    "reply box)"),
         ("Ctrl+T", "Show or hide tool activity in the loaded session"),
@@ -145,7 +147,7 @@ SHORTCUTS = [
         ("Ctrl+Shift+M", "Other machines: list your sessions on other computers and send one "
                          "a message, through Claude in the loaded Chat Place session (it needs "
                          "Remote Control on)"),
-        ("Ctrl+Shift+D", "Lists, on the Changed Files tab (Claude chats): what changed in the selected "
+        ("Ctrl+Shift+D", "Lists, on Changed Files (Claude chats): what changed in the selected "
          "message's turn (your latest, if none is selected) or in the whole chat; Enter on a file "
          "reads its changes line by line"),
         ("Ctrl+Shift+U", "Usage and context: read the active provider's reported context and "
