@@ -24,8 +24,8 @@ def _info(key="x", **extra):
 def test_the_default_row_identifies_the_provider_and_source():
     info = _info(source=OWN, state=NEEDS_YOU, detail="Pick a name", unread=True, remote=True,
                  groups=("Work",))
-    line = ("Fix the build, Repo, needs you: Pick a name, new reply, active 5 minutes ago, "
-            "Chat Place session, Remote Control, group Work, Claude")
+    line = ("Fix the build, Claude, Repo, needs you: Pick a name, new reply, active 5 minutes ago, "
+            "Chat Place session, Remote Control, group Work")
     assert info.list_line(NOW) == line
     assert info.list_line(NOW, DEFAULT_FIELDS) == line
 
@@ -196,7 +196,7 @@ def test_older_custom_columns_gain_provider_once_without_losing_choices(tmp_path
                 'codex_enabled': codex_enabled, 'announce_own': False}
     path.write_text(json.dumps(original), encoding='utf-8')
     settings = SpeechSettings.load(path)
-    assert settings.session_fields == original['session_fields'] + ['provider']
+    assert settings.session_fields == ['last_message', 'status', 'title', 'provider', 'kind']
     assert not settings.announce_own
     assert json.loads(path.read_text()) == original  # loading never overwrites the old file
     settings.save(path)
@@ -221,3 +221,13 @@ def test_kind_describes_source_independently_of_provider(provider, source, kind)
     values = _info(provider=provider, source=source).field_values(NOW)
     assert values['kind'] == kind
     assert values['provider'] == provider.capitalize()
+
+
+def test_upgrade_without_title_places_provider_first(tmp_path):
+    path = tmp_path / 'settings.json'
+    path.write_text(json.dumps({'session_fields': ['status', 'last_message']}))
+    assert SpeechSettings.load(path).session_fields == ['provider', 'status', 'last_message']
+
+
+def test_default_columns_read_provider_immediately_after_title():
+    assert DEFAULT_FIELDS[:2] == ['title', 'provider']

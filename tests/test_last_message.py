@@ -280,11 +280,11 @@ def test_the_column_is_there_but_off_by_default(tmp_path):
     path = tmp_path / "settings.json"
     saved = ["status", "title", "folder", "activity"]
     path.write_text(json.dumps({"session_fields": saved}), encoding="utf-8")
-    assert SpeechSettings.load(path).session_fields == saved + ["provider"]
+    assert SpeechSettings.load(path).session_fields == ["status", "title", "provider", "folder", "activity"]
     # Chosen, it's kept where it was put.
     path.write_text(json.dumps({"session_fields": ["title", "last_message", "status"]}),
                     encoding="utf-8")
-    assert SpeechSettings.load(path).session_fields == ["title", "last_message", "status", "provider"]
+    assert SpeechSettings.load(path).session_fields == ["title", "provider", "last_message", "status"]
 
 
 def test_the_row_reads_the_last_message_where_it_was_put():

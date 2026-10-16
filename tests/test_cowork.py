@@ -54,7 +54,7 @@ def test_cowork_sessions_are_read_only_desktop_sessions(tmp_path):
         (DESKTOP, "local_cw1", "Sort the receipts", "cli-cw1")
     assert info.cowork and not info.is_own
     assert info.desktop_session_id == "local_cw1" and info.can_open_in_claude
-    assert info.list_line(NOW).endswith("Cowork session, Claude")
+    assert info.list_line(NOW).endswith("Cowork session")
     # The --resume guard knows its id, as it knows every desktop app id.
     assert result.desktop_cli_ids == {"cli-cw1"}
     # And knows it's a Cowork one, which can't even be copied here.
@@ -175,7 +175,7 @@ def test_folder_is_the_one_cowork_was_given_not_outputs(tmp_path):
     [info] = load(tmp_path).sessions
     # With no folder it says so: the row ends "Cowork session" already.
     assert info.repo == "no folder"
-    assert info.list_line(NOW).startswith("Sort the receipts, no folder, idle")
+    assert info.list_line(NOW).startswith("Sort the receipts, Claude, no folder, idle")
     assert info.list_line(NOW).count("Cowork") == 1
     data = json.loads(path.read_text(encoding="utf-8"))
     data["userSelectedFolders"] = ["C:\\Users\\k\\OneDrive\\Finance\\"]

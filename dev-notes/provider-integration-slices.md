@@ -60,7 +60,7 @@ Full native Mac suite: 1,674 passed, 74 skipped; final focused regression pass:
 ## Provider defaults
 
 Slice 5 enables Provider as a regular default column for everyone, independent
-of the Codex setting. Kind remains on. Older saved column choices append Provider
-once without dropping or reordering other choices; the upgrade flag is persisted
+of the Codex setting. Kind remains on. Older saved column choices insert Provider
+once immediately after Title (or first without Title) without dropping or reordering other choices; the upgrade flag is persisted
 with normal settings saves so removing Provider afterwards remains effective.
 The guide, layout help and session-list regressions describe the same behavior.

@@ -240,10 +240,12 @@ class SpeechSettings:
         settings.remote_control = raw.get("remote_control") is True
         settings.codex_enabled = raw.get("codex_enabled") is True
         settings.new_session_provider = ("codex" if raw.get("new_session_provider") == "codex" else "claude")
-        from .sessions import clean_fields, FIELD_PROVIDER
+        from .sessions import clean_fields, FIELD_PROVIDER, FIELD_TITLE
         settings.session_fields = clean_fields(raw.get("session_fields"))
         if raw.get("provider_column_added") is not True and FIELD_PROVIDER not in settings.session_fields:
-            settings.session_fields.append(FIELD_PROVIDER)
+            index = (settings.session_fields.index(FIELD_TITLE) + 1
+                     if FIELD_TITLE in settings.session_fields else 0)
+            settings.session_fields.insert(index, FIELD_PROVIDER)
         settings.update_installed_notice = raw.get("update_installed_notice") is not False
         last = raw.get("last_run_version", "")
         settings.last_run_version = last.strip() if isinstance(last, str) else ""

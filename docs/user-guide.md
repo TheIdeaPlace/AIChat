@@ -539,11 +539,10 @@ still listed.
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.
 
-The parts are called columns: Title, Folder, Status, New reply, Last activity, Kind (desktop app,
-Cowork, terminal or The Chat Place), Remote Control, Archived, Hidden, Groups and Provider (Claude
-or Codex), all read at first. Started and Last message are read only once you add them. Provider
-says which AI; Kind says where the session started. Older saved choices gain Provider once, at
-the end, without changing their other columns. If you remove Provider afterward, it stays removed. A column with nothing to say for
+The parts are called columns: Title, Provider (Claude or Codex), Folder, Status, New reply, Last activity, Kind (desktop app,
+Cowork, terminal or The Chat Place), Remote Control, Archived, Hidden and Groups, all read at first. Started and Last message are read only once you add them. Provider
+says which AI; Kind says where the session started. Older saved choices gain Provider once, immediately
+after Title (or first if Title is hidden), without changing their other columns. If you remove Provider afterward, it stays removed. A column with nothing to say for
 a session, such as New reply when there isn't one, is simply left out of that line.
 
 **Last activity** ("active 5 minutes ago") is the last time the session did anything, even in the

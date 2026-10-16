@@ -76,7 +76,7 @@ def test_untitled_and_worktree_repo_names():
         "C:\\Users\\k\\GitHub\\TheWorkBench\\.claude\\worktrees\\brave-cat-1"),
         cli_session_id="c")
     assert info.repo == "TheWorkBench worktree"
-    assert info.list_line(NOW).startswith("Untitled session, TheWorkBench worktree, idle")
+    assert info.list_line(NOW).startswith("Untitled session, Claude, TheWorkBench worktree, idle")
     assert SessionInfo(DESKTOP, "k", "t", "", "c").repo == "unknown folder"
 
 
@@ -184,8 +184,8 @@ def test_list_line_reads_every_part():
     info = SessionInfo(source=OWN, key="own:x", title="Probe", cwd="C:\\G\\Repo",
                        cli_session_id="x", state=NEEDS_YOU, detail="2 tools were refused",
                        last_activity_ms=NOW - 120_000, unread=True)
-    assert info.list_line(NOW) == ("Probe, Repo, needs you: 2 tools were refused, new reply, "
-                                   "active 2 minutes ago, Chat Place session, Claude")
+    assert info.list_line(NOW) == ("Probe, Claude, Repo, needs you: 2 tools were refused, new reply, "
+                                   "active 2 minutes ago, Chat Place session")
 
 
 # -- hub.collect ------------------------------------------------------------------

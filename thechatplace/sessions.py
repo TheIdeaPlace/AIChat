@@ -218,6 +218,7 @@ FIELD_GROUPS = "groups"
 FIELD_LAST_MESSAGE = "last_message"
 FIELDS = [
     (FIELD_TITLE, "Title"),
+    (FIELD_PROVIDER, "Provider (Claude or Codex)"),
     (FIELD_FOLDER, "Folder"),
     (FIELD_STATUS, "Status (needs you, working or idle)"),
     (FIELD_NEW_REPLY, "New reply"),
@@ -227,7 +228,6 @@ FIELDS = [
     (FIELD_ARCHIVED, "Archived"),
     (FIELD_HIDDEN, "Hidden"),
     (FIELD_GROUPS, "Groups"),
-    (FIELD_PROVIDER, "Provider (Claude or Codex)"),
     (FIELD_STARTED, "Started (when the session began)"),
     (FIELD_LAST_MESSAGE, "Last message"),
 ]
