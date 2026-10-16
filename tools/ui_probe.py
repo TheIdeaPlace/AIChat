@@ -744,7 +744,7 @@ def d_codex_new(frame, env):
 
 def d_codex_mode(frame, env):
     from thechatplace.ui_text import CODEX_SAVED_RULES_NOTE
-    dialog = wx.SingleChoiceDialog(frame, 'Codex permissions for a Chat Place session. Folder: Scratch. ' + CODEX_SAVED_RULES_NOTE,
+    dialog = wx.SingleChoiceDialog(frame, 'Codex permissions for a Chat Place session.\nFolder: Scratch.\n\n' + CODEX_SAVED_RULES_NOTE,
         'Change Permission Mode', ['Read-only; asks before allowing changes',
         'Can edit files in this folder; asks before anything else'])
     dialog.SetSelection(1)

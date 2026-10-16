@@ -108,7 +108,7 @@ class CodexChats:
         current = (record.provider_options.get('sandbox', 'read-only'),
                    record.provider_options.get('approval_policy', 'on-request'))
         selected = self._change_setting('Change Permission Mode',
-            f'Codex permissions for {info.title}. Folder: {record.cwd}. Finish or Stop active work first. ' + CODEX_SAVED_RULES_NOTE,
+            f'Codex permissions for {info.title}.\nFolder: {record.cwd}.\nFinish or Stop active work first.\n\n' + CODEX_SAVED_RULES_NOTE,
             choices, current)
         if selected is None:
             return

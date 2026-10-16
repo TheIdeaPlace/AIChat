@@ -11,7 +11,8 @@ def key_name(shortcut: str) -> str:
     return shortcut.replace("Ctrl+", "Cmd+") if sys.platform == "darwin" else shortcut
 
 CODEX_SAVED_RULES_NOTE = (
-    "Commands you've told Codex to always allow will run without asking, even outside this folder. "
+    "Commands you've told Codex to always allow\n"
+    "will run without asking, even outside this folder.\n"
     "Project-supplied command rules are refused."
 )
 
