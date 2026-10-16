@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from .. import platform_paths
 from ..own_store import OwnSession
 from ..sessions import SessionInfo
-from .codex_rpc import codex_tool_overrides, verify_codex_tools, CodexRpcError, CodexTurnRejected, ReadOnlyCodexConnection
+from .codex_rpc import verify_codex_rule_layers, codex_tool_overrides, verify_codex_tools, CodexRpcError, CodexTurnRejected, ReadOnlyCodexConnection
 from .codex_models import read_models
 from .codex_policy import CodexPolicy
 
@@ -58,7 +58,8 @@ class CodexOwnedThreads:
                 or account["account"].get("type") != "chatgpt"
                 or account.get("requiresOpenaiAuth") is not True):
             raise CodexRpcError("Codex owned chats require ChatGPT sign-in")
-        config = self.connection.request("config/read", {"cwd": cwd, "includeLayers": False}).get("config")
+        result = self.connection.request("config/read", {"cwd": cwd, "includeLayers": True})
+        config = result.get("config")
         if not isinstance(config, dict):
             raise CodexRpcError("Codex configuration unavailable")
         tools = codex_tool_overrides(config)
@@ -70,6 +71,7 @@ class CodexOwnedThreads:
                 or not isinstance(providers, dict) or "openai" in providers):
             raise CodexRpcError("Codex owned chats require the default ChatGPT route")
 
+        verify_codex_rule_layers(result)
         return tools
 
     def _create(self, method, cwd, title, *, native_id=None, ephemeral=False, model=None, effort=None,
@@ -143,6 +145,10 @@ class CodexOwnedThreads:
             # Never grant a runtime proof from a partial or mismatched response.
             # No prompt has been sent; uncertain creation is never replayed.
             raise CodexRpcError("Codex owned chat configuration could not be verified")
+        # Check again after lifecycle loading before granting any runtime proof.
+        # A proof from an earlier, ungated process must never be reused.
+        verified_config = self.connection.request('config/read', {'cwd': cwd, 'includeLayers': True})
+        verify_codex_rule_layers(verified_config)
         verify_codex_tools(self.connection, actual_id)
         created = thread.get("createdAt")
         created_ms = created * 1000 if type(created) is int and created >= 0 else 0

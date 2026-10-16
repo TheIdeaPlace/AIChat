@@ -11,7 +11,7 @@ from .. import announce
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name
-from .dialogs import CodexPermissionDialog, QuestionDialog
+from .dialogs import CodexPermissionDialog, QuestionDialog, codex_permission_prompt
 
 
 class CodexChats:
@@ -67,6 +67,9 @@ class CodexChats:
             current = self._codex_drafts.get(key, '')
             self._codex_drafts[key] = text + ('\n\n' + current if current else '')
 
+    def _load_codex_rules(self, folder, callback):
+        self._codex_work(lambda: self.sessions.saved_rule_count('codex', folder), callback)
+
     def _load_codex_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
@@ -105,7 +108,7 @@ class CodexChats:
         current = (record.provider_options.get('sandbox', 'read-only'),
                    record.provider_options.get('approval_policy', 'on-request'))
         selected = self._change_setting('Change Permission Mode',
-            f'Codex permissions for {info.title}. Folder: {record.cwd}. Finish or Stop active work first.',
+            codex_permission_prompt(self, info.title, record.cwd),
             choices, current)
         if selected is None:
             return
@@ -115,7 +118,7 @@ class CodexChats:
         def prepared(change, error):
             if error:
                 self._codex_policy_pending.discard(info.key)
-                self._feedback('Could not change Codex permissions. Wait for an idle chat or reload to check its status.')
+                self._feedback(change or 'Could not change Codex permissions. Wait for an idle chat or reload to check its status.')
                 return
             proposed = change.record()
             saved = self.store.get(record.cli_session_id, 'codex') is record and self._store_write(self.store.update, record.cli_session_id, provider='codex',

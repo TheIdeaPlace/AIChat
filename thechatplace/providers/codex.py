@@ -271,6 +271,12 @@ class CodexProvider:
             from .codex_runtime import CodexChatRuntime
             self.runtime = CodexChatRuntime(on_update, executable=executable)
 
+    def saved_rule_count(self, cwd):
+        """Worker-only inventory; never creates or resumes a chat."""
+        from .codex_rpc import verify_codex_rule_layers
+        result = self.connection.request('config/read', {'cwd': cwd, 'includeLayers': True})
+        return verify_codex_rule_layers(result)
+
     def model_choices(self):
         """Worker-only discovery; never creates or resumes an owned chat."""
         return read_models(self.connection)

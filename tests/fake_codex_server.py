@@ -1,11 +1,14 @@
 """Synthetic stdio server; never reads account data or runs an agent."""
 import json
+from pathlib import Path
 import sys
 import threading
 import time
 
 sys.stdin.reconfigure(encoding="utf-8")
 sys.stdout.reconfigure(encoding="utf-8")
+
+LAYERS = [{'name': {'type': 'project', 'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]
 
 lock = threading.Lock()
 pair = []
@@ -78,7 +81,7 @@ for line in sys.stdin:
         if method == 'account/read':
             result = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
         elif method == 'config/read':
-            result = {'config': {}}
+            result = {'config': {}, 'layers': LAYERS}
         elif method == 'thread/start':
             result = {'thread': {'id': 'owned', 'createdAt': 1, 'status': {'type': 'idle'}, 'ephemeral': False},
                       'cwd': '/workspace', 'model': 'synthetic', 'modelProvider': 'openai',
@@ -143,7 +146,9 @@ for line in sys.stdin:
             config["openai_base_url"] = "alternate"
         if kind == "cwd-sensitive" and params.get("cwd") != "/synthetic":
             config["model_provider"] = "alternate"
-        emit({"id": request["id"], "result": {"config": config, "echo": params}})
+        layers = ([{'name': {'type': 'project', 'dotCodexFolder': params.get('cwd')}}]
+                  if kind == 'rule-files' else LAYERS)
+        emit({"id": request["id"], "result": {"config": config, "layers": layers, "echo": params}})
         continue
     mode = params.get("mode")
     if mode == 'approval-receive':

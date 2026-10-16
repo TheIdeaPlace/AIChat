@@ -1,3 +1,4 @@
+from pathlib import Path
 import threading
 from collections import deque
 from dataclasses import replace
@@ -154,7 +155,8 @@ def runtime_connection():
     c._accept_owned_thread(proof)
     c.request = lambda method, params: ({'thread': {'id': 'owned', 'modelProvider': 'openai',
         'cwd': '/workspace', 'status': {'type': 'idle'}}} if method == 'thread/read'
-        else {'data': []} if method == 'mcpServerStatus/list' else {'config': {}})
+        else {'data': []} if method == 'mcpServerStatus/list' else {'config': {}, 'layers': [{'name': {'type': 'project',
+            'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]})
     params = {'threadId': 'owned', 'cwd': '/workspace', 'model': 'model',
         'approvalPolicy': 'on-request', 'approvalsReviewer': 'user',
         'sandboxPolicy': {'type': 'readOnly'}, 'input': [{'type': 'text', 'text': 'Hello'}]}
@@ -179,7 +181,8 @@ def test_unknown_or_busy_thread_cannot_start_a_new_turn():
     for status in ['notLoaded', 'active']:
         c.request = lambda method, args: ({'thread': {'id': 'owned', 'modelProvider': 'openai',
             'cwd': '/workspace', 'status': {'type': status}}} if method == 'thread/read'
-            else {'data': []} if method == 'mcpServerStatus/list' else {'config': {}})
+            else {'data': []} if method == 'mcpServerStatus/list' else {'config': {}, 'layers': [{'name': {'type': 'project',
+            'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]})
         with pytest.raises(CodexRpcError, match='confirmed idle'):
             c._verify_turn_route(params)
 

@@ -2071,12 +2071,35 @@ class MainFrame(CodexChats, wx.Frame):
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
         self._show_properties(f"Properties of {info.title or 'Untitled session'}", lines,
-                              returning_to)
+                              returning_to, codex_info=info if info.provider == 'codex' else None)
 
-    def _show_properties(self, title, lines, returning_to):
-        self._modal(PropertiesDialog(self, title, lines, self._copy_properties))
+    def _show_properties(self, title, lines, returning_to, codex_info=None):
+        if codex_info is not None:
+            lines = self._rule_property_rows(lines, properties.saved_rule_lines(pending=True))
+        dialog = PropertiesDialog(self, title, lines, self._copy_properties)
+        if codex_info is not None:
+            def rules_ready(result, failed):
+                if not dialog or dialog.IsBeingDeleted():
+                    return
+                rows = properties.saved_rule_lines(
+                    None if failed else result,
+                    (result or 'Codex command rules could not be checked.') if failed else '')
+                selected = dialog.list.GetSelection()
+                dialog._lines = self._rule_property_rows(dialog._lines, rows)
+                dialog.list.Set(dialog._lines)
+                if dialog._lines:
+                    dialog.list.SetSelection(min(max(selected, 0), len(dialog._lines) - 1))
+            self._load_codex_rules(codex_info.cwd, rules_ready)
+        self._modal(dialog)
         if returning_to:
             returning_to.SetFocus()
+
+    @staticmethod
+    def _rule_property_rows(lines, rows):
+        prefixes = ('Saved user/system rule files', 'Saved command rules')
+        index = next((i for i, line in enumerate(lines) if line.startswith(prefixes)), len(lines))
+        kept = [line for line in lines if not line.startswith(prefixes)]
+        return kept[:index] + rows + kept[index:]
 
     def _copy_properties(self, text: str, one_line: bool):
         if self._copy_text(text):
@@ -3311,7 +3334,8 @@ class MainFrame(CodexChats, wx.Frame):
             recent = [root] + recent if limit else []
         provider_options = ({"providers": (("claude", "codex") if lookup.path else ("codex",)),
                              "provider": self.speech.new_session_provider,
-                             "load_models": self._load_codex_models}
+                             "load_models": self._load_codex_models,
+                             "load_rules": self._load_codex_rules}
                             if codex_available else {})
         dialog = NewSessionDialog(self, root, recent=recent, projects_root=root,
                                   feedback=self._feedback,
@@ -3473,7 +3497,7 @@ class MainFrame(CodexChats, wx.Frame):
         if info.provider == "codex":
             dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
                                       providers=("codex",), provider="codex", source_state=info.state,
-                                      load_models=self._load_codex_models, feedback=self._feedback)
+                                      load_models=self._load_codex_models, load_rules=self._load_codex_rules, feedback=self._feedback)
             try:
                 if dialog.ShowModal() != wx.ID_OK:
                     return

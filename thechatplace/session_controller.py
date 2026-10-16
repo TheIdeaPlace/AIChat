@@ -167,6 +167,12 @@ class SessionController:
         method = getattr(self._provider(session), 'usage_warnings', None)
         return method(session) if callable(method) else ()
 
+    def saved_rule_count(self, provider, cwd):
+        backend = self._providers.get(provider)
+        if self._closed or backend is None or not callable(getattr(backend, 'saved_rule_count', None)):
+            raise ValueError("This provider cannot check saved command rules")
+        return backend.saved_rule_count(cwd)
+
     def model_choices(self, provider):
         backend = self._providers.get(provider)
         if self._closed or backend is None or not callable(getattr(backend, 'model_choices', None)):

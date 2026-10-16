@@ -1191,6 +1191,71 @@ def _native_codex(path: str) -> bool:
         return False
 
 
+def codex_rule_inventory(layers):
+    """Count user/system rule files and refuse project-supplied rules (#257).
+
+    Codex loads direct .rules files beside active system/user/project layers.
+    An allow rule can bypass both the folder sandbox and the approval UI (#257).
+    This is a bounded snapshot check, not upstream per-thread rule isolation.
+    """
+    if not isinstance(layers, list) or not 1 <= len(layers) <= 64:
+        return None, ""
+    no_folder = {'packagedDefaults', 'mdm', 'enterpriseManaged', 'sessionFlags',
+                 'legacyManagedConfigTomlFromFile', 'legacyManagedConfigTomlFromMdm'}
+    folders = {}
+    for layer in layers:
+        if not isinstance(layer, dict) or not isinstance(layer.get('name'), dict):
+            return None, ""
+        source = layer['name']
+        kind = source.get('type')
+        if not isinstance(kind, str) or kind not in no_folder | {'user', 'system', 'project'}:
+            return None, ""
+        disabled = layer.get('disabledReason')
+        if disabled is not None:
+            if not isinstance(disabled, str) or not disabled:
+                return None, ""
+            continue
+        if kind in no_folder:
+            continue
+        if kind not in ('user', 'system', 'project'):
+            return None, ""
+        name = source.get('dotCodexFolder' if kind == 'project' else 'file')
+        if (not isinstance(name, str) or len(name) > 32768 or '\x00' in name
+                or name.startswith(('//', '\\\\'))):
+            return None, ""
+        path = Path(name)
+        if not path.is_absolute():
+            return None, ""
+        folder = (path if kind == 'project' else path.parent) / 'rules'
+        folders[folder] = folders.get(folder, False) or kind == 'project'
+    count = saved = 0
+    blocked = ""
+    for folder, project in folders.items():
+        try:
+            if folder.is_symlink():
+                return None, ""
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    count += 1
+                    if count > 4096:
+                        return None, ""
+                    if entry.name.endswith('.rules'):
+                        if project:
+                            blocked = str(folder)
+                        else:
+                            saved += 1
+        except FileNotFoundError:
+            continue  # Codex also permits a genuinely absent rules directory.
+        except OSError:
+            return None, ""
+    return saved, blocked
+
+
+def codex_rule_layers_clear(layers) -> bool:
+    count, blocked = codex_rule_inventory(layers)
+    return count is not None and not blocked
+
+
 def codex_workspace_root(cwd: str) -> str:
     """Bind write access to an existing canonical folder, never a drive root."""
     if not isinstance(cwd, str) or not cwd.strip():

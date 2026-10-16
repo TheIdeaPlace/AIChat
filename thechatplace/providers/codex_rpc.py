@@ -54,12 +54,25 @@ class CodexTurnRejected(CodexRpcError):
         'verified_thread': 'Codex turn requires a verified thread',
         'configuration': 'Codex turn configuration is unavailable',
         'provider': 'Codex turns require the built-in OpenAI provider',
+        'command_rules': 'The Chat Place could not check Codex saved command rules. No new turn was sent.',
+        'project_rules': 'This folder supplies Codex saved command rules. Choose a folder without project rules, or move those rules out of the project before trying again. No new turn was sent.',
         'mcp_tools': 'Codex external tools could not be disabled for this chat. No new turn was sent.',
     }
 
     def __init__(self, code):
         self.code = code if code in self.REASONS else 'preflight_failed'
         super().__init__(self.REASONS[self.code])
+
+
+def verify_codex_rule_layers(result):
+    count, blocked = platform_paths.codex_rule_inventory(result.get('layers'))
+    if count is None:
+        raise CodexTurnRejected('command_rules')
+    if blocked:
+        error = CodexTurnRejected('project_rules')
+        error.rules_folder = blocked
+        raise error
+    return count
 
 
 def codex_tool_overrides(config):
@@ -317,7 +330,7 @@ class ReadOnlyCodexConnection:
         cwd = params.get("cwd", thread.get("cwd"))
         if not isinstance(cwd, str) or not cwd.strip():
             raise CodexRpcError("Codex turn configuration is unavailable")
-        result = self.request("config/read", {"cwd": cwd, "includeLayers": False})
+        result = self.request("config/read", {"cwd": cwd, "includeLayers": True})
         config = result.get("config")
         if not isinstance(config, dict):
             raise CodexRpcError("Codex turn configuration is unavailable")
@@ -331,6 +344,7 @@ class ReadOnlyCodexConnection:
             # Reject rather than silently changing a user's configured route.
             # The older CLI allowed overriding built-in provider definitions.
             raise CodexRpcError("Codex turns require the default ChatGPT billing route")
+        verify_codex_rule_layers(result)
 
     def _encode(self, message):
         payload = (json.dumps(message, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")

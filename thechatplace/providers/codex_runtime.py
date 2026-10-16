@@ -154,10 +154,10 @@ class CodexChatRuntime:
                     raise CodexRpcError('Codex chats are closing')
                 self._policy_changes[native_id] = change
             return change
-        except Exception:
+        except Exception as error:
             with self._lock:
                 self._reopening.discard(native_id)
-                self._problems[native_id] = 'Could not verify changed permissions. Reload this chat before sending.'
+                self._problems[native_id] = safe_reason(error) or 'Could not verify changed permissions. Reload this chat before sending.'
             self._notify(native_id)
             raise
 

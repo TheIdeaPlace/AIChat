@@ -738,11 +738,15 @@ def d_new_session(frame, env):
 def d_codex_new(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
-                                                providers=("claude", "codex"), provider="codex"))
+                                                providers=("claude", "codex"), provider="codex",
+                                                load_rules=lambda folder, done: done(2, False)))
 
 
 def d_codex_mode(frame, env):
-    dialog = wx.SingleChoiceDialog(frame, 'Codex permissions for a Chat Place session. Folder: Scratch.',
+    from thechatplace.ui.dialogs import codex_permission_prompt
+    title = 'Review saved command rules for a deliberately long synthetic chat title'
+    folder = str(Path(env['folders']['Scratch']) / 'long-synthetic-project-folder' / 'nested-folder-for-permission-review')
+    dialog = wx.SingleChoiceDialog(frame, codex_permission_prompt(frame, title, folder),
         'Change Permission Mode', ['Read-only; asks before allowing changes',
         'Can edit files in this folder; asks before anything else'])
     dialog.SetSelection(1)
@@ -755,7 +759,7 @@ def d_codex_owned_properties(frame, env):
     record = OwnSession('synthetic-policy', 'Codex policy preview', str(env['folders']['Scratch']), provider='codex',
         provider_options={'model': 'Synthetic model', 'effort': 'high', 'sandbox': 'workspace-write',
             'approval_policy': 'on-request', 'workspace_root': str(env['folders']['Scratch'])})
-    rows = session_properties(record.to_info(), own=record)
+    rows = session_properties(record.to_info(), own=record, saved_rule_count=2)
     return lambda: frame._show_properties('Codex policy preview', rows, None)
 
 
