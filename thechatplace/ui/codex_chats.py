@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import wx
 
-from ..providers.codex_requests import QUESTIONS, COMMAND
+from ..providers.codex_requests import QUESTIONS
 from ..providers.codex_rpc import CodexRpcError
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE
 from .. import announce
@@ -260,9 +260,7 @@ class CodexChats:
             self._say(f'{record.title}: {state.notice}', interrupt=False)
         if state.requests and not state.problem and (previous is None or previous.requests != state.requests):
             request = state.requests[0]
-            summary = ('Question: ' + request.questions[0].text if request.method == QUESTIONS and request.questions
-                       else 'Command: ' + request.command if request.method == COMMAND else 'File changes need approval.')
-            summary = ' '.join(summary.split())[:200]
+            summary = ' '.join(request.summary().split())[:200]
             self._say(f'{record.title}: Codex needs your answer. {summary} {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
             self._notify(key, f'{record.title} needs you', summary, needs_you=True)
         finished = (state.native_id, state.turn_id)

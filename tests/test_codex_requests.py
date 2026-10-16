@@ -2,7 +2,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from thechatplace.providers.codex_requests import COMMAND, FILES, QUESTIONS, decode_request
+from thechatplace.providers.codex_requests import (COMMAND, FILES, QUESTIONS, SAVED_RULE_NOTE, CodexRequestDeclined,
+                                                   CodexUnsupportedRequest, decode_request)
 
 
 def params(**extra):
@@ -21,17 +22,134 @@ def test_command_request_is_immutable_private_and_answers_only_once_scope():
         request.approval_answer('acceptForSession')
 
 
-@pytest.mark.parametrize('extra', [{'kind': 'stdin'}, {'environmentId': 'remote'},
-    {'networkApprovalContext': {'host': 'example.com'}}, {'additionalPermissions': {'network': {'enabled': True}}},
-    {'availableDecisions': ['decline', 'cancel']}])
-def test_unrepresented_command_context_never_looks_like_ordinary_approval(extra):
+# Shapes from codex-cli 0.162.1's app-server (generate-json-schema
+# --experimental, and a captured sandbox escalation with personal paths
+# replaced). Current Codex sends environmentId and availableDecisions on every
+# command approval (#284).
+def escalation(**extra):
+    shape = dict(kind='command', startedAtMs=1, environmentId='local',
+                 reason="The sandbox blocked writing Git's HEAD.lock. Allow this command outside the sandbox?",
+                 command='git checkout -b probe', cwd='/workspace',
+                 commandActions=[{'type': 'unknown', 'command': 'git checkout -b probe'}],
+                 proposedExecpolicyAmendment=['git', 'checkout', '-b', 'probe'],
+                 availableDecisions=['accept', {'acceptWithExecpolicyAmendment': {
+                     'execpolicy_amendment': ['git', 'checkout', '-b', 'probe']}}, 'cancel'])
+    return params(**{**shape, **extra})
+
+
+def test_real_escalation_offers_only_listed_one_time_decisions_and_never_a_saved_rule():
+    request = decode_request(7, COMMAND, escalation())
+    assert request.offered() == ('accept', 'cancel') and request.saved_rule_offered
+    assert request.approval_answer('accept') == {'decision': 'accept'}
+    assert request.approval_answer('cancel') == {'decision': 'cancel'}
+    for choice in ['decline', 'acceptForSession', 'acceptWithExecpolicyAmendment',
+                   {'acceptWithExecpolicyAmendment': {'execpolicy_amendment': ['git']}}]:
+        with pytest.raises(ValueError):
+            request.approval_answer(choice)
+        with pytest.raises(ValueError):
+            request.validate_answer({'decision': choice})
+    detail = request.detail()
+    assert 'Command:\ngit checkout -b probe' in detail and 'Folder:\n/workspace' in detail
+    assert 'HEAD.lock' in detail and SAVED_RULE_NOTE in detail and 'This Session' not in detail
+    assert request.summary() == 'Command: git checkout -b probe'
+    assert 'git' not in repr(request)
+
+
+def test_extra_permissions_are_listed_in_plain_words():
+    request = decode_request(8, COMMAND, params(command='git push', cwd='/workspace', additionalPermissions={
+        'fileSystem': {'write': ['/workspace/.git'], 'read': ['/shared'], 'globScanMaxDepth': 3, 'entries': [
+            {'access': 'write', 'path': {'type': 'path', 'path': '/elsewhere'}},
+            {'access': 'read', 'path': {'type': 'glob_pattern', 'pattern': '**/*.md'}},
+            {'access': 'write', 'path': {'type': 'special', 'value': {'kind': 'project_roots', 'subpath': 'docs'}}},
+            {'access': 'write', 'path': {'type': 'special', 'value': {'kind': 'tmpdir'}}},
+            {'access': 'deny', 'path': {'type': 'special', 'value': {'kind': 'unknown', 'path': '/secret', 'subpath': None}}}]},
+        'network': {'enabled': True}}))
+    assert request.extra_access == (
+        'Read access to /shared', 'Write access to /workspace/.git', 'Write access to /elsewhere',
+        'Read access to files matching **/*.md', "Write access to the chat's project folder, under docs",
+        'Write access to the temporary folder', 'No access to /secret', 'Network access')
+    # Without a list, Codex's own default for extra permissions applies.
+    assert request.offered() == ('accept', 'cancel')
+    assert 'This also needs:\nRead access to /shared\n' in request.detail()
+    assert request.summary() == 'Command with extra access: git push'
+    assert '/shared' not in repr(request)
+
+
+def test_network_approval_names_the_host_and_may_have_no_command():
+    request = decode_request(9, COMMAND, params(
+        kind='command', environmentId='local', command=None, cwd=None, commandActions=None,
+        networkApprovalContext={'host': 'github.com', 'protocol': 'https'},
+        proposedNetworkPolicyAmendments=[{'action': 'allow', 'host': 'github.com'}],
+        availableDecisions=['accept', 'acceptForSession', {'applyNetworkPolicyAmendment': {
+            'network_policy_amendment': {'action': 'allow', 'host': 'github.com'}}}, 'cancel']))
+    assert request.offered() == ('accept', 'acceptForSession', 'cancel') and request.saved_rule_offered
+    assert request.reviewable()
+    assert request.summary() == 'Network access to github.com.'
+    label, description = request.choice_text('acceptForSession')
+    assert label == 'Allow for &This Session' and 'github.com' in description
+    detail = request.detail()
+    assert detail.startswith('Codex wants network access to:\ngithub.com (HTTPS)')
+    assert 'Allow for This Session: ' + description in detail
+    assert request.validate_answer({'decision': 'acceptForSession'}) == {'decision': 'acceptForSession'}
+    # Codex's default without a list: one time, this session, or stop.
+    legacy = decode_request(10, COMMAND, params(networkApprovalContext={'host': 'pypi.org', 'protocol': 'http'}))
+    assert legacy.offered() == ('accept', 'acceptForSession', 'cancel')
+
+
+def test_unknown_future_decisions_are_never_offered():
+    request = decode_request(11, COMMAND, escalation(availableDecisions=[
+        'accept', 'acceptForever', {'futureScope': {}}, 'decline', 'decline']))
+    assert request.offered() == ('accept', 'decline') and not request.saved_rule_offered
+
+
+def _entry(access='write', **path):
+    return {'additionalPermissions': {'fileSystem': {'entries': [{'access': access, 'path': path}]}}}
+
+
+@pytest.mark.parametrize('extra,reason', [
+    ({'kind': 'writeStdin'}, 'terminal_input'),
+    ({'kind': 'futureKind'}, ''),
+    ({'environmentId': 'remote'}, 'remote'),
+    ({'networkApprovalContext': {'host': 'example.com'}}, 'permissions'),
+    ({'networkApprovalContext': {'host': 'example.com', 'protocol': 'ftp'}}, 'permissions'),
+    ({'networkApprovalContext': {'host': ' ', 'protocol': 'https'}}, 'permissions'),
+    ({'networkApprovalContext': {'host': 'example.com', 'protocol': ['https']}}, 'permissions'),
+    ({'additionalPermissions': {'private': 'credentials'}}, 'permissions'),
+    ({'additionalPermissions': {'write': ['/private']}}, 'permissions'),
+    ({'additionalPermissions': {'network': {'enabled': 1}}}, 'permissions'),
+    ({'additionalPermissions': {'network': {'enabled': True, 'hosts': ['*']}}}, 'permissions'),
+    ({'additionalPermissions': {'fileSystem': {'write': '/private'}}}, 'permissions'),
+    ({'additionalPermissions': {'fileSystem': {'globScanMaxDepth': True}}}, 'permissions'),
+    (_entry(['write'], type='path', path='/x'), 'permissions'),
+    (_entry('execute', type='path', path='/x'), 'permissions'),
+    (_entry(type='special', value={'kind': 'future'}), 'permissions'),
+    (_entry(type='special', value={'kind': ['root']}), 'permissions'),
+    (_entry(type='url', url='x'), 'permissions'),
+    ({'availableDecisions': ['accept']}, 'choices'),
+    ({'availableDecisions': ['acceptForSession', {'acceptWithExecpolicyAmendment': {}}]}, 'choices'),
+    ({'availableDecisions': []}, 'choices'),
+    ({'availableDecisions': [5, 'decline']}, 'choices'),
+    ({'availableDecisions': 'decline'}, 'choices')])
+def test_requests_that_cannot_be_shown_are_refused_with_a_fixed_reason(extra, reason):
+    with pytest.raises(CodexUnsupportedRequest) as caught:
+        decode_request(1, COMMAND, params(command='private command', cwd='/workspace', **extra))
+    assert caught.value.reason == reason
+    text = CodexRequestDeclined('command approval', reason).text
+    assert text.endswith('No permission was granted.') and 'private' not in text
+
+
+def test_declined_notice_says_why_with_fixed_text_only():
+    assert 'already running' in CodexRequestDeclined('command approval', 'terminal_input').text
+    assert 'this computer' in CodexRequestDeclined('command approval', 'remote').text
+    assert CodexRequestDeclined().text == 'An unsupported Codex request was declined. No permission was granted.'
     with pytest.raises(ValueError):
-        decode_request(1, COMMAND, params(command='command', cwd='/workspace', **extra))
+        CodexRequestDeclined('command approval', 'private text')
 
 
 def test_file_request_preserves_requested_root_without_granting_it():
     request = decode_request(2, FILES, params(grantRoot='/requested', reason='Changes'))
-    assert request.grant_root == '/requested'
+    assert request.grant_root == '/requested' and request.offered() == ('decline', 'cancel')
+    assert "can't grant that" in request.detail('Update: file') and not request.reviewable('Update: file')
     with pytest.raises(ValueError):
         request.approval_answer('accept')
     with pytest.raises(ValueError):
@@ -70,13 +188,13 @@ def test_malformed_requests_fail_closed(identity, method, data):
         decode_request(identity, method, data)
 
 
-def test_future_permission_fields_and_malformed_falsy_options_fail_closed():
-    with pytest.raises(ValueError):
-        decode_request(1, COMMAND, params(command='synthetic', cwd='/workspace',
-                                         additionalPermissions={'write': ['/private']}))
+def test_malformed_falsy_options_and_proposed_rules_fail_closed():
     for options in [{}, 0, '']:
         with pytest.raises(ValueError):
             question_request(options=options)
+    for extra in [{'proposedExecpolicyAmendment': 'synthetic'}, {'proposedNetworkPolicyAmendments': ['host']}]:
+        with pytest.raises(ValueError):
+            decode_request(1, COMMAND, params(command='synthetic', cwd='/workspace', **extra))
 
 
 def test_many_question_choices_have_a_total_display_text_limit():

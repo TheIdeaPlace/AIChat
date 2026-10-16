@@ -562,7 +562,7 @@ Choose read-only in New Session, or change an idle chat started here with File, 
 Permission Mode (Ctrl+Shift+O). Existing chats retain their saved permissions.
 Continue Here copies a local Codex chat into a new chat started here. These chats
 support text replies, Stop, queued messages and Answer (Ctrl+Shift+A) for
-one-time permissions and questions. Externally started Codex chats remain read-only. Turning the
+permissions and questions. Externally started Codex chats remain read-only. Turning the
 option off and restarting hides Codex without removing its saved preferences.
 Quitting The Chat Place requests a stop for its running Codex replies.
 Revisiting a chat preserves its running turn. The Chat Place refuses to resume a saved
@@ -570,8 +570,18 @@ chat whose latest turn is unfinished or uncertain. If the connection is lost,
 use Stop to check the saved turn and reconnect once it has ended. No message
 is resent. Selecting the chat again does not automatically reconnect. If
 Codex still reports unfinished work, The Chat Place refuses recovery and says why.
-Requests The Chat Place cannot present safely are declined with a notice; they do not
-disconnect the chat. Turn Status keeps that notice available.
+When Codex needs more than the chat's folder, such as writing to Git's `.git` folder,
+another folder or network access, Answer shows the command, its folder, Codex's reason
+and a "This also needs" list of the extra access in plain words; a network request names
+the host. Only the answers Codex offers for that request are shown: Allow Once, Allow for
+This Session (no more asking for this command, host or access until Codex restarts),
+Deny (Codex carries on without it) and Deny and Stop Turn. A refusal is the default
+button. When Codex offers to save an "always allow" rule, the dialog says so, but The
+Chat Place leaves that choice out and never saves a rule.
+Requests The Chat Place cannot present safely, such as typing into a command that's
+already running or running a command somewhere other than this computer, are declined
+with a notice that says which kind and why; they do not disconnect the chat. Turn Status
+keeps that notice available.
 Turn Status (Ctrl+Shift+T) reports elapsed time and latest activity, and sent
 messages follow the same read-back setting as Claude. Only chats in the local Codex catalog are listed. A status Codex cannot verify
 is omitted from default rows and remains available in Properties and the Status column.

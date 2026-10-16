@@ -69,13 +69,16 @@ def test_runtime_midturn_request_hang_and_protocol_failure_use_real_stdio(server
         if scenario in ('owned-turn-unsupported', 'owned-turn-unknown'):
             wait(lambda: service.snapshot('owned').outcome == 'completed')
             state = service.snapshot('owned')
-            kind = 'command approval' if scenario == 'owned-turn-unsupported' else 'request'
-            assert f'unsupported Codex {kind} was declined' in state.notice
+            expected = ("Codex asked to type into a command that's already running"
+                        if scenario == 'owned-turn-unsupported' else 'unsupported Codex request was declined')
+            assert expected in state.notice and 'synthetic' not in state.notice
             assert not connection.closed and not state.problem
             return
         if scenario in ('owned-turn-approval', 'owned-turn-command-output'):
             wait(lambda: service.snapshot('owned').requests)
             request = service.snapshot('owned').requests[0]
+            assert request.extra_access == ('Write access to /workspace/.git',) and request.saved_rule_offered
+            assert request.offered() == ('accept', 'decline', 'cancel')
             assert service.snapshot('owned').state == 'needs you'
             service.prepare(record)
             service.answer(record, request, request.approval_answer('decline'))
@@ -730,6 +733,41 @@ def test_unsupported_request_gets_error_without_permission_or_private_payload(kn
     assert not connection.closed and not connection._server_pending
     connection._receive(approval_message('next'))
     assert connection.pop_event().request_id == 'next'
+
+
+@pytest.mark.parametrize('extra,words', [({'kind': 'writeStdin'}, 'already running'),
+                                         ({'environmentId': 'cloud'}, 'this computer')])
+def test_declined_command_says_which_kind_and_why(extra, words):
+    import json
+    connection = request_transport()
+    message = approval_message()
+    message['params'].update(extra)
+    connection._receive(message)
+    answer = json.loads(connection._outgoing.get())
+    assert 'error' in answer and 'result' not in answer and 'synthetic' not in json.dumps(answer)
+    notice = connection.pop_event()
+    assert words in notice.text and 'synthetic' not in notice.text
+    assert not connection.closed
+
+
+def test_extra_access_request_is_queued_and_session_approval_needs_chatgpt_sign_in():
+    import json
+    connection = request_transport()
+    message = approval_message()
+    message['params'].update(environmentId='local', additionalPermissions={'network': {'enabled': True}},
+                             availableDecisions=['accept', 'acceptForSession', 'cancel'])
+    connection._receive(message)
+    request = connection.pop_event()
+    assert request.extra_access == ('Network access',)
+    with pytest.raises(ValueError):
+        connection.respond_request(request, {'decision': 'decline'})  # not listed by Codex
+    connection.request = lambda method, params: {'account': {'type': 'apiKey'}, 'requiresOpenaiAuth': True}
+    with pytest.raises(CodexRpcError, match='ChatGPT sign-in'):
+        connection.respond_request(request, {'decision': 'acceptForSession'})
+    assert connection._outgoing.empty()
+    connection.request = lambda method, params: {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
+    connection.respond_request(request, {'decision': 'acceptForSession'})
+    assert json.loads(connection._outgoing.get()) == {'id': 'approval', 'result': {'decision': 'acceptForSession'}}
 
 
 def test_stdio_server_request_and_answer_keep_client_response_ids_independent(server):

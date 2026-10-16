@@ -841,9 +841,15 @@ def d_question(frame, env):
 def d_codex_permission(frame, env):
     from thechatplace.providers.codex_requests import CodexRequest, COMMAND
     from thechatplace.ui.dialogs import CodexPermissionDialog
+    # The widest current shape (#284): extra access, a session choice and
+    # every refusal, so the button row's fit is measured.
+    folder = env["tmp"].as_posix()
     request = CodexRequest(1, COMMAND, "probe", "turn", "item",
-                           command="git status --short", cwd=env["tmp"].as_posix(),
-                           reason="Inspect the working directory before continuing")
+                           command="git checkout -b fix", cwd=folder,
+                           reason="The sandbox blocked writing Git's HEAD.lock.",
+                           decisions=("accept", "acceptForSession", "decline", "cancel"),
+                           extra_access=(f"Write access to {folder}/.git", "Network access"),
+                           saved_rule_offered=True)
     return lambda: frame._modal(CodexPermissionDialog(frame, "Codex preview", request))
 
 

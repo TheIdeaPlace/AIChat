@@ -519,9 +519,13 @@ need it:</p>
   and nothing is saved or sent: your message stays in the reply box.</li>
 </ul>
 <h2 id="answering-permissions-and-questions">Answering permissions and questions</h2>
-<p><strong>Answer</strong> (Ctrl+Shift+A, File, Answer) handles the loaded chat first. Codex permission
-requests offer one-time approval, refusal, Stop Turn or Answer Later; questions show the provider
-and keep secret answers masked. Decline and Stop Turn stops the turn. New Session and Change Permission Mode offer read-only or editing files in the
+<p><strong>Answer</strong> (Ctrl+Shift+A, File, Answer) handles the loaded chat first. A Codex permission
+request shows the command, its folder and Codex's reason, and a "This also needs" list when
+Codex wants extra access, such as writing to another folder or using the network. It offers
+only the answers Codex allows for that request: Allow Once, Allow for This Session, Deny,
+Deny and Stop Turn, and always Answer Later. Deny lets Codex carry on without it; Deny and
+Stop Turn also stops the turn. Codex's "always allow" rules are never offered or saved.
+Questions show the provider and keep secret answers masked. New Session and Change Permission Mode offer read-only or editing files in the
 selected folder, both with on-request approvals. Finish or Stop active work and
 clear queued messages before changing the policy. Verification and saving must
 succeed before the new policy can send a turn.</p>
