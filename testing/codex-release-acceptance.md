@@ -5,6 +5,51 @@ history alone is insufficient. New Codex chats default to workspace-write with
 on-request approvals; existing chats retain their saved grants. Continue Here
 is optional. Steer and the reading pane are outside this release.
 
+## Current review queue (October 16)
+
+Owned chats (#255) and Provider defaults (#271) are merged, following foundations,
+storage and reading. Saved-rule disclosure/project refusal (#272), Mac shortcut
+names (#274), and Claude command/compaction feedback have separate review slices.
+Require green Windows/Mac tests and packaging on the final merged candidate.
+
+## Kelly's remaining hands-on checks
+
+Use the committed preview, with the installed app closed, and a disposable work
+folder. Run these on Mac and Windows with the screen reader normally used there.
+
+1. Start a Codex folder-edit chat and make a harmless file edit/command. Verify
+   the file appears in the chosen folder and the saved access survives restart.
+   With a command not covered by your always-allow rules, verify an additional
+   access request can be read, answered or denied without silently changing the
+   chat's permissions. New Session/Change Permission Mode must disclose saved-rule
+   behavior; Properties must show a count or explicitly say it was not checked.
+2. During a long turn, switch chats and return, then queue a message. Confirm the
+   original turn continues. Stop must recover queued text; repeating Stop must
+   reconcile a completed native turn if its completion event was missed. A genuine
+   dropped connection must say interrupted and recover only through explicit action,
+   without replaying a prompt. Retest Kelly's original #247 chat.
+3. Listen to sent-message read-back and later replies/status in full, summary and
+   silent modes, with own-message reading on/off. Replies, compaction and warnings
+   must queue behind read-back. Verify focus remains where expected while answering
+   questions/permissions; automated tests cannot establish what this sounds like.
+4. Read Usage and Context, model/effort and permission choices, account resets and
+   reported context. Unknown telemetry must remain unknown. After `/compact` in a
+   Claude chat, hear confirmation and see its row with tool activity off; `/context`
+   or `/cost` output must appear as Claude Code messages. When post-compaction token
+   counts are reported, verify the counter updates. Repeat compaction in a later
+   turn to check that a new event is announced again.
+5. On Mac, follow the displayed/spoken Cmd, Option and Return hints, including
+   Answer, Properties, find and commands. Help must use Mac key names; menus are
+   reached through the menu bar (VO+M). Verify the corresponding Windows hints and
+   keyboard commands still work.
+6. Complete #226: capture affected surfaces in the Windows test VM at light-100
+   and a High Contrast variant, compare against the baseline, review every changed
+   picture and measure contrast. Mac capture attempts in this session were blank
+   or distorted; they do not establish final rendering. Keep final visual review
+   and baseline acceptance open until usable captures exist.
+
+No release tag or publication is authorized by CI results or peer review alone.
+
 ## Remaining shipping gates
 
 - **#247 blocks release.** Selecting a known chat must preserve its running

@@ -387,3 +387,90 @@ def test_empty_peer_message_adds_nothing():
 def test_typed_text_starting_with_the_tag_is_still_yours():
     tr = parse_lines(lines(user_text("<cross-session-message>what is this tag?")))
     assert [m.kind for m in tr.visible(show_activity=True)] != [t.PEER]
+
+
+def test_manual_compaction_and_command_output_are_visible_without_activity():
+    from records import compact_boundary, command_stdout
+    boundary = compact_boundary()
+    boundary["timestamp"] = "2026-01-01T12:01:00Z"
+    tr = parse_lines(lines(boundary,
+        user_text('Synthetic summary', isCompactSummary=True, isVisibleInTranscriptOnly=True),
+        user_text('<local-command-caveat>synthetic</local-command-caveat>', isMeta=True),
+        user_text('<command-name>/compact</command-name> <command-message>compact</command-message>'),
+        command_stdout('Compacted ')))
+    assert kinds(tr) == [t.COMPACTION, t.COMMAND_OUTPUT]
+    assert tr.visible()[0].text == 'Conversation compacted (you asked), from 968,000 to 9,000 tokens.'
+    assert tr.visible()[1].text == 'Compacted'
+    assert tr.visible()[1].label == 'Claude Code'
+    assert tr.context_tokens == 9_000 and tr.compactions == 1
+    assert tr.last_reply().text == 'Compacted'
+
+
+def test_command_output_preserves_plain_content_and_does_not_count_a_user_turn():
+    from records import command_stdout
+    tr = parse_lines(lines(command_stdout('Context: <5%>'), command_stdout('')))
+    assert [(m.kind, m.text) for m in tr.visible()] == [(t.COMMAND_OUTPUT, 'Context: <5%>')]
+    assert tr.turns == 0
+
+
+def test_same_size_and_growing_rewrites_replace_the_incremental_history(tmp_path):
+    from records import compact_boundary, command_stdout
+    path = tmp_path / 'synthetic.jsonl'
+    original = lines(user_text('First'))[0] + '\n'
+    replacement = lines(user_text('Other'))[0] + '\n'
+    assert len(original) == len(replacement)
+    path.write_text(original)
+    reader = TranscriptReader(path)
+    assert reader.refresh()
+    path.write_text(replacement)
+    assert reader.refresh() and reader.transcript.visible()[0].text == 'Other'
+    rewritten = '\n'.join(lines(compact_boundary(), command_stdout('Compacted'))) + '\n'
+    assert len(rewritten) > len(replacement)
+    path.write_text(rewritten)
+    assert reader.refresh()
+    assert kinds(reader.transcript) == [t.COMPACTION, t.COMMAND_OUTPUT]
+    assert reader.transcript.context_tokens == 9_000
+    assert not reader.refresh()
+    path.write_text('')
+    assert reader.refresh() and not reader.transcript.messages
+
+
+def test_malformed_compaction_metadata_does_not_hide_the_boundary():
+    record = {'type': 'system', 'subtype': 'compact_boundary',
+              'compactMetadata': {'trigger': [], 'postTokens': True}}
+    tr = parse_lines(lines(record))
+    assert tr.visible()[0].kind == t.COMPACTION
+    assert tr.context_tokens == 0 and not tr.unreadable_lines
+
+
+def test_command_output_can_be_the_last_message_without_an_assistant_reply(tmp_path):
+    from records import command_stdout
+    path = tmp_path / 'synthetic.jsonl'
+    path.write_text('\n'.join(lines(user_text('Earlier'), command_stdout('Context: 9,000 tokens'))) + '\n')
+    last = t.last_message_from_tail(path)
+    assert last.kind == t.COMMAND_OUTPUT and last.label == 'Claude Code'
+
+
+def test_growing_rewrite_detects_changed_prefix_with_an_unchanged_old_tail(tmp_path):
+    from records import command_stdout
+    path = tmp_path / 'synthetic.jsonl'
+    record = user_text('First' + 'x' * 10000)
+    original = lines(record)[0] + '\n'
+    path.write_text(original)
+    reader = TranscriptReader(path)
+    assert reader.refresh()
+    rewritten = original.replace('First', 'Other')
+    assert original[-4096:] == rewritten[-4096:]
+    path.write_text(rewritten + lines(command_stdout('Context updated'))[0] + '\n')
+    assert reader.refresh()
+    assert reader.transcript.visible()[0].text.startswith('Other')
+    assert reader.transcript.visible()[-1].kind == t.COMMAND_OUTPUT
+
+
+def test_rewrite_to_only_unknown_records_clears_the_visible_history(tmp_path):
+    path = tmp_path / 'synthetic.jsonl'
+    path.write_text(lines(user_text('Earlier'))[0] + '\n')
+    reader = TranscriptReader(path)
+    assert reader.refresh()
+    path.write_text('{"type":"future_record"}\n')
+    assert reader.refresh() and not reader.transcript.messages

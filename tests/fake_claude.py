@@ -68,7 +68,18 @@ if mode == "ask":
     answer = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
     log(answer=answer)
     result = answer["response"]["response"]["behavior"]
-out(type="assistant", parent_tool_use_id=None,
-    message={"content": [{"type": "text", "text": "reply with a line separator"}]})
+if mode in ('compact', 'compact-no-boundary'):
+    boundary = {'type': 'system', 'subtype': 'compact_boundary', 'uuid': 'synthetic-compact',
+                'compactMetadata': {'trigger': 'manual', 'preTokens': 968000, 'postTokens': 9000}}
+    stdout = {'type': 'user', 'uuid': 'synthetic-command-output',
+              'message': {'role': 'user', 'content': '<local-command-stdout>Compacted</local-command-stdout>'}}
+    with open('synthetic-compact.jsonl', 'w', encoding='utf-8') as transcript:
+        transcript.write(json.dumps(boundary) + '\n' + json.dumps(stdout) + '\n')
+    if mode == 'compact':
+        out(**boundary)
+    result = ''  # Slash commands can finish without any assistant message.
+else:
+    out(type="assistant", parent_tool_use_id=None,
+        message={"content": [{"type": "text", "text": "reply with a line separator"}]})
 out(type="result", subtype="success", is_error=False, result=result, session_id="abc-1")
 sys.stdin.buffer.read()  # until The Chat Place closes stdin

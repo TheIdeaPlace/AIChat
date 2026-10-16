@@ -3467,8 +3467,7 @@ def test_a_usage_limit_failure_is_said_plainly(frame, env):
 def test_compaction_is_said(frame, env):
     frame._runners["own-1"] = FakeRunner([], "", "", None)
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("compacted"))
-    assert env["spoken"][-1] == ("Hub probe: Claude Code compacted the conversation to "
-                                 "free the context.")
+    assert env["feedback"][-1] == "Hub probe: Conversation compacted."
 
 
 def test_find_says_when_it_goes_round_at_either_end(frame, env, monkeypatch):
@@ -9523,3 +9522,49 @@ def test_permission_hint_translates_only_authored_keys(frame, env):
     spoken = env['spoken'][-1]
     assert 'Title Ctrl+N' in spoken and 'echo Ctrl+N' in spoken
     assert key_name('Ctrl+Shift+A') + ' answers.' in spoken
+
+@pytest.mark.parametrize('stream_order', ['before', 'after', 'none'])
+@pytest.mark.parametrize('activity', [False, True])
+def test_compaction_is_visible_and_spoken_once_with_or_without_stream(frame, env, stream_order, activity):
+    from records import compact_boundary, command_stdout, lines
+    from thechatplace.transcript import COMPACTION, COMMAND_OUTPUT
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None)
+    frame._show_activity = activity
+    frame._runners['own-1'] = FakeRunner([], '', '', None)
+    env['spoken'].clear()
+    event = TurnEvent('compacted', text='Conversation compacted (you asked), from 968,000 to 9,000 tokens.',
+                      data={'post_tokens': 9000})
+    if stream_order == 'before':
+        frame._on_turn_event({'id': 'own-1'}, 'Hub probe', event)
+    path.write_text('\n'.join(lines(compact_boundary(), command_stdout('Compacted'))) + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMPACTION for m in frame._chat_messages))
+    if stream_order == 'after':
+        frame._on_turn_event({'id': 'own-1'}, 'Hub probe', event)
+    frame._on_turn_event({'id': 'own-1'}, 'Hub probe', TurnEvent('finished'))
+    assert [m.kind for m in frame._visible_messages()] == [COMPACTION, COMMAND_OUTPUT]
+    notices = [s for s in env['spoken'] + env['feedback'] if 'Conversation compacted' in s]
+    assert len(notices) == 1 and '968,000 to 9,000 tokens' in notices[0]
+    assert frame._context(frame._open)[0] == 9000
+
+
+def test_later_compact_stdout_does_not_repeat_the_boundary_announcement(frame, env):
+    from records import compact_boundary, command_stdout, lines
+    from thechatplace.transcript import COMPACTION, COMMAND_OUTPUT
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None)
+    frame._runners['own-1'] = FakeRunner([], '', '', None)
+    path.write_text(lines(compact_boundary())[0] + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMPACTION for m in frame._chat_messages))
+    before = len(env['feedback'])
+    with path.open('a') as output:
+        output.write(lines(command_stdout('Compacted'))[0] + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMMAND_OUTPUT for m in frame._chat_messages))
+    assert not any('Compacted' in s for s in env['feedback'][before:])

@@ -82,7 +82,7 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         WORKING, STATUS_UNAVAILABLE,
                         SessionInfo, field_short_name, group_view, in_view, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
-from ..transcript import (ASSISTANT, ERROR, PEER, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT,
+from ..transcript import (ASSISTANT, COMPACTION, COMMAND_OUTPUT, ERROR, PEER, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT,
                           ChatMessage)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
@@ -256,6 +256,8 @@ class MainFrame(CodexChats, wx.Frame):
         self._reader_busy = False
         self._chat_messages: List[ChatMessage] = []
         self._chat_loaded = False
+        self._compaction_notices = {}
+        self._compaction_tokens = {}
         self._show_activity = False
         self._drafts: Dict[str, str] = {}  # unsent reply text, per session
         # Sent during a turn, in order; they go together when it ends (#50).
@@ -1643,6 +1645,24 @@ class MainFrame(CodexChats, wx.Frame):
         self._chat_keys = []  # a note, not messages: nothing to act on
         self.chat_list.SetSelection(0)
 
+    def _announce_compaction(self, session_id, title, text, source, key=''):
+        # Match exact boundary identities when available, otherwise pair the
+        # stream and reader within this turn, whichever arrives first (#249).
+        state = self._compaction_notices.setdefault(session_id, {'keys': [], 'stream': [], 'reader': [], 'notified': False})
+        if key and key in state['keys']:
+            return
+        other = state['reader' if source == 'stream' else 'stream']
+        match = next((index for index, pending in enumerate(other)
+                      if not key or not pending or key == pending), None)
+        if key:
+            state['keys'] = (state['keys'] + [key])[-64:]
+        if match is not None:
+            other.pop(match)
+            return
+        state[source] = (state[source] + [key])[-32:]
+        state['notified'] = True
+        self._say(f"{title}: {text}", interrupt=False)
+
     def _apply_chat(self, generation, changed, messages, unreadable, error,
                     edits=None, turns=0):
         self._reader_busy = False
@@ -1675,6 +1695,8 @@ class MainFrame(CodexChats, wx.Frame):
             return
         before_keys = {m.key for m in self._chat_messages}
         self._chat_messages = messages
+        if any(m.key not in before_keys and m.kind in (ASSISTANT, COMPACTION) for m in messages):
+            self._compaction_tokens.pop(self._open.cli_session_id, None)
         self._check_context()
         self._rebuild_chat_list(focus_newest=first_load)
         self._chat_loaded = True
@@ -1694,6 +1716,16 @@ class MainFrame(CodexChats, wx.Frame):
                 self._feedback(f"Loaded {self._open.title}, {count} "
                                f"message{'s' if count != 1 else ''}.{note}")
             return
+        fresh_compactions = [m for m in messages if m.key not in before_keys and m.kind == COMPACTION]
+        for message in fresh_compactions:
+            self._announce_compaction(self._open.cli_session_id, self._open.title, message.text, 'reader', message.key)
+        for message in messages:
+            if message.key not in before_keys and message.kind == COMMAND_OUTPUT:
+                noticed = self._open.is_own and self._compaction_notices.get(
+                    self._open.cli_session_id, {}).get('notified', False)
+                if (fresh_compactions or noticed) and message.text.casefold().startswith('compacted'):
+                    continue  # The boundary already described this same command.
+                self._say(f"{self._open.title}: Claude Code: {message.text}", interrupt=False)
         # A message from another session (#123) is news in any session, own
         # or not, and even mid-turn: nothing else would announce it.
         for message in messages:
@@ -2487,9 +2519,10 @@ class MainFrame(CodexChats, wx.Frame):
                 or info.key != self._open.key:
             return 0, 0
         transcript = self._reader.transcript
-        window = usage.context_window(transcript.model, transcript.context_tokens,
+        tokens = self._compaction_tokens.get(info.cli_session_id, transcript.context_tokens)
+        window = usage.context_window(transcript.model, tokens,
                                       self._reported_window(info, transcript.model))
-        return transcript.context_tokens, window
+        return tokens, window
 
     def _reported_window(self, info: SessionInfo, model: str) -> int:
         """The context window Claude Code reported for this session (one of
@@ -3707,6 +3740,11 @@ class MainFrame(CodexChats, wx.Frame):
         """``spoken`` is what's read back (what you typed, without the
         attachment lines added to ``prompt``)."""
         holder = {"id": session_id}
+        notices = self._compaction_notices.get(session_id)
+        if notices:
+            notices['stream'].clear()
+            notices['reader'].clear()
+            notices['notified'] = False
 
         def on_event(event: TurnEvent):
             wx.CallAfter(self._on_turn_event, holder, title, event)
@@ -3799,7 +3837,13 @@ class MainFrame(CodexChats, wx.Frame):
             self._on_remote_control(session_id, title, event.data or {})
             return
         if event.kind == "compacted":
-            self._say(f"{title}: Claude Code compacted the conversation to free the context.")
+            post = (event.data or {}).get('post_tokens')
+            self._compaction_tokens[session_id] = post if type(post) is int and post >= 0 else 0
+            self._announce_compaction(session_id, title, event.text or "Conversation compacted.",
+                                      'stream', (event.data or {}).get('message_key', ''))
+            if is_open_now:
+                self._update_status_context()
+                self._refresh_chat()
             return
         if event.kind == "denied":
             self._denials.setdefault(session_id, []).append(event.text)

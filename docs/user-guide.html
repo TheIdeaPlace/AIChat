@@ -138,6 +138,14 @@ Read as Plain Text is Option+P, and Command+W closes the page as well as Escape.
 </ul>
 <p>Claude's questions to you appear as "Claude asked: …" followed by "You answered: …". Tools Claude
 was refused appear as "Permission denied: …".</p>
+<h3>Command results and compaction</h3>
+<p>Claude Code's local commands, such as <code>/compact</code>, <code>/context</code> and <code>/cost</code>, show their
+output as <strong>Claude Code</strong> messages, even with Show Tool Activity off. A compaction
+also leaves a <strong>Conversation compacted</strong> row and announces what happened without
+interrupting sent-message read-back. When Claude reports before/after token counts,
+the row and announcement include them, and Usage and Context updates to the reported
+post-compaction count. The summary of earlier conversation remains tool activity,
+which you can show when you want to read it.</p>
 <h3>Seeing what the provider is doing</h3>
 <p>The provider's tool calls and their results are hidden until you turn on <strong>Show Tool Activity</strong>
 (Ctrl+T, View, Show Tool Activity, or the "Show tool activity" check box below the messages).

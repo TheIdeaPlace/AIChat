@@ -71,6 +71,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Collection, Dict, List, Optional
 
 from . import platform_paths
+from .transcript import compaction_text
 
 #: (value passed to --permission-mode, label shown in the New Session dialog)
 PERMISSION_MODES = [
@@ -724,7 +725,11 @@ class StreamParser:
             return [TurnEvent("background", session_id=self.session_id,
                               data={"tasks": names})]
         if etype == "system" and subtype == "compact_boundary":
-            return [TurnEvent("compacted", session_id=self.session_id)]
+            meta = event.get("compactMetadata")
+            post = meta.get('postTokens') if isinstance(meta, dict) else None
+            return [TurnEvent("compacted", text=compaction_text(meta), session_id=self.session_id,
+                              data={'post_tokens': post if type(post) is int and post >= 0 else 0,
+                                    'message_key': event.get('uuid') if isinstance(event.get('uuid'), str) else ''})]
         if etype == "system" and subtype == "init":
             source = event.get("apiKeySource")
             self.api_key_source = source if isinstance(source, str) else None

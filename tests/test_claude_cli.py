@@ -1698,3 +1698,18 @@ def test_effort_and_mode_labels():
     assert cli.mode_label("acceptEdits") == "accept edits"
     assert cli.mode_label("default") == "manual"
     assert cli.mode_label("plan") == "plan"
+
+
+@pytest.mark.parametrize('mode,live', [('compact', True), ('compact-no-boundary', False)])
+def test_command_only_compaction_finishes_with_or_without_stream_boundary(tmp_path, mode, live):
+    from thechatplace.transcript import read_transcript, COMPACTION, COMMAND_OUTPUT
+    events, seen = run_real(tmp_path, '/compact', mode=mode)
+    assert events[-1].kind == 'finished' and not events[-1].is_error
+    assert not events[-1].text and not any(e.kind == 'text' for e in events)
+    compactions = [e for e in events if e.kind == 'compacted']
+    assert bool(compactions) is live
+    if live:
+        assert '968,000 to 9,000' in compactions[0].text
+        assert compactions[0].data == {'post_tokens': 9000, 'message_key': 'synthetic-compact'}
+    transcript = read_transcript(tmp_path / 'synthetic-compact.jsonl')
+    assert [m.kind for m in transcript.visible()] == [COMPACTION, COMMAND_OUTPUT]

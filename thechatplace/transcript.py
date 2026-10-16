@@ -65,6 +65,8 @@ QUEUED = "queued"
 TOOL_RESULT = "tool_result"
 CONTEXT = "context"
 EVENT = "event"
+COMPACTION = "compaction"
+COMMAND_OUTPUT = "command_output"
 
 LABELS = {
     USER: "You",
@@ -81,6 +83,8 @@ LABELS = {
     TOOL_RESULT: "Tool result",
     CONTEXT: "Context",
     EVENT: "Event",
+    COMPACTION: "Context",
+    COMMAND_OUTPUT: "Claude Code",
 }
 
 #: Kinds hidden unless "show tool activity" is on.
@@ -154,7 +158,7 @@ class Transcript:
 
     def last_reply(self) -> Optional[ChatMessage]:
         for message in reversed(self.messages):
-            if message.kind in (ASSISTANT, QUESTION, PLAN, ERROR):
+            if message.kind in (ASSISTANT, QUESTION, PLAN, ERROR, COMMAND_OUTPUT):
                 return message
         return None
 
@@ -174,6 +178,17 @@ _ATTRIBUTE = re.compile(r'([A-Za-z][A-Za-z0-9_-]*)="([^"]*)"')
 # Tool input fields worth naming in a one-line activity summary, in order.
 _TOOL_SUMMARY_FIELDS = ("description", "command", "file_path", "path", "pattern",
                         "url", "query", "prompt", "skill", "subject")
+
+
+def compaction_text(meta=None):
+    """Describe verified compaction metadata shared by history and live events."""
+    meta = meta if isinstance(meta, dict) else {}
+    trigger = meta.get("trigger")
+    how = {"manual": " (you asked)", "auto": " (the context was full)"}.get(trigger, "") if isinstance(trigger, str) else ""
+    before, after = meta.get('preTokens'), meta.get('postTokens')
+    amount = (f", from {before:,} to {after:,} tokens"
+              if type(before) is int and type(after) is int and 0 <= after <= before else '')
+    return f"Conversation compacted{how}{amount}."
 
 
 class _Unreadable(Exception):
@@ -228,11 +243,10 @@ class TranscriptParser:
         if kind == "system" and record.get("subtype") == "compact_boundary":
             # Claude Code summarised the conversation to free the context.
             self.transcript.compactions += 1
-            self.transcript.context_tokens = 0
             meta = record.get("compactMetadata")
-            trigger = meta.get("trigger") if isinstance(meta, dict) else ""
-            how = {"manual": " (you asked)", "auto": " (the context was full)"}.get(trigger, "")
-            return [self._add(EVENT, f"Conversation compacted{how}.", record)]
+            post = meta.get('postTokens') if isinstance(meta, dict) else None
+            self.transcript.context_tokens = post if type(post) is int and post >= 0 else 0
+            return [self._add(COMPACTION, compaction_text(meta), record)]
         if kind == "attachment":
             return self._attachment(record)
         if kind not in ("user", "assistant"):
@@ -347,6 +361,10 @@ class TranscriptParser:
             if added:
                 self.transcript.turns += 1
             return added
+        output = re.fullmatch(r"\s*<local-command-stdout>(.*?)</local-command-stdout>\s*", text, re.DOTALL)
+        if output:
+            body = _SYSTEM_REMINDER.sub("", output.group(1)).strip()
+            return [self._add(COMMAND_OUTPUT, body, record)] if body else []
         tag = _HARNESS_TAG.match(text)
         if tag:
             # <task-notification>, <ci-monitor-event>, <command-name>, ...:
@@ -558,14 +576,19 @@ class TranscriptReader:
 
     Only whole lines are parsed. A line still being written (no newline yet)
     waits for the next ``refresh``, so a live session never shows a spurious
-    "couldn't read" count. If the file shrinks it was rewritten, and the reader
-    starts over. Opens the file read-only, always.
+    "couldn't read" count. Replacements, shrinkage, same-size edits and changes
+    to a bounded prefix/consumed tail restart the reader after rewrites (#249).
+    Opens the file read-only, always.
     """
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self._offset = 0
         self._parser = TranscriptParser()
+        self._file_id = None
+        self._anchor = b""
+        self._head = b""
+        self._mtime_ns = None
 
     @property
     def transcript(self) -> Transcript:
@@ -574,27 +597,41 @@ class TranscriptReader:
     def refresh(self) -> bool:
         """Read anything new. Returns True if the transcript changed."""
         try:
-            size = self.path.stat().st_size
+            with open(self.path, "rb") as handle:
+                stat = os.fstat(handle.fileno())
+                size, identity = stat.st_size, (stat.st_dev, stat.st_ino)
+                head = handle.read(min(size, 4096))
+                rewritten = (self._file_id is not None and identity != self._file_id
+                             or bool(self._head) and head[:len(self._head)] != self._head
+                             or size == self._offset and self._mtime_ns is not None
+                             and stat.st_mtime_ns != self._mtime_ns)
+                if not rewritten and self._offset and size >= self._offset:
+                    # A compaction can replace bytes without shrinking the file.
+                    # Compare a bounded tail of the bytes already consumed (#249).
+                    handle.seek(self._offset - len(self._anchor))
+                    rewritten = handle.read(len(self._anchor)) != self._anchor
+                if rewritten or size < self._offset:
+                    rewritten = True
+                    self._offset, self._anchor = 0, b""
+                    self._parser = TranscriptParser()
+                self._file_id, self._head, self._mtime_ns = identity, head, stat.st_mtime_ns
+                if size == self._offset:
+                    return rewritten
+                handle.seek(self._offset)
+                data = handle.read(size - self._offset)
         except OSError:
             return False
-        if size < self._offset:
-            self._offset = 0
-            self._parser = TranscriptParser()
-        if size == self._offset:
-            return False
-        with open(self.path, "rb") as handle:
-            handle.seek(self._offset)
-            data = handle.read(size - self._offset)
         end = data.rfind(b"\n")
         if end < 0:
             return False
         complete = data[: end + 1]
         self._offset += len(complete)
+        self._anchor = (self._anchor + complete)[-4096:]
         lines = split_jsonl(complete)
         before = (len(self.transcript.messages), self.transcript.unreadable_lines)
         touched = self._parser.feed(lines)
         after = (len(self.transcript.messages), self.transcript.unreadable_lines)
-        return bool(touched) or before != after
+        return bool(rewritten) or bool(touched) or before != after
 
 
 def split_jsonl(data: bytes) -> List[str]:
@@ -632,7 +669,7 @@ TAIL_STEPS = (64 * 1024, 256 * 1024, 1024 * 1024, 4 * 1024 * 1024)
 #: What counts as the last message: your text and Claude's, as the messages
 #: list shows them. Tool calls and results, thinking, context and harness
 #: events, question cards, errors and other sessions' messages don't.
-LAST_MESSAGE_KINDS = (USER, ASSISTANT)
+LAST_MESSAGE_KINDS = (USER, ASSISTANT, COMMAND_OUTPUT)
 
 
 def last_message_from_tail(path: Path, steps: Tuple[int, ...] = TAIL_STEPS
