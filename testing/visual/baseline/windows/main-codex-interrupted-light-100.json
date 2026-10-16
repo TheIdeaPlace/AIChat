@@ -64,7 +64,7 @@
     590
    ],
    "best": [
-    1105,
+    1102,
     79
    ],
    "depth": 1,
@@ -76,14 +76,14 @@
     "Visual probe, Claude, Scratch, idle, active just now, Chat Place session",
     "Write the release notes for 0.2, Claude, AIChat, idle, active 1 hour ago, desktop app session",
     "A session whose title goes on and on to show what a very long title does to the session list and the heading above the messages, Claude, Website, idle, active yesterday, desktop app session",
-    "Codex history preview, Codex, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history., active 2 hours ago, Chat Place session"
+    "Codex history preview, Codex, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history, active 2 hours ago, Chat Place session"
    ],
    "selection": 4
   },
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history.. Codex chat.",
+   "label": "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history. Codex chat.",
    "rect": [
     402,
     8,
@@ -393,7 +393,7 @@
   {
    "class": "Control",
    "name": "Loaded session",
-   "label": "Codex history preview: status unavailable, Codex connection interrupted: an unsupported approval or question was received; reconcile chat history.",
+   "label": "Codex history preview: status unavailable, Codex connection interrupted: an unsupported approval or question was received; reconcile chat history",
    "rect": [
     471,
     634,
