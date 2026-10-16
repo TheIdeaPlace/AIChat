@@ -44,3 +44,15 @@ during an active turn can race the snapshot. The policy deliberately respects
 user/system rules, including always-allow commands outside the selected folder.
 Project rules remain forbidden. Native Windows/Mac acceptance and the #226 visual
 matrix remain release gates; automated checks alone do not close #257.
+
+Native Mac validation of the revision: config/read counts the existing one
+user/system rule file without refusal. A disposable ephemeral read-only lifecycle
+then succeeded with those rules retained; no prompt was sent and TCP persisted
+no chat. Focused rule/lifecycle/RPC/UI checks passed. The first full native run
+passed 2,029 tests with 88 skips and exposed one obsolete Continue Here wording
+assertion; the assertion now checks the saved-rule exception.
+
+The initial Mac probe captured three of four affected surfaces; final sequential
+captures repeatedly returned blank images. No final visual-pass claim is made.
+Windows light/high-contrast capture/comparison and screen-reader acceptance
+remain required under #226. PR #272 and issue #257 track review and acceptance.
