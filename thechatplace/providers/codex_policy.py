@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 
 from .. import platform_paths
-from .codex_rpc import CodexRpcError
+from .codex_rpc import CodexRpcError, CodexTurnRejected
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,12 @@ class CodexPolicy:
             except (ValueError, OSError):
                 valid = False
         if not valid:
+            if (self.sandbox == 'workspace-write' and isinstance(actual, dict)
+                    and actual.get('type') == 'readOnly' and result.get('approvalPolicy') == self.approval):
+                # Codex downgrades workspace-write to read-only on Windows when
+                # its Agent sandbox isn't set up (effective_sandbox_mode in
+                # codex-rs config_toml.rs). Still refused, but say why (#257).
+                raise CodexTurnRejected('sandbox_unavailable')
             raise CodexRpcError('Codex owned chat policy could not be verified')
 
     def verify_workspace(self, cwd):
