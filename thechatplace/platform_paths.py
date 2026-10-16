@@ -182,6 +182,10 @@ def app_data_dir() -> Path:
     return _roaming_dir() / APP_DIR_NAME
 
 
+def codex_diagnostic_path() -> Path:
+    return app_data_dir() / "codex-errors.log"
+
+
 def default_projects_root() -> Path:
     """Where the New Session folder picker starts: the GitHub folder (in
     the home folder, or in Documents as GitHub Desktop makes it on a Mac)."""
@@ -1185,6 +1189,24 @@ def _native_codex(path: str) -> bool:
         return native and os.access(path, os.X_OK)
     except OSError:
         return False
+
+
+def codex_workspace_root(cwd: str) -> str:
+    """Bind write access to an existing canonical folder, never a drive root."""
+    if not isinstance(cwd, str) or not cwd.strip():
+        raise ValueError("Codex workspace-write requires a folder")
+    path = Path(cwd)
+    if not path.is_absolute():
+        raise ValueError("Codex workspace-write requires an absolute folder")
+    root = path.resolve(strict=True)
+    home = Path.home().resolve()
+    if (not root.is_dir() or root == Path(root.anchor) or root == home
+            or root in home.parents
+            or any(root.samefile(folder) for folder in (home, *home.parents))
+            or os.path.ismount(root)
+            or sys.platform == 'darwin' and root == Path('/Volumes')):
+        raise ValueError("Codex workspace-write requires a project folder")
+    return str(root)
 
 
 class CodexServerProcess:

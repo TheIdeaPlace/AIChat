@@ -8,6 +8,12 @@ sys.path.insert(0, str(HERE))
 import pytest  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _isolated_codex_diagnostics(monkeypatch, tmp_path):
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: tmp_path / 'codex-errors.log')
+
+
 @pytest.fixture(scope="session")
 def app():
     """Keep one wx application alive across every GUI test module.

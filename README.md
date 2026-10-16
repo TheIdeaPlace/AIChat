@@ -1,10 +1,10 @@
 # The Chat Place
 
-A home for your Claude Code chats: an accessible companion for Claude Code.
+A keyboard and screen reader friendly home for your AI chats, together in one session list.
 
-The Chat Place is an independent project by Kelly Ford. It works with Claude Code and the
-Claude desktop app, but it isn't made, sponsored or endorsed by Anthropic, and isn't affiliated
-with it. Claude and Claude Code are trademarks of Anthropic.
+The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
+Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
+OpenAI products.
 
 New to The Chat Place? The [user guide](https://theideaplace.github.io/AIChat/user-guide.html) starts
 with the everyday things and goes deeper; it's also in the app, under Help, User Guide. This README
@@ -20,13 +20,13 @@ as Help, Keyboard Shortcuts (F1) in the app.
 > yet had a pass with NVDA. The Mac build is used with VoiceOver on Kelly's Mac, and since 0.1.2
 > the release workflow signs and notarizes it.
 
-A keyboard and screen reader friendly reader for Claude Code sessions. It lists every session the
-Claude desktop app has open, and the ones you started by typing `claude` in a terminal, shows each
-one as a conversation you can arrow through, tells you when a session answers, and switches the
-desktop app to a session when you need the real thing.
-It can also start sessions of its own, which you can read and reply to entirely from here.
+The Chat Place brings Claude and Codex chats into one accessible list. Read each conversation,
+find or export its messages, hear when it answers, and reply to chats started here. Provider
+identifies the AI; Kind identifies where a session started. Support for other providers, such as
+Ollama, is planned. Provider-specific features name their provider and are available where that
+provider supports them.
 
-It runs on your existing Claude subscription, signed in to Claude Code, and never uses an API
+For Claude chats, replies use your existing Claude subscription, signed in to Claude Code, and never uses an API
 key. Its own sessions' turns are Claude Code turns in headless mode (`claude -p`). Anthropic's
 help article [Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
 says those count against a monthly credit; past it, turns stop unless you've turned on extra
@@ -63,42 +63,46 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   hidden), hidden (the ones you've hidden), or one of your groups. The list's name says what it
   shows and how many ("Session list, needs you, 2 of 139"), and the choice is remembered.
   Choosing one keeps you on the same session when it's still listed.
-  **Claude Chats** and **Codex Chats** filter by provider. These views remain
-  available with the preview off; Codex Chats is empty until it is enabled.
+  **Claude Chats** and **Codex Chats** filter by provider. They remain available
+  with Codex turned off; Codex Chats is empty until it is enabled.
   **View, Session List Columns** (Alt+V, E) chooses what each line says and in what order, so
   it can start with the status rather than the title. The columns are Title, Folder,
-  Status, New reply, Last activity, Kind (Chat Place, Cowork or terminal), Remote Control, Archived,
-  Hidden and Groups, all shown at first, and **Started** and **Last message**, which aren't shown
-  until you add them, along with the optional **Provider** column (which AI); a column with nothing to say for a session is left out of its line. Last
+  Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
+  Remote Control, Archived, Hidden and Groups, all shown at first, and **Started**, **Last message**
+  and **Provider (Claude or Codex)**, which aren't shown
+  until you add them. Provider says which AI; Kind says where the session started. Other
+  clients may be identified as an editor, command-line or external session. Saved custom choices
+  remain unchanged. A column with nothing to say for a session is left out of its line. Last
   activity is the last time the session did anything. While a session is working or waiting on
   you, that's when its transcript was last written, so one working through a long turn, or run
   outside The Chat Place, reads "active just now" rather than the time the turn began (#209);
   an idle one keeps the time its own record gives. How long a turn has been running is in Turn Status (Ctrl+Shift+T). **Started**
   says when the session began ("started 2 days ago"). Last message says
-  where each conversation ended without loading it: "Claude:" or "You:" and the start of the
+  where each conversation ended without loading it: the provider's name ("Claude:" or "Codex:") or "You:" and the start of the
   last message either of you wrote, as plain text on one line (about 150 characters, cut at a
   word with "…"; a link reads as its words, a bare web address as its site). Tool calls and their results don't count. Press Enter to load the session and
   read the whole message. A session whose conversation is missing or can't be read says nothing
-  there. Only the end of each conversation file is read, in the background, and again only when
-  the file has changed; nothing is read while the column isn't shown. While a session is working,
+  there. For Claude chats, only the end of each conversation file is read, in the background, and again only when
+  the file has changed. Codex reads its supported history API in cached background batches;
+  neither provider reads Last message while the column isn't shown. While a session is working,
   the line you're on keeps its last message until the status changes, so a screen reader doesn't
-  read it again each time Claude writes; other lines change at once. The
+  read it again each time the provider writes; other lines change at once. The
   dialog has Available columns and Shown columns (in the order they're read), with Add, Remove,
   Move Up, Move Down, Move to Top, Move to Bottom and Reset to Default, and a preview of the
   selected session's line. Enter in Available adds a column, Delete in Shown removes one (on a
   Mac, Delete or Fn+Delete), and
   Alt+Up, Alt+Down, Alt+Home and Alt+End in Shown move it (Option on a Mac); each is said
-  ("Status moved to top, 1 of 10") and you stay on the column you moved. OK saves the choice
+  ("Status moved to top, 1 of 11") and you stay on the column you moved. OK saves the choice
   in The Chat Place's settings and rewrites the list at once; Escape cancels. With Status first,
   typing a letter no longer jumps to a title (nor with Last message first, where lines start
-  with "Claude" or "You"); Ctrl+F still finds a session by title or folder.
+  with a provider's name or "You"); Ctrl+F still finds a session by title or folder.
   Arrowing doesn't load anything; **Enter loads that session** into the messages list, moves you
   there, and says "Loaded Quiet one, 12 messages."
 - **Hide or delete a session.** **Delete** (File, Hide Session) takes the selected session out of
   the list without changing it; View, Show Sessions, Hidden lists hidden sessions, and File, Bring
   Back Session returns one. **Shift+Delete** (File, Delete Session Permanently) deletes one of The
   Chat Place's own sessions for good, from any view, hidden or not: after you confirm (No is the
-  default), its Claude Code transcript is deleted from the computer and it leaves the list, its
+  default), its Claude Code transcript is deleted (permanent deletion is currently supported for Claude chats) from the computer and it leaves the list, its
   groups and the hidden list. It waits while the session is working, here or in a terminal.
   Desktop app sessions can only be hidden; delete those in the desktop app.
   On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).
@@ -155,11 +159,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   app's summary of its latest turn says it's waiting on you, either with a "needs action" note
   (read after "needs you:") or a status such as blocked, needs input or review ready. The desktop
   app doesn't write that summary after every turn, so a session can be waiting on you and still
-  show as idle. For one of The Chat Place's own sessions: Claude is waiting right now for a
+  show as idle. For a Claude chat started in The Chat Place: Claude is waiting right now for a
   permission, a question or a plan (Ctrl+Shift+A), which ends when you answer; or its last turn
   failed, or tools were refused in it, which is saved with the session and lasts, even across a
-  restart, until its next turn starts.
-- **Messages:** newest last, with focus on the newest. Each row shows "You:" or "Claude:" and its
+  restart, until its next turn starts. Codex chats say needs you for permissions or questions;
+  unavailable status means live state could not be verified. An uncertain send requires reopening
+  and checking history before sending again.
+- **Messages:** newest last, with focus on the newest. Each row shows "You:" or the provider's name, such as "Claude:" or "Codex:", and its
   first line, but your screen reader reads the **whole message** as you arrow onto it, as words
   (headings and list items as sentences, and each code block as what it is: "Code block, Python, 14
   lines"). Settings, Reading messages turns that off, to hear just the first line. The list's name
@@ -418,7 +424,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   the status bar. Your screen reader's read-status-bar key reads all the parts.
 - **Answers to what you do are spoken too**, briefly and without cutting off your screen reader:
   "Tool activity shown in Build.", "Message copied.", and so on (unless announcements are set to silent).
-- **Your own message is read back when it's sent**, so you hear what actually went to Claude,
+- **Your own message is read back when it's sent**, so you hear what actually went to the selected provider,
   and where: "Sent to Hub probe: Fix the build." During a turn it's "Queued for Hub probe: …",
   and when the queued message goes out you hear only "Sent your queued message", not the
   message again. It follows the announcement level: at full, the message up to about 300
@@ -461,20 +467,32 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   90% or is reached, and when Claude Code compacts a conversation (the messages list shows
   "Conversation compacted" too). A turn that fails on a usage limit says so in plain words,
   with when it resets.
+  For a Codex chat, the same command reads current ChatGPT account limits in the
+  background, including used and remaining percentages and reported reset times.
+  Limits are shared across your Codex chats. Missing values are shown as not reported.
+  Codex chats started here also show the latest reported model request's input, output
+  and total tokens, separately from cumulative usage. When Codex reports its
+  context window, the latest request's percentage appears here and in the status
+  bar; at 80% The Chat Place warns once until the next compaction. After an owned Codex
+  turn ends, The Chat Place checks account limits in the background and warns at 80% and
+  100%, once per allowance and reset window, without interrupting read-back. These values become
+  available only after this connection receives a usage report. Missing windows
+  stay not reported; The Chat Place never substitutes Claude's counts or model defaults.
 - **Properties** (Alt+Enter, View menu, or the session's and the message's context menus; Option+Return
   on a Mac) opens a list of "Property: value" lines, read and copied like Usage and Context. In the
   session list it's the selected session; in the messages, the selected message; anywhere else,
-  the loaded session. A session's lines are its title, kind, folder, status, when it started and
-  was last active, the model of its latest reply (and, for The Chat Place's own, the model, effort
-  and permission mode chosen), how many messages, your messages, Claude's replies, tool calls,
+  the loaded session. A session's lines are its title, provider, kind, folder, status, when it started and
+  was last active, the model of its latest reply (for supported chats started here, the model, effort
+  and permission mode chosen), how many messages, your messages, the provider's replies, tool calls,
   links, code blocks and changed files it has, how full its context is, how many times it was
   compacted, its groups, Remote Control, whether it's archived or hidden, its session and desktop
-  app IDs, and its transcript file and size. Its whole transcript is read for this, so the counts
+  app IDs where available. Claude chats also show the transcript file and size; Codex history
+  comes through its API. Complete history is read for the message counts, so the counts
   don't depend on Show Tool Activity. A message's lines are who it's from, its date and time,
   its position in the list ("12 of 40"), its lines, words and characters, its links and code
   blocks, and its ID.
-- **Turn Status** (Ctrl+Shift+T) says how long Claude has been working on the current turn and
-  what it last did, or, while Claude waits on background work, what is still running. There's no
+- **Turn Status** (Ctrl+Shift+T) says how long the provider has been working on the current turn and
+  what it last did. For Claude chats, it also reports background work still running. There's no
   time limit on a turn; Stop (Ctrl+Period) ends it, along with anything it started, such as a
   build.
 - **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the
@@ -501,18 +519,50 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   page with it filled in; **Copy Report** only copies it. Filing on GitHub needs access to the
   repository; anyone else can Copy Report and email it to support@theideaplace.net.
 
-**Settings: local Codex history.** Enable **Include local Codex chats (read-only;
-restart required)**, save and restart to list local Codex chats alongside Claude.
-A native Codex CLI must be available and signed in to ChatGPT. Selecting a Codex
-chat opens its messages; formatted reading, Find and export work too. Reply in
-Codex: sending, Continue Here, approvals and queues are unavailable in this preview.
-Turn the option off and restart to hide Codex while keeping its saved preferences.
-Only chats in the local Codex catalog are listed. A status that Codex cannot verify
+**Local Codex chats in Settings.** Settings offers **Include local Codex chats
+(restart required)**. Enable it and restart to list local Codex chats
+alongside Claude chats. A native Codex CLI must be available and signed in to
+ChatGPT. Selecting a Codex chat automatically opens its history; messages,
+formatted reading, Find and export use Codex. New Session offers a Provider choice: choose Codex to start a chat here.
+Model and Effort offer the model and effort choices available in Codex in New Session and Continue Here. Leave
+Configured Codex model/effort selected to use its settings. Effort choices follow the selected
+model; choices load in the background and are rechecked before the chat starts. If loading fails,
+configured defaults remain available. New Codex chats default to editing files in their selected folder with on-request approvals.
+Choose read-only in New Session, or change an idle chat started here with File, Change
+Permission Mode (Ctrl+Shift+O). Existing chats retain their saved permissions.
+Continue Here copies a local Codex chat into a new chat started here. These chats
+support text replies, Stop, queued messages and Answer (Ctrl+Shift+A) for
+one-time permissions and questions. Externally started Codex chats remain read-only. Turning the
+option off and restarting hides Codex without removing its saved preferences.
+Quitting The Chat Place requests a stop for its running Codex replies.
+Revisiting a chat preserves its running turn. The Chat Place refuses to resume a saved
+chat whose latest turn is unfinished or uncertain. If the connection is lost,
+use Stop to check the saved turn and reconnect once it has ended. No message
+is resent. Selecting the chat again does not automatically reconnect. If
+Codex still reports unfinished work, The Chat Place refuses recovery and says why.
+Requests The Chat Place cannot present safely are declined with a notice; they do not
+disconnect the chat. Turn Status keeps that notice available.
+Turn Status (Ctrl+Shift+T) reports elapsed time and latest activity, and sent
+messages follow the same read-back setting as Claude. Only chats in the local Codex catalog are listed. A status Codex cannot verify
 is omitted from default rows and remains available in Properties and the Status column.
+
+
+Continue Here starts a Codex copy read-only. You can select folder editing for
+a project folder, but the home folder, its parents and volume roots cannot be
+used as writable folders. If Stop is acknowledged but the turn stays open,
+press Stop again to check Codex's saved turn status without resending anything.
+
+The Chat Place disables external tools (MCP servers, apps and plugins) for
+Codex chats started here because those tools can reach beyond the selected
+folder. It checks that they are disabled before sending. Your global Codex
+configuration stays unchanged; existing chats can still be read.
 
 ## Install
 
-You need Windows 10 or 11, or a Mac with Apple silicon, and **Claude Code installed with its
+You need Windows 10 or 11, or a Mac with Apple silicon. For Codex chats, the preview needs a
+native Codex CLI signed in to ChatGPT. Claude Code is not required for Codex chats.
+
+For Claude chats, you need **Claude Code installed with its
 native installer and signed in** to a Claude subscription (the `claude` command, the same login
 the desktop app uses). The Claude desktop app's own copy of Claude Code isn't on the PATH and
 isn't meant for other programs, so install the command as well, from a terminal:
@@ -567,7 +617,7 @@ downgrade, from the portable zip or from source. Turn it off in Settings with "T
 update has been installed, with a link to what's new" (Alt+T).
 
 From Help, a new version is offered in a Yes/No dialog where No is the default. If you choose Yes,
-it downloads the update, closes, and starts the new version. It won't install while Claude is
+it downloads the update, closes, and starts the new version. It won't install while any provider is
 working in one of its sessions, and it warns you if a reply box holds text you haven't sent. If a
 turn starts, a dialog opens, or you type a reply while it downloads, it asks again or leaves the
 update to be installed the next time The Chat Place starts.
@@ -717,7 +767,7 @@ shows it as plain text instead.
 | Reply box | Ctrl+Shift+Enter | Send, and save the message as a prompt (asks for its name first) |
 | Reply box | Ctrl+Period | Stop the running turn |
 | Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, or what is still running in the background |
-| Anywhere | Ctrl+Shift+A | Answer Claude: a permission request, a question or a plan |
+| Anywhere | Ctrl+Shift+A | Answer: a provider's permission request, a question or a supported plan |
 | Anywhere | Alt+Enter | Properties of the selected session, or in the messages the selected message |
 | Anywhere | F1 | Keyboard shortcuts |
 | Anywhere | Alt+H, G | The user guide |
@@ -750,7 +800,7 @@ Everything it reads is on your own PC, so reading costs nothing.
 Claude sessions stay in `sessions.json`. Codex sessions and their settings use
 `provider-sessions.json`; their groups, hidden state, custom names and Show Tool
 Activity preferences use separate `provider-*.json` files. Older versions retain
-their Claude data without reading or rewriting those Codex preferences.
+their Claude data without reading or rewriting Codex preferences.
 
 None of these formats is documented, and Claude Code says the transcript format changes between
 versions. So all the knowledge of it is in one small module (`thechatplace/transcript.py`) that

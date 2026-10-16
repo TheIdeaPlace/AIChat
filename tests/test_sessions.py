@@ -1,3 +1,4 @@
+from thechatplace.providers.claude import last_reply_from_tail
 import json
 
 import pytest
@@ -226,8 +227,8 @@ def test_last_reply_from_tail_reads_only_the_end(tmp_path):
     filler = lines(*[user_text("x" * 500) for _ in range(50)])
     tail = lines(user_text("question"), assistant_block(text_block("the reply"), "m9"))
     path.write_text("\n".join(filler + tail) + "\n", encoding="utf-8")
-    assert hub.last_reply_from_tail(path, max_bytes=2000) == "the reply"
-    assert hub.last_reply_from_tail(tmp_path / "missing.jsonl") == ""
+    assert last_reply_from_tail(path, max_bytes=2000) == "the reply"
+    assert last_reply_from_tail(tmp_path / "missing.jsonl") == ""
 
 
 def _titled(key, title, cwd, state, activity):
@@ -320,3 +321,11 @@ def test_process_start_matches_for_this_process():
         unix = start / 10_000_000 - 11_644_473_600
         assert time.time() - 3600 < unix <= time.time()
     assert platform_paths.process_start(0) is None
+
+
+def test_unavailable_state_has_explicit_order_and_never_counts_as_idle():
+    from thechatplace.sessions import STATUS_UNAVAILABLE, VIEW_IDLE, in_view, sort_sessions, SORT_STATUS
+    unknown = _info('unknown', STATUS_UNAVAILABLE, 100)
+    idle = _info('idle', IDLE, 1)
+    assert [s.key for s in sort_sessions([unknown, idle], SORT_STATUS)] == ['idle', 'unknown']
+    assert not in_view(unknown, VIEW_IDLE)

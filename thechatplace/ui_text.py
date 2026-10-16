@@ -2,13 +2,19 @@
 from __future__ import annotations
 
 import re
+import sys
 from typing import List
+
+
+def key_name(shortcut: str) -> str:
+    """Name wx's primary accelerator modifier on this platform."""
+    return shortcut.replace("Ctrl+", "Cmd+") if sys.platform == "darwin" else shortcut
 
 #: The window, in Tab order. The Help dialog and the README both describe it.
 LAYOUT = (
     "One window, three parts, in Tab order: the session list; the messages of the "
     "loaded session; and the reply box with Send and Stop (for a desktop app or "
-    "terminal session, a read-only note saying where you reply, with Open in Claude "
+    "terminal session, a read-only note saying where you reply, with provider-specific actions "
     "and Continue Here as they apply, in the same place). "
     "Shift+Tab goes back the same way."
 )
@@ -38,7 +44,7 @@ SHORTCUTS = [
         ("Ctrl+N", "New Chat Place session"),
         ("Ctrl+Shift+N", "Continue the selected desktop app or terminal session here, as a "
                          "copy you can reply to (the original isn't changed)"),
-        ("Ctrl+Shift+O", "Change Permission Mode: auto, accept edits, manual or plan for the "
+        ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes or Codex file access for the "
                          "selected (or loaded) Chat Place session, from its next turn (File, "
                          "Change Effort and Change Model are beside it)"),
         ("F5", "Refresh the list now and put it back in order (it also refreshes itself "
@@ -47,7 +53,7 @@ SHORTCUTS = [
                      "by folder; the choice is remembered"),
         ("Alt+V, H", "Show Sessions: all, needs you or working, needs you, working, with a "
                      "new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote "
-                     "Control, ungrouped (in no group), archived, or one of your groups"),
+                     "Control, Claude chats, Codex chats, ungrouped (in no group), archived, or one of your groups"),
         ("Alt+V, E", "Session List Columns: choose what each session's line says and in "
                      "what order, such as status first; in the dialog, Enter adds, Delete "
                      "removes, and Alt+Up, Alt+Down, Alt+Home and Alt+End move"),
@@ -55,7 +61,7 @@ SHORTCUTS = [
                    "plain text"),
         ("F2", "Rename the selected session (a desktop app or terminal session's new name "
                "shows only in The Chat Place)"),
-        ("Applications key / Shift+F10", "The session's menu: load, open in Claude, copy "
+        ("Applications key / Shift+F10", "The session's menu: load, provider-specific actions, copy "
                                          "its link, rename, Remote Control, groups, export, "
                                          "hide or delete"),
         ("Alt+F, O", "Remote Control: reach the selected session from claude.ai and your "
@@ -76,7 +82,7 @@ SHORTCUTS = [
          "code block); Alt+P reads it as plain text instead; Escape comes back to it"),
         ("Ctrl+C", "Copy the whole message"),
         ("Ctrl+Shift+C", "Copy the message's last code block"),
-        ("Ctrl+Enter on a queued message", "Send it now: Claude stops what it's doing and "
+        ("Ctrl+Enter on a queued message", "Send it now (Claude chats): Claude stops what it's doing and "
                                            "answers it"),
         ("Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks",
          "List, read and copy each code block"),
@@ -97,21 +103,20 @@ SHORTCUTS = [
                              "first words to start with), saves it, then sends as Ctrl+Enter "
                              "does; Escape at the name neither saves nor sends"),
         ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box"),
-        ("Ctrl+/", "Insert a slash command or one of your skills (type to search); it goes at "
+        ("Ctrl+/", "Insert a Claude slash command or one of your skills (type to search); it goes at "
                    "the start of the reply box"),
-        ("Ctrl+Shift+F", "Attach files or images to your next message (Attach Files button, "
+        ("Ctrl+Shift+F", "Attach files or images to your next Claude message (Attach Files button, "
                          "Alt+T); Delete in the attachments list removes one"),
-        ("Ctrl+V with a picture copied", "Attach the picture (a screenshot from Win+Shift+S, "
+        ("Ctrl+V with a picture copied", "Attach the picture to a Claude message (a screenshot from Win+Shift+S, "
                                          "say)"),
         ("Ctrl+Shift+M", "Other machines: list your sessions on other computers and send one "
                          "a message, through Claude in the loaded Chat Place session (it needs "
                          "Remote Control on)"),
-        ("Ctrl+Shift+D", "Changed files: what Claude changed since your latest message or in "
+        ("Ctrl+Shift+D", "Changed files (Claude chats): what changed since your latest message or in "
          "the whole session; Enter on a file reads its changes line by line"),
-        ("Ctrl+Shift+U", "Usage and context: a list of how full the loaded session's context "
-                         "is, and how much of each of your plan's limits is used; Ctrl+C "
-                         "copies a line"),
-        ("Ctrl+Shift+T", "Turn status: how long Claude has been working, on what, what "
+        ("Ctrl+Shift+U", "Usage and context: read the active provider's reported context and "
+                         "account allowances and reset times; Ctrl+C copies a line"),
+        ("Ctrl+Shift+T", "Turn status: how long the provider has been working, on what, what "
                          "is still running in the background, and whether a message "
                          "is queued"),
     ]),
@@ -119,9 +124,9 @@ SHORTCUTS = [
         ("Ctrl+Shift+S", "Find in All Sessions: search the messages of every session in the "
                          "list; Enter on a result loads that session on that message. Pressed "
                          "again while it searches, it stops"),
-        ("Ctrl+Shift+A", "Answer Claude: approve or deny a tool, answer its questions, or "
-                         "approve its plan (the loaded session first, then the one that has "
-                         "waited longest). Escape in the dialog answers later"),
+        ("Ctrl+Shift+A", "Answer: approve or deny a tool, answer the provider's questions, or "
+                         "approve its plan (the loaded session first, then another chat "
+                         "waiting for an answer). Escape in the dialog answers later"),
         ("Ctrl+Shift+K", "What Claude knows about you: your instructions, memories, "
                          "skills, subagents, commands and settings, to read or open in "
                          "your editor"),
@@ -160,6 +165,13 @@ def markdown_as_text(text: str) -> str:
 #: About how long the session list's Last message column is (#146): enough
 #: to hear where a conversation ended, short enough to arrow past.
 LAST_MESSAGE_LIMIT = 150
+
+
+def codex_effort_label(value: str) -> str:
+    """Readable choices; the protocol value stays in the validated catalog."""
+    return {'none': 'None', 'minimal': 'Minimal', 'low': 'Low', 'medium': 'Medium',
+            'high': 'High', 'xhigh': 'Extra high', 'max': 'Maximum', 'ultra': 'Ultra'}.get(
+                value, value.replace('_', ' ').replace('-', ' ').capitalize())
 _FENCE = re.compile(r"^\s*(```|~~~).*$", re.M)
 _LINE_MARK = re.compile(r"^\s*(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+|>\s?)+", re.M)
 _SINGLE_EMPHASIS = re.compile(r"(?<![\w*_])([*_])(?=\S)([^*_\n]+?)(?<=\S)\1(?![\w*_])")
@@ -191,7 +203,7 @@ def one_line(text: str, limit: int = LAST_MESSAGE_LIMIT) -> str:
 
 
 def last_message_line(label: str, text: str) -> str:
-    """The Last message column (#146): "Claude: …" or "You: …", or ""
+    """The Last message column (#146): the provider's name or "You: …", or ""
     when there's nothing to read."""
     plain = one_line(text)
     return f"{label}: {plain}" if plain else ""

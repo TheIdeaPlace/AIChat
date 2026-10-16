@@ -441,3 +441,13 @@ def test_reader_failed_pages_back_off_until_metadata_changes():
     assert [m for m, p in connection.calls] == ["thread/read", "thread/turns/list", "thread/read"]
     assert reader.refresh()
     assert reader.transcript.last_reply().text == "Ready"
+
+
+@pytest.mark.parametrize('origin,kind', [('cli', 'terminal session'), ('vscode', 'editor session'),
+    ('exec', 'command-line session'), ('appServer', 'other app session'),
+    ('unknown', 'external session'), ({'custom': 'synthetic-client'}, 'external session')])
+def test_codex_kind_uses_advertised_origin_without_guessing_a_desktop_app(origin, kind):
+    from thechatplace.providers.codex import session_from_thread
+    info = session_from_thread(thread(source=origin), False)
+    assert info.field_values()['kind'] == kind
+    assert info.field_values()['provider'] == 'Codex'

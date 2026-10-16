@@ -86,6 +86,45 @@ def _nsstring(text: str):
                  text.encode("utf-8"), argtypes=(ctypes.c_char_p,))
 
 
+def _appkit_constant(appkit, name):
+    return ctypes.c_void_p.in_dll(appkit, name).value
+
+
+def queue_announcement(handle: int, text: str) -> bool:
+    """Let VoiceOver finish its current speech before this announcement.
+
+    AppleScript's output command returns before speech finishes and has no
+    queue option. Posting from the app's view keeps send read-back intact.
+    False asks the caller to use its usual system-voice fallback.
+    """
+    if not IS_MACOS or not handle or _runtime() is None:
+        return False
+    try:
+        workspace = _send(_runtime().objc_getClass(b"NSWorkspace"), "sharedWorkspace")
+        if not _send(workspace, "isVoiceOverEnabled", restype=ctypes.c_bool):
+            return False
+        appkit = ctypes.cdll.LoadLibrary(
+            "/System/Library/Frameworks/AppKit.framework/AppKit")
+        def constant(name):
+            return _appkit_constant(appkit, name)
+        info = _send(_runtime().objc_getClass(b"NSMutableDictionary"), "dictionary")
+        priority = _send(_runtime().objc_getClass(b"NSNumber"), "numberWithInteger:",
+                         10, argtypes=(ctypes.c_long,))  # NSAccessibilityPriorityLow
+        for key, value in (("NSAccessibilityAnnouncementKey", _nsstring(text)),
+                           ("NSAccessibilityPriorityKey", priority)):
+            _send(info, "setObject:forKey:", value, constant(key),
+                  argtypes=(ctypes.c_void_p, ctypes.c_void_p))
+        post = appkit.NSAccessibilityPostNotificationWithUserInfo
+        post.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+        post.restype = None
+        # AppKit requires the application accessibility element, not a view.
+        application = _send(_runtime().objc_getClass(b"NSApplication"), "sharedApplication")
+        post(application, constant("NSAccessibilityAnnouncementRequestedNotification"), info)
+        return True
+    except Exception:
+        return False
+
+
 def _to_str(nsstring) -> str | None:
     if not nsstring:
         return None

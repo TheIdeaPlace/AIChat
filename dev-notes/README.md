@@ -17,3 +17,5 @@ shipped.
 | [speech-routing.md](speech-routing.md): how The Chat Place chooses what speaks, why NVDA users hear a Windows voice, and the options for fixing it | #98 |
 
 - [Provider integration review slices](provider-integration-slices.md): release scope, layer boundaries and review gates (#184, #171, #225).
+
+- [Owned Codex chats](codex-owned-chats.md): execution, policy and review evidence (#184, #171, #225).

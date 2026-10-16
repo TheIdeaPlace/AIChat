@@ -12,16 +12,18 @@ env PATH="/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Co
 This selects the already-used bundled development CLI explicitly; it is not a
 supported released minimum or an automatic desktop installation fallback.
  Open Settings,
-check **Include local Codex chats (read-only; restart required)**, save, close
+check **Include local Codex chats (restart required)**, save, close
 The Chat Place and start it again. A native Codex executable must be on PATH
 or in a supported native install location; keep Codex signed in to ChatGPT.
 
 Claude and local Codex chats now appear in the same list. Codex rows say
 **Codex chat** in the Kind column. View, Show Sessions offers Claude Chats and
 Codex Chats filters; View, Session List Columns can add a Provider column. Select one and open it normally: messages,
-formatted reading, Find and export use the Codex reader automatically. Codex
-history is read-only in this milestone: reply in Codex. Send, Continue Here,
-approvals, queues and Claude-specific actions are unavailable for Codex chats.
+formatted reading, Find and export use the Codex reader automatically. Existing Codex
+chats remain read-only. New Session offers Codex as a Provider; Continue Here
+copies a local Codex chat into a new owned chat. Owned chats support text
+replies, Stop, queued messages and Answer (Ctrl+Shift+A). Claude-specific
+actions remain unavailable for Codex.
 Turn the setting off and restart to hide Codex without deleting its saved data.
 
 Try a known local chat, archived history, title/hide/group preferences and
@@ -35,7 +37,7 @@ reading more histories.
 
 ## Command-line reader
 
-This development preview on `codex/provider-reading` lists the local
+This development preview on `codex/codex-integration-plan` lists the local
 Codex app-server catalog and exports one chat through the same adapter and
 managed backend being built for The Chat Place. No build is needed: use the
 existing development virtual environment. The in-app opt-in is described above.
@@ -67,10 +69,17 @@ are resumed/forked, and the managed process closes after each command.
 
 Only top-level chats in the local app-server catalog are listed. Cloud-only
 coverage is not established. Unknown status remains in Properties and selected
-Status columns, but is omitted from default rows and spoken message titles.
+State columns, but is omitted from default rows and spoken message titles.
 Long chats load every history page before displaying messages or exporting.
 While loading, the message list says Loading messages. Try Find, export and the
 Last message column on a long chat; a failed load must never appear complete.
-Sending, approvals and queues are not ready to try.
+Try a new Codex chat, a continued copy, text replies, a queued reply,
+and Stop. Stopping or a failed turn returns queued text to that chat's draft.
+A disconnected or uncertain send is never retried automatically: reload and
+check history before sending again. Answer supports Allow Once, Deny, Stop
+Turn and Answer Later. File approval requires matching readable changes;
+session write grants are unavailable. Questions keep their own identities
+and secret answers use masked controls. Model and policy overrides,
+attachments, individual queue editing and Send Now are unavailable.
 Windows validation is deferred in #226; it does not block this functional
 feature-branch preview.

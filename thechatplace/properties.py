@@ -21,6 +21,7 @@ from .message_links import find_links
 from .sessions import SessionInfo, how_long_ago
 from .transcript import ASSISTANT, QUEUED, TOOL, USER, ChatMessage, Transcript
 from . import usage
+from .ui_text import codex_effort_label
 
 
 def _plural(count: int, word: str) -> str:
@@ -54,15 +55,8 @@ def describe_size(size: int) -> str:
 
 
 def session_kind(info: SessionInfo) -> str:
-    if info.provider != "claude":
-        return f"{info.provider.capitalize()} chat"
-    if info.is_own:
-        return "Chat Place session"
-    if info.is_terminal:
-        return "Terminal session"
-    if info.cowork:
-        return "Desktop app Cowork session"
-    return "Desktop app Code session"
+    kind = info.kind_label
+    return kind[0].upper() + kind[1:]
 
 
 def _conversation(transcript: Transcript) -> List[ChatMessage]:
@@ -80,6 +74,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     context window Claude Code reported for its model, 0 if none."""
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     lines = [f"Title: {info.title or 'Untitled session'}",
+             f"Provider: {info.provider.capitalize()}",
              f"Kind: {session_kind(info)}"]
     if info.cowork:
         lines.append(f"Folder: {info.cowork_folder or 'none'}")
@@ -96,6 +91,15 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     if own is not None and info.provider == "claude":
         lines.append(f"Model chosen: {model_label(own.model)}")
         lines.append(f"Effort: {EFFORT_LABELS.get(own.effort, own.effort)}")
+    if own is not None and info.provider == 'codex':
+        options = own.provider_options
+        lines.append(f"Model chosen: {options.get('model') or 'configured Codex model'}")
+        lines.append(f"Effort: {codex_effort_label(options['effort']) if options.get('effort') else 'configured Codex effort'}")
+        sandbox = options.get('sandbox', 'read-only')
+        lines.append('Sandbox: ' + {'read-only': 'read-only', 'workspace-write': 'can edit files in its folder'}.get(sandbox, 'not reported'))
+        lines.append('Approval policy: ' + {'on-request': 'on request', 'never': 'never ask'}.get(options.get('approval_policy', 'on-request'), 'not reported'))
+        if sandbox == 'workspace-write':
+            lines.append('Writable folder: ' + options.get('workspace_root', 'not verified'))
     mode = own.permission_mode if own is not None else info.permission_mode
     if mode and info.provider == "claude":
         lines.append(f"Permission mode: {mode_label(mode)}")

@@ -98,6 +98,11 @@ This uses the same 820 by 620 frame as the other formatted pages. The page shows
 
 ## message-plain: The same message as plain text
 
+**Pending #226:** the description below records the accepted earlier screenshot.
+Current MessageDialog source uses the provider name ("Claude:"), and the formatted
+message title is "Message: Claude". Re-capture and review these surfaces before
+updating/accepting the Windows baseline; no updated screenshot is claimed here.
+
 This is a 720 by 520 dialog. "Claude said:" heads a white read-only text box 688 by 402, with a single "Close" button below it on the right. The box shows the raw Markdown in the small standard font: "## What changed", list lines starting with "- " and backticks, the code fenced with three backticks and "python", the table as pipe characters and dashes, and the link written out in full, "[the issue](https://github.com/example/repo/issues/42)". The text wraps at about 80 characters in places and runs wider in others. The code is in the same proportional font as everything else.
 
 **What looks off:** The line lengths are uneven: the first paragraph wraps early, around 430 pixels, while the long paragraph uses the full width. Nothing else.

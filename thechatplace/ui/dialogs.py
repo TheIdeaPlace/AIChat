@@ -15,11 +15,12 @@ from ..changes import file_text
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES)
 from ..message_links import matches
-from ..sessions import DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name
+from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
+                        WORKING, NEEDS_YOU, STATUS_UNAVAILABLE)
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
                       SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
-from ..ui_text import shortcuts_text
+from ..ui_text import shortcuts_text, codex_effort_label
 from . import mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import set_accessible_name, set_list_items_accessible
@@ -89,12 +90,13 @@ class NewSessionDialog(wx.Dialog):
 
     def __init__(self, parent, default_folder: str, continue_from: str = "",
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
-                 remove_recent=None):
+                 remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None):
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.continuing = bool(continue_from)
+        self._source_state = source_state
         self._projects_root = projects_root or default_folder
         self._clone_root = clone_root or self._projects_root
         self._feedback = feedback or (lambda text: None)
@@ -109,6 +111,21 @@ class NewSessionDialog(wx.Dialog):
         outer = wx.BoxSizer(wx.VERTICAL)
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
+        self._providers = tuple(p for p in providers if p in ("claude", "codex")) or ("claude",)
+        self._provider = provider if provider in self._providers else self._providers[0]
+        self.provider_choice = None
+        self._control_provider = "claude"
+        self._claude_choices = None
+        self._codex_models = ()
+        self._codex_choices = (0, 0, 0 if continue_from else 1)
+        self._codex_model_error = False
+        self._codex_models_loaded = False
+        if len(self._providers) > 1:
+            grid.Add(wx.StaticText(self, label="Pro&vider:"), 0, wx.ALIGN_CENTER_VERTICAL)
+            self.provider_choice = wx.Choice(self, choices=[p.capitalize() for p in self._providers])
+            self.provider_choice.SetSelection(self._providers.index(self._provider))
+            set_accessible_name(self.provider_choice, "Provider")
+            grid.Add(self.provider_choice, 1, wx.EXPAND)
 
         grid.Add(wx.StaticText(self, label="&Folder:"), 0, wx.ALIGN_CENTER_VERTICAL)
         if continue_from:
@@ -164,6 +181,7 @@ class NewSessionDialog(wx.Dialog):
         self.model = wx.Choice(self, choices=[label for _v, label in MODELS])
         set_accessible_name(self.model, "Model")
         self.model.SetSelection(0)  # Claude Code's own default
+        self.model.Bind(wx.EVT_CHOICE, self._on_codex_model)
         grid.Add(self.model, 1, wx.EXPAND)
 
         # Effort (#189). What it does is in the note below, with permissions.
@@ -225,12 +243,18 @@ class NewSessionDialog(wx.Dialog):
             self.work_in.Bind(wx.EVT_CHOICE, lambda e: self._on_work_in())
             self.refresh_repo()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        if self.provider_choice is not None:
+            self.provider_choice.Bind(wx.EVT_CHOICE, self._on_provider)
+        if self._provider == "codex":
+            self._on_provider()
+        if load_models is not None and "codex" in self._providers:
+            wx.CallAfter(load_models, self._set_codex_models)
         # Continuing, the folder is fixed: start at the first thing to type.
         wx.CallAfter(self._focus_first)
 
     def _focus_first(self):
         if self:
-            (self.message if self.continuing else self.folder).SetFocus()
+            (self.message if self.continuing else self.provider_choice or self.folder).SetFocus()
             # A backstop for the title's start being in view (#178): the
             # layout before showing is what puts it there.
             self.title_text.SetInsertionPoint(0)
@@ -390,7 +414,7 @@ class NewSessionDialog(wx.Dialog):
 
     def _on_browse(self, _event):
         start = self.folder.GetValue().strip()
-        with wx.DirDialog(self, "Choose the folder Claude works in",
+        with wx.DirDialog(self, "Choose the folder for this session",
                           defaultPath=start if os.path.isdir(start) else self._projects_root,
                           style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
@@ -428,7 +452,7 @@ class NewSessionDialog(wx.Dialog):
             self._warn("That folder doesn't exist. Choose an existing folder.", self.folder)
             return
         if not self.message.GetValue().strip():
-            self._warn("Type the first message for Claude.", self.message)
+            self._warn("Type the first message for this session.", self.message)
             return
         if not self.continuing and self.work_in.GetSelection() == WORK_IN_WORKTREE:
             self.make_worktree()  # Start finishes when it's made
@@ -490,12 +514,90 @@ class NewSessionDialog(wx.Dialog):
             else DEFAULT_PERMISSION_MODE
         index = self.model.GetSelection()
         model = MODELS[index][0] if 0 <= index < len(MODELS) else ""
+        if self.provider() == "codex":
+            mode = DEFAULT_PERMISSION_MODE
+            index = self.model.GetSelection() - 1
+            model = self._codex_models[index].model if 0 <= index < len(self._codex_models) else ""
         return folder, title, mode, message, model
+
+    def codex_policy(self):
+        return {'sandbox': 'workspace-write' if self.mode.GetSelection() == 1 else 'read-only',
+                'approval_policy': 'on-request'}
+
+    def provider(self):
+        return (self._providers[self.provider_choice.GetSelection()]
+                if self.provider_choice is not None else self._provider)
+
+    def _on_provider(self, _event=None):
+        provider = self.provider()
+        if self._control_provider == "claude":
+            self._claude_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
+        else:
+            self._codex_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
+        if provider == "codex":
+            self.model.Set(["Configured Codex model"] + [choice.label for choice in self._codex_models])
+            self.model.SetSelection(min(self._codex_choices[0], len(self._codex_models)))
+            self.model.Enable(bool(self._codex_models))
+            self._on_codex_model()
+            self.effort_choice.SetSelection(min(self._codex_choices[1], self.effort_choice.GetCount() - 1))
+            self.mode.Set(["Read-only; asks before allowing changes",
+                           "Can edit files in this folder; asks before anything else"])
+            self.mode.SetSelection(self._codex_choices[2])
+            self.mode.Enable()
+            self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and effort level, "
+                "or leave the configured defaults. "
+                "Choose read-only or allow edits in this folder. Both ask before allowing work "
+                "outside their selected file access; requests appear in Answer. Permissions are verified before sending." +
+                (" Model choices could not be loaded; configured defaults remain available." if self._codex_model_error else
+                 " Model choices load in the background." if not self._codex_models_loaded else ""))
+            if self.continuing:
+                note = "The copy starts from the last saved point with the permissions selected here. Codex asks when additional access is needed."
+                if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
+                    note = "This chat may still be working in Codex. " + note
+                self.note.SetValue(note + "\n\n" + self.note.GetValue())
+        else:
+            for control, choices, selected in zip((self.model, self.effort_choice, self.mode),
+                    ([label for value, label in MODELS], [label for value, label in EFFORTS],
+                     [label for value, label in PERMISSION_MODES]), self._claude_choices or (0, 0, 0)):
+                control.Set(choices)
+                control.SetSelection(selected)
+                control.Enable()
+            self.note.SetValue((CONTINUE_NOTE + "\n\n" + PERMISSION_NOTE) if self.continuing else PERMISSION_NOTE)
+        self._control_provider = provider
+        self._fit_note()
 
     def effort(self) -> str:
         """The ``--effort`` chosen, "" for Claude Code's own setting (#189)."""
+        if self.provider() == "codex":
+            model = self.model.GetSelection() - 1
+            effort = self.effort_choice.GetSelection() - 1
+            choices = self._codex_models[model].efforts if 0 <= model < len(self._codex_models) else ()
+            return choices[effort] if 0 <= effort < len(choices) else ""
         index = self.effort_choice.GetSelection()
         return EFFORTS[index][0] if 0 <= index < len(EFFORTS) else ""
+
+    def _on_codex_model(self, _event=None):
+        if self.provider() != "codex":
+            return
+        index = self.model.GetSelection() - 1
+        efforts = self._codex_models[index].efforts if 0 <= index < len(self._codex_models) else ()
+        self.effort_choice.Set(["Configured Codex effort"] + [codex_effort_label(value) for value in efforts])
+        self.effort_choice.SetSelection(0)
+        self.effort_choice.Enable(bool(efforts))
+
+    def _set_codex_models(self, models, error):
+        # An asynchronous catalog can arrive after Cancel/Destroy. It must not
+        # change focus, resurrect the dialog or touch a dead native window.
+        if not self or self.IsBeingDeleted():
+            return
+        self._codex_models = () if error else tuple(models)
+        self._codex_model_error = error
+        self._codex_models_loaded = True
+        if self.provider() == "codex":
+            self._on_provider()
+            if self.IsShown():
+                self._feedback("Codex model choices are available." if self._codex_models else
+                               "Codex model choices are unavailable. Configured defaults remain available.")
 
 
 class GitHubRepoDialog(wx.Dialog):
@@ -788,7 +890,7 @@ class SettingsDialog(wx.Dialog):
         outer.Add(self.remote_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         self.codex_enabled = wx.CheckBox(self, label=_wrapped(
-            self, "Include local Code&x chats (read-only; restart required)",
+            self, "Include local Code&x chats (restart required)",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.codex_enabled.SetValue(speech.codex_enabled)
         outer.Add(self.codex_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -878,12 +980,11 @@ class MessageDialog(wx.Dialog):
     """
 
     def __init__(self, parent, speaker_label: str, text: str):
-        super().__init__(parent, title=f"Message from {speaker_label}"
-                         if speaker_label in ("Claude", "You") else speaker_label,
+        super().__init__(parent, title=(speaker_label if speaker_label == "User Guide"
+                                      else f"Message: {speaker_label}"),
                          size=dialog_size(parent, 720, 520), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        label = f"{speaker_label} said:" if speaker_label in ("Claude", "You") \
-            else f"{speaker_label}:"
+        label = f"{speaker_label}:"
         sizer.Add(wx.StaticText(self, label="&" + label), 0, wx.LEFT | wx.TOP, 8)
         self.text = wx.TextCtrl(self, value=text,
                                 style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
@@ -1273,6 +1374,44 @@ class PermissionDialog(wx.Dialog):
         return self.reason.GetValue().strip()
 
 
+class CodexPermissionDialog(wx.Dialog):
+    """One-time Codex decisions; no unsupported persistent permission scopes."""
+    def __init__(self, parent, session_title, request, file_detail=""):
+        super().__init__(parent, title=f"Codex needs permission: {session_title}",
+                         size=dialog_size(parent, 700, 540),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.choice = ""
+        body = (f"Command:\n{request.command}\n\nFolder:\n{request.cwd}" if request.command
+                else file_detail or "The requested file changes aren't available to review. Deny or stop this turn.")
+        if request.reason:
+            body += "\n\nReason:\n" + request.reason
+        if request.grant_root:
+            body += "\n\nCodex requested session write access under:\n" + request.grant_root
+            body += "\nThis preview cannot grant that scope."
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
+        self.request_text = _read_only_text(self, body, "Request")
+        sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.allow = wx.Button(self, label="&Allow Once")
+        self.allow.Enable(bool(request.command or file_detail) and not request.grant_root)
+        deny = wx.Button(self, label="&Deny")
+        deny.SetDefault()
+        stop = wx.Button(self, label="&Stop Turn")
+        for button, choice in ((self.allow, "accept"), (deny, "decline"), (stop, "cancel")):
+            row.Add(button, 0, wx.RIGHT, 6)
+            button.Bind(wx.EVT_BUTTON, lambda event, decision=choice: self._choose(decision))
+        row.Add(wx.Button(self, wx.ID_CANCEL, "Answer &Later"), 0)
+        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        wx.CallAfter(self.request_text.SetFocus)
+
+    def _choose(self, choice):
+        self.choice = choice
+        self.EndModal(wx.ID_OK)
+
+
 OTHER = "Other"
 # How far each arrow key moves in a group of radio buttons (#121).
 RADIO_ARROW_STEPS = {wx.WXK_UP: -1, wx.WXK_LEFT: -1, wx.WXK_DOWN: 1, wx.WXK_RIGHT: 1}
@@ -1284,10 +1423,11 @@ class QuestionDialog(wx.Dialog):
     with its description, and Other with a text box. Send Answers is the
     default button."""
 
-    def __init__(self, parent, session_title: str, request):
-        super().__init__(parent, title=f"Claude asks: {session_title}", size=dialog_size(parent, 700, 560),
+    def __init__(self, parent, session_title: str, request, provider="Claude"):
+        super().__init__(parent, title=f"{provider} asks: {session_title}", size=dialog_size(parent, 700, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._questions = request.questions()
+        self._answer_key = "id" if provider == "Codex" else "question"
         self._controls = []  # per question: (kind, [controls], other text)
         outer = wx.BoxSizer(wx.VERTICAL)
         panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
@@ -1323,6 +1463,7 @@ class QuestionDialog(wx.Dialog):
                     controls.append(control)
                     box.Add(control, 0, wx.ALL, 4)
                     first = first or control
+                allow_other = provider != "Codex" or question.get("isOther") or not options
                 if multi:
                     other = wx.CheckBox(parent_window, label=f"{OTHER} (type below)")
                 else:
@@ -1332,11 +1473,16 @@ class QuestionDialog(wx.Dialog):
                 other._hub_label = OTHER
                 controls.append(other)
                 box.Add(other, 0, wx.ALL, 4)
-                other_text = wx.TextCtrl(parent_window)
+                other_text = wx.TextCtrl(parent_window, style=wx.TE_PASSWORD if question.get("isSecret") else 0)
+                other_text._preserve_answer = provider == "Codex"
                 set_accessible_name(other_text, f"{header}: your own answer")
                 box.Add(other_text, 0, wx.EXPAND | wx.ALL, 4)
                 other_text.Bind(wx.EVT_TEXT, lambda e, o=other: o.SetValue(True)
                                 if e.GetString().strip() else None)
+                if not allow_other:
+                    controls.remove(other)
+                    other.Hide()
+                    other_text.Hide()
                 self._controls.append(("multi" if multi else "single", controls, other_text))
                 sizer.Add(box, 0, wx.EXPAND | wx.ALL, 6)
                 first = first or other
@@ -1347,7 +1493,7 @@ class QuestionDialog(wx.Dialog):
         send = wx.Button(self, wx.ID_OK, "&Send Answers")
         send.SetDefault()
         row.Add(send, 0, wx.RIGHT, 6)
-        decline = wx.Button(self, ID_DENY, "&Don't Answer")
+        decline = wx.Button(self, ID_DENY, "Decline and Stop &Turn" if provider == "Codex" else "&Don't Answer")
         row.Add(decline, 0, wx.RIGHT, 6)
         row.Add(wx.Button(self, wx.ID_CANCEL, "Answer &Later"), 0)
         outer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
@@ -1428,7 +1574,8 @@ class QuestionDialog(wx.Dialog):
             if not control.GetValue():
                 continue
             if control._hub_label == OTHER:
-                typed = " ".join(other_text.GetValue().split())
+                typed = (other_text.GetValue() if getattr(other_text, "_preserve_answer", False)
+                         else " ".join(other_text.GetValue().split()))
                 if typed:
                     chosen.append(typed)
             else:
@@ -1438,7 +1585,7 @@ class QuestionDialog(wx.Dialog):
     def answers(self):
         """{question text: answer} as Claude Code expects it; several
         choices are joined with commas."""
-        return {question["question"]: self._answer_for(controls, other_text)
+        return {question[self._answer_key]: self._answer_for(controls, other_text)
                 for (_kind, controls, other_text), question
                 in zip(self._controls, self._questions)}
 

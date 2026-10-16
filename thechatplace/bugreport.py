@@ -91,6 +91,10 @@ def environment(speech, counts: Dict[str, int], claude_version: Optional[str] = 
     ]
     if speech_route:
         facts.append(("Last announcement", speech_route))
+    from .codex_diagnostics import last_failure
+    codex_problem = last_failure()
+    if codex_problem:
+        facts.append(("Last Codex error", codex_problem))
     if counts:
         facts.append(("Sessions listed", ", ".join(f"{n} {kind}" for kind, n in counts.items())))
     return facts
