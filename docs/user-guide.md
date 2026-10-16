@@ -140,9 +140,11 @@ Other things you can do with a message:
 
 - **Ctrl+C** copies the whole message.
 - **Ctrl+Shift+B** lists the message's code blocks, by language and size, with each one's code to
-  read and a Copy button for just that block. **Ctrl+Shift+C** copies the last code block at once.
-- **Ctrl+L** lists the links in the session, and **Ctrl+F** and **Ctrl+Shift+S** find text in
-  this session or in all of them: see "Finding things" below.
+  read and copy. **Ctrl+Shift+C** copies the last code block at once.
+- **Ctrl+Shift+I** lists code blocks, links, changed files, commands and decisions, for this
+  message or the whole chat, and **Ctrl+L** goes straight to its links: see "Lists" below.
+  **Ctrl+F** and **Ctrl+Shift+S** find text in this session or in all of them: see "Finding
+  things" below.
 - The Applications key (or Shift+F10) opens the message's menu.
 
 Claude's questions to you appear as "Claude asked: …" followed by "You answered: …". Tools Claude
@@ -219,27 +221,50 @@ window, or another app), the list doesn't jump in front of you. You hear how man
 until you choose another view of the list, or until you start a new search. With no match, you
 hear "No messages contain …" and no list opens.
 
-### Links in a session
+### Lists: code blocks, links, files, commands and decisions
 
-**Ctrl+L** (View, Links) lists every link in the loaded session's messages, from the session list,
-the messages or the reply box. The dialog's title names the session and how many there are,
-such as "Links in Fix the build: 12", and you start on the newest link. Each address is listed
-once. Each line reads as the link's words and where it goes, then who wrote it and roughly when:
-"release notes, github.com/…/tag/v0.1.5. Claude, 3 messages ago". A bare address reads as
-itself, and a long one is shortened to its site and its end; the whole address is always what's
-opened or copied. A link in a code block or in inline code says "in code".
+**Ctrl+Shift+I** (View, Lists) opens one dialog with a tab for each kind of thing in a chat, from
+the session list, the messages or the reply box:
 
-- **Enter** (or Open) opens the link in your browser and closes the list.
-- **Ctrl+C** (or Copy) copies its address, and you hear "Copied …". **Ctrl+Shift+C** (or Copy as
-  Markdown) copies it as a Markdown link. The list stays open.
+- **Code Blocks:** each code block, by language and size, with its code to read.
+- **Links:** each link, its words and where it goes, then who wrote it and roughly when.
+- **Changed Files** (Claude chats): each file Claude changed, with how many lines were added and
+  removed, and its changes to read line by line.
+- **Commands:** each command Claude ran: what it said it was doing, then "done", "failed" or
+  "no result yet". Its full text shows the command and its output.
+- **Decisions:** each question Claude asked you, with your answer.
+
+**Show items from** (Alt+S) chooses **This message** or **The whole chat**. For code blocks and
+links, "this message" is the selected message. For files, commands and decisions, it's the
+selected message's turn: from your message to Claude's reply. The newest items come first.
+
+The tab strip is a Tab stop: arrow along it to change the tab, and Enter moves to the tab's list.
+**Ctrl+Tab** and **Ctrl+Shift+Tab** (also Ctrl+Page Down and Ctrl+Page Up) change the tab from
+anywhere and leave you on its list. On a Mac, that's the Control key, as in other Mac apps' tabs.
+Lists opens on the tab you used last. Some keys open it on their own tab:
+
+- **Ctrl+Shift+B** in the messages: Code Blocks, for the selected message.
+- **Ctrl+L** (View, Links): Links, for the whole chat.
+- **Ctrl+Shift+D** (View, Changed Files): Changed Files, for your latest message if it changed
+  any files, otherwise for the whole chat.
+
+On every tab:
+
+- **Enter** reads the item in full in the Details box below the list. On the Links tab, Enter (or
+  Open) opens the link in your browser and closes Lists.
+- **Ctrl+C** (or Copy) copies the item: the code, the link's address, the file's path, the
+  command, or your answer. You hear what was copied. On the Links tab, **Ctrl+Shift+C** (or Copy as
+  Markdown) copies a Markdown link.
 - **Type** to narrow the list: the letters go into the Filter box (Alt+F), and the list's label
   says how many match, such as "Links (2 of 12)". Down Arrow goes back to the list.
-- **Escape** closes it and puts you back where you were.
+- **Escape** closes Lists and puts you back where you were.
 
-Only web, email and session links open. Anything else, such as a file path, is marked "copy only",
-and says why if you try to open it. References to files in the project, such as main.py written
-as a link, aren't listed. Links in tool calls and results are listed only with Show Tool Activity
-on. With no links at all, you hear "No links in this session." and no list opens.
+A tab with nothing to list says so, for example "No commands in this chat." Each link is listed
+once, at its newest mention. A long address is shortened to its site and its end, but the whole
+address is always what's opened or copied. A link in a code block or in inline code says "in
+code". Only web, email and session links open; anything else, such as a file path, is marked
+"copy only" and says why if you try to open it. Links in tool calls and results are listed only
+with Show Tool Activity on. Commands are listed for Claude chats for now.
 
 ## Kinds of session
 
@@ -677,9 +702,9 @@ notification is shown.
 
 ## More things you can do
 
-- **Changed Files** (Ctrl+Shift+D) lists the files Claude changed since your latest message, or in
-  the whole session, with how many lines were added and removed. Enter on a file reads its changes
-  line by line. It works for desktop app sessions too.
+- **Changed Files** (Ctrl+Shift+D) opens Lists on its Changed Files tab: the files Claude changed
+  since your latest message, or in the whole chat, with how many lines were added and removed.
+  Enter on a file reads its changes line by line. It works for desktop app sessions too.
 - **Usage and Context** (Ctrl+Shift+U) opens a list to read with the arrow keys: how full the
   session's context is ("Context 62% full: 124,000 of 200,000 tokens"), then each of your plan's
   usage limits on its own line. Ctrl+C copies the selected line, Copy All (Alt+A) copies every

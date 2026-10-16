@@ -182,21 +182,30 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   page is shown by the system's WebKit, and VoiceOver moves through it with the rotor (VO+U) and its
   heading and table commands; Command+W also closes it. On Windows the page needs Microsoft's Edge
   WebView2 runtime, which comes with Windows 11; without it, the text box opens. Nothing in the
-  page is fetched from the internet, and HTML in a message is shown as text, never run. **Code
-  Blocks** (**Ctrl+Shift+B**, or on the context menu) lists the message's code blocks by language
-  and size, with the selected one's code in a box to read by line (Enter on a block goes there) and
-  a Copy button for just that block; **Ctrl+Shift+C** copies the message's last code block straight
-  away. **Links** (View, Links, **Ctrl+L**, from the session list, the messages or the reply box)
-  lists every link in the loaded session, newest first, each address once: a link reads as its
-  words and then where it goes, a bare address as itself (a long one shortened to its site and
+  page is fetched from the internet, and HTML in a message is shown as text, never run. **Lists**
+  (View, Lists, **Ctrl+Shift+I**, from the session list, the messages or the reply box, #279) is
+  one dialog with a tab for each kind of thing in a chat: **Code Blocks**, **Links**, **Changed
+  Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
+  yet", and its output) and **Decisions** (each question Claude asked, with your answer). **Show
+  items from** (Alt+S) chooses This message or The whole chat; for files, commands and decisions,
+  "this message" is the selected message's turn, from your message to Claude's reply. The newest
+  come first. The tab strip is a Tab stop (arrow to change the tab, Enter goes to its list), and
+  **Ctrl+Tab** and **Ctrl+Shift+Tab** (also Ctrl+Page Down and Page Up; the Control key on a Mac
+  too) change the tab from anywhere and stay on its list. It opens on the tab you used last.
+  **Ctrl+Shift+B** opens it on Code Blocks for the selected message, **Ctrl+L** on Links for the
+  whole chat, and **Ctrl+Shift+D** on Changed Files. Enter reads an item in full in the Details box
+  (on Links, Enter or Open opens the link in your browser and closes Lists); Ctrl+C (or Copy)
+  copies it (the code, the address, the file's path, the command or your answer), and on Links
+  Ctrl+Shift+C (or Copy as Markdown) copies a Markdown link. Typing narrows the list (the letters go
+  to its Filter box); Down Arrow comes back. A tab with nothing says so ("No commands in this
+  chat."). **Ctrl+Shift+C** copies the message's last code block straight away. A link reads as
+  its words and then where it goes, a bare address as itself (a long one shortened to its site and
   its end), then who wrote it and roughly when, and "in code" for one in a code block or inline
-  code: "release notes, github.com/…/tag/v0.1.5. Claude, 3 messages ago". References to files
-  in the repository, such as `[main.py](src/main.py)`, aren't listed. Enter (or Open) opens it in your browser and closes the list;
-  Ctrl+C (or Copy) copies its address and Ctrl+Shift+C (or Copy as Markdown) the link, and the
-  list stays open. Typing narrows the list (the letters go to its Filter box); Down Arrow comes
-  back. Only web, email and session links open; anything else, such as a file: path, is marked
-  "copy only" and says why if you try. Links in tool calls and results are listed only with Show
-  Tool Activity on. With none, you hear "No links in this session." Question cards read as
+  code: "release notes, github.com/…/tag/v0.1.5. Claude, 3 messages ago". Each address is listed
+  once. References to files in the repository, such as `[main.py](src/main.py)`, aren't listed.
+  Only web, email and session links open; anything else, such as a file: path, is marked "copy
+  only" and says why if you try. Links in tool calls and results are listed only with Show Tool
+  Activity on. Commands are listed for Claude chats for now. Question cards read as
   "Claude asked: Which version?" with the options in the full text,
   then "You answered: ...". Refused tools read "Permission denied: ...". Tool calls and tool
   results are hidden unless you turn on Show Tool Activity (Ctrl+T). It's set for each session and
@@ -457,8 +466,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     macOS asks once whether The Chat Place may send them (System Settings, Notifications changes
     that). Each one remembers its own session, so choosing an older one still opens the right
     session.
-- **Changed Files** (Ctrl+Shift+D, View menu) lists the files Claude changed since your latest
-  message, or in the whole session, each with its line counts ("main_frame.py, 40 lines added, 12
+- **Changed Files** (Ctrl+Shift+D, View menu) opens Lists on its Changed Files tab: the files
+  Claude changed since your latest message, or in the whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
   removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a
   time: where each change is, then "Removed:", "Added:" and "Unchanged:" lines. It's built from the
   transcript, so it works for desktop app sessions too, with no git needed. Changes made by a
@@ -770,7 +779,8 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+P | Prompts: use, add, edit, reorder or delete your saved prompts |
 | Anywhere | Ctrl+Shift+F | Attach files or images to the next message |
 | Anywhere | Ctrl+Shift+M | Other machines: list your sessions on other computers and message one |
-| Anywhere | Ctrl+Shift+D | Changed files, and each change to read by line |
+| Anywhere | Ctrl+Shift+I | Lists: code blocks, links, changed files, commands and decisions, for this message or the whole chat |
+| Anywhere | Ctrl+Shift+D | Lists, on Changed Files: each change to read by line |
 | Anywhere | Ctrl+Shift+U | Usage and context: a list of how full the context is, and each plan limit |
 | Anywhere | Alt+V, H | Show Sessions: choose which sessions are listed |
 | Anywhere | Alt+V, E | Session List Columns: choose what each session's line says, and in what order |
@@ -781,8 +791,8 @@ shows it as plain text instead.
 | Session list | Shift+Delete | Delete one of The Chat Place's own sessions permanently, after you confirm |
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
 | Messages | Ctrl+C | Copy the whole message |
-| Messages | Ctrl+Shift+B | Code blocks: list, read and copy each one |
-| Messages | Ctrl+L | Links: every link in the loaded session, to open in your browser or copy (also from the session list and the reply box) |
+| Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
+| Messages | Ctrl+L | Lists, on Links: every link in the chat, to open in your browser or copy (also from the session list and the reply box) |
 | Messages | Ctrl+Shift+C | Copy the message's last code block |
 | Messages | Ctrl+T | Show or hide tool activity in the loaded session |
 | Messages | Ctrl+O | Open this session in the Claude desktop app |

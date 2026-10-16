@@ -3532,7 +3532,6 @@ def _load_code(frame, env):
 
 
 def test_code_blocks_are_described_listed_and_copied(frame, env, monkeypatch):
-    from thechatplace.ui.dialogs import CodeBlocksDialog
     _load_code(frame, env)
     assert frame._message_item_text(1) == ("Claude: Two ways. Code block, Python, 1 line. or. "
                                            "Code block, Bash, 2 lines. Done.")
@@ -3540,18 +3539,14 @@ def test_code_blocks_are_described_listed_and_copied(frame, env, monkeypatch):
     frame.copy_last_code_block()  # Ctrl+Shift+C: the last block
     assert env["copied"][-1] == "echo hi\necho there"
     assert env["feedback"][-1] == "Copied: Code block, Bash, 2 lines."
-    shown = []
-
-    def modal(dialog):
-        shown.append([dialog.list.GetString(i) for i in range(dialog.list.GetCount())])
-        assert dialog.code.GetValue() == "print(1)"
-        dialog.copy_selected()
-        dialog.Destroy()
-    monkeypatch.setattr(frame, "_modal", modal)
+    # Ctrl+Shift+B: View, Lists on its Code Blocks tab, for this message (#279).
+    seen = _lists_dialog(frame, monkeypatch, lambda page: page.copy_selected())
     frame.on_code_blocks()
-    assert shown == [["Python, 1 line: print(1)", "Bash, 2 lines: echo hi"]]
+    assert (seen["category"], seen["scope"]) == ("code", "message")
+    assert seen["rows"] == ["Python, 1 line: print(1)", "Bash, 2 lines: echo hi"]
+    assert seen["detail"] == "print(1)"
     assert env["copied"][-1] == "print(1)"
-    assert isinstance(CodeBlocksDialog, type)
+    assert env["feedback"][-1] == "Copied the code."
     menu = frame._message_menu()
     labels = {item.GetItemLabelText(): item.IsEnabled() for item in menu.GetMenuItems()}
     assert labels["Code Blocks..."] and labels["Copy Last Code Block"]
@@ -3563,12 +3558,13 @@ def test_messages_without_code_say_so(frame, env, monkeypatch):
     frame.chat_list.SetSelection(2)  # "Thanks"
     frame.copy_last_code_block()
     assert env["feedback"][-1] == "This message has no code blocks."
-    monkeypatch.setattr(frame, "_modal", lambda dialog: pytest.fail("no dialog"))
+    # The list always opens (#279), saying there's nothing in this message.
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
     frame.on_code_blocks()
-    assert env["feedback"][-1] == "This message has no code blocks."
+    assert seen["rows"] == ["No code blocks in this message."]
     menu = frame._message_menu()
     labels = {item.GetItemLabelText(): item.IsEnabled() for item in menu.GetMenuItems()}
-    assert not labels["Code Blocks..."] and not labels["Copy Last Code Block"]
+    assert labels["Code Blocks..."] and not labels["Copy Last Code Block"]
     menu.Destroy()
 
 
@@ -3601,14 +3597,11 @@ def test_changed_files_view_and_turn_end_summary(frame, env, monkeypatch):
     assert pump(lambda: frame._chat_loaded)
     shown = []
 
-    def modal(dialog):
-        shown.append((dialog.scope.GetSelection(),
-                      [dialog.list.GetString(i) for i in range(dialog.list.GetCount())],
-                      dialog.text.GetValue()))
-        dialog.Destroy()
-    monkeypatch.setattr(frame, "_modal", modal)
+    def act(page):
+        shown.append((page.owner.scope, list(page.list.GetStrings()), page.detail.GetValue()))
+    _lists_dialog(frame, monkeypatch, act)
     frame.on_changes()
-    assert shown[0][0] == 0  # your latest message
+    assert shown[0][0] == "message"  # your latest message
     assert shown[0][1] == ["a.py, 2 lines added, 1 removed, in src"]
     assert "Removed: old\nAdded: new\nAdded: more" in shown[0][2]
     # Changes there when the session loaded are old news; a turn's new ones
@@ -3647,20 +3640,23 @@ def test_changed_files_view_and_turn_end_summary(frame, env, monkeypatch):
     frame._refresh_chat()
     assert pump(lambda: frame._chat_turns == 3)
     frame.on_changes()
-    assert shown[-1][0] == 1 and len(shown[-1][1]) == 2
+    assert shown[-1][0] == "chat" and len(shown[-1][1]) == 2
     # A summary due for a session that's no longer loaded isn't said.
     frame._say_changes(frame._open_generation - 1)
     assert frame._changes_due is False
 
 
-def test_changed_files_with_nothing_changed(frame, env):
+def test_changed_files_with_nothing_changed(frame, env, monkeypatch):
     add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi"),
                                                  assistant_block(text_block("Hello."), "m1")])
     select(frame, "Quiet one")
     frame.on_open_session()
     assert pump(lambda: frame._chat_loaded)
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
     frame.on_changes()
-    assert env["feedback"][-1] == "Quiet one: Claude hasn't changed any files in this session."
+    # The list always opens (#279), on the whole chat, saying there's nothing.
+    assert (seen["category"], seen["scope"]) == ("files", "chat")
+    assert seen["rows"] == ["No files in this chat."]
 
 
 def test_notifications_when_another_window_is_active(frame, env, monkeypatch):
@@ -4429,14 +4425,14 @@ def test_voiceover_menu_by_the_newer_call_and_only_for_live_lists(frame, monkeyp
 
 @voiceover
 def test_voiceover_reads_dialog_labels(frame):
-    from thechatplace.ui.dialogs import (BugReportDialog, ChangesDialog, CommandPickerDialog,
+    from thechatplace.ui.dialogs import (BugReportDialog, CommandPickerDialog, ListsDialog,
                                          NewSessionDialog, SettingsDialog, UsageDialog)
     dialogs = [
         NewSessionDialog(frame, "/tmp"),
         SettingsDialog(frame, speech.SpeechSettings(), speech.default_options()),
         BugReportDialog(frame, ["The Chat Place: 0.1.0"]),
         CommandPickerDialog(frame, FAKE_COMMANDS),
-        ChangesDialog(frame, "Hub probe", [], [], str),
+        ListsDialog(frame, "Hub probe", lambda tab, scope: [], lambda text: True, str),
         UsageDialog(frame, ["Context: not known."], lambda text, one: None),
     ]
     try:
@@ -7745,20 +7741,19 @@ def _links_session(frame, env, records=None):
     assert pump(lambda: frame._chat_loaded)
 
 
-def _links_dialog(monkeypatch, act):
-    """LinksDialog, shown modally by doing ``act(dialog)`` instead."""
-    from thechatplace.ui import dialogs, main_frame
+def _lists_dialog(frame, monkeypatch, act):
+    """View, Lists (#279), shown modally by doing ``act(page)`` on its
+    current tab instead."""
     seen = {}
 
-    class Shown(dialogs.LinksDialog):
-        def ShowModal(self):
-            seen["dialog"] = self
-            seen["title"] = self.GetTitle()
-            seen["rows"] = list(self.list.GetStrings())
-            seen["label"] = self.list_label.GetLabel()
-            act(self)
-            return self.GetReturnCode()
-    monkeypatch.setattr(main_frame, "LinksDialog", Shown)
+    def show(dialog):
+        page = dialog.current()
+        seen.update(dialog=dialog, title=dialog.GetTitle(), category=dialog.category,
+                    scope=dialog.scope, rows=list(page.list.GetStrings()),
+                    label=page.list_label.GetLabel(), detail=page.detail.GetValue())
+        act(page)
+        return dialog.GetReturnCode()
+    monkeypatch.setattr(frame, "_show_lists", show)
     return seen
 
 
@@ -7766,10 +7761,11 @@ def test_links_lists_newest_first_and_opens_one(frame, env, monkeypatch):
     _links_session(frame, env)
     opened = []
     monkeypatch.setattr(main_frame_paths(), "open_url", opened.append)
-    seen = _links_dialog(monkeypatch, lambda d: d.open_selected())
+    seen = _lists_dialog(frame, monkeypatch, lambda d: d.open_selected())
     frame.on_links()
-    assert seen["title"] == "Links in Quiet one: 3"
-    assert seen["label"] == "&Links (3):"
+    assert seen["title"] == "Lists: Quiet one"
+    assert (seen["category"], seen["scope"]) == ("links", "chat")
+    assert seen["label"] == "&List: Links (3):"
     assert seen["rows"] == [
         "release notes, example.com/notes. Claude, 1 message ago",
         "a file, file:///C:/secret.txt. Claude, 1 message ago, copy only",
@@ -7787,10 +7783,10 @@ def test_a_link_that_cant_open_says_why_and_can_be_copied(frame, env, monkeypatc
     def act(dialog):
         dialog.list.SetSelection(1)
         dialog.open_selected()
-        assert dialog.chosen is None  # stays open
+        assert dialog.owner.chosen_link is None  # stays open
         dialog.copy_selected()
         dialog.copy_selected(markdown=True)
-    _links_dialog(monkeypatch, act)
+    _lists_dialog(frame, monkeypatch, act)
     frame.on_links()
     assert opened == []
     assert env["feedback"][-3].startswith("A file: link isn't opened from here")
@@ -7805,24 +7801,24 @@ def test_typing_narrows_the_links(frame, env, monkeypatch):
     def act(dialog):
         dialog.filter.SetValue("old")
         assert list(dialog.list.GetStrings()) == ["example.com/old. You, 2 messages ago"]
-        assert dialog.list_label.GetLabel() == "&Links (1 of 3):"
+        assert dialog.list_label.GetLabel() == "&List: Links (1 of 3):"
         dialog.filter.SetValue("nothing like it")
-        assert dialog.list.GetCount() == 0
+        assert list(dialog.list.GetStrings()) == ["No links match."]
         dialog.open_selected()
-    _links_dialog(monkeypatch, act)
+    _lists_dialog(frame, monkeypatch, act)
     frame.on_links()
     assert env["feedback"][-1] == "No links match."
 
 
 def test_links_with_none_or_nothing_loaded_say_so(frame, env, monkeypatch):
-    monkeypatch.setattr("thechatplace.ui.main_frame.LinksDialog",
-                        lambda *a, **k: pytest.fail("no dialog"))
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
     frame.on_links()
-    assert env["feedback"][-1] == "No session loaded."
+    assert env["feedback"][-1] == "No session loaded." and not seen
     _links_session(frame, env, [user_text("no links here"),
                                 assistant_block(text_block("none at all"), "m1")])
     frame.on_links()
-    assert env["feedback"][-1] == "No links in this session."
+    # The list always opens (#279), saying there's nothing.
+    assert seen["rows"] == ["No links in this chat."]
 
 
 def test_links_in_tool_results_count_only_with_tool_activity(frame, env, monkeypatch):
@@ -7831,13 +7827,10 @@ def test_links_in_tool_results_count_only_with_tool_activity(frame, env, monkeyp
         assistant_block(tool_use_block("WebFetch", {"url": "https://tool.example.com/x"}, "t1"),
                         "m1"),
         assistant_block(text_block("done"), "m2")])
-    monkeypatch.setattr("thechatplace.ui.main_frame.LinksDialog",
-                        lambda *a, **k: pytest.fail("no dialog"))
+    seen = _lists_dialog(frame, monkeypatch, lambda d: None)
     frame.on_links()
-    assert env["feedback"][-1] == "No links in this session."
+    assert seen["rows"] == ["No links in this chat."]
     frame._set_activity(True)
-    # Not monkeypatch.undo(): that would take away the env fixture's stand-ins too.
-    seen = _links_dialog(monkeypatch, lambda d: None)
     frame.on_links()
     assert any("tool.example.com/x" in row for row in seen["rows"])
 
@@ -7849,7 +7842,7 @@ def test_a_session_link_opens_here_not_in_the_browser(frame, env, monkeypatch):
                         lambda url: pytest.fail("not the browser"))
     followed = []
     monkeypatch.setattr(frame, "open_link", followed.append)
-    _links_dialog(monkeypatch, lambda d: d.open_selected())
+    _lists_dialog(frame, monkeypatch, lambda d: d.open_selected())
     frame.on_links()
     assert followed == ["thechatplace://session/own-1"]
 
@@ -7888,7 +7881,7 @@ def test_links_keys_in_the_list(frame, env, monkeypatch):
         down.SetKeyCode(wx.WXK_DOWN)
         dialog._on_filter_key(down)
         key(dialog, wx.WXK_RETURN)
-    _links_dialog(monkeypatch, act)
+    _lists_dialog(frame, monkeypatch, act)
     frame.on_links()
     assert copied == ["https://example.com/notes", "[release notes](https://example.com/notes)"]
     assert opened == ["https://example.com/notes"]  # "o" still matches it
@@ -7900,7 +7893,7 @@ def test_a_link_the_system_refuses_is_said_not_raised(frame, env, monkeypatch):
     def refuse(url):
         raise ValueError("embedded null character")
     monkeypatch.setattr(main_frame_paths(), "open_url", refuse)
-    _links_dialog(monkeypatch, lambda d: d.open_selected())
+    _lists_dialog(frame, monkeypatch, lambda d: d.open_selected())
     frame.on_links()
     assert "Couldn't open the link: embedded null character" in env["boxes"][-1]
 
@@ -9669,3 +9662,86 @@ def test_read_only_command_rows_repeat_even_without_an_owned_sdk_turn(frame, env
     for _ in range(2):
         frame._announce_command_output('foreign-command', 'Read-only chat', 'Command output.', deduplicate=False)
     assert sum('Command output.' in text for text in env['feedback']) == 2
+
+
+# -- View, Lists (#279) -----------------------------------------------------------------------
+
+
+def _lists_for_test(frame):
+    from thechatplace import lists
+    from thechatplace.ui.dialogs import ListsDialog
+    built = []
+
+    def build(tab, scope):
+        built.append((tab, scope))
+        return [lists.ListItem(row=f"{tab} one", detail=f"{tab} detail", copy_text=tab,
+                               copy_what=f"the {tab}")]
+    dialog = ListsDialog(frame, "Synthetic", build, lambda text: True, lambda text: None,
+                         category=lists.LINKS, scope=lists.SCOPE_CHAT)
+    focused = []
+    for page in dialog.pages:
+        page.list.SetFocus = lambda page=page: focused.append(page.category)
+    return dialog, built, focused
+
+
+def _tab_key(dialog, code, control=True, shift=False):
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(code)
+    event.SetRawControlDown(control)
+    event.SetShiftDown(shift)
+    dialog._on_char_hook(event)
+
+
+def test_lists_ctrl_tab_changes_tabs_and_stays_on_the_list(frame):
+    dialog, built, focused = _lists_for_test(frame)
+    try:
+        assert dialog.category == "links" and built == [("links", "chat")]
+        _tab_key(dialog, wx.WXK_TAB)
+        assert dialog.category == "files" and focused[-1] == "files"
+        assert list(dialog.current().list.GetStrings()) == ["files one"]
+        _tab_key(dialog, wx.WXK_TAB, shift=True)
+        _tab_key(dialog, wx.WXK_TAB, shift=True)
+        assert dialog.category == "code" and focused[-1] == "code"
+        _tab_key(dialog, wx.WXK_TAB, shift=True)  # wraps to the last tab
+        assert dialog.category == "decisions"
+        _tab_key(dialog, wx.WXK_PAGEDOWN)  # Ctrl+Page Down too, and wraps
+        assert dialog.category == "code"
+        # Each tab is built once, when first shown.
+        assert [b[0] for b in built].count("files") == 1
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_enter_on_the_tab_strip_goes_to_its_list(frame, monkeypatch):
+    dialog, _built, focused = _lists_for_test(frame)
+    try:
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.notebook))
+        _tab_key(dialog, wx.WXK_RETURN, control=False)
+        assert focused == ["links"]
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_scope_rebuilds_the_tabs(frame):
+    dialog, built, _focused = _lists_for_test(frame)
+    try:
+        dialog.select_category(3, focus_list=False)  # Commands, built for the chat
+        dialog.set_scope("message")
+        assert built[-1] == ("commands", "message")
+        dialog.select_category(1, focus_list=False)  # Links: rebuilt for the new scope
+        assert built[-1] == ("links", "message")
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_reopen_on_the_tab_used_last(frame, env, monkeypatch):
+    _links_session(frame, env)
+
+    def act(page):
+        page.owner.select_category(3, focus_list=False)  # Commands
+    _lists_dialog(frame, monkeypatch, act)
+    frame.on_links()
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
+    frame.on_lists()  # Ctrl+Shift+I
+    assert seen["category"] == "commands" and seen["scope"] == "chat"
+    assert seen["rows"] == ["No commands in this chat."]

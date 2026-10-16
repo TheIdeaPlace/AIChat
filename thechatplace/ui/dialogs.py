@@ -10,11 +10,9 @@ from typing import Optional
 
 import wx
 
-from .. import workplaces
-from ..changes import file_text
+from .. import lists, workplaces
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES)
-from ..message_links import matches
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
                         WORKING, NEEDS_YOU, STATUS_UNAVAILABLE)
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
@@ -1964,132 +1962,6 @@ class BugReportDialog(wx.Dialog):
                 self.expected.GetValue(), self.steps.GetValue())
 
 
-class CodeBlocksDialog(wx.Dialog):
-    """A message's code blocks (#17): a list ("Python, 14 lines: def main():
-    …"), the selected block's code in a read-only box to read by line, word
-    and character, and Copy for just that block."""
-
-    def __init__(self, parent, blocks, copy):
-        super().__init__(parent, title="Code Blocks", size=dialog_size(parent, 760, 560),
-                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self._blocks = list(blocks)
-        self._copy = copy
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(wx.StaticText(self, label="Code &blocks:"), 0, wx.LEFT | wx.TOP, 8)
-        self.list = wx.ListBox(self, style=wx.LB_SINGLE,
-                               choices=[b.row() for b in self._blocks])
-        set_accessible_name(self.list, f"Code blocks, {len(self._blocks)}")
-        self.list.SetMinSize(dip(self, -1, 110))
-        sizer.Add(self.list, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
-        sizer.Add(wx.StaticText(self, label="Co&de:"), 0, wx.LEFT | wx.TOP, 8)
-        self.code = _read_only_text(self, "", "Code", min_height=220)
-        self.code.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL,
-                                  wx.FONTWEIGHT_NORMAL))
-        sizer.Add(self.code, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        copy_btn = wx.Button(self, label="&Copy")
-        row.Add(copy_btn, 0, wx.RIGHT, 6)
-        row.Add(wx.Button(self, wx.ID_CANCEL, "C&lose"), 0)
-        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
-        self.SetSizer(sizer)
-        self.SetEscapeId(wx.ID_CANCEL)
-        self.list.Bind(wx.EVT_LISTBOX, lambda e: self._show())
-        self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.code.SetFocus())
-        self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
-        copy_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected())
-        if self._blocks:
-            self.list.SetSelection(0)
-            self._show()
-        wx.CallAfter(self.list.SetFocus)
-
-    def _show(self):
-        index = self.list.GetSelection()
-        if 0 <= index < len(self._blocks):
-            block = self._blocks[index]
-            self.code.ChangeValue(block.code)
-            self.code.SetInsertionPoint(0)
-            # Tabbing in says which block this is.
-            set_accessible_name(self.code, block.describe())
-
-    def _on_list_key(self, event):
-        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            self.code.SetFocus()  # Enter: read the block's code
-            return
-        event.Skip()
-
-    def copy_selected(self):
-        index = self.list.GetSelection()
-        if 0 <= index < len(self._blocks):
-            self._copy(self._blocks[index])
-
-
-class ChangesDialog(wx.Dialog):
-    """The files Claude changed (#18): from your latest message or the whole
-    session, each file's line counts, and the selected file's changes to
-    read by line ("Removed: …", "Added: …")."""
-
-    def __init__(self, parent, title, latest, everything, describe):
-        super().__init__(parent, title=f"Changed Files: {title}", size=dialog_size(parent, 800, 580),
-                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self._sets = [latest, everything]
-        self._describe = describe
-        self._files = []
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        row.Add(wx.StaticText(self, label="&Show changes from:"), 0,
-                wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        self.scope = wx.Choice(self, choices=["Your latest message", "The whole session"])
-        set_accessible_name(self.scope, "Show changes from")
-        self.scope.SetSelection(0 if latest else 1)
-        row.Add(self.scope, 0)
-        sizer.Add(row, 0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
-        sizer.Add(wx.StaticText(self, label="&Files:"), 0, wx.LEFT | wx.TOP, 8)
-        self.list = wx.ListBox(self, style=wx.LB_SINGLE)
-        self.list.SetMinSize(dip(self, -1, 130))
-        sizer.Add(self.list, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
-        sizer.Add(wx.StaticText(self, label="C&hanges:"), 0, wx.LEFT | wx.TOP, 8)
-        self.text = _read_only_text(self, "", "Changes", min_height=240)
-        self.text.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL,
-                                  wx.FONTWEIGHT_NORMAL))
-        sizer.Add(self.text, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
-        buttons = wx.BoxSizer(wx.HORIZONTAL)
-        buttons.Add(wx.Button(self, wx.ID_CANCEL, "C&lose"), 0)
-        sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
-        self.SetSizer(sizer)
-        self.SetEscapeId(wx.ID_CANCEL)
-        self.scope.Bind(wx.EVT_CHOICE, lambda e: self._fill())
-        self.list.Bind(wx.EVT_LISTBOX, lambda e: self._show())
-        self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.text.SetFocus())
-        self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
-        self._fill()
-        wx.CallAfter(self.list.SetFocus)
-
-    def _fill(self):
-        self._files = self._sets[self.scope.GetSelection()]
-        rows = [self._describe(f) for f in self._files] or ["No files changed."]
-        self.list.Set(rows)
-        set_accessible_name(self.list, f"Files, {len(self._files)}")
-        self.list.SetSelection(0)
-        self._show()
-
-    def _show(self):
-        index = self.list.GetSelection()
-        if 0 <= index < len(self._files):
-            changes = self._files[index]
-            self.text.ChangeValue(file_text(changes))
-            set_accessible_name(self.text, f"Changes to {os.path.basename(changes.path)}")
-        else:
-            self.text.ChangeValue("")
-            set_accessible_name(self.text, "Changes")
-        self.text.SetInsertionPoint(0)
-
-    def _on_list_key(self, event):
-        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            self.text.SetFocus()  # Enter: read the file's changes
-            return
-        event.Skip()
-
-
 class LinesDialog(wx.Dialog):
     """Lines of a list, to read by arrowing rather than only hear in the
     system voice. Copy (or Ctrl+C in the list) copies the selected line;
@@ -2823,98 +2695,134 @@ class PromptsDialog(wx.Dialog):
         self.EndModal(wx.ID_OK)
 
 
-class LinksDialog(wx.Dialog):
-    """View, Links (Ctrl+L, #190): every link in the loaded session, newest
-    first, each read as its words, where it goes, who wrote it and when.
-    Enter or Open opens one (and closes the dialog); Ctrl+C or Copy copies
-    its address, Copy as Markdown the link. Typing narrows the list."""
+class ListsPage(wx.Panel):
+    """One tab of View, Lists (#279): a filter, the list, the selected item
+    to read in full, and what can be done with it. The items come from
+    ``lists.build`` and are filled in when the tab is first shown."""
 
-    def __init__(self, parent, title: str, links, copy, feedback):
-        count = len(links)
-        super().__init__(parent, title=f"Links in {title}: {count}", size=dialog_size(parent, 760, 480),
-                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self._all = list(links)
-        self._shown = list(links)
-        self._copy = copy  # (text) -> bool
-        self._feedback = feedback
-        #: The link to open once the dialog has closed, or None.
-        self.chosen = None
+    def __init__(self, notebook, owner, category: str):
+        super().__init__(notebook)
+        self.owner = owner
+        self.category = category
+        self.title = lists.TITLES[category]
+        self.items = []
+        self.shown = []
+        self.filled = False
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Filter:"), 0, wx.LEFT | wx.TOP, 8)
         self.filter = wx.TextCtrl(self, style=wx.TE_PROCESS_ENTER)
-        set_accessible_name(self.filter, "Filter links")
+        set_accessible_name(self.filter, f"Filter {self.title.lower()}")
         sizer.Add(self.filter, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         # The label carries the count: a list box's name, for JAWS and NVDA,
-        # is the label before it (as From GitHub's list does it).
-        self.list_label = wx.StaticText(self, label="&Links:")
+        # is the label before it, as in the other lists.
+        self.list_label = wx.StaticText(self, label=f"&List: {self.title}:")
         sizer.Add(self.list_label, 0, wx.LEFT | wx.TOP, 8)
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
+        set_accessible_name(self.list, self.title)  # with its count once filled
+        self.list.SetMinSize(dip(self, -1, 140))
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        sizer.Add(wx.StaticText(self, label="&Details:"), 0, wx.LEFT | wx.TOP, 8)
+        self.detail = _read_only_text(self, "", "Details", min_height=170)
+        if category in (lists.CODE, lists.FILES, lists.COMMANDS):
+            self.detail.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL,
+                                        wx.FONTWEIGHT_NORMAL))
+        sizer.Add(self.detail, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        self.open_btn = wx.Button(self, label="&Open")
-        self.open_btn.SetDefault()
+        self.open_btn = self.markdown_btn = None
+        if category == lists.LINKS:
+            self.open_btn = wx.Button(self, label="&Open")
+            row.Add(self.open_btn, 0, wx.RIGHT, 6)
+            self.open_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected())
         self.copy_btn = wx.Button(self, label="&Copy")
-        self.markdown_btn = wx.Button(self, label="Copy as &Markdown")
-        for button in (self.open_btn, self.copy_btn, self.markdown_btn):
-            row.Add(button, 0, wx.RIGHT, 6)
-        row.Add(wx.Button(self, wx.ID_CANCEL, "Clo&se"), 0)
-        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        row.Add(self.copy_btn, 0, wx.RIGHT, 6)
+        self.copy_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected())
+        if category == lists.LINKS:
+            self.markdown_btn = wx.Button(self, label="Copy as &Markdown")
+            row.Add(self.markdown_btn, 0, wx.RIGHT, 6)
+            self.markdown_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected(markdown=True))
+        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.TOP | wx.LEFT | wx.RIGHT, 8)
         self.SetSizer(sizer)
-        self.SetEscapeId(wx.ID_CANCEL)
-        self.filter.Bind(wx.EVT_TEXT, lambda e: self._apply_filter())
-        self.filter.Bind(wx.EVT_TEXT_ENTER, lambda e: self.open_selected())
+        self.filter.Bind(wx.EVT_TEXT, lambda e: self.apply_filter())
+        self.filter.Bind(wx.EVT_TEXT_ENTER, lambda e: self.activate())
         self.filter.Bind(wx.EVT_KEY_DOWN, self._on_filter_key)
+        self.list.Bind(wx.EVT_LISTBOX, lambda e: self.show_selected())
+        self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.activate())
         self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
         self.list.Bind(wx.EVT_CHAR, self._on_list_char)
-        self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.open_selected())
-        self.open_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected())
-        self.copy_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected())
-        self.markdown_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected(markdown=True))
-        self._apply_filter()
-        # Focus starts on the newest link, not the filter box.
-        wx.CallAfter(lambda: self and self.list.SetFocus())
 
-    def _apply_filter(self):
+    def fill(self, items):
+        """New items (a first look at the tab, or a new scope)."""
+        self.items = list(items)
+        self.filled = True
+        self.apply_filter()
+
+    def apply_filter(self):
         typed = self.filter.GetValue()
-        self._shown = [link for link in self._all if matches(link, typed)]
-        self.list.Set([link.row() for link in self._shown])
-        if self._shown:
-            self.list.SetSelection(0)
-        total = len(self._all)
-        count = (f"{total}" if len(self._shown) == total
-                 else f"{len(self._shown)} of {total}")
-        self.list_label.SetLabel(f"&Links ({count}):")
-        set_accessible_name(self.list, f"Links, {count}")  # VoiceOver's name
+        self.shown = [item for item in self.items if item.matches(typed)]
+        if self.shown:
+            self.list.Set([item.row for item in self.shown])
+        elif self.items:
+            self.list.Set([f"No {lists.NOUNS[self.category]} match."])
+        else:
+            self.list.Set([lists.empty_text(self.category, self.owner.scope)])
+        self.list.SetSelection(0)
+        label = lists.count_text(self.category, len(self.shown), len(self.items))
+        self.list_label.SetLabel(f"&List: {label}:")
+        # VoiceOver's name for the list; JAWS and NVDA read the label.
+        set_accessible_name(self.list, label)
+        self.show_selected()
 
     def selected(self):
         index = self.list.GetSelection()
-        return self._shown[index] if 0 <= index < len(self._shown) else None
+        return self.shown[index] if 0 <= index < len(self.shown) else None
+
+    def show_selected(self):
+        item = self.selected()
+        self.detail.ChangeValue(item.detail if item is not None else "")
+        self.detail.SetInsertionPoint(0)
+        set_accessible_name(self.detail, item.detail_name or "Details" if item is not None
+                            else "Details")
+        for button in (self.copy_btn, self.open_btn, self.markdown_btn):
+            if button is not None:
+                button.Enable(item is not None)
+
+    def activate(self):
+        """Enter: a link opens; anything else is read in full."""
+        item = self.selected()
+        if item is None:
+            return
+        if self.category == lists.LINKS:
+            self.open_selected()
+        else:
+            self.detail.SetFocus()
 
     def open_selected(self):
-        link = self.selected()
-        if link is None:
-            self._feedback("No links match." if self._all else "No links.")
+        item = self.selected()
+        if item is None or item.link is None:
+            self.owner.feedback(f"No {lists.NOUNS[self.category]} match." if self.items
+                                else lists.empty_text(self.category, self.owner.scope))
             return
-        if not link.can_open:
-            self._feedback(link.why_not())
+        if not item.link.can_open:
+            self.owner.feedback(item.link.why_not())
             return
-        self.chosen = link
-        _end_modal(self, wx.ID_OK)
+        self.owner.chosen_link = item.link
+        _end_modal(self.owner, wx.ID_OK)
 
     def copy_selected(self, markdown: bool = False):
-        link = self.selected()
-        if link is None:
-            self._feedback("No links match.")
+        item = self.selected()
+        if item is None:
+            self.owner.feedback(f"No {lists.NOUNS[self.category]} match." if self.items
+                                else lists.empty_text(self.category, self.owner.scope))
             return
-        text = link.markdown() if markdown else link.url
-        if not self._copy(text):
-            self._feedback("Couldn't open the clipboard.")
+        text = item.link.markdown() if markdown and item.link is not None else item.copy_text
+        if not self.owner.copy(text):
+            self.owner.feedback("Couldn't open the clipboard.")
             return
-        self._feedback(f"Copied {link.address} as Markdown." if markdown
-                       else f"Copied {link.address}.")
+        what = f"{item.copy_what} as Markdown" if markdown else item.copy_what
+        self.owner.feedback(f"Copied {what}.")
 
     def _on_filter_key(self, event):
-        if event.GetKeyCode() in (wx.WXK_DOWN, wx.WXK_UP) and self._shown:
+        if event.GetKeyCode() in (wx.WXK_DOWN, wx.WXK_UP) and self.shown:
             self.list.SetFocus()
             return
         event.Skip()
@@ -2922,7 +2830,7 @@ class LinksDialog(wx.Dialog):
     def _on_list_key(self, event):
         key = event.GetKeyCode()
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            self.open_selected()
+            self.activate()
             return
         if key == ord("C") and event.ControlDown() and not event.AltDown():
             self.copy_selected(markdown=event.ShiftDown())
@@ -2931,12 +2839,118 @@ class LinksDialog(wx.Dialog):
 
     def _on_list_char(self, event):
         """Typing in the list narrows it: the letter goes to the filter box,
-        and focus with it."""
+        and focus with it, as in the other lists."""
         key = event.GetUnicodeKey()
         if (key != wx.WXK_NONE and key >= 32 and chr(key).isprintable()
                 and not event.ControlDown() and not event.AltDown()):
             self.filter.SetFocus()
             self.filter.AppendText(chr(key))
+            return
+        event.Skip()
+
+
+class ListsDialog(wx.Dialog):
+    """View, Lists (Ctrl+Shift+I, #279): everything of one kind in a chat,
+    a tab per kind: Code Blocks, Links, Changed Files, Commands, Decisions.
+
+    "Show items from" chooses this message or the whole chat. The tab strip
+    is a Tab stop, and arrowing along it changes the tab; Enter on it moves
+    to the tab's list. Ctrl+Tab and Ctrl+Shift+Tab (also Ctrl+Page Down and
+    Page Up) change the tab from anywhere and leave focus on its list. On a
+    Mac that's the Control key, as in other Mac apps' tabs.
+
+    ``build(category, scope)`` gives a tab's ``lists.ListItem`` list. A link
+    chosen with Open is in ``chosen_link`` once the dialog has closed.
+    """
+
+    def __init__(self, parent, title: str, build, copy, feedback,
+                 category: str = lists.CODE, scope: str = lists.SCOPE_CHAT):
+        super().__init__(parent, title=f"Lists: {title}", size=dialog_size(parent, 820, 620),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._build = build
+        self.copy = copy  # (text) -> bool
+        self.feedback = feedback
+        self.chosen_link = None
+        self.scope = scope if scope in dict(lists.SCOPES) else lists.SCOPE_CHAT
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        row.Add(wx.StaticText(self, label="&Show items from:"), 0,
+                wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.scope_choice = wx.Choice(self, choices=[label for _id, label in lists.SCOPES])
+        set_accessible_name(self.scope_choice, "Show items from")
+        self.scope_choice.SetSelection([s for s, _l in lists.SCOPES].index(self.scope))
+        row.Add(self.scope_choice, 0)
+        sizer.Add(row, 0, wx.ALL, 8)
+        self.notebook = wx.Notebook(self)
+        set_accessible_name(self.notebook, "Lists")
+        self.pages = []
+        for tab in lists.CATEGORY_IDS:
+            page = ListsPage(self.notebook, self, tab)
+            self.notebook.AddPage(page, lists.TITLES[tab])
+            self.pages.append(page)
+        sizer.Add(self.notebook, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        buttons.Add(wx.Button(self, wx.ID_CANCEL, "Clo&se"), 0)
+        sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self.scope_choice.Bind(wx.EVT_CHOICE, lambda e: self.set_scope(
+            lists.SCOPES[self.scope_choice.GetSelection()][0]))
+        self.notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self._on_page_changed)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        # The tab shown, kept here rather than asked of the tab control.
+        self._index = lists.CATEGORY_IDS.index(category) if category in lists.CATEGORY_IDS else 0
+        self.notebook.ChangeSelection(self._index)  # no event: filled just below
+        self.current().fill(self._build(self.current().category, self.scope))
+        wx.CallAfter(lambda: self and self.current().list.SetFocus())
+
+    @property
+    def category(self) -> str:
+        return self.current().category
+
+    def current(self) -> ListsPage:
+        return self.pages[self._index]
+
+    def set_scope(self, scope: str):
+        """Every tab now shows ``scope``: the current one at once, the others
+        when they're next shown."""
+        self.scope = scope
+        for page in self.pages:
+            page.filled = False
+        self.current().fill(self._build(self.current().category, scope))
+
+    def select_category(self, index: int, focus_list: bool = True):
+        self._index = index % len(self.pages)
+        self.notebook.ChangeSelection(self._index)
+        self._ensure_filled()
+        if focus_list:
+            self.current().list.SetFocus()
+
+    def _ensure_filled(self):
+        page = self.current()
+        if not page.filled:
+            page.fill(self._build(page.category, self.scope))
+
+    def _on_page_changed(self, event):
+        if 0 <= event.GetSelection() < len(self.pages):
+            self._index = event.GetSelection()
+        self._ensure_filled()
+        event.Skip()
+
+    def _on_char_hook(self, event):
+        key = event.GetKeyCode()
+        # The real Control key on a Mac too (wx's ControlDown there is
+        # Command), as Mac tabs switch with Control+Tab.
+        ctrl = event.RawControlDown() and not event.AltDown()
+        if ctrl and key == wx.WXK_TAB:
+            self.select_category(self._index + (-1 if event.ShiftDown() else 1))
+            return
+        if ctrl and not event.ShiftDown() and key in (wx.WXK_PAGEDOWN, wx.WXK_PAGEUP):
+            self.select_category(self._index + (1 if key == wx.WXK_PAGEDOWN else -1))
+            return
+        if (key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and not event.HasAnyModifiers()
+                and wx.Window.FindFocus() is self.notebook):
+            self.current().list.SetFocus()  # Enter on the tab strip: into its list
             return
         event.Skip()
 
