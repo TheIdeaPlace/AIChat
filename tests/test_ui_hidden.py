@@ -9898,8 +9898,10 @@ def test_codex_settings_show_effective_state_and_preserve_automatic(frame, monke
     try:
         assert dialog.codex_enabled.GetValue() is (installed and choice is not False)
         assert dialog.get_settings().codex_enabled is choice
-        labels = [child.GetLabel() for child in dialog.GetChildren() if isinstance(child, wx.StaticText)]
-        assert any("Codex isn't installed" in label for label in labels) is (not installed)
+        label = " ".join(dialog.codex_enabled.GetLabelText().split())
+        assert ("Codex isn't installed on this computer" in label) is (not installed)
+        if not installed:
+            assert "install the Codex app or CLI, then restart" in label
         dialog.codex_enabled.SetValue(not dialog.codex_enabled.GetValue())
         assert dialog.get_settings().codex_enabled is (not (installed and choice is not False))
     finally:

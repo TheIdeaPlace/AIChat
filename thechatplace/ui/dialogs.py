@@ -928,8 +928,12 @@ class SettingsDialog(wx.Dialog):
         self.remote_control.SetValue(speech.remote_control)
         outer.Add(self.remote_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        codex_label = "Include Code&x chats (restart required)"
+        if not platform_paths.find_codex():
+            codex_label += (". Codex isn't installed on this computer; "
+                            "install the Codex app or CLI, then restart.")
         self.codex_enabled = wx.CheckBox(self, label=_wrapped(
-            self, "Include Code&x chats (restart required)",
+            self, codex_label,
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self._codex_choice = speech.codex_enabled
         self._codex_changed = False
@@ -937,11 +941,6 @@ class SettingsDialog(wx.Dialog):
         self.codex_enabled.SetValue(self._initial_codex_effective)
         self.codex_enabled.Bind(wx.EVT_CHECKBOX, self._on_codex_choice)
         outer.Add(self.codex_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-
-        if not platform_paths.find_codex():
-            outer.Add(wx.StaticText(self, label=_wrapped(self,
-                "Codex isn't installed on this computer. Install the Codex app or CLI, then restart.",
-                self.GetClientSize().width - 20)), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # #141: the dialog at the first start after an update.
         self.update_notice = wx.CheckBox(
