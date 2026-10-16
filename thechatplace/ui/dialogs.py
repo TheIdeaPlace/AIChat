@@ -2298,6 +2298,7 @@ class SessionColumnsDialog(wx.Dialog):
         need = self.ClientToWindowSize(sizer.GetMinSize()).width
         width = min(max(self.GetSize().width, need), screen_area(parent).width - SCREEN_MARGIN)
         self.SetSize(wx.Size(width, self.GetSize().height))
+        self.CentreOnParent()
         self.SetEscapeId(wx.ID_CANCEL)
         self.add_btn.Bind(wx.EVT_BUTTON, lambda e: self.add())
         self.remove_btn.Bind(wx.EVT_BUTTON, lambda e: self.remove())

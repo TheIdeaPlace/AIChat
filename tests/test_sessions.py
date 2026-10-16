@@ -348,3 +348,15 @@ def test_a_detail_that_ends_in_a_full_stop_does_not_double_the_punctuation():
                        detail=reason)
     line = info.list_line(fields=["status", "title"])
     assert "history, Scratch" in line and ".." not in line and "., " not in line
+
+
+def test_a_sentence_that_already_ends_in_punctuation_gets_no_full_stop_after_it():
+    """#291 review: "Claude asks: Which file?" must not read "file?." in the heading."""
+    from thechatplace.sessions import NEEDS_YOU, end_sentence, state_with_detail
+    assert end_sentence(state_with_detail(NEEDS_YOU, "Claude asks: Which file?")) == (
+        "needs you: Claude asks: Which file?")
+    assert end_sentence(state_with_detail("working", "thinking...")) == "working: thinking..."
+    assert end_sentence(state_with_detail("working", "thinking…")) == "working: thinking…"
+    assert end_sentence(state_with_detail("working", "Done!")) == "working: Done!"
+    assert end_sentence(state_with_detail("idle", "Saved.")) == "idle: Saved."
+    assert end_sentence("idle") == "idle."

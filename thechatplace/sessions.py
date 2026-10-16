@@ -41,11 +41,21 @@ def state_with_detail(state: str, detail: str, joiner: str = ": ") -> str:
     messages label and status bar. Each of those puts its own punctuation
     after this, so a detail written as a sentence (Codex's connection
     problems end in a full stop) loses that full stop rather than showing
-    "history.." or "history., " (#291). An ellipsis is left alone."""
+    "history.." or "history., " (#291). An ellipsis, question mark or
+    exclamation mark is kept: it says something, and ``end_sentence`` then
+    adds nothing after it."""
     detail = (detail or "").strip()
     if detail.endswith(".") and not detail.endswith(".."):
         detail = detail[:-1].rstrip()
     return f"{state}{joiner}{detail}" if detail else state
+
+
+def end_sentence(text: str) -> str:
+    """``text`` with a full stop after it, unless it already ends in one,
+    a question or exclamation mark or an ellipsis ("Claude asks: Which
+    file?" rather than "Which file?.", #291)."""
+    text = text.rstrip()
+    return text if text.endswith((".", "?", "!", "…")) else f"{text}."
 
 #: postTurnSummary.status_category values that mean "waiting on Kelly".
 _NEEDS_YOU_CATEGORIES = {"blocked", "review_ready", "needs_input", "waiting",
