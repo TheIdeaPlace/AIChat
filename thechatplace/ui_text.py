@@ -145,8 +145,9 @@ SHORTCUTS = [
         ("Ctrl+Shift+M", "Other machines: list your sessions on other computers and send one "
                          "a message, through Claude in the loaded Chat Place session (it needs "
                          "Remote Control on)"),
-        ("Ctrl+Shift+D", "Lists, on the Changed Files tab (Claude chats): what changed since your latest "
-         "message or in the whole chat; Enter on a file reads its changes line by line"),
+        ("Ctrl+Shift+D", "Lists, on the Changed Files tab (Claude chats): what changed in the selected "
+         "message's turn (your latest, if none is selected) or in the whole chat; Enter on a file "
+         "reads its changes line by line"),
         ("Ctrl+Shift+U", "Usage and context: read the active provider's reported context and "
                          "account allowances and reset times; Ctrl+C copies a line"),
         ("Ctrl+Shift+T", "Turn status: how long the provider has been working, on what, what "

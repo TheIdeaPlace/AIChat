@@ -2764,7 +2764,8 @@ class ListsPage(wx.Panel):
         elif self.items:
             self.list.Set([f"No {lists.NOUNS[self.category]} match."])
         else:
-            self.list.Set([lists.empty_text(self.category, self.owner.scope)])
+            self.list.Set([self.owner.unavailable.get(self.category)
+                           or lists.empty_text(self.category, self.owner.scope)])
         self.list.SetSelection(0)
         label = lists.count_text(self.category, len(self.shown), len(self.items))
         self.list_label.SetLabel(f"&List: {label}:")
@@ -2833,7 +2834,8 @@ class ListsPage(wx.Panel):
             self.activate()
             return
         if key == ord("C") and event.ControlDown() and not event.AltDown():
-            self.copy_selected(markdown=event.ShiftDown())
+            # Ctrl+Shift+C is Copy as Markdown, which only links have.
+            self.copy_selected(markdown=event.ShiftDown() and self.category == lists.LINKS)
             return
         event.Skip()
 
@@ -2864,10 +2866,14 @@ class ListsDialog(wx.Dialog):
     """
 
     def __init__(self, parent, title: str, build, copy, feedback,
-                 category: str = lists.CODE, scope: str = lists.SCOPE_CHAT):
+                 category: str = lists.CODE, scope: str = lists.SCOPE_CHAT,
+                 unavailable=None):
         super().__init__(parent, title=f"Lists: {title}", size=dialog_size(parent, 820, 620),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._build = build
+        #: Tabs this chat can't fill yet, and the line each says instead of
+        #: an empty list that would look like "none" (a Codex chat's commands).
+        self.unavailable = dict(unavailable or {})
         self.copy = copy  # (text) -> bool
         self.feedback = feedback
         self.chosen_link = None
@@ -2890,7 +2896,9 @@ class ListsDialog(wx.Dialog):
             self.pages.append(page)
         sizer.Add(self.notebook, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         buttons = wx.BoxSizer(wx.HORIZONTAL)
-        buttons.Add(wx.Button(self, wx.ID_CANCEL, "Clo&se"), 0)
+        # Alt+S is Show items from; every page has Filter, List, Details
+        # and Copy, and Links Open and Markdown, so E it is.
+        buttons.Add(wx.Button(self, wx.ID_CANCEL, "Clos&e"), 0)
         sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)

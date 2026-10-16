@@ -188,12 +188,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
   yet", and its output) and **Decisions** (each question Claude asked, with your answer). **Show
   items from** (Alt+S) chooses This message or The whole chat; for files, commands and decisions,
-  "this message" is the selected message's turn, from your message to Claude's reply. The newest
-  come first. The tab strip is a Tab stop (arrow to change the tab, Enter goes to its list), and
+  "this message" is the selected message's turn, from your message to Claude's reply. Links,
+  commands and decisions list the newest first; code blocks and files are in the order they appear. The tab strip is a Tab stop (arrow to change the tab, Enter goes to its list), and
   **Ctrl+Tab** and **Ctrl+Shift+Tab** (also Ctrl+Page Down and Page Up; the Control key on a Mac
   too) change the tab from anywhere and stay on its list. It opens on the tab you used last.
   **Ctrl+Shift+B** opens it on Code Blocks for the selected message, **Ctrl+L** on Links for the
-  whole chat, and **Ctrl+Shift+D** on Changed Files. Enter reads an item in full in the Details box
+  whole chat, and **Ctrl+Shift+D** on Changed Files, for the selected message's turn (or your
+  latest) if it changed any files, else for the whole chat. Enter reads an item in full in the Details box
   (on Links, Enter or Open opens the link in your browser and closes Lists); Ctrl+C (or Copy)
   copies it (the code, the address, the file's path, the command or your answer), and on Links
   Ctrl+Shift+C (or Copy as Markdown) copies a Markdown link. Typing narrows the list (the letters go
@@ -205,7 +206,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   once. References to files in the repository, such as `[main.py](src/main.py)`, aren't listed.
   Only web, email and session links open; anything else, such as a file: path, is marked "copy
   only" and says why if you try. Links in tool calls and results are listed only with Show Tool
-  Activity on. Commands are listed for Claude chats for now. Question cards read as
+  Activity on. Changed files, commands and decisions are listed for Claude chats for now; in a
+  Codex chat those tabs say so. Question cards read as
   "Claude asked: Which version?" with the options in the full text,
   then "You answered: ...". Refused tools read "Permission denied: ...". Tool calls and tool
   results are hidden unless you turn on Show Tool Activity (Ctrl+T). It's set for each session and
@@ -467,7 +469,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     that). Each one remembers its own session, so choosing an older one still opens the right
     session.
 - **Changed Files** (Ctrl+Shift+D, View menu) opens Lists on its Changed Files tab: the files
-  Claude changed since your latest message, or in the whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
+  Claude changed in the selected message's turn (your latest, if none is selected), or in the
+  whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
   removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a
   time: where each change is, then "Removed:", "Added:" and "Unchanged:" lines. It's built from the
   transcript, so it works for desktop app sessions too, with no git needed. Changes made by a

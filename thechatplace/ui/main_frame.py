@@ -2072,9 +2072,10 @@ class MainFrame(CodexChats, wx.Frame):
             return
         category = category or self._lists_category
         messages = [m for m in self._visible_messages() if m.kind != QUEUED]
-        selected = self._selected_message()
-        if selected is None or selected.kind == QUEUED:
-            selected = messages[-1] if messages else None
+        selected = self._selected_message() or (messages[-1] if messages else None)
+        # A queued message isn't in a turn yet: its files, commands and
+        # decisions are the latest turn's.
+        turn = self._chat_turns if selected is not None and selected.kind == QUEUED else None
         if scope is None:
             scope = lists.SCOPE_CHAT
         try:
@@ -2084,14 +2085,23 @@ class MainFrame(CodexChats, wx.Frame):
         edits = list(self._chat_edits) if files_supported else []
         commands = list(self._chat_commands)
         cwd = info.cwd
+        # What only Claude's transcripts carry yet: say so rather than show
+        # an empty list that reads as "none" (#279).
+        unavailable = {}
+        provider = info.provider.capitalize()
+        if not files_supported:
+            unavailable[lists.FILES] = f"Changed files aren't listed for {provider} chats yet."
+        if info.provider != "claude":
+            unavailable[lists.COMMANDS] = f"Commands aren't listed for {provider} chats yet."
+            unavailable[lists.DECISIONS] = f"Decisions aren't listed for {provider} chats yet."
 
         def build(tab, tab_scope):
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
-                               lambda f: self._describe_changed_file(f, cwd))
+                               lambda f: self._describe_changed_file(f, cwd), turn)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
-                             category=category, scope=scope)
+                             category=category, scope=scope, unavailable=unavailable)
         try:
             self._show_lists(dialog)
             chosen = dialog.chosen_link
@@ -2650,9 +2660,10 @@ class MainFrame(CodexChats, wx.Frame):
 
     def on_changes(self):
         """View, Changed Files (Ctrl+Shift+D): the files Claude changed, on
-        the Lists dialog's Changed Files tab (#279): since your latest
-        message if it changed any, else in the whole chat. From the
-        transcript, so desktop sessions work too."""
+        the Lists dialog's Changed Files tab (#279): in the selected
+        message's turn (your latest, if none is selected) if it changed any,
+        else in the whole chat. From the transcript, so desktop sessions
+        work too."""
         info = self._open
         if not self._require_capability("changes", info):
             return

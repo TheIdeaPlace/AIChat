@@ -83,8 +83,12 @@ def _first_line(text: str, limit: int = 100) -> str:
 def code_items(messages: Sequence[ChatMessage], selected: Optional[ChatMessage],
                scope: str) -> List[ListItem]:
     newest = len(messages) - 1
-    chosen = ([(i, m) for i, m in enumerate(messages) if m is selected]
-              if scope == SCOPE_MESSAGE else list(enumerate(messages)))
+    if scope == SCOPE_MESSAGE:
+        # The selected message even when it isn't among them (a queued one).
+        index = next((i for i, m in enumerate(messages) if m is selected), newest)
+        chosen = [(index, selected)] if selected is not None else []
+    else:
+        chosen = list(enumerate(messages))
     items: List[ListItem] = []
     # Newest first across the chat, as Links does; in the message's own
     # order within one message.
@@ -94,7 +98,7 @@ def code_items(messages: Sequence[ChatMessage], selected: Optional[ChatMessage],
             if scope == SCOPE_CHAT:
                 row = f"{row}. {message.label}, {_ago(index, newest)}"
             items.append(ListItem(row=row, detail=block.code, copy_text=block.code,
-                                  copy_what="the code", detail_name=block.describe()))
+                                  copy_what=block.describe(), detail_name=block.describe()))
     return items
 
 
@@ -195,14 +199,18 @@ def decision_items(messages: Sequence[ChatMessage], turn: Optional[int]) -> List
 
 def build(category: str, scope: str, messages: Sequence[ChatMessage],
           selected: Optional[ChatMessage], edits: Iterable[FileEdit],
-          commands: Iterable[ToolCommand], describe_file: Callable) -> List[ListItem]:
+          commands: Iterable[ToolCommand], describe_file: Callable,
+          turn: Optional[int] = None) -> List[ListItem]:
     """One tab's items. ``messages`` are the messages as the list shows them;
-    ``selected`` is the message "This message" means (None: there's none)."""
-    turn = None
+    ``selected`` is the message "This message" means (None: there's none),
+    and ``turn`` its turn when that isn't its own (a queued message, not yet
+    in a turn, means the latest)."""
     if scope == SCOPE_MESSAGE:
         if selected is None:
             return []
-        turn = selected.turn
+        turn = selected.turn if turn is None else turn
+    else:
+        turn = None
     if category == CODE:
         return code_items(messages, selected, scope)
     if category == LINKS:

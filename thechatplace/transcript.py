@@ -505,7 +505,8 @@ class TranscriptParser:
         tool_input = block.get("input") if isinstance(block.get("input"), dict) else {}
         if tool_id and name in EDIT_TOOLS:
             self._edit_inputs[tool_id] = (name, tool_input)
-        if name in COMMAND_TOOLS and isinstance(tool_input.get("command"), str):
+        if (name in COMMAND_TOOLS and isinstance(tool_input.get("command"), str)
+                and tool_input["command"].strip()):
             command = ToolCommand(command=tool_input["command"].strip(),
                                   description=str(tool_input.get("description") or "").strip(),
                                   turn=self.transcript.turns,

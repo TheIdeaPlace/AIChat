@@ -131,3 +131,24 @@ def test_other_tools_are_not_commands():
     tr = parse_lines(lines(user_text("Go"), assistant_block(
         tool_use_block("Read", {"file_path": "/x"}, "r"), "m"), tool_result("r", "text")))
     assert tr.commands == [] and [m.kind for m in tr.messages][-1] == t.TOOL_RESULT
+
+
+def test_a_blank_command_is_not_listed():
+    tr = parse_lines(lines(user_text("Go"),
+                           assistant_block(tool_use_block("Bash", {"command": "  "}, "s"), "m")))
+    assert tr.commands == []
+
+
+def test_a_queued_selection_uses_its_own_text_and_the_latest_turn():
+    tr = _chat()
+    queued = t.ChatMessage(kind=t.QUEUED, text="```sh\nls\n```")  # not in the messages
+    (block,) = lists.build(lists.CODE, lists.SCOPE_MESSAGE, tr.visible(), queued, [], [], str)
+    assert block.detail == "ls"
+    commands = lists.build(lists.COMMANDS, lists.SCOPE_MESSAGE, tr.visible(), queued, [],
+                           tr.commands, str, turn=1)
+    assert len(commands) == 2
+
+
+def test_a_code_block_copy_says_which_block():
+    (block,) = _build(_chat(), lists.CODE, lists.SCOPE_MESSAGE)
+    assert block.copy_what == "Code block, Python, 1 line"

@@ -3546,7 +3546,7 @@ def test_code_blocks_are_described_listed_and_copied(frame, env, monkeypatch):
     assert seen["rows"] == ["Python, 1 line: print(1)", "Bash, 2 lines: echo hi"]
     assert seen["detail"] == "print(1)"
     assert env["copied"][-1] == "print(1)"
-    assert env["feedback"][-1] == "Copied the code."
+    assert env["feedback"][-1] == "Copied Code block, Python, 1 line."
     menu = frame._message_menu()
     labels = {item.GetItemLabelText(): item.IsEnabled() for item in menu.GetMenuItems()}
     assert labels["Code Blocks..."] and labels["Copy Last Code Block"]
@@ -9745,3 +9745,34 @@ def test_lists_reopen_on_the_tab_used_last(frame, env, monkeypatch):
     frame.on_lists()  # Ctrl+Shift+I
     assert seen["category"] == "commands" and seen["scope"] == "chat"
     assert seen["rows"] == ["No commands in this chat."]
+
+
+def test_lists_ctrl_shift_c_is_markdown_only_on_links(frame):
+    dialog, _built, _focused = _lists_for_test(frame)
+    copied = []
+    dialog.copy = lambda text: copied.append(text) or True
+    said = []
+    dialog.feedback = said.append
+    try:
+        dialog.select_category(0, focus_list=False)  # Code Blocks
+        event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
+        event.SetKeyCode(ord("C"))
+        event.SetControlDown(True)
+        event.SetShiftDown(True)
+        dialog.current()._on_list_key(event)
+        assert copied == ["code"] and said == ["Copied the code."]
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_say_what_a_codex_chat_cant_list_yet(frame, env, monkeypatch):
+    _links_session(frame, env)
+    monkeypatch.setattr(frame._open, "provider", "codex")
+    monkeypatch.setattr(frame.sessions, "capabilities",
+                        lambda info: type("Caps", (), {"changes": False})())
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
+    for tab, line in (("files", "Changed files aren't listed for Codex chats yet."),
+                      ("commands", "Commands aren't listed for Codex chats yet."),
+                      ("decisions", "Decisions aren't listed for Codex chats yet.")):
+        frame.on_lists(tab)
+        assert seen["rows"] == [line]

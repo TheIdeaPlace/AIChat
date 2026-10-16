@@ -236,7 +236,8 @@ the session list, the messages or the reply box:
 
 **Show items from** (Alt+S) chooses **This message** or **The whole chat**. For code blocks and
 links, "this message" is the selected message. For files, commands and decisions, it's the
-selected message's turn: from your message to Claude's reply. The newest items come first.
+selected message's turn: from your message to Claude's reply. Links, commands and decisions
+list the newest first; code blocks and files are in the order they appear.
 
 The tab strip is a Tab stop: arrow along it to change the tab, and Enter moves to the tab's list.
 **Ctrl+Tab** and **Ctrl+Shift+Tab** (also Ctrl+Page Down and Ctrl+Page Up) change the tab from
@@ -245,8 +246,8 @@ Lists opens on the tab you used last. Some keys open it on their own tab:
 
 - **Ctrl+Shift+B** in the messages: Code Blocks, for the selected message.
 - **Ctrl+L** (View, Links): Links, for the whole chat.
-- **Ctrl+Shift+D** (View, Changed Files): Changed Files, for your latest message if it changed
-  any files, otherwise for the whole chat.
+- **Ctrl+Shift+D** (View, Changed Files): Changed Files, for the selected message's turn (your
+  latest message's, if none is selected) if it changed any files, otherwise for the whole chat.
 
 On every tab:
 
@@ -264,7 +265,8 @@ once, at its newest mention. A long address is shortened to its site and its end
 address is always what's opened or copied. A link in a code block or in inline code says "in
 code". Only web, email and session links open; anything else, such as a file path, is marked
 "copy only" and says why if you try to open it. Links in tool calls and results are listed only
-with Show Tool Activity on. Commands are listed for Claude chats for now.
+with Show Tool Activity on. Changed files, commands and decisions are listed for Claude chats
+for now; in a Codex chat those tabs say so.
 
 ## Kinds of session
 
@@ -703,7 +705,8 @@ notification is shown.
 ## More things you can do
 
 - **Changed Files** (Ctrl+Shift+D) opens Lists on its Changed Files tab: the files Claude changed
-  since your latest message, or in the whole chat, with how many lines were added and removed.
+  in the selected message's turn (your latest, if none is selected), or in the whole chat, with
+  how many lines were added and removed.
   Enter on a file reads its changes line by line. It works for desktop app sessions too.
 - **Usage and Context** (Ctrl+Shift+U) opens a list to read with the arrow keys: how full the
   session's context is ("Context 62% full: 124,000 of 200,000 tokens"), then each of your plan's
