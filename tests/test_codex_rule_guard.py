@@ -148,7 +148,7 @@ def test_project_refusal_discloses_folder_but_diagnostics_do_not(tmp_path):
 def test_rule_disclosure_has_count_and_plain_warning():
     from thechatplace.ui_text import codex_saved_rules_text
     text = codex_saved_rules_text(2)
-    assert '2' in text and 'without asking, even outside this folder' in text
+    assert '2' in text and "without asking and outside this folder's limits, including the network" in text
     assert 'not been checked' in codex_saved_rules_text(None)
     assert '0' in codex_saved_rules_text(0)
 

@@ -26,7 +26,7 @@ SHORTCUTS_PLATFORM_NOTE = (
 )
 
 CODEX_SAVED_RULES_NOTE = (
-    "Commands you've told Codex to always allow will run without asking, even outside this folder. "
+    "Commands you've told Codex to always allow will run without asking and outside this folder's limits, including the network. "
     "Project-supplied command rules are refused."
 )
 

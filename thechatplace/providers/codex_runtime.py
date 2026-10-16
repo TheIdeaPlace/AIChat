@@ -188,7 +188,11 @@ class CodexChatRuntime:
         except Exception as error:
             with self._lock:
                 self._reopening.discard(native_id)
-                self._problems[native_id] = safe_reason(error) or 'Could not verify changed permissions. Reload this chat before sending.'
+                reason = safe_reason(error)
+                if isinstance(error, CodexTurnRejected) and error.code == 'sandbox_unavailable':
+                    # The chat exists here, unlike New Session, so say how to clear the latch (#257).
+                    reason += ' Reload this chat before sending.'
+                self._problems[native_id] = reason or 'Could not verify changed permissions. Reload this chat before sending.'
             self._notify(native_id)
             raise
 
