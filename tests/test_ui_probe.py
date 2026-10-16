@@ -88,6 +88,48 @@ def test_surfaces_start_from_fresh_data(opened, tmp_path, monkeypatch):
         ui_probe.close_frame(frame)
 
 
+def test_surfaces_show_their_made_up_content(opened, tmp_path, monkeypatch):
+    # Opening the right dialog isn't enough: in 0.1.7's first run the Codex
+    # screens showed "Couldn't load this Codex chat" and Lists only its empty
+    # lines, and every other test still passed (#283).
+    from thechatplace import lists
+
+    def world(name):
+        env = ui_probe.build_world(tmp_path / name, monkeypatch.setattr, formatted_view=False)
+        return env, ui_probe.build_frame(env)
+
+    env, frame = world("codex")
+    try:
+        ui_probe.s_main_codex(frame, env)
+        assert [m.text for m in frame._chat_messages][:1] == ["Explain the upload test."]
+        assert len(frame._chat_messages) == 2
+        row = frame.session_list.GetString(frame.session_list.GetSelection())
+        assert "2 hours ago" in row
+    finally:
+        ui_probe.close_frame(frame)
+    env, frame = world("owned")
+    try:
+        ui_probe.s_main_codex_owned(frame, env)
+        assert len(frame._chat_messages) == 2
+        row = next(frame.session_list.GetString(i) for i in range(frame.session_list.GetCount())
+                   if frame.session_list.GetString(i).startswith("Codex history preview"))
+        assert "working" in row and "Chat Place session" in row
+    finally:
+        ui_probe.close_frame(frame)
+    env, frame = world("commands")
+    try:
+        ui_probe.d_lists_commands(frame, env)
+        assert frame._chat_commands
+    finally:
+        ui_probe.close_frame(frame)
+    env, frame = world("decisions")
+    try:
+        ui_probe.d_lists_decisions(frame, env)
+        assert len(lists.decision_items(frame._chat_messages, None)) == 2
+    finally:
+        ui_probe.close_frame(frame)
+
+
 def test_the_plan_names_real_surfaces_and_well_formed_variants():
     plan = json.loads((ROOT / "tools" / "ui_probe_plan.json").read_text(encoding="utf-8"))
     tags = [v["tag"] for v in plan["windows"] + plan["macos"]]

@@ -576,18 +576,35 @@ def s_main_codex(frame, env):
     from thechatplace.providers.codex import CodexProvider, session_from_thread
     from thechatplace.session_controller import SessionController
 
+    # Seconds, as Codex sends them. Two hours ago rather than a fixed date, so
+    # the row says "active 2 hours ago" in every run, not "691 months ago".
+    updated = int(time.time()) - 2 * 3600
+    items = [{"id": "user", "type": "userMessage", "content": [
+                 {"type": "text", "text": "Explain the upload test."}]},
+             {"id": "answer", "type": "agentMessage", "text": LONG_MESSAGE}]
     thread = {"id": "synthetic-codex", "name": "Codex history preview",
-              "cwd": env["folders"]["Scratch"], "createdAt": 1, "updatedAt": 2,
-              "status": {"type": "notLoaded"}, "turns": [{"id": "turn", "items": [
-                  {"id": "user", "type": "userMessage", "content": [
-                      {"type": "text", "text": "Explain the upload test."}]},
-                  {"id": "answer", "type": "agentMessage", "text": LONG_MESSAGE}]}]}
+              "cwd": env["folders"]["Scratch"], "createdAt": updated - 600, "updatedAt": updated,
+              "status": {"type": "notLoaded"}}
+    # No inline turns: the reader asks without them and pages instead, so a
+    # reader that went back to inline turns would show "Couldn't load" here.
 
     class Connection:
+        # The reader asks for metadata, then pages of turns and items (#285
+        # and earlier): answer each the way app-server does, in one page.
         def request(self, method, params):
-            if method != "thread/read":
-                raise RuntimeError("Unexpected prototype request")
-            return {"thread": thread}
+            if method == "thread/read":
+                return {"thread": thread}
+            if method == "thread/list":
+                # A refresh during the probe lists this one chat, so the row
+                # takes its state from the runtime as the app's would, rather
+                # than reporting discovery as unavailable.
+                return {"data": [] if params.get("archived") else [thread], "nextCursor": None}
+            if method == "thread/turns/list":
+                return {"data": [{"id": "turn", "startedAt": updated - 600}], "nextCursor": None}
+            if method == "thread/items/list":
+                return {"data": [{"turnId": "turn", "item": item} for item in items],
+                        "nextCursor": None}
+            raise RuntimeError("Unexpected prototype request")
 
     frame._list_timer.Stop()  # keep the injected fixture, never enable live discovery
     frame.sessions = SessionController([ClaudeConversations(), CodexProvider(Connection())])
@@ -621,13 +638,19 @@ def s_main_codex_owned(frame, env):
                            queued=("Run the unit tests next.",))
     frame.sessions._providers["codex"].runtime = SimpleNamespace(
         known=lambda native: True, snapshot=lambda native: state,
-        ready=lambda record: True, close=lambda: None)
+        ready=lambda record: True, close=lambda: None,
+        # A chat past its first turn reads through discovery (#285).
+        history_route=lambda native: None)
     frame._codex_states[info.key] = state
     frame.open_session(dataclasses.replace(record.to_info(), state=WORKING))
     fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy
                   and not frame._codex_preparing, timeout=10)
     frame.reply_text.SetValue("Draft of a message still being typed")
     frame._update_send_state()
+    # The row says "working" and "Chat Place session" from the next refresh,
+    # as the app's own timer would bring in a moment.
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
 
 
 def s_main_codex_last_message(frame, env):
@@ -776,7 +799,8 @@ def d_codex_owned_properties(frame, env):
         provider_options={'model': 'Synthetic model', 'effort': 'high', 'sandbox': 'workspace-write',
             'approval_policy': 'on-request', 'workspace_root': str(env['folders']['Scratch'])})
     rows = session_properties(record.to_info(), own=record, saved_rule_count=2)
-    return lambda: frame._show_properties('Codex policy preview', rows, None)
+    # The title the app gives it (main_frame.on_properties), not the bare session name.
+    return lambda: frame._show_properties('Properties of Codex policy preview', rows, None)
 
 
 def d_codex_continue(frame, env):
@@ -923,14 +947,26 @@ def d_changes(frame, env):
 def d_lists_commands(frame, env):
     """View, Lists on Commands (#279)."""
     from thechatplace import lists
-    _open(frame, "Visual probe")
+    # The session that ran a command, so the picture shows a row and its
+    # details rather than the empty "No commands" line.
+    _open(frame, "Fix the flaky upload test")
     return lambda: frame.on_lists(lists.COMMANDS, lists.SCOPE_CHAT)
 
 
 def d_lists_decisions(frame, env):
-    """View, Lists on Decisions (#279)."""
+    """View, Lists on Decisions (#279): one answered question and one not."""
     from thechatplace import lists
+    from thechatplace.transcript import ANSWER, QUESTION, ChatMessage
     _open(frame, "Fix the flaky upload test")
+    turn = frame._chat_messages[-1].turn if frame._chat_messages else 0
+    # Keys end in the tool call, as the transcript's do (lists._tool_id).
+    frame._chat_messages += [
+        ChatMessage(QUESTION, "Which branch should the release use?\nOptions: release/0.2; main.",
+                    key="probe-q1:toolu_q1", turn=turn),
+        ChatMessage(ANSWER, "Which branch should the release use? — release/0.2",
+                    key="probe-a1:toolu_q1", turn=turn),
+        ChatMessage(QUESTION, "Run the slow tests too?", key="probe-q2:toolu_q2", turn=turn)]
+    frame._rebuild_chat_list(focus_newest=True)
     return lambda: frame.on_lists(lists.DECISIONS, lists.SCOPE_CHAT)
 
 

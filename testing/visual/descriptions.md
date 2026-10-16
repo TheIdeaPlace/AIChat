@@ -1,7 +1,14 @@
 # How The Chat Place looks
 
 Written from the visual probe's pictures (#155), on made-up data, on 2026-10-10.
+Updated on 2026-10-16 for 0.1.7 (#283, #226) from light-100 and hc-aquatic-100 pictures of
+every screen changed or added since 0.1.6: the Codex screens, Lists, Settings, Session List
+Columns, the help pages and the main window.
 Regenerate it with `tools/ui_review_prompt.md` whenever screens change.
+
+**Since 0.1.6, in every main-window picture:** each session row now says which AI it is
+straight after the title ("Fix the flaky upload test, Claude, AIChat, needs you: ..."), so
+less of the rest of the row fits in the 378-wide list. Nothing else in those windows moved.
 
 Every light-100 picture was opened, along with the dark, High Contrast and scaled pictures named below. Sizes come from the probe's JSON and are in pixels at 100% scale. Colours were sampled from the pictures; contrast ratios are WCAG ratios.
 
@@ -72,9 +79,63 @@ The same layout is squeezed into 640 by 480. The session list is 234 wide and 35
 
 **What looks off:** The reply box is almost twice as tall as the messages list, so the conversation gets less room than the draft. #179 made this worse (the list was 103 tall): the status line under the buttons and the wrapped heading take two more lines. "Ready." is no longer cut off.
 
+## main-compacted: Compaction and command output with tool activity off (#249)
+
+The same window as main-own, with two more rows in the messages list after Claude's: "Context: Conversation compacted (you asked), from 968,000 to 9,000 tokens." and "Claude Code: Compacted", which is selected. They look like every other row. In High Contrast Aquatic the window is near-black with white text and the selected rows light aqua.
+
+**What looks off:** Nothing. The status bar still says "Loaded Visual probe, 2 messages." with four rows showing, because the two new rows aren't messages.
+
+## main-codex: A Codex chat read from Codex, in the shared window
+
+The same two columns as main-desktop. The session list has a fifth row, "Codex history preview, Codex, Scratch, active 2 hours ago, external sess...", selected. The heading reads "Codex history preview, Scratch, status unavailable. Codex chat, read-only." and "Messages in Codex history preview (read-only):" heads two rows, "You: Explain the upload test." and "Codex: ## What changed" (selected). Where the reply box would be, "About replying:" heads a read-only box with one line, "This is a Codex chat. The Chat Place currently reads its local history. Reply in Codex.", and there are no Open in Claude or Continue Here buttons. The status bar reads "Loaded Codex history preview, 2 messages." and "Codex history preview: status unavailable". High Contrast Aquatic follows the theme like the other main-window pictures.
+
+**What looks off:** The About replying box is 150 tall for one line. The message row shows raw Markdown, as Claude's do.
+
+## main-codex-owned: A Codex chat started here, mid-turn, with a message queued and a draft
+
+Like main-own. The chat's row has moved to second place in the session list and reads "Codex history preview, Codex, Scratch, working, active 2 hours ago, Ch...", and the status bar's left part reads "5 sessions: 1 need you, 1 working.". The heading is "Codex history preview, Scratch, working. Codex chat." and the label "Messages in Codex history preview (working, on Codex):". The messages are "You: Explain the upload test.", "Codex: ## What changed" and "Queued: Run the unit tests next." (selected). The reply box holds "Draft of a message still being typed", with Send, Stop, Commands... and Attach Files... under it and "Codex is working. 1 message queued." below them. The status bar's middle part reads "Codex history preview: working".
+
+**What looks off:** Nothing.
+
+## main-codex-interrupted: A Codex chat whose connection was interrupted
+
+The owned chat after Codex sent a request the app can't answer. The heading wraps onto two lines: "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history.. Codex chat." The session row and the status bar say the same, cut with "...". The line under the buttons reads "Codex connection interrupted: an unsupported approval or question was received; reconcile chat history." The messages are the two history rows; the queued message is gone.
+
+**What looks off:** The heading has two full stops after "history" (#291).
+
+## main-codex-request-declined: A working Codex chat after a request was declined
+
+Like main-codex-owned. The status bar's left part reads "Codex history preview: An unsupported Codex request was declined. No permission ..." (cut with "..."), and the middle "Codex history preview: working".
+
+**What looks off:** The notice is visible only in the status bar's left part, and cut off there. A screen reader speaks it when it arrives.
+
+## main-codex-context: A working Codex chat with its context reported
+
+Like main-codex-request-declined, with a fourth status-bar part, a button "Context 85% reported", between the middle part and "1 session needs you". The left part reads "Codex history preview: Codex's latest reported model request uses ..." (cut with "..."), and the middle "Codex history preview: working".
+
+**What looks off:** Nothing beyond the cut status text, which is normal for that part.
+
+## main-codex-filter: The session list showing only Codex chats, with a Provider column
+
+The list's label reads "Session list, Codex chats, 1 of 5:", and the list holds one row, "Codex history preview, Codex, Scratch, status unavailable" (selected). The right column is as in main-codex.
+
+**What looks off:** The rest of the list is empty white. Nothing else.
+
+## main-codex-last-message: Codex chats with the Last message column
+
+The same filtered list with the Last message column: "Codex history preview, Codex, Codex: What changed The upload test fa..." cut at the list's edge. The heading's "## " shows as "What changed" here, without the hashes, and runs straight into the next sentence.
+
+**What looks off:** The row is cut off at the list's edge (#180).
+
+## main-codex-unavailable: Codex chats listed from before Codex discovery failed
+
+The same as main-codex, except that the status bar's left part reads "Codex session discovery is unavailable. Its listed chats may be out of date."
+
+**What looks off:** Nothing.
+
 ## shortcuts-page: Help, Keyboard Shortcuts (formatted page)
 
-This is an 820 by 620 dialog. A web page fills almost all of it (796 by 534) inside a thin grey border, with a grey vertical scroll bar on the right. The page has a large bold "Keyboard shortcuts" heading, an intro paragraph, then a "Moving around" heading and a two-column table, "Keys" and "What it does". Keys are in bold, and the table has thin grey grid lines and generous row padding. The text is about 12 point, noticeably bigger than the rest of the app. At the bottom right are two small buttons, "Read as Plain Text" (115 wide) and "Close".
+This is an 820 by 620 dialog. A web page fills almost all of it (796 by 534) inside a thin grey border, with a grey vertical scroll bar on the right. The page has a large bold "Keyboard shortcuts" heading, an intro paragraph (five lines in 0.1.7, now naming the Provider and Kind columns), then a "Moving around" heading and a two-column table, "Keys" and "What it does". Keys are in bold, and the table has thin grey grid lines and generous row padding. The text is about 12 point, noticeably bigger than the rest of the app. At the bottom right are two small buttons, "Read as Plain Text" (115 wide) and "Close".
 
 **What looks off:** The table's last visible row is cut through mid-line at the bottom, which is normal for a page that scrolls. The buttons look tiny next to the large page text. Nothing else.
 
@@ -86,15 +147,15 @@ This is a smaller 620 by 520 dialog. "Shortcuts:" heads a white read-only text b
 
 ## user-guide: Help, User Guide (formatted page)
 
-This dialog is laid out exactly like shortcuts-page, 820 by 620, with the web page filling the dialog and "Read as Plain Text" and "Close" at the bottom right. The page starts with a large bold heading, "The Chat Place User Guide", then three paragraphs. A bold "Before you start" heading follows, then "You need:" and a bulleted list. The word "claude" is set in a monospaced font. The scroll thumb is short, showing that the page is long.
+This dialog is laid out exactly like shortcuts-page, 820 by 620, with the web page filling the dialog and "Read as Plain Text" and "Close" at the bottom right. The page starts with a large bold heading, "The Chat Place User Guide", then four paragraphs: Windows and Mac key names, what the app is (Claude and Codex sessions in one list; Provider and Kind; more providers planned), how the guide is arranged, and the independence line naming Anthropic and OpenAI. A bold "Before you start" heading is at the bottom of the view. The scroll thumb is short, showing that the page is long. In High Contrast Aquatic the page is near-black (#202020) with white text (16.3:1).
 
 **What looks off:** Nothing.
 
 ## message-formatted: A message read as a formatted page: heading, list, code, table, link
 
-This uses the same 820 by 620 frame as the other formatted pages. The page shows a bold "What changed" heading and a paragraph. Next is a two-item bulleted list whose file names are in a monospaced font, then a code block of four Python lines on a pale grey (#F3F3F3) rounded box with no border. Then comes a small three-column table (File, Lines added, Lines removed) with bold headers and thin grey grid lines, which takes about half the page width. Last is a paragraph with a blue underlined link, "the issue", followed by many repeated words that wrap across the full width.
+This uses the same 820 by 620 frame as the other formatted pages, titled "Message: Claude" (it was "Message from Claude"). The page shows a bold "What changed" heading and a paragraph. Next is a two-item bulleted list whose file names are in a monospaced font, then a code block of four Python lines on a pale grey (#F3F3F3) rounded box with no border. Then comes a small three-column table (File, Lines added, Lines removed) with bold headers and thin grey grid lines, which takes about half the page width. Last is a paragraph with a blue underlined link, "the issue", followed by many repeated words that wrap across the full width.
 
-**What looks off:** Nothing in light mode. The code box is very faint against the white page (1.1:1), so the code is set apart mainly by its font. In dark mode the page turns near-black but the dialog around it and its buttons stay light grey (#177).
+**What looks off:** Nothing in light mode, where the link is #0000EE on white (9.4:1); in High Contrast Aquatic it is #75E9FC on #202020 (11.5:1). The code box is very faint against the white page (1.1:1), so the code is set apart mainly by its font. In dark mode the page turns near-black but the dialog around it and its buttons stay light grey (#177).
 
 ## message-plain: The same message as plain text
 
@@ -109,9 +170,15 @@ This is a 720 by 520 dialog. "Claude said:" heads a white read-only text box 688
 
 ## settings: Settings
 
-This is a 680 by 550 dialog. At the top, a framed group, "Announcements", runs the full width with three radio buttons: "Full: read the whole reply" (chosen, with the focus outline), "Summary: the session's name and the reply's first sentence" and "Silent: status bar only". Below it are two ticked check boxes, then a second framed group, "Reading messages", with two more ticked boxes. Then come label-and-dropdown rows. "Speech engine" has a dropdown 555 wide, "Automatic (your screen reader, or a system voice when none is running)". "Speaking rate" has a small greyed-out "Default" dropdown, followed on its own line by the note "Voice and rate follow your screen reader's own settings." "Windows notifications" has a dropdown 335 wide, "When your sessions finish a turn, or any session needs you". Under it, "Recent folders New Session offers:" has a small number box showing 20 and a "Clear Recent Folders" button beside it (#215). Two final check boxes follow. The Remote Control one (unticked) wraps its label onto two lines (624 by 30): "Turn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices." and "Their conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)". The last, "Tell me when an update has been installed, with a link to what's new", is ticked. "OK" (blue-outlined, the default) and "Cancel" sit at the bottom right, 8 pixels above the dialog's bottom edge.
+This is a 680 by 590 dialog (550 in 0.1.6; the Codex check box added 40). At the top, a framed group, "Announcements", runs the full width with three radio buttons: "Full: read the whole reply" (chosen, with the focus outline), "Summary: the session's name and the reply's first sentence" and "Silent: status bar only". Below it are two ticked check boxes, then a second framed group, "Reading messages", with two more ticked boxes. Then come label-and-dropdown rows. "Speech engine" has a dropdown 555 wide, "Automatic (your screen reader, or a system voice when none is running)". "Speaking rate" has a small greyed-out "Default" dropdown, followed on its own line by the note "Voice and rate follow your screen reader's own settings." "Windows notifications" has a dropdown 335 wide, "When your sessions finish a turn, or any session needs you". Under it, "Recent folders New Session offers:" has a small number box showing 20 and a "Clear Recent Folders" button beside it (#215). Two final check boxes follow. The Remote Control one (unticked) wraps its label onto two lines (624 by 30): "Turn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices." and "Their conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)". Under it, the unticked "Include Codex chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then restart." also wraps onto two lines, with "restart." alone on the second. The last, "Tell me when an update has been installed, with a link to what's new", is ticked. "OK" (blue-outlined, the default) and "Cancel" sit at the bottom right, 8 pixels above the dialog's bottom edge.
 
 **What looks off:** The dropdown widths are uneven (555, 68 and 335), and the Windows notifications dropdown starts at x=140 while the two above it start at x=99. The whole dialog now fits its contents, with no empty band below the buttons.
+
+## settings-codex: Settings with Codex automatically included
+
+The same dialog, 680 by 575, on a computer where Codex is found. The Codex check box is ticked and its label is one line, "Include Codex chats (restart required)", so the dialog is 15 pixels shorter than settings and everything below the check box moves up. In High Contrast Aquatic both Settings pictures follow the theme: near-black background (#202020), white text (16.3:1), white group frames and check boxes, and OK filled light aqua.
+
+**What looks off:** Nothing.
 
 ## new-session: File, New Session
 
@@ -173,29 +240,41 @@ This is a 660 by 640 dialog. It is a stack of labelled boxes, each the full widt
 
 **What looks off:** Nothing. The note now wraps, so the support address shows in full, and the read-only box shows its six lines whole.
 
-## links: View, Links (#190)
-
-This is a 760 by 480 dialog titled "Links in Fix the flaky upload test: 1". "Filter:" heads a full-width empty text box. "Links (1):" heads a white list that fills most of the dialog, with one row selected in blue: "the issue, github.com/example/repo/issues/42. Claude, 1 message ago". "Open" (the default), "Copy", "Copy as Markdown" and "Close" are in a row at the bottom right. In High Contrast Aquatic the dialog is dark, with the list, the box and the buttons outlined in the theme's text colour, the selected row in the theme's highlight, and the default button filled.
-
-**What looks off:** With one link, the list is mostly empty. Nothing else.
-
 ## find-all: View, Find in All Sessions: the results (#109)
 
 This is an 820 by 520 dialog titled 'The Chat Place: 6 results for "the", Find in All Sessions'. "Results:" heads a white list that takes most of the dialog, with six rows, the first selected in blue. Each row is the session, who wrote the message, when, and the words around the match, such as "Fix the flaky upload test, You, 6 October 07:00: Thanks. Which branch name should the release use?". "Searched:" heads a two-line read-only box: '6 messages in 2 sessions contain "the". Searched 2 sessions. 2 had no transcript to read.' "Go to Message" (the default) and "Close" are at the bottom right. In High Contrast Aquatic it follows the theme: a dark background, outlined controls, the selected row and the default button in the theme's highlight.
 
 **What looks off:** Long rows are cut at the list's right edge, with no horizontal scroll bar, as in the other lists (a screen reader reads the whole row). A heading and the text after it run together ("What changed The upload test…"). Nothing else.
 
-## code-blocks: A message's code blocks
+## code-blocks: View, Lists: a message's code blocks (#279)
 
-This is a 760 by 560 dialog. "Code blocks:" heads a white list 728 by 110 with one row, "Python, 4 lines: def finish(self):", selected. "Code:" heads a large text box (728 by 324, about 60% of the dialog) showing the four lines in a monospaced font with their indentation. "Copy" and "Close" are at the bottom right.
+Code blocks, links and changed files are now kinds in one dialog, View, Lists, 820 by 660 and titled "Lists: " and the session's name ("Lists: Fix the flaky upload test"). From the top: "Show items from:" beside a small dropdown, "This message"; then "Kinds:", a white list the full width (788 by 95) with five rows, each with its count: "Code Blocks (1)" (selected in blue), "Links (1)", "Changed Files (0)", "Commands (1)" and "Decisions (0)". Below that the chosen kind's page, inset 8 pixels further: "Filter:" over an empty one-line box, "List: Code Blocks (1):" over a white list 772 by 140 holding "Python, 4 lines: def finish(self):", selected, and "Details:" over a box 772 by 165 showing the four lines of code in a monospaced font with their indentation. "Copy" sits at the right under the page, and "Close" on a row of its own below it. In High Contrast Aquatic the dialog is near-black (#202020) with white text (16.3:1) and white outlines; the selected rows are light aqua (#8EE3F0) with dark text (#263B50 at the letters' cores, 7.9:1); the code is white.
 
-**What looks off:** The code box is empty below the fourth line. Neither button is drawn as the default. Nothing else.
+**What looks off:** Close is 14 pixels further right than the page's buttons above it (#288). Most of the list is empty with one item.
 
-## changes: View, Changed Files
+## links: View, Lists: Links (#190, #279)
 
-This is an 800 by 580 dialog. At the top left, "Show changes from:" sits beside a small dropdown, "Your latest message". "Files:" heads a white list 768 by 130 with one row, "uploader.py, 2 lines added", selected in blue with the dotted focus outline. "Changes:" heads a large text box (768 by 293) in a monospaced font. It shows the full file path followed by ": 2", with "lines added." wrapped onto a second line, then "A change:", two "Added:" lines and an "Unchanged:" line. "Close" is alone at the bottom right.
+The same Lists dialog, opened on Links with "Show items from" set to "The whole chat". "Links (1)" is selected in Kinds. "List: Links (1):" holds one row, "the issue, github.com/example/repo/issues/42. Claude, 1 message ago", selected, and Details shows "the issue" and the full address on the next line. Under the page are "Open", "Copy" and "Copy as Markdown", and "Close" below them. High Contrast Aquatic follows the theme as in code-blocks.
 
-**What looks off:** The first line wraps between "2" and "lines added". The files list is mostly empty. (An earlier draft called the row's outline an orange outline unique to this list; it is the same focus outline every focused list shows.)
+**What looks off:** Close is out of line with the three buttons above it (#288). Nothing else.
+
+## changes: View, Lists: Changed Files (#279)
+
+The Lists dialog on "Changed Files (1)", for "Visual probe". The list holds "uploader.py, 2 lines added", selected. Details is in a monospaced font: the file's full path followed by ": 2 lines", with "added." wrapped onto the next line, a blank line, "A change:", two "Added:" lines and an "Unchanged:" line. "Copy" is under the page and "Close" below it. High Contrast Aquatic follows the theme as in code-blocks.
+
+**What looks off:** The path's line wraps before "added.". Close is out of line with Copy (#288).
+
+## lists-commands: View, Lists: Commands (#279)
+
+The Lists dialog on "Commands (1)", for "Fix the flaky upload test", over the whole chat. "List: Commands (1):" holds "pytest tests/test_upload.py -q. done", selected, and Details, in a monospaced font, shows "Command:", the command, a blank line, "Output:" and "1 failed, 11 passed". Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
+
+**What looks off:** Close is out of line with Copy (#288). Nothing else.
+
+## lists-decisions: View, Lists: Decisions (#279)
+
+The Lists dialog on "Decisions (2)", over the whole chat. The list holds two rows, newest first: "Run the slow tests too? Not answered" (selected) and "Which branch should the release use? You answered: release/0.2". Details shows "Run the slow tests too?", a blank line and "Not answered." in the standard font. Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
+
+**What looks off:** Close is out of line with Copy (#288). Nothing else.
 
 ## usage: View, Usage and Context
 
@@ -215,11 +294,71 @@ This is a 976 by 360 dialog titled "Properties of Visual probe", laid out like U
 
 **What looks off:** Nothing in particular: every row fits the width.
 
+## codex-new: File, New Session with Codex chosen as Provider
+
+The New Chat Place Session dialog, 680 by 620. Labels sit in a column on the left and their controls in a column from x=243 to the right edge: "Provider" (a dropdown showing "Codex", with the focus outline), "Folder" (a dropdown with the folder's path, cut at the right edge), "Browse..." and "From GitHub..." under it, "Work in" ("The folder as it is (not a git repository, so no worktree)"), "Branch" (greyed out and empty), "Title" (an empty box), "Model" and "Effort" (greyed out, "Configured Codex model" and "Configured Codex effort"), and "Permission mode" ("Can edit files in this folder; asks before anything else"). Below them "About permissions:" heads a read-only box the full width, 6 lines tall, with a paragraph about ChatGPT sign-in, the two permission choices, saved always-allow commands ("Saved user/system rule files in effect: 2"), refused project rules and "Model choices load in the background." It fills the box exactly, with a scroll bar. "First message:" heads an empty box 100 tall, and "Start" (default) and "Cancel" are at the bottom right. The greyed text is #6D6D6D on #FAFAFA (5.0:1); in High Contrast Aquatic it is #A6A6A6 on #202020 (6.7:1).
+
+**What looks off:** The folder path is cut at the dropdown's edge, as long paths are in any dropdown. Nothing else.
+
+## codex-models: New Codex chat with the models Codex offers
+
+The same dialog after Codex has sent its models: Model is now enabled and shows "Synthetic Codex model", and Effort shows "Extra high". The About permissions paragraph says "Saved command rules have not been checked" and ends with "Project-supplied command rules are refused.", one line shorter than in codex-new.
+
+**What looks off:** Nothing.
+
+## codex-continue: Continue Here from a Codex chat that may still be working
+
+A 680 by 620 dialog titled "Continue Here: Codex still working". Rows: "Folder" (a read-only grey box with the full path), "Title" ("Codex still working (continued)"), Model and Effort greyed out, and "Permission mode" ("Read-only; asks before allowing changes"). "About continuing:" heads a box that opens with "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.", a blank line, and the same permissions paragraph as codex-new, filling the box. "First message:" heads a box 170 tall with the text cursor in it. "Start" (default) and "Cancel" are at the bottom right.
+
+**What looks off:** Nothing.
+
+## codex-change-mode: Change permissions for a Codex chat
+
+A small 596 by 300 dialog, "Change Permission Mode" (Windows' own single-choice dialog). Its text, in the dialog's background: "Codex permissions for Review saved command rules for a deliberately long synthetic chat title.", "Folder:", the folder's path, which wraps mid-word ("long-syntheti" / "c-project-folder"), "Finish or Stop active work first.", a blank line, then "Commands you've told Codex to always allow will run without asking, even outside this folder." and "Project-supplied command rules are refused.". Below is a list three rows tall with two choices, "Read-only; asks before allowing changes" and "Can edit files in this folder; asks before anything else" (selected), with a scroll bar, and "OK" (default) and "Cancel".
+
+**What looks off:** The path breaks in the middle of a word, because it has no spaces. The list shows a scroll bar for two rows.
+
+## codex-permission: Codex asks to run a command
+
+A 700 by 540 dialog titled "Codex needs permission: Codex preview". "Request:" heads a read-only box that fills the dialog (about 670 by 420), holding "Command:", "git status --short", a blank line, "Folder:", the folder's path, a blank line, "Reason:" and "Inspect the working directory before continuing". Four buttons sit at the bottom right: "Allow Once", "Deny" (the default, blue-outlined), "Stop Turn" and "Answer Later". In High Contrast Aquatic Deny is filled light aqua.
+
+**What looks off:** The box is mostly empty for a short request. Nothing else.
+
+## codex-files: Codex file changes to review before allowing
+
+The same dialog, showing a file change: "Update: app.py", "@@ -1 +1 @@", "-print('old')" and "+print('new')", in the standard font. The same four buttons, with Deny the default.
+
+**What looks off:** The diff isn't in a monospaced font, unlike the Lists dialog's Details. The box is mostly empty.
+
+## codex-question: Codex asks questions
+
+A 700 by 254 dialog titled "Codex asks: Codex preview". A framed group "Checks: Which checks should run?" holds two radio buttons, "Unit tests" (chosen, focus outline) and "Smoke test". A second group, "Secret: Enter the test secret.", holds one radio button, "Other (type below)", and an empty one-line box under it. "Send Answers" (default), "Decline and Stop Turn" and "Answer Later" are at the bottom right.
+
+**What looks off:** The secret question shows its box under a lone "Other (type below)" choice, which looks like a choice question with one option. Nothing is cut off.
+
+## usage-codex: View, Usage and Context for a Codex chat
+
+A 640 by 360 dialog. "Usage and context:" heads a list that fills it, with seven rows: "Latest reported model request: 75,000 tokens (70,000 input, 5,000 output)." (selected), "Latest request uses 75% of the reported 100,000-token context window.", "Cumulative token usage: 250,000. This is not the current context size.", "Codex account usage is shared across your chats.", "Codex:", "5-hour limit: 25% used, 75% remaining; reset time not reported." and "168-hour limit: 40% used, 60% remaining; reset time not reported.". "Copy", "Copy All" and "Close" are at the bottom right.
+
+**What looks off:** "Codex:" on its own row reads like a heading in a list of facts. Nothing else.
+
+## properties-codex: Properties of a Codex chat read from Codex
+
+A 640 by 360 dialog, "Properties of Codex history preview", laid out like properties. The list's rows: Title, "Provider: Codex", "Kind: External session", the folder, "Status: Status unavailable", Started and Last activity ("11 October 2026 at 14:05 (2 hours ago)", a fixed date with a real "ago"), "Saved command rules check: Codex command rules could not be checked.", Messages 2, Your messages 1, "Codex's replies: 1", Tool calls 0, Links 1, Code blocks 1, Groups none, Session ID and "History: read from Codex". There are more rows than fit, so it has a scroll bar.
+
+**What looks off:** "Status: Status unavailable" repeats the word (#290).
+
+## properties-codex-owned: Properties of a Codex chat started here
+
+The same dialog for "Codex policy preview", a Codex chat the app started: "Kind: Chat Place session", "Status: Idle", Started and Last activity "not recorded", "Model chosen: Synthetic model", "Effort: High", "Sandbox: can edit files in its folder", "Approval policy: on request", "Writable folder:" and the path, "Saved user/system rule files in effect: 2", Groups, Session ID and "History: unavailable from Codex". Every row fits.
+
+**What looks off:** Nothing.
+
 ## session-columns: View, Session List Columns
 
-This is a 640 by 560 dialog. A two-line intro runs across the top (608 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what" and "each session is doing before its title.". Below it are two equal lists side by side, each 296 by 265: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with ten rows (Title, Folder, Status..., Groups). Both have a selected row; the right one has the focus outline. Under them is a row of six buttons, "Add", "Remove", "Move Up", "Move Down", "Move to Top" and "Move to Bottom", then a very wide "Reset to Default" button (537 wide). "Preview of the selected session's line:" heads a 60-tall read-only box. "OK" (default) and "Cancel" are at the bottom right.
+This is a 640 by 560 dialog. A two-line intro runs across the top (608 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what" and "each session is doing before its title.". Below it are two equal lists side by side, each 296 by 265: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with eleven rows: Title, "Provider (Claude or Codex)", Folder, "Status (needs you, working or idle)", New reply, Last activity, "Kind (desktop app, Cowork, terminal or The Chat Place", Remote Control, Archived, Hidden and Groups. The Kind row is cut at the list's right edge before its closing bracket (#289). The preview box at the bottom wraps onto two lines: "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago," and "desktop app session". Both have a selected row; the right one has the focus outline. Under them is a row of six buttons, "Add", "Remove", "Move Up", "Move Down", "Move to Top" and "Move to Bottom", then a very wide "Reset to Default" button (537 wide). "Preview of the selected session's line:" heads a 60-tall read-only box. "OK" (default) and "Cancel" are at the bottom right.
 
-**What looks off:** The button row and Reset button stop at x=545 while the lists reach 618, so they look misaligned. The 537-wide Reset button is unlike any other button in the app.
+**What looks off:** The Kind row doesn't fit the list (#289). The button row and Reset button stop at x=545 while the lists reach 618, so they look misaligned. The 537-wide Reset button is unlike any other button in the app.
 
 ## prompts: File, Prompts
 
@@ -249,7 +388,7 @@ This picture has the same layout as main-start. The session list on the left is 
 
 Only surfaces where a variant differs in a way worth knowing are listed. Everywhere else, the dark-100 picture is identical to light-100, and the High Contrast pictures are the same layout in the theme colours described above.
 
-- **message-formatted:** In both High Contrast themes the code block has no background and no edge at all. The four lines are only indented and set in a monospaced font, on the same near-black (Aquatic) or cream (Desert) as the page. The table keeps visible lines, white in Aquatic and dark grey in Desert. In dark mode the code box is near-black on near-black (#2B2B2B on #1E1E1E, 1.2:1), so it barely shows either (#177).
+- **message-formatted:** In the 2026-10-16 hc-aquatic-100 picture the code block has a thin white rounded outline round it, on the page's near-black; hc-desert-100 wasn't taken again, and the earlier note follows. In both High Contrast themes the code block had no background and no edge at all. The four lines are only indented and set in a monospaced font, on the same near-black (Aquatic) or cream (Desert) as the page. The table keeps visible lines, white in Aquatic and dark grey in Desert. In dark mode the code box is near-black on near-black (#2B2B2B on #1E1E1E, 1.2:1), so it barely shows either (#177).
 - **shortcuts-page, user-guide, message-formatted:** In dark mode only the page turns dark and the frame and buttons stay light (#177). At 175% their "Read as Plain Text" and "Close" buttons are in view (#186 fixed this: they were hidden behind the taskbar).
 - **new-session, continue-here, plan, bug-report, about-you:** At 175% these dialogs are made as tall as the screen allows (956) and keep their bottom row in view: Start and Cancel, the Report a Bug note and buttons, the five About You buttons and the Plan dialog's four buttons (#186 fixed this: the taskbar covered them). Their boxes are a little shorter to fit.
 - **All main-window pictures:** At 150% the messages list is 398 tall and the reply box 180; at 175%, 302 and 210. The screen is 1080 pixels tall, so at 175% the window can't be as tall as its design (720 at 100%), and the conversation gets less room than at 150%.

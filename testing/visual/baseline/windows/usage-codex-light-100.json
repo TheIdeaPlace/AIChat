@@ -1,0 +1,125 @@
+{
+ "title": "Usage and Context",
+ "class": "UsageDialog",
+ "size": [
+  640,
+  360
+ ],
+ "client": [
+  624,
+  321
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Usage and context:",
+   "rect": [
+    8,
+    8,
+    101,
+    16
+   ],
+   "best": [
+    101,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Usage and context",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    608,
+    258
+   ],
+   "best": [
+    427,
+    109
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Latest reported model request: 75,000 tokens (70,000 input, 5,000 output).",
+    "Latest request uses 75% of the reported 100,000-token context window.",
+    "Cumulative token usage: 250,000. This is not the current context size.",
+    "Codex account usage is shared across your chats.",
+    "Codex:",
+    "5-hour limit: 25% used, 75% remaining; reset time not reported.",
+    "168-hour limit: 40% used, 60% remaining; reset time not reported."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    379,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &All",
+   "rect": [
+    460,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    541,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
