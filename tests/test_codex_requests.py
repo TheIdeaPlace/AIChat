@@ -86,7 +86,8 @@ def test_network_approval_names_the_host_and_may_have_no_command():
     assert request.reviewable()
     assert request.summary() == 'Network access to github.com.'
     label, description = request.choice_text('acceptForSession')
-    assert label == 'Allow for &This Session' and 'github.com' in description
+    assert label == 'Allow for &This Session'
+    assert description == 'Allow, and allow network access to github.com for the rest of this Codex session.'
     detail = request.detail()
     assert detail.startswith('Codex wants network access to:\ngithub.com (HTTPS)')
     assert 'Allow for This Session: ' + description in detail
