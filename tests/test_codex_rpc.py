@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from thechatplace import platform_paths
+from markers import windows_paths
 from thechatplace.providers.codex_rpc import CodexRpcError, ReadOnlyCodexConnection
 from thechatplace.providers.codex_connection import ManagedCodexConnection
 
@@ -922,3 +923,79 @@ def test_windows_relocated_bundle_and_native_npm_candidates(tmp_path, monkeypatc
     assert tmp_path / "local/Programs/OpenAI/Codex/bin/codex.exe" in candidates
     assert any("codex-win32-arm64" in str(p) for p in candidates)
     assert platform_paths.find_codex(which=lambda _: None) == str(native)
+
+
+def _windows_discovery(tmp_path, monkeypatch):
+    import platform
+    monkeypatch.setattr(platform_paths.sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: "ARM64")
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+
+
+def _native_exe(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"MZ synthetic")
+    return path
+
+
+@windows_paths
+def test_windows_daemon_package_found_only_through_current_junction(tmp_path, monkeypatch):
+    """#283: Codex's daemon-only install has no command on PATH. Only the
+    installer's ``current`` junction counts: a newer or staging release folder
+    may be half-written, and the sandbox helper copy is not ours to launch."""
+    import _winapi
+    _windows_discovery(tmp_path, monkeypatch)
+    packages = tmp_path / ".codex/packages/app-server-daemon"
+    _native_exe(tmp_path / ".codex/.sandbox-bin/codex.exe")
+    _native_exe(packages / "releases/9.9.9-aarch64-pc-windows-msvc/bin/codex.exe")
+    _native_exe(packages / "releases/.staging.1.0.0-aarch64-pc-windows-msvc.42/bin/codex.exe")
+    assert platform_paths.find_codex(which=lambda _: None) is None
+    release = packages / "releases/0.162.1-aarch64-pc-windows-msvc"
+    _native_exe(release / "bin/codex.exe")
+    _winapi.CreateJunction(str(release), str(packages / "current"))
+    expected = packages / "current/bin/codex.exe"
+    assert platform_paths.find_codex(which=lambda _: None) == str(expected)
+
+
+@windows_paths
+@pytest.mark.parametrize("layout", ["bin/codex.exe", "codex.exe"])
+def test_windows_standalone_package_respects_absolute_codex_home(tmp_path, monkeypatch, layout):
+    _windows_discovery(tmp_path, monkeypatch)
+    home = tmp_path / "elsewhere"
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    native = _native_exe(home / "packages/standalone/current" / layout)
+    _native_exe(tmp_path / ".codex/packages/standalone/current" / layout)
+    assert platform_paths.find_codex(which=lambda _: None) == str(native)
+    # A relative CODEX_HOME would depend on the working folder; use the default.
+    # A network share is never launched from either.
+    for ignored in ("relative", r"\\server\share\codex"):
+        monkeypatch.setenv("CODEX_HOME", ignored)
+        assert platform_paths.find_codex(which=lambda _: None) == str(
+            tmp_path / ".codex/packages/standalone/current" / layout)
+
+
+@windows_paths
+def test_windows_order_puts_cli_installs_before_app_managed_copies(tmp_path, monkeypatch):
+    _windows_discovery(tmp_path, monkeypatch)
+    daemon = _native_exe(tmp_path / ".codex/packages/app-server-daemon/current/bin/codex.exe")
+    npm = _native_exe(tmp_path / ("roaming/npm/node_modules/@openai/codex/node_modules/@openai/"
+                                  "codex-win32-arm64/vendor/aarch64-pc-windows-msvc/bin/codex.exe"))
+    relocated = _native_exe(tmp_path / "local/OpenAI/Codex/bin/build-hash/codex.exe")
+    standalone = _native_exe(tmp_path / ".codex/packages/standalone/current/bin/codex.exe")
+    candidates = platform_paths.codex_native_candidates()
+    order = [candidates.index(p) for p in (standalone, relocated, npm, daemon)]
+    assert order == sorted(order)
+    assert candidates[-1] == daemon
+    assert platform_paths.find_codex(which=lambda _: str(npm)) == str(npm)
+
+
+def test_mac_candidates_include_codex_packages(tmp_path, monkeypatch):
+    monkeypatch.setattr(platform_paths.sys, "platform", "darwin")
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    candidates = platform_paths.codex_native_candidates()
+    assert tmp_path / ".codex/packages/standalone/current/bin/codex" in candidates
+    assert candidates[-1] == tmp_path / ".codex/packages/app-server-daemon/current/bin/codex"

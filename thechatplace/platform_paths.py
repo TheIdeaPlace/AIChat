@@ -1179,23 +1179,48 @@ def _codex_npm_candidates(roots) -> List[Path]:
     return candidates
 
 
+def _codex_package_candidates(home: Path, name: str):
+    """Codex's own installer packages under CODEX_HOME (#283).
+
+    https://github.com/openai/codex/blob/main/codex-rs/app-server-daemon/README.md
+    and scripts/install/install.ps1: the installer unpacks each release into a
+    staging folder, moves it into releases/, then retargets the ``current``
+    link. Only ``current`` is used, so a half-written release is never chosen
+    and no version sorting is needed. ``packages/standalone`` is the CLI
+    install (``bin/`` layout, or the older flat one); ``app-server-daemon`` is
+    the daemon-only install with no command on PATH. ``.sandbox-bin`` is a
+    sandbox helper copy and is deliberately not a candidate.
+    """
+    configured = os.environ.get("CODEX_HOME")
+    # A relative or network (UNC) CODEX_HOME falls back to the default, as
+    # codex_rule_inventory refuses network paths: never launch from a share.
+    usable = (configured and os.path.isabs(configured)
+              and not configured.startswith(("//", "\\\\")))
+    root = (Path(configured) if usable else home / ".codex") / "packages"
+    standalone = [root / "standalone/current/bin" / name,
+                  root / "standalone/current" / name]
+    return standalone, [root / "app-server-daemon/current/bin" / name]
+
+
 def codex_native_candidates() -> List[Path]:
     """Native install locations, also available to Finder launches (#277)."""
     home = Path.home()
     if sys.platform == "darwin":
         bundled = Path("Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex")
-        return [Path("/opt/homebrew/bin/codex"), Path("/usr/local/bin/codex"),
-                home / ".local/bin/codex", home / ".npm-global/bin/codex",
-                Path("/Applications/ChatGPT.app") / bundled,
-                home / "Applications/ChatGPT.app" / bundled] + _codex_npm_candidates([
-                    Path("/opt/homebrew/lib/node_modules"), Path("/usr/local/lib/node_modules"),
-                    home / ".npm-global/lib/node_modules"])
+        standalone, daemon = _codex_package_candidates(home, "codex")
+        return ([Path("/opt/homebrew/bin/codex"), Path("/usr/local/bin/codex"),
+                 home / ".local/bin/codex", home / ".npm-global/bin/codex"] + standalone
+                + [Path("/Applications/ChatGPT.app") / bundled,
+                   home / "Applications/ChatGPT.app" / bundled] + _codex_npm_candidates([
+                       Path("/opt/homebrew/lib/node_modules"), Path("/usr/local/lib/node_modules"),
+                       home / ".npm-global/lib/node_modules"]) + daemon)
     if sys.platform == "win32":
         local = Path(os.environ.get("LOCALAPPDATA") or home / "AppData/Local")
         roaming = Path(os.environ.get("APPDATA") or home / "AppData/Roaming")
+        standalone, daemon = _codex_package_candidates(home, "codex.exe")
         candidates = [home / ".local/bin/codex.exe",
                       local / "Microsoft/WinGet/Links/codex.exe",
-                      local / "Programs/OpenAI/Codex/bin/codex.exe"]
+                      local / "Programs/OpenAI/Codex/bin/codex.exe"] + standalone
         # The Store app relocates its bundled CLI outside WindowsApps. Inspect
         # only direct build folders, never recursively traverse app data.
         cache = local / "OpenAI/Codex/bin"
@@ -1207,7 +1232,7 @@ def codex_native_candidates() -> List[Path]:
             candidates.extend(p / "codex.exe" for p in builds)
         except OSError:
             pass
-        return candidates + _codex_npm_candidates([roaming / "npm/node_modules"])
+        return candidates + _codex_npm_candidates([roaming / "npm/node_modules"]) + daemon
     return [home / ".local/bin/codex"]
 
 

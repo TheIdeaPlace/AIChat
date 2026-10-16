@@ -378,7 +378,8 @@ The Claude-specific desktop and Cowork actions are shown in this table:
 ### Local Codex chats
 
 Codex chats appear automatically when a native Codex CLI is installed and signed in
-to ChatGPT, including the copy bundled with the ChatGPT app on Mac. Settings offers
+to ChatGPT. That includes the copy bundled with the ChatGPT app on Mac, the Codex app's copy
+on Windows, and the copy Codex's own installer keeps in your `.codex` folder. Settings offers
 **Include Codex chats (restart required)** to turn them off or on; your choice is kept.
 If Codex isn't found, Settings says to install the Codex app or CLI, then restart. Local Claude and
 Codex chats share one list, and selecting a Codex chat opens its history
