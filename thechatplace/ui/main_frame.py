@@ -1679,15 +1679,16 @@ class MainFrame(CodexChats, wx.Frame):
     def _command_speech_state(self, session_id):
         return self._command_speech.setdefault(session_id, {'assistant_text': False, 'spoken': []})
 
-    def _announce_command_output(self, session_id, title, output, *, failed=False):
+    def _announce_command_output(self, session_id, title, output, *, failed=False, deduplicate=True):
         output = clean_command_output(output)
         if not output:
             return
         signature = ' '.join(output.split())
-        state = self._command_speech_state(session_id)
-        if signature in state['spoken']:
-            return
-        state['spoken'] = (state['spoken'] + [signature])[-32:]
+        if deduplicate:
+            state = self._command_speech_state(session_id)
+            if signature in state['spoken']:
+                return
+            state['spoken'] = (state['spoken'] + [signature])[-32:]
         summary = announce.first_sentence(output, 200)
         label = 'Claude Code error: ' if failed else 'Claude Code: '
         text = announce.reply_text(title, label + summary, self.speech.announce)
@@ -1764,7 +1765,8 @@ class MainFrame(CodexChats, wx.Frame):
                 if message.kind == COMMAND_OUTPUT and (fresh_compactions or noticed) and message.text.casefold().startswith('compacted'):
                     continue  # The boundary already described this same command.
                 self._announce_command_output(self._open.cli_session_id, self._open.title, message.text,
-                                              failed=message.kind == COMMAND_ERROR)
+                                              failed=message.kind == COMMAND_ERROR,
+                                              deduplicate=self._open.is_own)
         # A message from another session (#123) is news in any session, own
         # or not, and even mid-turn: nothing else would announce it.
         for message in messages:

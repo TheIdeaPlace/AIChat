@@ -9662,3 +9662,10 @@ def test_command_stderr_is_visible_and_a_failed_compact_result_does_not_claim_su
     assert pump(lambda: any(m.kind == COMMAND_ERROR for m in frame._visible_messages()))
     frame._on_turn_event({'id': 'own-1'}, 'Hub probe', TurnEvent('finished', text=output, is_error=True))
     assert not any('Conversation compacted' in text for text in env['feedback'])
+
+
+def test_read_only_command_rows_repeat_even_without_an_owned_sdk_turn(frame, env):
+    env['feedback'].clear()
+    for _ in range(2):
+        frame._announce_command_output('foreign-command', 'Read-only chat', 'Command output.', deduplicate=False)
+    assert sum('Command output.' in text for text in env['feedback']) == 2
