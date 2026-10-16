@@ -3639,6 +3639,12 @@ def test_changed_files_view_and_turn_end_summary(frame, env, monkeypatch):
         handle.write(json.dumps(user_text("Thanks")) + "\n")
     frame._refresh_chat()
     assert pump(lambda: frame._chat_turns == 3)
+    # With an older message selected, its turn's files (#279)...
+    frame.chat_list.SetSelection(1)
+    frame.on_changes()
+    assert shown[-1][0] == "message" and len(shown[-1][1]) == 1
+    # ...and with the newest selected, whose turn changed nothing, the whole chat.
+    frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
     frame.on_changes()
     assert shown[-1][0] == "chat" and len(shown[-1][1]) == 2
     # A summary due for a session that's no longer loaded isn't said.
