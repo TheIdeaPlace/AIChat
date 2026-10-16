@@ -82,8 +82,9 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         WORKING, STATUS_UNAVAILABLE,
                         SessionInfo, field_short_name, group_view, in_view, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
-from ..transcript import (ASSISTANT, COMPACTION, COMMAND_OUTPUT, ERROR, PEER, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT,
-                          ChatMessage)
+from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
+                          PEER, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT, ChatMessage,
+                          clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
 from . import mac_a11y
@@ -259,6 +260,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._chat_loaded = False
         self._compaction_notices = {}
         self._compaction_tokens = {}
+        self._command_speech = {}
         self._show_activity = False
         self._drafts: Dict[str, str] = {}  # unsent reply text, per session
         # Sent during a turn, in order; they go together when it ends (#50).
@@ -1656,22 +1658,43 @@ class MainFrame(CodexChats, wx.Frame):
         self.chat_list.SetSelection(0)
 
     def _announce_compaction(self, session_id, title, text, source, key=''):
-        # Match exact boundary identities when available, otherwise pair the
-        # stream and reader within this turn, whichever arrives first (#249).
-        state = self._compaction_notices.setdefault(session_id, {'keys': [], 'stream': [], 'reader': [], 'notified': False})
-        if key and key in state['keys']:
+        # The SDK and transcript can assign different UUIDs to the same boundary.
+        # Pair their first unmatched notices in this turn, in either order (#249).
+        state = self._compaction_notices.setdefault(session_id, {
+            'keys': {'stream': [], 'reader': []}, 'stream': [], 'reader': [], 'notified': False})
+        other_source = 'reader' if source == 'stream' else 'stream'
+        if key and key in state['keys'][source]:
             return
-        other = state['reader' if source == 'stream' else 'stream']
-        match = next((index for index, pending in enumerate(other)
-                      if not key or not pending or key == pending), None)
         if key:
-            state['keys'] = (state['keys'] + [key])[-64:]
-        if match is not None:
-            other.pop(match)
+            state['keys'][source] = (state['keys'][source] + [key])[-64:]
+        if state[other_source]:
+            state[other_source].pop(0)
             return
+        if key and key in state['keys'][other_source]:
+            return  # A late duplicate from an earlier turn with a known identity.
         state[source] = (state[source] + [key])[-32:]
         state['notified'] = True
         self._say(f"{title}: {text}", interrupt=False)
+
+    def _command_speech_state(self, session_id):
+        return self._command_speech.setdefault(session_id, {'assistant_text': False, 'spoken': []})
+
+    def _announce_command_output(self, session_id, title, output, *, failed=False):
+        output = clean_command_output(output)
+        if not output:
+            return
+        signature = ' '.join(output.split())
+        state = self._command_speech_state(session_id)
+        if signature in state['spoken']:
+            return
+        state['spoken'] = (state['spoken'] + [signature])[-32:]
+        summary = announce.first_sentence(output, 200)
+        label = 'Claude Code error: ' if failed else 'Claude Code: '
+        text = announce.reply_text(title, label + summary, self.speech.announce)
+        if text:
+            self._say(text, interrupt=False)
+        else:
+            self._status(f"{title}: Claude Code command {'failed' if failed else 'finished'}.")
 
     def _apply_chat(self, generation, changed, messages, unreadable, error,
                     edits=None, turns=0):
@@ -1735,12 +1758,13 @@ class MainFrame(CodexChats, wx.Frame):
         for message in fresh_compactions:
             self._announce_compaction(self._open.cli_session_id, self._open.title, message.text, 'reader', message.key)
         for message in messages:
-            if message.key not in before_keys and message.kind == COMMAND_OUTPUT:
+            if message.key not in before_keys and message.kind in (COMMAND_OUTPUT, COMMAND_ERROR):
                 noticed = self._open.is_own and self._compaction_notices.get(
                     self._open.cli_session_id, {}).get('notified', False)
-                if (fresh_compactions or noticed) and message.text.casefold().startswith('compacted'):
+                if message.kind == COMMAND_OUTPUT and (fresh_compactions or noticed) and message.text.casefold().startswith('compacted'):
                     continue  # The boundary already described this same command.
-                self._say(f"{self._open.title}: Claude Code: {message.text}", interrupt=False)
+                self._announce_command_output(self._open.cli_session_id, self._open.title, message.text,
+                                              failed=message.kind == COMMAND_ERROR)
         # A message from another session (#123) is news in any session, own
         # or not, and even mid-turn: nothing else would announce it.
         for message in messages:
@@ -3755,6 +3779,7 @@ class MainFrame(CodexChats, wx.Frame):
         """``spoken`` is what's read back (what you typed, without the
         attachment lines added to ``prompt``)."""
         holder = {"id": session_id}
+        self._command_speech.pop(session_id, None)
         notices = self._compaction_notices.get(session_id)
         if notices:
             notices['stream'].clear()
@@ -3836,6 +3861,7 @@ class MainFrame(CodexChats, wx.Frame):
                 self._queue_activity("tool", event.detail or event.text)
             return
         if event.kind == "text":
+            self._command_speech_state(session_id)['assistant_text'] = True
             self._status(f"{title}: {announce.first_sentence(event.text)}")
             if is_open_now and self._show_activity:
                 self._queue_activity("text", event.text)
@@ -3899,6 +3925,15 @@ class MainFrame(CodexChats, wx.Frame):
             self._answered_with_background(session_id, title, event, is_open_now)
             return
         if event.kind in ("finished", "failed"):
+            command_state = self._command_speech_state(session_id)
+            active_runner = self._runners.get(session_id)
+            prompt = getattr(active_runner, 'prompt', '')
+            command_result = (isinstance(prompt, str) and prompt.lstrip().startswith('/')
+                              and not command_state['assistant_text'])
+            if command_result:
+                event = dataclasses.replace(event, text=clean_command_output(event.text))
+            signature = ' '.join(clean_command_output(event.text).split())
+            duplicate_output = bool(signature) and signature in command_state['spoken']
             # Nothing can be waiting once the turn is over.
             self._pending.pop(session_id, None)
             parser = getattr(self._runners.get(session_id), "parser", None)
@@ -3958,7 +3993,18 @@ class MainFrame(CodexChats, wx.Frame):
                               last_activity_ms=int(time.time() * 1000))
             self._notify_turn_end(session_id, title, event, denials, detail,
                                   stopped=runner is not None and runner.cancelled)
-            if event.kind == "failed" or event.is_error:
+            if command_result:
+                if (prompt.lstrip().split(None, 1)[0] == '/compact'
+                        and event.kind == 'finished' and not event.is_error
+                        and event.text.casefold().startswith('compacted')):
+                    if not self._compaction_notices.get(session_id, {}).get('notified', False):
+                        self._announce_compaction(session_id, title, 'Conversation compacted.', 'stream')
+                else:
+                    self._announce_command_output(session_id, title, event.text,
+                                                  failed=event.kind == 'failed' or event.is_error)
+            elif duplicate_output:
+                self._status(f"{title} finished.")
+            elif event.kind == "failed" or event.is_error:
                 spoken = f"{title}: the turn failed. {usage.friendly_error(event.text)}"
                 self._say(spoken)
             else:
@@ -3970,6 +4016,8 @@ class MainFrame(CodexChats, wx.Frame):
                 else:
                     reply = announce.first_sentence(event.text) if event.text else ""
                     self._status(f"{title} finished. {reply}".strip())
+            if signature and signature not in command_state['spoken']:
+                command_state['spoken'] = (command_state['spoken'] + [signature])[-32:]
             if is_open:
                 self._changes_due = True
                 self._refresh_chat()

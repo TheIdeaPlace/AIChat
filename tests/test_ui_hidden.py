@@ -9609,3 +9609,56 @@ def test_queued_chat_refresh_does_not_restart_work_while_closing(frame, monkeypa
         frame._refresh_chat()
     finally:
         frame._closing = False
+
+
+@pytest.mark.parametrize('order', ['result-first', 'reader-first'])
+@pytest.mark.parametrize('level', ['full', 'summary', 'silent'])
+def test_command_output_and_matching_result_speak_once_with_a_bounded_summary(frame, env, order, level):
+    from records import command_stdout, lines
+    from thechatplace.transcript import COMMAND_OUTPUT
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None and not frame._reader_busy)
+    frame.speech.announce = level
+    frame._runners['own-1'] = FakeRunner([], '', '/cost', None)
+    env['spoken'].clear(); env['feedback'].clear()
+    output = '\x1b[1mCost report is ready.\x1b[0m ' + 'x' * 100000
+    if order == 'result-first':
+        frame._on_turn_event({'id': 'own-1'}, 'Hub probe', TurnEvent('finished', text=output))
+    path.write_text(lines(command_stdout(output))[0] + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMMAND_OUTPUT for m in frame._chat_messages))
+    if order == 'reader-first':
+        frame._on_turn_event({'id': 'own-1'}, 'Hub probe', TurnEvent('finished', text=output))
+    notices = [text for text in env['spoken'] + env['feedback'] if 'Cost report' in text]
+    assert len(notices) == (0 if level == 'silent' else 1)
+    assert all(len(text) < 300 and '\x1b' not in text for text in notices)
+
+
+@pytest.mark.parametrize('order', [('stream', 'reader'), ('reader', 'stream')])
+@pytest.mark.parametrize('same_key', [False, True])
+def test_compaction_pairs_unmatched_sources_with_any_uuid_and_no_stale_credit(frame, env, order, same_key):
+    env['feedback'].clear()
+    for number in (1, 2):
+        for source in order:
+            key = f'boundary-{number}' if same_key else f'{source}-{number}'
+            frame._announce_compaction('own-1', 'Hub probe', 'Conversation compacted.', source, key)
+    assert sum('Conversation compacted.' in text for text in env['feedback']) == 2
+
+
+def test_command_stderr_is_visible_and_a_failed_compact_result_does_not_claim_success(frame, env):
+    from records import lines
+    from thechatplace.transcript import COMMAND_ERROR
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None and not frame._reader_busy)
+    frame._runners['own-1'] = FakeRunner([], '', '/compact', None)
+    env['feedback'].clear()
+    output = 'Compacted failed: synthetic error.'
+    path.write_text(lines(user_text('<local-command-stderr>' + output + '</local-command-stderr>'))[0] + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMMAND_ERROR for m in frame._visible_messages()))
+    frame._on_turn_event({'id': 'own-1'}, 'Hub probe', TurnEvent('finished', text=output, is_error=True))
+    assert not any('Conversation compacted' in text for text in env['feedback'])

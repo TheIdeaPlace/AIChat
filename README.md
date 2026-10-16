@@ -227,7 +227,10 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   and `/cost`, appears as Claude Code messages with tool activity off. After `/compact`,
   a Conversation compacted row and a queued announcement confirm it happened. Reported
   before/after token counts appear there and update Usage and Context. The earlier
-  conversation summary remains available with tool activity on.
+  conversation summary remains available with tool activity on. Terminal formatting is
+  removed; long command output is shortened with a notice, including in exports.
+  Command-result notifications use a brief summary even in Full announcements;
+  Silent keeps them in the status bar.
 - **Prompts** (Ctrl+Shift+P, File, Prompts): a library of messages you send often, each with a
   name. The dialog lists them by name, with the selected one's text below to read (Alt+X). **Use**
   (or Enter on a prompt) closes it and puts the prompt in the reply box of the loaded Chat Place

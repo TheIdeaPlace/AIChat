@@ -474,3 +474,38 @@ def test_rewrite_to_only_unknown_records_clears_the_visible_history(tmp_path):
     assert reader.refresh()
     path.write_text('{"type":"future_record"}\n')
     assert reader.refresh() and not reader.transcript.messages
+
+
+def test_local_stdout_and_stderr_strip_terminal_codes_and_bound_display():
+    from records import command_stdout
+    body = '\x1b[1mCost report.\x1b[0m ' + 'x' * 100000
+    tr = parse_lines(lines(command_stdout(body), user_text(
+        '<local-command-stderr>\x1b[31mCommand failed.\x1b[0m</local-command-stderr>')))
+    assert kinds(tr) == [t.COMMAND_OUTPUT, t.COMMAND_ERROR]
+    assert len(tr.visible()[0].text) <= t.MAX_COMMAND_OUTPUT
+    assert tr.visible()[0].text.endswith('[Command output shortened for display.]')
+    assert '\x1b' not in tr.visible()[0].text
+    assert tr.visible()[1].text == 'Command failed.'
+    assert tr.visible()[1].label == 'Claude Code error'
+
+
+def test_unchanged_and_touched_transcripts_do_not_reparse_or_reopen_repeatedly(tmp_path, monkeypatch):
+    import builtins
+    import os
+    path = tmp_path / 'synthetic.jsonl'
+    path.write_text(lines(user_text('Earlier'))[0] + '\n')
+    reader = TranscriptReader(path)
+    assert reader.refresh()
+    parser = reader._parser
+    original, opens = builtins.open, []
+    def opened(file, *args, **kwargs):
+        if isinstance(file, (str, type(path))) and type(path)(file) == path:
+            opens.append(True)
+        return original(file, *args, **kwargs)
+    monkeypatch.setattr(builtins, 'open', opened)
+    assert not reader.refresh() and not opens
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1000000000))
+    assert not reader.refresh() and reader._parser is parser
+    assert len(opens) == 1
+    assert not reader.refresh() and len(opens) == 1

@@ -67,6 +67,8 @@ CONTEXT = "context"
 EVENT = "event"
 COMPACTION = "compaction"
 COMMAND_OUTPUT = "command_output"
+COMMAND_ERROR = "command_error"
+MAX_COMMAND_OUTPUT = 16_384
 
 LABELS = {
     USER: "You",
@@ -85,6 +87,7 @@ LABELS = {
     EVENT: "Event",
     COMPACTION: "Context",
     COMMAND_OUTPUT: "Claude Code",
+    COMMAND_ERROR: "Claude Code error",
 }
 
 #: Kinds hidden unless "show tool activity" is on.
@@ -158,7 +161,7 @@ class Transcript:
 
     def last_reply(self) -> Optional[ChatMessage]:
         for message in reversed(self.messages):
-            if message.kind in (ASSISTANT, QUESTION, PLAN, ERROR, COMMAND_OUTPUT):
+            if message.kind in (ASSISTANT, QUESTION, PLAN, ERROR, COMMAND_OUTPUT, COMMAND_ERROR):
                 return message
         return None
 
@@ -178,6 +181,20 @@ _ATTRIBUTE = re.compile(r'([A-Za-z][A-Za-z0-9_-]*)="([^"]*)"')
 # Tool input fields worth naming in a one-line activity summary, in order.
 _TOOL_SUMMARY_FIELDS = ("description", "command", "file_path", "path", "pattern",
                         "url", "query", "prompt", "skill", "subject")
+
+
+def clean_command_output(text):
+    """Keep terminal formatting out of GUI text and bound its display (#249)."""
+    # Sign-in imports the CLI adapter, so share its pattern after module loading.
+    from .signin import _TERMINAL_CODES
+    if not isinstance(text, str):
+        return ""
+    text = _TERMINAL_CODES.sub('', text).replace('\r\n', '\n').replace('\r', '\n')
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text).strip()
+    marker = '\n[Command output shortened for display.]'
+    if len(text) > MAX_COMMAND_OUTPUT:
+        text = text[:MAX_COMMAND_OUTPUT - len(marker)].rstrip() + marker
+    return text
 
 
 def compaction_text(meta=None):
@@ -361,10 +378,11 @@ class TranscriptParser:
             if added:
                 self.transcript.turns += 1
             return added
-        output = re.fullmatch(r"\s*<local-command-stdout>(.*?)</local-command-stdout>\s*", text, re.DOTALL)
+        output = re.fullmatch(r"\s*<local-command-(stdout|stderr)>(.*?)</local-command-\1>\s*", text, re.DOTALL)
         if output:
-            body = _SYSTEM_REMINDER.sub("", output.group(1)).strip()
-            return [self._add(COMMAND_OUTPUT, body, record)] if body else []
+            body = clean_command_output(_SYSTEM_REMINDER.sub("", output.group(2)))
+            kind = COMMAND_ERROR if output.group(1) == 'stderr' else COMMAND_OUTPUT
+            return [self._add(kind, body, record)] if body else []
         tag = _HARNESS_TAG.match(text)
         if tag:
             # <task-notification>, <ci-monitor-event>, <command-name>, ...:
@@ -576,7 +594,7 @@ class TranscriptReader:
 
     Only whole lines are parsed. A line still being written (no newline yet)
     waits for the next ``refresh``, so a live session never shows a spurious
-    "couldn't read" count. Replacements, shrinkage, same-size edits and changes
+    "couldn't read" count. Replacements, shrinkage and changes
     to a bounded prefix/consumed tail restart the reader after rewrites (#249).
     Opens the file read-only, always.
     """
@@ -588,7 +606,7 @@ class TranscriptReader:
         self._file_id = None
         self._anchor = b""
         self._head = b""
-        self._mtime_ns = None
+        self._stamp = None
 
     @property
     def transcript(self) -> Transcript:
@@ -597,14 +615,16 @@ class TranscriptReader:
     def refresh(self) -> bool:
         """Read anything new. Returns True if the transcript changed."""
         try:
+            stat = self.path.stat()
+            stamp = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+            if stamp == self._stamp:
+                return False
             with open(self.path, "rb") as handle:
                 stat = os.fstat(handle.fileno())
                 size, identity = stat.st_size, (stat.st_dev, stat.st_ino)
                 head = handle.read(min(size, 4096))
                 rewritten = (self._file_id is not None and identity != self._file_id
-                             or bool(self._head) and head[:len(self._head)] != self._head
-                             or size == self._offset and self._mtime_ns is not None
-                             and stat.st_mtime_ns != self._mtime_ns)
+                             or bool(self._head) and head[:len(self._head)] != self._head)
                 if not rewritten and self._offset and size >= self._offset:
                     # A compaction can replace bytes without shrinking the file.
                     # Compare a bounded tail of the bytes already consumed (#249).
@@ -614,7 +634,8 @@ class TranscriptReader:
                     rewritten = True
                     self._offset, self._anchor = 0, b""
                     self._parser = TranscriptParser()
-                self._file_id, self._head, self._mtime_ns = identity, head, stat.st_mtime_ns
+                self._file_id, self._head = identity, head
+                self._stamp = (stat.st_dev, stat.st_ino, size, stat.st_mtime_ns, stat.st_ctime_ns)
                 if size == self._offset:
                     return rewritten
                 handle.seek(self._offset)
@@ -667,9 +688,10 @@ def parse_lines(lines: Iterable[str]) -> Transcript:
 #: nothing rather than read tens of megabytes on every refresh.
 TAIL_STEPS = (64 * 1024, 256 * 1024, 1024 * 1024, 4 * 1024 * 1024)
 #: What counts as the last message: your text and Claude's, as the messages
-#: list shows them. Tool calls and results, thinking, context and harness
-#: events, question cards, errors and other sessions' messages don't.
-LAST_MESSAGE_KINDS = (USER, ASSISTANT, COMMAND_OUTPUT)
+#: list shows them, including Claude Code command output/errors. Tool calls and
+#: results, thinking, context and harness events, question cards, assistant errors
+#: and other sessions' messages don't.
+LAST_MESSAGE_KINDS = (USER, ASSISTANT, COMMAND_OUTPUT, COMMAND_ERROR)
 
 
 def last_message_from_tail(path: Path, steps: Tuple[int, ...] = TAIL_STEPS

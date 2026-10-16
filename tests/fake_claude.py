@@ -68,7 +68,13 @@ if mode == "ask":
     answer = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
     log(answer=answer)
     result = answer["response"]["response"]["behavior"]
-if mode in ('compact', 'compact-no-boundary'):
+if mode == 'command-result':
+    result = '\x1b[1mCost report is ready.\x1b[0m ' + 'x' * 100000
+    record = {'type': 'user', 'uuid': 'synthetic-command-result',
+              'message': {'role': 'user', 'content': '<local-command-stdout>' + result + '</local-command-stdout>'}}
+    with open('synthetic-command.jsonl', 'w', encoding='utf-8') as transcript:
+        transcript.write(json.dumps(record) + '\n')
+elif mode in ('compact', 'compact-no-boundary'):
     boundary = {'type': 'system', 'subtype': 'compact_boundary', 'uuid': 'synthetic-compact',
                 'compactMetadata': {'trigger': 'manual', 'preTokens': 968000, 'postTokens': 9000}}
     stdout = {'type': 'user', 'uuid': 'synthetic-command-output',

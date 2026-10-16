@@ -1713,3 +1713,13 @@ def test_command_only_compaction_finishes_with_or_without_stream_boundary(tmp_pa
         assert compactions[0].data == {'post_tokens': 9000, 'message_key': 'synthetic-compact'}
     transcript = read_transcript(tmp_path / 'synthetic-compact.jsonl')
     assert [m.kind for m in transcript.visible()] == [COMPACTION, COMMAND_OUTPUT]
+
+
+def test_local_command_result_can_echo_the_transcript_output_without_assistant_text(tmp_path):
+    from thechatplace.transcript import read_transcript, clean_command_output, MAX_COMMAND_OUTPUT
+    events, seen = run_real(tmp_path, '/cost', mode='command-result')
+    assert events[-1].kind == 'finished' and not events[-1].is_error
+    assert not any(event.kind == 'text' for event in events)
+    output = read_transcript(tmp_path / 'synthetic-command.jsonl').visible()[0]
+    assert output.text == clean_command_output(events[-1].text)
+    assert len(output.text) <= MAX_COMMAND_OUTPUT and '\x1b' not in output.text
