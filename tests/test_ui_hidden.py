@@ -9024,7 +9024,8 @@ def test_codex_continue_note_names_source_uncertainty_and_runtime_policy(frame):
         note = dialog.note.GetValue()
         assert 'may still be working in Codex' in note
         assert 'last saved point' in note and 'permissions selected here' in note
-        assert 'Codex asks when additional access is needed' in note
+        assert 'Your saved always-allow commands still apply' in note
+        assert 'without asking, even outside this folder' in note
         assert dialog.codex_policy()['sandbox'] == 'read-only'
     finally:
         dialog.Destroy()
