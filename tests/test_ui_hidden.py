@@ -3323,20 +3323,23 @@ def test_find_in_messages_says_when_nothing_matches(frame, env, monkeypatch):
 # -- usage and context (#19) -----------------------------------------------------------------
 
 
-def _limits(seven):
+def _limits(seven, *, now=None):
     import time
+    now = time.time() if now is None else now
     return {"status": "allowed", "unifiedWindows": {
-        "five_hour": {"utilization": 0.1, "resetsAt": time.time() + 3600},
-        "seven_day": {"utilization": seven, "resetsAt": time.time() + 86400}}}
+        "five_hour": {"utilization": 0.1, "resetsAt": now + 3600},
+        "seven_day": {"utilization": seven, "resetsAt": now + 86400}}}
 
 
 def test_limits_are_kept_and_a_near_limit_is_said_once(frame, env):
+    import time
+    now = time.time()  # All reports describe the same reset window, even across a second boundary.
     frame._runners["own-1"] = FakeRunner([], "", "", None)
-    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.5)))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.5, now=now)))
     assert frame._limits["unifiedWindows"]["seven_day"]["utilization"] == 0.5
     said = len(env["spoken"])
-    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.92)))
-    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.93)))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.92, now=now)))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.93, now=now)))
     warnings = [s for s in env["spoken"][said:] if "weekly limit" in s]
     assert len(warnings) == 1 and warnings[0].startswith("You've used 92% of your weekly limit")
 
