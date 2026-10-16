@@ -93,9 +93,9 @@ The same two columns as main-desktop. The session list has a fifth row, "Codex h
 
 ## main-codex-owned: A Codex chat started here, mid-turn, with a message queued and a draft
 
-Like main-own: the heading is "Codex history preview, Scratch, working. Codex chat." and the label "Messages in Codex history preview (working, on Codex):". The messages are "You: Explain the upload test.", "Codex: ## What changed" and "Queued: Run the unit tests next." (selected). The reply box holds "Draft of a message still being typed", with Send, Stop, Commands... and Attach Files... under it and "Codex is working. 1 message queued." below them. The status bar's middle part reads "Codex history preview: working".
+Like main-own. The chat's row has moved to second place in the session list and reads "Codex history preview, Codex, Scratch, working, active 2 hours ago, Ch...", and the status bar's left part reads "5 sessions: 1 need you, 1 working.". The heading is "Codex history preview, Scratch, working. Codex chat." and the label "Messages in Codex history preview (working, on Codex):". The messages are "You: Explain the upload test.", "Codex: ## What changed" and "Queued: Run the unit tests next." (selected). The reply box holds "Draft of a message still being typed", with Send, Stop, Commands... and Attach Files... under it and "Codex is working. 1 message queued." below them. The status bar's middle part reads "Codex history preview: working".
 
-**What looks off:** The session row still says "active 2 hours ago, external session", because the probe opens the chat as the app's own without a list refresh; the other owned pictures, which refresh, say "working". Nothing else.
+**What looks off:** Nothing.
 
 ## main-codex-interrupted: A Codex chat whose connection was interrupted
 
@@ -105,7 +105,7 @@ The owned chat after Codex sent a request the app can't answer. The heading wrap
 
 ## main-codex-request-declined: A working Codex chat after a request was declined
 
-Like main-codex-owned, with the session row moved to second place and saying "working, active 2 hours ago, Ch...". The status bar's left part reads "Codex history preview: An unsupported Codex request was declined. No permission ..." (cut with "..."), and the middle "Codex history preview: working".
+Like main-codex-owned. The status bar's left part reads "Codex history preview: An unsupported Codex request was declined. No permission ..." (cut with "..."), and the middle "Codex history preview: working".
 
 **What looks off:** The notice is visible only in the status bar's left part, and cut off there. A screen reader speaks it when it arrives.
 
