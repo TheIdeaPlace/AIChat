@@ -166,9 +166,18 @@ def transcript_from_thread(thread: dict) -> Transcript:
     return transcript
 
 
+# A sentinel the runtime returns for a chat it created that has no turn yet.
+EMPTY_HISTORY = object()
+
+
 class CodexReader:
-    def __init__(self, connection: RpcConnection, native_id: str):
+    def __init__(self, connection: RpcConnection, native_id: str, *, route=None):
         self.connection, self.native_id = connection, native_id
+        # route(native_id) -> EMPTY_HISTORY, an owner connection, or None for
+        # the reconnecting discovery connection. Asked on every refresh, since
+        # the open chat keeps its reader while the runtime's state changes.
+        self._route = route
+        self._discovery = connection
         self.transcript = Transcript()
         self._history_stamp = None
         self._history_checked = 0.0
@@ -224,6 +233,18 @@ class CodexReader:
             raise ValueError("Couldn't load this Codex chat. Try again, or open it in Codex to read it.") from None
 
     def _refresh(self) -> bool:
+        # Codex saves a new thread only at its first turn, so until then only
+        # the process that created it knows it. Only positive lifecycle
+        # knowledge from the runtime allows an empty history here.
+        route = self._route(self.native_id) if self._route is not None else None
+        if route is EMPTY_HISTORY:
+            return False
+        connection = route or self._discovery
+        if connection is not self.connection:
+            # Another process's stamps and failures say nothing about this one.
+            self.connection = connection
+            self._history_stamp = self._failed_stamp = None
+            self._history_checked = 0.0
         response = self.connection.request("thread/read", {"threadId": self.native_id,
                                                          "includeTurns": False})
         thread = response.get("thread")
@@ -475,7 +496,8 @@ class CodexProvider:
 
     def open_reader(self, session) -> CodexReader:
         self._check(session)
-        return CodexReader(self.connection, session.cli_session_id)
+        route = self.runtime.history_route if session.is_own and self.runtime is not None else None
+        return CodexReader(self.connection, session.cli_session_id, route=route)
 
     def last_reply(self, session) -> str:
         reader = self.open_reader(session)

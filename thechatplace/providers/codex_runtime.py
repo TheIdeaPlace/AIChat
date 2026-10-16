@@ -54,6 +54,7 @@ class CodexChatRuntime:
         self._binding_lock = threading.Lock()
         self._connection = self._executor = None
         self._proofs = {}
+        self._new_threads = set()
         self._queues = {}
         self._sending = set()
         self._stopping = set()
@@ -80,19 +81,49 @@ class CodexChatRuntime:
                 listener.start()
             return connection, self._executor
 
-    def _remember(self, proof):
+    def _remember(self, proof, *, new=False):
         with self._lock:
             if self._stop.is_set():
                 raise CodexRpcError('Codex chats are closing')
             self._proofs[proof.native_id] = proof
+            if new:
+                self._new_threads.add(proof.native_id)
+            else:
+                self._new_threads.discard(proof.native_id)
             self._problems.pop(proof.native_id, None)
         self._notify(proof.native_id)
         return proof.record()
 
     def create(self, cwd, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request'):
         connection, _ = self._binding()
-        return self._remember(CodexOwnedThreads(connection).start(cwd, title, model=model, effort=effort,
-            sandbox=sandbox, approval_policy=approval_policy))
+        proof = CodexOwnedThreads(connection).start(cwd, title, model=model, effort=effort,
+            sandbox=sandbox, approval_policy=approval_policy)
+        return self._remember(proof, new=True)
+
+    def history_route(self, native_id):
+        """Where a chat created here reads its history (#285).
+
+        Before the first turn the thread is empty. During the first turn it
+        exists only in this runtime's process, so it is read there. After
+        that, and whenever this process is gone or had a problem, history is
+        read through the reconnecting discovery connection as before, so a
+        large history page can't break the stream running turns. That relies
+        on Codex saving the transcript before it reports a turn finished."""
+        from .codex import EMPTY_HISTORY
+        with self._lock:
+            proof, executor = self._proofs.get(native_id), self._executor
+            new = native_id in self._new_threads
+            problem = self._problems.get(native_id)
+        if not new or proof is None or executor is None or problem:
+            return None
+        if not proof.connection.owns_runtime(proof):
+            return None
+        state = executor.snapshot(proof)
+        if not state.turn_id:
+            return EMPTY_HISTORY
+        if state.status == 'inProgress':
+            return proof.connection
+        return None
 
     def fork(self, source, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request'):
         connection, _ = self._binding()
