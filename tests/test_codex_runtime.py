@@ -81,6 +81,103 @@ def runtime():
     return service, connection, updates
 
 
+def _owned_reader(service, record):
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.sessions import SessionInfo, OWN
+    from test_codex_provider import Connection as HistoryConnection, history, history_pages
+    info = SessionInfo(OWN, 'codex:' + record.cli_session_id, 'New chat',
+                       record.cwd, record.cli_session_id, provider='codex')
+    discovery = HistoryConnection(history_pages(history(record.cli_session_id)))
+    return CodexProvider(discovery, runtime=service).open_reader(info), discovery
+
+
+def test_new_chat_is_empty_until_its_first_turn_then_read_where_it_lives():
+    # A new thread exists only in the runtime's process until Codex saves it,
+    # so reading it elsewhere said "Couldn't load this Codex chat" (#283).
+    from thechatplace.providers.codex import EMPTY_HISTORY
+    from test_codex_provider import Connection as HistoryConnection, history, history_pages
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'New chat')
+        reader, discovery = _owned_reader(service, record)
+        before = len(connection.calls)
+        assert service.history_route(record.cli_session_id) is EMPTY_HISTORY
+        assert not reader.refresh() and not reader.transcript.messages
+        assert len(connection.calls) == before and not discovery.calls
+
+        # During the first turn: the owner process, never the discovery one.
+        service.send(record, 'Hello')
+        pages = HistoryConnection(history_pages(history(record.cli_session_id)))
+        connection.request = pages.request
+        assert service.history_route(record.cli_session_id) is connection
+        assert reader.refresh()
+        assert reader.transcript.last_reply().text == 'Ready'
+        assert [method for method, _ in pages.calls] == [
+            'thread/read', 'thread/turns/list', 'thread/items/list']
+        assert not discovery.calls
+
+        # Once the first turn ends the thread is saved: back to the
+        # reconnecting discovery connection, and never empty again.
+        connection.events.append(CodexEvent('turn_completed', record.cli_session_id,
+                                            'turn-1', status='completed'))
+        wait(lambda: service.history_route(record.cli_session_id) is None)
+        reader.refresh()
+        assert discovery.calls and discovery.calls[0][0] == 'thread/read'
+    finally:
+        service.close()
+
+
+def test_history_falls_back_to_discovery_when_the_runtime_process_is_gone():
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'New chat')
+        service.send(record, 'Hello')
+        reader, discovery = _owned_reader(service, record)
+        connection.closed = True
+        assert service.history_route(record.cli_session_id) is None
+        assert reader.refresh()
+        assert reader.transcript.last_reply().text == 'Ready'
+        assert discovery.calls
+    finally:
+        service.close()
+
+
+def test_refused_first_send_leaves_the_new_chat_empty():
+    from thechatplace.providers.codex import EMPTY_HISTORY
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'New chat')
+        original = connection.request
+        def refused(method, params):
+            if method == 'turn/start':
+                raise CodexTurnRejected('preflight_failed')
+            return original(method, params)
+        connection.request = refused
+        with pytest.raises(CodexTurnRejected):
+            service.send(record, 'Not sent')
+        assert service.history_route(record.cli_session_id) is EMPTY_HISTORY
+    finally:
+        service.close()
+
+
+def test_forked_and_reopened_chats_are_not_assumed_empty():
+    from thechatplace.sessions import SessionInfo, OWN
+
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'New chat')
+        assert service.history_route(record.cli_session_id) is not None
+        source = SessionInfo(OWN, 'codex:' + record.cli_session_id, 'New chat',
+                             record.cwd, record.cli_session_id, provider='codex')
+        forked = service.fork(source, 'Copied chat')
+        assert service.history_route(forked.cli_session_id) is None
+        service.reopen(record)
+        assert service.history_route(record.cli_session_id) is None
+    finally:
+        service.close()
+
+
 def test_lazy_creation_owned_send_and_successful_queue_advance():
     service, c, updates = runtime()
     try:
