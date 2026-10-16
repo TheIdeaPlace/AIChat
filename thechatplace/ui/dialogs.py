@@ -2248,7 +2248,6 @@ class SessionColumnsDialog(wx.Dialog):
         left.Add(wx.StaticText(self, label="A&vailable columns:"), 0, wx.BOTTOM, 4)
         self.available = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.available, "Available columns")
-        self.available.SetMinSize(dip(self, 220, 200))
         left.Add(self.available, 1, wx.EXPAND)
         lists.Add(left, 1, wx.EXPAND | wx.ALL, 8)
         right = wx.BoxSizer(wx.VERTICAL)
@@ -2256,9 +2255,17 @@ class SessionColumnsDialog(wx.Dialog):
                   0, wx.BOTTOM, 4)
         self.shown = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.shown, "Shown columns, in the order they're read")
-        self.shown.SetMinSize(dip(self, 220, 200))
         right.Add(self.shown, 1, wx.EXPAND)
         lists.Add(right, 1, wx.EXPAND | wx.ALL, 8)
+        # Both lists as wide as their longest column name, scroll bar
+        # included: a list box has no sideways scroll bar, so a longer name
+        # was cut off at its edge (#289: "Kind (desktop app, Cowork,
+        # terminal or The Chat Place)").
+        widest = max(self.shown.GetTextExtent(name).width for name in FIELD_NAMES.values())
+        room = (widest + wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self)
+                + dip_width(self, 16))
+        for box in (self.available, self.shown):
+            box.SetMinSize(wx.Size(max(dip_width(self, 220), room), dip(self, 220, 200).height))
         sizer.Add(lists, 1, wx.EXPAND)
         row = wx.WrapSizer(wx.HORIZONTAL)
         self.add_btn = wx.Button(self, label="&Add")
@@ -2287,6 +2294,11 @@ class SessionColumnsDialog(wx.Dialog):
         buttons.Realize()
         sizer.Add(buttons, 0, wx.EXPAND | wx.ALL, 8)
         self.SetSizer(sizer)
+        # Wide enough for the lists above, though never wider than the screen.
+        need = self.ClientToWindowSize(sizer.GetMinSize()).width
+        width = min(max(self.GetSize().width, need), screen_area(parent).width - SCREEN_MARGIN)
+        self.SetSize(wx.Size(width, self.GetSize().height))
+        self.CentreOnParent()
         self.SetEscapeId(wx.ID_CANCEL)
         self.add_btn.Bind(wx.EVT_BUTTON, lambda e: self.add())
         self.remove_btn.Bind(wx.EVT_BUTTON, lambda e: self.remove())
@@ -2744,15 +2756,17 @@ class ListsPage(wx.Panel):
         self.open_btn = self.markdown_btn = None
         if category == lists.LINKS:
             self.open_btn = wx.Button(self, label="&Open")
-            row.Add(self.open_btn, 0, wx.RIGHT, 6)
             self.open_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected())
         self.copy_btn = wx.Button(self, label="&Copy")
-        row.Add(self.copy_btn, 0, wx.RIGHT, 6)
         self.copy_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected())
         if category == lists.LINKS:
             self.markdown_btn = wx.Button(self, label="Copy as &Markdown")
-            row.Add(self.markdown_btn, 0, wx.RIGHT, 6)
             self.markdown_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected(markdown=True))
+        # The gap goes between buttons, not after the last, so the row ends
+        # where the dialog's Close does (#288).
+        for index, button in enumerate(b for b in (self.open_btn, self.copy_btn, self.markdown_btn)
+                                       if b is not None):
+            row.Add(button, 0, wx.LEFT if index else 0, 6)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.TOP | wx.LEFT | wx.RIGHT, 8)
         self.SetSizer(sizer)
         self.filter.Bind(wx.EVT_TEXT, lambda e: self.apply_filter())
@@ -2919,7 +2933,9 @@ class ListsDialog(wx.Dialog):
             page = ListsPage(self.book, self, tab)
             self.book.AddPage(page, lists.TITLES[tab])
             self.pages.append(page)
-        sizer.Add(self.book, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        # No border of its own: each page's controls keep 8 pixels from its
+        # edges, so they line up with Kinds above and Close below (#288).
+        sizer.Add(self.book, 1, wx.EXPAND)
         buttons = wx.BoxSizer(wx.HORIZONTAL)
         # Alt+S is Show items from and Alt+K Kinds; every page has Filter,
         # List, Details and Copy, and Links Open and Markdown, so E it is.
