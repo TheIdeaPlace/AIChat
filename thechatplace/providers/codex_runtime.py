@@ -107,7 +107,8 @@ class CodexChatRuntime:
         exists only in this runtime's process, so it is read there. After
         that, and whenever this process is gone or had a problem, history is
         read through the reconnecting discovery connection as before, so a
-        large history page can't break the stream running turns."""
+        large history page can't break the stream running turns. That relies
+        on Codex saving the transcript before it reports a turn finished."""
         from .codex import EMPTY_HISTORY
         with self._lock:
             proof, executor = self._proofs.get(native_id), self._executor

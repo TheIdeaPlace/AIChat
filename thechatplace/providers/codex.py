@@ -239,7 +239,12 @@ class CodexReader:
         route = self._route(self.native_id) if self._route is not None else None
         if route is EMPTY_HISTORY:
             return False
-        self.connection = route or self._discovery
+        connection = route or self._discovery
+        if connection is not self.connection:
+            # Another process's stamps and failures say nothing about this one.
+            self.connection = connection
+            self._history_stamp = self._failed_stamp = None
+            self._history_checked = 0.0
         response = self.connection.request("thread/read", {"threadId": self.native_id,
                                                          "includeTurns": False})
         thread = response.get("thread")
