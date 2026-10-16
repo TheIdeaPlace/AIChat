@@ -122,7 +122,7 @@ SHORTCUTS = [
                          "this message or the whole chat; it opens on the kind you used last, and "
                          "the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down "
                          "and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a "
-                         "Mac) and Ctrl+1 to Ctrl+5 go straight to one; Enter reads an item in full "
+                         "Mac, and Control+Tab on Windows); Enter reads an item in full "
                          "(a link opens), Ctrl+C copies, typing narrows the list (also from the "
                          "session list and the reply box)"),
         ("Ctrl+L", "Lists, on Links for the whole chat: Enter opens a link in your "

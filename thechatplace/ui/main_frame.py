@@ -2058,9 +2058,9 @@ class MainFrame(CodexChats, wx.Frame):
 
     def on_lists(self, category: Optional[str] = None, scope: Optional[str] = None):
         """View, Lists (Ctrl+Shift+I, #279): code blocks, links, changed
-        files, commands and decisions, a tab each, for the selected message
-        or the whole chat. It opens on the tab used last; Code Blocks,
-        Links and Changed Files open it on their own tab. The messages are
+        files, commands and decisions, for the selected message or the whole
+        chat. It opens on the kind used last; Code Blocks, Links and Changed
+        Files open it on their own kind. The messages are
         as the list shows them (tool calls and results only with Show Tool
         Activity on)."""
         info = self._open

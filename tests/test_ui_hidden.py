@@ -9761,6 +9761,61 @@ def test_lists_leave_control_tab_to_macos(frame):
             assert dialog.category == "links"
         _tab_key(dialog, ord("]"), control=False, command=True, shift=True)
         assert dialog.category == "files"
+        # Cmd+1 to Cmd+3 are the main window's keys, which the menu bar takes
+        # first on a Mac, so no digits switch kinds there (#282).
+        _tab_key(dialog, ord("1"), control=False, command=True)
+        assert dialog.category == "files"
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_altgr_and_other_digits_are_typing(frame):
+    """AltGr arrives as Ctrl+Alt on Windows: it types, and never switches."""
+    dialog, _built, _focused = _lists_for_test(frame)
+    dialog.platform = "win32"
+    try:
+        for code in (ord("2"), wx.WXK_TAB, ord("]")):
+            event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+            event.SetKeyCode(code)
+            event.SetControlDown(True)
+            event.SetAltDown(True)
+            dialog._on_char_hook(event)
+        _tab_key(dialog, ord("6"), control=False, command=True)  # no sixth kind
+        assert dialog.category == "links"
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_a_kind_a_chat_cant_fill_says_so_in_kinds(frame):
+    from thechatplace import lists
+    from thechatplace.ui.dialogs import ListsDialog
+    dialog = ListsDialog(frame, "Synthetic", lambda tab, scope: [], lambda text: True,
+                         lambda text: None, unavailable={lists.COMMANDS: "Not for this chat."})
+    try:
+        assert dialog.kinds.GetString(3) == "Commands, not available"
+        assert dialog.kinds.GetString(0) == "Code Blocks (0)"
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_arrowing_kinds_keeps_focus_on_kinds(frame, monkeypatch):
+    dialog, _built, _focused = _lists_for_test(frame)
+    try:
+        refocused = []
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.kinds))
+        monkeypatch.setattr(dialog.kinds, "SetFocus", lambda: refocused.append(True))
+        dialog._show_kind(2)
+        assert dialog.category == "files" and dialog.book.GetSelection() == 2
+    finally:
+        dialog.Destroy()
+
+
+def test_lists_build_each_kind_once_per_scope(frame):
+    dialog, built, _focused = _lists_for_test(frame)
+    try:
+        dialog.set_scope("message")
+        dialog.set_scope("chat")  # already built for the chat
+        assert built.count(("links", "chat")) == 1 and built.count(("links", "message")) == 1
     finally:
         dialog.Destroy()
 

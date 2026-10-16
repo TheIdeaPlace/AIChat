@@ -51,7 +51,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks | Lists, on Code Blocks for this message: read and copy each code block |
 | Ctrl+F, then F3 and Shift+F3 | Find a message containing some text (its whole text, not just the first line), then the next or previous one |
 | End | Newest message |
-| Ctrl+Shift+I | Lists: code blocks, links, changed files, commands and decisions, for this message or the whole chat; it opens on the kind you used last, and the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a Mac) and Ctrl+1 to Ctrl+5 go straight to one; Enter reads an item in full (a link opens), Ctrl+C copies, typing narrows the list (also from the session list and the reply box) |
+| Ctrl+Shift+I | Lists: code blocks, links, changed files, commands and decisions, for this message or the whole chat; it opens on the kind you used last, and the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a Mac, and Control+Tab on Windows); Enter reads an item in full (a link opens), Ctrl+C copies, typing narrows the list (also from the session list and the reply box) |
 | Ctrl+L | Lists, on Links for the whole chat: Enter opens a link in your browser, Ctrl+C copies its address (also from the session list and the reply box) |
 | Ctrl+T | Show or hide tool activity in the loaded session |
 | Ctrl+O | Open this session in the Claude desktop app |

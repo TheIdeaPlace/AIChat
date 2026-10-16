@@ -2696,18 +2696,17 @@ class PromptsDialog(wx.Dialog):
 
 
 class ListsPage(wx.Panel):
-    """One tab of View, Lists (#279): a filter, the list, the selected item
+    """One kind in View, Lists (#279): a filter, the list, the selected item
     to read in full, and what can be done with it. The items come from
-    ``lists.build`` and are filled in when the tab is first shown."""
+    ``lists.build``."""
 
-    def __init__(self, notebook, owner, category: str):
-        super().__init__(notebook)
+    def __init__(self, book, owner, category: str):
+        super().__init__(book)
         self.owner = owner
         self.category = category
         self.title = lists.TITLES[category]
         self.items = []
         self.shown = []
-        self.filled = False
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Filter:"), 0, wx.LEFT | wx.TOP, 8)
         self.filter = wx.TextCtrl(self, style=wx.TE_PROCESS_ENTER)
@@ -2751,9 +2750,8 @@ class ListsPage(wx.Panel):
         self.list.Bind(wx.EVT_CHAR, self._on_list_char)
 
     def fill(self, items):
-        """New items (a first look at the tab, or a new scope)."""
+        """New items (when the dialog opens, or for a new scope)."""
         self.items = list(items)
-        self.filled = True
         self.apply_filter()
 
     def apply_filter(self):
@@ -2860,8 +2858,9 @@ class ListsDialog(wx.Dialog):
     strip isn't a Tab stop on a Mac, #280). Arrowing it shows that kind
     below; Enter goes to its list. From anywhere in the dialog, the next or
     previous kind is Ctrl+Tab / Ctrl+Shift+Tab or Ctrl+Page Down / Page Up
-    on Windows, and Cmd+Shift+] / Cmd+Shift+[ on a Mac; Ctrl+1 to Ctrl+5
-    (Cmd on a Mac) go straight to one. Each leaves you on that kind's list.
+    on Windows, and Cmd+Shift+] / Cmd+Shift+[ or Cmd+Page Down / Page Up on a
+    Mac; on Windows, Ctrl+1 to Ctrl+5 go straight to one. Each leaves you on
+    that kind's list.
 
     "Show items from" chooses this message or the whole chat.
     ``build(category, scope)`` gives a kind's ``lists.ListItem`` list. A link
@@ -2880,6 +2879,7 @@ class ListsDialog(wx.Dialog):
         self.copy = copy  # (text) -> bool
         self.feedback = feedback
         self.chosen_link = None
+        self._built = {}  # (kind, scope) -> its items
         #: Which platform's keys switch kinds (tests choose either).
         self.platform = sys.platform
         self.scope = scope if scope in dict(lists.SCOPES) else lists.SCOPE_CHAT
@@ -2938,9 +2938,12 @@ class ListsDialog(wx.Dialog):
 
     def _fill_all(self):
         """Every kind, for the current scope, so the Kinds list can say how
-        many each has."""
+        many each has. Each kind is built once per scope."""
         for page in self.pages:
-            page.fill(self._build(page.category, self.scope))
+            key = (page.category, self.scope)
+            if key not in self._built:
+                self._built[key] = self._build(page.category, self.scope)
+            page.fill(self._built[key])
         self._label_kinds()
 
     def _label_kinds(self):
@@ -3013,7 +3016,11 @@ class ListsDialog(wx.Dialog):
             return ("by", 1)
         if command and event.ShiftDown() and key in (ord("["), ord("{")):
             return ("by", -1)
-        if command and not event.ShiftDown() and ord("1") <= key < ord("1") + len(lists.CATEGORY_IDS):
+        # Ctrl+1 to Ctrl+5 jump to a kind on Windows. On a Mac, Cmd+1 to
+        # Cmd+3 are the main window's Go To keys, and the menu bar takes
+        # them before the dialog (real keys, #282), so none are used there.
+        if ((platform or sys.platform) != "darwin" and command and not event.ShiftDown()
+                and ord("1") <= key < ord("1") + len(lists.CATEGORY_IDS)):
             return ("to", key - ord("1"))
         return None
 

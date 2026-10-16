@@ -1,8 +1,8 @@
-"""What View, Lists shows (#279): one dialog, a tab per kind of thing in a
+"""What View, Lists shows (#279): one dialog listing each kind of thing in a
 chat (code blocks, links, changed files, commands, decisions), for the
 selected message or the whole chat.
 
-Each tab is a list of ``ListItem``: the line the list reads, the text to read
+Each kind is a list of ``ListItem``: the line the list reads, the text to read
 in full below it, and what Copy copies. Building them needs no window, so it's
 all tested without one; ``ui.dialogs.ListsDialog`` shows them.
 
@@ -27,7 +27,7 @@ FILES = "files"
 COMMANDS = "commands"
 DECISIONS = "decisions"
 
-#: The tabs, in order: (id, tab title, the noun a count uses).
+#: The kinds, in order: (id, tab title, the noun a count uses).
 CATEGORIES = (
     (CODE, "Code Blocks", "code blocks"),
     (LINKS, "Links", "links"),
@@ -201,7 +201,7 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
           selected: Optional[ChatMessage], edits: Iterable[FileEdit],
           commands: Iterable[ToolCommand], describe_file: Callable,
           turn: Optional[int] = None) -> List[ListItem]:
-    """One tab's items. ``messages`` are the messages as the list shows them;
+    """One kind's items. ``messages`` are the messages as the list shows them;
     ``selected`` is the message "This message" means (None: there's none),
     and ``turn`` its turn when that isn't its own (a queued message, not yet
     in a turn, means the latest)."""
@@ -225,7 +225,7 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
 
 
 def empty_text(category: str, scope: str) -> str:
-    """The list's one line when a tab has nothing."""
+    """The list's one line when a kind has nothing."""
     where = "this message" if scope == SCOPE_MESSAGE else "this chat"
     if scope == SCOPE_MESSAGE and category in (FILES, COMMANDS, DECISIONS):
         where = "this message's turn"

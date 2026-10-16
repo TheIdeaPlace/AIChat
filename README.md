@@ -189,13 +189,15 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   yet", and its output) and **Decisions** (each question Claude asked, with your answer). **Show
   items from** (Alt+S) chooses This message or The whole chat; for files, commands and decisions,
   "this message" is the selected message's turn, from your message to Claude's reply. Links,
-  commands and decisions list the newest first; code blocks and files are in the order they appear. The kinds are a list of their own, **Kinds**
+  commands and decisions list the newest first; code blocks and files are in the order they appear.
+  The kinds are a list of their own, **Kinds**
   (Alt+K), each with its count ("Commands (12)"), which Tab and Shift+Tab reach on Windows and on a
   Mac; arrowing it changes the items shown, and Enter goes to them. From anywhere in Lists,
   **Ctrl+Tab** and **Ctrl+Shift+Tab** or **Ctrl+Page Down** and **Page Up** on Windows, and
-  **Cmd+Shift+]** and **Cmd+Shift+[** on a Mac, change the kind and stay on its list (Control+Tab is
-  left to macOS, which uses it to move between groups of controls); **Ctrl+1** to **Ctrl+5**
-  (Cmd on a Mac) go straight to one. It opens on the kind you used last.
+  **Cmd+Shift+]** and **Cmd+Shift+[** or **Cmd+Page Down** and **Page Up** on a Mac, change the
+  kind and stay on its list (Control+Tab is left to macOS, which uses it to move between groups of
+  controls; where ] and [ need Option, use Cmd+Page Down and Up); on Windows, **Ctrl+1** to
+  **Ctrl+5** go straight to one. It opens on the kind you used last.
   **Ctrl+Shift+B** opens it on Code Blocks for the selected message, **Ctrl+L** on Links for the
   whole chat, and **Ctrl+Shift+D** on Changed Files, for the selected message's turn (or your
   latest) if it changed any files, else for the whole chat. Enter reads an item in full in the Details box

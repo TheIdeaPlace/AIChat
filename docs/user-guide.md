@@ -245,10 +245,12 @@ items below change to that kind; **Enter** moves to that kind's list. From anywh
 these change the kind and leave you on its list:
 
 - **On Windows:** **Ctrl+Tab** and **Ctrl+Shift+Tab**, or **Ctrl+Page Down** and **Ctrl+Page Up**.
-- **On a Mac:** **Cmd+Shift+]** and **Cmd+Shift+[**, as for tabs in Safari and Finder. Control+Tab
-  is left to macOS, which uses it to move between groups of controls.
-- **Ctrl+1** to **Ctrl+5** (**Cmd+1** to **Cmd+5** on a Mac) go straight to Code Blocks, Links,
-  Changed Files, Commands or Decisions.
+- **On a Mac:** **Cmd+Shift+]** and **Cmd+Shift+[**, as for tabs in Safari and Finder, or
+  **Cmd+Page Down** and **Cmd+Page Up** (with fn on a laptop). Control+Tab is left to macOS, which
+  uses it to move between groups of controls. On keyboard layouts where ] and [ need Option, use
+  Cmd+Page Down and Page Up.
+- **On Windows, Ctrl+1** to **Ctrl+5** go straight to Code Blocks, Links, Changed Files, Commands
+  or Decisions. (On a Mac, Cmd+1 to Cmd+3 stay the main window's Go To keys.)
 
 Lists opens on the kind you used last. Some keys open it on their own kind:
 
