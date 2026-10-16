@@ -22,7 +22,7 @@ folder. Run these on Mac and Windows with the screen reader normally used there.
    With a command not covered by your always-allow rules, verify an additional
    access request can be read, answered or denied without silently changing the
    chat's permissions. New Session/Change Permission Mode must disclose saved-rule
-   behavior; Properties must show a count or explicitly say it was not checked.
+   behavior; Properties must show a count, a pending check, or the explained refusal.
 2. During a long turn, switch chats and return, then queue a message. Confirm the
    original turn continues. Stop must recover queued text; repeating Stop must
    reconcile a completed native turn if its completion event was missed. A genuine

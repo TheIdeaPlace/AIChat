@@ -254,6 +254,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._open_generation = 0
         self._reader: Optional[ConversationReader] = None
         self._reader_busy = False
+        self._chat_refresh_pending = False
         self._chat_messages: List[ChatMessage] = []
         self._chat_loaded = False
         self._compaction_notices = {}
@@ -1569,9 +1570,15 @@ class MainFrame(CodexChats, wx.Frame):
         self._refresh_chat()
 
     def _refresh_chat(self):
-        info = self._open
-        if info is None or self._reader_busy:
+        if self._gone() or self._closing:
             return
+        info = self._open
+        if info is None:
+            return
+        if self._reader_busy:
+            self._chat_refresh_pending = True
+            return
+        self._chat_refresh_pending = False
         generation = self._open_generation
         reader = self._reader
         self._reader_busy = True
@@ -1596,12 +1603,15 @@ class MainFrame(CodexChats, wx.Frame):
 
     def _missing_reader(self, generation):
         self._reader_busy = False
+        pending, self._chat_refresh_pending = self._chat_refresh_pending, False
         if self._gone() or self._open is None:
             return
         if generation != self._open_generation:
             self._refresh_chat()
             return
         self._show_missing_transcript(self._open)
+        if pending:
+            wx.CallAfter(self._refresh_chat)
 
     def _apply_reader_chat(self, generation, reader, *result):
         if not self._gone() and generation == self._open_generation:
@@ -1666,13 +1676,18 @@ class MainFrame(CodexChats, wx.Frame):
     def _apply_chat(self, generation, changed, messages, unreadable, error,
                     edits=None, turns=0):
         self._reader_busy = False
-        if not self or self._open is None:
+        pending, self._chat_refresh_pending = self._chat_refresh_pending, False
+        if self._gone() or self._closing or self._open is None:
             return
         if generation != self._open_generation:
             # A load for a session that is no longer loaded: start the
             # current one's now rather than waiting for the next tick.
             self._refresh_chat()
             return
+        if pending:
+            # A stream notice or completed turn can request another read while
+            # the first worker still holds the old file snapshot (#249).
+            wx.CallAfter(self._refresh_chat)
         if error is not None:
             self._select_on_load = None
             if not self._chat_loaded:

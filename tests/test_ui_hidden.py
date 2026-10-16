@@ -9568,3 +9568,44 @@ def test_later_compact_stdout_does_not_repeat_the_boundary_announcement(frame, e
     frame._refresh_chat()
     assert pump(lambda: any(m.kind == COMMAND_OUTPUT for m in frame._chat_messages))
     assert not any('Compacted' in s for s in env['feedback'][before:])
+
+
+def test_compaction_refresh_requested_during_old_read_is_retried(frame, env, monkeypatch):
+    import threading
+    from records import compact_boundary, command_stdout, lines
+    from thechatplace.transcript import COMPACTION
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None and not frame._reader_busy)
+    entered, release = threading.Event(), threading.Event()
+    original = frame._reader.refresh
+    first = [True]
+    def old_snapshot():
+        if first[0]:
+            first[0] = False
+            entered.set()
+            assert release.wait(5)
+            return False
+        return original()
+    monkeypatch.setattr(frame._reader, 'refresh', old_snapshot)
+    try:
+        frame._refresh_chat()
+        assert entered.wait(2)
+        path.write_text('\n'.join(lines(compact_boundary(), command_stdout('Compacted'))) + '\n')
+        frame._refresh_chat()  # Must survive the first worker's busy reservation.
+        release.set()
+        assert pump(lambda: any(m.kind == COMPACTION for m in frame._chat_messages))
+    finally:
+        release.set()
+
+
+def test_queued_chat_refresh_does_not_restart_work_while_closing(frame, monkeypatch):
+    def unexpected(*args, **kwargs):
+        raise AssertionError('A queued refresh tried to submit after closing')
+    monkeypatch.setattr(frame._pool, 'submit', unexpected)
+    frame._closing = True
+    try:
+        frame._refresh_chat()
+    finally:
+        frame._closing = False
