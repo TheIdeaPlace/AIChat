@@ -741,6 +741,12 @@ def d_settings(frame, env):
     return frame.on_settings
 
 
+def d_settings_codex(frame, env):
+    from thechatplace import platform_paths
+    platform_paths.find_codex = lambda: "synthetic-native-codex"
+    return frame.on_settings
+
+
 def d_new_session(frame, env):
     return frame.on_new_session
 
@@ -1028,7 +1034,8 @@ SURFACES = {
     "message-formatted": ("dialog", d_message_formatted,
                           "A message read as a formatted page: heading, list, code, table, link"),
     "message-plain": ("dialog", d_message_plain, "The same message as plain text"),
-    "settings": ("dialog", d_settings, "Settings"),
+    "settings": ("dialog", d_settings, "Settings with no Codex installation"),
+    "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
@@ -1084,6 +1091,7 @@ DIALOG_CLASSES = {
     "message-formatted": "FormattedMessageDialog",
     "message-plain": "MessageDialog",
     "settings": "SettingsDialog",
+    "settings-codex": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-models": "NewSessionDialog",

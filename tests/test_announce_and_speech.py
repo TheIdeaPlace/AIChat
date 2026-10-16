@@ -286,10 +286,24 @@ def test_what_is_still_running_in_the_background():
 
 
 @pytest.mark.parametrize("value", [True, False, "true", 1, None])
-def test_codex_discovery_is_strictly_opt_in_and_persists(tmp_path, value):
+def test_codex_discovery_preserves_three_states(tmp_path, value):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"codex_enabled": value}))
     settings = SpeechSettings.load(path)
-    assert settings.codex_enabled is (value is True)
+    assert settings.codex_enabled is (value if type(value) is bool else None)
     settings.save(path)
-    assert SpeechSettings.load(path).codex_enabled is (value is True)
+    assert SpeechSettings.load(path).codex_enabled is (value if type(value) is bool else None)
+
+
+@pytest.mark.parametrize("choice", [None, True, False])
+@pytest.mark.parametrize("installed", [False, True])
+def test_codex_effective_setting_requires_native_cli(monkeypatch, choice, installed):
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, "find_codex", lambda: "native-codex" if installed else None)
+    assert SpeechSettings(codex_enabled=choice).includes_codex() is (installed and choice is not False)
+
+
+def test_legacy_settings_without_codex_key_are_automatic(tmp_path):
+    path = tmp_path / "speech.json"
+    path.write_text('{"announce": "full"}')
+    assert SpeechSettings.load(path).codex_enabled is None

@@ -377,9 +377,10 @@ The Claude-specific desktop and Cowork actions are shown in this table:
 
 ### Local Codex chats
 
-Open Settings and enable
-**Include local Codex chats (restart required)**. Save, quit The Chat Place and reopen it.
-A native Codex CLI must be available and signed in to ChatGPT. Local Claude and
+Codex chats appear automatically when a native Codex CLI is installed and signed in
+to ChatGPT, including the copy bundled with the ChatGPT app on Mac. Settings offers
+**Include Codex chats (restart required)** to turn them off or on; your choice is kept.
+If Codex isn't found, Settings says to install the Codex app or CLI, then restart. Local Claude and
 Codex chats share one list, and selecting a Codex chat opens its history
 automatically. Read, Find and export work. New Session offers a Provider choice; select
 Codex to start a chat you can reply to here. Continue Here copies an existing

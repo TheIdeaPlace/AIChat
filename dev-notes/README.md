@@ -21,3 +21,5 @@ shipped.
 - [Owned Codex chats](codex-owned-chats.md): execution, policy and review evidence (#184, #171, #225).
 
 - [Codex saved command rules](codex-command-rules.md): native boundary reproduction, conservative refusal candidate and release decision (#257).
+
+- [Codex CLI discovery](codex-cli-discovery.md): Finder launches, native npm/bundle lookup, three-state settings and Windows evidence (#277).

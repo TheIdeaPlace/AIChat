@@ -10,7 +10,7 @@ from typing import Optional
 
 import wx
 
-from .. import lists, workplaces
+from .. import lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES)
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
@@ -929,10 +929,19 @@ class SettingsDialog(wx.Dialog):
         outer.Add(self.remote_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         self.codex_enabled = wx.CheckBox(self, label=_wrapped(
-            self, "Include local Code&x chats (restart required)",
+            self, "Include Code&x chats (restart required)",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
-        self.codex_enabled.SetValue(speech.codex_enabled)
+        self._codex_choice = speech.codex_enabled
+        self._codex_changed = False
+        self._initial_codex_effective = speech.includes_codex()
+        self.codex_enabled.SetValue(self._initial_codex_effective)
+        self.codex_enabled.Bind(wx.EVT_CHECKBOX, self._on_codex_choice)
         outer.Add(self.codex_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        if not platform_paths.find_codex():
+            outer.Add(wx.StaticText(self, label=_wrapped(self,
+                "Codex isn't installed on this computer. Install the Codex app or CLI, then restart.",
+                self.GetClientSize().width - 20)), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # #141: the dialog at the first start after an update.
         self.update_notice = wx.CheckBox(
@@ -987,6 +996,10 @@ class SettingsDialog(wx.Dialog):
             self.rate_note.SetLabel("This engine uses its default rate.")
         self.Layout()
 
+    def _on_codex_choice(self, event):
+        self._codex_changed = True
+        event.Skip()
+
     def get_settings(self) -> SpeechSettings:
         option = self._selected_option()
         index = self.rate_choice.GetSelection()
@@ -1004,7 +1017,9 @@ class SettingsDialog(wx.Dialog):
                                    notifications=NOTIFY_LEVELS[max(
                                        self.notify_choice.GetSelection(), 0)],
                                    remote_control=self.remote_control.GetValue(),
-                                   codex_enabled=self.codex_enabled.GetValue(),
+                                   codex_enabled=(self.codex_enabled.GetValue() if self._codex_changed
+                                       or self.codex_enabled.GetValue() != self._initial_codex_effective
+                                       else self._codex_choice),
                                    update_installed_notice=self.update_notice.GetValue(),
                                    recent_folder_limit=self.recent_limit.GetValue())
 

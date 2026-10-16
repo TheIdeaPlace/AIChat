@@ -209,7 +209,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._codex_finished = set()
         if sessions is None:
             providers = [ClaudeConversations()]
-            if self.speech.codex_enabled:
+            if self.speech.includes_codex():
                 from ..providers.codex import CodexProvider
                 providers.append(CodexProvider(execution=True,
                     on_update=lambda state: wx.CallAfter(self._on_codex_update, state)))
@@ -4880,7 +4880,7 @@ class MainFrame(CodexChats, wx.Frame):
                        "in it again.")
 
     def on_settings(self, _event=None):
-        previous_codex = self.speech.codex_enabled
+        previous_codex = self.speech.includes_codex()
         options = self._speech_options or default_options()
         dialog = SettingsDialog(self, self.speech, options,
                                 clear_recent=self._clear_recent_folders)
@@ -4897,7 +4897,7 @@ class MainFrame(CodexChats, wx.Frame):
                           wx.OK | wx.ICON_WARNING, self)
         self._feedback("Settings saved." + (
             " Restart The Chat Place to change Codex discovery."
-            if previous_codex != self.speech.codex_enabled else ""))
+            if previous_codex != self.speech.includes_codex() else ""))
         # The Remote Control default shows in rows and the heading (#96).
         self.refresh_sessions()
         self._update_heading()
