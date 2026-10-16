@@ -8807,15 +8807,16 @@ def test_settings_codex_option_is_named_and_requires_restart(frame):
     try:
         assert "Codex" in dialog.codex_enabled.GetLabelText()
         assert "restart required" in dialog.codex_enabled.GetLabelText()
-        assert not dialog.get_settings().codex_enabled
+        assert dialog.get_settings().codex_enabled is None
         dialog.codex_enabled.SetValue(True)
         assert dialog.get_settings().codex_enabled
     finally:
         dialog.Destroy()
 
 
-@pytest.mark.parametrize("enabled", [False, True])
-def test_opt_in_startup_lists_and_opens_synthetic_codex_history(env, monkeypatch, enabled):
+@pytest.mark.parametrize("enabled", [None, False, True])
+@pytest.mark.parametrize("installed", [False, True])
+def test_opt_in_startup_lists_and_opens_synthetic_codex_history(env, monkeypatch, enabled, installed):
     from thechatplace.providers import codex
     from thechatplace.ui.main_frame import MainFrame
 
@@ -8839,6 +8840,8 @@ def test_opt_in_startup_lists_and_opens_synthetic_codex_history(env, monkeypatch
             return {"data": [{"turnId": "turn", "item": thread["turns"][0]["items"][0]}]}
 
     monkeypatch.setattr(codex, "CodexProvider", lambda **kwargs: real_provider(Connection()))
+    monkeypatch.setattr(platform_paths, "find_codex", lambda: "synthetic-codex" if installed else None)
+    effective = installed and enabled is not False
     speech.SpeechSettings(codex_enabled=enabled).save()
     add_desktop(env, "local_a", "cli-a", "Claude fixture")
     window = MainFrame(store=OwnSessionStore(env["tmp"] / "own.json"), check_updates_at_start=False)
@@ -8846,8 +8849,8 @@ def test_opt_in_startup_lists_and_opens_synthetic_codex_history(env, monkeypatch
         assert pump(lambda: not window._first_snapshot and not window._snapshot_busy)
         assert any(s.provider == "claude" for s in window._snapshot.sessions)
         foreign = [s for s in window._snapshot.sessions if s.provider == "codex"]
-        assert bool(foreign) is enabled
-        if enabled:
+        assert bool(foreign) is effective
+        if effective:
             assert "Codex" in window.session_list.GetString(window._list_keys.index("codex:synthetic"))
             window.speech.session_fields = ["title", "provider", "status"]
             window.on_view("provider:codex")
@@ -9884,3 +9887,22 @@ def test_lists_say_what_a_codex_chat_cant_list_yet(frame, env, monkeypatch):
                       ("decisions", "Decisions aren't listed for Codex chats yet.")):
         frame.on_lists(tab)
         assert seen["rows"] == [line]
+
+
+@pytest.mark.parametrize("choice", [None, False, True])
+@pytest.mark.parametrize("installed", [False, True])
+def test_codex_settings_show_effective_state_and_preserve_automatic(frame, monkeypatch, choice, installed):
+    from thechatplace.ui.dialogs import SettingsDialog
+    monkeypatch.setattr(platform_paths, "find_codex", lambda: "synthetic-codex" if installed else None)
+    dialog = SettingsDialog(frame, speech.SpeechSettings(codex_enabled=choice), speech.default_options())
+    try:
+        assert dialog.codex_enabled.GetValue() is (installed and choice is not False)
+        assert dialog.get_settings().codex_enabled is choice
+        label = " ".join(dialog.codex_enabled.GetLabelText().split())
+        assert ("Codex isn't installed on this computer" in label) is (not installed)
+        if not installed:
+            assert "install the Codex app or CLI, then restart" in label
+        dialog.codex_enabled.SetValue(not dialog.codex_enabled.GetValue())
+        assert dialog.get_settings().codex_enabled is (not (installed and choice is not False))
+    finally:
+        dialog.Destroy()

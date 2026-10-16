@@ -1156,19 +1156,68 @@ def backup_session_store(path: Path) -> Path:
     return Path(name)
 
 
-def find_codex(which=None, native_candidates=None) -> Optional[str]:
-    """Find a native CLI; never invoke an npm shell shim (#184) (#171).
+def _codex_npm_candidates(roots) -> List[Path]:
+    """Use upstream's native package layout without executing its JS shim.
 
-    Desktop-bundled copies are deliberately not searched: their location and
-    version are controlled by another app. A configured native path can be
-    passed to start_codex_server after the user installs a supported CLI.
+    https://github.com/openai/codex/blob/main/codex-cli/bin/codex.js
+    Both the older codex/codex and current bin/codex layouts are supported.
     """
+    import platform
+
+    arm = platform.machine().lower() in ("arm64", "aarch64")
+    arch = "arm64" if arm else "x64"
+    cpu = "aarch64" if arm else "x86_64"
+    triple = cpu + ("-apple-darwin" if sys.platform == "darwin" else "-pc-windows-msvc")
+    name = "codex.exe" if sys.platform == "win32" else "codex"
+    package = "codex-" + sys.platform + "-" + arch
+    candidates = []
+    for root in roots:
+        scope = root / "@openai"
+        for vendor in (scope / "codex/vendor", scope / package / "vendor",
+                       scope / "codex/node_modules/@openai" / package / "vendor"):
+            candidates.extend(vendor / triple / folder / name for folder in ("bin", "codex"))
+    return candidates
+
+
+def codex_native_candidates() -> List[Path]:
+    """Native install locations, also available to Finder launches (#277)."""
+    home = Path.home()
+    if sys.platform == "darwin":
+        bundled = Path("Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex")
+        return [Path("/opt/homebrew/bin/codex"), Path("/usr/local/bin/codex"),
+                home / ".local/bin/codex", home / ".npm-global/bin/codex",
+                Path("/Applications/ChatGPT.app") / bundled,
+                home / "Applications/ChatGPT.app" / bundled] + _codex_npm_candidates([
+                    Path("/opt/homebrew/lib/node_modules"), Path("/usr/local/lib/node_modules"),
+                    home / ".npm-global/lib/node_modules"])
+    if sys.platform == "win32":
+        local = Path(os.environ.get("LOCALAPPDATA") or home / "AppData/Local")
+        roaming = Path(os.environ.get("APPDATA") or home / "AppData/Roaming")
+        candidates = [home / ".local/bin/codex.exe",
+                      local / "Microsoft/WinGet/Links/codex.exe",
+                      local / "Programs/OpenAI/Codex/bin/codex.exe"]
+        # The Store app relocates its bundled CLI outside WindowsApps. Inspect
+        # only direct build folders, never recursively traverse app data.
+        cache = local / "OpenAI/Codex/bin"
+        candidates.append(cache / "codex.exe")
+        try:
+            builds = sorted((p for p in cache.iterdir() if p.is_dir()
+                             and not p.name.startswith(".")),
+                            key=lambda p: p.stat().st_mtime_ns, reverse=True)[:64]
+            candidates.extend(p / "codex.exe" for p in builds)
+        except OSError:
+            pass
+        return candidates + _codex_npm_candidates([roaming / "npm/node_modules"])
+    return [home / ".local/bin/codex"]
+
+
+def find_codex(which=None, native_candidates=None) -> Optional[str]:
+    """Find a native CLI, including ChatGPT's bundle; never run shell shims."""
     import shutil
 
     found = (which or shutil.which)("codex")
     if native_candidates is None:
-        native_candidates = ([Path("/opt/homebrew/bin/codex"), Path("/usr/local/bin/codex")]
-                             if sys.platform == "darwin" else [])
+        native_candidates = codex_native_candidates()
     for candidate in ([found] if found else []) + list(native_candidates):
         if _native_codex(str(candidate)):
             return str(candidate)
@@ -1355,7 +1404,7 @@ def start_codex_server(executable: Optional[str] = None) -> CodexServerProcess:
 
     executable = executable or find_codex()
     if not executable or not _native_codex(executable):
-        raise OSError("A native Codex CLI executable is required")
+        raise OSError("Install the Codex app or CLI, then restart.")
     tree = ProcessTree()
     process = subprocess.Popen([executable, "app-server", "--listen", "stdio://"],
                                env=codex_child_environment(),

@@ -193,9 +193,16 @@ class SpeechSettings:
     last_run_version: str = ""
     #: How many recent folders New Session offers (#215); 0 offers none.
     recent_folder_limit: int = 20
-    #: Local Codex catalog/history, opt-in on the integration branch (#184).
-    codex_enabled: bool = False
+    #: None follows native CLI discovery; booleans preserve the user choice (#277).
+    codex_enabled: Optional[bool] = None
     new_session_provider: str = "claude"
+
+    def includes_codex(self) -> bool:
+        """Only a found native CLI enables discovery, even with an explicit on."""
+        if self.codex_enabled is False:
+            return False
+        from . import platform_paths
+        return bool(platform_paths.find_codex())
 
     @property
     def enabled(self) -> bool:
@@ -238,7 +245,8 @@ class SpeechSettings:
         notify = str(raw.get("notifications", NOTIFY_ALL))
         settings.notifications = notify if notify in NOTIFY_LEVELS else NOTIFY_ALL
         settings.remote_control = raw.get("remote_control") is True
-        settings.codex_enabled = raw.get("codex_enabled") is True
+        choice = raw.get("codex_enabled")
+        settings.codex_enabled = choice if type(choice) is bool else None
         settings.new_session_provider = ("codex" if raw.get("new_session_provider") == "codex" else "claude")
         from .sessions import clean_fields, FIELD_PROVIDER, FIELD_TITLE
         settings.session_fields = clean_fields(raw.get("session_fields"))

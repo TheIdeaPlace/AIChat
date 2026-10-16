@@ -179,7 +179,7 @@ def test_cli_discovery_rejects_scripts(tmp_path, header, suffix):
     path.write_bytes(header)
     path.chmod(0o755)
     assert platform_paths.find_codex(which=lambda name: str(path), native_candidates=[]) is None
-    with pytest.raises(OSError, match="native Codex"):
+    with pytest.raises(OSError, match="Install the Codex app or CLI"):
         platform_paths.start_codex_server(str(path))
 
 
@@ -867,3 +867,58 @@ def test_new_saved_rules_never_put_another_turn_on_the_wire(server, tmp_path):
         # never consumed its own request ID. The first turn remains connected.
         assert connection._next_id == after_first + 4
         assert not connection.closed
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_finder_discovery_finds_only_native_chatgpt_bundle(tmp_path, monkeypatch, native):
+    monkeypatch.setattr(platform_paths.sys, "platform", "darwin")
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    path = tmp_path / "Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"\xcf\xfa\xed\xfe" if native else b"#!/bin/sh")
+    path.chmod(0o755)
+    candidates = [p for p in platform_paths.codex_native_candidates() if p.is_relative_to(tmp_path)]
+    monkeypatch.setattr(platform_paths, "codex_native_candidates", lambda: candidates)
+    assert platform_paths.find_codex(which=lambda _: None) == (str(path) if native else None)
+
+
+def test_mac_candidates_include_system_and_user_chatgpt(monkeypatch, tmp_path):
+    monkeypatch.setattr(platform_paths.sys, "platform", "darwin")
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    candidates = platform_paths.codex_native_candidates()
+    suffix = "Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+    assert Path("/" + suffix) in candidates
+    assert tmp_path / suffix in candidates
+
+
+@pytest.mark.parametrize("layout", ["bin", "codex"])
+def test_npm_native_payload_is_found_without_running_js(tmp_path, monkeypatch, layout):
+    import platform
+    monkeypatch.setattr(platform_paths.sys, "platform", "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    path = tmp_path / (".npm-global/lib/node_modules/@openai/codex/node_modules/"
+                       "@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin") / layout / "codex"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"\xcf\xfa\xed\xfe")
+    path.chmod(0o755)
+    candidates = [p for p in platform_paths.codex_native_candidates() if p.is_relative_to(tmp_path)]
+    assert platform_paths.find_codex(which=lambda _: None, native_candidates=candidates) == str(path)
+
+
+def test_windows_relocated_bundle_and_native_npm_candidates(tmp_path, monkeypatch):
+    import platform
+    monkeypatch.setattr(platform_paths.sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: "ARM64")
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    native = tmp_path / "local/OpenAI/Codex/bin/build-hash/codex.exe"
+    native.parent.mkdir(parents=True)
+    native.write_bytes(b"MZ synthetic")
+    native.chmod(0o755)
+    candidates = platform_paths.codex_native_candidates()
+    assert native in candidates
+    assert tmp_path / "local/Programs/OpenAI/Codex/bin/codex.exe" in candidates
+    assert any("codex-win32-arm64" in str(p) for p in candidates)
+    assert platform_paths.find_codex(which=lambda _: None) == str(native)

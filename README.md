@@ -548,10 +548,11 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   page with it filled in; **Copy Report** only copies it. Filing on GitHub needs access to the
   repository; anyone else can Copy Report and email it to support@theideaplace.net.
 
-**Local Codex chats in Settings.** Settings offers **Include local Codex chats
-(restart required)**. Enable it and restart to list local Codex chats
-alongside Claude chats. A native Codex CLI must be available and signed in to
-ChatGPT. Selecting a Codex chat automatically opens its history; messages,
+**Codex chats appear automatically** when a native Codex CLI is installed, including the
+copy bundled with the ChatGPT app on Mac, and signed in to ChatGPT. Settings offers
+**Include Codex chats (restart required)** to turn them off or on explicitly; your choice
+is kept. Without Codex installed, no Codex process starts, and Settings says to install
+the Codex app or CLI, then restart. Selecting a Codex chat automatically opens its history; messages,
 formatted reading, Find and export use Codex. New Session offers a Provider choice: choose Codex to start a chat here.
 Model and Effort offer the model and effort choices available in Codex in New Session and Continue Here. Leave
 Configured Codex model/effort selected to use its settings. Effort choices follow the selected
