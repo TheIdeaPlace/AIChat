@@ -576,8 +576,6 @@ def s_main_codex(frame, env):
     from thechatplace.providers.codex import CodexProvider, session_from_thread
     from thechatplace.session_controller import SessionController
 
-    import time
-
     # Seconds, as Codex sends them. Two hours ago rather than a fixed date, so
     # the row says "active 2 hours ago" in every run, not "691 months ago".
     updated = int(time.time()) - 2 * 3600
@@ -586,7 +584,9 @@ def s_main_codex(frame, env):
              {"id": "answer", "type": "agentMessage", "text": LONG_MESSAGE}]
     thread = {"id": "synthetic-codex", "name": "Codex history preview",
               "cwd": env["folders"]["Scratch"], "createdAt": updated - 600, "updatedAt": updated,
-              "status": {"type": "notLoaded"}, "turns": [{"id": "turn", "items": items}]}
+              "status": {"type": "notLoaded"}}
+    # No inline turns: the reader asks without them and pages instead, so a
+    # reader that went back to inline turns would show "Couldn't load" here.
 
     class Connection:
         # The reader asks for metadata, then pages of turns and items (#285
@@ -647,6 +647,10 @@ def s_main_codex_owned(frame, env):
                   and not frame._codex_preparing, timeout=10)
     frame.reply_text.SetValue("Draft of a message still being typed")
     frame._update_send_state()
+    # The row says "working" and "Chat Place session" from the next refresh,
+    # as the app's own timer would bring in a moment.
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
 
 
 def s_main_codex_last_message(frame, env):
@@ -957,7 +961,7 @@ def d_lists_decisions(frame, env):
     turn = frame._chat_messages[-1].turn if frame._chat_messages else 0
     # Keys end in the tool call, as the transcript's do (lists._tool_id).
     frame._chat_messages += [
-        ChatMessage(QUESTION, "Which branch should the release use?\nrelease/0.2 or main",
+        ChatMessage(QUESTION, "Which branch should the release use?\nOptions: release/0.2; main.",
                     key="probe-q1:toolu_q1", turn=turn),
         ChatMessage(ANSWER, "Which branch should the release use? — release/0.2",
                     key="probe-a1:toolu_q1", turn=turn),
