@@ -91,9 +91,12 @@ def smoke_test(out_path: str) -> int:
             report["webview2_available"] = bool(
                 wx.html2.WebView.IsBackendAvailable(wx.html2.WebViewBackendEdge))
         else:
-            # The Mac's WebKit is part of the system.
+            # The Mac's WebKit is part of the system, and the formatted page
+            # uses it (#119), so a build without it is broken.
             report["webkit_available"] = bool(
                 wx.html2.WebView.IsBackendAvailable(wx.html2.WebViewBackendWebKit))
+            if not report["webkit_available"]:
+                problems.append("WebKit web view not available")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"formatted messages: {exc}")
     try:

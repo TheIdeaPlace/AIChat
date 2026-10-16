@@ -168,8 +168,10 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   message as a formatted page, so your screen reader's browse mode moves by heading (H), table (T,
   then its cell commands), list (L) and code block (each is a region: R in JAWS, D in NVDA, named
   like "Code block, Python, 14 lines"). Links open in your browser. **Read as Plain Text** (Alt+P)
-  switches to a read-only text box, to read by line, word and character, and Settings can make that
-  the default. Escape closes either, back on the same message. The page needs Microsoft's Edge
+  switches to a read-only text box, to read by line, word and character (Option+P on a Mac), and
+  Settings can make that the default. Escape closes either, back on the same message. On a Mac the
+  page is shown by the system's WebKit, and VoiceOver moves through it with the rotor (VO+U) and its
+  heading and table commands; Command+W also closes it. On Windows the page needs Microsoft's Edge
   WebView2 runtime, which comes with Windows 11; without it, the text box opens. Nothing in the
   page is fetched from the internet, and HTML in a message is shown as text, never run. **Code
   Blocks** (**Ctrl+Shift+B**, or on the context menu) lists the message's code blocks by language

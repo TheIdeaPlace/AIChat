@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import Optional
@@ -956,21 +957,36 @@ ID_PLAIN_TEXT = wx.NewIdRef()
 
 #: Escape is pressed inside the page, where wx never sees it, so a script
 #: added to the page posts it back. Added with AddUserScript, which runs
-#: whatever the page's Content-Security-Policy says.
+#: whatever the page's Content-Security-Policy says. Edge reaches the "hub"
+#: handler as window.hub, WebKit as window.webkit.messageHandlers.hub (#119).
+#: P is matched by its key code: on a Mac, Option+P types "π".
 _KEY_RELAY = """
 document.addEventListener('keydown', function (e) {
-  if (e.key === 'Escape') { e.preventDefault(); window.hub.postMessage('escape'); }
-  else if (e.altKey && (e.key === 'p' || e.key === 'P')) {
-    e.preventDefault(); window.hub.postMessage('plain'); }
+  var hub = (window.webkit && window.webkit.messageHandlers &&
+             window.webkit.messageHandlers.hub) || window.hub;
+  if (!hub) { return; }
+  if (e.key === 'Escape') { e.preventDefault(); hub.postMessage('escape'); }
+  else if (e.altKey && e.code === 'KeyP') {
+    e.preventDefault(); hub.postMessage('plain'); }
 }, true);
 """
 
 
+def _webview_backend():
+    """The engine for the formatted page: Edge WebView2 on Windows, the
+    system's WebKit on a Mac (#119)."""
+    import wx.html2
+    if sys.platform == "darwin":
+        return wx.html2.WebViewBackendWebKit
+    return wx.html2.WebViewBackendEdge
+
+
 def formatted_view_available() -> bool:
-    """Whether the Edge WebView2 runtime can show the formatted page."""
+    """Whether this computer's web view (Edge WebView2 on Windows, WebKit on
+    a Mac) can show the formatted page."""
     try:
         import wx.html2
-        return bool(wx.html2.WebView.IsBackendAvailable(wx.html2.WebViewBackendEdge))
+        return bool(wx.html2.WebView.IsBackendAvailable(_webview_backend()))
     except Exception:  # noqa: BLE001 - no html2, no runtime: plain text
         return False
 
@@ -979,8 +995,9 @@ def _prepare_webview_data_folder() -> None:
     """WebView2 keeps a profile folder. Its default is beside the program,
     which for an installed copy is the folder Velopack replaces on update, and
     for a source run may be Python's own folder. Put it in local app data
-    instead, before the first WebView is made."""
-    if os.environ.get("WEBVIEW2_USER_DATA_FOLDER"):
+    instead, before the first WebView is made. Windows only: a Mac's WebKit
+    keeps no such folder."""
+    if sys.platform != "win32" or os.environ.get("WEBVIEW2_USER_DATA_FOLDER"):
         return
     local = os.environ.get("LOCALAPPDATA")
     if local:
@@ -990,7 +1007,7 @@ def _prepare_webview_data_folder() -> None:
 class FormattedMessageDialog(wx.Dialog):
     """One message as a web page: the screen reader's browse mode moves by
     heading, table, list and code block. Escape closes it; Read as Plain Text
-    (Alt+P) switches to the text box, to read by character.
+    (Alt+P; Option+P on a Mac) switches to the text box, to read by character.
 
     Raises RuntimeError if the WebView can't be made; the caller falls back to
     MessageDialog.
@@ -1006,7 +1023,7 @@ class FormattedMessageDialog(wx.Dialog):
         self._loaded = False
         self.app_link = None  # a thechatplace:// link chosen in the page (#144)
         try:
-            self.view = wx.html2.WebView.New(self, backend=wx.html2.WebViewBackendEdge)
+            self.view = wx.html2.WebView.New(self, backend=_webview_backend())
         except Exception as exc:  # noqa: BLE001
             self.Destroy()
             raise RuntimeError(f"Couldn't show the formatted page: {exc}") from exc
@@ -1020,6 +1037,16 @@ class FormattedMessageDialog(wx.Dialog):
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
         plain.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(ID_PLAIN_TEXT))
+        if wx.Platform == "__WXMAC__":
+            # A Mac button has no Alt mnemonic, so Option+P works from the
+            # buttons too, and Command+W closes, as in any Mac window (#119).
+            close_id = wx.NewIdRef()
+            self.SetAcceleratorTable(wx.AcceleratorTable([
+                (wx.ACCEL_ALT, ord("P"), ID_PLAIN_TEXT),
+                (wx.ACCEL_CTRL, ord("W"), close_id),
+            ]))
+            self.Bind(wx.EVT_MENU, lambda e: self.EndModal(ID_PLAIN_TEXT), id=ID_PLAIN_TEXT)
+            self.Bind(wx.EVT_MENU, lambda e: self.EndModal(wx.ID_CANCEL), id=close_id)
         try:
             self.view.EnableAccessToDevTools(False)
             self.view.AddScriptMessageHandler("hub")

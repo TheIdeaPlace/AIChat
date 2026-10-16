@@ -120,8 +120,12 @@ Press **Enter** on a message to read it as a formatted page. There, your screen 
 mode moves by heading (H), table (T), list (L) and code block (each code block is a region: R in
 JAWS, D in NVDA). Links open in your browser. **Read as Plain Text** (Alt+P) shows the message in
 a plain text box instead, to read by line, word and character. Escape closes either one and puts
-you back on the same message. The formatted page needs Microsoft's Edge WebView2 runtime, which
-comes with Windows 11. On a Mac, and on Windows without it, Enter opens the plain text box.
+you back on the same message. On Windows the formatted page needs Microsoft's Edge WebView2
+runtime, which comes with Windows 11; without it, Enter opens the plain text box.
+
+On a Mac the page works the same way. VoiceOver's rotor (VO+U) lists its headings, tables, links
+and landmarks, VO+Command+H moves by heading, and with Quick Nav on, H, T and L work as above.
+Read as Plain Text is Option+P, and Command+W closes the page as well as Escape.
 
 Other things you can do with a message:
 
@@ -434,7 +438,7 @@ the list. Press **Ctrl+Shift+A** to answer:
   so pressing Enter by mistake never allows anything, and you can give a reason Claude reads.
 - **A question:** each question is a group of choices, with Other and a box for your own answer.
   Send Answers, or Don't Answer.
-- **A plan:** read it (on Windows, Read Formatted shows it as a page, by heading), then **Approve**, choosing
+- **A plan:** read it (Read Formatted shows it as a page, by heading), then **Approve**, choosing
   how Claude carries on, or **Keep Planning**, the default, with what to change.
 
 **Escape answers later.** Nothing is allowed or refused by waiting: the turn keeps waiting, and
