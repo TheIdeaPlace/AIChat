@@ -397,14 +397,20 @@ folder. It checks that they are disabled before sending. Your global Codex
 configuration stays unchanged; existing chats can still be read.</p>
 <p>Codex keeps your own saved command rules in effect, including user rules such
 as <code>~/.codex/rules/default.rules</code> and system rules installed for your computer.
-Commands you've told Codex to always allow will run without asking, even outside
-this folder. New Session and Change Permission Mode explain this; Properties
+Commands you've told Codex to always allow will run without asking and outside
+the folder's limits, so they can change files elsewhere and use the network.
+New Session and Change Permission Mode explain this; Properties
 shows the number of active user/system rule files, without showing their contents.</p>
 <p>The Chat Place refuses rules supplied by a project: <code>.codex/rules</code> in the selected
 folder or its parent projects. Choose a folder without those rules, or move the
 project rules out before trying again. It also refuses to start or send when the
 rule inventory cannot be checked. Existing chats can still be read. The Chat Place
 does not remove or edit rules, change your Codex settings, or save approval amendments.</p>
+<p>On Windows, Codex can edit a folder only after its Windows sandbox is set up:
+use Set up Agent sandbox in the Codex app, or, with only the command-line tool, add
+<code>[windows]</code> and <code>sandbox = "elevated"</code> (or <code>"unelevated"</code>) to <code>~/.codex/config.toml</code>.
+Until then Codex reports chats as read-only, and The Chat Place says so instead of
+giving the chat folder editing; choose read-only, or set up the sandbox and try again.</p>
 <h2 id="starting-a-session-and-replying">Starting a session and replying</h2>
 <h3>A new session</h3>
 <p>Press <strong>Ctrl+N</strong> (File, New Session). Choose Provider when more than one is available; your

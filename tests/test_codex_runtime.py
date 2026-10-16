@@ -531,6 +531,31 @@ def test_permission_change_rechecks_chatgpt_account_and_blocks_on_failure(tmp_pa
         service.close()
 
 
+def test_permission_change_to_downgraded_sandbox_blocks_with_the_sandbox_reason(tmp_path, monkeypatch):
+    # Windows without Codex's sandbox answers workspace-write with read-only (#257).
+    from thechatplace import platform_paths
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    monkeypatch.setattr(platform_paths, 'codex_downgrades_workspace_write', lambda: True)
+    service, connection, record = policy_runtime(tmp_path)
+    try:
+        request = connection.request
+
+        def downgraded(method, params):
+            result = request(method, params)
+            if method == 'thread/resume':
+                result = dict(result, sandbox={'type': 'readOnly', 'networkAccess': False})
+            return result
+        monkeypatch.setattr(connection, 'request', downgraded)
+        with pytest.raises(CodexTurnRejected) as refused:
+            service.prepare_policy(record, 'workspace-write', 'on-request')
+        assert refused.value.code == 'sandbox_unavailable'
+        assert not service.ready(record)
+        assert 'Windows sandbox' in service._problems[record.cli_session_id]
+        assert 'reload this chat' in service._problems[record.cli_session_id]
+    finally:
+        service.close()
+
+
 def test_send_context_acquired_before_policy_change_cannot_cross_reservation(tmp_path, monkeypatch):
     service, connection, record = policy_runtime(tmp_path)
     entered, release = threading.Event(), threading.Event()

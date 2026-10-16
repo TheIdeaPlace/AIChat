@@ -1265,6 +1265,12 @@ def _native_codex(path: str) -> bool:
         return False
 
 
+def codex_downgrades_workspace_write() -> bool:
+    """Codex answers workspace-write with read-only on Windows until its
+    Windows sandbox is set up (#257); on a Mac it never does."""
+    return sys.platform == "win32"
+
+
 def codex_rule_inventory(layers):
     """Count user/system rule files and refuse project-supplied rules (#257).
 

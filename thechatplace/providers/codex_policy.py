@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 
 from .. import platform_paths
-from .codex_rpc import CodexRpcError
+from .codex_rpc import CodexRpcError, CodexTurnRejected
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,25 @@ class CodexPolicy:
             except (ValueError, OSError):
                 valid = False
         if not valid:
+            if self._sandbox_downgraded(actual, result):
+                # Codex downgrades workspace-write to read-only on Windows when
+                # its Windows sandbox isn't set up (effective_sandbox_mode in
+                # codex-rs config_toml.rs). Still refused, but say why (#257).
+                raise CodexTurnRejected('sandbox_unavailable')
             raise CodexRpcError('Codex owned chat policy could not be verified')
+
+    def _sandbox_downgraded(self, actual, result):
+        # Only the exact downgrade: everything else matched, so the advice to
+        # set up the sandbox is never given for a wrong folder or approval.
+        if (self.sandbox != 'workspace-write' or not platform_paths.codex_downgrades_workspace_write()
+                or not isinstance(actual, dict) or actual.get('type') != 'readOnly'
+                or actual.get('networkAccess', False) is not False
+                or result.get('approvalPolicy') != self.approval):
+            return False
+        try:
+            return platform_paths.codex_workspace_root(result.get('cwd')) == self.workspace_root
+        except (ValueError, OSError):
+            return False
 
     def verify_workspace(self, cwd):
         if self.sandbox == 'workspace-write':
