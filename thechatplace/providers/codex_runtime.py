@@ -101,7 +101,7 @@ class CodexChatRuntime:
         return self._remember(proof, new=True)
 
     def history_route(self, native_id):
-        """Where a chat created here reads its history (#283).
+        """Where a chat created here reads its history (#285).
 
         Before the first turn the thread is empty. During the first turn it
         exists only in this runtime's process, so it is read there. After

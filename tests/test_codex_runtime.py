@@ -93,7 +93,7 @@ def _owned_reader(service, record):
 
 def test_new_chat_is_empty_until_its_first_turn_then_read_where_it_lives():
     # A new thread exists only in the runtime's process until Codex saves it,
-    # so reading it elsewhere said "Couldn't load this Codex chat" (#283).
+    # so reading it elsewhere said "Couldn't load this Codex chat" (#285).
     from thechatplace.providers.codex import EMPTY_HISTORY
     from test_codex_provider import Connection as HistoryConnection, history, history_pages
     service, connection, _ = runtime()
