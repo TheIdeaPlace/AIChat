@@ -257,10 +257,10 @@ def fake_runner(monkeypatch):
 
 def test_list_order_and_lines(frame):
     items = list(frame.session_list.GetStrings())
-    assert items[0].startswith("Blocked one, Repo, needs you: Pick a name")
-    assert items[1].startswith("Hub probe, Scratch, idle")
+    assert items[0].startswith("Blocked one, Claude, Repo, needs you: Pick a name")
+    assert items[1].startswith("Hub probe, Claude, Scratch, idle")
     assert items[1].endswith("Chat Place session")
-    assert items[2].startswith("Quiet one, Repo, idle, active 1 minute ago")
+    assert items[2].startswith("Quiet one, Claude, Repo, idle, active 1 minute ago")
     assert frame.session_list.GetSelection() == 0
 
 
@@ -286,7 +286,7 @@ def test_focused_list_keeps_its_order_until_f5(frame, env, monkeypatch):
     settle(frame)
     rows = [s.split(",")[0] for s in frame.session_list.GetStrings()]
     assert rows == before + ["Brand new"]           # nothing moved, new one at the end
-    assert frame.session_list.GetStringSelection().startswith("Quiet one, Repo, needs you")
+    assert frame.session_list.GetStringSelection().startswith("Quiet one, Claude, Repo, needs you")
     frame.refresh_sessions(force=True, resort=True)  # F5
     assert pump(lambda: frame.session_list.GetString(0).startswith("Quiet one"))
     assert frame.session_list.GetStringSelection().startswith("Quiet one")
@@ -2440,7 +2440,7 @@ def test_saved_sort_order_is_used_and_checked_at_start(env):
     try:
         assert pump(lambda: window.session_list.GetCount() == 2)
         assert [o for o, item in window.sort_items.items() if item.IsChecked()] == ["folder"]
-        assert window.session_list.GetString(0).startswith("Other, Alpha")
+        assert window.session_list.GetString(0).startswith("Other, Claude, Alpha")
     finally:
         window.stop_timers()
         window._pool.shutdown(wait=True)
@@ -2903,7 +2903,7 @@ def test_a_session_leaving_the_view_stays_while_you_are_on_it(frame, env, monkey
     add_desktop(env, "local_b", "cli-b", "Blocked one")  # it no longer needs you
     frame.refresh_sessions()
     settle(frame)
-    assert frame.session_list.GetStringSelection().startswith("Blocked one, Repo, idle")
+    assert frame.session_list.GetStringSelection().startswith("Blocked one, Claude, Repo, idle")
     frame.refresh_sessions(resort=True)  # F5: the view is put right
     settle(frame)
     assert frame.session_list.GetCount() == 0
@@ -3323,20 +3323,23 @@ def test_find_in_messages_says_when_nothing_matches(frame, env, monkeypatch):
 # -- usage and context (#19) -----------------------------------------------------------------
 
 
-def _limits(seven):
+def _limits(seven, *, now=None):
     import time
+    now = time.time() if now is None else now
     return {"status": "allowed", "unifiedWindows": {
-        "five_hour": {"utilization": 0.1, "resetsAt": time.time() + 3600},
-        "seven_day": {"utilization": seven, "resetsAt": time.time() + 86400}}}
+        "five_hour": {"utilization": 0.1, "resetsAt": now + 3600},
+        "seven_day": {"utilization": seven, "resetsAt": now + 86400}}}
 
 
 def test_limits_are_kept_and_a_near_limit_is_said_once(frame, env):
+    import time
+    now = time.time()  # All reports describe the same reset window, even across a second boundary.
     frame._runners["own-1"] = FakeRunner([], "", "", None)
-    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.5)))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.5, now=now)))
     assert frame._limits["unifiedWindows"]["seven_day"]["utilization"] == 0.5
     said = len(env["spoken"])
-    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.92)))
-    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.93)))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.92, now=now)))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("limits", data=_limits(0.93, now=now)))
     warnings = [s for s in env["spoken"][said:] if "weekly limit" in s]
     assert len(warnings) == 1 and warnings[0].startswith("You've used 92% of your weekly limit")
 
@@ -5435,7 +5438,7 @@ def test_session_list_columns_reorder_the_rows_at_once_and_are_remembered(frame,
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Chooses)
     frame.on_session_columns()
     assert seen["sample"].title == "Blocked one"  # the preview shows the selected session
-    assert seen["fields"][:3] == ["title", "folder", "status"]
+    assert seen["fields"][:4] == ["title", "provider", "folder", "status"]
     assert frame.session_list.GetStringSelection() == "needs you: Pick a name, Blocked one"
     assert sorted(frame.session_list.GetStrings()) == [
         "idle, Hub probe", "idle, Quiet one", "needs you: Pick a name, Blocked one"]
@@ -5545,28 +5548,28 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
         assert dialog.shown.GetString(0) == "Title"
         # Started (#209) and Last message (#146) aren't shown by default.
         assert list(dialog.available.GetStrings()) == [
-            "Provider (Claude or Codex)", "Started (when the session began)", "Last message"]
-        assert dialog.preview.GetValue().startswith("Blocked one, Repo, needs you")
-        dialog.shown.SetSelection(2)  # Status
+            "Started (when the session began)", "Last message"]
+        assert dialog.preview.GetValue().startswith("Blocked one, Claude, Repo, needs you")
+        dialog.shown.SetSelection(3)  # Status
         dialog.move_to_end(top=True)
-        assert said[-1] == "Status moved to top, 1 of 10."
-        assert dialog.fields()[:3] == ["status", "title", "folder"]
+        assert said[-1] == "Status moved to top, 1 of 11."
+        assert dialog.fields()[:4] == ["status", "title", "provider", "folder"]
         assert dialog.shown.GetSelection() == 0 and focused[-1] == "shown"
         assert dialog.preview.GetValue().startswith("needs you: Pick a name, Blocked one")
         dialog.move(-1)
         assert said[-1] == "Status is already at the top."
         dialog.move(1)
-        assert said[-1] == "Status moved down, 2 of 10." and dialog.shown.GetSelection() == 1
+        assert said[-1] == "Status moved down, 2 of 11." and dialog.shown.GetSelection() == 1
         dialog.move_to_end(top=False)
-        assert said[-1] == "Status moved to bottom, 10 of 10."
-        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 9
+        assert said[-1] == "Status moved to bottom, 11 of 11."
+        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 10
         dialog.move(1)
         assert said[-1] == "Status is already at the bottom."
         # The keys do the same, in the Shown list only.
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_HOME, alt=True)
-        assert said[-1] == "Status moved to top, 1 of 10."
+        assert said[-1] == "Status moved to top, 1 of 11."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DOWN, alt=True)
-        assert said[-1] == "Status moved down, 2 of 10."
+        assert said[-1] == "Status moved down, 2 of 11."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_UP, alt=True)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_END, alt=True)
         assert dialog.fields()[-1] == "status"
@@ -5580,7 +5583,7 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
 def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
     dialog, said, focused = _columns_dialog(frame, ["title", "status"])
     try:
-        assert dialog.available.GetString(0) == "Folder"
+        assert dialog.available.GetString(0) == "Provider (Claude or Codex)"
         dialog.shown.SetSelection(0)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DELETE)
         assert said[-1] == "Title removed. 1 column shown."
@@ -5595,12 +5598,15 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.fields() == ["status", "title"]
         assert focused[-1] == "available"  # stays, to add more
         assert dialog.shown.GetSelection() == 1  # on what it added
-        assert dialog.available.GetString(0) == "Folder"
+        assert dialog.available.GetString(0) == "Provider (Claude or Codex)"
         dialog.reset()
-        assert said[-1] == "Columns reset to the default: 10 shown, title first."
-        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 10
+        assert said[-1] == "Columns reset to the default: 11 shown, title first."
+        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 11
         assert list(dialog.available.GetStrings()) == [
-            "Provider (Claude or Codex)", "Started (when the session began)", "Last message"]
+            "Started (when the session began)", "Last message"]
+        dialog.shown.SetSelection(dialog.fields().index("provider"))
+        dialog.remove()
+        assert said[-1] == "Provider removed. 10 columns shown."
         dialog.available.SetSelection(0)
         dialog.add()
         assert said[-1] == "Provider added, 11 of 11."
@@ -5648,7 +5654,7 @@ def test_columns_preview_has_a_sample_when_nothing_is_selected(frame, env, monke
             pass
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Looks)
     frame.on_session_columns()
-    assert seen["line"].startswith("Example session, Example, needs you: Choose a version "
+    assert seen["line"].startswith("Example session, Claude, Example, needs you: Choose a version "
                                    "number, new reply, active 2 minutes ago")
 
 
@@ -8842,7 +8848,7 @@ def test_opt_in_startup_lists_and_opens_synthetic_codex_history(env, monkeypatch
         foreign = [s for s in window._snapshot.sessions if s.provider == "codex"]
         assert bool(foreign) is enabled
         if enabled:
-            assert "external session" in window.session_list.GetString(window._list_keys.index("codex:synthetic"))
+            assert "Codex" in window.session_list.GetString(window._list_keys.index("codex:synthetic"))
             window.speech.session_fields = ["title", "provider", "status"]
             window.on_view("provider:codex")
             assert window._list_keys == ["codex:synthetic"]

@@ -175,7 +175,7 @@ def test_folder_is_the_one_cowork_was_given_not_outputs(tmp_path):
     [info] = load(tmp_path).sessions
     # With no folder it says so: the row ends "Cowork session" already.
     assert info.repo == "no folder"
-    assert info.list_line(NOW).startswith("Sort the receipts, no folder, idle")
+    assert info.list_line(NOW).startswith("Sort the receipts, Claude, no folder, idle")
     assert info.list_line(NOW).count("Cowork") == 1
     data = json.loads(path.read_text(encoding="utf-8"))
     data["userSelectedFolders"] = ["C:\\Users\\k\\OneDrive\\Finance\\"]

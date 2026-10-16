@@ -21,10 +21,10 @@ def _info(key="x", **extra):
 # -- the row text --------------------------------------------------------------------
 
 
-def test_the_default_row_reads_as_it_always_has():
+def test_the_default_row_identifies_the_provider_and_source():
     info = _info(source=OWN, state=NEEDS_YOU, detail="Pick a name", unread=True, remote=True,
                  groups=("Work",))
-    line = ("Fix the build, Repo, needs you: Pick a name, new reply, active 5 minutes ago, "
+    line = ("Fix the build, Claude, Repo, needs you: Pick a name, new reply, active 5 minutes ago, "
             "Chat Place session, Remote Control, group Work")
     assert info.list_line(NOW) == line
     assert info.list_line(NOW, DEFAULT_FIELDS) == line
@@ -53,8 +53,8 @@ def test_cowork_and_chat_place_kind_is_one_column():
 
 
 def test_every_column_has_a_name_and_a_short_name():
-    # Optional provider, Started and Last message columns preserve legacy defaults.
-    assert FIELD_IDS == DEFAULT_FIELDS + ["provider", "started", "last_message"]
+    # Provider and Kind are regular defaults; Started and Last message are optional.
+    assert FIELD_IDS == DEFAULT_FIELDS + ["started", "last_message"]
     assert len(set(FIELD_IDS)) == len(FIELDS)
     assert field_short_name("last_message") == "Last message"
     assert field_short_name("status") == "Status"
@@ -105,7 +105,7 @@ def test_a_newer_versions_columns_are_ignored_on_load(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"session_fields": ["model", "status", "title"]}),
                     encoding="utf-8")
-    assert SpeechSettings.load(path).session_fields == ["status", "title"]
+    assert SpeechSettings.load(path).session_fields == ["status", "title", "provider"]
 
 
 def test_default_settings_do_not_share_one_list():
@@ -151,10 +151,11 @@ def test_show_sessions_access_keys_are_all_different():
     assert len(keys) == len(set(keys))
 
 
-def test_optional_provider_column_does_not_change_saved_claude_rows():
+def test_provider_and_kind_columns_are_on_by_default_for_every_provider():
     from thechatplace.sessions import FIELD_PROVIDER
 
-    assert FIELD_PROVIDER not in DEFAULT_FIELDS
+    assert FIELD_PROVIDER in DEFAULT_FIELDS
+    assert "kind" in DEFAULT_FIELDS
     assert _info().field_values()[FIELD_PROVIDER] == "Claude"
     codex = _info(provider="codex", key="codex:x")
     assert codex.field_values()[FIELD_PROVIDER] == "Codex"
@@ -186,3 +187,47 @@ def test_codex_unknown_state_omitted_from_default_row_but_available_as_selected_
     assert info.field_values(NOW)['status'] == 'status unavailable'
     info.state = 'idle'
     assert 'idle' in info.list_line(NOW)
+
+
+@pytest.mark.parametrize('codex_enabled', [False, True])
+def test_older_custom_columns_gain_provider_once_without_losing_choices(tmp_path, codex_enabled):
+    path = tmp_path / 'settings.json'
+    original = {'session_fields': ['last_message', 'status', 'title', 'kind'],
+                'codex_enabled': codex_enabled, 'announce_own': False}
+    path.write_text(json.dumps(original), encoding='utf-8')
+    settings = SpeechSettings.load(path)
+    assert settings.session_fields == ['last_message', 'status', 'title', 'provider', 'kind']
+    assert not settings.announce_own
+    assert json.loads(path.read_text()) == original  # loading never overwrites the old file
+    settings.save(path)
+    assert SpeechSettings.load(path).session_fields == settings.session_fields
+    settings.session_fields.remove('provider')
+    settings.save(path)
+    assert 'provider' not in SpeechSettings.load(path).session_fields
+
+
+def test_existing_provider_position_is_preserved_on_upgrade(tmp_path):
+    path = tmp_path / 'settings.json'
+    columns = ['provider', 'title', 'started', 'last_message']
+    path.write_text(json.dumps({'session_fields': columns}), encoding='utf-8')
+    assert SpeechSettings.load(path).session_fields == columns
+
+
+@pytest.mark.parametrize('provider', ['claude', 'codex', 'ollama'])
+@pytest.mark.parametrize('source,kind', [('own', 'Chat Place session'),
+    ('desktop', 'desktop app session'), ('terminal', 'terminal session'),
+    ('external', 'external session')])
+def test_kind_describes_source_independently_of_provider(provider, source, kind):
+    values = _info(provider=provider, source=source).field_values(NOW)
+    assert values['kind'] == kind
+    assert values['provider'] == provider.capitalize()
+
+
+def test_upgrade_without_title_places_provider_first(tmp_path):
+    path = tmp_path / 'settings.json'
+    path.write_text(json.dumps({'session_fields': ['status', 'last_message']}))
+    assert SpeechSettings.load(path).session_fields == ['provider', 'status', 'last_message']
+
+
+def test_default_columns_read_provider_immediately_after_title():
+    assert DEFAULT_FIELDS[:2] == ['title', 'provider']

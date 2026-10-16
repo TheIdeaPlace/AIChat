@@ -218,6 +218,7 @@ FIELD_GROUPS = "groups"
 FIELD_LAST_MESSAGE = "last_message"
 FIELDS = [
     (FIELD_TITLE, "Title"),
+    (FIELD_PROVIDER, "Provider (Claude or Codex)"),
     (FIELD_FOLDER, "Folder"),
     (FIELD_STATUS, "Status (needs you, working or idle)"),
     (FIELD_NEW_REPLY, "New reply"),
@@ -227,7 +228,6 @@ FIELDS = [
     (FIELD_ARCHIVED, "Archived"),
     (FIELD_HIDDEN, "Hidden"),
     (FIELD_GROUPS, "Groups"),
-    (FIELD_PROVIDER, "Provider (Claude or Codex)"),
     (FIELD_STARTED, "Started (when the session began)"),
     (FIELD_LAST_MESSAGE, "Last message"),
 ]
@@ -236,10 +236,10 @@ FIELD_NAMES = dict(FIELDS)
 #: Columns there are but rows don't read until you add them: Last message
 #: (#146) reads each session's transcript, and makes every row long; Started
 #: (#209) is there for those who want it, not news for everyone.
-OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE, FIELD_PROVIDER)
+OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE)
 #: The columns rows read unless you choose otherwise, in the order they
-#: are read. Saved column choices retain their existing order; Provider is
-#: optional until the separate default-column migration lands.
+#: are read. Provider is added once to older saved choices by SpeechSettings;
+#: users can subsequently remove it like any other column.
 DEFAULT_FIELDS = [f for f in FIELD_IDS if f not in OPTIONAL_FIELDS]
 
 
