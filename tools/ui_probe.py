@@ -594,6 +594,11 @@ def s_main_codex(frame, env):
         def request(self, method, params):
             if method == "thread/read":
                 return {"thread": thread}
+            if method == "thread/list":
+                # A refresh during the probe lists this one chat, so the row
+                # takes its state from the runtime as the app's would, rather
+                # than reporting discovery as unavailable.
+                return {"data": [] if params.get("archived") else [thread], "nextCursor": None}
             if method == "thread/turns/list":
                 return {"data": [{"id": "turn", "startedAt": updated - 600}], "nextCursor": None}
             if method == "thread/items/list":
