@@ -76,3 +76,12 @@ def other(kind, **extra) -> dict:
 
 def lines(*records) -> list:
     return [json.dumps(r) for r in records]
+
+
+def compact_boundary(trigger='manual', pre_tokens=968_000, post_tokens=9_000):
+    return other('system', subtype='compact_boundary', uuid=_uuid(),
+                 compactMetadata={'trigger': trigger, 'preTokens': pre_tokens, 'postTokens': post_tokens})
+
+
+def command_stdout(text):
+    return user_text('<local-command-stdout>' + text + '</local-command-stdout>')

@@ -65,6 +65,10 @@ QUEUED = "queued"
 TOOL_RESULT = "tool_result"
 CONTEXT = "context"
 EVENT = "event"
+COMPACTION = "compaction"
+COMMAND_OUTPUT = "command_output"
+COMMAND_ERROR = "command_error"
+MAX_COMMAND_OUTPUT = 16_384
 
 LABELS = {
     USER: "You",
@@ -81,6 +85,9 @@ LABELS = {
     TOOL_RESULT: "Tool result",
     CONTEXT: "Context",
     EVENT: "Event",
+    COMPACTION: "Context",
+    COMMAND_OUTPUT: "Claude Code",
+    COMMAND_ERROR: "Claude Code error",
 }
 
 #: Kinds hidden unless "show tool activity" is on.
@@ -154,7 +161,7 @@ class Transcript:
 
     def last_reply(self) -> Optional[ChatMessage]:
         for message in reversed(self.messages):
-            if message.kind in (ASSISTANT, QUESTION, PLAN, ERROR):
+            if message.kind in (ASSISTANT, QUESTION, PLAN, ERROR, COMMAND_OUTPUT, COMMAND_ERROR):
                 return message
         return None
 
@@ -174,6 +181,31 @@ _ATTRIBUTE = re.compile(r'([A-Za-z][A-Za-z0-9_-]*)="([^"]*)"')
 # Tool input fields worth naming in a one-line activity summary, in order.
 _TOOL_SUMMARY_FIELDS = ("description", "command", "file_path", "path", "pattern",
                         "url", "query", "prompt", "skill", "subject")
+
+
+def clean_command_output(text):
+    """Keep terminal formatting out of GUI text and bound its display (#249)."""
+    # Sign-in imports the CLI adapter, so share its pattern after module loading.
+    from .signin import _TERMINAL_CODES
+    if not isinstance(text, str):
+        return ""
+    text = _TERMINAL_CODES.sub('', text).replace('\r\n', '\n').replace('\r', '\n')
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text).strip()
+    marker = '\n[Command output shortened for display.]'
+    if len(text) > MAX_COMMAND_OUTPUT:
+        text = text[:MAX_COMMAND_OUTPUT - len(marker)].rstrip() + marker
+    return text
+
+
+def compaction_text(meta=None):
+    """Describe verified compaction metadata shared by history and live events."""
+    meta = meta if isinstance(meta, dict) else {}
+    trigger = meta.get("trigger")
+    how = {"manual": " (you asked)", "auto": " (the context was full)"}.get(trigger, "") if isinstance(trigger, str) else ""
+    before, after = meta.get('preTokens'), meta.get('postTokens')
+    amount = (f", from {before:,} to {after:,} tokens"
+              if type(before) is int and type(after) is int and 0 <= after <= before else '')
+    return f"Conversation compacted{how}{amount}."
 
 
 class _Unreadable(Exception):
@@ -228,11 +260,10 @@ class TranscriptParser:
         if kind == "system" and record.get("subtype") == "compact_boundary":
             # Claude Code summarised the conversation to free the context.
             self.transcript.compactions += 1
-            self.transcript.context_tokens = 0
             meta = record.get("compactMetadata")
-            trigger = meta.get("trigger") if isinstance(meta, dict) else ""
-            how = {"manual": " (you asked)", "auto": " (the context was full)"}.get(trigger, "")
-            return [self._add(EVENT, f"Conversation compacted{how}.", record)]
+            post = meta.get('postTokens') if isinstance(meta, dict) else None
+            self.transcript.context_tokens = post if type(post) is int and post >= 0 else 0
+            return [self._add(COMPACTION, compaction_text(meta), record)]
         if kind == "attachment":
             return self._attachment(record)
         if kind not in ("user", "assistant"):
@@ -347,6 +378,11 @@ class TranscriptParser:
             if added:
                 self.transcript.turns += 1
             return added
+        output = re.fullmatch(r"\s*<local-command-(stdout|stderr)>(.*?)</local-command-\1>\s*", text, re.DOTALL)
+        if output:
+            body = clean_command_output(_SYSTEM_REMINDER.sub("", output.group(2)))
+            kind = COMMAND_ERROR if output.group(1) == 'stderr' else COMMAND_OUTPUT
+            return [self._add(kind, body, record)] if body else []
         tag = _HARNESS_TAG.match(text)
         if tag:
             # <task-notification>, <ci-monitor-event>, <command-name>, ...:
@@ -558,14 +594,19 @@ class TranscriptReader:
 
     Only whole lines are parsed. A line still being written (no newline yet)
     waits for the next ``refresh``, so a live session never shows a spurious
-    "couldn't read" count. If the file shrinks it was rewritten, and the reader
-    starts over. Opens the file read-only, always.
+    "couldn't read" count. Replacements, shrinkage and changes
+    to a bounded prefix/consumed tail restart the reader after rewrites (#249).
+    Opens the file read-only, always.
     """
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self._offset = 0
         self._parser = TranscriptParser()
+        self._file_id = None
+        self._anchor = b""
+        self._head = b""
+        self._stamp = None
 
     @property
     def transcript(self) -> Transcript:
@@ -574,27 +615,49 @@ class TranscriptReader:
     def refresh(self) -> bool:
         """Read anything new. Returns True if the transcript changed."""
         try:
-            size = self.path.stat().st_size
+            stat = self.path.stat()
+            stamp = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+            if stamp == self._stamp:
+                return False
+            with open(self.path, "rb") as handle:
+                stat = os.fstat(handle.fileno())
+                size, identity = stat.st_size, (stat.st_dev, stat.st_ino)
+                head = handle.read(min(size, 4096))
+                rewritten = (self._file_id is not None and identity != self._file_id
+                             or bool(self._head) and head[:len(self._head)] != self._head)
+                if not rewritten and self._offset and size >= self._offset:
+                    # A compaction can replace bytes without shrinking the file.
+                    # Compare a bounded tail of the bytes already consumed (#249).
+                    handle.seek(self._offset - len(self._anchor))
+                    rewritten = handle.read(len(self._anchor)) != self._anchor
+                if rewritten or size < self._offset:
+                    rewritten = True
+                    self._offset, self._anchor = 0, b""
+                    self._parser = TranscriptParser()
+                self._file_id, self._head = identity, head
+                # Keep the path's own stat, the one the next refresh compares
+                # against. On Windows fstat of the open handle can differ from
+                # stat of the path (#275), so an unchanged file looked changed
+                # and was reopened every time. Taken before opening, it is
+                # conservative: any later write changes the next path stat.
+                self._stamp = stamp
+                if size == self._offset:
+                    return rewritten
+                handle.seek(self._offset)
+                data = handle.read(size - self._offset)
         except OSError:
             return False
-        if size < self._offset:
-            self._offset = 0
-            self._parser = TranscriptParser()
-        if size == self._offset:
-            return False
-        with open(self.path, "rb") as handle:
-            handle.seek(self._offset)
-            data = handle.read(size - self._offset)
         end = data.rfind(b"\n")
         if end < 0:
             return False
         complete = data[: end + 1]
         self._offset += len(complete)
+        self._anchor = (self._anchor + complete)[-4096:]
         lines = split_jsonl(complete)
         before = (len(self.transcript.messages), self.transcript.unreadable_lines)
         touched = self._parser.feed(lines)
         after = (len(self.transcript.messages), self.transcript.unreadable_lines)
-        return bool(touched) or before != after
+        return bool(rewritten) or bool(touched) or before != after
 
 
 def split_jsonl(data: bytes) -> List[str]:
@@ -630,9 +693,10 @@ def parse_lines(lines: Iterable[str]) -> Transcript:
 #: nothing rather than read tens of megabytes on every refresh.
 TAIL_STEPS = (64 * 1024, 256 * 1024, 1024 * 1024, 4 * 1024 * 1024)
 #: What counts as the last message: your text and Claude's, as the messages
-#: list shows them. Tool calls and results, thinking, context and harness
-#: events, question cards, errors and other sessions' messages don't.
-LAST_MESSAGE_KINDS = (USER, ASSISTANT)
+#: list shows them, including Claude Code command output/errors. Tool calls and
+#: results, thinking, context and harness events, question cards, assistant errors
+#: and other sessions' messages don't.
+LAST_MESSAGE_KINDS = (USER, ASSISTANT, COMMAND_OUTPUT, COMMAND_ERROR)
 
 
 def last_message_from_tail(path: Path, steps: Tuple[int, ...] = TAIL_STEPS

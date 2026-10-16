@@ -148,6 +148,20 @@ Other things you can do with a message:
 Claude's questions to you appear as "Claude asked: …" followed by "You answered: …". Tools Claude
 was refused appear as "Permission denied: …".
 
+### Command results and compaction
+
+Claude Code's local commands, such as `/compact`, `/context` and `/cost`, show their
+output as **Claude Code** messages, even with Show Tool Activity off. A compaction
+also leaves a **Conversation compacted** row and announces what happened without
+interrupting sent-message read-back. When Claude reports before/after token counts,
+the row and announcement include them, and Usage and Context updates to the reported
+post-compaction count. The summary of earlier conversation remains tool activity,
+which you can show when you want to read it. Failed commands appear as **Claude Code error**
+messages too. Terminal formatting is removed, and long command output is shortened
+with a notice in the app and its exports; the original transcript stays unchanged.
+Command-result notifications use a brief summary even in Full announcements and
+respect Summary and Silent.
+
 ### Seeing what the provider is doing
 
 The provider's tool calls and their results are hidden until you turn on **Show Tool Activity**

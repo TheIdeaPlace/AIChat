@@ -3467,8 +3467,7 @@ def test_a_usage_limit_failure_is_said_plainly(frame, env):
 def test_compaction_is_said(frame, env):
     frame._runners["own-1"] = FakeRunner([], "", "", None)
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("compacted"))
-    assert env["spoken"][-1] == ("Hub probe: Claude Code compacted the conversation to "
-                                 "free the context.")
+    assert env["feedback"][-1] == "Hub probe: Conversation compacted."
 
 
 def test_find_says_when_it_goes_round_at_either_end(frame, env, monkeypatch):
@@ -9523,3 +9522,150 @@ def test_permission_hint_translates_only_authored_keys(frame, env):
     spoken = env['spoken'][-1]
     assert 'Title Ctrl+N' in spoken and 'echo Ctrl+N' in spoken
     assert key_name('Ctrl+Shift+A') + ' answers.' in spoken
+
+@pytest.mark.parametrize('stream_order', ['before', 'after', 'none'])
+@pytest.mark.parametrize('activity', [False, True])
+def test_compaction_is_visible_and_spoken_once_with_or_without_stream(frame, env, stream_order, activity):
+    from records import compact_boundary, command_stdout, lines
+    from thechatplace.transcript import COMPACTION, COMMAND_OUTPUT
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None)
+    frame._show_activity = activity
+    frame._runners['own-1'] = FakeRunner([], '', '', None)
+    env['spoken'].clear()
+    event = TurnEvent('compacted', text='Conversation compacted (you asked), from 968,000 to 9,000 tokens.',
+                      data={'post_tokens': 9000})
+    if stream_order == 'before':
+        frame._on_turn_event({'id': 'own-1'}, 'Hub probe', event)
+    path.write_text('\n'.join(lines(compact_boundary(), command_stdout('Compacted'))) + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMPACTION for m in frame._chat_messages))
+    if stream_order == 'after':
+        frame._on_turn_event({'id': 'own-1'}, 'Hub probe', event)
+    frame._on_turn_event({'id': 'own-1'}, 'Hub probe', TurnEvent('finished'))
+    assert [m.kind for m in frame._visible_messages()] == [COMPACTION, COMMAND_OUTPUT]
+    notices = [s for s in env['spoken'] + env['feedback'] if 'Conversation compacted' in s]
+    assert len(notices) == 1 and '968,000 to 9,000 tokens' in notices[0]
+    assert frame._context(frame._open)[0] == 9000
+
+
+def test_later_compact_stdout_does_not_repeat_the_boundary_announcement(frame, env):
+    from records import compact_boundary, command_stdout, lines
+    from thechatplace.transcript import COMPACTION, COMMAND_OUTPUT
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None)
+    frame._runners['own-1'] = FakeRunner([], '', '', None)
+    path.write_text(lines(compact_boundary())[0] + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMPACTION for m in frame._chat_messages))
+    before = len(env['feedback'])
+    with path.open('a') as output:
+        output.write(lines(command_stdout('Compacted'))[0] + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMMAND_OUTPUT for m in frame._chat_messages))
+    assert not any('Compacted' in s for s in env['feedback'][before:])
+
+
+def test_compaction_refresh_requested_during_old_read_is_retried(frame, env, monkeypatch):
+    import threading
+    from records import compact_boundary, command_stdout, lines
+    from thechatplace.transcript import COMPACTION
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None and not frame._reader_busy)
+    entered, release = threading.Event(), threading.Event()
+    original = frame._reader.refresh
+    first = [True]
+    def old_snapshot():
+        if first[0]:
+            first[0] = False
+            entered.set()
+            assert release.wait(5)
+            return False
+        return original()
+    monkeypatch.setattr(frame._reader, 'refresh', old_snapshot)
+    try:
+        frame._refresh_chat()
+        assert entered.wait(2)
+        path.write_text('\n'.join(lines(compact_boundary(), command_stdout('Compacted'))) + '\n')
+        frame._refresh_chat()  # Must survive the first worker's busy reservation.
+        release.set()
+        assert pump(lambda: any(m.kind == COMPACTION for m in frame._chat_messages))
+    finally:
+        release.set()
+
+
+def test_queued_chat_refresh_does_not_restart_work_while_closing(frame, monkeypatch):
+    def unexpected(*args, **kwargs):
+        raise AssertionError('A queued refresh tried to submit after closing')
+    monkeypatch.setattr(frame._pool, 'submit', unexpected)
+    frame._closing = True
+    try:
+        frame._refresh_chat()
+    finally:
+        frame._closing = False
+
+
+@pytest.mark.parametrize('order', ['result-first', 'reader-first'])
+@pytest.mark.parametrize('level', ['full', 'summary', 'silent'])
+def test_command_output_and_matching_result_speak_once_with_a_bounded_summary(frame, env, order, level):
+    from records import command_stdout, lines
+    from thechatplace.transcript import COMMAND_OUTPUT
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None and not frame._reader_busy)
+    frame.speech.announce = level
+    frame._runners['own-1'] = FakeRunner([], '', '/cost', None)
+    env['spoken'].clear(); env['feedback'].clear()
+    output = '\x1b[1mCost report is ready.\x1b[0m ' + 'x' * 100000
+    if order == 'result-first':
+        frame._on_turn_event({'id': 'own-1'}, 'Hub probe', TurnEvent('finished', text=output))
+    path.write_text(lines(command_stdout(output))[0] + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMMAND_OUTPUT for m in frame._chat_messages))
+    if order == 'reader-first':
+        frame._on_turn_event({'id': 'own-1'}, 'Hub probe', TurnEvent('finished', text=output))
+    notices = [text for text in env['spoken'] + env['feedback'] if 'Cost report' in text]
+    assert len(notices) == (0 if level == 'silent' else 1)
+    assert all(len(text) < 300 and '\x1b' not in text for text in notices)
+
+
+@pytest.mark.parametrize('order', [('stream', 'reader'), ('reader', 'stream')])
+@pytest.mark.parametrize('same_key', [False, True])
+def test_compaction_pairs_unmatched_sources_with_any_uuid_and_no_stale_credit(frame, env, order, same_key):
+    env['feedback'].clear()
+    for number in (1, 2):
+        for source in order:
+            key = f'boundary-{number}' if same_key else f'{source}-{number}'
+            frame._announce_compaction('own-1', 'Hub probe', 'Conversation compacted.', source, key)
+    assert sum('Conversation compacted.' in text for text in env['feedback']) == 2
+
+
+def test_command_stderr_is_visible_and_a_failed_compact_result_does_not_claim_success(frame, env):
+    from records import lines
+    from thechatplace.transcript import COMMAND_ERROR
+    path = add_transcript(env, r'C:\G\Scratch', 'own-1', [user_text('Start here')])
+    select(frame, 'Hub probe')
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None and not frame._reader_busy)
+    frame._runners['own-1'] = FakeRunner([], '', '/compact', None)
+    env['feedback'].clear()
+    output = 'Compacted failed: synthetic error.'
+    path.write_text(lines(user_text('<local-command-stderr>' + output + '</local-command-stderr>'))[0] + '\n')
+    frame._refresh_chat()
+    assert pump(lambda: any(m.kind == COMMAND_ERROR for m in frame._visible_messages()))
+    frame._on_turn_event({'id': 'own-1'}, 'Hub probe', TurnEvent('finished', text=output, is_error=True))
+    assert not any('Conversation compacted' in text for text in env['feedback'])
+
+
+def test_read_only_command_rows_repeat_even_without_an_owned_sdk_turn(frame, env):
+    env['feedback'].clear()
+    for _ in range(2):
+        frame._announce_command_output('foreign-command', 'Read-only chat', 'Command output.', deduplicate=False)
+    assert sum('Command output.' in text for text in env['feedback']) == 2

@@ -531,6 +531,16 @@ def s_main_own(frame, env):
     _open(frame, "Visual probe")
 
 
+def s_main_compacted(frame, env):
+    from thechatplace.transcript import COMPACTION, COMMAND_OUTPUT, ChatMessage
+    s_main_own(frame, env)
+    frame._show_activity = False
+    frame._chat_messages += [
+        ChatMessage(COMPACTION, 'Conversation compacted (you asked), from 968,000 to 9,000 tokens.', key='probe-compaction'),
+        ChatMessage(COMMAND_OUTPUT, 'Compacted', key='probe-command-output')]
+    frame._rebuild_chat_list(focus_newest=True)
+
+
 def s_main_own_working(frame, env):
     _open(frame, "Visual probe")
     for text in ("Now run the whole suite.", "And then open a PR."):
@@ -966,6 +976,8 @@ def d_rename(frame, env):
 #: name -> (kind, function, what it shows). Order is the order photographed:
 #: main-window states first, then dialogs.
 SURFACES = {
+    "main-compacted": ("window", s_main_compacted,
+                       "Compaction and command output remain visible with tool activity off."),
     "main-start": ("window", s_main_start, "Main window as it opens: session list, no session loaded"),
     "main-own": ("window", s_main_own, "An own session loaded: messages and the reply box"),
     "main-own-working": ("window", s_main_own_working,
