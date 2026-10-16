@@ -187,7 +187,7 @@ Findings, from upstream source at tag `rust-v0.162.1`:
   setup in the Codex app; TCP fails closed and now explains it.
 
 Still for Kelly on Windows: a signed-in folder-edit turn after the Agent
-sandbox is set up (items 2 and 3 above), and hearing the new refusal on a copy
+sandbox is set up (set it up first, then do hands-on check 2), and hearing the new refusal on a copy
 without the sandbox. A real allow-rule escape run on Windows needs a signed-in
 account and was not done; the behaviour is established from source and the
 Mac reproduction.

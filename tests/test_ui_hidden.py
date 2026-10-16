@@ -9019,6 +9019,116 @@ def test_new_owned_codex_chat_can_send_before_history_is_available(frame):
         runtime.close()
 
 
+def refuse_codex_creation(frame, monkeypatch):
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    def refuse(*args, **options):
+        raise CodexTurnRejected('sandbox_unavailable')
+    monkeypatch.setattr(frame.sessions, 'create_owned', refuse)
+    monkeypatch.setattr(frame.sessions, 'fork_owned', refuse)
+    stores = []
+    monkeypatch.setattr(frame.store, 'add', lambda record: stores.append(record))
+    return stores
+
+
+@pytest.mark.parametrize('source', [None, 'continue'])
+def test_refused_new_codex_chat_with_no_editable_chat_copies_the_first_message(frame, env, monkeypatch, source):
+    # New Session (or Continue Here) is closed by the time Codex refuses, and
+    # with no editable chat open the message box is hidden, so the first
+    # message goes to the clipboard, said first, before the reason (#257).
+    settle(frame)
+    stores = refuse_codex_creation(frame, monkeypatch)
+    assert not frame.own_reply.IsShown()
+    frame._create_codex_owned('/workspace', 'Refused', 'My first message',
+                              source=object() if source else None, sandbox='workspace-write')
+    assert pump(lambda: env["feedback"] and 'first message' in env["feedback"][-1])
+    said = env["feedback"][-1]
+    assert said.startswith('No Codex chat was started. Your first message is copied to the clipboard. '
+                           "Codex reported this chat as read-only")
+    assert said.endswith('No new turn was sent.')
+    assert env["copied"][-1] == 'My first message'
+    assert not stores
+
+
+def test_refused_new_codex_chat_while_a_desktop_chat_is_open_copies_the_first_message(frame, env, monkeypatch):
+    settle(frame)
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._open is not None and frame._open.title == "Quiet one")
+    refuse_codex_creation(frame, monkeypatch)
+    frame._create_codex_owned('/workspace', 'Refused', 'My first message', sandbox='workspace-write')
+    assert pump(lambda: env["feedback"] and 'first message' in env["feedback"][-1])
+    assert 'copied to the clipboard' in env["feedback"][-1]
+    assert env["copied"][-1] == 'My first message'
+
+
+def test_refused_new_codex_chat_puts_the_first_message_in_the_open_chat_and_names_it(frame, env, monkeypatch):
+    settle(frame)
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    assert pump(lambda: frame._open is not None and frame._open.cli_session_id == 'own-1')
+    assert frame.own_reply.IsShown()
+    frame.reply_text.SetValue('Typed since')
+    refuse_codex_creation(frame, monkeypatch)
+    copied_before = list(env["copied"])
+    frame._create_codex_owned('/workspace', 'Refused', 'My first message', sandbox='workspace-write')
+    assert pump(lambda: env["feedback"] and 'first message' in env["feedback"][-1])
+    assert env["feedback"][-1].startswith(
+        'No Codex chat was started. Your first message is in the message box of Hub probe. ')
+    assert frame.reply_text.GetValue() == 'My first message\n\nTyped since'
+    assert env["copied"] == copied_before
+    # It is that chat's draft now, so it survives opening another chat.
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._open.title == "Quiet one")
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    assert pump(lambda: frame._open.cli_session_id == 'own-1')
+    assert frame.reply_text.GetValue() == 'My first message\n\nTyped since'
+
+
+def test_refused_new_codex_chat_says_when_the_first_message_could_not_be_kept(frame, env, monkeypatch):
+    settle(frame)
+    refuse_codex_creation(frame, monkeypatch)
+    monkeypatch.setattr(frame, '_copy_text', lambda text: False)
+    frame._create_codex_owned('/workspace', 'Refused', 'My first message', sandbox='workspace-write')
+    assert pump(lambda: env["feedback"] and 'first message' in env["feedback"][-1])
+    assert env["feedback"][-1].startswith(
+        "No Codex chat was started, and your first message couldn't be kept. Codex reported")
+
+
+def test_saved_folder_editing_codex_chat_reopened_read_only_says_to_reload(frame, env, monkeypatch):
+    # Reopening a saved folder-editing chat runs prepare, not New Session, so
+    # the refusal there says how to try again (#257).
+    from types import SimpleNamespace
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    settle(frame)
+    info = SimpleNamespace(key='codex:own-x', cli_session_id='own-x')
+    def refuse(action, record):
+        raise CodexTurnRejected('sandbox_unavailable')
+    monkeypatch.setattr(frame.sessions, 'owned_action', refuse)
+    monkeypatch.setattr(frame.store, 'get', lambda *args, **kw: object())
+    monkeypatch.setattr(frame, '_update_send_state', lambda: None)
+    monkeypatch.setattr(frame, '_open', info)
+    frame._codex_preparing[info.key] = 7
+    frame._prepare_codex_owned(7)
+    assert pump(lambda: env["feedback"] and 'read-only' in env["feedback"][-1])
+    assert env["feedback"][-1].startswith("Codex reported this chat as read-only")
+    assert env["feedback"][-1].endswith('No new turn was sent. Reload this chat to try again.')
+
+
+def test_refused_new_codex_chat_without_a_message_says_only_why(frame, env, monkeypatch):
+    settle(frame)
+
+    def fail(*args, **options):
+        raise RuntimeError('private detail')
+    monkeypatch.setattr(frame.sessions, 'create_owned', fail)
+    frame.reply_text.SetValue('')
+    frame._create_codex_owned('/workspace', 'Refused', '')
+    assert pump(lambda: env["feedback"] and 'Codex' in env["feedback"][-1])
+    assert env["feedback"][-1] == 'Could not create this Codex chat. Check Codex sign-in and configuration.'
+    assert frame.reply_text.GetValue() == ''
+
+
 def test_codex_continue_note_names_source_uncertainty_and_runtime_policy(frame):
     from thechatplace.ui.dialogs import NewSessionDialog
     dialog = NewSessionDialog(frame, '', continue_from='Active Codex',
@@ -9028,7 +9138,7 @@ def test_codex_continue_note_names_source_uncertainty_and_runtime_policy(frame):
         assert 'may still be working in Codex' in note
         assert 'last saved point' in note and 'permissions selected here' in note
         assert 'Your saved always-allow commands still apply' in note
-        assert 'without asking, even outside this folder' in note
+        assert "without asking and outside this folder's limits, including the network" in note
         assert dialog.codex_policy()['sandbox'] == 'read-only'
     finally:
         dialog.Destroy()

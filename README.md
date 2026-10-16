@@ -601,11 +601,19 @@ project rules out before trying again. It also refuses to start or send when the
 rule inventory cannot be checked. Existing chats can still be read. The Chat Place
 does not remove or edit rules, change your Codex settings, or save approval amendments.
 
-On Windows, Codex can edit a folder only after its Windows sandbox is set up:
-use Set up Agent sandbox in the Codex app, or, with only the command-line tool, add
-`[windows]` and `sandbox = "elevated"` (or `"unelevated"`) to `~/.codex/config.toml`.
-Until then Codex reports chats as read-only, and The Chat Place says so instead of
-giving the chat folder editing; choose read-only, or set up the sandbox and try again.
+On Windows, Codex can edit a folder only after its Windows sandbox is set up.
+The simplest way is Set up Agent sandbox in the Codex app. With only the command-line
+tool, add `[windows]` and `sandbox = "unelevated"` to `~/.codex/config.toml`: that is
+the setting checked with The Chat Place, and OpenAI's fallback for when administrator
+setup isn't possible. OpenAI's [Windows sandbox guide](https://developers.openai.com/codex/windows)
+describes its preferred choices, MXC on compatible PCs and `"elevated"` (which needs
+setup approved by an administrator); they haven't been tried with The Chat Place yet.
+Until the sandbox is set up, Codex reports chats as read-only, and The Chat Place says so
+instead of giving the chat folder editing; choose read-only, or set up the sandbox and
+try again. Codex also reports read-only when your Codex settings allow only read-only,
+such as requirements an administrator set. If a new Codex chat can't be started, your
+first message is kept: in the open chat's message box if you can type there, otherwise
+on the clipboard.
 
 ## Install
 
