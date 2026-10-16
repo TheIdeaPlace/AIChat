@@ -414,24 +414,34 @@ def test_command_output_preserves_plain_content_and_does_not_count_a_user_turn()
 
 
 def test_same_size_and_growing_rewrites_replace_the_incremental_history(tmp_path):
+    import os
     from records import compact_boundary, command_stdout
     path = tmp_path / 'synthetic.jsonl'
+
+    def write(text, second):
+        # Real rewrites happen at distinct times. Windows file times are
+        # coarse, so back-to-back test writes can share one, and an
+        # unchanged stat rightly skips the file (#275). Give each write its
+        # own time, as Claude Code's writes have.
+        path.write_text(text)
+        os.utime(path, ns=(second * 1_000_000_000, second * 1_000_000_000))
+
     original = lines(user_text('First'))[0] + '\n'
     replacement = lines(user_text('Other'))[0] + '\n'
     assert len(original) == len(replacement)
-    path.write_text(original)
+    write(original, 1_800_000_000)
     reader = TranscriptReader(path)
     assert reader.refresh()
-    path.write_text(replacement)
+    write(replacement, 1_800_000_001)
     assert reader.refresh() and reader.transcript.visible()[0].text == 'Other'
     rewritten = '\n'.join(lines(compact_boundary(), command_stdout('Compacted'))) + '\n'
     assert len(rewritten) > len(replacement)
-    path.write_text(rewritten)
+    write(rewritten, 1_800_000_002)
     assert reader.refresh()
     assert kinds(reader.transcript) == [t.COMPACTION, t.COMMAND_OUTPUT]
     assert reader.transcript.context_tokens == 9_000
     assert not reader.refresh()
-    path.write_text('')
+    write('', 1_800_000_003)
     assert reader.refresh() and not reader.transcript.messages
 
 
