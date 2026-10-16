@@ -1,13 +1,13 @@
 {
- "title": "Changed Files: Visual probe",
- "class": "ChangesDialog",
+ "title": "Lists: Visual probe",
+ "class": "ListsDialog",
  "size": [
-  800,
-  580
+  820,
+  660
  ],
  "client": [
-  784,
-  541
+  804,
+  621
  ],
  "dpi": [
   96,
@@ -18,15 +18,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Show changes from:",
+   "label": "&Show items from:",
    "rect": [
     8,
     11,
-    109,
+    94,
     16
    ],
    "best": [
-    109,
+    94,
     16
    ],
    "depth": 0,
@@ -36,36 +36,36 @@
   },
   {
    "class": "Choice",
-   "name": "Show changes from",
+   "name": "Show items from",
    "label": "",
    "rect": [
-    123,
+    108,
     8,
-    133,
+    109,
     23
    ],
    "best": [
-    133,
+    109,
     23
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Your latest message"
+   "value": "This message"
   },
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Files:",
+   "label": "&Kinds:",
    "rect": [
     8,
     39,
-    27,
+    33,
     16
    ],
    "best": [
-    27,
+    33,
     16
    ],
    "depth": 0,
@@ -75,20 +75,143 @@
   },
   {
    "class": "ListBox",
-   "name": "Files, 1",
+   "name": "Kinds",
    "label": "",
    "rect": [
     10,
     57,
-    768,
-    130
+    788,
+    96
    ],
    "best": [
-    180,
-    130
+    133,
+    96
    ],
    "depth": 0,
    "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Code Blocks (1)",
+    "Links (1)",
+    "Changed Files (1)",
+    "Commands (0)",
+    "Decisions (0)"
+   ],
+   "selection": 2
+  },
+  {
+   "class": "BookCtrlBase",
+   "name": "",
+   "label": "",
+   "rect": [
+    8,
+    151,
+    788,
+    431
+   ],
+   "best": [
+    449,
+    466
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    8,
+    151,
+    788,
+    431
+   ],
+   "best": [
+    196,
+    466
+   ],
+   "depth": 1,
+   "parent": 4,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Filter:",
+   "rect": [
+    16,
+    159,
+    30,
+    16
+   ],
+   "best": [
+    30,
+    16
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Filter changed files",
+   "label": "",
+   "rect": [
+    18,
+    177,
+    772,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&List: Changed Files (1):",
+   "rect": [
+    16,
+    206,
+    119,
+    16
+   ],
+   "best": [
+    119,
+    16
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Changed Files (1)",
+   "label": "",
+   "rect": [
+    18,
+    224,
+    772,
+    140
+   ],
+   "best": [
+    180,
+    140
+   ],
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": [],
    "items": [
@@ -99,38 +222,38 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "C&hanges:",
+   "label": "&Details:",
    "rect": [
-    8,
-    193,
-    50,
+    16,
+    370,
+    39,
     16
    ],
    "best": [
-    50,
+    39,
     16
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": []
   },
   {
    "class": "TextCtrl",
-   "name": "Changes to uploader.py",
+   "name": "Changes to C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\changes\\Projects\\Scratch\\uploader.py",
    "label": "",
    "rect": [
-    10,
-    211,
-    768,
-    293
+    18,
+    388,
+    772,
+    165
    ],
    "best": [
     127,
-    240
+    170
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": [],
    "value": "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\changes\\Projects\\Scratch\\uploader.py: 2 lines added.\n\nA change:\nAdded: self._file.flush()\nAdded: self._file.close()\nUnchanged: self.done.set()"
@@ -138,10 +261,29 @@
   {
    "class": "Button",
    "name": "button",
-   "label": "C&lose",
+   "label": "&Copy",
    "rect": [
-    701,
-    510,
+    707,
+    559,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Clos&e",
+   "rect": [
+    721,
+    590,
     75,
     23
    ],

@@ -1,13 +1,13 @@
 {
- "title": "Links in Fix the flaky upload test: 1",
- "class": "LinksDialog",
+ "title": "Lists: Fix the flaky upload test",
+ "class": "ListsDialog",
  "size": [
-  760,
-  480
+  820,
+  660
  ],
  "client": [
-  744,
-  441
+  804,
+  621
  ],
  "dpi": [
   96,
@@ -18,15 +18,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Filter:",
+   "label": "&Show items from:",
    "rect": [
     8,
-    8,
-    30,
+    11,
+    94,
     16
    ],
    "best": [
-    30,
+    94,
     16
    ],
    "depth": 0,
@@ -35,37 +35,37 @@
    "problems": []
   },
   {
-   "class": "TextCtrl",
-   "name": "Filter links",
+   "class": "Choice",
+   "name": "Show items from",
    "label": "",
    "rect": [
-    10,
-    26,
-    728,
+    108,
+    8,
+    109,
     23
    ],
    "best": [
-    110,
+    109,
     23
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": ""
+   "value": "The whole chat"
   },
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Links (1):",
+   "label": "&Kinds:",
    "rect": [
     8,
-    55,
-    48,
+    39,
+    33,
     16
    ],
    "best": [
-    48,
+    33,
     16
    ],
    "depth": 0,
@@ -75,20 +75,143 @@
   },
   {
    "class": "ListBox",
-   "name": "Links, 1",
+   "name": "Kinds",
    "label": "",
    "rect": [
     10,
-    73,
-    728,
-    331
+    57,
+    788,
+    96
    ],
    "best": [
-    414,
-    49
+    133,
+    96
    ],
    "depth": 0,
    "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Code Blocks (1)",
+    "Links (1)",
+    "Changed Files (0)",
+    "Commands (1)",
+    "Decisions (0)"
+   ],
+   "selection": 1
+  },
+  {
+   "class": "BookCtrlBase",
+   "name": "",
+   "label": "",
+   "rect": [
+    8,
+    151,
+    788,
+    431
+   ],
+   "best": [
+    430,
+    466
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    8,
+    151,
+    788,
+    431
+   ],
+   "best": [
+    430,
+    466
+   ],
+   "depth": 1,
+   "parent": 4,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Filter:",
+   "rect": [
+    16,
+    159,
+    30,
+    16
+   ],
+   "best": [
+    30,
+    16
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Filter links",
+   "label": "",
+   "rect": [
+    18,
+    177,
+    772,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&List: Links (1):",
+   "rect": [
+    16,
+    206,
+    72,
+    16
+   ],
+   "best": [
+    72,
+    16
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Links (1)",
+   "label": "",
+   "rect": [
+    18,
+    224,
+    772,
+    140
+   ],
+   "best": [
+    414,
+    140
+   ],
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": [],
    "items": [
@@ -97,12 +220,51 @@
    "selection": 0
   },
   {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Details:",
+   "rect": [
+    16,
+    370,
+    39,
+    16
+   ],
+   "best": [
+    39,
+    16
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Link, github.com/example/repo/issues/42",
+   "label": "",
+   "rect": [
+    18,
+    388,
+    772,
+    165
+   ],
+   "best": [
+    127,
+    170
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": [],
+   "value": "the issue\nhttps://github.com/example/repo/issues/42"
+  },
+  {
    "class": "Button",
    "name": "button",
    "label": "&Open",
    "rect": [
-    370,
-    410,
+    497,
+    559,
     75,
     23
    ],
@@ -110,8 +272,8 @@
     75,
     23
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": []
   },
@@ -120,8 +282,8 @@
    "name": "button",
    "label": "&Copy",
    "rect": [
-    451,
-    410,
+    578,
+    559,
     75,
     23
    ],
@@ -129,8 +291,8 @@
     75,
     23
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": []
   },
@@ -139,8 +301,8 @@
    "name": "button",
    "label": "Copy as &Markdown",
    "rect": [
-    532,
-    410,
+    659,
+    559,
     123,
     23
    ],
@@ -148,18 +310,18 @@
     123,
     23
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": []
   },
   {
    "class": "Button",
    "name": "button",
-   "label": "Clo&se",
+   "label": "Clos&e",
    "rect": [
-    661,
-    410,
+    721,
+    590,
     75,
     23
    ],

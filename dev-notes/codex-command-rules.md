@@ -66,3 +66,15 @@ normal paragraphs. The probe now includes a deliberately long title and nested
 folder. Regression checks cover delayed/refused/closed Properties updates and
 permission-change reason preservation. Windows verbatim-path/native acceptance
 remains explicit under #226.
+
+## Windows check and source pointers (October 16, CLI 0.162.1)
+
+Results are in `testing/codex-release-acceptance.md`. Source at tag `rust-v0.162.1`:
+- [Allow skips the sandbox](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/exec_policy.rs#L440-L455)
+  and [is honoured first attempt](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/tools/sandboxing.rs#L268-L278).
+- [Only a loader override ignores user/project rules](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/exec_policy.rs#L662-L676),
+  set by [`codex exec --ignore-rules`](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/exec/src/lib.rs#L383); app-server has no equivalent.
+- [Windows downgrades workspace-write without its sandbox](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/config/src/config_toml.rs#L821-L834).
+  The official setup is the Codex app's "Set up Agent sandbox"
+  ([Windows sandbox docs](https://learn.chatgpt.com/docs/windows/windows-sandbox)); app-server also
+  offers `windowsSandbox/readiness` and `windowsSandbox/setupStart`, which TCP does not call yet.

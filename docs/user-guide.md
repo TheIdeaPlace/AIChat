@@ -378,7 +378,8 @@ The Claude-specific desktop and Cowork actions are shown in this table:
 ### Local Codex chats
 
 Codex chats appear automatically when a native Codex CLI is installed and signed in
-to ChatGPT, including the copy bundled with the ChatGPT app on Mac. Settings offers
+to ChatGPT. That includes the copy bundled with the ChatGPT app on Mac, the Codex app's copy
+on Windows, and the copy Codex's own installer keeps in your `.codex` folder. Settings offers
 **Include Codex chats (restart required)** to turn them off or on; your choice is kept.
 If Codex isn't found, Settings says to install the Codex app or CLI, then restart. Local Claude and
 Codex chats share one list, and selecting a Codex chat opens its history
@@ -412,8 +413,9 @@ configuration stays unchanged; existing chats can still be read.
 
 Codex keeps your own saved command rules in effect, including user rules such
 as `~/.codex/rules/default.rules` and system rules installed for your computer.
-Commands you've told Codex to always allow will run without asking, even outside
-this folder. New Session and Change Permission Mode explain this; Properties
+Commands you've told Codex to always allow will run without asking and outside
+the folder's limits, so they can change files elsewhere and use the network.
+New Session and Change Permission Mode explain this; Properties
 shows the number of active user/system rule files, without showing their contents.
 
 The Chat Place refuses rules supplied by a project: `.codex/rules` in the selected
@@ -421,6 +423,12 @@ folder or its parent projects. Choose a folder without those rules, or move the
 project rules out before trying again. It also refuses to start or send when the
 rule inventory cannot be checked. Existing chats can still be read. The Chat Place
 does not remove or edit rules, change your Codex settings, or save approval amendments.
+
+On Windows, Codex can edit a folder only after its Windows sandbox is set up:
+use Set up Agent sandbox in the Codex app, or, with only the command-line tool, add
+`[windows]` and `sandbox = "elevated"` (or `"unelevated"`) to `~/.codex/config.toml`.
+Until then Codex reports chats as read-only, and The Chat Place says so instead of
+giving the chat folder editing; choose read-only, or set up the sandbox and try again.
 
 ## Starting a session and replying
 

@@ -136,6 +136,62 @@ No release tag or publication is authorized by CI results or peer review alone.
 - Merge only after the required reviews/acceptance. Bump/version/tag and release
   publication follow Kelly's release decision; branch pushes do not release.
 
+## Inherited approval rules and settings: Windows results (#257, October 16)
+
+Windows 11 ARM64, codex-cli 0.162.1 (npm native binary), branch
+`codex-inherited-rules`. Every native check used a disposable `CODEX_HOME`
+deleted afterwards; the real `~/.codex` was not read or changed. No sign-in
+was used and no inference was requested; the probe faked only TCP's own
+`account/read` gate and drove TCP's real `CodexOwnedThreads.start` against
+the real app-server with ephemeral threads.
+
+Hostile user config in the disposable home: `approval_policy = "never"`,
+`sandbox_mode = "danger-full-access"`, `approvals_reviewer = "auto_review"`,
+`[sandbox_workspace_write]` with an extra writable root outside the folder,
+`network_access = true` and both tmp exclusions off, plus an allow rule in
+`rules/default.rules` and a trusted project carrying `.codex/rules/p.rules`.
+
+| Check | Result |
+| --- | --- |
+| Merged config/read | Reports the hostile values (never / danger-full-access / auto_review): the settings really are inherited |
+| Read-only thread/start | Codex returned readOnly, network off, on-request, reviewer user; TCP granted the chat |
+| Workspace-write, `[windows] sandbox = "unelevated"` added | Codex returned workspaceWrite, writableRoots `[]`, network off, both exclusions on, on-request, reviewer user; TCP granted the chat. The extra root, network and approval settings from config were all overridden |
+| Workspace-write, no `[windows] sandbox` (hostile or clean config) | Codex downgraded to readOnly; TCP refused. It now says the Codex Agent sandbox must be set up (new `sandbox_unavailable` reason) instead of a generic failure |
+| Project with `.codex/rules` | Refused with the rules folder (project layer reported by config/read) |
+| User-layer rule inventory | Counted 1 file from an ordinary `C:\` user layer path; no verbatim `\\?\` path was reported |
+| `codex execpolicy check` on the allow rule | `decision: allow` for the matching command; no match for another command |
+| Rule file after all runs | Unchanged; TCP sends only accept/decline/cancel, never `acceptWithExecpolicyAmendment` or `acceptForSession` |
+
+Findings, from upstream source at tag `rust-v0.162.1`:
+- An inherited `allow` rule does more than skip the prompt. When every parsed
+  segment of a command matches an allow rule, `exec_policy.rs` returns
+  `Skip { bypass_sandbox: true }` and `tools/sandboxing.rs` runs the first
+  attempt outside the sandbox: writes outside the folder and network access.
+  This matches the Mac reproduction in `dev-notes/codex-command-rules.md`.
+  Commands not fully matched by an allow rule stay inside the sandbox and
+  prompt as before. This is the disclosed exception Kelly chose; the guide now
+  says it includes the network.
+- There is no client-side way to ignore user rules per thread. The only switch,
+  `LoaderOverrides::ignore_user_and_project_exec_policy_rules`, is set by
+  `codex exec --ignore-rules` (and the TUI); `app-server` does not expose it,
+  and `thread/start`/`turn/start` have no rules parameter in the generated
+  schema. `requirements.toml` `auto_review.ignore_rules` is an admin-managed
+  model list, not a client option. No key was invented.
+- Config approval settings (`approval_policy`, `sandbox_mode`,
+  `sandbox_workspace_write`, `approvals_reviewer`) do not broaden TCP chats:
+  TCP pins them in `thread/start` and every `turn/start`, and refuses unless
+  the response reports exactly the requested policy.
+- On Windows, workspace-write needs Codex's Windows sandbox
+  (`effective_sandbox_mode` in `config_toml.rs` downgrades to read-only when it
+  is disabled). Folder editing on Windows therefore requires the Agent sandbox
+  setup in the Codex app; TCP fails closed and now explains it.
+
+Still for Kelly on Windows: a signed-in folder-edit turn after the Agent
+sandbox is set up (items 2 and 3 above), and hearing the new refusal on a copy
+without the sandbox. A real allow-rule escape run on Windows needs a signed-in
+account and was not done; the behaviour is established from source and the
+Mac reproduction.
+
 ## Candidate hand-test sequence (Windows and Mac)
 
 Use the same candidate commit/build on both platforms. Use a disposable working
