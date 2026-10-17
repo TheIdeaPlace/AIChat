@@ -692,7 +692,8 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
     outlives ``open``. ``env`` is the Windows window's environment; Terminal
     starts the user's own shell, whose profile may set the variables
     ``env`` leaves out, so the script unsets ``clear`` and ``clear_prefixes``.
-    Names in ``export`` are copied from ``env`` into the Mac script."""
+    Names in ``export`` are copied from ``env`` into the Mac script, or
+    unset when absent so the Terminal shell cannot supply a different value."""
     import shlex
     import subprocess
 
@@ -703,9 +704,11 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
     script = folder / script_name
     lines = ["#!/bin/bash"]
     for name in sorted(export):
-        if (env is not None and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
-                and name in env):
-            lines.append(f"export {name}={shlex.quote(str(env[name]))}")
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            if env is not None and name in env:
+                lines.append(f"export {name}={shlex.quote(str(env[name]))}")
+            else:
+                lines.append(f"unset {name}")
     names = sorted(n for n in clear if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n))
     if names:
         lines.append("unset " + " ".join(names))

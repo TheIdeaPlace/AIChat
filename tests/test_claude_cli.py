@@ -314,6 +314,14 @@ def test_codex_terminal_clears_billing_and_exports_its_home(monkeypatch, tmp_pat
     assert lines.index(unset) < lines.index("/x/codex login")
     assert not any("secret" in line or "OPENAI_API_KEY" in line for line in lines)
 
+    platform_paths.run_in_terminal(
+        ["/x/codex", "login"], "codex-default-home.command", "Signing in.",
+        env={"PATH": "/usr/bin"}, clear=platform_paths.CODEX_BILLING_VARS,
+        clear_prefixes=("OPENAI_", "AZURE_OPENAI_"), export=("CODEX_HOME",))
+    default_lines = (tmp_path / "codex-default-home.command").read_text().splitlines()
+    assert "unset CODEX_HOME" in default_lines
+    assert default_lines.index("unset CODEX_HOME") < default_lines.index("/x/codex login")
+
 
 # -- stream-json events ---------------------------------------------------------------
 

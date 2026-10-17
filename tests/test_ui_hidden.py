@@ -4047,6 +4047,10 @@ def test_codex_sign_in_is_checked_and_offered(frame, env, monkeypatch):
         shown.append((text, title, style)), wx.YES)[1])
     frame._on_codex_sign_in_result(codex_signin.SignIn(True, True, "ChatGPT"))
     assert shown[-1][0] == "Codex is signed in to ChatGPT."
+    frame._on_codex_sign_in_result(
+        codex_signin.SignIn(True, True, "ChatGPT", settings_problem=True))
+    assert "settings use a different model provider" in shown[-1][0]
+    assert shown[-1][2] & wx.ICON_WARNING
 
     started = []
     monkeypatch.setattr(codex_signin, "login_command", lambda: ["codex", "login"])

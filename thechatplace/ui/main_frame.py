@@ -5432,8 +5432,11 @@ class MainFrame(CodexChats, wx.Frame):
         if status.missing or not status.known:
             wx.MessageBox(text, "Codex Sign-in", wx.OK | wx.ICON_WARNING, self)
             return
-        if status.signed_in and status.method == "ChatGPT":
+        if status.usable:
             wx.MessageBox(text, "Codex Sign-in", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        if status.settings_problem:
+            wx.MessageBox(text, "Codex Sign-in", wx.OK | wx.ICON_WARNING, self)
             return
         answer = wx.MessageBox(
             f"{text}\n\nSign in now? A window opens, and your browser shows ChatGPT's sign-in "
@@ -5457,7 +5460,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._feedback("Signing in, in a new window. The Chat Place checks again when you've "
                        "finished.")
         self._check_sign_in_after(
-            process, lambda: codex_signin.check().method == "ChatGPT",
+            process, lambda: codex_signin.check().usable,
             check=self._check_codex_sign_in)
 
     def _check_sign_in(self, manual: bool):

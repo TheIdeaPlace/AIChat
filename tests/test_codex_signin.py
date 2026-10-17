@@ -37,6 +37,11 @@ def test_chatgpt_sign_in_and_other_credentials():
     assert status.known and status.signed_in and status.method == "an API key"
     assert "not ChatGPT" in codex_signin.describe(status)
 
+    configured_elsewhere = codex_signin.check("codex", connection_factory=factory({
+        "account": {"type": "chatgpt"}, "requiresOpenaiAuth": False}))
+    assert configured_elsewhere.signed_in and not configured_elsewhere.usable
+    assert "settings use a different model provider" in codex_signin.describe(configured_elsewhere)
+
 
 def test_not_signed_in_missing_and_unreadable(monkeypatch):
     status = codex_signin.check("codex", connection_factory=factory({

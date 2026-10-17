@@ -15,6 +15,11 @@ class SignIn:
     method: str = ""
     problem: str = ""
     missing: bool = False
+    settings_problem: bool = False
+
+    @property
+    def usable(self) -> bool:
+        return self.signed_in and self.method == "ChatGPT" and not self.settings_problem
 
 
 def check(executable: Optional[str] = None, connection_factory=ReadOnlyCodexConnection) -> SignIn:
@@ -35,6 +40,8 @@ def check(executable: Optional[str] = None, connection_factory=ReadOnlyCodexConn
         return SignIn(True)
     if isinstance(value, dict):
         kind = value.get("type")
+        if kind == "chatgpt":
+            return SignIn(True, signed_in=True, method="ChatGPT", settings_problem=True)
         method = "an API key" if kind == "apiKey" else "another credential"
         return SignIn(True, signed_in=True, method=method)
     return SignIn(False, problem=f"Codex ({executable}) returned an unreadable account status")
@@ -45,8 +52,11 @@ def describe(status: SignIn) -> str:
         return status.problem
     if not status.known:
         return f"Couldn't tell whether Codex is signed in: {status.problem}."
-    if status.signed_in and status.method == "ChatGPT":
+    if status.usable:
         return "Codex is signed in to ChatGPT."
+    if status.settings_problem:
+        return ("Codex is signed in to ChatGPT, but its settings use a different model provider, "
+                "so The Chat Place can't send messages with it.")
     if status.signed_in:
         return (f"Codex is signed in using {status.method}, not ChatGPT. The Chat Place only "
                 "runs Codex turns with your ChatGPT sign-in.")
