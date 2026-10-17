@@ -19,6 +19,12 @@ the Store app's relocated native binary, with synthetic tests. The relocation
 layout is recorded in [upstream's Windows report](https://github.com/openai/codex/issues/25221).
 A real signed-in Windows installation remains a release acceptance check.
 
+On October 17, a signed-in Windows installation had both a stale top-level
+`%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe` and the current executable under a
+hash-named directory beside it. The current hash-named builds therefore precede
+the top-level fallback; otherwise the older binary can reject configuration the
+current Codex app wrote (#301).
+
 Settings persist null/missing as automatic, true as explicit on, false as explicit
 off. Effective discovery also requires a native CLI, so a missing installation
 never starts an app-server. Saving other settings preserves automatic mode. A

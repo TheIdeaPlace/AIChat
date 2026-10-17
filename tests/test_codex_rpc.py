@@ -976,6 +976,17 @@ def test_windows_relocated_bundle_and_native_npm_candidates(tmp_path, monkeypatc
     assert platform_paths.find_codex(which=lambda _: None) == str(native)
 
 
+def test_windows_current_app_build_precedes_stale_top_level_copy(tmp_path, monkeypatch):
+    """#301: the Codex app can leave an old bin/codex.exe that cannot read
+    configuration written by the current hash-named build."""
+    _windows_discovery(tmp_path, monkeypatch)
+    stale = _native_exe(tmp_path / "local/OpenAI/Codex/bin/codex.exe")
+    current = _native_exe(tmp_path / "local/OpenAI/Codex/bin/current-build/codex.exe")
+    candidates = platform_paths.codex_native_candidates()
+    assert candidates.index(current) < candidates.index(stale)
+    assert platform_paths.find_codex(which=lambda _: None) == str(current)
+
+
 def _windows_discovery(tmp_path, monkeypatch):
     import platform
     monkeypatch.setattr(platform_paths.sys, "platform", "win32")

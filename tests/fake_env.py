@@ -60,9 +60,11 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(main_frame.MainFrame, "_copy_text",
             lambda self, text: copied.append(text) or True)
     # Nor the real claude for its sign-in (#52): signed in, unless a test says not.
-    from thechatplace import signin
+    from thechatplace import codex_signin, signin
     patch(signin, "check", lambda *a, **k: signin.SignIn(
         True, signed_in=True, method="claude.ai", plan="max", email="k@example.com"))
+    patch(codex_signin, "check", lambda *a, **k: codex_signin.SignIn(
+        True, signed_in=True, method="ChatGPT"))
     # Nor the real claude for a folder's slash commands (#23).
     patch(main_frame, "fetch_commands", lambda exe, cwd: list(FAKE_COMMANDS))
     spoken = []

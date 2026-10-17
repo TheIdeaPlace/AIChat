@@ -515,10 +515,11 @@ class ClaudeLookup:
     commands, for Claude Code Sign-in's dialog."""
 
     def __init__(self, path: Optional[str] = None, reason: str = "",
-                 install_help: str = "") -> None:
+                 install_help: str = "", legacy_npm: str = "") -> None:
         self.path = path
         self.reason = reason
         self.install_help = install_help
+        self.legacy_npm = legacy_npm
 
     @property
     def problem(self) -> str:
@@ -627,7 +628,7 @@ def find_claude(which=None, native_candidates=None) -> ClaudeLookup:
             "The claude command on this computer is an older npm install of Claude Code, "
             "which runs as a script. The Chat Place needs the native claude program, "
             f"because a script would let a session title be read as a command. ({found})"),
-            claude_install_help())
+            claude_install_help(), found if sys.platform == "win32" else "")
     return ClaudeLookup(None, (
         "Claude Code isn't installed, or The Chat Place can't find it. The Claude desktop "
         "app's own copy isn't on the PATH and isn't meant for other programs."),
@@ -721,11 +722,24 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
     return None
 
 
-def start_claude_install(env: Optional[dict] = None):
+def start_claude_install(env: Optional[dict] = None, legacy_npm: str = ""):
     """Run Claude Code's native installer in its own window (see
     ``run_in_terminal`` for what's returned)."""
     if sys.platform == "win32":
         powershell = _windows_program("System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        if legacy_npm:
+            # The fixed command has no session text in it. Pass the discovered
+            # shim as data in the environment, not interpolated PowerShell, so
+            # even shell metacharacters in its path cannot become commands.
+            child_env = dict(env or os.environ)
+            child_env["TCP_CLAUDE_NPM_SHIM"] = legacy_npm
+            return run_in_terminal(
+                [powershell, "-NoProfile", "-Command",
+                 "try { & $env:TCP_CLAUDE_NPM_SHIM install --force; "
+                 "if ($LASTEXITCODE -ne 0) { throw \"Installation failed (exit code $LASTEXITCODE)\" } } "
+                 "catch { Write-Host $_ -ForegroundColor Red } "
+                 "finally { Read-Host 'Finished. Press Enter to close this window' }"],
+                env=child_env)
         # In a scriptblock and a try, so an exit or error in the installer
         # leaves the window open to be read.
         return run_in_terminal(
@@ -1224,7 +1238,6 @@ def codex_native_candidates() -> List[Path]:
         # The Store app relocates its bundled CLI outside WindowsApps. Inspect
         # only direct build folders, never recursively traverse app data.
         cache = local / "OpenAI/Codex/bin"
-        candidates.append(cache / "codex.exe")
         try:
             builds = sorted((p for p in cache.iterdir() if p.is_dir()
                              and not p.name.startswith(".")),
@@ -1232,6 +1245,10 @@ def codex_native_candidates() -> List[Path]:
             candidates.extend(p / "codex.exe" for p in builds)
         except OSError:
             pass
+        # The app can leave an older top-level executable beside its current,
+        # hash-named build. Prefer the newest managed build (#301); an old CLI
+        # may no longer understand the config written by the current app.
+        candidates.append(cache / "codex.exe")
         return candidates + _codex_npm_candidates([roaming / "npm/node_modules"]) + daemon
     return [home / ".local/bin/codex"]
 

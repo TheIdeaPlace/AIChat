@@ -535,11 +535,16 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   browser shows Claude's sign-in page; when you've finished, The Chat Place checks again and
   says the result. If Claude Code isn't installed, or only an old npm install is, it says so,
   gives the install command, and offers to run Claude Code's native installer in its own
-  window, then checks again once it's done. If Claude Code is there but can't be asked, it says
+  window. On Windows it can replace an older npm installation with the native one, after naming
+  the `claude install --force` migration it will run. It then checks again once it's done. If Claude Code is there but can't be asked, it says
   why: no answer in 20 seconds, couldn't be started, too old (`claude update` fixes that), or
   what it printed. The Chat Place also checks at start-up and says so only if there's a problem.
   Your sessions are listed whether or not Claude Code is signed in (they're read from disk);
   only sending a message needs a sign-in.
+- **Codex Sign-in** (Help menu) says whether Codex is signed in to ChatGPT. If it isn't, or is
+  using another credential such as an API key, it offers to run `codex login` in its own window;
+  your browser shows ChatGPT's sign-in page, and The Chat Place checks again when it finishes.
+  If Codex isn't installed or its status can't be read, the same item explains what is needed.
 - **Report a Bug** (Help menu) asks for a summary, what happened, what you expected and the
   steps, and shows exactly what else the report includes before it goes anywhere: versions
   (The Chat Place, Windows, Python, wxPython, Claude Code), the announcement level and speech
