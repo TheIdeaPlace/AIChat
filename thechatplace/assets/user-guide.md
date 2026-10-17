@@ -446,7 +446,8 @@ Press **Ctrl+N** (File, New Session). Choose Provider when more than one is avai
 last choice is remembered. For Codex, Model and Effort load the choices available in Codex in the
 background. Configured Codex model/effort keeps its settings; choose a specific model to select
 one of its supported efforts. Choices are rechecked when the chat starts. If the list cannot be
-loaded, configured defaults remain available. Continue Here offers the same choices. Codex
+loaded, configured defaults remain available. Continue Here offers the same choices. For which
+model suits which task, see [Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md). Codex
 defaults to editing files in its selected folder with on-request approvals. Choose
 read-only in New Session, or use File, Change Permission Mode (Ctrl+Shift+O) on
 an idle Codex chat started here. Existing chats keep their saved permissions. The model names and
