@@ -186,7 +186,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   (View, Lists, **Ctrl+Shift+I**, from the session list, the messages or the reply box, #279) is
   one dialog for each kind of thing in a chat: **Code Blocks**, **Links**, **Changed
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
-  yet", and its output) and **Decisions** (each question Claude asked, with your answer). **Show
+  yet", and its output) and **Decisions** (each question Claude asked, with your answer). In Codex chats, only Code
+  Blocks and Links are listed for now (#303). **Show
   items from** (Alt+S) chooses This message or The whole chat; for files, commands and decisions,
   "this message" is the selected message's turn, from your message to Claude's reply. Links,
   commands and decisions list the newest first; code blocks and files are in the order they appear.
