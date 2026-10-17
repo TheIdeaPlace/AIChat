@@ -295,6 +295,34 @@ def test_a_terminal_window_drops_billing_variables(monkeypatch, tmp_path):
         assert out.returncode == 0
 
 
+def test_codex_terminal_clears_billing_and_exports_its_home(monkeypatch, tmp_path):
+    import subprocess
+    monkeypatch.setattr(platform_paths.sys, "platform", "darwin")
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(subprocess, "Popen", lambda argv, **k: None)
+    platform_paths.run_in_terminal(
+        ["/x/codex", "login"], "codex.command", "Signing in.",
+        env={"CODEX_HOME": "/Users/me/Codex Home", "OPENAI_API_KEY": "secret"},
+        clear=platform_paths.CODEX_BILLING_VARS,
+        clear_prefixes=("OPENAI_", "AZURE_OPENAI_"), export=("CODEX_HOME",))
+    lines = (tmp_path / "codex.command").read_text().splitlines()
+    assert "export CODEX_HOME='/Users/me/Codex Home'" in lines
+    unset = next(line for line in lines if line.startswith("unset "))
+    assert set(platform_paths.CODEX_BILLING_VARS) <= set(unset.split())
+    assert any("OPENAI_*|AZURE_OPENAI_*" in line for line in lines)
+    assert lines.index("export CODEX_HOME='/Users/me/Codex Home'") < lines.index(unset)
+    assert lines.index(unset) < lines.index("/x/codex login")
+    assert not any("secret" in line or "OPENAI_API_KEY" in line for line in lines)
+
+    platform_paths.run_in_terminal(
+        ["/x/codex", "login"], "codex-default-home.command", "Signing in.",
+        env={"PATH": "/usr/bin"}, clear=platform_paths.CODEX_BILLING_VARS,
+        clear_prefixes=("OPENAI_", "AZURE_OPENAI_"), export=("CODEX_HOME",))
+    default_lines = (tmp_path / "codex-default-home.command").read_text().splitlines()
+    assert "unset CODEX_HOME" in default_lines
+    assert default_lines.index("unset CODEX_HOME") < default_lines.index("/x/codex login")
+
+
 # -- stream-json events ---------------------------------------------------------------
 
 

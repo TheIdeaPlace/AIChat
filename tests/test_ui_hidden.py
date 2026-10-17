@@ -4039,6 +4039,41 @@ def test_sign_in_is_checked_and_offered(frame, env, monkeypatch):
     assert shown[-1][0].startswith("Couldn't start the sign-in")
 
 
+def test_codex_sign_in_is_checked_and_offered(frame, env, monkeypatch):
+    from thechatplace import codex_signin
+    from thechatplace.ui import main_frame
+    shown = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, title, style, parent=None: (
+        shown.append((text, title, style)), wx.YES)[1])
+    frame._on_codex_sign_in_result(codex_signin.SignIn(True, True, "ChatGPT"))
+    assert shown[-1][0] == "Codex is signed in to ChatGPT."
+    frame._on_codex_sign_in_result(
+        codex_signin.SignIn(True, True, "ChatGPT", settings_problem=True))
+    assert "settings use a different model provider" in shown[-1][0]
+    assert shown[-1][2] & wx.ICON_WARNING
+
+    started = []
+    monkeypatch.setattr(codex_signin, "login_command", lambda: ["codex", "login"])
+
+    class Process:
+        def wait(self):
+            return 0
+    monkeypatch.setattr(main_frame.platform_paths, "run_in_terminal",
+                        lambda command, *a, **k: started.append((command, k)) or Process())
+    frame._on_codex_sign_in_result(codex_signin.SignIn(True))
+    assert shown[-1][0].startswith("Codex isn't signed in.")
+    assert started[0][0] == ["codex", "login"]
+    assert "OPENAI_API_KEY" not in started[0][1]["env"]
+    assert started[0][1]["clear"] == main_frame.platform_paths.CODEX_BILLING_VARS
+    assert started[0][1]["clear_prefixes"] == ("OPENAI_", "AZURE_OPENAI_")
+    assert started[0][1]["export"] == ("CODEX_HOME",)
+
+    frame._on_codex_sign_in_result(codex_signin.SignIn(False, missing=True,
+        problem="Codex isn't installed. Install the Codex app or CLI, then restart."))
+    assert shown[-1][1] == "Codex Sign-in"
+    assert "Install the Codex app or CLI" in shown[-1][0]
+
+
 def test_install_is_offered_when_claude_is_missing(frame, env, monkeypatch):
     """No claude The Chat Place can use: said at start-up, and Claude Code
     Sign-in offers to run its installer, then checks again."""
@@ -4062,14 +4097,14 @@ def test_install_is_offered_when_claude_is_missing(frame, env, monkeypatch):
         def wait(self):
             return 0
     monkeypatch.setattr(main_frame.platform_paths, "start_claude_install",
-                        lambda env: installs.append(env) or Process())
+                        lambda **kwargs: installs.append(kwargs) or Process())
     monkeypatch.setattr(main_frame.wx, "CallAfter", lambda fn, *a, **k: checks.append(k))
     frame._on_sign_in_result(missing, manual=True)  # No: nothing runs
     assert shown[-1].startswith("Claude Code isn't installed.")
     assert "To install it, run its native installer." in shown[-1]
     assert "Install Claude Code now?" in shown[-1] and installs == []
     frame._on_sign_in_result(missing, manual=True)  # Yes
-    assert len(installs) == 1 and "ANTHROPIC_API_KEY" not in installs[0]
+    assert len(installs) == 1 and "ANTHROPIC_API_KEY" not in installs[0]["env"]
     assert env["feedback"][-1].startswith("Installing Claude Code, in a new window.")
     for _ in range(100):
         if checks:

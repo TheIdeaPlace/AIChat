@@ -68,6 +68,13 @@ class CodexTurnRejected(CodexRpcError):
         super().__init__(self.REASONS[self.code])
 
 
+def is_chatgpt_account(result):
+    """Whether an ``account/read`` answer is the account turns accept."""
+    return (isinstance(result, dict) and isinstance(result.get("account"), dict)
+            and result["account"].get("type") == "chatgpt"
+            and result.get("requiresOpenaiAuth") is True)
+
+
 def verify_codex_rule_layers(result):
     count, blocked = platform_paths.codex_rule_inventory(result.get('layers'))
     if count is None:
@@ -254,9 +261,7 @@ class ReadOnlyCodexConnection:
         result = request.validate_answer(result)
         if result.get("decision") in (ACCEPT, ACCEPT_SESSION):
             account = self.request("account/read", {"refreshToken": True})
-            if (not isinstance(account.get("account"), dict)
-                    or account["account"].get("type") != "chatgpt"
-                    or account.get("requiresOpenaiAuth") is not True):
+            if not is_chatgpt_account(account):
                 raise CodexRpcError("Codex approvals require ChatGPT sign-in")
         payload = self._encode({"id": request.request_id, "result": result})
         with self._lock:
@@ -274,9 +279,7 @@ class ReadOnlyCodexConnection:
             # sign-in/provider state can change while the server stays alive.
             try:
                 account = self.request("account/read", {"refreshToken": True})
-                if (not isinstance(account.get("account"), dict)
-                        or account["account"].get("type") != "chatgpt"
-                        or account.get("requiresOpenaiAuth") is not True):
+                if not is_chatgpt_account(account):
                     raise CodexTurnRejected('chatgpt_required')
                 self._verify_turn_route(params)
             except CodexTurnRejected:

@@ -540,6 +540,10 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   what it printed. The Chat Place also checks at start-up and says so only if there's a problem.
   Your sessions are listed whether or not Claude Code is signed in (they're read from disk);
   only sending a message needs a sign-in.
+- **Codex Sign-in** (Help menu) says whether Codex is signed in to ChatGPT. If it isn't, or is
+  using another credential such as an API key, it offers to run `codex login` in its own window;
+  your browser shows ChatGPT's sign-in page, and The Chat Place checks again when it finishes.
+  If Codex isn't installed or its status can't be read, the same item explains what is needed.
 - **Report a Bug** (Help menu) asks for a summary, what happened, what you expected and the
   steps, and shows exactly what else the report includes before it goes anywhere: versions
   (The Chat Place, Windows, Python, wxPython, Claude Code), the announcement level and speech

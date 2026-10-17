@@ -683,7 +683,7 @@ def _command_line_tools_installed() -> bool:
 
 def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
                     env: Optional[dict] = None, clear: Iterable[str] = (),
-                    clear_prefixes: Iterable[str] = ()):
+                    clear_prefixes: Iterable[str] = (), export: Iterable[str] = ()):
     """Run a command where the user can see and answer it: a new console
     window on Windows, a Terminal window on a Mac (from a ``.command`` file
     in the app's own folder, so no permission to control Terminal is
@@ -691,7 +691,9 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
     the Popen on Windows, to wait for; None on a Mac, where the window
     outlives ``open``. ``env`` is the Windows window's environment; Terminal
     starts the user's own shell, whose profile may set the variables
-    ``env`` leaves out, so the script unsets ``clear`` and ``clear_prefixes``."""
+    ``env`` leaves out, so the script unsets ``clear`` and ``clear_prefixes``.
+    Names in ``export`` are copied from ``env`` into the Mac script, or
+    unset when absent so the Terminal shell cannot supply a different value."""
     import shlex
     import subprocess
 
@@ -701,6 +703,12 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
     folder.mkdir(parents=True, exist_ok=True)
     script = folder / script_name
     lines = ["#!/bin/bash"]
+    for name in sorted(export):
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            if env is not None and name in env:
+                lines.append(f"export {name}={shlex.quote(str(env[name]))}")
+            else:
+                lines.append(f"unset {name}")
     names = sorted(n for n in clear if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n))
     if names:
         lines.append("unset " + " ".join(names))
@@ -1224,7 +1232,6 @@ def codex_native_candidates() -> List[Path]:
         # The Store app relocates its bundled CLI outside WindowsApps. Inspect
         # only direct build folders, never recursively traverse app data.
         cache = local / "OpenAI/Codex/bin"
-        candidates.append(cache / "codex.exe")
         try:
             builds = sorted((p for p in cache.iterdir() if p.is_dir()
                              and not p.name.startswith(".")),
@@ -1232,6 +1239,10 @@ def codex_native_candidates() -> List[Path]:
             candidates.extend(p / "codex.exe" for p in builds)
         except OSError:
             pass
+        # The app can leave an older top-level executable beside its current,
+        # hash-named build. Prefer the newest managed build (#301); an old CLI
+        # may no longer understand the config written by the current app.
+        candidates.append(cache / "codex.exe")
         return candidates + _codex_npm_candidates([roaming / "npm/node_modules"]) + daemon
     return [home / ".local/bin/codex"]
 

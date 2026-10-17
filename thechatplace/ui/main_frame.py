@@ -52,7 +52,7 @@ import wx
 
 from ..changes import summary_text
 from ..codeblocks import find_code_blocks
-from .. import (__version__, about_you, announce, attachments, bugreport, signin, export, hub, links,
+from .. import (__version__, about_you, announce, attachments, bugreport, codex_signin, signin, export, hub, links,
                platform_paths, properties, remote, usage, workplaces)
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
@@ -504,6 +504,7 @@ class MainFrame(CodexChats, wx.Frame):
         self.update_item = self._item(help_menu, update_item_label(__version__),
                                       lambda e: self.check_for_updates(True))
         self._item(help_menu, "Claude Code &Sign-in...", lambda e: self.on_sign_in())
+        self._item(help_menu, "Codex S&ign-in...", lambda e: self.on_codex_sign_in())
         self._item(help_menu, "Report a &Bug...", lambda e: self.on_report_bug())
         self._item(help_menu, "&About", self.on_about, wx.ID_ABOUT)
         bar.Append(help_menu, "&Help")
@@ -5404,6 +5405,64 @@ class MainFrame(CodexChats, wx.Frame):
         self._sign_in_asked = True  # this answer replaces the start-up one
         self._check_sign_in(manual=True)
 
+    def on_codex_sign_in(self):
+        """Help, Codex Sign-in (#301): check and offer ChatGPT sign-in."""
+        self._feedback("Checking Codex's sign-in.")
+        self._check_codex_sign_in()
+
+    def _check_codex_sign_in(self):
+        if self._gone():
+            return
+
+        def work():
+            try:
+                status = codex_signin.check()
+            except Exception as exc:  # noqa: BLE001 - always answer
+                status = codex_signin.SignIn(False, problem=str(exc) or "it failed")
+            wx.CallAfter(self._on_codex_sign_in_result, status)
+        try:
+            self._pool.submit(work)
+        except RuntimeError:
+            pass  # closing
+
+    def _on_codex_sign_in_result(self, status):
+        if self._gone():
+            return
+        text = codex_signin.describe(status)
+        if status.missing or not status.known:
+            wx.MessageBox(text, "Codex Sign-in", wx.OK | wx.ICON_WARNING, self)
+            return
+        if status.usable:
+            wx.MessageBox(text, "Codex Sign-in", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        if status.settings_problem:
+            wx.MessageBox(text, "Codex Sign-in", wx.OK | wx.ICON_WARNING, self)
+            return
+        answer = wx.MessageBox(
+            f"{text}\n\nSign in now? A window opens, and your browser shows ChatGPT's sign-in "
+            "page. When you've finished, The Chat Place checks again and says so.",
+            "Codex Sign-in", wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION, self)
+        if answer != wx.YES:
+            return
+        command = codex_signin.login_command()
+        try:
+            if command is None:
+                raise OSError("Codex wasn't found")
+            process = platform_paths.run_in_terminal(
+                command, "sign-in-codex.command", "Signing in to Codex.",
+                env=platform_paths.codex_child_environment(),
+                clear=platform_paths.CODEX_BILLING_VARS,
+                clear_prefixes=("OPENAI_", "AZURE_OPENAI_"), export=("CODEX_HOME",))
+        except OSError as exc:
+            wx.MessageBox(f"Couldn't start the sign-in: {exc}", APP_NAME,
+                          wx.OK | wx.ICON_ERROR, self)
+            return
+        self._feedback("Signing in, in a new window. The Chat Place checks again when you've "
+                       "finished.")
+        self._check_sign_in_after(
+            process, lambda: codex_signin.check().usable,
+            check=self._check_codex_sign_in)
+
     def _check_sign_in(self, manual: bool):
         if self._gone():
             return
@@ -5490,7 +5549,7 @@ class MainFrame(CodexChats, wx.Frame):
                        "when it's finished.")
         self._check_sign_in_after(process, lambda: bool(platform_paths.find_claude().path))
 
-    def _check_sign_in_after(self, process, done):
+    def _check_sign_in_after(self, process, done, check=None):
         """Check the sign-in again, and say the result, once a window The
         Chat Place opened is finished: when its process ends on Windows, or
         on a Mac (where Terminal runs it, out of reach) once ``done()`` says
@@ -5513,7 +5572,10 @@ class MainFrame(CodexChats, wx.Frame):
                         break
             # Said even when it never finished, so the promise to check is kept.
             if not closing():
-                wx.CallAfter(self._check_sign_in, manual=True)  # the result, said
+                if check is None:
+                    wx.CallAfter(self._check_sign_in, manual=True)  # the result, said
+                else:
+                    wx.CallAfter(check)
         threading.Thread(target=wait, name="sign-in-wait", daemon=True).start()
 
     def on_about(self, _event=None):
