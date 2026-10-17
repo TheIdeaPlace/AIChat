@@ -33,7 +33,6 @@ class SignIn:
     problem: str = ""
     missing: bool = False  # no claude it can use at all: offer to install one
     install_help: str = ""  # with ``missing``, the install commands
-    legacy_npm: str = ""  # Windows shim that can migrate itself with install --force
 
     @property
     def subscription(self) -> bool:
@@ -47,7 +46,7 @@ def check(executable: Optional[str] = None, run=subprocess.run) -> SignIn:
         lookup = platform_paths.find_claude()
         if not lookup.path:
             return SignIn(False, missing=True, problem=lookup.reason,
-                          install_help=lookup.install_help, legacy_npm=lookup.legacy_npm)
+                          install_help=lookup.install_help)
         executable = lookup.path
     try:
         # The environment turns get: an API key or cloud provider set for

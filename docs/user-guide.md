@@ -63,10 +63,6 @@ sign-in. Help, Claude Code Sign-in says whether it is signed in, and offers to s
 The sign-in opens in its own window (Terminal, on a Mac), and The Chat Place checks again when
 you've finished. If it can't tell, it says why, for example that Claude Code is too old to ask:
 running `claude update` in a terminal fixes that.
-On Windows, when an older npm installation prevents the native installer from running, the same
-command offers to replace it with native Claude Code using `claude install --force`. It names the
-command before asking; the Claude desktop app, chats and settings are not removed.
-
 For Codex, choose Help, **Codex Sign-in**. It says whether Codex is signed in to ChatGPT. If it
 isn't, or is using another kind of credential, it offers to open `codex login` in its own window.
 Your browser shows ChatGPT's sign-in page, and The Chat Place checks again when you've finished.

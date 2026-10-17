@@ -4060,6 +4060,9 @@ def test_codex_sign_in_is_checked_and_offered(frame, env, monkeypatch):
     assert shown[-1][0].startswith("Codex isn't signed in.")
     assert started[0][0] == ["codex", "login"]
     assert "OPENAI_API_KEY" not in started[0][1]["env"]
+    assert started[0][1]["clear"] == main_frame.platform_paths.CODEX_BILLING_VARS
+    assert started[0][1]["clear_prefixes"] == ("OPENAI_", "AZURE_OPENAI_")
+    assert started[0][1]["export"] == ("CODEX_HOME",)
 
     frame._on_codex_sign_in_result(codex_signin.SignIn(False, missing=True,
         problem="Codex isn't installed. Install the Codex app or CLI, then restart."))
@@ -4098,34 +4101,12 @@ def test_install_is_offered_when_claude_is_missing(frame, env, monkeypatch):
     assert "Install Claude Code now?" in shown[-1] and installs == []
     frame._on_sign_in_result(missing, manual=True)  # Yes
     assert len(installs) == 1 and "ANTHROPIC_API_KEY" not in installs[0]["env"]
-    assert installs[0]["legacy_npm"] == ""
     assert env["feedback"][-1].startswith("Installing Claude Code, in a new window.")
     for _ in range(100):
         if checks:
             break
         time.sleep(0.02)
     assert checks == [{"manual": True}]  # checked again once the window closed
-
-
-def test_old_npm_claude_is_replaced_only_after_confirmation(frame, env, monkeypatch):
-    from thechatplace import signin
-    from thechatplace.ui import main_frame
-    status = signin.SignIn(False, missing=True, problem="Older npm Claude Code.",
-                           legacy_npm=r"C:\npm & tools\claude.cmd")
-    shown, answers, started = [], [wx.NO, wx.YES], []
-    monkeypatch.setattr(wx, "MessageBox", lambda text, title, style, parent=None: (
-        shown.append(text), answers.pop(0))[1])
-
-    class Process:
-        def wait(self):
-            return 0
-    monkeypatch.setattr(main_frame.platform_paths, "start_claude_install",
-                        lambda **kwargs: started.append(kwargs) or Process())
-    frame._on_sign_in_result(status, manual=True)
-    assert started == [] and "Replace the older npm installation" in shown[-1]
-    frame._on_sign_in_result(status, manual=True)
-    assert started[0]["legacy_npm"] == status.legacy_npm
-    assert env["feedback"][-1].startswith("Replacing the older npm installation")
 
 
 def test_change_model_for_the_next_turns(frame, env, monkeypatch):

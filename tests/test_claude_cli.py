@@ -1,6 +1,5 @@
 import io
 import json
-import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -225,8 +224,6 @@ def test_find_claude_uses_the_native_program_behind_an_npm_shim(tmp_path):
     lookup = platform_paths.find_claude(which=lambda n: str(shim), native_candidates=[])
     assert lookup.path is None and "older npm install" in lookup.problem
     assert "claude.ai/install" in lookup.install_help
-    if sys.platform == "win32":
-        assert lookup.legacy_npm == str(shim)
 
 
 def test_find_claude_refuses_a_node_script(tmp_path):
@@ -277,37 +274,6 @@ def test_install_runs_in_a_terminal_window_on_a_mac(monkeypatch, tmp_path):
     assert "status=$?" in text  # a failure isn't reported as finished
 
 
-def test_windows_old_npm_install_uses_explicit_force_migration(monkeypatch):
-    monkeypatch.setattr(platform_paths.sys, "platform", "win32")
-    started = []
-    monkeypatch.setattr(platform_paths, "run_in_terminal",
-                        lambda argv, **kwargs: started.append((argv, kwargs)))
-    shim = r"C:\npm & tools\claude.cmd"
-    platform_paths.start_claude_install(env={"PATH": "x"}, legacy_npm=shim)
-    argv, kwargs = started[0]
-    assert argv[1:3] == ["-NoProfile", "-Command"]
-    assert "install --force" in argv[3]
-    assert shim not in argv[3]  # the path is data, never interpolated into PowerShell
-    assert kwargs["env"]["TCP_CLAUDE_NPM_SHIM"] == shim
-
-
-@windows_paths
-def test_windows_force_migration_invokes_cmd_shim_as_data(tmp_path):
-    """PowerShell's call operator runs a .cmd path from the environment
-    without treating metacharacters in the path as PowerShell commands."""
-    folder = tmp_path / "npm & tools"
-    folder.mkdir()
-    shim, seen = folder / "claude.cmd", tmp_path / "arguments.txt"
-    shim.write_text(f'@echo off\r\n>"{seen}" echo %*\r\n', encoding="utf-8")
-    env = dict(platform_paths.os.environ, TCP_CLAUDE_NPM_SHIM=str(shim))
-    result = subprocess.run([
-        platform_paths._windows_program("System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-        "-NoProfile", "-Command", "& $env:TCP_CLAUDE_NPM_SHIM install --force"],
-        env=env, capture_output=True, text=True, timeout=20)
-    assert result.returncode == 0
-    assert seen.read_text(encoding="utf-8").strip() == "install --force"
-
-
 def test_a_terminal_window_drops_billing_variables(monkeypatch, tmp_path):
     """Terminal starts the user's own shell, whose profile may export an API
     key: the script unsets what child_environment() would remove."""
@@ -327,6 +293,20 @@ def test_a_terminal_window_drops_billing_variables(monkeypatch, tmp_path):
     if sys.platform != "win32":  # the script is valid bash
         out = subprocess.run(["/bin/bash", "-n", str(tmp_path / "s.command")])
         assert out.returncode == 0
+
+
+def test_a_terminal_window_exports_only_requested_environment(monkeypatch, tmp_path):
+    import subprocess
+    monkeypatch.setattr(platform_paths.sys, "platform", "darwin")
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(subprocess, "Popen", lambda argv, **k: None)
+    platform_paths.run_in_terminal(
+        ["/x/codex", "login"], "codex.command", "Signing in.",
+        env={"CODEX_HOME": "/Users/me/Codex Home", "OPENAI_API_KEY": "secret"},
+        export=("CODEX_HOME",))
+    lines = (tmp_path / "codex.command").read_text().splitlines()
+    assert "export CODEX_HOME='/Users/me/Codex Home'" in lines
+    assert not any("secret" in line or "OPENAI_API_KEY" in line for line in lines)
 
 
 # -- stream-json events ---------------------------------------------------------------

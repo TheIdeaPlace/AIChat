@@ -8,7 +8,9 @@ from dataclasses import dataclass, field
 from .. import platform_paths
 from ..own_store import OwnSession
 from ..sessions import SessionInfo
-from .codex_rpc import verify_codex_rule_layers, codex_tool_overrides, verify_codex_tools, CodexRpcError, CodexTurnRejected, ReadOnlyCodexConnection
+from .codex_rpc import (verify_codex_rule_layers, codex_tool_overrides, verify_codex_tools,
+                        is_chatgpt_account, CodexRpcError, CodexTurnRejected,
+                        ReadOnlyCodexConnection)
 from .codex_models import read_models
 from .codex_policy import CodexPolicy
 
@@ -54,9 +56,7 @@ class CodexOwnedThreads:
         if not isinstance(cwd, str) or not cwd.strip():
             raise ValueError("Codex working directory required")
         account = self.connection.request("account/read", {"refreshToken": True})
-        if (not isinstance(account.get("account"), dict)
-                or account["account"].get("type") != "chatgpt"
-                or account.get("requiresOpenaiAuth") is not True):
+        if not is_chatgpt_account(account):
             raise CodexRpcError("Codex owned chats require ChatGPT sign-in")
         result = self.connection.request("config/read", {"cwd": cwd, "includeLayers": True})
         config = result.get("config")

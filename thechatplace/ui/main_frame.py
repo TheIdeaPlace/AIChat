@@ -504,7 +504,7 @@ class MainFrame(CodexChats, wx.Frame):
         self.update_item = self._item(help_menu, update_item_label(__version__),
                                       lambda e: self.check_for_updates(True))
         self._item(help_menu, "Claude Code &Sign-in...", lambda e: self.on_sign_in())
-        self._item(help_menu, "Codex Sign-&in...", lambda e: self.on_codex_sign_in())
+        self._item(help_menu, "Codex S&ign-in...", lambda e: self.on_codex_sign_in())
         self._item(help_menu, "Report a &Bug...", lambda e: self.on_report_bug())
         self._item(help_menu, "&About", self.on_about, wx.ID_ABOUT)
         bar.Append(help_menu, "&Help")
@@ -5447,7 +5447,9 @@ class MainFrame(CodexChats, wx.Frame):
                 raise OSError("Codex wasn't found")
             process = platform_paths.run_in_terminal(
                 command, "sign-in-codex.command", "Signing in to Codex.",
-                env=platform_paths.codex_child_environment())
+                env=platform_paths.codex_child_environment(),
+                clear=platform_paths.CODEX_BILLING_VARS,
+                clear_prefixes=("OPENAI_", "AZURE_OPENAI_"), export=("CODEX_HOME",))
         except OSError as exc:
             wx.MessageBox(f"Couldn't start the sign-in: {exc}", APP_NAME,
                           wx.OK | wx.ICON_ERROR, self)
@@ -5491,7 +5493,7 @@ class MainFrame(CodexChats, wx.Frame):
             return
         self._sign_in_asked = False
         if status.missing:
-            self._offer_install(text, status)
+            self._offer_install(text)
             return
         if not status.known:
             wx.MessageBox(text, "Claude Code Sign-in", wx.OK | wx.ICON_WARNING, self)
@@ -5525,31 +5527,23 @@ class MainFrame(CodexChats, wx.Frame):
             return status.signed_in and status.subscription
         self._check_sign_in_after(process, signed_in)
 
-    def _offer_install(self, text: str, status):
+    def _offer_install(self, text: str):
         """Claude Code isn't there, or isn't one The Chat Place can use:
         offer to run its native installer in a window of its own."""
-        legacy_npm = getattr(status, "legacy_npm", "")
-        question = (
-            "Replace the older npm installation with native Claude Code now? A window opens "
-            "and runs Claude Code's own migration command, claude install --force. Your Claude "
-            "desktop app, chats and settings are not removed."
-            if legacy_npm else
-            "Install Claude Code now? A window opens and runs its native installer from "
-            "claude.ai. When it's finished, The Chat Place checks the sign-in again.")
         answer = wx.MessageBox(
-            f"{text}\n\n{question}",
+            f"{text}\n\nInstall Claude Code now? A window opens and runs its native installer "
+            "from claude.ai. When it's finished, The Chat Place checks the sign-in again.",
             "Claude Code Sign-in", wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION, self)
         if answer != wx.YES:
             return
         try:
-            process = platform_paths.start_claude_install(
-                env=child_environment(), legacy_npm=legacy_npm)
+            process = platform_paths.start_claude_install(env=child_environment())
         except OSError as exc:
             wx.MessageBox(f"Couldn't start the installer: {exc}", APP_NAME,
                           wx.OK | wx.ICON_ERROR, self)
             return
-        action = "Replacing the older npm installation" if legacy_npm else "Installing Claude Code"
-        self._feedback(f"{action}, in a new window. The Chat Place checks again when it's finished.")
+        self._feedback("Installing Claude Code, in a new window. The Chat Place checks again "
+                       "when it's finished.")
         self._check_sign_in_after(process, lambda: bool(platform_paths.find_claude().path))
 
     def _check_sign_in_after(self, process, done, check=None):

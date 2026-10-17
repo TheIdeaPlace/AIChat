@@ -515,11 +515,10 @@ class ClaudeLookup:
     commands, for Claude Code Sign-in's dialog."""
 
     def __init__(self, path: Optional[str] = None, reason: str = "",
-                 install_help: str = "", legacy_npm: str = "") -> None:
+                 install_help: str = "") -> None:
         self.path = path
         self.reason = reason
         self.install_help = install_help
-        self.legacy_npm = legacy_npm
 
     @property
     def problem(self) -> str:
@@ -628,7 +627,7 @@ def find_claude(which=None, native_candidates=None) -> ClaudeLookup:
             "The claude command on this computer is an older npm install of Claude Code, "
             "which runs as a script. The Chat Place needs the native claude program, "
             f"because a script would let a session title be read as a command. ({found})"),
-            claude_install_help(), found if sys.platform == "win32" else "")
+            claude_install_help())
     return ClaudeLookup(None, (
         "Claude Code isn't installed, or The Chat Place can't find it. The Claude desktop "
         "app's own copy isn't on the PATH and isn't meant for other programs."),
@@ -684,7 +683,7 @@ def _command_line_tools_installed() -> bool:
 
 def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
                     env: Optional[dict] = None, clear: Iterable[str] = (),
-                    clear_prefixes: Iterable[str] = ()):
+                    clear_prefixes: Iterable[str] = (), export: Iterable[str] = ()):
     """Run a command where the user can see and answer it: a new console
     window on Windows, a Terminal window on a Mac (from a ``.command`` file
     in the app's own folder, so no permission to control Terminal is
@@ -692,7 +691,8 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
     the Popen on Windows, to wait for; None on a Mac, where the window
     outlives ``open``. ``env`` is the Windows window's environment; Terminal
     starts the user's own shell, whose profile may set the variables
-    ``env`` leaves out, so the script unsets ``clear`` and ``clear_prefixes``."""
+    ``env`` leaves out, so the script unsets ``clear`` and ``clear_prefixes``.
+    Names in ``export`` are copied from ``env`` into the Mac script."""
     import shlex
     import subprocess
 
@@ -702,6 +702,10 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
     folder.mkdir(parents=True, exist_ok=True)
     script = folder / script_name
     lines = ["#!/bin/bash"]
+    for name in sorted(export):
+        if (env is not None and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
+                and name in env):
+            lines.append(f"export {name}={shlex.quote(str(env[name]))}")
     names = sorted(n for n in clear if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n))
     if names:
         lines.append("unset " + " ".join(names))
@@ -722,24 +726,11 @@ def run_in_terminal(argv: List[str], script_name: str = "", title: str = "",
     return None
 
 
-def start_claude_install(env: Optional[dict] = None, legacy_npm: str = ""):
+def start_claude_install(env: Optional[dict] = None):
     """Run Claude Code's native installer in its own window (see
     ``run_in_terminal`` for what's returned)."""
     if sys.platform == "win32":
         powershell = _windows_program("System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-        if legacy_npm:
-            # The fixed command has no session text in it. Pass the discovered
-            # shim as data in the environment, not interpolated PowerShell, so
-            # even shell metacharacters in its path cannot become commands.
-            child_env = dict(env or os.environ)
-            child_env["TCP_CLAUDE_NPM_SHIM"] = legacy_npm
-            return run_in_terminal(
-                [powershell, "-NoProfile", "-Command",
-                 "try { & $env:TCP_CLAUDE_NPM_SHIM install --force; "
-                 "if ($LASTEXITCODE -ne 0) { throw \"Installation failed (exit code $LASTEXITCODE)\" } } "
-                 "catch { Write-Host $_ -ForegroundColor Red } "
-                 "finally { Read-Host 'Finished. Press Enter to close this window' }"],
-                env=child_env)
         # In a scriptblock and a try, so an exit or error in the installer
         # leaves the window open to be read.
         return run_in_terminal(

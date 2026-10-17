@@ -535,8 +535,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   browser shows Claude's sign-in page; when you've finished, The Chat Place checks again and
   says the result. If Claude Code isn't installed, or only an old npm install is, it says so,
   gives the install command, and offers to run Claude Code's native installer in its own
-  window. On Windows it can replace an older npm installation with the native one, after naming
-  the `claude install --force` migration it will run. It then checks again once it's done. If Claude Code is there but can't be asked, it says
+  window, then checks again once it's done. If Claude Code is there but can't be asked, it says
   why: no answer in 20 seconds, couldn't be started, too old (`claude update` fixes that), or
   what it printed. The Chat Place also checks at start-up and says so only if there's a problem.
   Your sessions are listed whether or not Claude Code is signed in (they're read from disk);
