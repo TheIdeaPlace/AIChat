@@ -234,6 +234,9 @@ session list, the messages or the reply box:
   "no result yet". Its full text shows the command and its output.
 - **Decisions:** each question Claude asked you, with your answer.
 
+In Codex chats, Lists has Code Blocks and Links for now; the other kinds say they aren't listed
+yet (#303).
+
 **Show items from** (Alt+S) chooses **This message** or **The whole chat**. For code blocks and
 links, "this message" is the selected message. For files, commands and decisions, it's the
 selected message's turn: from your message to Claude's reply. Links, commands and decisions
