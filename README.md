@@ -563,7 +563,7 @@ Choose read-only in New Session, or change an idle chat started here with File, 
 Permission Mode (Ctrl+Shift+O). Existing chats retain their saved permissions.
 Continue Here copies a local Codex chat into a new chat started here. These chats
 support text replies, Stop, queued messages and Answer (Ctrl+Shift+A) for
-one-time permissions and questions. Externally started Codex chats remain read-only. Turning the
+permissions and questions. Externally started Codex chats remain read-only. Turning the
 option off and restarting hides Codex without removing its saved preferences.
 Quitting The Chat Place requests a stop for its running Codex replies.
 Revisiting a chat preserves its running turn. The Chat Place refuses to resume a saved
@@ -571,8 +571,21 @@ chat whose latest turn is unfinished or uncertain. If the connection is lost,
 use Stop to check the saved turn and reconnect once it has ended. No message
 is resent. Selecting the chat again does not automatically reconnect. If
 Codex still reports unfinished work, The Chat Place refuses recovery and says why.
-Requests The Chat Place cannot present safely are declined with a notice; they do not
-disconnect the chat. Turn Status keeps that notice available.
+Answer shows the command, its folder and Codex's reason. When Codex names extra access
+it needs, such as writing to Git's `.git` folder, another folder or the network, a
+"This also needs" list says what, in plain words; a network request names the host. When
+it names none, the request is usually to run the command outside the chat's folder
+sandbox, and the dialog says so: if you allow it, the command can change any file you can
+and use the network. Only the one-time answers Codex offers for that request are shown:
+Allow Once, Deny (Codex carries on without it) and Deny and Stop Turn, plus Answer Later.
+Deny is the default button when it's offered; otherwise Answer Later is. When Codex offers
+to keep allowing something (for the rest of the session, or as a saved "always allow"
+rule), the dialog says so, but The Chat Place leaves that out: each answer covers one
+request.
+Requests The Chat Place cannot present safely, such as typing into a command that's
+already running or running a command somewhere other than this computer, are declined
+with a notice that says which kind and why; they do not disconnect the chat. Turn Status
+keeps that notice available.
 Turn Status (Ctrl+Shift+T) reports elapsed time and latest activity, and sent
 messages follow the same read-back setting as Claude. Only chats in the local Codex catalog are listed. A status Codex cannot verify
 is omitted from default rows and remains available in Properties and the Status column.

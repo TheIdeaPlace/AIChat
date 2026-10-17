@@ -97,11 +97,18 @@ for line in sys.stdin:
                     emit({'method': 'item/commandExecution/outputDelta', 'params': {
                         'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command', 'delta': 'synthetic output\n'}})
             if scenario != 'owned-turn-hang':
-                details = {'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command',
+                # Shaped like codex-cli 0.162.1's command approvals (#284):
+                # environmentId and availableDecisions are always present.
+                details = {'kind': 'command', 'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command',
+                           'startedAtMs': 1, 'environmentId': 'local',
                            'command': 'synthetic command', 'cwd': '/workspace',
-                           'additionalPermissions': None, 'availableDecisions': None}
+                           'reason': 'Synthetic reason', 'commandActions': [],
+                           'additionalPermissions': {'fileSystem': {'write': ['/workspace/.git']}},
+                           'proposedExecpolicyAmendment': ['synthetic'],
+                           'availableDecisions': ['accept', {'acceptWithExecpolicyAmendment': {
+                               'execpolicy_amendment': ['synthetic']}}, 'decline', 'cancel']}
                 if scenario == 'owned-turn-unsupported':
-                    details['kind'] = 'stdin'
+                    details['kind'] = 'writeStdin'
                 emit({'id': 'approval', 'method': 'future/unsupportedRequest' if scenario == 'owned-turn-unknown'
                       else 'item/commandExecution/requestApproval', 'params': details})
             continue

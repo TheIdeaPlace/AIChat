@@ -105,9 +105,9 @@
    "name": "",
    "label": "",
    "rect": [
-    8,
+    0,
     151,
-    788,
+    804,
     431
    ],
    "best": [
@@ -124,9 +124,9 @@
    "name": "panel",
    "label": "panel",
    "rect": [
-    8,
+    0,
     151,
-    788,
+    804,
     431
    ],
    "best": [
@@ -143,7 +143,7 @@
    "name": "staticText",
    "label": "&Filter:",
    "rect": [
-    16,
+    8,
     159,
     30,
     16
@@ -162,9 +162,9 @@
    "name": "Filter links",
    "label": "",
    "rect": [
-    18,
+    10,
     177,
-    772,
+    788,
     23
    ],
    "best": [
@@ -182,7 +182,7 @@
    "name": "staticText",
    "label": "&List: Links (1):",
    "rect": [
-    16,
+    8,
     206,
     72,
     16
@@ -201,9 +201,9 @@
    "name": "Links (1)",
    "label": "",
    "rect": [
-    18,
+    10,
     224,
-    772,
+    788,
     140
    ],
    "best": [
@@ -224,7 +224,7 @@
    "name": "staticText",
    "label": "&Details:",
    "rect": [
-    16,
+    8,
     370,
     39,
     16
@@ -243,9 +243,9 @@
    "name": "Link, github.com/example/repo/issues/42",
    "label": "",
    "rect": [
-    18,
+    10,
     388,
-    772,
+    788,
     165
    ],
    "best": [
@@ -263,7 +263,7 @@
    "name": "button",
    "label": "&Open",
    "rect": [
-    497,
+    511,
     559,
     75,
     23
@@ -282,7 +282,7 @@
    "name": "button",
    "label": "&Copy",
    "rect": [
-    578,
+    592,
     559,
     75,
     23
@@ -301,7 +301,7 @@
    "name": "button",
    "label": "Copy as &Markdown",
    "rect": [
-    659,
+    673,
     559,
     123,
     23

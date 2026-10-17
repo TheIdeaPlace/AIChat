@@ -14,7 +14,8 @@ import threading
 
 from .. import __version__, platform_paths
 from .codex_events import decode_event, CodexTokenUsageEvent, CodexEvent, _text
-from .codex_requests import decode_request, decode_resolved, CodexRequestDeclined, COMMAND, FILES, QUESTIONS
+from .codex_requests import (decode_request, decode_resolved, CodexRequestDeclined, COMMAND, FILES, QUESTIONS,
+                             ACCEPT, ACCEPT_SESSION)
 
 
 class CodexRpcError(RuntimeError):
@@ -251,7 +252,7 @@ class ReadOnlyCodexConnection:
 
     def respond_request(self, request, result):
         result = request.validate_answer(result)
-        if result.get("decision") == "accept":
+        if result.get("decision") in (ACCEPT, ACCEPT_SESSION):
             account = self.request("account/read", {"refreshToken": True})
             if (not isinstance(account.get("account"), dict)
                     or account["account"].get("type") != "chatgpt"
@@ -395,8 +396,8 @@ class ReadOnlyCodexConnection:
                     raise ValueError("Unexpected server request")
                 try:
                     request = decode_request(message["id"], message["method"], message.get("params"))
-                except ValueError:
-                    self._decline_unsupported_request(message)
+                except ValueError as error:
+                    self._decline_unsupported_request(message, getattr(error, 'reason', ''))
                     return
                 if not self._accept_server_request(request):
                     raise ValueError("Unowned Codex request")
@@ -487,7 +488,7 @@ class ReadOnlyCodexConnection:
             self._server_pending = {key: request for key, request in self._server_pending.items()
                 if (request.thread_id, request.turn_id) != (thread_id, turn_id)}
 
-    def _decline_unsupported_request(self, message):
+    def _decline_unsupported_request(self, message, reason=''):
         identity = message['id']
         if (not (type(identity) is int or isinstance(identity, str))
                 or isinstance(identity, str) and (not identity.strip() or len(identity) > 256)):
@@ -503,7 +504,12 @@ class ReadOnlyCodexConnection:
             self._outgoing.put(payload)
         try:
             kind = {COMMAND: 'command approval', FILES: 'file approval', QUESTIONS: 'question'}.get(message['method'], 'request')
-            self._events.put_nowait(CodexRequestDeclined(kind))
+            params = message.get('params')
+            thread = params.get('threadId') if isinstance(params, dict) else None
+            if not isinstance(thread, str) or not thread.strip() or len(thread) > 256:
+                thread = ''  # unknown chat: every running chat hears about it
+            self._events.put_nowait(CodexRequestDeclined(
+                kind, reason if kind == 'command approval' else '', thread))
         except queue.Full:
             raise ValueError('Codex request notice queue overflow') from None
 

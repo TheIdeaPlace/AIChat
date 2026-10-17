@@ -99,9 +99,9 @@ Like main-own. The chat's row has moved to second place in the session list and 
 
 ## main-codex-interrupted: A Codex chat whose connection was interrupted
 
-The owned chat after Codex sent a request the app can't answer. The heading wraps onto two lines: "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history.. Codex chat." The session row and the status bar say the same, cut with "...". The line under the buttons reads "Codex connection interrupted: an unsupported approval or question was received; reconcile chat history." The messages are the two history rows; the queued message is gone.
+The owned chat after Codex sent a request the app can't answer. The heading wraps onto two lines: "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history. Codex chat.", with one full stop after "history". The session row and the status bar say the same, cut with "...". The line under the buttons reads "Codex connection interrupted: an unsupported approval or question was received; reconcile chat history." The messages are the two history rows; the queued message is gone.
 
-**What looks off:** The heading has two full stops after "history" (#291).
+**What looks off:** Nothing.
 
 ## main-codex-request-declined: A working Codex chat after a request was declined
 
@@ -248,7 +248,7 @@ This is an 820 by 520 dialog titled 'The Chat Place: 6 results for "the", Find i
 
 ## code-blocks: View, Lists: a message's code blocks (#279)
 
-Code blocks, links and changed files are now kinds in one dialog, View, Lists, 820 by 660 and titled "Lists: " and the session's name ("Lists: Fix the flaky upload test"). From the top: "Show items from:" beside a small dropdown, "This message"; then "Kinds:", a white list the full width (788 by 95) with five rows, each with its count: "Code Blocks (1)" (selected in blue), "Links (1)", "Changed Files (0)", "Commands (1)" and "Decisions (0)". Below that the chosen kind's page, inset 8 pixels further: "Filter:" over an empty one-line box, "List: Code Blocks (1):" over a white list 772 by 140 holding "Python, 4 lines: def finish(self):", selected, and "Details:" over a box 772 by 165 showing the four lines of code in a monospaced font with their indentation. "Copy" sits at the right under the page, and "Close" on a row of its own below it. In High Contrast Aquatic the dialog is near-black (#202020) with white text (16.3:1) and white outlines; the selected rows are light aqua (#8EE3F0) with dark text (#263B50 at the letters' cores, 7.9:1); the code is white.
+Code blocks, links and changed files are now kinds in one dialog, View, Lists, 820 by 660 and titled "Lists: " and the session's name ("Lists: Fix the flaky upload test"). From the top: "Show items from:" beside a small dropdown, "This message"; then "Kinds:", a white list the full width (788 by 95) with five rows, each with its count: "Code Blocks (1)" (selected in blue), "Links (1)", "Changed Files (0)", "Commands (1)" and "Decisions (0)". Below that the chosen kind's page, lined up with Kinds at the same left and right edges: "Filter:" over an empty one-line box, "List: Code Blocks (1):" over a white list 788 by 140 holding "Python, 4 lines: def finish(self):", selected, and "Details:" over a box 788 by 165 showing the four lines of code in a monospaced font with their indentation. "Copy" sits at the right under the page, and "Close" directly below it, the same width and right-aligned with it. In High Contrast Aquatic the dialog is near-black (#202020) with white text (16.3:1) and white outlines; the selected rows are light aqua (#8EE3F0) with dark text (#263B50 at the letters' cores, 7.9:1); the code is white.
 
 **What looks off:** Close is 14 pixels further right than the page's buttons above it (#288). Most of the list is empty with one item.
 
@@ -256,25 +256,25 @@ Code blocks, links and changed files are now kinds in one dialog, View, Lists, 8
 
 The same Lists dialog, opened on Links with "Show items from" set to "The whole chat". "Links (1)" is selected in Kinds. "List: Links (1):" holds one row, "the issue, github.com/example/repo/issues/42. Claude, 1 message ago", selected, and Details shows "the issue" and the full address on the next line. Under the page are "Open", "Copy" and "Copy as Markdown", and "Close" below them. High Contrast Aquatic follows the theme as in code-blocks.
 
-**What looks off:** Close is out of line with the three buttons above it (#288). Nothing else.
+**What looks off:** Nothing; the page lines up with Kinds and Close lines up with the buttons above it (#288).
 
 ## changes: View, Lists: Changed Files (#279)
 
 The Lists dialog on "Changed Files (1)", for "Visual probe". The list holds "uploader.py, 2 lines added", selected. Details is in a monospaced font: the file's full path followed by ": 2 lines", with "added." wrapped onto the next line, a blank line, "A change:", two "Added:" lines and an "Unchanged:" line. "Copy" is under the page and "Close" below it. High Contrast Aquatic follows the theme as in code-blocks.
 
-**What looks off:** The path's line wraps before "added.". Close is out of line with Copy (#288).
+**What looks off:** The path's line wraps before "added.". Close now lines up with Copy (#288).
 
 ## lists-commands: View, Lists: Commands (#279)
 
 The Lists dialog on "Commands (1)", for "Fix the flaky upload test", over the whole chat. "List: Commands (1):" holds "pytest tests/test_upload.py -q. done", selected, and Details, in a monospaced font, shows "Command:", the command, a blank line, "Output:" and "1 failed, 11 passed". Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
 
-**What looks off:** Close is out of line with Copy (#288). Nothing else.
+**What looks off:** Nothing; Close lines up with Copy (#288).
 
 ## lists-decisions: View, Lists: Decisions (#279)
 
 The Lists dialog on "Decisions (2)", over the whole chat. The list holds two rows, newest first: "Run the slow tests too? Not answered" (selected) and "Which branch should the release use? You answered: release/0.2". Details shows "Run the slow tests too?", a blank line and "Not answered." in the standard font. Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
 
-**What looks off:** Close is out of line with Copy (#288). Nothing else.
+**What looks off:** Nothing; Close lines up with Copy (#288).
 
 ## usage: View, Usage and Context
 
@@ -320,13 +320,13 @@ A small 596 by 300 dialog, "Change Permission Mode" (Windows' own single-choice 
 
 ## codex-permission: Codex asks to run a command
 
-A 700 by 540 dialog titled "Codex needs permission: Codex preview". "Request:" heads a read-only box that fills the dialog (about 670 by 420), holding "Command:", "git status --short", a blank line, "Folder:", the folder's path, a blank line, "Reason:" and "Inspect the working directory before continuing". Four buttons sit at the bottom right: "Allow Once", "Deny" (the default, blue-outlined), "Stop Turn" and "Answer Later". In High Contrast Aquatic Deny is filled light aqua.
+A 700 by 540 dialog titled "Codex needs permission: Codex preview". "Request:" heads a read-only box that fills the dialog (about 670 by 420), holding, with blank lines between: "Command:" and "git checkout -b fix"; "Folder:" and the folder's path; "This also needs:" with "Write access to" the folder's `.git` and "Network access to any site"; "Reason:" and "The sandbox blocked writing Git's HEAD.lock."; and "Codex also offered to keep allowing this, for the rest of the session or from now on. The Chat Place leaves that out: your answer covers this request only.", wrapped onto two lines. Every line fits the box. Four buttons sit at the bottom right: "Allow Once", "Deny" (the default, blue-outlined), "Deny and Stop Turn" and "Answer Later" (#284). In High Contrast Aquatic the box and buttons are white-outlined on near-black, and Deny is filled light aqua.
 
 **What looks off:** The box is mostly empty for a short request. Nothing else.
 
 ## codex-files: Codex file changes to review before allowing
 
-The same dialog, showing a file change: "Update: app.py", "@@ -1 +1 @@", "-print('old')" and "+print('new')", in the standard font. The same four buttons, with Deny the default.
+The same dialog, showing a file change: "Update: app.py", "@@ -1 +1 @@", "-print('old')" and "+print('new')", in the standard font. Four buttons, with Deny the default; the baseline picture still shows the older "Stop Turn" label, which is now "Deny and Stop Turn" (#284).
 
 **What looks off:** The diff isn't in a monospaced font, unlike the Lists dialog's Details. The box is mostly empty.
 
@@ -344,9 +344,9 @@ A 640 by 360 dialog. "Usage and context:" heads a list that fills it, with seven
 
 ## properties-codex: Properties of a Codex chat read from Codex
 
-A 640 by 360 dialog, "Properties of Codex history preview", laid out like properties. The list's rows: Title, "Provider: Codex", "Kind: External session", the folder, "Status: Status unavailable", Started and Last activity ("11 October 2026 at 14:05 (2 hours ago)", a fixed date with a real "ago"), "Saved command rules check: Codex command rules could not be checked.", Messages 2, Your messages 1, "Codex's replies: 1", Tool calls 0, Links 1, Code blocks 1, Groups none, Session ID and "History: read from Codex". There are more rows than fit, so it has a scroll bar.
+A 640 by 360 dialog, "Properties of Codex history preview", laid out like properties. The list's rows: Title, "Provider: Codex", "Kind: External session", the folder, "Status: Unavailable", Started and Last activity ("11 October 2026 at 14:05 (2 hours ago)", a fixed date with a real "ago"), "Saved command rules check: Codex command rules could not be checked.", Messages 2, Your messages 1, "Codex's replies: 1", Tool calls 0, Links 1, Code blocks 1, Groups none, Session ID and "History: read from Codex". There are more rows than fit, so it has a scroll bar.
 
-**What looks off:** "Status: Status unavailable" repeats the word (#290).
+**What looks off:** Nothing (#290 fixed the repeated "Status").
 
 ## properties-codex-owned: Properties of a Codex chat started here
 
@@ -356,9 +356,9 @@ The same dialog for "Codex policy preview", a Codex chat the app started: "Kind:
 
 ## session-columns: View, Session List Columns
 
-This is a 640 by 560 dialog. A two-line intro runs across the top (608 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what" and "each session is doing before its title.". Below it are two equal lists side by side, each 296 by 265: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with eleven rows: Title, "Provider (Claude or Codex)", Folder, "Status (needs you, working or idle)", New reply, Last activity, "Kind (desktop app, Cowork, terminal or The Chat Place", Remote Control, Archived, Hidden and Groups. The Kind row is cut at the list's right edge before its closing bracket (#289). The preview box at the bottom wraps onto two lines: "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago," and "desktop app session". Both have a selected row; the right one has the focus outline. Under them is a row of six buttons, "Add", "Remove", "Move Up", "Move Down", "Move to Top" and "Move to Bottom", then a very wide "Reset to Default" button (537 wide). "Preview of the selected session's line:" heads a 60-tall read-only box. "OK" (default) and "Cancel" are at the bottom right.
+This is a 700 by 560 dialog. A two-line intro runs across the top (668 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what each session is" and "doing before its title.". Below it are two equal lists side by side, each 326 by 294: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with eleven rows: Title, "Provider (Claude or Codex)", Folder, "Status (needs you, working or idle)", New reply, Last activity, "Kind (desktop app, Cowork, terminal or The Chat Place)", Remote Control, Archived, Hidden and Groups. Every row fits, the Kind row with its closing bracket. Both have a selected row; the right one has the focus outline. Under them is one row of seven ordinary-sized buttons: "Add", "Remove", "Move Up", "Move Down", "Move to Top", "Move to Bottom" and "Reset to Default", the last ending near the right list's edge. "Preview of the selected session's line:" heads a 60-tall read-only box whose text wraps onto two lines: "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app" and "session". "OK" (default) and "Cancel" are at the bottom right.
 
-**What looks off:** The Kind row doesn't fit the list (#289). The button row and Reset button stop at x=545 while the lists reach 618, so they look misaligned. The 537-wide Reset button is unlike any other button in the app.
+**What looks off:** Nothing (#289).
 
 ## prompts: File, Prompts
 

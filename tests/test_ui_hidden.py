@@ -8923,9 +8923,55 @@ def test_codex_file_approval_requires_matching_details_and_rejects_scope_grants(
                                   ('Update: file\n+line', '/workspace', False)]:
         dialog = CodexPermissionDialog(frame, 'Owned', dataclasses.replace(request, grant_root=grant), detail)
         try:
-            assert dialog.allow.IsEnabled() is allowed
+            # A session write grant isn't offered at all, not just disabled.
+            assert (dialog.allow is not None and dialog.allow.IsEnabled()) is allowed
+            assert (dialog.allow is None) is bool(grant)
+            assert dialog.GetDefaultItem() is dialog.buttons['decline']
         finally:
             dialog.Destroy()
+
+
+def test_codex_command_approval_offers_only_listed_choices_and_reads_extra_access(frame):
+    from thechatplace.providers.codex_requests import COMMAND, SAVED_RULE_NOTE, decode_request
+    from thechatplace.ui.dialogs import CodexPermissionDialog
+    base = dict(threadId='owned', turnId='turn', itemId='item', environmentId='local')
+    # The captured sandbox escalation (#284): no decline, and a saved rule offered.
+    escalation = decode_request(1, COMMAND, dict(base, command='synthetic branch', cwd='/workspace',
+        additionalPermissions={'fileSystem': {'write': ['/workspace/.git']}},
+        availableDecisions=['accept', {'acceptWithExecpolicyAmendment': {'execpolicy_amendment': ['x']}}, 'cancel']))
+    dialog = CodexPermissionDialog(frame, 'Owned', escalation)
+    try:
+        assert list(dialog.buttons) == ['accept', 'cancel']
+        assert [b.GetLabel() for b in dialog.buttons.values()] == ['&Allow Once', 'Deny and &Stop Turn']
+        # No Deny on offer: a stray Enter answers later rather than stopping the turn.
+        assert dialog.GetDefaultItem().GetId() == wx.ID_CANCEL
+        text = dialog.request_text.GetValue()
+        assert 'This also needs:\nWrite access to /workspace/.git' in text and SAVED_RULE_NOTE in text
+        dialog.buttons['cancel'].Command(wx.CommandEvent(wx.wxEVT_BUTTON))
+        assert dialog.choice == 'cancel'
+    finally:
+        dialog.Destroy()
+    network = decode_request(2, COMMAND, dict(base, command=None, cwd=None,
+        networkApprovalContext={'host': 'github.com', 'protocol': 'https'},
+        availableDecisions=['accept', 'acceptForSession', 'decline', 'cancel']))
+    dialog = CodexPermissionDialog(frame, 'Owned', network)
+    try:
+        # Allow for This Session is never offered (#298).
+        assert list(dialog.buttons) == ['accept', 'decline', 'cancel']
+        assert dialog.allow.IsEnabled() and dialog.GetDefaultItem() is dialog.buttons['decline']
+        assert dialog.request_text.GetValue().startswith('Codex wants network access to:\ngithub.com (HTTPS)')
+        # Escape is Answer Later: nothing chosen, nothing sent.
+        assert dialog.GetEscapeId() == wx.ID_CANCEL and dialog.choice == ''
+    finally:
+        dialog.Destroy()
+    blank = decode_request(3, COMMAND, dict(base, command='   ', cwd='/workspace',
+                                            networkApprovalContext={'host': 'h.example', 'protocol': 'http'}))
+    unreviewable = dataclasses.replace(blank, network_host='')
+    dialog = CodexPermissionDialog(frame, 'Owned', unreviewable)
+    try:
+        assert not dialog.allow.IsEnabled()
+    finally:
+        dialog.Destroy()
 
 
 def test_codex_provider_switch_restores_claude_choices(frame):

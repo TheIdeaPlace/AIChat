@@ -1428,33 +1428,37 @@ class PermissionDialog(wx.Dialog):
 
 
 class CodexPermissionDialog(wx.Dialog):
-    """One-time Codex decisions; no unsupported persistent permission scopes."""
+    """Codex decisions: only the one-time ones Codex listed (#284).
+
+    The request text says everything being asked for, including extra access
+    (folders, network) beyond the chat's own folder. Deny is the default
+    button when offered; otherwise Answer Later is, so a stray Enter never
+    allows anything or stops the turn.
+    """
     def __init__(self, parent, session_title, request, file_detail=""):
         super().__init__(parent, title=f"Codex needs permission: {session_title}",
                          size=dialog_size(parent, 700, 540),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.choice = ""
-        body = (f"Command:\n{request.command}\n\nFolder:\n{request.cwd}" if request.command
-                else file_detail or "The requested file changes aren't available to review. Deny or stop this turn.")
-        if request.reason:
-            body += "\n\nReason:\n" + request.reason
-        if request.grant_root:
-            body += "\n\nCodex requested session write access under:\n" + request.grant_root
-            body += "\nThis preview cannot grant that scope."
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        self.request_text = _read_only_text(self, body, "Request")
+        self.request_text = _read_only_text(self, request.detail(file_detail), "Request")
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        self.allow = wx.Button(self, label="&Allow Once")
-        self.allow.Enable(bool(request.command or file_detail) and not request.grant_root)
-        deny = wx.Button(self, label="&Deny")
-        deny.SetDefault()
-        stop = wx.Button(self, label="&Stop Turn")
-        for button, choice in ((self.allow, "accept"), (deny, "decline"), (stop, "cancel")):
+        reviewable = request.reviewable(file_detail)
+        self.buttons = {}
+        for decision in request.offered():
+            button = wx.Button(self, label=request.choice_text(decision))
+            if decision == "accept":
+                # Nothing to review means nothing to allow.
+                button.Enable(reviewable)
             row.Add(button, 0, wx.RIGHT, 6)
-            button.Bind(wx.EVT_BUTTON, lambda event, decision=choice: self._choose(decision))
-        row.Add(wx.Button(self, wx.ID_CANCEL, "Answer &Later"), 0)
+            button.Bind(wx.EVT_BUTTON, lambda event, choice=decision: self._choose(choice))
+            self.buttons[decision] = button
+        self.allow = self.buttons.get("accept")
+        later = wx.Button(self, wx.ID_CANCEL, "Answer &Later")
+        row.Add(later, 0)
+        self.buttons.get("decline", later).SetDefault()
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
