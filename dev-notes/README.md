@@ -23,3 +23,5 @@ shipped.
 - [Codex saved command rules](codex-command-rules.md): native boundary reproduction, conservative refusal candidate and release decision (#257).
 
 - [Codex CLI discovery](codex-cli-discovery.md): Finder launches, native npm/bundle lookup, three-state settings and Windows evidence (#277).
+
+- [General Codex model selection guide](../CODEX_MODEL_GUIDE.md): model differences, reasoning settings and recommendations for everyday Codex use.
