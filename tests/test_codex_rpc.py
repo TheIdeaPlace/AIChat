@@ -976,6 +976,7 @@ def test_windows_relocated_bundle_and_native_npm_candidates(tmp_path, monkeypatc
     assert platform_paths.find_codex(which=lambda _: None) == str(native)
 
 
+@windows_paths
 def test_windows_current_app_build_precedes_stale_top_level_copy(tmp_path, monkeypatch):
     """#301: the Codex app can leave an old bin/codex.exe that cannot read
     configuration written by the current hash-named build."""
