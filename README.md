@@ -386,7 +386,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   TaskCreate and TaskUpdate, or the older TodoWrite), and The Chat Place reads it from the
   transcript, for desktop app and terminal sessions as well as its own. View, Tasks
   (**Ctrl+Shift+J**) lists it; Turn Status (Ctrl+Shift+T) and Properties say how far along it is
-  ("Task 3 of 7: Running the tests. 2 done."); and when the loaded chat marks a step done, it's
+  ("Task 3 of 7: Running the tests. 2 done.", or "Stopped at task 3 of 7: …" once Claude isn't
+  working; Turn Status leaves out a list that's finished or from an earlier turn); and when the
+  loaded chat marks a step done, it's
   announced ("Done: Run the tests. 4 of 7."), at the Full announcement level only, without
   cutting off anything being read. Claude Code leaves the task list out on its newer models
   unless asked, while the desktop app's sessions have it, so The Chat Place asks for it in its

@@ -18,7 +18,7 @@ from .claude_cli import EFFORT_LABELS, mode_label, model_label, model_spoken
 from .codeblocks import find_code_blocks
 from .export import message_moment
 from .message_links import find_links
-from .sessions import STATUS_UNAVAILABLE, SessionInfo, how_long_ago, state_with_detail
+from .sessions import STATUS_UNAVAILABLE, WORKING, SessionInfo, how_long_ago, state_with_detail
 from .transcript import ASSISTANT, QUEUED, TOOL, USER, ChatMessage, Transcript
 from . import tasklist, usage
 from .ui_text import codex_effort_label
@@ -132,7 +132,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
             lines.append(f"Files changed: {len(by_file(transcript.edits)):,}")
         if transcript.tasks:
             # Where Claude is on its task list (#231).
-            lines.append(f"Tasks: {tasklist.progress(transcript.tasks)}")
+            lines.append(f"Tasks: {tasklist.progress(transcript.tasks, info.state == WORKING)}")
         if transcript.context_tokens:
             tokens = transcript.context_tokens
             window = (usage.context_window(transcript.model, tokens, reported_window)

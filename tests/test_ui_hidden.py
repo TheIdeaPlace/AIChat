@@ -10152,6 +10152,12 @@ def test_a_chat_without_a_task_list_says_so_on_the_tab(frame, env, monkeypatch):
 def test_turn_status_says_how_far_along_the_task_list_is(frame, env):
     _tasks_session(frame, env)
     frame.on_turn_status()
+    # Idle here and in the desktop app: where Claude stopped, by the step's name.
+    assert env["feedback"][-1] == ("No turns are running. Quiet one: Stopped at task 1 of 2: "
+                                   "Find the cause. 0 done.")
+    # Working in the desktop app: what Claude is doing now.
+    frame._open = dataclasses.replace(frame._open, state="working")
+    frame.on_turn_status()
     assert env["feedback"][-1] == ("No turns are running. Quiet one: Task 1 of 2: "
                                    "Finding the cause. 0 done.")
 
@@ -10197,7 +10203,7 @@ def test_session_properties_say_where_the_task_list_is(frame, env, monkeypatch):
     frame.session_list.SetFocus()
     frame.on_properties()
     assert pump(lambda: seen)
-    assert "Tasks: Task 1 of 2: Finding the cause. 0 done." in seen[0]["rows"]
+    assert "Tasks: Stopped at task 1 of 2: Find the cause. 0 done." in seen[0]["rows"]
 
 
 def test_settings_has_the_task_list_box(frame):
@@ -10220,3 +10226,43 @@ def test_own_turns_get_the_task_list_unless_it_is_turned_off(frame, env, fake_ru
     frame.reply_text.SetValue("again")
     frame.on_send()
     assert fake_runner.instances[-1].task_list is False
+
+
+def test_turn_status_leaves_out_an_old_or_finished_list(frame, env):
+    from records import task_update
+    _tasks_session(frame, env, [*_task_records(), user_text("Something else")])
+    frame.on_turn_status()
+    assert env["feedback"][-1] == "No turns are running."  # the list is from an earlier turn
+    _tasks_session(frame, env, [*_task_records(), *task_update(1, "toolu_d1", status="completed"),
+                                *task_update(2, "toolu_d2", status="completed")])
+    frame.on_turn_status()
+    assert env["feedback"][-1] == "No turns are running."  # every step is done
+
+
+def test_turn_status_gives_the_list_while_waiting_on_you_or_background_work(frame, env, fake_runner):
+    from thechatplace.transcript import ClaudeTask
+    from thechatplace.claude_cli import PermissionRequest
+    runner = _start(frame, fake_runner)
+    frame._chat_tasks = [ClaudeTask("1", "Write the fix", status="in_progress",
+                                    active_form="Writing the fix")]
+    frame.on_turn_status()
+    assert env["feedback"][-1].endswith("last starting. Task 1 of 1: Writing the fix. 0 done.")
+    runner.waiting_on_background = True
+    frame.on_turn_status()
+    assert env["feedback"][-1].endswith(
+        "Claude carries on when the work finishes. Task 1 of 1: Writing the fix. 0 done.")
+    runner.waiting_on_background = False
+    frame._pending["own-1"] = [PermissionRequest("r1", "Bash", {"command": "ls"})]
+    frame.on_turn_status()
+    assert env["feedback"][-1].endswith("answers. Task 1 of 1: Writing the fix. 0 done.")
+    frame._pending.clear()
+
+
+def test_a_failed_first_read_doesnt_announce_the_whole_list_later(frame, env):
+    from thechatplace.transcript import ClaudeTask
+    _tasks_session(frame, env, [user_text("hello")])  # loaded, with no list yet
+    done = [ClaudeTask(str(i), f"Step {i}", status="completed") for i in range(1, 6)]
+    frame._apply_tasks(done, first_load=False)  # the first read that finds a list
+    assert not any(s.startswith("Done:") for s in env["spoken"] + env["feedback"])
+    frame._apply_tasks(done + [ClaudeTask("6", "Step 6", status="completed")], first_load=False)
+    assert "Done: Step 6. 6 of 6." in env["feedback"]

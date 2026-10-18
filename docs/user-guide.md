@@ -194,7 +194,8 @@ and terminal sessions.
 - **Ctrl+Shift+J** (View, Tasks) lists the steps in Claude's order, each with "to do", "in
   progress" or "done". Enter reads a step in full.
 - **Ctrl+Shift+T** (Turn Status) and **Properties** say how far along it is: "Task 3 of 7:
-  Running the tests. 2 done."
+  Running the tests. 2 done." Once Claude has stopped, they say where: "Stopped at task 3 of 7".
+  Turn Status leaves out a list that's finished, or that's from an earlier turn.
 - When a step is marked done in the loaded session, you hear it: "Done: Run the tests. 4 of 7."
   That's only at the Full announcement level, and it never cuts off what's being read.
 

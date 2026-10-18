@@ -14,6 +14,8 @@ from .transcript import TASK_COMPLETED, TASK_IN_PROGRESS, TASK_PENDING, ClaudeTa
 
 #: Each status as the list and Properties say it.
 STATE_WORDS = {TASK_PENDING: "To do", TASK_IN_PROGRESS: "In progress", TASK_COMPLETED: "Done"}
+#: How many finished steps one announcement names.
+DONE_NAMED = 3
 
 
 def state_word(task: ClaudeTask) -> str:
@@ -35,10 +37,11 @@ def detail(task: ClaudeTask, position: int, total: int) -> str:
     return "\n\n".join(parts)
 
 
-def progress(tasks: Sequence[ClaudeTask]) -> str:
+def progress(tasks: Sequence[ClaudeTask], working: bool = True) -> str:
     """Where Claude is on its list, in one sentence, or "" without one:
-    "Task 3 of 7: Running the tests. 2 done." The step being worked on is
-    named by what Claude says it's doing, so it reads as a sentence."""
+    "Task 3 of 7: Running the tests. 2 done." While Claude is ``working``,
+    the step it's on is named by what Claude says it's doing, so it reads as
+    a sentence; otherwise by its name, as where it stopped."""
     total = len(tasks)
     if not total:
         return ""
@@ -48,10 +51,20 @@ def progress(tasks: Sequence[ClaudeTask]) -> str:
     current = next(((i, t) for i, t in enumerate(tasks, 1) if t.status == TASK_IN_PROGRESS), None)
     if current is not None:
         position, task = current
+        if not working:
+            return f"Stopped at task {position} of {total}: {task.subject}. {done} done."
         return f"Task {position} of {total}: {task.active_form or task.subject}. {done} done."
     upcoming = next((t for t in tasks if not t.done), None)
     nouns = "task" if total == 1 else "tasks"
     return f"{done} of {total} {nouns} done. Next: {upcoming.subject}."
+
+
+def is_current(tasks: Sequence[ClaudeTask], latest_turn: int) -> bool:
+    """Whether the list still says something about the work: some step isn't
+    done, and the list changed in the latest turn. An old, finished list
+    isn't worth repeating every time Turn Status is asked."""
+    return (bool(tasks) and not all(t.done for t in tasks)
+            and max(t.changed_turn for t in tasks) >= latest_turn)
 
 
 def statuses(tasks: Sequence[ClaudeTask]) -> Dict[str, str]:
@@ -67,9 +80,12 @@ def newly_done(before: Dict[str, str], tasks: Sequence[ClaudeTask]) -> List[Clau
 
 def done_text(finished: Sequence[ClaudeTask], tasks: Sequence[ClaudeTask]) -> Optional[str]:
     """What's said when tasks are marked done: "Done: Run the tests. 4 of 7."
-    None when nothing finished."""
+    None when nothing finished. Many at once (a list caught up in one read)
+    names the last few, so it stays short."""
     if not finished:
         return None
-    names = "; ".join(t.subject for t in finished)
+    names = "; ".join(t.subject for t in finished[-DONE_NAMED:])
+    if len(finished) > DONE_NAMED:
+        names = f"{len(finished) - DONE_NAMED} steps, then {names}"
     done = sum(1 for t in tasks if t.done)
     return f"Done: {names}. {done} of {len(tasks)}."

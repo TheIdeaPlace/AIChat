@@ -585,8 +585,13 @@ class TranscriptParser:
                               description=_text_field(tool_input.get("description")),
                               active_form=_text_field(tool_input.get("activeForm")),
                               turn=turn, changed_turn=turn)
-            # The same id again (a list started over): the new one replaces it.
-            tasks[:] = [t for t in tasks if t.task_id != task_id] + [task]
+            # Ids only grow within a list, so an id that's already there means
+            # Claude started a new list (a copy made by Continue Here starts
+            # again at 1 while its transcript holds the old one): the old
+            # list goes, rather than being merged into the new one.
+            if any(t.task_id == task_id for t in tasks):
+                tasks.clear()
+            tasks.append(task)
         elif name == TASK_UPDATE:
             if isinstance(result, dict) and result.get("success") is False:
                 return
@@ -614,7 +619,8 @@ class TranscriptParser:
             todos = tool_input.get("todos")
             if not isinstance(todos, list):
                 return
-            before = {t.subject: t for t in tasks}
+            before = {t.task_id: t for t in tasks}
+            seen: Dict[str, int] = {}
             fresh: List[ClaudeTask] = []
             for todo in todos:
                 if not isinstance(todo, dict):
@@ -624,11 +630,14 @@ class TranscriptParser:
                     continue
                 status = _text_field(todo.get("status"))
                 status = status if status in TASK_STATUSES else TASK_PENDING
-                old = before.get(subject)
                 # TodoWrite has no ids; the step's own words stand in, so a
-                # list that's reordered still matches what was done before.
+                # list that's reordered still matches what was done before,
+                # numbered when the same words come again.
+                seen[subject] = seen.get(subject, 0) + 1
+                task_id = f"todo:{subject}" if seen[subject] == 1 else f"todo:{subject}#{seen[subject]}"
+                old = before.get(task_id)
                 fresh.append(ClaudeTask(
-                    task_id=f"todo:{subject}", subject=subject,
+                    task_id=task_id, subject=subject,
                     active_form=_text_field(todo.get("activeForm")), status=status,
                     turn=old.turn if old is not None else turn,
                     changed_turn=(old.changed_turn if old is not None and old.status == status

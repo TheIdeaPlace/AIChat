@@ -300,7 +300,9 @@ class MainFrame(CodexChats, wx.Frame):
         #: Claude's task list in the loaded chat (#231), and each task's
         #: status when last read, to tell when one is marked done.
         self._chat_tasks: list = []
-        self._task_statuses: dict = {}
+        #: None until a read has found a list: that read is the baseline, so
+        #: a failed first read never makes the next one announce every task.
+        self._task_statuses: Optional[dict] = None
         #: The Lists tab used last, where Ctrl+Shift+I opens (#279).
         self._lists_category = lists.CODE
         self._chat_turns = 0
@@ -1415,7 +1417,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._chat_keys = []
         self._chat_edits, self._chat_turns, self._edits_said = [], 0, 0
         self._chat_commands = []
-        self._chat_tasks, self._task_statuses = [], {}
+        self._chat_tasks, self._task_statuses = [], None
         self._changes_due = False
         self._spoken.clear()
         self._chat_loaded = False
@@ -2079,8 +2081,10 @@ class MainFrame(CodexChats, wx.Frame):
         off anything being said; what's there when a chat loads is old news."""
         before = self._task_statuses
         self._chat_tasks = tasks
-        self._task_statuses = tasklist.statuses(tasks)
-        if first_load or self.speech.announce != ANNOUNCE_FULL:
+        # No list (none yet, or a transcript caught mid-rewrite) leaves no
+        # baseline, so the read that finds the list doesn't announce it whole.
+        self._task_statuses = tasklist.statuses(tasks) if tasks else None
+        if before is None or first_load or self.speech.announce != ANNOUNCE_FULL:
             return
         text = tasklist.done_text(tasklist.newly_done(before, tasks), tasks)
         if text:
@@ -3305,29 +3309,36 @@ class MainFrame(CodexChats, wx.Frame):
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):
             return
         runner = self._runners.get(info.cli_session_id) if info else None
+        # Where Claude is on its task list in the loaded chat (#231):
+        # "Task 3 of 7: Running the tests. 2 done." while a turn runs here.
+        progress = tasklist.progress(self._chat_tasks) if runner is not None else ""
+        tasks = f" {progress}" if progress else ""
         if runner is not None and self._pending.get(info.cli_session_id):
             request = self._pending[info.cli_session_id][0]
-            self._feedback(f"{info.title} is waiting for you: {request.summary()}. {key_name('Ctrl+Shift+A')} answers.")
+            self._feedback(f"{info.title} is waiting for you: {request.summary()}. "
+                           f"{key_name('Ctrl+Shift+A')} answers.{tasks}")
             return
         if runner is not None and getattr(runner, "waiting_on_background", False):
             self._feedback(f"{info.title}: Claude answered. "
                            f"{announce.background_text(runner.background_tasks)} "
                            f"The turn has run for {describe_elapsed(runner.elapsed())}; "
-                           "Claude carries on when the work finishes.")
+                           f"Claude carries on when the work finishes.{tasks}")
             return
-        # Where Claude is on its task list in the loaded chat (#231), any
-        # kind of session: "Task 3 of 7: Running the tests. 2 done."
-        progress = tasklist.progress(self._chat_tasks) if info is not None else ""
-        tasks = f" {progress}" if progress else ""
         if runner is not None:
             count = len(self._queued.get(info.cli_session_id, []))
             waiting = f"{self._queued_words(count)} " if count else ""
             self._feedback(f"{info.title}: {waiting}Claude has been working for "
                            f"{describe_elapsed(runner.elapsed())}, last {runner.last_activity}.{tasks}")
             return
-        # Not running here (a desktop app session, say): its list still says
-        # how far Claude got, named, since the rest is about other sessions.
-        loaded = f" {info.title}: {progress}" if progress else ""
+        # Not running here: a desktop app session at work says where it is;
+        # an idle one only if its list is unfinished and from its latest
+        # turn, as where Claude stopped. Named, since the rest is about
+        # other sessions.
+        loaded = ""
+        if info is not None and self._chat_tasks:
+            working = info.state == WORKING
+            if working or tasklist.is_current(self._chat_tasks, self._chat_turns):
+                loaded = f" {info.title}: {tasklist.progress(self._chat_tasks, working)}"
         if not self._runners:
             self._feedback(f"No turns are running.{loaded}")
             return

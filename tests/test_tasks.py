@@ -191,3 +191,51 @@ def test_the_setting_is_on_unless_turned_off(tmp_path):
                             ('{"task_list": "no"}', True), ('{"task_list": true}', True)):
         path.write_text(saved, encoding="utf-8")
         assert SpeechSettings.load(path).task_list is expected, saved
+
+
+# -- from the review of #231 -----------------------------------------------------
+
+
+def test_a_list_started_again_replaces_the_old_one():
+    """A Continue Here copy starts its own list at 1 while its transcript
+    holds the parent's: the new list replaces the old, not merged into it."""
+    tr = parse_lines(lines(*_three_tasks(),
+                           *task_update(1, "toolu_u1", status="completed"),
+                           user_text("Continue here"),
+                           *task_create(1, "Read the notes", "toolu_n1"),
+                           *task_create(2, "Pick up the fix", "toolu_n2")))
+    assert [(t.task_id, t.subject, t.status) for t in tr.tasks] == [
+        ("1", "Read the notes", "pending"), ("2", "Pick up the fix", "pending")]
+
+
+def test_todo_write_steps_with_the_same_words_are_kept_apart():
+    tr = parse_lines(lines(*_call("TodoWrite", {"todos": [
+        {"content": "Run the tests", "status": "completed"},
+        {"content": "Write the fix", "status": "completed"},
+        {"content": "Run the tests", "status": "pending"}]}, "toolu_w", "ok")))
+    assert len(tasklist.statuses(tr.tasks)) == 3
+    assert tasklist.progress(tr.tasks) == "2 of 3 tasks done. Next: Run the tests."
+
+
+def test_progress_when_claude_isnt_working_says_where_it_stopped():
+    tr = parse_lines(lines(*_three_tasks(), *task_update(2, "toolu_u", status="in_progress")))
+    assert tasklist.progress(tr.tasks, working=False) == "Stopped at task 2 of 3: Write the fix. 0 done."
+    assert tasklist.progress(tr.tasks, working=True) == "Task 2 of 3: Writing the fix. 0 done."
+
+
+def test_an_old_or_finished_list_isnt_current():
+    tr = parse_lines(lines(*_three_tasks()))
+    assert tasklist.is_current(tr.tasks, latest_turn=1)
+    assert not tasklist.is_current(tr.tasks, latest_turn=2)  # from an earlier turn
+    assert not tasklist.is_current([], latest_turn=1)
+    for task in tr.tasks:
+        task.status = "completed"
+    assert not tasklist.is_current(tr.tasks, latest_turn=1)  # all done
+
+
+def test_many_steps_done_at_once_are_said_briefly():
+    from thechatplace.transcript import ClaudeTask
+    tasks = [ClaudeTask(str(i), f"Step {i}", status="completed") for i in range(1, 9)]
+    assert tasklist.done_text(tasks, tasks) == "Done: 5 steps, then Step 6; Step 7; Step 8. 8 of 8."
+    assert tasklist.done_text(tasks[:3], tasks) == "Done: Step 1; Step 2; Step 3. 8 of 8."
+
