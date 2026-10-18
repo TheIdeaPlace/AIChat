@@ -18,10 +18,11 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Sequence
 
 from . import tasklist
+from .tasklist import TaskStep
 from .changes import FileEdit, by_file, file_text
 from .codeblocks import find_code_blocks
 from .message_links import FoundLink, find_links
-from .transcript import ANSWER, QUESTION, ChatMessage, ClaudeTask, ToolCommand
+from .transcript import ANSWER, QUESTION, ChatMessage, ToolCommand
 
 CODE = "code"
 LINKS = "links"
@@ -201,7 +202,7 @@ def decision_items(messages: Sequence[ChatMessage], turn: Optional[int]) -> List
 # -- tasks (#231) ---------------------------------------------------------------
 
 
-def task_items(tasks: Sequence[ClaudeTask], turn: Optional[int]) -> List[ListItem]:
+def task_items(tasks: Sequence[TaskStep], turn: Optional[int]) -> List[ListItem]:
     """Claude's task list in its own order, the order Claude works through
     it. For one turn, the tasks it added or changed."""
     total = len(tasks)
@@ -222,7 +223,7 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
           selected: Optional[ChatMessage], edits: Iterable[FileEdit],
           commands: Iterable[ToolCommand], describe_file: Callable,
           turn: Optional[int] = None,
-          tasks: Sequence[ClaudeTask] = ()) -> List[ListItem]:
+          tasks: Sequence[TaskStep] = ()) -> List[ListItem]:
     """One kind's items. ``messages`` are the messages as the list shows them;
     ``selected`` is the message "This message" means (None: there's none),
     and ``turn`` its turn when that isn't its own (a queued message, not yet
