@@ -150,10 +150,12 @@ class FakeRunner:
     """Stands in for TurnRunner: a turn that starts and never ends by itself."""
     instances = []
 
-    def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None):
+    def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
+                 task_list=False):
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
         self.images = images or []
         self.remote_control = remote_control
+        self.task_list = task_list
         self.session_started = False
         self.cancelled = False
         self.last_activity = "starting"

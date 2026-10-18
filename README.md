@@ -186,10 +186,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   (View, Lists, **Ctrl+Shift+I**, from the session list, the messages or the reply box, #279) is
   one dialog for each kind of thing in a chat: **Code Blocks**, **Links**, **Changed
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
-  yet", and its output) and **Decisions** (each question Claude asked, with your answer). In Codex chats, only Code
+  yet", and its output), **Decisions** (each question Claude asked, with your answer) and
+  **Tasks** (Claude's task list, #231: each step, "to do", "in progress" or "done", in Claude's
+  order). In Codex chats, only Code
   Blocks and Links are listed for now (#303). **Show
-  items from** (Alt+S) chooses This message or The whole chat; for files, commands and decisions,
-  "this message" is the selected message's turn, from your message to Claude's reply. Links,
+  items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions and
+  tasks, "this message" is the selected message's turn, from your message to Claude's reply (for
+  tasks, the ones added or changed in it). Links,
   commands and decisions list the newest first; code blocks and files are in the order they appear.
   The kinds are a list of their own, **Kinds**
   (Alt+K), each with its count ("Commands (12)"), which Tab and Shift+Tab reach on Windows and on a
@@ -198,9 +201,10 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   **Cmd+Shift+]** and **Cmd+Shift+[** or **Cmd+Page Down** and **Page Up** on a Mac, change the
   kind and stay on its list (Control+Tab is left to macOS, which uses it to move between groups of
   controls; where ] and [ need Option, use Cmd+Page Down and Up); on Windows, **Ctrl+1** to
-  **Ctrl+5** go straight to one. It opens on the kind you used last.
+  **Ctrl+6** go straight to one. It opens on the kind you used last.
   **Ctrl+Shift+B** opens it on Code Blocks for the selected message, **Ctrl+L** on Links for the
-  whole chat, and **Ctrl+Shift+D** on Changed Files, for the selected message's turn (or your
+  whole chat, **Ctrl+Shift+J** (View, Tasks) on Tasks for the whole chat, and **Ctrl+Shift+D** on
+  Changed Files, for the selected message's turn (or your
   latest) if it changed any files, else for the whole chat. Enter reads an item in full in the Details box
   (on Links, Enter or Open opens the link in your browser and closes Lists); Ctrl+C (or Copy)
   copies it (the code, the address, the file's path, the command or your answer), and on Links
@@ -213,7 +217,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   once. References to files in the repository, such as `[main.py](src/main.py)`, aren't listed.
   Only web, email and session links open; anything else, such as a file: path, is marked "copy
   only" and says why if you try. Links in tool calls and results are listed only with Show Tool
-  Activity on. Changed files, commands and decisions are listed for Claude chats for now; in a
+  Activity on. Changed files, commands, decisions and tasks are listed for Claude chats for now; in a
   Codex chat those kinds say so. Question cards read as
   "Claude asked: Which version?" with the options in the full text,
   then "You answered: ...". Refused tools read "Permission denied: ...". Tool calls and tool
@@ -378,6 +382,18 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   folder, so it has none of these. git and gh are run with no shell and never prompt; branch and
   repository names are checked before either sees them. On a Mac without Apple's Command Line
   Tools, `/usr/bin/git` isn't used, since running it asks to install them.
+- **Claude's task list** (#231). On longer work Claude keeps a list of its steps (Claude Code's
+  TaskCreate and TaskUpdate, or the older TodoWrite), and The Chat Place reads it from the
+  transcript, for desktop app and terminal sessions as well as its own. View, Tasks
+  (**Ctrl+Shift+J**) lists it; Turn Status (Ctrl+Shift+T) and Properties say how far along it is
+  ("Task 3 of 7: Running the tests. 2 done."); and when the loaded chat marks a step done, it's
+  announced ("Done: Run the tests. 4 of 7."), at the Full announcement level only, without
+  cutting off anything being read. Claude Code leaves the task list out on its newer models
+  unless asked, while the desktop app's sessions have it, so The Chat Place asks for it in its
+  own sessions (`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, from Claude Code 2.1.233). Settings, "Let
+  Claude keep a task list" (Alt+K) turns that off, from the next message; it's on to start
+  with. The list costs a little context each turn, and Claude decides when a task is worth a
+  list, so short turns usually have none.
 - **Remote Control.** Settings can turn on Remote Control for The Chat Place's sessions, and
   **File, Remote Control** turns it on or off for one session (or back to the Settings
   default). A session on Remote Control can be reached from claude.ai and your other devices
@@ -514,7 +530,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   the loaded session. A session's lines are its title, provider, kind, folder, status, when it started and
   was last active, the model of its latest reply (for supported chats started here, the model, effort
   and permission mode chosen), how many messages, your messages, the provider's replies, tool calls,
-  links, code blocks and changed files it has, how full its context is, how many times it was
+  links, code blocks and changed files it has, how far along Claude's task list is, how full its
+  context is, how many times it was
   compacted, its groups, Remote Control, whether it's archived or hidden, its session and desktop
   app IDs where available. Claude chats also show the transcript file and size; Codex history
   comes through its API. Complete history is read for the message counts, so the counts
@@ -522,7 +539,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   its position in the list ("12 of 40"), its lines, words and characters, its links and code
   blocks, and its ID.
 - **Turn Status** (Ctrl+Shift+T) says how long the provider has been working on the current turn and
-  what it last did. For Claude chats, it also reports background work still running. There's no
+  what it last did. For Claude chats, it also reports background work still running, and how far
+  along the loaded chat's task list is. There's no
   time limit on a turn; Stop (Ctrl+Period) ends it, along with anything it started, such as a
   build.
 - **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the
@@ -823,7 +841,7 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+P | Prompts: use, add, edit, reorder or delete your saved prompts |
 | Anywhere | Ctrl+Shift+F | Attach files or images to the next message |
 | Anywhere | Ctrl+Shift+M | Other machines: list your sessions on other computers and message one |
-| Anywhere | Ctrl+Shift+I | Lists: code blocks, links, changed files, commands and decisions, for this message or the whole chat |
+| Anywhere | Ctrl+Shift+I | Lists: code blocks, links, changed files, commands, decisions and Claude's tasks, for this message or the whole chat |
 | Anywhere | Ctrl+Shift+D | Lists, on Changed Files: each change to read by line |
 | Anywhere | Ctrl+Shift+U | Usage and context: a list of how full the context is, and each plan limit |
 | Anywhere | Alt+V, H | Show Sessions: choose which sessions are listed |
@@ -837,13 +855,14 @@ shows it as plain text instead.
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
 | Messages | Ctrl+L | Lists, on Links: every link in the chat, to open in your browser or copy (also from the session list and the reply box) |
+| Messages | Ctrl+Shift+J | Lists, on Tasks: Claude's task list, each step to do, in progress or done |
 | Messages | Ctrl+Shift+C | Copy the message's last code block |
 | Messages | Ctrl+T | Show or hide tool activity in the loaded session |
 | Messages | Ctrl+O | Open this session in the Claude desktop app |
 | Reply box | Ctrl+Enter | Send (Chat Place sessions only); you stay in the reply box |
 | Reply box | Ctrl+Shift+Enter | Send, and save the message as a prompt (asks for its name first) |
 | Reply box | Ctrl+Period | Stop the running turn |
-| Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, or what is still running in the background |
+| Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, what is still running in the background, and how far along Claude's task list is |
 | Anywhere | Ctrl+Shift+A | Answer: a provider's permission request, a question or a supported plan |
 | Anywhere | Alt+Enter | Properties of the selected session, or in the messages the selected message |
 | Anywhere | F1 | Keyboard shortcuts |

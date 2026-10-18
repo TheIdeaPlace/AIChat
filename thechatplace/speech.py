@@ -179,6 +179,9 @@ class SpeechSettings:
     #: Remote Control for The Chat Place's sessions unless a session says
     #: otherwise (#72).
     remote_control: bool = False
+    #: Give The Chat Place's own Claude sessions Claude's task list (#231), as
+    #: the desktop app's sessions have it. On unless turned off.
+    task_list: bool = True
     #: The session list's columns, in the order each row reads them (View,
     #: Session List Columns, #134): ids from ``sessions.FIELD_IDS``.
     session_fields: List[str] = field(default_factory=_default_fields)
@@ -245,6 +248,7 @@ class SpeechSettings:
         notify = str(raw.get("notifications", NOTIFY_ALL))
         settings.notifications = notify if notify in NOTIFY_LEVELS else NOTIFY_ALL
         settings.remote_control = raw.get("remote_control") is True
+        settings.task_list = raw.get("task_list") is not False
         choice = raw.get("codex_enabled")
         settings.codex_enabled = choice if type(choice) is bool else None
         settings.new_session_provider = ("codex" if raw.get("new_session_provider") == "codex" else "claude")

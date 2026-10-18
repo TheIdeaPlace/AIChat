@@ -65,7 +65,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           normalize_permission_mode)
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
                    forget_last_messages)
-from .. import lists
+from .. import lists, tasklist
 from ..session_controller import SessionController
 from ..providers.base import ConversationReader
 from ..providers.claude import ClaudeConversations
@@ -297,6 +297,10 @@ class MainFrame(CodexChats, wx.Frame):
         self._chat_edits: list = []
         #: Shell commands Claude ran in the loaded chat (#279).
         self._chat_commands: list = []
+        #: Claude's task list in the loaded chat (#231), and each task's
+        #: status when last read, to tell when one is marked done.
+        self._chat_tasks: list = []
+        self._task_statuses: dict = {}
         #: The Lists tab used last, where Ctrl+Shift+I opens (#279).
         self._lists_category = lists.CODE
         self._chat_turns = 0
@@ -479,6 +483,9 @@ class MainFrame(CodexChats, wx.Frame):
         # One dialog, a tab per kind of thing in the chat (#279). As with
         # Links, every letter is taken, so its shortcut is the way in.
         self._item(view, "Lists...\tCtrl+Shift+I", lambda e: self.on_lists())
+        # Claude's task list (#231), on its own tab in Lists. Every letter of
+        # "Tasks" is another item's access key, so its shortcut is the way in.
+        self._item(view, "Tasks...\tCtrl+Shift+J", lambda e: self.on_tasks())
         self._item(view, "Find in &All Sessions...\tCtrl+Shift+S", lambda e: self.on_find_all())
         # Every letter of "Properties" is another item's access key already,
         # so, as with Links, its shortcut is the way in (#214). Alt+Enter as
@@ -1408,6 +1415,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._chat_keys = []
         self._chat_edits, self._chat_turns, self._edits_said = [], 0, 0
         self._chat_commands = []
+        self._chat_tasks, self._task_statuses = [], {}
         self._changes_due = False
         self._spoken.clear()
         self._chat_loaded = False
@@ -1607,7 +1615,8 @@ class MainFrame(CodexChats, wx.Frame):
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, changed, copies,
                              transcript.unreadable_lines, None,
                              list(transcript.edits), transcript.turns,
-                             list(transcript.commands))
+                             list(transcript.commands),
+                             [dataclasses.replace(t) for t in transcript.tasks])
             except Exception as exc:  # noqa: BLE001
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, False, [], 0, exc)
 
@@ -1708,7 +1717,7 @@ class MainFrame(CodexChats, wx.Frame):
             self._status(f"{title}: Claude Code command {'failed' if failed else 'finished'}.")
 
     def _apply_chat(self, generation, changed, messages, unreadable, error,
-                    edits=None, turns=0, commands=None):
+                    edits=None, turns=0, commands=None, tasks=None):
         self._reader_busy = False
         pending, self._chat_refresh_pending = self._chat_refresh_pending, False
         if self._gone() or self._closing or self._open is None:
@@ -1738,6 +1747,8 @@ class MainFrame(CodexChats, wx.Frame):
             self._chat_edits, self._chat_turns = edits, turns
         if commands is not None:
             self._chat_commands = commands
+        if tasks is not None:
+            self._apply_tasks(tasks, first_load)
         if first_load:
             self._edits_said = len(self._chat_edits)  # what's there is old news
         if not changed and not first_load:
@@ -2057,13 +2068,31 @@ class MainFrame(CodexChats, wx.Frame):
         dialog's Links tab (#279)."""
         self.on_lists(lists.LINKS, lists.SCOPE_CHAT)
 
+    def on_tasks(self):
+        """View, Tasks (Ctrl+Shift+J, #231): Claude's task list for the whole
+        chat, on the Lists dialog's Tasks tab."""
+        self.on_lists(lists.TASKS, lists.SCOPE_CHAT)
+
+    def _apply_tasks(self, tasks, first_load: bool):
+        """The loaded chat's task list as just read (#231). A task marked done
+        since the last read is announced at the Full level, without cutting
+        off anything being said; what's there when a chat loads is old news."""
+        before = self._task_statuses
+        self._chat_tasks = tasks
+        self._task_statuses = tasklist.statuses(tasks)
+        if first_load or self.speech.announce != ANNOUNCE_FULL:
+            return
+        text = tasklist.done_text(tasklist.newly_done(before, tasks), tasks)
+        if text:
+            self._say(text, interrupt=False)
+
     def on_lists(self, category: Optional[str] = None, scope: Optional[str] = None):
         """View, Lists (Ctrl+Shift+I, #279): code blocks, links, changed
-        files, commands and decisions, for the selected message or the whole
-        chat. It opens on the kind used last; Code Blocks, Links and Changed
-        Files open it on their own kind. The messages are
-        as the list shows them (tool calls and results only with Show Tool
-        Activity on)."""
+        files, commands, decisions and Claude's tasks (#231), for the selected
+        message or the whole chat. It opens on the kind used last; Code
+        Blocks, Links, Changed Files and Tasks open it on their own kind. The
+        messages are as the list shows them (tool calls and results only with
+        Show Tool Activity on)."""
         info = self._open
         if info is None:
             self._feedback("No session loaded.")
@@ -2085,6 +2114,7 @@ class MainFrame(CodexChats, wx.Frame):
             files_supported = False
         edits = list(self._chat_edits) if files_supported else []
         commands = list(self._chat_commands)
+        tasks = list(self._chat_tasks)
         cwd = info.cwd
         # What only Claude's transcripts carry yet: say so rather than show
         # an empty list that reads as "none" (#279).
@@ -2095,10 +2125,11 @@ class MainFrame(CodexChats, wx.Frame):
         if info.provider != "claude":
             unavailable[lists.COMMANDS] = f"Commands aren't listed for {provider} chats yet."
             unavailable[lists.DECISIONS] = f"Decisions aren't listed for {provider} chats yet."
+            unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
 
         def build(tab, tab_scope):
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
-                               lambda f: self._describe_changed_file(f, cwd), turn)
+                               lambda f: self._describe_changed_file(f, cwd), turn, tasks)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
@@ -3284,21 +3315,28 @@ class MainFrame(CodexChats, wx.Frame):
                            f"The turn has run for {describe_elapsed(runner.elapsed())}; "
                            "Claude carries on when the work finishes.")
             return
+        # Where Claude is on its task list in the loaded chat (#231), any
+        # kind of session: "Task 3 of 7: Running the tests. 2 done."
+        progress = tasklist.progress(self._chat_tasks) if info is not None else ""
+        tasks = f" {progress}" if progress else ""
         if runner is not None:
             count = len(self._queued.get(info.cli_session_id, []))
             waiting = f"{self._queued_words(count)} " if count else ""
             self._feedback(f"{info.title}: {waiting}Claude has been working for "
-                           f"{describe_elapsed(runner.elapsed())}, last {runner.last_activity}.")
+                           f"{describe_elapsed(runner.elapsed())}, last {runner.last_activity}.{tasks}")
             return
+        # Not running here (a desktop app session, say): its list still says
+        # how far Claude got, named, since the rest is about other sessions.
+        loaded = f" {info.title}: {progress}" if progress else ""
         if not self._runners:
-            self._feedback("No turns are running.")
+            self._feedback(f"No turns are running.{loaded}")
             return
         parts = []
         for session_id, other in self._runners.items():
             own = self.store.get(session_id)
             name = own.title if own else "A session"
             parts.append(f"{name}, {describe_elapsed(other.elapsed())}")
-        self._feedback("Working: " + "; ".join(parts) + ".")
+        self._feedback("Working: " + "; ".join(parts) + f".{loaded}")
 
     # ------------------------------------------- answering Claude (#187, #188)
 
@@ -3839,7 +3877,7 @@ class MainFrame(CodexChats, wx.Frame):
         remote = ({"name": title, "reattach": own.bridge_session_id}
                   if own is not None and self._remote_control_on(own) else None)
         runner = TurnRunner(command, cwd, prompt, on_event, images=images,
-                            remote_control=remote)
+                            remote_control=remote, task_list=self.speech.task_list)
         # What you typed and attached, to give back if the turn never starts.
         runner.typed = spoken if spoken is not None else prompt
         runner.attached = list(attached or [])

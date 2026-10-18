@@ -145,7 +145,7 @@ Other things you can do with a message:
 - **Ctrl+C** copies the whole message.
 - **Ctrl+Shift+B** lists the message's code blocks, by language and size, with each one's code to
   read and copy. **Ctrl+Shift+C** copies the last code block at once.
-- **Ctrl+Shift+I** lists code blocks, links, changed files, commands and decisions, for this
+- **Ctrl+Shift+I** lists code blocks, links, changed files, commands, decisions and tasks, for this
   message or the whole chat, and **Ctrl+L** goes straight to its links: see "Lists" below.
   **Ctrl+F** and **Ctrl+Shift+S** find text in this session or in all of them: see "Finding
   things" below.
@@ -184,6 +184,23 @@ activity shown in Fix the build." Continue Here keeps it on in the copy if it wa
 session you continued. With no session loaded, Ctrl+T says so and changes nothing. A session's
 tool calls also count in Links, Export and Find in All Sessions only when it's on for that
 session.
+
+### Claude's task list
+
+On longer work, Claude keeps a list of its steps: what it plans to do, which step it's on, and
+which are done. The Chat Place reads that list for any Claude session, including desktop app
+and terminal sessions.
+
+- **Ctrl+Shift+J** (View, Tasks) lists the steps in Claude's order, each with "to do", "in
+  progress" or "done". Enter reads a step in full.
+- **Ctrl+Shift+T** (Turn Status) and **Properties** say how far along it is: "Task 3 of 7:
+  Running the tests. 2 done."
+- When a step is marked done in the loaded session, you hear it: "Done: Run the tests. 4 of 7."
+  That's only at the Full announcement level, and it never cuts off what's being read.
+
+Claude decides when work is worth a list, so short turns usually have none. In The Chat Place's
+own sessions, Claude keeps a list only because The Chat Place asks it to, as the desktop app
+does. **Settings, "Let Claude keep a task list"** (Alt+K) turns that off from your next message.
 
 ## Finding things
 
@@ -225,7 +242,7 @@ window, or another app), the list doesn't jump in front of you. You hear how man
 until you choose another view of the list, or until you start a new search. With no match, you
 hear "No messages contain …" and no list opens.
 
-### Lists: code blocks, links, files, commands and decisions
+### Lists: code blocks, links, files, commands, decisions and tasks
 
 **Ctrl+Shift+I** (View, Lists) opens one dialog listing each kind of thing in a chat, from the
 session list, the messages or the reply box:
@@ -237,13 +254,16 @@ session list, the messages or the reply box:
 - **Commands:** each command Claude ran: what it said it was doing, then "done", "failed" or
   "no result yet". Its full text shows the command and its output.
 - **Decisions:** each question Claude asked you, with your answer.
+- **Tasks:** Claude's task list, each step with "to do", "in progress" or "done" (see "Claude's
+  task list" above).
 
 In Codex chats, Lists has Code Blocks and Links for now; the other kinds say they aren't listed
 yet (#303).
 
 **Show items from** (Alt+S) chooses **This message** or **The whole chat**. For code blocks and
-links, "this message" is the selected message. For files, commands and decisions, it's the
-selected message's turn: from your message to Claude's reply. Links, commands and decisions
+links, "this message" is the selected message. For files, commands, decisions and tasks, it's the
+selected message's turn: from your message to Claude's reply (for tasks, the steps added or
+changed in it). Links, commands and decisions
 list the newest first; code blocks and files are in the order they appear.
 
 The kinds are a list of their own, **Kinds** (Alt+K), above the items, each with how many it
@@ -256,13 +276,14 @@ these change the kind and leave you on its list:
   **Cmd+Page Down** and **Cmd+Page Up** (with fn on a laptop). Control+Tab is left to macOS, which
   uses it to move between groups of controls. On keyboard layouts where ] and [ need Option, use
   Cmd+Page Down and Page Up.
-- **On Windows, Ctrl+1** to **Ctrl+5** go straight to Code Blocks, Links, Changed Files, Commands
-  or Decisions. (On a Mac, Cmd+1 to Cmd+3 stay the main window's Go To keys.)
+- **On Windows, Ctrl+1** to **Ctrl+6** go straight to Code Blocks, Links, Changed Files, Commands,
+  Decisions or Tasks. (On a Mac, Cmd+1 to Cmd+3 stay the main window's Go To keys.)
 
 Lists opens on the kind you used last. Some keys open it on their own kind:
 
 - **Ctrl+Shift+B** in the messages: Code Blocks, for the selected message.
 - **Ctrl+L** (View, Links): Links, for the whole chat.
+- **Ctrl+Shift+J** (View, Tasks): Tasks, for the whole chat.
 - **Ctrl+Shift+D** (View, Changed Files): Changed Files, for the selected message's turn (your
   latest message's, if none is selected) if it changed any files, otherwise for the whole chat.
 
@@ -282,8 +303,8 @@ once, at its newest mention. A long address is shortened to its site and its end
 address is always what's opened or copied. A link in a code block or in inline code says "in
 code". Only web, email and session links open; anything else, such as a file path, is marked
 "copy only" and says why if you try to open it. Links in tool calls and results are listed only
-with Show Tool Activity on. Changed files, commands and decisions are listed for Claude chats
-for now; in a Codex chat those kinds say so.
+with Show Tool Activity on. Changed files, commands, decisions and tasks are listed for Claude
+chats for now; in a Codex chat those kinds say so.
 
 ## Kinds of session
 
@@ -543,7 +564,8 @@ waiting, what you send goes to it at once instead of being queued. Stop ends the
 background work with it.
 
 **Ctrl+Shift+T** (Turn Status) says how long the provider has been working on this turn and what it last
-did, or what is still running in the background. There's no time limit on a turn.
+did, or what is still running in the background, and how far along Claude's task list is. There's
+no time limit on a turn.
 
 ### Commands, skills and attachments
 

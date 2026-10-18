@@ -976,6 +976,20 @@ def d_lists_decisions(frame, env):
     return lambda: frame.on_lists(lists.DECISIONS, lists.SCOPE_CHAT)
 
 
+def d_lists_tasks(frame, env):
+    """View, Tasks (#231): Claude's task list, one step of each state."""
+    from thechatplace import lists
+    from thechatplace.transcript import ClaudeTask
+    _open(frame, "Fix the flaky upload test")
+    frame._chat_tasks = [
+        ClaudeTask("1", "Find why the upload test fails", status="completed", turn=1),
+        ClaudeTask("2", "Make the retry wait for the server", status="in_progress",
+                   active_form="Making the retry wait for the server",
+                   description="Wait for the server's ready line before retrying.", turn=1),
+        ClaudeTask("3", "Run the whole test suite", turn=1)]
+    return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
+
+
 def d_usage(frame, env):
     _open(frame, "Visual probe")
     return frame.on_usage
@@ -1102,6 +1116,7 @@ SURFACES = {
     "changes": ("dialog", d_changes, "View, Lists: Changed Files"),
     "lists-commands": ("dialog", d_lists_commands, "View, Lists: Commands"),
     "lists-decisions": ("dialog", d_lists_decisions, "View, Lists: Decisions"),
+    "lists-tasks": ("dialog", d_lists_tasks, "View, Tasks: Claude's task list"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
     "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
     "properties": ("dialog", d_properties, "View, Properties of a session"),
@@ -1158,6 +1173,7 @@ DIALOG_CLASSES = {
     "changes": "ListsDialog",
     "lists-commands": "ListsDialog",
     "lists-decisions": "ListsDialog",
+    "lists-tasks": "ListsDialog",
     "usage": "UsageDialog",
     "usage-codex": "UsageDialog",
     "properties": "PropertiesDialog",

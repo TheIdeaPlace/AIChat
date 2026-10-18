@@ -20,7 +20,7 @@ from .export import message_moment
 from .message_links import find_links
 from .sessions import STATUS_UNAVAILABLE, SessionInfo, how_long_ago, state_with_detail
 from .transcript import ASSISTANT, QUEUED, TOOL, USER, ChatMessage, Transcript
-from . import usage
+from . import tasklist, usage
 from .ui_text import codex_effort_label
 
 
@@ -130,6 +130,9 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"Code blocks: {blocks:,}")
         if info.provider == "claude":
             lines.append(f"Files changed: {len(by_file(transcript.edits)):,}")
+        if transcript.tasks:
+            # Where Claude is on its task list (#231).
+            lines.append(f"Tasks: {tasklist.progress(transcript.tasks)}")
         if transcript.context_tokens:
             tokens = transcript.context_tokens
             window = (usage.context_window(transcript.model, tokens, reported_window)

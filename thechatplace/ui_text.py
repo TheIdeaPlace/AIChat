@@ -118,7 +118,8 @@ SHORTCUTS = [
                                          "text, not just the first line), then the next or "
                                          "previous one"),
         ("End", "Newest message"),
-        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands and decisions, for "
+        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands, decisions and Claude's "
+                         "tasks, for "
                          "this message or the whole chat; it opens on the kind you used last, and "
                          "the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down "
                          "and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a "
@@ -128,6 +129,8 @@ SHORTCUTS = [
         ("Ctrl+L", "Lists, on Links for the whole chat: Enter opens a link in your "
                    "browser, Ctrl+C copies its address (also from the session list and the "
                    "reply box)"),
+        ("Ctrl+Shift+J", "Lists, on Tasks for the whole chat: Claude's task list, each step "
+                         "with whether it's to do, in progress or done (Claude chats)"),
         ("Ctrl+T", "Show or hide tool activity in the loaded session"),
         ("Ctrl+O", "Open this session in the Claude desktop app"),
     ]),
@@ -153,8 +156,8 @@ SHORTCUTS = [
         ("Ctrl+Shift+U", "Usage and context: read the active provider's reported context and "
                          "account allowances and reset times; Ctrl+C copies a line"),
         ("Ctrl+Shift+T", "Turn status: how long the provider has been working, on what, what "
-                         "is still running in the background, and whether a message "
-                         "is queued"),
+                         "is still running in the background, whether a message "
+                         "is queued, and how far along Claude's task list is"),
     ]),
     ("Anywhere", [
         ("Ctrl+Shift+S", "Find in All Sessions: search the messages of every session in the "

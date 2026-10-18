@@ -9900,10 +9900,10 @@ def test_lists_kinds_are_a_list_with_counts_and_every_kind_is_built(frame):
     try:
         assert dialog.category == "links"
         assert sorted(b[0] for b in built) == sorted(["code", "links", "files", "commands",
-                                                      "decisions"])
+                                                      "decisions", "tasks"])
         assert list(dialog.kinds.GetStrings()) == ["Code Blocks (1)", "Links (1)",
                                                    "Changed Files (1)", "Commands (1)",
-                                                   "Decisions (1)"]
+                                                   "Decisions (1)", "Tasks (1)"]
         assert dialog.kinds.GetSelection() == 1
         # Arrowing the Kinds list shows that kind below it.
         dialog.kinds.SetSelection(3)
@@ -9923,7 +9923,7 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)
         assert dialog.category == "code"
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)  # wraps to the last
-        assert dialog.category == "decisions"
+        assert dialog.category == "tasks"
         _tab_key(dialog, wx.WXK_PAGEDOWN, control=False, command=True)  # Ctrl+Page Down
         assert dialog.category == "code"
         # A Mac's Cmd+Shift+] and Cmd+Shift+[ (the key may come shifted).
@@ -9931,10 +9931,13 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         assert dialog.category == "links"
         _tab_key(dialog, ord("["), control=False, command=True, shift=True)
         assert dialog.category == "code"
-        # Ctrl+1 to Ctrl+5 (Cmd on a Mac) go straight to a kind.
+        # Ctrl+1 to Ctrl+6 go straight to a kind on Windows.
         _tab_key(dialog, ord("4"), control=False, command=True)
         assert dialog.category == "commands" and focused[-1] == "commands"
         assert dialog.kinds.GetSelection() == 3
+        _tab_key(dialog, ord("6"), control=False, command=True)
+        assert dialog.category == "tasks" and focused[-1] == "tasks"
+        _tab_key(dialog, ord("4"), control=False, command=True)
         # A plain digit is just typing.
         _tab_key(dialog, ord("2"), control=False)
         assert dialog.category == "commands"
@@ -9974,7 +9977,7 @@ def test_lists_altgr_and_other_digits_are_typing(frame):
             event.SetControlDown(True)
             event.SetAltDown(True)
             dialog._on_char_hook(event)
-        _tab_key(dialog, ord("6"), control=False, command=True)  # no sixth kind
+        _tab_key(dialog, ord("7"), control=False, command=True)  # no seventh kind
         assert dialog.category == "links"
     finally:
         dialog.Destroy()
@@ -10031,7 +10034,8 @@ def test_lists_scope_rebuilds_every_kind(frame):
         built.clear()
         dialog.set_scope("message")
         assert sorted(built) == sorted((c, "message") for c in
-                                       ("code", "links", "files", "commands", "decisions"))
+                                       ("code", "links", "files", "commands", "decisions",
+                                        "tasks"))
     finally:
         dialog.Destroy()
 
@@ -10097,3 +10101,122 @@ def test_codex_settings_show_effective_state_and_preserve_automatic(frame, monke
         assert dialog.get_settings().codex_enabled is (not (installed and choice is not False))
     finally:
         dialog.Destroy()
+
+
+
+# -- Claude's task list (#231) ----------------------------------------------------------------
+
+
+def _task_records():
+    from records import task_create, task_update
+    return [user_text("Fix the flaky test"),
+            *task_create(1, "Find the cause", "toolu_c1", active_form="Finding the cause"),
+            *task_create(2, "Run the tests", "toolu_c2", active_form="Running the tests"),
+            *task_update(1, "toolu_u1", status="in_progress")]
+
+
+def _tasks_session(frame, env, records=None):
+    path = add_transcript(env, "C:\\G\\Repo", "cli-a", _task_records() if records is None else records)
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded)
+    return path
+
+
+def _append(path, records):
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write("\n".join(lines(*records)) + "\n")
+
+
+def test_view_tasks_is_ctrl_shift_j_and_opens_lists_on_tasks(frame, env, monkeypatch):
+    bar = frame.GetMenuBar()
+    labels = [item.GetItemLabel() for item in bar.GetMenu(bar.FindMenu("View")).GetMenuItems()]
+    assert "Tasks...\tCtrl+Shift+J" in labels
+    _tasks_session(frame, env)
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
+    frame.on_tasks()
+    assert (seen["category"], seen["scope"]) == ("tasks", "chat")
+    assert seen["label"] == "&List: Tasks (2):"
+    assert seen["rows"] == ["Find the cause. In progress", "Run the tests. To do"]
+    assert seen["detail"] == "Find the cause\n\nIn progress. Task 1 of 2.\n\nNow: Finding the cause"
+    assert frame._lists_category == "tasks"  # Ctrl+Shift+I opens here next
+
+
+def test_a_chat_without_a_task_list_says_so_on_the_tab(frame, env, monkeypatch):
+    _tasks_session(frame, env, [user_text("hello"), assistant_block(text_block("hi"), "m1")])
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
+    frame.on_tasks()
+    assert seen["rows"] == ["No tasks in this chat."]
+
+
+def test_turn_status_says_how_far_along_the_task_list_is(frame, env):
+    _tasks_session(frame, env)
+    frame.on_turn_status()
+    assert env["feedback"][-1] == ("No turns are running. Quiet one: Task 1 of 2: "
+                                   "Finding the cause. 0 done.")
+
+
+def test_turn_status_without_a_task_list_is_unchanged(frame, env):
+    _tasks_session(frame, env, [user_text("hello")])
+    frame.on_turn_status()
+    assert env["feedback"][-1] == "No turns are running."
+
+
+def test_a_task_marked_done_is_announced_once(frame, env):
+    from records import task_update
+    path = _tasks_session(frame, env)
+    # Said without cutting anything off, so it's in the "feedback" recorder.
+    done = lambda: [s for s in env["spoken"] + env["feedback"] if s.startswith("Done:")]  # noqa: E731
+    assert not done()  # loading says nothing of the list
+    _append(path, task_update(1, "toolu_u2", status="completed"))
+    frame._refresh_chat()
+    assert pump(done)
+    assert "Done: Find the cause. 1 of 2." in env["feedback"]
+    _append(path, [assistant_block(text_block("Carrying on"), "m9")])
+    frame._refresh_chat()
+    assert pump(lambda: frame._chat_messages and frame._chat_messages[-1].text == "Carrying on")
+    assert done() == ["Done: Find the cause. 1 of 2."]
+    frame.on_turn_status()
+    assert env["feedback"][-1].endswith("Quiet one: 1 of 2 tasks done. Next: Run the tests.")
+
+
+def test_a_task_marked_done_is_only_announced_at_full(frame, env):
+    from records import task_update
+    path = _tasks_session(frame, env)
+    frame.speech.announce = speech.ANNOUNCE_SUMMARY
+    _append(path, task_update(1, "toolu_u2", status="completed"))
+    frame._refresh_chat()
+    assert pump(lambda: frame._chat_tasks and frame._chat_tasks[0].done)
+    assert not any(s.startswith("Done:") for s in env["spoken"] + env["feedback"])
+
+
+def test_session_properties_say_where_the_task_list_is(frame, env, monkeypatch):
+    add_transcript(env, "C:\\G\\Repo", "cli-a", _task_records())
+    seen = _properties(frame, monkeypatch)
+    select(frame, "Quiet one")
+    frame.session_list.SetFocus()
+    frame.on_properties()
+    assert pump(lambda: seen)
+    assert "Tasks: Task 1 of 2: Finding the cause. 0 done." in seen[0]["rows"]
+
+
+def test_settings_has_the_task_list_box(frame):
+    from thechatplace.ui.dialogs import SettingsDialog
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        box = dialog.task_list
+        assert " ".join(box.GetLabel().split()).startswith("Let Claude &keep a task list")
+        assert box.GetValue() and dialog.get_settings().task_list
+        box.SetValue(False)
+        assert dialog.get_settings().task_list is False
+    finally:
+        dialog.Destroy()
+
+
+def test_own_turns_get_the_task_list_unless_it_is_turned_off(frame, env, fake_runner):
+    assert _start(frame, fake_runner).task_list is True
+    frame._runners.clear()
+    frame.speech.task_list = False
+    frame.reply_text.SetValue("again")
+    frame.on_send()
+    assert fake_runner.instances[-1].task_list is False

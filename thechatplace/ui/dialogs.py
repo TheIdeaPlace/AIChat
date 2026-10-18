@@ -928,6 +928,15 @@ class SettingsDialog(wx.Dialog):
         self.remote_control.SetValue(speech.remote_control)
         outer.Add(self.remote_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        # #231: Claude Code gives newer models no task list unless asked.
+        self.task_list = wx.CheckBox(self, label=_wrapped(
+            self, "Let Claude &keep a task list in The Chat Place's sessions, as it does in "
+                  "the desktop app, so View, Tasks shows how far along it is "
+                  "(from the next message)",
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
+        self.task_list.SetValue(speech.task_list)
+        outer.Add(self.task_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         codex_label = "Include Code&x chats (restart required)"
         if not platform_paths.find_codex():
             codex_label += (". Codex isn't installed on this computer; "
@@ -1016,6 +1025,7 @@ class SettingsDialog(wx.Dialog):
                                    notifications=NOTIFY_LEVELS[max(
                                        self.notify_choice.GetSelection(), 0)],
                                    remote_control=self.remote_control.GetValue(),
+                                   task_list=self.task_list.GetValue(),
                                    codex_enabled=(self.codex_enabled.GetValue() if self._codex_changed
                                        or self.codex_enabled.GetValue() != self._initial_codex_effective
                                        else self._codex_choice),
@@ -2891,7 +2901,7 @@ class ListsDialog(wx.Dialog):
     below; Enter goes to its list. From anywhere in the dialog, the next or
     previous kind is Ctrl+Tab / Ctrl+Shift+Tab or Ctrl+Page Down / Page Up
     on Windows, and Cmd+Shift+] / Cmd+Shift+[ or Cmd+Page Down / Page Up on a
-    Mac; on Windows, Ctrl+1 to Ctrl+5 go straight to one. Each leaves you on
+    Mac; on Windows, Ctrl+1 to Ctrl+6 go straight to one. Each leaves you on
     that kind's list.
 
     "Show items from" chooses this message or the whole chat.
@@ -3050,7 +3060,7 @@ class ListsDialog(wx.Dialog):
             return ("by", 1)
         if command and event.ShiftDown() and key in (ord("["), ord("{")):
             return ("by", -1)
-        # Ctrl+1 to Ctrl+5 jump to a kind on Windows. On a Mac, Cmd+1 to
+        # Ctrl+1 to Ctrl+6 jump to a kind on Windows. On a Mac, Cmd+1 to
         # Cmd+3 are the main window's Go To keys, and the menu bar takes
         # them before the dialog (real keys, #282), so none are used there.
         if ((platform or sys.platform) != "darwin" and command and not event.ShiftDown()
