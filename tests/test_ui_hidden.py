@@ -4266,10 +4266,12 @@ def test_settings_reading_messages_options_follow_their_group_box(frame):
     try:
         dialog.Layout()
         groups = dict((box.GetLabel(), controls)
-                      for box, controls in _boxes_and_their_controls(dialog, dialog.GetSizer()))
+                      for box, controls in _boxes_and_their_controls(dialog._body,
+                                                                     dialog._body.GetSizer()))
         reading = groups["Reading messages"]
         assert dialog.formatted in reading and dialog.whole_in_list in reading
-        assert all(c.GetParent() is dialog for c in (dialog.formatted, dialog.whole_in_list))
+        # The settings live in the scrolling body (#231), as the box's siblings.
+        assert all(c.GetParent() is dialog._body for c in (dialog.formatted, dialog.whole_in_list))
     finally:
         dialog.Destroy()
 
@@ -6122,7 +6124,7 @@ def test_settings_says_why_the_last_announcement_was_not_spoken(frame, monkeypat
                                   "the text.")
         assert box.GetName() == "Speech problem" and box.IsEditable() is False
         assert box.AcceptsFocusFromKeyboard()
-        children = list(dialog.GetChildren())
+        children = list(dialog._body.GetChildren())
         assert children.index(box) == children.index(dialog.rate_choice) + 2  # after the note
     finally:
         dialog.Destroy()
@@ -7123,7 +7125,7 @@ def test_settings_sets_how_many_recent_folders_and_clears_them(frame, env, monke
         assert dialog.get_settings().recent_folder_limit == 3
         button = dialog.clear_recent_btn
         assert button.GetLabel() == "C&lear Recent Folders"
-        children = list(dialog.GetChildren())
+        children = list(dialog._body.GetChildren())
         assert children.index(dialog.recent_limit) < children.index(button) < \
             children.index(dialog.remote_control)
         # Asked first: No leaves them.
@@ -8221,7 +8223,10 @@ def test_settings_is_no_taller_than_its_controls(frame):
     dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
     try:
         dialog.Layout()
-        spare = dialog.GetClientSize().height - dialog.GetSizer().GetMinSize().height
+        # The scrolling body (#231) is exactly as tall as the settings: no
+        # band of empty space above the buttons.
+        body = dialog._body
+        spare = body.GetClientSize().height - body.GetSizer().GetMinSize().height
         assert 0 <= spare <= 2
     finally:
         dialog.Destroy()
