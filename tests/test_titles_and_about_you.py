@@ -221,9 +221,33 @@ def test_a_session_in_your_home_folder_doesnt_list_your_things_twice(tmp_path):
         ("Your instructions for every session", False), ("Project instructions", True)]
 
 
-def test_same_folder_survives_a_missing_path(tmp_path):
+def test_a_session_inside_your_claude_folder_doesnt_list_your_things_twice(tmp_path):
+    home = tmp_path / "claude"
+    write(home / "CLAUDE.md", "# Everywhere\n")
+    write(home / "skills" / "deploy" / "SKILL.md", "---\nname: deploy\n---\n")
+    kinds = about_you.collect([str(home)], home=home, user_home=str(tmp_path))
+    by = {k.name: k for k in kinds}
+    assert [(i.name, i.project) for i in by[about_you.INSTRUCTIONS].items] == [
+        ("Your instructions for every session", "")]
+    assert [(s.name, s.project) for s in by[about_you.SKILLS].items] == [("deploy", "")]
+
+
+def test_same_folder_when_one_or_both_paths_are_missing(tmp_path):
+    (tmp_path / "x").mkdir()
     assert about_you._same_folder(tmp_path / "x", tmp_path / "x")
     assert not about_you._same_folder(tmp_path / "x", tmp_path / "y")
+    assert not about_you._same_folder(tmp_path / "y", tmp_path / "x")
+    assert not about_you._same_folder(tmp_path / "y", tmp_path / "y")
+
+
+def test_a_missing_claude_home_skips_the_comparison(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(about_you, "_same_folder", lambda a, b: calls.append(a) or False)
+    project = tmp_path / "work"
+    write(project / ".claude" / "skills" / "s" / "SKILL.md", "# S\n")
+    kinds = about_you.collect([str(project)], home=tmp_path / "missing", user_home="")
+    assert calls == []
+    assert [s.project for s in kinds[2].items] == ["work"]
 
 
 def test_two_session_folders_with_one_name_are_told_apart(tmp_path):

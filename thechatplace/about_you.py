@@ -210,11 +210,12 @@ def _project_folders(cwds: Iterable[str]) -> List[Path]:
 
 
 def _same_folder(a: Path, b: Path) -> bool:
-    """Whether two paths are one folder, however they are spelled."""
+    """Whether two existing paths are one folder, however they are spelled (case, a
+    trailing slash, a junction). A path that doesn't exist is nobody's duplicate."""
     try:
         return os.path.samefile(a, b)
     except OSError:
-        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+        return False
 
 
 def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
@@ -230,10 +231,18 @@ def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
     cwds = list(cwds)
     folders = _project_folders(cwds)
     names = _project_names(cwds)
-    # A session run from your home folder has your own Claude folder as its .claude, so
-    # reading that as the project's too would list everything of yours twice (#315). The
-    # folder's own CLAUDE.md, outside .claude, is still that project's.
-    claude_folders = [f for f in folders if not _same_folder(f / ".claude", home)]
+    # A session run from your home folder has your own Claude folder as its .claude, and one
+    # run from inside your Claude folder is that folder. Reading those as a project's too
+    # would list everything of yours twice (#315). A home-folder session's own CLAUDE.md,
+    # outside .claude, is still that project's.
+    home_exists = home.is_dir()
+
+    def is_claude_home(path: Path) -> bool:
+        return home_exists and _same_folder(path, home)
+
+    in_claude_home = {f for f in folders if is_claude_home(f)}
+    dot_claude_is_home = {f for f in folders if is_claude_home(f / ".claude")}
+    claude_folders = [f for f in folders if f not in dot_claude_is_home | in_claude_home]
 
     def whose(folder: Path) -> str:
         return names.get(platform_paths.encode_cwd(str(folder)), folder.name)
@@ -248,10 +257,12 @@ def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
     if path.is_file():
         add(INSTRUCTIONS, _labelled(INSTRUCTIONS, path, "Your instructions for every session"))
     for folder in folders:
+        if folder in in_claude_home:
+            continue   # its CLAUDE.md is yours, listed above
         for relative, label in (("CLAUDE.md", "Project instructions"),
                                 (".claude/CLAUDE.md", "Project instructions (.claude)"),
                                 ("CLAUDE.local.md", "Your private project instructions")):
-            if relative.startswith(".claude/") and folder not in claude_folders:
+            if relative.startswith(".claude/") and folder in dot_claude_is_home:
                 continue
             path = folder / relative
             if path.is_file():
