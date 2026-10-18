@@ -13,6 +13,7 @@ plus the project-level ones in the folders your sessions work in.
 """
 from __future__ import annotations
 
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -208,6 +209,14 @@ def _project_folders(cwds: Iterable[str]) -> List[Path]:
     return sorted(folders, key=lambda p: p.name.casefold())
 
 
+def _same_folder(a: Path, b: Path) -> bool:
+    """Whether two paths are one folder, however they are spelled."""
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
 def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
             user_home: Optional[str] = None) -> List[KnownKind]:
     """Every kind, in ``KINDS`` order, each with what was found (perhaps none).
@@ -221,6 +230,10 @@ def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
     cwds = list(cwds)
     folders = _project_folders(cwds)
     names = _project_names(cwds)
+    # A session run from your home folder has your own Claude folder as its .claude, so
+    # reading that as the project's too would list everything of yours twice (#315). The
+    # folder's own CLAUDE.md, outside .claude, is still that project's.
+    claude_folders = [f for f in folders if not _same_folder(f / ".claude", home)]
 
     def whose(folder: Path) -> str:
         return names.get(platform_paths.encode_cwd(str(folder)), folder.name)
@@ -238,6 +251,8 @@ def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
         for relative, label in (("CLAUDE.md", "Project instructions"),
                                 (".claude/CLAUDE.md", "Project instructions (.claude)"),
                                 ("CLAUDE.local.md", "Your private project instructions")):
+            if relative.startswith(".claude/") and folder not in claude_folders:
+                continue
             path = folder / relative
             if path.is_file():
                 add(INSTRUCTIONS, _labelled(INSTRUCTIONS, path, label, project=whose(folder)))
@@ -267,7 +282,7 @@ def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
         add(SKILLS, _markdown_item(SKILLS, path, path.parent.name))
     for path in _files(home / "skills" / "synced", "*/*/SKILL.md"):
         add(SKILLS, _markdown_item(SKILLS, path, path.parent.name, project="From your account"))
-    for folder in folders:
+    for folder in claude_folders:
         for path in _files(folder / ".claude" / "skills", "*/SKILL.md"):
             add(SKILLS, _markdown_item(SKILLS, path, path.parent.name, project=whose(folder)))
 
@@ -277,7 +292,7 @@ def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
             add(kind, _markdown_item(kind, path))
         if kind == OUTPUT_STYLES:
             continue
-        for folder in folders:
+        for folder in claude_folders:
             for path in _files(folder / ".claude" / sub, "*.md"):
                 add(kind, _markdown_item(kind, path, project=whose(folder)))
 
@@ -286,7 +301,7 @@ def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
         path = home / name
         if path.is_file():
             add(SETTINGS, KnownItem(SETTINGS, label, path))
-    for folder in folders:
+    for folder in claude_folders:
         for name, label in (("settings.json", "Project settings"),
                             ("settings.local.json", "Your local project settings")):
             path = folder / ".claude" / name
