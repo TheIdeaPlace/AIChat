@@ -234,8 +234,8 @@ def test_an_old_or_finished_list_isnt_current():
 
 
 def test_many_steps_done_at_once_are_said_briefly():
-    from thechatplace.transcript import ClaudeTask
-    tasks = [ClaudeTask(str(i), f"Step {i}", status="completed") for i in range(1, 9)]
+    from thechatplace.tasklist import TaskStep
+    tasks = [TaskStep(str(i), f"Step {i}", status="completed") for i in range(1, 9)]
     assert tasklist.done_text(tasks, tasks) == "Done: 5 steps, then Step 6; Step 7; Step 8. 8 of 8."
     assert tasklist.done_text(tasks[:3], tasks) == "Done: Step 1; Step 2; Step 3. 8 of 8."
 

@@ -45,6 +45,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from .tasklist import TaskStep, TASK_PENDING, TASK_IN_PROGRESS, TASK_COMPLETED, TASK_STATUSES
+
 from .changes import EDIT_TOOLS, FileEdit, edit_from_tool
 
 # Message kinds. The label is what a screen reader hears first on each line.
@@ -160,27 +162,7 @@ class ToolCommand:
 #: time; TodoWrite, the older tool (CLAUDE_CODE_ENABLE_TASKS=0), writes the
 #: whole list each time.
 TASK_CREATE, TASK_UPDATE, TODO_WRITE = "TaskCreate", "TaskUpdate", "TodoWrite"
-TASK_PENDING, TASK_IN_PROGRESS, TASK_COMPLETED = "pending", "in_progress", "completed"
-TASK_STATUSES = (TASK_PENDING, TASK_IN_PROGRESS, TASK_COMPLETED)
 _TASK_CREATED = re.compile(r"\bTask #(\w+) created", re.IGNORECASE)
-
-
-@dataclass
-class ClaudeTask:
-    """One step on Claude's task list (#231), as its latest update left it."""
-    task_id: str
-    subject: str
-    description: str = ""
-    #: What Claude says while it's on the step ("Running the tests").
-    active_form: str = ""
-    status: str = TASK_PENDING
-    #: The turn it was added in, and the turn it last changed in.
-    turn: int = 0
-    changed_turn: int = 0
-
-    @property
-    def done(self) -> bool:
-        return self.status == TASK_COMPLETED
 
 
 @dataclass
@@ -202,7 +184,7 @@ class Transcript:
     #: Shell commands Claude ran, in order (#279).
     commands: List[ToolCommand] = field(default_factory=list)
     #: Claude's task list, in the order the tasks were added (#231).
-    tasks: List[ClaudeTask] = field(default_factory=list)
+    tasks: List[TaskStep] = field(default_factory=list)
 
     def latest_turn_edits(self) -> List[FileEdit]:
         """The changes made since your latest message."""
@@ -581,7 +563,7 @@ class TranscriptParser:
             subject = _text_field(tool_input.get("subject")) or _text_field(created.get("subject"))
             if not task_id or not subject:
                 return
-            task = ClaudeTask(task_id=task_id, subject=subject,
+            task = TaskStep(task_id=task_id, subject=subject,
                               description=_text_field(tool_input.get("description")),
                               active_form=_text_field(tool_input.get("activeForm")),
                               turn=turn, changed_turn=turn)
@@ -621,7 +603,7 @@ class TranscriptParser:
                 return
             before = {t.task_id: t for t in tasks}
             seen: Dict[str, int] = {}
-            fresh: List[ClaudeTask] = []
+            fresh: List[TaskStep] = []
             for todo in todos:
                 if not isinstance(todo, dict):
                     continue
@@ -636,7 +618,7 @@ class TranscriptParser:
                 seen[subject] = seen.get(subject, 0) + 1
                 task_id = f"todo:{subject}" if seen[subject] == 1 else f"todo:{subject}#{seen[subject]}"
                 old = before.get(task_id)
-                fresh.append(ClaudeTask(
+                fresh.append(TaskStep(
                     task_id=task_id, subject=subject,
                     active_form=_text_field(todo.get("activeForm")), status=status,
                     turn=old.turn if old is not None else turn,

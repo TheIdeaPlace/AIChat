@@ -10245,10 +10245,10 @@ def test_turn_status_leaves_out_an_old_or_finished_list(frame, env):
 
 
 def test_turn_status_gives_the_list_while_waiting_on_you_or_background_work(frame, env, fake_runner):
-    from thechatplace.transcript import ClaudeTask
+    from thechatplace.tasklist import TaskStep
     from thechatplace.claude_cli import PermissionRequest
     runner = _start(frame, fake_runner)
-    frame._chat_tasks = [ClaudeTask("1", "Write the fix", status="in_progress",
+    frame._chat_tasks = [TaskStep("1", "Write the fix", status="in_progress",
                                     active_form="Writing the fix")]
     frame.on_turn_status()
     assert env["feedback"][-1].endswith("last starting. Task 1 of 1: Writing the fix. 0 done.")
@@ -10264,12 +10264,12 @@ def test_turn_status_gives_the_list_while_waiting_on_you_or_background_work(fram
 
 
 def test_a_failed_first_read_doesnt_announce_the_whole_list_later(frame, env):
-    from thechatplace.transcript import ClaudeTask
+    from thechatplace.tasklist import TaskStep
     _tasks_session(frame, env, [user_text("hello")])  # loaded, with no list yet
-    done = [ClaudeTask(str(i), f"Step {i}", status="completed") for i in range(1, 6)]
+    done = [TaskStep(str(i), f"Step {i}", status="completed") for i in range(1, 6)]
     frame._apply_tasks(done, first_load=False)  # the first read that finds a list
     assert not any(s.startswith("Done:") for s in env["spoken"] + env["feedback"])
-    frame._apply_tasks(done + [ClaudeTask("6", "Step 6", status="completed")], first_load=False)
+    frame._apply_tasks(done + [TaskStep("6", "Step 6", status="completed")], first_load=False)
     assert "Done: Step 6. 6 of 6." in env["feedback"]
 
 

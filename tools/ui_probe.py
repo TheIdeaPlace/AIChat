@@ -979,14 +979,14 @@ def d_lists_decisions(frame, env):
 def d_lists_tasks(frame, env):
     """View, Tasks (#231): Claude's task list, one step of each state."""
     from thechatplace import lists
-    from thechatplace.transcript import ClaudeTask
+    from thechatplace.tasklist import TaskStep
     _open(frame, "Fix the flaky upload test")
     frame._chat_tasks = [
-        ClaudeTask("1", "Find why the upload test fails", status="completed", turn=1),
-        ClaudeTask("2", "Make the retry wait for the server", status="in_progress",
+        TaskStep("1", "Find why the upload test fails", status="completed", turn=1),
+        TaskStep("2", "Make the retry wait for the server", status="in_progress",
                    active_form="Making the retry wait for the server",
                    description="Wait for the server's ready line before retrying.", turn=1),
-        ClaudeTask("3", "Run the whole test suite", turn=1)]
+        TaskStep("3", "Run the whole test suite", turn=1)]
     return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
 
 

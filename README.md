@@ -187,7 +187,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   one dialog for each kind of thing in a chat: **Code Blocks**, **Links**, **Changed
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
   yet", and its output), **Decisions** (each question Claude asked, with your answer) and
-  **Tasks** (Claude's task list, #231: each step, "to do", "in progress" or "done", in Claude's
+  **Tasks** (the task list, #231: each step, "to do", "in progress" or "done", in Claude's
   order). In Codex chats, only Code
   Blocks and Links are listed for now (#303). **Show
   items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions and
@@ -382,7 +382,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   folder, so it has none of these. git and gh are run with no shell and never prompt; branch and
   repository names are checked before either sees them. On a Mac without Apple's Command Line
   Tools, `/usr/bin/git` isn't used, since running it asks to install them.
-- **Claude's task list** (#231). On longer work Claude keeps a list of its steps (Claude Code's
+- **the task list** (#231). On longer work Claude keeps a list of its steps (Claude Code's
   TaskCreate and TaskUpdate, or the older TodoWrite), and The Chat Place reads it from the
   transcript, for desktop app and terminal sessions as well as its own. View, Tasks
   (**Ctrl+Shift+J**) lists it; Turn Status (Ctrl+Shift+T) and Properties say how far along it is
@@ -532,7 +532,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   the loaded session. A session's lines are its title, provider, kind, folder, status, when it started and
   was last active, the model of its latest reply (for supported chats started here, the model, effort
   and permission mode chosen), how many messages, your messages, the provider's replies, tool calls,
-  links, code blocks and changed files it has, how far along Claude's task list is, how full its
+  links, code blocks and changed files it has, how far along the task list is, how full its
   context is, how many times it was
   compacted, its groups, Remote Control, whether it's archived or hidden, its session and desktop
   app IDs where available. Claude chats also show the transcript file and size; Codex history
@@ -857,14 +857,14 @@ shows it as plain text instead.
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
 | Messages | Ctrl+L | Lists, on Links: every link in the chat, to open in your browser or copy (also from the session list and the reply box) |
-| Messages | Ctrl+Shift+J | Lists, on Tasks: Claude's task list, each step to do, in progress or done |
+| Messages | Ctrl+Shift+J | Lists, on Tasks: the task list, each step to do, in progress or done |
 | Messages | Ctrl+Shift+C | Copy the message's last code block |
 | Messages | Ctrl+T | Show or hide tool activity in the loaded session |
 | Messages | Ctrl+O | Open this session in the Claude desktop app |
 | Reply box | Ctrl+Enter | Send (Chat Place sessions only); you stay in the reply box |
 | Reply box | Ctrl+Shift+Enter | Send, and save the message as a prompt (asks for its name first) |
 | Reply box | Ctrl+Period | Stop the running turn |
-| Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, what is still running in the background, and how far along Claude's task list is |
+| Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, what is still running in the background, and how far along the task list is |
 | Anywhere | Ctrl+Shift+A | Answer: a provider's permission request, a question or a supported plan |
 | Anywhere | Alt+Enter | Properties of the selected session, or in the messages the selected message |
 | Anywhere | F1 | Keyboard shortcuts |

@@ -185,7 +185,7 @@ session you continued. With no session loaded, Ctrl+T says so and changes nothin
 tool calls also count in Links, Export and Find in All Sessions only when it's on for that
 session.
 
-### Claude's task list
+### the task list
 
 On longer work, Claude keeps a list of its steps: what it plans to do, which step it's on, and
 which are done. The Chat Place reads that list for any Claude session, including desktop app
@@ -255,7 +255,7 @@ session list, the messages or the reply box:
 - **Commands:** each command Claude ran: what it said it was doing, then "done", "failed" or
   "no result yet". Its full text shows the command and its output.
 - **Decisions:** each question Claude asked you, with your answer.
-- **Tasks:** Claude's task list, each step with "to do", "in progress" or "done" (see "Claude's
+- **Tasks:** the task list, each step with "to do", "in progress" or "done" (see "Claude's
   task list" above).
 
 In Codex chats, Lists has Code Blocks and Links for now; the other kinds say they aren't listed
@@ -565,7 +565,7 @@ waiting, what you send goes to it at once instead of being queued. Stop ends the
 background work with it.
 
 **Ctrl+Shift+T** (Turn Status) says how long the provider has been working on this turn and what it last
-did, or what is still running in the background, and how far along Claude's task list is. There's
+did, or what is still running in the background, and how far along the task list is. There's
 no time limit on a turn.
 
 ### Commands, skills and attachments

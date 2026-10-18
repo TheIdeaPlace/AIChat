@@ -129,7 +129,7 @@ SHORTCUTS = [
         ("Ctrl+L", "Lists, on Links for the whole chat: Enter opens a link in your "
                    "browser, Ctrl+C copies its address (also from the session list and the "
                    "reply box)"),
-        ("Ctrl+Shift+J", "Lists, on Tasks for the whole chat: Claude's task list, each step "
+        ("Ctrl+Shift+J", "Lists, on Tasks for the whole chat: the task list, each step "
                          "with whether it's to do, in progress or done (Claude chats)"),
         ("Ctrl+T", "Show or hide tool activity in the loaded session"),
         ("Ctrl+O", "Open this session in the Claude desktop app"),
@@ -157,7 +157,7 @@ SHORTCUTS = [
                          "account allowances and reset times; Ctrl+C copies a line"),
         ("Ctrl+Shift+T", "Turn status: how long the provider has been working, on what, what "
                          "is still running in the background, whether a message "
-                         "is queued, and how far along Claude's task list is"),
+                         "is queued, and how far along the task list is"),
     ]),
     ("Anywhere", [
         ("Ctrl+Shift+S", "Find in All Sessions: search the messages of every session in the "
