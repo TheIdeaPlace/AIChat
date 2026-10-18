@@ -1,6 +1,6 @@
 """What View, Lists shows (#279): one dialog listing each kind of thing in a
-chat (code blocks, links, changed files, commands, decisions), for the
-selected message or the whole chat.
+chat (code blocks, links, changed files, commands, decisions, and Claude's
+task list, #231), for the selected message or the whole chat.
 
 Each kind is a list of ``ListItem``: the line the list reads, the text to read
 in full below it, and what Copy copies. Building them needs no window, so it's
@@ -8,24 +8,27 @@ all tested without one; ``ui.dialogs.ListsDialog`` shows them.
 
 "This message" means the selected message itself for code blocks and links,
 which live in a message's text, and the selected message's turn (your message
-and everything up to your next one) for files, commands and decisions, which
-happen around it.
+and everything up to your next one) for files, commands, decisions and tasks,
+which happen around it. A task belongs to the turns it was added or last
+changed in.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Sequence
 
+from . import tasklist
 from .changes import FileEdit, by_file, file_text
 from .codeblocks import find_code_blocks
 from .message_links import FoundLink, find_links
-from .transcript import ANSWER, QUESTION, ChatMessage, ToolCommand
+from .transcript import ANSWER, QUESTION, ChatMessage, ClaudeTask, ToolCommand
 
 CODE = "code"
 LINKS = "links"
 FILES = "files"
 COMMANDS = "commands"
 DECISIONS = "decisions"
+TASKS = "tasks"
 
 #: The kinds, in order: (id, tab title, the noun a count uses).
 CATEGORIES = (
@@ -34,6 +37,7 @@ CATEGORIES = (
     (FILES, "Changed Files", "files"),
     (COMMANDS, "Commands", "commands"),
     (DECISIONS, "Decisions", "decisions"),
+    (TASKS, "Tasks", "tasks"),
 )
 CATEGORY_IDS = tuple(c[0] for c in CATEGORIES)
 TITLES = {c[0]: c[1] for c in CATEGORIES}
@@ -194,13 +198,31 @@ def decision_items(messages: Sequence[ChatMessage], turn: Optional[int]) -> List
     return items
 
 
+# -- tasks (#231) ---------------------------------------------------------------
+
+
+def task_items(tasks: Sequence[ClaudeTask], turn: Optional[int]) -> List[ListItem]:
+    """Claude's task list in its own order, the order Claude works through
+    it. For one turn, the tasks it added or changed."""
+    total = len(tasks)
+    items: List[ListItem] = []
+    for position, task in enumerate(tasks, 1):
+        if turn is not None and turn not in (task.turn, task.changed_turn):
+            continue
+        items.append(ListItem(row=tasklist.row(task), detail=tasklist.detail(task, position, total),
+                              copy_text=task.subject, copy_what="the task",
+                              detail_name=f"Task {position} of {total}"))
+    return items
+
+
 # -- all together --------------------------------------------------------------
 
 
 def build(category: str, scope: str, messages: Sequence[ChatMessage],
           selected: Optional[ChatMessage], edits: Iterable[FileEdit],
           commands: Iterable[ToolCommand], describe_file: Callable,
-          turn: Optional[int] = None) -> List[ListItem]:
+          turn: Optional[int] = None,
+          tasks: Sequence[ClaudeTask] = ()) -> List[ListItem]:
     """One kind's items. ``messages`` are the messages as the list shows them;
     ``selected`` is the message "This message" means (None: there's none),
     and ``turn`` its turn when that isn't its own (a queued message, not yet
@@ -221,13 +243,15 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
         return command_items(commands, turn)
     if category == DECISIONS:
         return decision_items(messages, turn)
+    if category == TASKS:
+        return task_items(tasks, turn)
     return []
 
 
 def empty_text(category: str, scope: str) -> str:
     """The list's one line when a kind has nothing."""
     where = "this message" if scope == SCOPE_MESSAGE else "this chat"
-    if scope == SCOPE_MESSAGE and category in (FILES, COMMANDS, DECISIONS):
+    if scope == SCOPE_MESSAGE and category in (FILES, COMMANDS, DECISIONS, TASKS):
         where = "this message's turn"
     return f"No {NOUNS.get(category, 'items')} in {where}."
 

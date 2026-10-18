@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   1020,
-  775
+  895
  ],
  "client": [
   998,
-  719
+  839
  ],
  "dpi": [
   144,
@@ -15,6 +15,25 @@
  ],
  "content_scale": 1.0,
  "controls": [
+  {
+   "class": "ScrolledWindow",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    0,
+    998,
+    787
+   ],
+   "best": [
+    987,
+    25
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
   {
    "class": "RadioBox",
    "name": "radioBox",
@@ -29,8 +48,8 @@
     532,
     150
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -48,8 +67,8 @@
     233,
     25
    ],
-   "depth": 1,
-   "parent": 0,
+   "depth": 2,
+   "parent": 1,
    "enabled": true,
    "problems": []
   },
@@ -67,8 +86,8 @@
     500,
     25
    ],
-   "depth": 1,
-   "parent": 0,
+   "depth": 2,
+   "parent": 1,
    "enabled": true,
    "problems": []
   },
@@ -86,8 +105,8 @@
     205,
     25
    ],
-   "depth": 1,
-   "parent": 0,
+   "depth": 2,
+   "parent": 1,
    "enabled": true,
    "problems": []
   },
@@ -105,8 +124,8 @@
     601,
     25
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -124,8 +143,8 @@
     424,
     25
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -143,8 +162,8 @@
     178,
     33
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -162,8 +181,8 @@
     684,
     25
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -181,8 +200,8 @@
     713,
     25
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -200,8 +219,8 @@
     120,
     26
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -219,8 +238,8 @@
     602,
     33
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": [],
    "value": "Automatic (your screen reader, or a system voice when none is running)"
@@ -239,8 +258,8 @@
     113,
     26
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -258,8 +277,8 @@
     96,
     33
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": false,
    "problems": [],
    "value": "Default"
@@ -278,8 +297,8 @@
     441,
     26
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -297,8 +316,8 @@
     181,
     26
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -316,8 +335,8 @@
     502,
     33
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": [],
    "value": "When your sessions finish a turn, or any session needs you"
@@ -336,8 +355,8 @@
     274,
     26
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -355,8 +374,8 @@
     74,
     33
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -374,8 +393,8 @@
     193,
     36
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -393,8 +412,46 @@
     937,
     50
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so View, Tasks shows how far\nalong it is (from the next message)",
+   "rect": [
+    10,
+    632,
+    967,
+    50
+   ],
+   "best": [
+    967,
+    50
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Include Code&x chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then\nrestart.",
+   "rect": [
+    10,
+    692,
+    932,
+    50
+   ],
+   "best": [
+    932,
+    50
+   ],
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -404,7 +461,7 @@
    "label": "&Tell me when an update has been installed, with a link to what's new",
    "rect": [
     10,
-    632,
+    752,
     572,
     25
    ],
@@ -412,8 +469,8 @@
     572,
     25
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 1,
+   "parent": 0,
    "enabled": true,
    "problems": []
   },
@@ -423,7 +480,7 @@
    "label": "OK",
    "rect": [
     747,
-    675,
+    795,
     114,
     36
    ],
@@ -442,7 +499,7 @@
    "label": "Cancel",
    "rect": [
     871,
-    675,
+    795,
     114,
     36
    ],

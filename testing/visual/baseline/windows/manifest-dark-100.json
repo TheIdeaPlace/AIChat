@@ -225,11 +225,11 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    550
+    630
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "Settings"
+   "about": "Settings with no Codex installation"
   },
   "new-session": {
    "kind": "dialog",
@@ -375,29 +375,29 @@
    "kind": "dialog",
    "png": "code-blocks-dark-100.png",
    "json": "code-blocks-dark-100.json",
-   "title": "Code Blocks",
-   "class": "CodeBlocksDialog",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
    "size": [
-    760,
-    560
+    820,
+    660
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "A message's code blocks"
+   "about": "View, Lists: a message's code blocks"
   },
   "links": {
    "kind": "dialog",
    "png": "links-dark-100.png",
    "json": "links-dark-100.json",
-   "title": "Links in Fix the flaky upload test: 1",
-   "class": "LinksDialog",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
    "size": [
-    760,
-    480
+    820,
+    660
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Links"
+   "about": "View, Lists: Links"
   },
   "find-all": {
    "kind": "dialog",
@@ -417,15 +417,15 @@
    "kind": "dialog",
    "png": "changes-dark-100.png",
    "json": "changes-dark-100.json",
-   "title": "Changed Files: Visual probe",
-   "class": "ChangesDialog",
+   "title": "Lists: Visual probe",
+   "class": "ListsDialog",
    "size": [
-    800,
-    580
+    820,
+    660
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Changed Files"
+   "about": "View, Lists: Changed Files"
   },
   "usage": {
    "kind": "dialog",

@@ -156,6 +156,33 @@ class ToolCommand:
     key: str = ""
 
 
+#: Claude's task list (#231). TaskCreate and TaskUpdate keep it one task at a
+#: time; TodoWrite, the older tool (CLAUDE_CODE_ENABLE_TASKS=0), writes the
+#: whole list each time.
+TASK_CREATE, TASK_UPDATE, TODO_WRITE = "TaskCreate", "TaskUpdate", "TodoWrite"
+TASK_PENDING, TASK_IN_PROGRESS, TASK_COMPLETED = "pending", "in_progress", "completed"
+TASK_STATUSES = (TASK_PENDING, TASK_IN_PROGRESS, TASK_COMPLETED)
+_TASK_CREATED = re.compile(r"\bTask #(\w+) created", re.IGNORECASE)
+
+
+@dataclass
+class ClaudeTask:
+    """One step on Claude's task list (#231), as its latest update left it."""
+    task_id: str
+    subject: str
+    description: str = ""
+    #: What Claude says while it's on the step ("Running the tests").
+    active_form: str = ""
+    status: str = TASK_PENDING
+    #: The turn it was added in, and the turn it last changed in.
+    turn: int = 0
+    changed_turn: int = 0
+
+    @property
+    def done(self) -> bool:
+        return self.status == TASK_COMPLETED
+
+
 @dataclass
 class Transcript:
     messages: List[ChatMessage] = field(default_factory=list)
@@ -174,6 +201,8 @@ class Transcript:
     edits: List[FileEdit] = field(default_factory=list)
     #: Shell commands Claude ran, in order (#279).
     commands: List[ToolCommand] = field(default_factory=list)
+    #: Claude's task list, in the order the tasks were added (#231).
+    tasks: List[ClaudeTask] = field(default_factory=list)
 
     def latest_turn_edits(self) -> List[FileEdit]:
         """The changes made since your latest message."""
@@ -250,6 +279,9 @@ class TranscriptParser:
         self._tool_names: Dict[str, str] = {}  # tool_use_id -> tool name
         self._edit_inputs: Dict[str, Tuple[str, dict]] = {}  # file-changing calls
         self._commands: Dict[str, ToolCommand] = {}  # shell calls awaiting a result
+        #: Task-list calls awaiting their result (#231): a call that failed
+        #: changed nothing, so it's applied only once it succeeds.
+        self._task_calls: Dict[str, Tuple[str, dict]] = {}
         self._last_assistant_id: Optional[str] = None
 
     # -- public -------------------------------------------------------------
@@ -444,6 +476,9 @@ class TranscriptParser:
                                   self.transcript.turns)
             if edit is not None:
                 self.transcript.edits.append(edit)
+        task_call = self._task_calls.pop(tool_id, None)
+        if task_call is not None and not block.get("is_error"):
+            self._apply_task_call(task_call[0], task_call[1], record.get("toolUseResult"), body)
         if name == "AskUserQuestion":
             return self._add(ANSWER, _format_answers(record.get("toolUseResult"), body),
                              record, key=f"{record.get('uuid')}:{tool_id}")
@@ -505,6 +540,8 @@ class TranscriptParser:
         tool_input = block.get("input") if isinstance(block.get("input"), dict) else {}
         if tool_id and name in EDIT_TOOLS:
             self._edit_inputs[tool_id] = (name, tool_input)
+        if tool_id and name in (TASK_CREATE, TASK_UPDATE, TODO_WRITE):
+            self._task_calls[tool_id] = (name, tool_input)
         if (name in COMMAND_TOOLS and isinstance(tool_input.get("command"), str)
                 and tool_input["command"].strip()):
             command = ToolCommand(command=tool_input["command"].strip(),
@@ -522,6 +559,90 @@ class TranscriptParser:
             plan = str(tool_input.get("plan") or "").strip()
             return self._add(PLAN, plan or "Claude proposed a plan.", record, key=key)
         return self._add(TOOL, _summarize_tool(name, tool_input), record, key=key)
+
+    # task list (#231) --------------------------------------------------------
+
+    def _apply_task_call(self, name: str, tool_input: dict, result, body: str) -> None:
+        """A task-list call that succeeded. Shapes seen on Claude Code 2.1.296:
+        TaskCreate takes subject, description and activeForm, and its result
+        is ``{"task": {"id", "subject"}}`` ("Task #3 created successfully");
+        TaskUpdate takes taskId plus the fields that change (status pending,
+        in_progress, completed or deleted); TodoWrite takes the whole list as
+        ``todos``. Anything else is skipped: an unknown shape changes nothing."""
+        turn = self.transcript.turns
+        tasks = self.transcript.tasks
+        if name == TASK_CREATE:
+            created = result.get("task") if isinstance(result, dict) else None
+            created = created if isinstance(created, dict) else {}
+            task_id = _text_field(created.get("id"))
+            if not task_id:
+                match = _TASK_CREATED.search(body or "")
+                task_id = match.group(1) if match else ""
+            subject = _text_field(tool_input.get("subject")) or _text_field(created.get("subject"))
+            if not task_id or not subject:
+                return
+            task = ClaudeTask(task_id=task_id, subject=subject,
+                              description=_text_field(tool_input.get("description")),
+                              active_form=_text_field(tool_input.get("activeForm")),
+                              turn=turn, changed_turn=turn)
+            # Ids only grow within a list, so an id that's already there means
+            # Claude started a new list (a copy made by Continue Here starts
+            # again at 1 while its transcript holds the old one): the old
+            # list goes, rather than being merged into the new one.
+            if any(t.task_id == task_id for t in tasks):
+                tasks.clear()
+            tasks.append(task)
+        elif name == TASK_UPDATE:
+            if isinstance(result, dict) and result.get("success") is False:
+                return
+            task_id = _text_field(tool_input.get("taskId"))
+            task = next((t for t in tasks if t.task_id == task_id), None)
+            if task is None:
+                return  # made before this transcript starts: nothing to name it by
+            status = _text_field(tool_input.get("status"))
+            if status == "deleted":
+                tasks.remove(task)
+                return
+            changed = False
+            for attribute, key in (("subject", "subject"), ("description", "description"),
+                                   ("active_form", "activeForm")):
+                value = _text_field(tool_input.get(key))
+                if value and value != getattr(task, attribute):
+                    setattr(task, attribute, value)
+                    changed = True
+            if status in TASK_STATUSES and status != task.status:
+                task.status = status
+                changed = True
+            if changed:
+                task.changed_turn = turn
+        elif name == TODO_WRITE:
+            todos = tool_input.get("todos")
+            if not isinstance(todos, list):
+                return
+            before = {t.task_id: t for t in tasks}
+            seen: Dict[str, int] = {}
+            fresh: List[ClaudeTask] = []
+            for todo in todos:
+                if not isinstance(todo, dict):
+                    continue
+                subject = _text_field(todo.get("content"))
+                if not subject:
+                    continue
+                status = _text_field(todo.get("status"))
+                status = status if status in TASK_STATUSES else TASK_PENDING
+                # TodoWrite has no ids; the step's own words stand in, so a
+                # list that's reordered still matches what was done before,
+                # numbered when the same words come again.
+                seen[subject] = seen.get(subject, 0) + 1
+                task_id = f"todo:{subject}" if seen[subject] == 1 else f"todo:{subject}#{seen[subject]}"
+                old = before.get(task_id)
+                fresh.append(ClaudeTask(
+                    task_id=task_id, subject=subject,
+                    active_form=_text_field(todo.get("activeForm")), status=status,
+                    turn=old.turn if old is not None else turn,
+                    changed_turn=(old.changed_turn if old is not None and old.status == status
+                                  else turn)))
+            tasks[:] = fresh
 
 
 # ---------------------------------------------------------------------------
@@ -576,6 +697,16 @@ def _first_nonblank(text: str) -> str:
     for line in (text or "").splitlines():
         if line.strip():
             return line.strip()
+    return ""
+
+
+def _text_field(value) -> str:
+    """A tool input's text (or numeric id) as a stripped string; "" for
+    anything else, so an odd shape is skipped rather than shown as "None"."""
+    if isinstance(value, bool):
+        return ""
+    if isinstance(value, (str, int)):
+        return str(value).strip()
     return ""
 
 

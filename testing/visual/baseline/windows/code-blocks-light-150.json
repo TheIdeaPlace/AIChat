@@ -1,13 +1,13 @@
 {
- "title": "Code Blocks",
- "class": "CodeBlocksDialog",
+ "title": "Lists: Fix the flaky upload test",
+ "class": "ListsDialog",
  "size": [
-  1140,
-  840
+  1230,
+  968
  ],
  "client": [
-  1118,
-  784
+  1208,
+  912
  ],
  "dpi": [
   144,
@@ -18,15 +18,54 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Code &blocks:",
+   "label": "&Show items from:",
    "rect": [
     8,
-    8,
-    103,
+    11,
+    141,
     26
    ],
    "best": [
-    103,
+    141,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Show items from",
+   "label": "",
+   "rect": [
+    155,
+    8,
+    155,
+    33
+   ],
+   "best": [
+    155,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "This message"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Kinds:",
+   "rect": [
+    8,
+    49,
+    48,
+    26
+   ],
+   "best": [
+    48,
     26
    ],
    "depth": 0,
@@ -36,20 +75,144 @@
   },
   {
    "class": "ListBox",
-   "name": "Code blocks, 1",
+   "name": "Kinds",
    "label": "",
    "rect": [
     10,
-    36,
-    1102,
-    165
+    77,
+    1192,
+    159
    ],
    "best": [
-    301,
-    165
+    198,
+    159
    ],
    "depth": 0,
    "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Code Blocks (1)",
+    "Links (1)",
+    "Changed Files (0)",
+    "Commands (1)",
+    "Decisions (0)",
+    "Tasks (0)"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "BookCtrlBase",
+   "name": "",
+   "label": "",
+   "rect": [
+    0,
+    234,
+    1208,
+    626
+   ],
+   "best": [
+    639,
+    689
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    234,
+    1208,
+    626
+   ],
+   "best": [
+    317,
+    689
+   ],
+   "depth": 1,
+   "parent": 4,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Filter:",
+   "rect": [
+    8,
+    242,
+    43,
+    26
+   ],
+   "best": [
+    43,
+    26
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Filter code blocks",
+   "label": "",
+   "rect": [
+    10,
+    270,
+    1192,
+    33
+   ],
+   "best": [
+    165,
+    33
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&List: Code Blocks (1):",
+   "rect": [
+    8,
+    309,
+    162,
+    26
+   ],
+   "best": [
+    162,
+    26
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Code Blocks (1)",
+   "label": "",
+   "rect": [
+    10,
+    337,
+    1192,
+    210
+   ],
+   "best": [
+    301,
+    210
+   ],
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": [],
    "items": [
@@ -60,19 +223,19 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Co&de:",
+   "label": "&Details:",
    "rect": [
     8,
-    207,
-    47,
+    553,
+    58,
     26
    ],
    "best": [
-    47,
+    58,
     26
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": []
   },
@@ -82,16 +245,16 @@
    "label": "",
    "rect": [
     10,
-    235,
-    1102,
-    499
+    581,
+    1192,
+    237
    ],
    "best": [
     191,
-    330
+    255
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": [],
    "value": "def finish(self):\n    self._file.flush()\n    self._file.close()\n    self.done.set()"
@@ -101,8 +264,8 @@
    "name": "button",
    "label": "&Copy",
    "rect": [
-    876,
-    740,
+    1086,
+    824,
     114,
     36
    ],
@@ -110,18 +273,18 @@
     114,
     36
    ],
-   "depth": 0,
-   "parent": -1,
+   "depth": 2,
+   "parent": 5,
    "enabled": true,
    "problems": []
   },
   {
    "class": "Button",
    "name": "button",
-   "label": "C&lose",
+   "label": "Clos&e",
    "rect": [
-    996,
-    740,
+    1086,
+    868,
     114,
     36
    ],

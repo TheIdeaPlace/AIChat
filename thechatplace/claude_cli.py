@@ -126,6 +126,10 @@ SESSION_INJECTED_PREFIXES = ("CLAUDE_CODE_SDK_", "CLAUDE_CODE_HOST_",
                              "CLAUDE_CODE_MESSAGING_")
 
 
+#: Turns Claude's task-list tools on for every model (#231).
+TASK_LIST_VAR = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
+
+
 class ResumeRefused(ValueError):
     """--resume was asked for a session The Chat Place does not own."""
 
@@ -895,7 +899,8 @@ class TurnRunner:
                  clock: Callable[[], float] = time.monotonic,
                  images: Optional[List[dict]] = None,
                  remote_control: Optional[Dict[str, str]] = None,
-                 timer: Callable[..., threading.Timer] = threading.Timer) -> None:
+                 timer: Callable[..., threading.Timer] = threading.Timer,
+                 task_list: bool = False) -> None:
         self.command = command
         self.cwd = cwd
         self.prompt = prompt
@@ -911,6 +916,14 @@ class TurnRunner:
         # Ask for session_state_changed, so the turn ends when Claude Code says
         # it's idle, not at the first result (#76).
         self._env["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"] = "1"
+        if task_list:
+            # Claude's task list (TaskCreate and TaskUpdate, #231). Claude
+            # Code leaves those tools out on newer models unless asked; the
+            # desktop app's sessions have them, so its sessions and these
+            # work alike. Documented in Claude Code's env-vars page (2.1.233
+            # and later). Off, the environment is left as it was, so a value
+            # the user set themselves still applies.
+            self._env[TASK_LIST_VAR] = "1"
         self._process: Optional[subprocess.Popen] = None
         self._tree = platform_paths.ProcessTree()
         self._lock = threading.Lock()

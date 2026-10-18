@@ -85,3 +85,25 @@ def compact_boundary(trigger='manual', pre_tokens=968_000, post_tokens=9_000):
 
 def command_stdout(text):
     return user_text('<local-command-stdout>' + text + '</local-command-stdout>')
+
+
+def task_create(task_id, subject, tool_id, description="", active_form=""):
+    """A TaskCreate call and its result (#231), shaped like Claude Code 2.1.296's."""
+    tool_input = {"subject": subject, "description": description}
+    if active_form:
+        tool_input["activeForm"] = active_form
+    return [assistant_block(tool_use_block("TaskCreate", tool_input, tool_id),
+                            message_id=f"msg_{tool_id}"),
+            tool_result(tool_id, f"Task #{task_id} created successfully: {subject}",
+                        toolUseResult={"task": {"id": str(task_id), "subject": subject}})]
+
+
+def task_update(task_id, tool_id, **changes):
+    """A TaskUpdate call and its result (#231)."""
+    tool_input = {"taskId": str(task_id), **changes}
+    result = {"success": True, "taskId": str(task_id), "updatedFields": sorted(changes)}
+    if "status" in changes:
+        result["statusChange"] = {"from": "pending", "to": changes["status"]}
+    return [assistant_block(tool_use_block("TaskUpdate", tool_input, tool_id),
+                            message_id=f"msg_{tool_id}"),
+            tool_result(tool_id, f"Updated task #{task_id} status", toolUseResult=result)]
