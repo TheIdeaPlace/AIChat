@@ -225,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    590
+    630
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -561,7 +561,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    575
+    615
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -846,6 +846,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Properties of a synthetic Codex chat with provider-specific history labels"
+  },
+  "lists-tasks": {
+   "kind": "dialog",
+   "png": "lists-tasks-hc-aquatic-100.png",
+   "json": "lists-tasks-hc-aquatic-100.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: Claude's task list"
   }
  },
  "seconds": 91.6
