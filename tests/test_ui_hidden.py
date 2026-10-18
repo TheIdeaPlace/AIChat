@@ -10266,3 +10266,35 @@ def test_a_failed_first_read_doesnt_announce_the_whole_list_later(frame, env):
     assert not any(s.startswith("Done:") for s in env["spoken"] + env["feedback"])
     frame._apply_tasks(done + [ClaudeTask("6", "Step 6", status="completed")], first_load=False)
     assert "Done: Step 6. 6 of 6." in env["feedback"]
+
+
+def test_settings_scroll_on_a_short_screen_and_keep_ok_and_cancel_whole(frame, monkeypatch):
+    """#231: at 175% on a 1080-pixel screen the task-list check box pushed
+    OK and Cancel into a sliver. Too short a screen now scrolls the settings
+    instead, with the buttons their full size below them."""
+    from thechatplace.ui import dialogs
+    from thechatplace.ui.dialogs import SettingsDialog
+    monkeypatch.setattr(dialogs, "screen_area", lambda window: wx.Rect(0, 0, 1920, 400))
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        assert dialog.GetSize().height <= 400
+        client = dialog.GetClientSize().height
+        for button in (dialog.FindWindowById(wx.ID_OK), dialog.FindWindowById(wx.ID_CANCEL)):
+            assert button.GetSize().height >= button.GetBestSize().height
+            assert button.GetPosition().y + button.GetSize().height <= client
+        body = dialog._body
+        assert body.GetVirtualSize().height > body.GetClientSize().height  # it scrolls
+        assert dialog.task_list.GetParent() is body
+    finally:
+        dialog.Destroy()
+
+
+def test_settings_that_fit_dont_scroll(frame):
+    from thechatplace.ui.dialogs import SettingsDialog
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        body = dialog._body
+        assert body.GetVirtualSize().height <= body.GetClientSize().height
+    finally:
+        dialog.Destroy()
+

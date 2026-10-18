@@ -816,10 +816,17 @@ class SettingsDialog(wx.Dialog):
         self._options = list(options)
         # Settings kept elsewhere (the session list's sort order) pass through.
         self._original = speech
+        # The settings scroll when the screen is too short for them all, so
+        # OK and Cancel stay in view (#231: at 175% on a 1080-pixel screen
+        # the task-list check box pushed them into a sliver). Where they fit
+        # it looks as it always did: no scroll bar.
+        body = wx.ScrolledWindow(self, style=wx.VSCROLL)
+        body.SetScrollRate(0, 20)
+        self._body = body
         outer = wx.BoxSizer(wx.VERTICAL)
 
         self.level = wx.RadioBox(
-            self, label="Announcements",
+            body, label="Announcements",
             choices=[ANNOUNCE_LABELS[level] for level in ANNOUNCE_LEVELS],
             majorDimension=1, style=wx.RA_SPECIFY_COLS)
         self.level.SetSelection(ANNOUNCE_LEVELS.index(speech.announce)
@@ -827,13 +834,13 @@ class SettingsDialog(wx.Dialog):
         outer.Add(self.level, 0, wx.EXPAND | wx.ALL, 10)
 
         self.all_sessions = wx.CheckBox(
-            self, label="Announce when &any listed session finishes a turn, "
+            body, label="Announce when &any listed session finishes a turn, "
                         "not just the open one")
         self.all_sessions.SetValue(speech.announce_all_sessions)
         outer.Add(self.all_sessions, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         self.own_messages = wx.CheckBox(
-            self, label="Read your own &messages back when they're sent")
+            body, label="Read your own &messages back when they're sent")
         self.own_messages.SetValue(speech.announce_own)
         outer.Add(self.own_messages, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -841,14 +848,14 @@ class SettingsDialog(wx.Dialog):
         # Siblings of the group box on purpose (see QuestionDialog); wx's note
         # about that is kept out of the log.
         with wx.LogNull():
-            messages = wx.StaticBoxSizer(wx.VERTICAL, self, "Reading messages")
+            messages = wx.StaticBoxSizer(wx.VERTICAL, body, "Reading messages")
             self.formatted = wx.CheckBox(
-                self, label="Open full messages as a formatted &page (headings, lists and "
+                body, label="Open full messages as a formatted &page (headings, lists and "
                            "tables), not plain text")
             self.formatted.SetValue(speech.formatted_messages)
             messages.Add(self.formatted, 0, wx.ALL, 6)
             self.whole_in_list = wx.CheckBox(
-                self, label="Read the &whole message on each item in the messages list "
+                body, label="Read the &whole message on each item in the messages list "
                            "(otherwise just its first line)")
             self.whole_in_list.SetValue(speech.full_messages_in_list)
             messages.Add(self.whole_in_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
@@ -856,18 +863,18 @@ class SettingsDialog(wx.Dialog):
 
         grid = wx.FlexGridSizer(rows=2, cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
-        grid.Add(wx.StaticText(self, label="Speech &engine:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.engine_choice = wx.Choice(self, choices=[o.label for o in self._options])
+        grid.Add(wx.StaticText(body, label="Speech &engine:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.engine_choice = wx.Choice(body, choices=[o.label for o in self._options])
         set_accessible_name(self.engine_choice, "Speech engine")
         grid.Add(self.engine_choice, 1, wx.EXPAND)
-        grid.Add(wx.StaticText(self, label="Speaking &rate:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(wx.StaticText(body, label="Speaking &rate:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.rate_choice = wx.Choice(
-            self, choices=[label.capitalize() for label in RATE_PRESET_LABELS])
+            body, choices=[label.capitalize() for label in RATE_PRESET_LABELS])
         set_accessible_name(self.rate_choice, "Speaking rate")
         grid.Add(self.rate_choice, 0)
         outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
 
-        self.rate_note = wx.StaticText(self, label="")
+        self.rate_note = wx.StaticText(body, label="")
         outer.Add(self.rate_note, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Why the last announcement wasn't spoken, while that's still so
@@ -878,15 +885,15 @@ class SettingsDialog(wx.Dialog):
         self.speech_problem = None
         if problem:
             self.speech_problem = wx.TextCtrl(
-                self, value=f"Last announcement {problem}.",
+                body, value=f"Last announcement {problem}.",
                 style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=dip(self, -1, 44))
             set_accessible_name(self.speech_problem, "Speech problem")
             outer.Add(self.speech_problem, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         notify_row = wx.BoxSizer(wx.HORIZONTAL)
-        notify_row.Add(wx.StaticText(self, label=NOTIFY_SETTING_LABEL), 0,
+        notify_row.Add(wx.StaticText(body, label=NOTIFY_SETTING_LABEL), 0,
                        wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        self.notify_choice = wx.Choice(self, choices=[NOTIFY_LABELS[n] for n in NOTIFY_LEVELS])
+        self.notify_choice = wx.Choice(body, choices=[NOTIFY_LABELS[n] for n in NOTIFY_LEVELS])
         set_accessible_name(self.notify_choice, f"{NOTIFY_SETTING_NAME}, while The Chat Place "
                                                 "isn't the active window")
         self.notify_choice.SetSelection(NOTIFY_LEVELS.index(speech.notifications)
@@ -898,9 +905,9 @@ class SettingsDialog(wx.Dialog):
         # which is asked first and then done at once, not on OK: Cancel
         # can't take it back, so it isn't made to look as if it could.
         recent_row = wx.BoxSizer(wx.HORIZONTAL)
-        recent_row.Add(wx.StaticText(self, label="Recent &folders New Session offers:"), 0,
+        recent_row.Add(wx.StaticText(body, label="Recent &folders New Session offers:"), 0,
                        wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        self.recent_limit = wx.SpinCtrl(self, min=0, max=workplaces.RECENT_MAX,
+        self.recent_limit = wx.SpinCtrl(body, min=0, max=workplaces.RECENT_MAX,
                                         initial=speech.recent_folder_limit)
         set_accessible_name(self.recent_limit, "Recent folders New Session offers")
         # On a Mac it's a text box and arrows of wx's own: VoiceOver reads
@@ -911,7 +918,7 @@ class SettingsDialog(wx.Dialog):
         recent_row.Add(self.recent_limit, 0, wx.RIGHT, 8)
         self.clear_recent_btn = None
         if clear_recent is not None:
-            self.clear_recent_btn = wx.Button(self, label="C&lear Recent Folders")
+            self.clear_recent_btn = wx.Button(body, label="C&lear Recent Folders")
             self.clear_recent_btn.Bind(wx.EVT_BUTTON,
                                        lambda e: self._on_clear_recent(clear_recent))
             recent_row.Add(self.clear_recent_btn, 0)
@@ -920,7 +927,7 @@ class SettingsDialog(wx.Dialog):
         # The label wraps onto several lines: as one it ran past the dialog's
         # edge (#176). A check box's label is its spoken name, so screen
         # readers hear the same sentence as before.
-        self.remote_control = wx.CheckBox(self, label=_wrapped(
+        self.remote_control = wx.CheckBox(body, label=_wrapped(
             self, "Turn on Remote &Control for The Chat Place's sessions, so you can reach "
                   "them from claude.ai and other devices. Their conversations are copied to "
                   "claude.ai and kept there. (File, Remote Control changes one session.)",
@@ -929,7 +936,7 @@ class SettingsDialog(wx.Dialog):
         outer.Add(self.remote_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # #231: Claude Code gives newer models no task list unless asked.
-        self.task_list = wx.CheckBox(self, label=_wrapped(
+        self.task_list = wx.CheckBox(body, label=_wrapped(
             self, "Let Claude &keep a task list in The Chat Place's sessions, as it does in "
                   "the desktop app, so View, Tasks shows how far along it is "
                   "(from the next message)",
@@ -941,7 +948,7 @@ class SettingsDialog(wx.Dialog):
         if not platform_paths.find_codex():
             codex_label += (". Codex isn't installed on this computer; "
                             "install the Codex app or CLI, then restart.")
-        self.codex_enabled = wx.CheckBox(self, label=_wrapped(
+        self.codex_enabled = wx.CheckBox(body, label=_wrapped(
             self, codex_label,
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self._codex_choice = speech.codex_enabled
@@ -953,7 +960,7 @@ class SettingsDialog(wx.Dialog):
 
         # #141: the dialog at the first start after an update.
         self.update_notice = wx.CheckBox(
-            self, label="&Tell me when an update has been installed, with a link to what's new")
+            body, label="&Tell me when an update has been installed, with a link to what's new")
         self.update_notice.SetValue(speech.update_installed_notice)
         outer.Add(self.update_notice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -963,9 +970,12 @@ class SettingsDialog(wx.Dialog):
         buttons.AddButton(ok)
         buttons.AddButton(wx.Button(self, wx.ID_CANCEL))
         buttons.Realize()
-        outer.Add(buttons, 0, wx.EXPAND | wx.ALL, 8)
-        self.SetSizer(outer)
-        _fit_height(self)
+        body.SetSizer(outer)
+        page = wx.BoxSizer(wx.VERTICAL)
+        page.Add(body, 1, wx.EXPAND)
+        page.Add(buttons, 0, wx.EXPAND | wx.ALL, 8)
+        self.SetSizer(page)
+        self._fit_scrolling(body, outer)
 
         selected = 0
         for i, option in enumerate(self._options):
@@ -1003,6 +1013,25 @@ class SettingsDialog(wx.Dialog):
         else:
             self.rate_note.SetLabel("This engine uses its default rate.")
         self.Layout()
+
+    def _fit_scrolling(self, body, content):
+        """As tall as the settings need, up to the screen; past that they
+        scroll above OK and Cancel. As in QuestionDialog, the body's minimum
+        is the settings' height only while fitting. When they will scroll,
+        the wrapped check box labels are wrapped again short of the scroll
+        bar, so their ends aren't hidden under it."""
+        height = content.GetMinSize().height + self.GetSizer().GetMinSize().height
+        chrome = self.GetSize().height - self.GetClientSize().height
+        if height + chrome > screen_area(self).height:
+            narrower = (self.GetClientSize().width - 20 - _check_box_glyph(self)
+                        - wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self))
+            for box in (self.remote_control, self.task_list, self.codex_enabled):
+                box.SetLabel(_wrapped(self, box.GetLabel().replace("\n", " "), narrower))
+        body.SetMinSize((-1, content.GetMinSize().height))
+        _fit_height(self)
+        body.SetMinSize((-1, -1))
+        self.Layout()
+        body.FitInside()
 
     def _on_codex_choice(self, event):
         self._codex_changed = True
