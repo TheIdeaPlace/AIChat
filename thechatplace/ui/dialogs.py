@@ -2967,7 +2967,11 @@ class ListsDialog(wx.Dialog):
         self.kinds = wx.ListBox(self, style=wx.LB_SINGLE,
                                 choices=[lists.TITLES[c] for c in lists.CATEGORY_IDS])
         set_accessible_name(self.kinds, "Kinds")
-        self.kinds.SetMinSize(dip(self, -1, 96))
+        # Every kind in view without scrolling: at 175% the text grows more
+        # than 96 scaled pixels allow, and the sixth kind (Tasks, #231) was
+        # cut in half. A row is the font's height; 96 stays the least.
+        rows = len(lists.CATEGORY_IDS) * self.kinds.GetCharHeight() + dip(self, -1, 6).height
+        self.kinds.SetMinSize((-1, max(dip(self, -1, 96).height, rows)))
         sizer.Add(self.kinds, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         # The kinds' pages, one shown at a time; the Kinds list chooses.
         self.book = wx.Simplebook(self)
