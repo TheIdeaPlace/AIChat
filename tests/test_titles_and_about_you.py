@@ -1,5 +1,6 @@
 """Session names you give (#93) and what Claude knows about you (#92)."""
 import json
+import os
 
 from thechatplace import about_you, platform_paths
 from thechatplace.titles import MAX_TITLE, TitleStore, clean_title
@@ -188,6 +189,65 @@ def test_empty_front_matter_and_a_leading_rule(tmp_path):
     write(home / "commands" / "b.md", "---\n\nText after a rule\n")
     rows = [c.description for c in about_you.collect([], home=home, user_home="")[4].items]
     assert rows == ["Real heading", "Text after a rule"]
+
+
+def test_a_session_in_your_home_folder_doesnt_list_your_things_twice(tmp_path):
+    # Claude's home is <your home>/.claude, so a session run from your home folder has it
+    # as its project .claude too (#315).
+    user_home = tmp_path / "kelly"
+    home = user_home / ".claude"
+    write(home / "CLAUDE.md", "# Everywhere\n")
+    write(home / "skills" / "deploy" / "SKILL.md", "---\nname: deploy\ndescription: Ship\n---\n")
+    write(home / "agents" / "reviewer.md", "---\nname: code-reviewer\n---\n")
+    write(home / "commands" / "wrap.md", "Archive\n")
+    write(home / "settings.json", "{}")
+    write(user_home / "CLAUDE.md", "# Home folder project\n")
+    other = tmp_path / "work" / "Widget"
+    write(other / ".claude" / "skills" / "local" / "SKILL.md", "# Local\n")
+
+    # Spelled differently from Claude's home (trailing slash, other case) on purpose.
+    spelled = str(user_home).upper() + "\\" if os.name == "nt" else str(user_home) + "/"
+    kinds = about_you.collect([spelled, str(other)], home=home, user_home=str(tmp_path))
+    by = {k.name: k for k in kinds}
+    assert [(s.name, s.project) for s in by[about_you.SKILLS].items] == [
+        ("deploy", ""), ("local", "Widget")]
+    assert [(a.name, a.project) for a in by[about_you.SUBAGENTS].items] == [
+        ("code-reviewer", "")]
+    assert [c.project for c in by[about_you.COMMANDS].items] == [""]
+    assert [(s.name, s.project) for s in by[about_you.SETTINGS].items] == [("Your settings", "")]
+    # The home folder's own CLAUDE.md is a real project file and stays; ~/.claude/CLAUDE.md
+    # is listed once, as yours.
+    assert [(i.name, bool(i.project)) for i in by[about_you.INSTRUCTIONS].items] == [
+        ("Your instructions for every session", False), ("Project instructions", True)]
+
+
+def test_a_session_inside_your_claude_folder_doesnt_list_your_things_twice(tmp_path):
+    home = tmp_path / "claude"
+    write(home / "CLAUDE.md", "# Everywhere\n")
+    write(home / "skills" / "deploy" / "SKILL.md", "---\nname: deploy\n---\n")
+    kinds = about_you.collect([str(home)], home=home, user_home=str(tmp_path))
+    by = {k.name: k for k in kinds}
+    assert [(i.name, i.project) for i in by[about_you.INSTRUCTIONS].items] == [
+        ("Your instructions for every session", "")]
+    assert [(s.name, s.project) for s in by[about_you.SKILLS].items] == [("deploy", "")]
+
+
+def test_same_folder_when_one_or_both_paths_are_missing(tmp_path):
+    (tmp_path / "x").mkdir()
+    assert about_you._same_folder(tmp_path / "x", tmp_path / "x")
+    assert not about_you._same_folder(tmp_path / "x", tmp_path / "y")
+    assert not about_you._same_folder(tmp_path / "y", tmp_path / "x")
+    assert not about_you._same_folder(tmp_path / "y", tmp_path / "y")
+
+
+def test_a_missing_claude_home_skips_the_comparison(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(about_you, "_same_folder", lambda a, b: calls.append(a) or False)
+    project = tmp_path / "work"
+    write(project / ".claude" / "skills" / "s" / "SKILL.md", "# S\n")
+    kinds = about_you.collect([str(project)], home=tmp_path / "missing", user_home="")
+    assert calls == []
+    assert [s.project for s in kinds[2].items] == ["work"]
 
 
 def test_two_session_folders_with_one_name_are_told_apart(tmp_path):
