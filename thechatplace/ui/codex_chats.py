@@ -378,8 +378,10 @@ class CodexChats:
         # dialog behind the first.
         asking = self._codex_answer_asking
         if info.key in asking:
+            self._feedback('Still checking this Codex request. Answer opens in a moment.')
             return
         asking.add(info.key)
+        self._status('Checking this Codex request.')
         def asked(rule, error):
             asking.discard(info.key)
             current = self._codex_states.get(info.key)

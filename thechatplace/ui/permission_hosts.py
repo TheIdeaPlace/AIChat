@@ -35,7 +35,7 @@ class ClaudePermissions:
         return True, ""
 
     def change_mode(self, done):
-        self.frame.on_change_permission_mode()
+        self.frame.on_change_permission_mode(self.info)
         done()
 
     def note(self) -> str:

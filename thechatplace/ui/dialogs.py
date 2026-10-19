@@ -1551,8 +1551,11 @@ class ChatPermissionsDialog(wx.Dialog):
         self.host = host
         self.provider = provider
         self.rows = []
-        self.busy = False
+        #: Why an action must wait ("" when none must): the list is still
+        #: being read, or a removal or mode change hasn't finished.
+        self.busy = ""
         self.loaded = False
+        self.load_error = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         mode_row = wx.BoxSizer(wx.HORIZONTAL)
         mode_row.Add(wx.StaticText(self, label="Permission &mode:"), 0,
@@ -1605,7 +1608,7 @@ class ChatPermissionsDialog(wx.Dialog):
         return bool(self) and not self.IsBeingDeleted()
 
     def _list_name(self) -> str:
-        if not self.loaded:
+        if not self.loaded or self.load_error:
             return "Allowed for this chat"
         return f"Allowed for this chat, {len(self.rows)}"
 
@@ -1626,31 +1629,38 @@ class ChatPermissionsDialog(wx.Dialog):
             self._native = text
             self._show_note()
 
+    def _name_list(self):
+        self.list.SetName(self._list_name())
+        mac_a11y.set_label(self.list, self._list_name())
+
     def _fill(self, rows, select: int = 0):
         self.rows = list(rows)
         self.loaded = True
+        self.load_error = ""
         if self.rows:
             self.list.Set([r.text() for r in self.rows])
             self.list.SetSelection(max(0, min(select, len(self.rows) - 1)))
         else:
             self.list.Set([chat_permissions.EMPTY])
             self.list.SetSelection(0)
-        self.list.SetName(self._list_name())
-        mac_a11y.set_label(self.list, self._list_name())
+        self._name_list()
 
     def reload(self, select: int = 0):
-        self.busy = True
+        self.busy = self.busy or "Still checking what this chat allows. Try again in a moment."
 
         def done(rows, error):
             if not self._alive():
                 return
-            self.busy = False
+            if self.busy.startswith("Still checking"):
+                self.busy = ""
             if error:
+                # Unknown is not "nothing": the chat may still keep rules.
                 self.loaded = True
                 self.rows = []
-                self.list.Set([f"Couldn't read this chat's permissions. {error}"])
+                self.load_error = f"Couldn't read this chat's permissions. {error}"
+                self.list.Set([self.load_error])
                 self.list.SetSelection(0)
-                self.list.SetName(self._list_name())
+                self._name_list()
                 return
             self._fill(rows, select)
         self.host.load(done)
@@ -1662,7 +1672,9 @@ class ChatPermissionsDialog(wx.Dialog):
     # -- keys -------------------------------------------------------------------
 
     def _on_list_key(self, event):
-        if event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE) and not event.HasAnyModifiers():
+        # A Mac's Delete key is Backspace.
+        if (event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE, wx.WXK_BACK)
+                and not event.HasAnyModifiers()):
             self.on_remove()
             return
         event.Skip()
@@ -1674,25 +1686,34 @@ class ChatPermissionsDialog(wx.Dialog):
 
     # -- actions ----------------------------------------------------------------
 
-    def _tell(self, text: str, icon=wx.ICON_INFORMATION):
+    def _tell(self, text: str, icon=wx.ICON_INFORMATION, back_to=None):
         wx.MessageBox(text, self.GetTitle(), wx.OK | icon, self)
-        self.list.SetFocus()
+        (back_to or self.list).SetFocus()
 
-    def _still_busy(self) -> bool:
+    def _still_busy(self, back_to=None) -> bool:
         if self.busy:
-            self._tell("Still finishing the last change. Try again in a moment.")
-        return self.busy
+            self._tell(self.busy, back_to=back_to)
+        return bool(self.busy)
+
+    def _nothing_to_remove(self) -> bool:
+        if self.load_error:
+            self._tell(self.load_error + " Close and open Chat Permissions again to retry.")
+            return True
+        if not self.rows:
+            self._tell("There's no rule to remove. " + chat_permissions.EMPTY)
+            return True
+        return False
 
     def _confirm(self, text: str) -> bool:
         return wx.MessageBox(text, self.GetTitle(),
                              wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES
 
     def on_remove(self):
-        if self._still_busy():
+        if self._still_busy() or self._nothing_to_remove():
             return
         index = self._selected()
         if index is None:
-            self._tell("There's no rule to remove. " + chat_permissions.EMPTY)
+            self._tell("Select the rule to remove first.")
             return
         row = self.rows[index]
         if not self._confirm(chat_permissions.confirm_text(row, 1, self.provider)):
@@ -1701,23 +1722,22 @@ class ChatPermissionsDialog(wx.Dialog):
         self._remove(row.rule_id, index)
 
     def on_remove_all(self):
-        if self._still_busy():
+        if self._still_busy() or self._nothing_to_remove():
             return
-        if not self.rows:
-            self._tell("There's no rule to remove. " + chat_permissions.EMPTY)
-            return
-        if not self._confirm(chat_permissions.confirm_text(None, len(self.rows), self.provider)):
+        # One rule is named, as Remove names it.
+        only = self.rows[0] if len(self.rows) == 1 else None
+        if not self._confirm(chat_permissions.confirm_text(only, len(self.rows), self.provider)):
             self.list.SetFocus()
             return
         self._remove(None, 0)
 
     def _remove(self, rule_id, index: int):
-        self.busy = True
+        self.busy = "Still finishing the last change. Try again in a moment."
 
         def done(rows, error):
             if not self._alive():
                 return
-            self.busy = False
+            self.busy = ""
             if error:
                 # Nothing is claimed: read the list again, as it now is.
                 self.reload(index)
@@ -1729,16 +1749,24 @@ class ChatPermissionsDialog(wx.Dialog):
         self.host.remove(rule_id, done)
 
     def on_change(self):
+        if self._still_busy(back_to=self.change_btn):
+            return
         allowed, why = self.host.can_change_mode()
         if not allowed:
-            self._tell(why)
+            self._tell(why, back_to=self.change_btn)
             return
+        self.busy = "Still changing the permission mode. Try again in a moment."
 
         def done():
-            if self._alive():
-                self.refresh_mode()
-                self._show_note()
-                self.reload(self.list.GetSelection())
+            if not self._alive():
+                return
+            self.busy = ""
+            self.refresh_mode()
+            self._show_note()
+            self.reload(self.list.GetSelection())
+            # Back to Change, unless you've moved on while it was checked.
+            focus = wx.Window.FindFocus()
+            if focus is None or focus is self.change_btn or focus.GetTopLevelParent() is not self:
                 self.change_btn.SetFocus()
         self.host.change_mode(done)
 

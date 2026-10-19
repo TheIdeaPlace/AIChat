@@ -2017,10 +2017,49 @@ def test_chat_permissions_shows_a_worker_failure_and_never_claims_removal(frame,
     try:
         assert list(dialog.list.GetStrings()) == [
             "Couldn't read this chat's permissions. Codex isn't available."]
+        # Unknown isn't "nothing allowed": no count, and Remove says why.
+        assert dialog.list.GetName() == "Allowed for this chat"
         dialog.on_remove()
-        assert told[-1].startswith("There's no rule to remove.")
+        assert told[-1].startswith("Couldn't read this chat's permissions.")
+        dialog.on_remove_all()
+        assert "Nothing is allowed" not in told[-1]
     finally:
         dialog.Destroy()
+    loading = {}
+    slow = SimpleNamespace(**{**vars(host), "load": lambda done: loading.setdefault("done", done)})
+    dialog = ChatPermissionsDialog(frame, "Probe", slow, "codex")
+    try:
+        dialog.on_remove()
+        assert told[-1].startswith("Still checking what this chat allows")
+        loading["done"](rows, None)
+        assert dialog.list.GetName() == "Allowed for this chat, 1"
+    finally:
+        dialog.Destroy()
+
+
+def test_chat_permissions_backspace_is_a_macs_delete(frame, env, monkeypatch):
+    frame.store.update("own-1", allowed_tools=["WebSearch"])
+    select(frame, "Hub probe")
+
+    def drive(dialog):
+        event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
+        event.SetKeyCode(wx.WXK_BACK)
+        dialog._on_list_key(event)
+        return list(dialog.list.GetStrings())
+    rows, asked = _chat_permissions(frame, monkeypatch, drive, [wx.YES])
+    assert asked[0][0] == "Remove this rule? Search the web. Claude will ask again from the next turn."
+    assert frame.store.get("own-1").allowed_tools == []
+
+
+def test_change_permission_mode_for_chat_permissions_changes_that_chat(frame, env, monkeypatch):
+    other = OwnSession("own-2", "Second chat", str(env["tmp"]), last_activity_ms=now_ms())
+    frame.store.add(other)
+    select(frame, "Hub probe")
+    frame.on_open_session()          # Hub probe is loaded...
+    monkeypatch.setattr(frame, "_change_setting", lambda *args: "plan")
+    frame.on_change_permission_mode(other.to_info())   # ...but Chat Permissions shows Second chat
+    assert frame.store.get("own-2").permission_mode == "plan"
+    assert frame.store.get("own-1").permission_mode != "plan"
 
 
 def test_codex_answer_offers_allow_for_this_chat_with_its_full_name(frame):

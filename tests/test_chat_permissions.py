@@ -248,3 +248,20 @@ def test_codex_host_refuses_a_mode_change_while_working(tmp_path):
     assert host.can_change_mode() == (True, "")
     frame._codex_policy_pending.add(key)
     assert not host.can_change_mode()[0]
+
+
+def test_claude_host_changes_the_mode_of_its_own_chat_not_the_selected_one(tmp_path):
+    from thechatplace.ui.permission_hosts import ClaudePermissions
+    frame = Frame(tmp_path)
+    asked = []
+    frame.on_change_permission_mode = lambda info=None: asked.append(info)
+    info = frame.store.get("own-1").to_info()
+    finished = []
+    ClaudePermissions(frame, info).change_mode(lambda: finished.append(True))
+    assert asked == [info] and finished == [True]
+
+
+def test_remove_all_of_one_rule_names_it():
+    row = cp.claude_rows(["WebSearch"])[0]
+    assert cp.confirm_text(row, 1, "claude") == (
+        "Remove this rule? Search the web. Claude will ask again from the next turn.")

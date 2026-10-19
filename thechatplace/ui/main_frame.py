@@ -83,9 +83,8 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         SessionInfo, field_short_name, group_view, in_view, end_sentence, state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
-                          PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT,
-                          ChatMessage,
-                          clean_command_output)
+                          PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, TAIL_KINDS, TOOL,
+                          TOOL_RESULT, ChatMessage, clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
 from . import mac_a11y
@@ -1794,7 +1793,7 @@ class MainFrame(CodexChats, wx.Frame):
                 self._select_match(target, loaded=True)
                 return
             note = f" Couldn't read {unreadable} lines." if unreadable else ""
-            count = sum(1 for m in self._visible_messages() if m.kind != QUEUED)
+            count = sum(1 for m in self._visible_messages() if m.kind not in TAIL_KINDS)
             if self._announce_load:
                 self._announce_load = False
                 self._feedback(f"Loaded {self._open.title}, {count} "
@@ -2126,11 +2125,11 @@ class MainFrame(CodexChats, wx.Frame):
             self._feedback("The messages are still loading.")
             return
         category = category or self._lists_category
-        messages = [m for m in self._visible_messages() if m.kind != QUEUED]
+        messages = [m for m in self._visible_messages() if m.kind not in TAIL_KINDS]
         selected = self._selected_message() or (messages[-1] if messages else None)
         # A queued message isn't in a turn yet: its files, commands and
         # decisions are the latest turn's.
-        turn = self._chat_turns if selected is not None and selected.kind == QUEUED else None
+        turn = self._chat_turns if selected is not None and selected.kind in TAIL_KINDS else None
         if scope is None:
             scope = lists.SCOPE_CHAT
         try:
@@ -2513,7 +2512,7 @@ class MainFrame(CodexChats, wx.Frame):
         off the window's thread). (messages, None), (None, session), or
         (None, None) when the backend has no history."""
         if self._open is not None and info.key == self._open.key and self._chat_loaded:
-            return [m for m in self._visible_messages() if m.kind != QUEUED], None
+            return [m for m in self._visible_messages() if m.kind not in TAIL_KINDS], None
         try:
             return None, info if self.sessions.has_history(info) else None
         except ValueError:
@@ -2737,7 +2736,7 @@ class MainFrame(CodexChats, wx.Frame):
         if not self._require_capability("changes", info):
             return
         selected = self._selected_message()
-        turn = selected.turn if selected is not None and selected.kind != QUEUED else self._chat_turns
+        turn = selected.turn if selected is not None and selected.kind not in TAIL_KINDS else self._chat_turns
         scope = (lists.SCOPE_MESSAGE if any(e.turn == turn for e in self._chat_edits)
                  else lists.SCOPE_CHAT)
         self.on_lists(lists.FILES, scope)
@@ -3184,11 +3183,11 @@ class MainFrame(CodexChats, wx.Frame):
     def _queued_words(count: int) -> str:
         return "1 message queued." if count == 1 else f"{count} messages queued."
 
-    def _own_for_setting(self, what: str):
-        """The selected session and its stored record, for a File, Change
-        item; None (and why, said) for a session whose ``what`` is set
-        elsewhere."""
-        info = self._selected_session()
+    def _own_for_setting(self, what: str, info: Optional[SessionInfo] = None):
+        """The selected session (or ``info``) and its stored record, for a
+        File, Change item; None (and why, said) for a session whose ``what``
+        is set elsewhere."""
+        info = info if info is not None else self._selected_session()
         if info is not None and info.provider != "claude" and not self._require_capability("options", info):
             return None
         if info is None:
@@ -3241,15 +3240,17 @@ class MainFrame(CodexChats, wx.Frame):
         self._update_heading()
         self._feedback(f"{info.title} now uses {model_label(model)}, from its next turn.")
 
-    def on_change_permission_mode(self):
+    def on_change_permission_mode(self, info: Optional[SessionInfo] = None):
         """File, Change Permission Mode (Ctrl+Shift+O, #189): the mode this
         session's next turns start in. Every turn is given its stored mode,
-        as approving a plan already relies on."""
-        selected = self._selected_session()
+        as approving a plan already relies on. ``info`` is the chat Chat
+        Permissions is showing (#329): focus is in that dialog then, so the
+        selected session could be another chat."""
+        selected = info if info is not None else self._selected_session()
         if selected is not None and selected.provider == 'codex':
             self._change_codex_permissions(selected)
             return
-        found = self._own_for_setting("permission mode")
+        found = self._own_for_setting("permission mode", selected)
         if found is None:
             return
         info, own = found
@@ -4276,7 +4277,8 @@ class MainFrame(CodexChats, wx.Frame):
         return "\n\n".join(waiting) if waiting else None
 
     def _queued_rows(self) -> List[ChatMessage]:
-        """The loaded session's queued messages, as rows after its messages."""
+        """The loaded session's queued messages, and for Codex its kept-rule
+        notices from this turn (#307), as rows after its messages."""
         info = self._open
         if info is not None and info.is_own and info.provider == "codex":
             state = self._codex_states.get(info.key)
@@ -4749,7 +4751,7 @@ class MainFrame(CodexChats, wx.Frame):
             row = [m.key for m in visible].index(match.message_key)
         where = f"Loaded {match.title}. " if loaded else ""
         if row is None or row >= self.chat_list.GetCount():
-            count = sum(1 for m in visible if m.kind != QUEUED)
+            count = sum(1 for m in visible if m.kind not in TAIL_KINDS)
             self._feedback(f"{where}{count} message{('s' if count != 1 else '')}. The message found isn't in the list now; if it was a tool call, {key_name('Ctrl+T')} shows them.")
             return False
         self.chat_list.SetSelection(row)
@@ -4809,7 +4811,9 @@ class MainFrame(CodexChats, wx.Frame):
                 selection: Optional[int] = None) -> Optional[int]:
         """A standard single-choice list (wx's own dialog, which screen
         readers handle well). The chosen index, or None."""
-        dialog = wx.SingleChoiceDialog(self, prompt, title, choices)
+        # Over the dialog it was chosen from (Chat Permissions' Change, #329),
+        # so closing it returns there rather than to the disabled window.
+        dialog = wx.SingleChoiceDialog(self._open_modal() or self, prompt, title, choices)
         if selection is not None:
             dialog.SetSelection(selection)  # on the current choice, not the first
         try:

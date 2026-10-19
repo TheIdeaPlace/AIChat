@@ -625,3 +625,59 @@ def test_permission_change_tells_chat_permissions_when_it_is_finished(monkeypatc
     w._change_codex_permissions(w._open, after=lambda: finished.append('refused'))
     w.work[0][1]('Refused', True)
     assert finished == ['cancelled', 'refused']
+
+
+def test_permission_change_after_runs_once_when_saved_and_when_already_pending(monkeypatch):
+    from thechatplace.ui import codex_chats
+    from dataclasses import replace
+    w = Window()
+    finished = []
+    w.sessions = SimpleNamespace(can_create=lambda provider: True, owned_action=lambda *a: None)
+    monkeypatch.setattr(codex_chats, 'codex_permission_prompt', lambda *args: 'Synthetic prompt')
+    w._change_setting = lambda *args: ('workspace-write', 'on-request')
+    w._change_codex_permissions(w._open, after=lambda: finished.append('saved'))
+    change = SimpleNamespace(record=lambda: replace(w.record, provider_options={
+        'sandbox': 'workspace-write', 'approval_policy': 'on-request'}))
+    w.work[0][1](change, False)        # prepared, saved, then finished
+    w.work[1][1](None, False)
+    assert finished == ['saved'] and not w._codex_policy_pending
+    w._codex_policy_pending.add(w._open.key)
+    w._change_codex_permissions(w._open, after=lambda: finished.append('pending'))
+    assert finished == ['saved', 'pending'] and len(w.work) == 2
+
+
+def test_first_answer_press_shows_checking_and_a_second_says_so(monkeypatch):
+    w = Window()
+    statuses = []
+    w._status = statuses.append
+    request = _waiting_request()
+    _answer(w, monkeypatch, 'accept', request)
+    assert statuses[-1] == 'Checking this Codex request.'
+    w._answer_codex_owned(w._open, w._codex_states['codex:owned'])
+    assert w.said[-1] == 'Still checking this Codex request. Answer opens in a moment.'
+
+
+def test_notice_rows_follow_the_conversation_for_this_turn_only():
+    from thechatplace.ui.main_frame import MainFrame, TAIL_KEYS
+    from thechatplace.transcript import PERMISSION_NOTICE, QUEUED, TAIL_KINDS
+    w = Window()
+    w._codex_states['codex:owned'] = CodexChatState(
+        'owned', 'working', 'turn', 'inProgress', queued=('Next message',),
+        permission_notices=(('old', 1, 'Allowed git add, as you said for this chat.'),
+                            ('turn', 2, 'Allowed git commit, as you said for this chat.')))
+    rows = MainFrame._queued_rows(w)
+    assert [(r.kind, r.text) for r in rows] == [
+        (PERMISSION_NOTICE, 'Allowed git commit, as you said for this chat.'), (QUEUED, 'Next message')]
+    assert all(r.key.startswith(TAIL_KEYS) and r.kind in TAIL_KINDS for r in rows)
+    assert rows[0].list_line() == 'The Chat Place: Allowed git commit, as you said for this chat.'
+
+
+def test_a_notice_row_is_not_a_conversation_message_in_properties():
+    from thechatplace import properties
+    from thechatplace.transcript import ChatMessage, PERMISSION_NOTICE, Transcript
+    row = ChatMessage(PERMISSION_NOTICE, 'Allowed git commit, as you said for this chat.',
+                      key='notice:codex:owned:0')
+    lines = properties.message_properties(row, 3, 3)
+    assert 'Allowed by The Chat Place, for a rule kept with this chat' in lines
+    assert not any(line.startswith('Message ID') for line in lines)
+    assert properties._conversation(Transcript(messages=[row])) == []
