@@ -42,9 +42,13 @@ class OwnSession:
     model: str = ""
     #: ``--effort`` for every turn (#189), "" for Claude Code's own setting.
     effort: str = ""
-    #: Permission rules chosen with "Allow for this session" (#187), given
+    #: Permission rules chosen with "Allow for This Chat" (#187, #329), given
     #: to every later turn as ``--allowedTools``.
     allowed_tools: List[str] = field(default_factory=list)
+    #: When each of those rules was allowed, in ms (#329), for File, Chat
+    #: Permissions. Older releases don't write it, so a rule may have no time;
+    #: none is ever made up for it.
+    allowed_tools_at: Dict[str, int] = field(default_factory=dict)
     #: Continued from another session (#189): its Claude Code id, used to
     #: start the copy again if the first turn never got going, and its title,
     #: for the heading.
@@ -121,6 +125,11 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             rules = item[name] if isinstance(item[name], list) else []
             values[name] = [r for r in rules if is_safe_rule(r)]
             continue
+        if name == "allowed_tools_at":
+            times = item[name] if isinstance(item[name], dict) else {}
+            values[name] = {r: t for r, t in times.items()
+                            if is_safe_rule(r) and type(t) is int and t > 0}
+            continue
         value = item[name]
         kind = _TYPES[name]
         if kind in ("str", str):
@@ -138,6 +147,10 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
         values["model"] = ""
     if values.get("effort") not in EFFORT_LABELS:
         values["effort"] = ""
+    # A time only for a rule the chat still keeps.
+    kept = values.get("allowed_tools", [])
+    values["allowed_tools_at"] = {r: t for r, t in values.get("allowed_tools_at", {}).items()
+                                  if r in kept}
     if values.get("fork_source") and not platform_paths.is_safe_id(values["fork_source"]):
         values["fork_source"] = ""
     if provider == "codex":
@@ -147,6 +160,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                      "bridge_session_id", "remote_url", "desktop_session_id"):
             values[name] = ""
         values["allowed_tools"] = []
+        values["allowed_tools_at"] = {}
         values["permission_mode"] = "auto"
     return OwnSession(**values)
 

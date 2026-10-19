@@ -10,7 +10,8 @@ from typing import Optional
 
 import wx
 
-from .. import lists, workplaces, platform_paths
+from .. import chat_permissions, lists, workplaces, platform_paths
+from ..providers.codex_requests import SAVED_RULE_NOTE
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES)
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
@@ -69,7 +70,8 @@ CONTINUE_NOTE = (
     "This starts a Chat Place session that is a copy of this session, with its "
     "whole conversation so far, so you can carry on and reply here. The original, "
     "in the desktop app or a terminal, isn't changed, and replies here don't "
-    "appear in it.")
+    "appear in it. The copy starts with nothing allowed beyond its permission "
+    "mode.")
 
 
 def _end_modal(dialog: wx.Dialog, code: int) -> None:
@@ -1413,7 +1415,7 @@ def _read_only_text(parent, value: str, name: str, min_height: int = 160) -> wx.
 
 
 class PermissionDialog(wx.Dialog):
-    """Claude wants to use a tool: Allow, Allow for this session, Deny.
+    """Claude wants to use a tool: Allow, Allow for This Chat, Deny.
 
     The request is in a read-only box to read by line (the whole command, or
     the file and what would change). Deny is the default button, so a stray
@@ -1439,7 +1441,7 @@ class PermissionDialog(wx.Dialog):
         row.Add(allow, 0, wx.RIGHT, 6)
         session_label = request.allow_for_session_label()
         if session_label:
-            self.session_button = wx.Button(self, ID_ALLOW_SESSION, "Allow for this &session")
+            self.session_button = wx.Button(self, ID_ALLOW_SESSION, "Allow for This &Chat")
             # The button says what it does in full to a screen reader.
             self.session_button.SetToolTip(session_label)
             set_accessible_name(self.session_button, session_label)
@@ -1466,6 +1468,10 @@ class PermissionDialog(wx.Dialog):
         return self.reason.GetValue().strip()
 
 
+#: Codex Answer's Allow for This Chat (#307): The Chat Place keeps the rule.
+CHAT_RULE = "chat"
+
+
 class CodexPermissionDialog(wx.Dialog):
     """Codex decisions: only the one-time ones Codex listed (#284).
 
@@ -1474,14 +1480,21 @@ class CodexPermissionDialog(wx.Dialog):
     button when offered; otherwise Answer Later is, so a stray Enter never
     allows anything or stops the turn.
     """
-    def __init__(self, parent, session_title, request, file_detail=""):
+    def __init__(self, parent, session_title, request, file_detail="", chat_rule=None):
         super().__init__(parent, title=f"Codex needs permission: {session_title}",
                          size=dialog_size(parent, 700, 540),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        self.request_text = _read_only_text(self, request.detail(file_detail), "Request")
+        detail = request.detail(file_detail)
+        if chat_rule is not None:
+            # The Chat Place's own rule is on offer (#307): say what it keeps,
+            # in place of the note that nothing lasting is offered.
+            note = chat_permissions.codex_chat_rule_note(chat_rule)
+            detail = (detail.replace(SAVED_RULE_NOTE, note) if SAVED_RULE_NOTE in detail
+                      else detail + "\n\n" + note)
+        self.request_text = _read_only_text(self, detail, "Request")
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         reviewable = request.reviewable(file_detail)
@@ -1494,6 +1507,16 @@ class CodexPermissionDialog(wx.Dialog):
             row.Add(button, 0, wx.RIGHT, 6)
             button.Bind(wx.EVT_BUTTON, lambda event, choice=decision: self._choose(choice))
             self.buttons[decision] = button
+            if decision == "accept" and chat_rule is not None:
+                chat = wx.Button(self, label="Allow for This &Chat")
+                # The button says what it keeps in full to a screen reader.
+                name = chat_permissions.codex_chat_rule_name(chat_rule)
+                chat.SetToolTip(name)
+                set_accessible_name(chat, name)
+                chat.Enable(reviewable)
+                row.Add(chat, 0, wx.RIGHT, 6)
+                chat.Bind(wx.EVT_BUTTON, lambda event: self._choose(CHAT_RULE))
+                self.buttons[CHAT_RULE] = chat
         self.allow = self.buttons.get("accept")
         later = wx.Button(self, wx.ID_CANCEL, "Answer &Later")
         row.Add(later, 0)
@@ -1506,6 +1529,218 @@ class CodexPermissionDialog(wx.Dialog):
     def _choose(self, choice):
         self.choice = choice
         self.EndModal(wx.ID_OK)
+
+
+class ChatPermissionsDialog(wx.Dialog):
+    """File, Chat Permissions (#307, #329): what this chat may do without
+    asking. The permission mode in words with Change, then one row per kept
+    rule, read in full, with Remove (or Delete) and Remove All, each after one
+    confirmation that names what goes.
+
+    The window does the work through ``host`` (an object with ``load(done)``,
+    ``remove(rule_id, done)``, ``change_mode(done)``, ``mode_text()``,
+    ``can_change_mode()`` and ``note()``; Codex's adds ``native(done)``), whose
+    ``done(rows, error)`` comes back on the UI thread, after the work is
+    finished: a removal is never said to be done before it is.
+    """
+
+    def __init__(self, parent, title: str, host, provider: str = "claude"):
+        super().__init__(parent, title=f"Chat Permissions: {title}",
+                         size=dialog_size(parent, 680, 520),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.host = host
+        self.provider = provider
+        self.rows = []
+        self.busy = False
+        self.loaded = False
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        mode_row = wx.BoxSizer(wx.HORIZONTAL)
+        mode_row.Add(wx.StaticText(self, label="Permission &mode:"), 0,
+                     wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.mode = wx.TextCtrl(self, style=wx.TE_READONLY)
+        set_accessible_name(self.mode, "Permission mode")
+        mode_row.Add(self.mode, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.change_btn = wx.Button(self, label="C&hange...")
+        mode_row.Add(self.change_btn, 0, wx.ALIGN_CENTER_VERTICAL)
+        sizer.Add(mode_row, 0, wx.EXPAND | wx.ALL, 8)
+        sizer.Add(wx.StaticText(self, label="&Allowed for this chat:"), 0, wx.LEFT, 8)
+        self.list = wx.ListBox(self, style=wx.LB_SINGLE)
+        self.list.SetMinSize(dip(self, -1, 150))
+        sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.remove_btn = wx.Button(self, label="&Remove...")
+        self.remove_all_btn = wx.Button(self, label="Remove A&ll...")
+        for button in (self.remove_btn, self.remove_all_btn):
+            row.Add(button, 0, wx.RIGHT, 6)
+        row.AddStretchSpacer()
+        self.close_btn = wx.Button(self, wx.ID_CANCEL, "&Close")
+        row.Add(self.close_btn, 0)
+        sizer.Add(row, 0, wx.EXPAND | wx.ALL, 8)
+        sizer.Add(wx.StaticText(self, label="Abou&t these permissions:"), 0, wx.LEFT, 8)
+        self.note = _read_only_text(self, "", "About these permissions", min_height=110)
+        sizer.Add(self.note, 0, wx.EXPAND | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self._native = ""
+        self.change_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_change())
+        self.remove_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove())
+        self.remove_all_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove_all())
+        self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        set_list_items_accessible(self.list, self._list_name, lambda index: None)
+        self.refresh_mode()
+        self.list.Set(["Checking what this chat allows..."])
+        self.list.SetSelection(0)
+        self.reload()
+        native = getattr(host, "native", None)
+        if callable(native):
+            self._native = chat_permissions.native_rule_files(pending=True)
+            native(self._native_ready)
+        self._show_note()
+        wx.CallAfter(self.list.SetFocus)
+
+    # -- what it shows ----------------------------------------------------------
+
+    def _alive(self) -> bool:
+        return bool(self) and not self.IsBeingDeleted()
+
+    def _list_name(self) -> str:
+        if not self.loaded:
+            return "Allowed for this chat"
+        return f"Allowed for this chat, {len(self.rows)}"
+
+    def refresh_mode(self):
+        self.mode.ChangeValue(self.host.mode_text())
+        # Change stays enabled, so the Tab order doesn't change while a turn
+        # starts and ends; while the chat is working it says why it can't.
+
+    def _show_note(self):
+        parts = [self.host.note()]
+        if self._native:
+            parts.append(self._native)
+        self.note.ChangeValue("\n\n".join(p for p in parts if p))
+        self.note.SetInsertionPoint(0)
+
+    def _native_ready(self, text: str):
+        if self._alive():
+            self._native = text
+            self._show_note()
+
+    def _fill(self, rows, select: int = 0):
+        self.rows = list(rows)
+        self.loaded = True
+        if self.rows:
+            self.list.Set([r.text() for r in self.rows])
+            self.list.SetSelection(max(0, min(select, len(self.rows) - 1)))
+        else:
+            self.list.Set([chat_permissions.EMPTY])
+            self.list.SetSelection(0)
+        self.list.SetName(self._list_name())
+        mac_a11y.set_label(self.list, self._list_name())
+
+    def reload(self, select: int = 0):
+        self.busy = True
+
+        def done(rows, error):
+            if not self._alive():
+                return
+            self.busy = False
+            if error:
+                self.loaded = True
+                self.rows = []
+                self.list.Set([f"Couldn't read this chat's permissions. {error}"])
+                self.list.SetSelection(0)
+                self.list.SetName(self._list_name())
+                return
+            self._fill(rows, select)
+        self.host.load(done)
+
+    def _selected(self):
+        index = self.list.GetSelection()
+        return index if self.loaded and 0 <= index < len(self.rows) else None
+
+    # -- keys -------------------------------------------------------------------
+
+    def _on_list_key(self, event):
+        if event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE) and not event.HasAnyModifiers():
+            self.on_remove()
+            return
+        event.Skip()
+
+    def _on_key(self, event):
+        if press_focused_button_on_a_mac(event):
+            return
+        event.Skip()
+
+    # -- actions ----------------------------------------------------------------
+
+    def _tell(self, text: str, icon=wx.ICON_INFORMATION):
+        wx.MessageBox(text, self.GetTitle(), wx.OK | icon, self)
+        self.list.SetFocus()
+
+    def _still_busy(self) -> bool:
+        if self.busy:
+            self._tell("Still finishing the last change. Try again in a moment.")
+        return self.busy
+
+    def _confirm(self, text: str) -> bool:
+        return wx.MessageBox(text, self.GetTitle(),
+                             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES
+
+    def on_remove(self):
+        if self._still_busy():
+            return
+        index = self._selected()
+        if index is None:
+            self._tell("There's no rule to remove. " + chat_permissions.EMPTY)
+            return
+        row = self.rows[index]
+        if not self._confirm(chat_permissions.confirm_text(row, 1, self.provider)):
+            self.list.SetFocus()
+            return
+        self._remove(row.rule_id, index)
+
+    def on_remove_all(self):
+        if self._still_busy():
+            return
+        if not self.rows:
+            self._tell("There's no rule to remove. " + chat_permissions.EMPTY)
+            return
+        if not self._confirm(chat_permissions.confirm_text(None, len(self.rows), self.provider)):
+            self.list.SetFocus()
+            return
+        self._remove(None, 0)
+
+    def _remove(self, rule_id, index: int):
+        self.busy = True
+
+        def done(rows, error):
+            if not self._alive():
+                return
+            self.busy = False
+            if error:
+                # Nothing is claimed: read the list again, as it now is.
+                self.reload(index)
+                self._tell(f"Couldn't remove it. {error}", wx.ICON_WARNING)
+                return
+            # The row that took its place, or the one before when it was last.
+            self._fill(rows, index)
+            self.list.SetFocus()
+        self.host.remove(rule_id, done)
+
+    def on_change(self):
+        allowed, why = self.host.can_change_mode()
+        if not allowed:
+            self._tell(why)
+            return
+
+        def done():
+            if self._alive():
+                self.refresh_mode()
+                self._show_note()
+                self.reload(self.list.GetSelection())
+                self.change_btn.SetFocus()
+        self.host.change_mode(done)
 
 
 OTHER = "Other"

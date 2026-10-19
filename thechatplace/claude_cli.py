@@ -264,7 +264,7 @@ def _common_flags(permission_mode: str, model: str = "",
         flags += ["--effort", effort]
     rules = [rule for rule in allowed_tools if is_safe_rule(rule)]
     if rules:
-        # "Allow for this session" (#187). Claude Code keeps a session-scoped
+        # "Allow for This Chat" (#187, #329). Claude Code keeps a session-scoped
         # rule only for the life of the process, and every turn here is a new
         # process, so the rules are kept with the session and given again
         # each turn. The option takes several values; the flag after it ends
@@ -542,16 +542,17 @@ class PermissionRequest:
         return ""
 
     def allow_for_session_label(self) -> str:
-        """What "Allow for this session" means for this request, or "" when
-        Claude Code has nothing to suggest."""
+        """What "Allow for This Chat" means for this request, in full for a
+        screen reader, or "" when Claude Code has nothing to suggest. The
+        rule or mode is kept with the chat (#187, #329)."""
         mode = self.session_mode()
         if mode == "acceptEdits":
-            return "Allow, and accept all file edits for the rest of this session"
+            return "Allow, and accept all file edits for the rest of this chat"
         if mode:
-            return f"Allow, and switch this session to {mode} mode"
+            return f"Allow, and switch this chat to {mode} mode"
         rules = self.session_rules()
         if rules:
-            return "Allow, and don't ask again this session for " + ", ".join(rules)
+            return "Allow, and don't ask again in this chat for " + ", ".join(rules)
         return ""
 
 

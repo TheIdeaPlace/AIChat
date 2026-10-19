@@ -1855,6 +1855,202 @@ def test_allow_for_session_keeps_the_rule_for_later_turns(frame, env, fake_runne
     assert command[command.index("--allowedTools") + 1] == "Bash(git push:*)"
 
 
+def test_allow_for_this_chat_keeps_when_each_rule_was_allowed(frame, env, monkeypatch):
+    from thechatplace.ui import dialogs
+    request = _request(suggestions=[{"type": "addRules", "behavior": "allow",
+                                     "rules": [{"toolName": "Bash", "ruleContent": "git push:*"}]}])
+    _waiting_turn(frame, request)
+
+    class Picks(dialogs.PermissionDialog):
+        def ShowModal(self):
+            assert self.session_button.GetLabel() == "Allow for This &Chat"
+            self.choice = dialogs.ALLOW_SESSION
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.main_frame.PermissionDialog", Picks)
+    before = int(time.time() * 1000)
+    frame.on_answer()
+    own = frame.store.get("own-1")
+    assert before <= own.allowed_tools_at["Bash(git push:*)"] <= int(time.time() * 1000)
+    assert env["feedback"][-1] == "Allowed for the rest of this chat."
+
+
+def _chat_permissions(frame, monkeypatch, drive, answers=()):
+    """Open File, Chat Permissions on the selected chat; ``drive(dialog)``
+    runs while it's open. Confirmations answer from ``answers`` in turn."""
+    from thechatplace.ui import dialogs
+    asked, replies = [], list(answers)
+
+    def message_box(text, title, style, parent=None):
+        asked.append((text, style))
+        return replies.pop(0) if replies else wx.OK
+    monkeypatch.setattr(dialogs.wx, "MessageBox", message_box)
+    seen = {}
+
+    class Drives(dialogs.ChatPermissionsDialog):
+        def ShowModal(self):
+            seen["result"] = drive(self)
+            return wx.ID_CANCEL
+    monkeypatch.setattr("thechatplace.ui.main_frame.ChatPermissionsDialog", Drives)
+    frame.on_chat_permissions()
+    return seen.get("result"), asked
+
+
+def _delete_key(dialog):
+    event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
+    event.SetKeyCode(wx.WXK_DELETE)
+    dialog._on_list_key(event)
+
+
+def test_chat_permissions_lists_rules_and_delete_removes_after_confirming(frame, env,
+                                                                          fake_runner, monkeypatch):
+    frame.store.update("own-1", allowed_tools=["Bash(git push:*)", "WebSearch", "Bash(npm test)"],
+                       allowed_tools_at={"WebSearch": 1_792_400_000_000})
+    select(frame, "Hub probe")
+    frame.on_open_session()
+
+    def drive(dialog):
+        rows = list(dialog.list.GetStrings())
+        assert dialog.GetTitle() == "Chat Permissions: Hub probe"
+        assert rows[0] == "Run git push (any arguments). Bash(git push:*). Allowed: time not recorded."
+        assert rows[1].startswith("Search the web. WebSearch. Allowed ")
+        assert dialog.list.GetName() == "Allowed for this chat, 3"
+        dialog.list.SetSelection(1)
+        _delete_key(dialog)      # answered No: nothing goes
+        assert dialog.list.GetCount() == 3
+        _delete_key(dialog)      # answered Yes
+        # The row that took its place is selected.
+        return list(dialog.list.GetStrings()), dialog.list.GetSelection(), dialog.mode.GetValue()
+    (after, selected, mode), asked = _chat_permissions(frame, monkeypatch, drive, [wx.NO, wx.YES])
+    assert mode
+    assert [text for text, _style in asked] == [
+        "Remove this rule? Search the web. Claude will ask again from the next turn."] * 2
+    assert all(style & wx.NO_DEFAULT for _text, style in asked)
+    assert after == ["Run git push (any arguments). Bash(git push:*). Allowed: time not recorded.",
+                     "Run npm test. Bash(npm test). Allowed: time not recorded."]
+    assert selected == 1
+    assert frame.store.get("own-1").allowed_tools == ["Bash(git push:*)", "Bash(npm test)"]
+    assert env["feedback"][-1] == "Removed. Claude will ask again from the next turn."
+    # The next turn is given only what's left.
+    frame.reply_text.SetValue("and tag it")
+    frame.on_send()
+    command = fake_runner.instances[-1].command
+    start = command.index("--allowedTools") + 1
+    assert command[start:start + 2] == ["Bash(git push:*)", "Bash(npm test)"]
+    assert "WebSearch" not in command
+
+
+def test_chat_permissions_remove_all_then_the_empty_sentence(frame, env, fake_runner, monkeypatch):
+    from thechatplace import chat_permissions
+    frame.store.update("own-1", allowed_tools=["Bash(git push:*)", "WebSearch"])
+    select(frame, "Hub probe")
+    frame.on_open_session()
+
+    def drive(dialog):
+        dialog.on_remove_all()
+        rows = list(dialog.list.GetStrings())
+        dialog.on_remove()   # nothing left: says so, asks nothing
+        return rows, dialog.list.GetName()
+    (rows, name), asked = _chat_permissions(frame, monkeypatch, drive, [wx.YES])
+    assert rows == [chat_permissions.EMPTY] and name == "Allowed for this chat, 0"
+    assert asked[0][0] == "Remove all 2 rules from this chat? Claude will ask again from the next turn."
+    assert asked[1][0] == "There's no rule to remove. " + chat_permissions.EMPTY
+    assert frame.store.get("own-1").allowed_tools == []
+    frame.reply_text.SetValue("again")
+    frame.on_send()
+    assert "--allowedTools" not in fake_runner.instances[-1].command
+
+
+def test_chat_permissions_says_a_running_turn_keeps_its_rules(frame, env, monkeypatch):
+    from thechatplace import chat_permissions
+    _waiting_turn(frame)
+    note, _asked = _chat_permissions(frame, monkeypatch, lambda dialog: dialog.note.GetValue())
+    assert note == chat_permissions.CLAUDE_RUNNING
+
+
+def test_chat_permissions_is_for_chats_started_here(frame, env, monkeypatch):
+    select(frame, "Quiet one")
+    result, _asked = _chat_permissions(frame, monkeypatch, lambda dialog: "opened")
+    assert result is None
+    assert "read-only here" in env["feedback"][-1]
+
+
+def test_chat_permissions_change_uses_change_permission_mode(frame, env, monkeypatch):
+    select(frame, "Hub probe")
+    monkeypatch.setattr(frame, "_change_setting", lambda *args: "acceptEdits")
+
+    def drive(dialog):
+        dialog.on_change()
+        return dialog.mode.GetValue()
+    mode, _asked = _chat_permissions(frame, monkeypatch, drive)
+    assert mode.startswith("Accept edits")
+    assert frame.store.get("own-1").permission_mode == "acceptEdits"
+
+
+def test_chat_permissions_shows_a_worker_failure_and_never_claims_removal(frame, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace import chat_permissions
+    from thechatplace.ui.dialogs import ChatPermissionsDialog
+    rows = chat_permissions.claude_rows(["WebSearch"])
+    pending = {}
+    host = SimpleNamespace(mode_text=lambda: "Auto", can_change_mode=lambda: (False, "Busy now."),
+                           change_mode=lambda done: done(), note=lambda: "Note.",
+                           load=lambda done: done(rows, None),
+                           remove=lambda rule_id, done: pending.setdefault("done", done))
+    told = []
+    monkeypatch.setattr("thechatplace.ui.dialogs.wx.MessageBox",
+                        lambda text, *a, **k: told.append(text) or wx.YES)
+    dialog = ChatPermissionsDialog(frame, "Probe", host, "codex")
+    try:
+        dialog.on_remove()
+        assert dialog.busy and dialog.list.GetCount() == 1
+        dialog.on_remove()   # still waiting on the first: no second removal
+        assert told[-1].startswith("Still finishing the last change")
+        pending["done"](None, "Codex couldn't save it.")
+        assert told[-1] == "Couldn't remove it. Codex couldn't save it."
+        assert list(dialog.list.GetStrings()) == [rows[0].text()]
+        dialog.on_change()
+        assert told[-1] == "Busy now."
+    finally:
+        dialog.Destroy()
+    failing = SimpleNamespace(**{**vars(host), "load": lambda done: done(None, "Codex isn't available.")})
+    dialog = ChatPermissionsDialog(frame, "Probe", failing, "codex")
+    try:
+        assert list(dialog.list.GetStrings()) == [
+            "Couldn't read this chat's permissions. Codex isn't available."]
+        dialog.on_remove()
+        assert told[-1].startswith("There's no rule to remove.")
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_answer_offers_allow_for_this_chat_with_its_full_name(frame):
+    from thechatplace.providers.codex_permissions import CodexChatRule
+    from thechatplace.providers.codex_requests import CodexRequest, COMMAND, SAVED_RULE_NOTE
+    from thechatplace.ui.dialogs import CHAT_RULE, CodexPermissionDialog
+    request = CodexRequest(1, COMMAND, "owned", "turn", "item",
+                           command="/bin/zsh -lc 'git commit -m x'", cwd="/workspace",
+                           decisions=("accept", "cancel"), saved_rule_offered=True)
+    rule = CodexChatRule("a" * 32, ("git", "commit"), "/workspace", "scope", 1)
+    plain = CodexPermissionDialog(frame, "Probe", request)
+    try:
+        assert CHAT_RULE not in plain.buttons
+        assert SAVED_RULE_NOTE in plain.request_text.GetValue()
+    finally:
+        plain.Destroy()
+    offered = CodexPermissionDialog(frame, "Probe", request, chat_rule=rule)
+    try:
+        button = offered.buttons[CHAT_RULE]
+        assert button.GetLabel() == "Allow for This &Chat"
+        assert button.GetName().startswith("Allow git commit for the rest of this chat")
+        text = offered.request_text.GetValue()
+        assert SAVED_RULE_NOTE not in text and "Codex's own session and saved rules stay off" in text
+        labels = [b.GetLabel() for b in offered.buttons.values()]
+        assert labels[:2] == ["&Allow Once", "Allow for This &Chat"]
+        assert offered.GetDefaultItem().GetLabel() != "Allow for This &Chat"
+    finally:
+        offered.Destroy()
+
+
 def test_plan_approval_keeps_the_new_mode(frame, env, monkeypatch):
     from thechatplace.ui import dialogs
     frame.store.update("own-1", permission_mode="plan")
@@ -1931,7 +2127,7 @@ def test_permission_dialog_buttons(frame):
          "rules": [{"toolName": "Bash", "ruleContent": "git push:*"}]}]))
     try:
         assert with_rule.session_button.GetName() == (
-            "Allow, and don't ask again this session for Bash(git push:*)")
+            "Allow, and don't ask again in this chat for Bash(git push:*)")
     finally:
         with_rule.Destroy()
 

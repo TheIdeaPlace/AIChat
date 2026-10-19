@@ -442,13 +442,25 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   git push. Ctrl+Shift+A answers."), and the session shows as needing you in the list.
   **Ctrl+Shift+A** opens the answer:
   - **Permission:** the whole request (the command, or the file and what would change) to
-    read by line, then **Allow**, **Allow for this session** (shown when Claude Code suggests
-    a rule, and named in full, such as "don't ask again this session for Bash(git push:*)"),
+    read by line, then **Allow**, **Allow for This Chat** (shown when Claude Code suggests
+    a rule, and named in full, such as "don't ask again in this chat for Bash(git push:*)"),
     or **Deny**, which is the default button and can carry a reason Claude reads.
   - **Questions:** each question is a group of options with their descriptions, with Other
     and a box to type your own answer; Send Answers, or Don't Answer.
   - **Plan:** the plan to read (Read Formatted shows it as a page, by heading), then **Approve**, choosing the mode to carry on in (accept
     edits, auto or manual), or **Keep Planning** with what to change, which is the default.
+
+  **File, Chat Permissions** (Ctrl+Shift+H) shows what a chat started here may do without
+  asking: its permission mode in words, with **Change...** (the same choices as Change
+  Permission Mode), and the rules kept with the chat, one to a row, each read in full: what it
+  allows, the rule itself and when it was allowed ("Run git push (any arguments).
+  Bash(git push:*). Allowed 19 October 2026 at 14:05."). A rule kept before this release says
+  "Allowed: time not recorded". **Remove** (or Delete in the list) takes the selected rule back,
+  and **Remove All** takes them all, each after one question that names what goes. With nothing
+  kept, the list says "Nothing is allowed beyond the permission mode." For a Claude chat a
+  removal counts from the next turn: a running turn keeps the rules it started with, and the
+  dialog says so. Desktop app and terminal sessions are read-only here, so they have none, and
+  a Continue Here copy starts with nothing kept.
 
   Escape in any of them answers later; nothing is approved or refused by waiting. "For this
   session" lasts for the session, not just the turn: The Chat Place keeps the rule with the
@@ -612,8 +624,17 @@ and use the network. Only the one-time answers Codex offers for that request are
 Allow Once, Deny (Codex carries on without it) and Deny and Stop Turn, plus Answer Later.
 Deny is the default button when it's offered; otherwise Answer Later is. When Codex offers
 to keep allowing something (for the rest of the session, or as a saved "always allow"
-rule), the dialog says so, but The Chat Place leaves that out: each answer covers one
-request.
+rule), the dialog says so, but The Chat Place leaves that out: Codex itself keeps nothing.
+Instead, for a few everyday Git commands with simple options The Chat Place has checked
+(such as `git commit` or `git push` in the chat's folder), Answer also offers **Allow for
+This Chat**, whose full name says what it keeps. The Chat Place keeps that rule with the chat
+and, when a later request in the chat matches it, answers Allow Once for you and says so
+quietly ("Allowed git commit, as you said for this chat."), with a line in the messages and
+in Turn Status. Anything else still asks: other options, a command joined to another with
+`&&`, another folder or wider access. File, Chat Permissions (Ctrl+Shift+H) lists the rules;
+removing one, or changing the chat's permission mode, counts from Codex's very next request,
+even during a turn, though a command already allowed can't be called back. It also shows how
+many of Codex's own rule files are in effect, as Properties does; those are changed in Codex.
 Requests The Chat Place cannot present safely, such as typing into a command that's
 already running or running a command somewhere other than this computer, are declined
 with a notice that says which kind and why; they do not disconnect the chat. Turn Status
@@ -857,6 +878,7 @@ shows it as plain text instead.
 | Anywhere | Alt+V, E | Session List Columns: choose what each session's line says, and in what order |
 | Anywhere | Ctrl+Shift+N | Continue the selected (or loaded) desktop app or terminal session here, as a copy |
 | Anywhere | Ctrl+Shift+O | Change Permission Mode for the selected (or loaded) Chat Place session, from its next turn |
+| Anywhere | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode and kept rules, to read and remove |
 | Session list | F5 | Refresh the list now and put it in order |
 | Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
 | Session list | Shift+Delete | Delete one of The Chat Place's own sessions permanently, after you confirm |
@@ -923,7 +945,7 @@ The Chat Place drives its own sessions with the `claude` command in print (headl
 `claude -p --input-format stream-json --output-format stream-json --verbose --permission-mode <mode>
 --permission-prompts host --permission-prompt-tool stdio`, with `--session-id` and `--name` for the
 first message and `--resume <id>` for each reply, plus `--allowedTools` with any rules you chose
-"for this session". The message goes in on standard input as a stream-json message, and standard
+"for this chat". The message goes in on standard input as a stream-json message, and standard
 input stays open for the turn so The Chat Place can answer what Claude asks; it's closed when the
 turn's result arrives. That runs under the same login as the desktop app, never an API key; it
 uses the plan's Agent SDK credit, as any `claude -p` does.

@@ -83,7 +83,8 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         SessionInfo, field_short_name, group_view, in_view, end_sentence, state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
-                          PEER, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT, ChatMessage,
+                          PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT,
+                          ChatMessage,
                           clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
@@ -93,9 +94,11 @@ from .a11y import set_accessible_name, set_list_items_accessible, set_voiceover_
 from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
+from .permission_hosts import ClaudePermissions, CodexPermissions
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
-from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, FindResultsDialog,
+from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, ChatPermissionsDialog,
+                      FindResultsDialog,
                       FormattedMessageDialog, ListsDialog, WrappingText,
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
@@ -123,6 +126,9 @@ FIND_ALL_PROGRESS_MS = 10_000
 FIND_ALL_KEEP_S = 600
 
 _REPLY_KINDS = (ASSISTANT, QUESTION, PLAN, ERROR)
+#: Keys of the rows after the conversation, which never move it: queued
+#: messages (#50) and kept-rule notices (#307).
+TAIL_KEYS = ("queued:", "notice:")
 
 
 #: The read-only note where a desktop app session's reply box would be.
@@ -207,6 +213,10 @@ class MainFrame(CodexChats, wx.Frame):
         self._codex_policy_pending = set()
         self._codex_delayed_updates = {}
         self._codex_finished = set()
+        # Kept-rule answers already said (#307), by chat, turn and request,
+        # and chats whose Answer is still asking the backend about one.
+        self._codex_notices_seen = set()
+        self._codex_answer_asking = set()
         if sessions is None:
             providers = [ClaudeConversations()]
             if self.speech.includes_codex():
@@ -412,6 +422,10 @@ class MainFrame(CodexChats, wx.Frame):
         # key already, so, as with Other Machines, its shortcut is the way in.
         self._item(session, "Change Permission Mode...\tCtrl+Shift+O",
                    lambda e: self.on_change_permission_mode())
+        # What the chat may do without asking, and taking it back (#307).
+        # Every letter is another item's access key, so its shortcut is the way in.
+        self._item(session, "Chat Permissions...\tCtrl+Shift+H",
+                   lambda e: self.on_chat_permissions())
         self._item(session, "Change E&ffort...", lambda e: self.on_change_effort())
         self._item(session, "Rem&ote Control...", lambda e: self.on_remote_control())
         # As with Rename Session, every letter is taken, so the key is its shortcut.
@@ -1882,10 +1896,11 @@ class MainFrame(CodexChats, wx.Frame):
         selected_key = keep_key or (old_keys[index] if 0 <= index < len(old_keys) else None)
 
         current = list(self.chat_list.GetStrings())
-        # Queued messages (#50) are a tail after the conversation: new
-        # messages go in before it, so the rows above never move.
-        old_body = [k for k in old_keys if not k.startswith("queued:")]
-        body = [k for k in keys if not k.startswith("queued:")]
+        # Queued messages (#50) and kept-rule notices (#307) are a tail after
+        # the conversation: new messages go in before it, so the rows above
+        # never move.
+        old_body = [k for k in old_keys if not k.startswith(TAIL_KEYS)]
+        body = [k for k in keys if not k.startswith(TAIL_KEYS)]
         if (not focus_newest and keep_key is None and old_keys and keys
                 and body[: len(old_body)] == old_body and len(current) == len(old_keys)
                 and old_keys[: len(old_body)] == old_body):
@@ -1902,7 +1917,7 @@ class MainFrame(CodexChats, wx.Frame):
                     self.chat_list.Delete(tail_start)
                 if new_tail:
                     self.chat_list.Append(new_tail)
-                if selected_key is not None and selected_key.startswith("queued:") \
+                if selected_key is not None and selected_key.startswith(TAIL_KEYS) \
                         and keys:
                     self.chat_list.SetSelection(
                         keys.index(selected_key) if selected_key in keys
@@ -3251,6 +3266,34 @@ class MainFrame(CodexChats, wx.Frame):
         self._feedback(f"Permission mode for {info.title}: {mode_label(mode)}, "
                        f"{self._from_next_turn(own)}.")
 
+    def on_chat_permissions(self):
+        """File, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission
+        mode, and the rules kept with a chat started here, to read and remove."""
+        info = self._selected_session()
+        if info is None:
+            self._feedback("No session selected.")
+            return
+        if not info.is_own or info.provider not in ("claude", "codex"):
+            where = "terminal" if info.is_terminal else "desktop app"
+            self._feedback(f"{info.title} is {kind_name(info)}: it's read-only here, so it keeps "
+                           f"no permissions in The Chat Place. Its {where} decides what it may do.")
+            return
+        if info.provider == "codex":
+            record = self.store.get(info.cli_session_id, provider="codex")
+            if record is None:
+                self._feedback("This Codex chat is no longer in The Chat Place.")
+                return
+            host = CodexPermissions(self, info, record)
+        else:
+            if self.store.get(info.cli_session_id) is None:
+                self._feedback("This chat is no longer in The Chat Place.")
+                return
+            host = ClaudePermissions(self, info)
+        returning_to = wx.Window.FindFocus()
+        self._modal(ChatPermissionsDialog(self, info.title, host, info.provider))
+        if returning_to:
+            returning_to.SetFocus()
+
     def on_change_effort(self):
         """File, Change Effort (#189): how hard Claude thinks in this
         session's next turns, given as ``--effort`` on every turn."""
@@ -3462,10 +3505,17 @@ class MainFrame(CodexChats, wx.Frame):
                     changes["permission_mode"] = mode
                 else:
                     kept = list(own.allowed_tools) if own is not None else []
-                    kept += [r for r in request.session_rules() if r not in kept]
+                    times = dict(own.allowed_tools_at) if own is not None else {}
+                    now = int(time.time() * 1000)
+                    for rule in request.session_rules():
+                        if rule not in kept:
+                            kept.append(rule)
+                            # When it was allowed, for File, Chat Permissions (#329).
+                            times[rule] = now
                     changes["allowed_tools"] = kept
+                    changes["allowed_tools_at"] = times
                 return (allow_response(request, for_session=True),
-                        "Allowed for the rest of this session.", changes)
+                        "Allowed for the rest of this chat.", changes)
             reason = dialog.reason_text()
             return deny_response(reason), "Refused." + (" Claude has your reason." if reason
                                                          else ""), {}
@@ -4230,8 +4280,15 @@ class MainFrame(CodexChats, wx.Frame):
         info = self._open
         if info is not None and info.is_own and info.provider == "codex":
             state = self._codex_states.get(info.key)
-            return [ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
-                    for i, text in enumerate(state.queued if state is not None else ())]
+            if state is None:
+                return []
+            # What The Chat Place allowed this turn for a kept rule (#307),
+            # then what's waiting to be sent.
+            notices = [ChatMessage(PERMISSION_NOTICE, text, key=f"notice:{info.key}:{i}")
+                       for i, (turn, _request, text) in enumerate(state.permission_notices)
+                       if state.turn_id and turn == state.turn_id]
+            return notices + [ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
+                              for i, text in enumerate(state.queued)]
         if info is None or not info.is_own or info.provider != "claude":
             return []
         return [ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")

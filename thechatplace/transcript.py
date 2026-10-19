@@ -64,6 +64,9 @@ PEER = "peer"
 #: Not from the transcript: a message of yours waiting for the turn to end
 #: (#50), shown at the end of the messages list.
 QUEUED = "queued"
+#: Not from the transcript either: a request The Chat Place allowed for a
+#: rule kept with the chat (#307), shown with the queued messages.
+PERMISSION_NOTICE = "permission_notice"
 TOOL_RESULT = "tool_result"
 CONTEXT = "context"
 EVENT = "event"
@@ -84,6 +87,7 @@ LABELS = {
     TOOL: "Tool",
     PEER: "From another session",
     QUEUED: "Queued",
+    PERMISSION_NOTICE: "The Chat Place",
     TOOL_RESULT: "Tool result",
     CONTEXT: "Context",
     EVENT: "Event",

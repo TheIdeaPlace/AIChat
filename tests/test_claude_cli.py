@@ -748,7 +748,7 @@ def test_parser_turns_can_use_tool_into_a_permission_event():
     assert "Why: Initialize a new npm project" in request.detail()
     assert request.session_rules() == ["PowerShell(npm init -y)"]
     assert request.allow_for_session_label() == (
-        "Allow, and don't ask again this session for PowerShell(npm init -y)")
+        "Allow, and don't ask again in this chat for PowerShell(npm init -y)")
 
 
 def test_parser_refuses_other_control_requests_and_reads_commands():
