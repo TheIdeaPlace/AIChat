@@ -1,6 +1,7 @@
 """Synthetic stdio server; never reads account data or runs an agent."""
 import json
 import os
+import shlex
 from pathlib import Path
 import sys
 import threading
@@ -23,6 +24,11 @@ permission_answers = []
 
 def permission_request(index):
     command = 'git commit -m synthetic' if index != 3 else 'git commit && rm file'
+    if sys.platform == 'win32':
+        shell = os.environ.get('SystemRoot', r'C:\Windows') + r'\System32\WindowsPowerShell\v1.0\powershell.exe'
+        command = '"' + shell.replace('\\', '\\\\') + '" -Command ' + shlex.quote(command)
+    else:
+        command = shlex.join(['/bin/zsh', '-lc', command])
     emit({'id': f'permission-{index}', 'method': 'item/commandExecution/requestApproval',
           'params': {'threadId': 'owned', 'turnId': 'turn', 'itemId': f'command-{index}',
                      'kind': 'command', 'environmentId': 'local',

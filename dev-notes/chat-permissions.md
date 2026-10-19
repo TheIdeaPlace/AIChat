@@ -27,7 +27,7 @@ returning to wx with `wx.CallAfter`. Each action requires an owned Codex record.
 | `chat_rules` | none | tuple of saved rules, also available before reopening a chat |
 | `remove_chat_rule` | `rule_id`, or `None` for all | remaining rules; revocation is effective when the call returns |
 
-`CodexChatRule` has `rule_id`, `prefix` (tuple), `description`, canonical `folder`,
+`CodexChatRule` has `rule_id`, `prefix` (tuple), `description`, canonical chat-root `folder`,
 `allowed_at_ms`, `access` (plain words), and an opaque `scope` comparison value.
 Display the description, actual prefix, date/time, and access. Do not interpret
 or change `scope` in the UI. Include the full outside-sandbox warning when present.
@@ -44,20 +44,45 @@ Rules live under TCP's app-data folder in
 They survive restart. Continue Here uses a new native ID and inherits no rules.
 Permission-mode preparation clears kept rules before verifying the new mode;
 even a failed change cannot retain an earlier grant. Removal does not recall a
-command whose one-time approval was already sent.
+command whose one-time approval was already sent. An unknown removal ID raises
+an error without rewriting the file. The file has a format version; newer formats,
+unrecognized fields and invalid JSON are preserved, and edits fail visibly.
 
-Matching is deliberately narrower than a shell parser: printable ASCII, one
-simple command, exact leading words, no shell expansion/control syntax, no
-backslashes, no executable paths. The initial reviewed executable set is `git`,
-`gh`, `rg`, `curl`, `wget`, `ls`, `cat`, `cp`, `mv`, `mkdir`, `rm`, `touch`, `head`,
-`tail`, `wc`, `diff`, `tar`, `zip`, `unzip` (also `.exe` forms). Other executables,
-including all interpreters/wrappers, retain Allow Once. Do not broaden this set
-or the grammar in UI integration. Extra permission profiles, hosts and protocols
+App-server serializes exec argv using shlex quoting. Matching first unwraps exactly
+one recognized shell invocation: the Windows system PowerShell executable or
+Program Files PowerShell 7 `pwsh.exe`, optional `-NoProfile`, then `-Command` and
+one script; or `/bin/bash`, `/bin/zsh`, `/bin/sh` with `-c` or `-lc` and one script.
+Other locations, switches, extra argv and nested shells remain manual. Shell
+identity and switches are saved in the opaque scope, so grants cannot cross them.
+
+The inner command must be printable ASCII, one simple command, exact leading
+words, and literal whole words or quoted literals. Expansion/control syntax,
+backslashes, executable paths and mixed/adjacent quotes remain manual. Only
+`git`/`git.exe` with a prefix of at least two words is eligible, for `status`,
+`switch`, `add`, `commit`, `push`, `fetch`, `diff`, and `log`. Both candidacy and
+matching validate **every** argument against the operation-specific `GIT_FLAGS`
+and `GIT_VALUES` allowlists. Unknown options, explicit transports, absolute/drive
+paths, parent traversal and symlink escapes remain manual. Commit message values
+are literal data, so path confinement is not applied to their text. In particular,
+`switch -c` means create a branch; leading global `git -c` is never eligible.
+
+There are no rules for `gh`, `rg`, archive/file tools, downloaders, interpreters or
+PowerShell aliases. Git's ordinary configured behavior, including hooks and
+remotes, still applies when a Git command is approved. Keep the outside-sandbox
+warning visible for full escalations. Do not broaden this grammar in UI integration.
+Extra permission profiles, hosts and protocols
 must be identical, including hidden profile fields; even a narrower but different
 profile asks again. Literal extra-access paths must be absolute, local and resolvable
 and are bound to their resolved targets; relative, glob and special paths have no
 chat-rule offer. Both folders must resolve to existing local directories and
 the request folder must be within the chat folder. Unreadable rules fail closed.
+
+Only the listener auto-answers, including approvals received before turn startup
+returns. `CodexApprovalNotSent` means the approval payload was never queued: the
+request is not retried automatically and manual Answer remains usable. Other
+response failures are treated as uncertain and block further sends/answers until
+reconciliation. A failed automatic approval never makes a successful Send report
+that the turn failed to start.
 
 The official [app-server approval documentation](https://learn.chatgpt.com/docs/app-server)
 describes the one-time `accept` decision separately from session and saved-rule
@@ -78,7 +103,9 @@ decisions. Existing transport validation continues to reject lasting decisions.
   separate from TCP's per-chat rules. Removal applies to the next request, including
   during the running turn.
 - In Codex Answer, obtain a candidate before offering **Allow for This Chat**.
-  Give it the full accessible name from #307, including the prefix and any arguments.
+  Give it a full accessible name including the prefix, reviewed simple arguments,
+  and rest-of-chat duration. Explain that other options still ask; do not promise
+  unrestricted "any arguments". The rule's description reflects this restriction.
   Route it to `allow_for_chat`, not `request.approval_answer` with a new decision.
   Leave ordinary Allow Once/Deny/Stop paths intact. Replace the old generic
   "TCP leaves lasting approvals out" note when a TCP chat-rule option is offered;
@@ -103,16 +130,37 @@ decisions. Existing transport validation continues to reject lasting decisions.
   and add a user-facing release-note entry referencing the implementation PR.
 - Run the full test suite. Close #307 and superseded #298 only after the integrated
   feature and required checks are complete.
+- Claude-only listing/removal, timestamps and the button rename can proceed
+  independently. Codex end-to-end integration needs PR #330 and live macOS approval
+  validation; a Mac capture is outstanding, as described below.
 
 ## Backend validation
 
-Backend tests include real stdio fake-server coverage: explicit first grant,
-automatic second commit with a notice, compound
-command refusal, immediate removal, and inspection of the exact one-time wire
-answers. Tests also cover restart, fork isolation, permission-mode clearing,
-access/host changes, interpreter/wrapper refusals, invalid storage, failed saves,
-and no retry of uncertain approval responses. Validation: `pytest -q tests` passed
-2,464 tests with 7 skipped; the latest `test_codex_permissions.py` run passed all
-57 tests, including the final path-scope and uncertain-response checks. No UI
-appearance changes are made by this part, so UI probes belong to Claude's
-integration PR.
+The live Windows probe used installed **codex-cli 0.162.1**, a temporary empty
+Git repository and a synthetic prompt. No approval was accepted. It captured:
+
+```
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git switch -c tcp-permission-probe'
+proposedExecpolicyAmendment: ["git", "switch"]
+environmentId: "local"
+additionalPermissions: null
+```
+
+The synthetic Windows fixture reproduces this Rust shlex serialization, including
+its doubled backslashes inside double quotes. Python `shlex.join` alone produces a
+different Windows representation. The macOS fixture uses `/bin/zsh -lc` with one
+quoted script, and unit tests cover bash/sh and `-c` too. **No live Mac capture
+was available in this session.** Run that check before claiming live macOS support.
+
+Real stdio fake-server tests cover the wrapped first grant, automatic second commit,
+compound-command refusal, immediate removal and exact one-time wire answers.
+Regression tests cover every reported process-launch option, full-escalation path
+escapes, unsupported executables, ambiguous quotes, wrapper identity, startup races,
+pre-send refusals, listener uncertainty with no retry, failed mode-change revocation,
+restart, a copied chat's first approval, and preservation of unknown storage formats.
+No UI appearance changes are made by this part, so UI probes belong to Claude's
+integration PR. The PR records current test results.
+
+Review-fix validation: the full repository run passed 2,542 tests with 7 skipped.
+The latest focused Codex/runtime/transport/storage run passed 376 tests, including
+the final storage guards and copied-chat first-approval check.

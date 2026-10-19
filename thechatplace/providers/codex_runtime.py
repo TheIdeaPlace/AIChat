@@ -6,7 +6,7 @@ from .codex_connection import ManagedCodexConnection
 from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_policy import CodexPolicy
-from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure
+from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent
 from .codex_tokens import CodexTokenUsage
 from .codex_permissions import CodexPermissionStore, candidate, matches
 from ..codex_diagnostics import record_failure, safe_reason
@@ -76,6 +76,7 @@ class CodexChatRuntime:
         self.permission_store = CodexPermissionStore()
         self._permission_lock = threading.RLock()
         self._permission_notices = {}
+        self._manual_approvals = set()
 
     def _binding(self):
         with self._binding_lock:
@@ -303,7 +304,6 @@ class CodexChatRuntime:
         rejected = False
         try:
             executor.start(proof, text)
-            self._auto_answer(proof, executor)
             with self._lock:
                 stopping = native_id in self._stopping
             if stopping:
@@ -424,6 +424,8 @@ class CodexChatRuntime:
         self._permission_record(record)
         with self._permission_lock:
             rules = self.permission_store.load(record.cli_session_id)
+            if rule_id is not None and not any(r.rule_id == rule_id for r in rules):
+                raise ValueError('That chat rule no longer exists')
             kept = tuple(r for r in rules if r.rule_id != rule_id) if rule_id is not None else ()
             self.permission_store.save(record.cli_session_id, kept)
             return kept
@@ -454,6 +456,9 @@ class CodexChatRuntime:
                 self.permission_store.save(proof.native_id, (*rules, rule))
             try:
                 executor.answer(proof, request, request.approval_answer('accept'))
+            except CodexApprovalNotSent:
+                self._manual_approvals.add((proof.native_id, request.turn_id, request.request_id))
+                raise
             except Exception:
                 with self._lock:
                     self._problems[proof.native_id] = 'Could not confirm a kept-rule answer. Reload this chat.'
@@ -461,17 +466,29 @@ class CodexChatRuntime:
         self._notify(proof.native_id)
 
     def _auto_answer(self, proof, executor):
+        changed = False
         with self._permission_lock:
             with self._lock:
                 if (self._proofs.get(proof.native_id) is not proof or self._executor is not executor
                         or proof.native_id in self._problems or proof.native_id in self._reopening
                         or proof.native_id in self._stopping or self._stop.is_set()):
-                    return
+                    return False
+            state = executor.snapshot(proof)
+            self._manual_approvals = {key for key in self._manual_approvals
+                                     if key[0] != proof.native_id or key[1] == state.turn_id}
             for request in executor.waiting(proof):
+                key = (proof.native_id, request.turn_id, request.request_id)
+                if key in self._manual_approvals:
+                    continue
                 rules = self.permission_store.load(proof.native_id)
                 rule = next((r for r in rules if matches(r, request, proof.cwd)), None)
                 if rule is not None:
-                    executor.answer(proof, request, request.approval_answer('accept'))
+                    try:
+                        executor.answer(proof, request, request.approval_answer('accept'))
+                    except CodexApprovalNotSent:
+                        self._manual_approvals.add(key)
+                        continue  # No approval was queued; leave manual Answer usable.
+                    changed = True
                     text = 'Allowed ' + ' '.join(rule.prefix) + ', as you said for this chat.'
                     # Stable identity lets UI announce once and retain a chat
                     # and Turn Status entry, even across repeated snapshots.
@@ -479,6 +496,7 @@ class CodexChatRuntime:
                         notices = self._permission_notices.setdefault(proof.native_id, [])
                         notices.append((request.turn_id, request.request_id, text))
                         del notices[:-128]
+        return changed
 
     def snapshot(self, native_id, *, unsent=()):
         with self._lock:
@@ -550,16 +568,22 @@ class CodexChatRuntime:
                 return
             with self._lock:
                 proofs = {p.native_id: p for p in self._proofs.values() if p.connection is connection}
-            for native_id in changed:
-                proof = proofs.get(native_id)
+            for native_id, proof in proofs.items():
+                notify = native_id in changed
                 if proof is not None:
                     try:
-                        self._auto_answer(proof, executor)
+                        # Startup requests can be drained into pending events
+                        # before start returns. Scan waiting requests here even
+                        # without a fresh event; approval failures never fail Send.
+                        notify = self._auto_answer(proof, executor) or notify
                     except Exception as error:
                         # An uncertain response must never be retried. Latch a
                         # problem so neither automatic nor manual sends repeat it.
                         with self._lock:
                             self._problems[native_id] = safe_reason(error) or 'Could not confirm a kept-rule answer. Reload this chat.'
+                        notify = True
+                    if not notify:
+                        continue
                     if executor.snapshot(proof).status != 'inProgress':
                         with self._lock:
                             if native_id not in self._sending:

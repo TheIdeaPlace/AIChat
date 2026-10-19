@@ -1347,6 +1347,32 @@ def codex_rule_layers_clear(layers) -> bool:
     return count is not None and not blocked
 
 
+def codex_approval_shell(executable: str) -> str:
+    """Only platform shell locations whose wrapper grammar we understand (#307)."""
+    if sys.platform == 'win32':
+        trusted = [_windows_program('System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')]
+        program_files = os.environ.get('ProgramFiles')
+        if program_files:
+            trusted.append(ntpath.join(program_files, 'PowerShell', '7', 'pwsh.exe'))
+        if ntpath.normcase(executable) in {ntpath.normcase(p) for p in trusted}:
+            return 'powershell'
+    elif executable in ('/bin/bash', '/bin/zsh', '/bin/sh'):
+        return 'posix'
+    return ''
+
+
+def codex_permission_argument(value: str, cwd: str, root: str) -> bool:
+    """Refuse absolute, drive-qualified, escaping and symlink-escaping arguments."""
+    if (not value or value.startswith(('/', '\\')) or ntpath.splitdrive(value)[0]
+            or '..' in value.replace('\\', '/').split('/')):
+        return False
+    try:
+        base = Path(root).resolve(strict=True)
+        return (Path(cwd) / value).resolve().is_relative_to(base)
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
 def codex_permission_folder(cwd: str, parent: str) -> str:
     """Canonical existing local folder inside the chat, for kept approvals (#307)."""
     paths = [Path(value) for value in (cwd, parent)]
