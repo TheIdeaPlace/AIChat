@@ -1,5 +1,11 @@
 # Chat Permissions: Codex backend and Claude integration
 
+Native execution follow-up: [scoped execution investigation](codex-scoped-execution-investigation.md).
+Real Codex 0.162.1 executes a `.git`-only grant on macOS while blocking outside
+writes. Windows elevated/unelevated still fail `.git` writes, and managed networking
+is unsupported in unelevated mode. Scoped tools are disabled development features
+by default. The production backend does not enable them; #307 remains incomplete.
+
 Parent: #307. Claude follow-up: #329. Keep the parent open until its success criteria are met. This replaces #298's
 in-memory Codex session-approval approach.
 
