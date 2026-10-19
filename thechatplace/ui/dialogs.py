@@ -1567,7 +1567,8 @@ class ChatPermissionsDialog(wx.Dialog):
         mode_row.Add(self.change_btn, 0, wx.ALIGN_CENTER_VERTICAL)
         sizer.Add(mode_row, 0, wx.EXPAND | wx.ALL, 8)
         sizer.Add(wx.StaticText(self, label="&Allowed for this chat:"), 0, wx.LEFT, 8)
-        self.list = wx.ListBox(self, style=wx.LB_SINGLE)
+        self.list = wx.ListBox(self, style=wx.LB_SINGLE | wx.LB_HSCROLL)
+        # A row is read in full by a screen reader; sighted, a long one scrolls.
         self.list.SetMinSize(dip(self, -1, 150))
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
