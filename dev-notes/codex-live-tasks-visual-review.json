@@ -1,0 +1,106 @@
+[
+  {
+    "file": "lists-tasks-light-100.png",
+    "verdict": "FAIL",
+    "failed": [
+      5
+    ],
+    "note": "Existing native-list focus issue #181: #FF872B dots against #0078D4 measure 1.89:1. No new layout or text defects.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "lists-tasks-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "No new clipping, overlap, blank render, theme or content problem in the opened screenshot. Existing list-focus distinction #181 remains.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "lists-codex-tasks-light-100.png",
+    "verdict": "FAIL",
+    "failed": [
+      5
+    ],
+    "note": "Existing native-list focus issue #181: #FF872B dots against #0078D4 measure 1.89:1. No new layout or text defects.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "lists-codex-tasks-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "No new clipping, overlap, blank render, theme or content problem in the opened screenshot. Existing list-focus distinction #181 remains.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "lists-codex-no-tasks-light-100.png",
+    "verdict": "FAIL",
+    "failed": [
+      5
+    ],
+    "note": "Existing native-list focus issue #181: #FF872B dots against #0078D4 measure 1.89:1. No new layout or text defects.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "lists-codex-no-tasks-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "No new clipping, overlap, blank render, theme or content problem in the opened screenshot. Existing list-focus distinction #181 remains.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "properties-codex-tasks-light-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Session Properties, scrolled to the selected Tasks progress row; full progress line and buttons fit.",
+    "run": "20261018-200459"
+  },
+  {
+    "file": "properties-codex-tasks-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Session Properties, scrolled to the selected Tasks progress row; full progress line and buttons fit.",
+    "run": "20261018-200459"
+  },
+  {
+    "file": "shortcuts-page-light-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Opened final screenshot and, for changed plain-text shortcuts, baseline and diff. Text renders; controls fit. Changed task wording is below the initial viewport.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "shortcuts-page-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Opened final screenshot and, for changed plain-text shortcuts, baseline and diff. Text renders; controls fit. Changed task wording is below the initial viewport.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "shortcuts-plain-light-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Opened final screenshot and, for changed plain-text shortcuts, baseline and diff. Text renders; controls fit. Changed task wording is below the initial viewport.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "shortcuts-plain-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Opened final screenshot and, for changed plain-text shortcuts, baseline and diff. Text renders; controls fit. Changed task wording is below the initial viewport.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "user-guide-light-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Opened final screenshot and, for changed plain-text shortcuts, baseline and diff. Text renders; controls fit. Changed task wording is below the initial viewport.",
+    "run": "20261018-193133"
+  },
+  {
+    "file": "user-guide-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Opened final screenshot and, for changed plain-text shortcuts, baseline and diff. Text renders; controls fit. Changed task wording is below the initial viewport.",
+    "run": "20261018-193133"
+  }
+]

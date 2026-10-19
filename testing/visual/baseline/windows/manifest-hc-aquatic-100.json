@@ -888,6 +888,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, Tasks: no saved Codex list"
+  },
+  "properties-codex-tasks": {
+   "kind": "dialog",
+   "png": "properties-codex-tasks-hc-aquatic-100.png",
+   "json": "properties-codex-tasks-hc-aquatic-100.json",
+   "title": "Properties of Codex history preview",
+   "class": "PropertiesDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Properties with live task progress"
   }
  },
  "seconds": 91.6

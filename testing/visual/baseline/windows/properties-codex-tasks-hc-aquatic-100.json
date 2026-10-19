@@ -1,0 +1,130 @@
+{
+ "title": "Properties of Codex history preview",
+ "class": "PropertiesDialog",
+ "size": [
+  640,
+  360
+ ],
+ "client": [
+  624,
+  321
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Properties:",
+   "rect": [
+    8,
+    8,
+    57,
+    16
+   ],
+   "best": [
+    57,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Properties",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    608,
+    258
+   ],
+   "best": [
+    563,
+    154
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Title: Codex history preview",
+    "Provider: Codex",
+    "Kind: Chat Place session",
+    "Folder: C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\properties-codex-tasks\\Projects\\Scratch",
+    "Status: Working",
+    "Started: 11 October 2026 at 14:05 (2 hours ago)",
+    "Last activity: 11 October 2026 at 14:05 (2 hours ago)",
+    "Model chosen: configured Codex model",
+    "Effort: configured Codex effort",
+    "Sandbox: read-only",
+    "Approval policy: on request",
+    "Saved command rules check: Codex command rules could not be checked."
+   ],
+   "selection": 18
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    379,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &All",
+   "rect": [
+    460,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    541,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

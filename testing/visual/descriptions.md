@@ -443,3 +443,19 @@ The High Contrast diff shows a small scrollbar-thumb change. The formatted
 shortcuts and user-guide pictures render their headings, tables or paragraphs and
 bottom buttons normally and compare unchanged in the initial viewport. No blank
 page was accepted: the initial blank WebView capture was rerun successfully.
+
+
+## properties-codex-tasks: session Properties with task progress (#318)
+
+A 640 by 360 Properties dialog for "Codex history preview". The 608 by 258
+properties list is scrolled to the selected line "Tasks: Task 2 of 3: Make the
+retry wait for the server. 1 done." The full line fits. Status: Working, model,
+effort, sandbox, approval policy, message counts and Code blocks are visible above
+it, with Groups below it. Copy, Copy All and Close are aligned along the lower
+right. The probe selects this row to show progress rather than the earlier rows
+about title and provider. High Contrast Aquatic preserves the layout and uses the
+same near-black, white and aqua colours as the Codex Tasks screenshots.
+
+**What looks off:** No new clipping, overlap, theme or spacing problems in these
+pictures. The saved-command-rules check says it could not be checked because this
+is the synthetic probe connection, which does not supply that unrelated API.

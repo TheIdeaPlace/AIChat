@@ -183,7 +183,7 @@ class Transcript:
     edits: List[FileEdit] = field(default_factory=list)
     #: Shell commands Claude ran, in order (#279).
     commands: List[ToolCommand] = field(default_factory=list)
-    #: Claude's task list, in the order the tasks were added (#231).
+    #: The task list, in provider order (#231, #318).
     tasks: List[TaskStep] = field(default_factory=list)
 
     def latest_turn_edits(self) -> List[FileEdit]:
