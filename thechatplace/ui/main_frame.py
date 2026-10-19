@@ -3284,7 +3284,7 @@ class MainFrame(CodexChats, wx.Frame):
                 return
             host = ClaudePermissions(self, info)
         returning_to = wx.Window.FindFocus()
-        self._modal(ChatPermissionsDialog(self, info.title, host, info.provider))
+        self._modal(ChatPermissionsDialog(self, info.title, host))
         if returning_to:
             returning_to.SetFocus()
 

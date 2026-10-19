@@ -45,10 +45,14 @@ def test_confirmations_name_what_goes_and_when_it_counts():
 
 
 def test_native_rule_file_count_reads_like_properties():
-    assert cp.native_rule_files(pending=True).endswith("checking...")
-    assert cp.native_rule_files(2).startswith("Saved Codex rule files in effect: 2. ")
-    assert cp.CODEX_NATIVE in cp.native_rule_files(0)
-    assert cp.native_rule_files(None) == "Saved Codex rule files: not checked."
+    from thechatplace.ui_text import CODEX_SAVED_RULES_NOTE
+    assert cp.native_rule_files(pending=True) == "Saved user/system rule files: checking..."
+    two = cp.native_rule_files(2)
+    # Properties' words, and what such rules let run without asking.
+    assert two.startswith("Saved user/system rule files in effect: 2. ")
+    assert CODEX_SAVED_RULES_NOTE in two and cp.CODEX_NATIVE in two
+    assert cp.native_rule_files(0) == "Saved user/system rule files in effect: 0."
+    assert cp.native_rule_files(None) == "Saved user/system rule files: not checked."
     assert "couldn't be checked. Busy" in cp.native_rule_files(error="Busy")
 
 
@@ -203,7 +207,19 @@ def test_claude_host_changes_the_mode_of_its_own_chat_not_the_selected_one(tmp_p
     info = frame.store.get("own-1").to_info()
     finished = []
     ClaudePermissions(frame, info).change_mode(lambda: finished.append(True))
-    assert asked == [info] and finished == [True]
+    assert [i.cli_session_id for i in asked] == ["own-1"] and finished == [True]
+
+
+def test_claude_host_follows_its_chat_when_claude_reports_a_new_id(tmp_path):
+    from thechatplace.ui.permission_hosts import ClaudePermissions
+    frame = Frame(tmp_path)
+    host = ClaudePermissions(frame, frame.store.get("own-1").to_info())
+    frame.store.rename_id("own-1", "own-1b")
+    seen, done = _results()
+    host.load(done)
+    assert [r.rule_id for r in seen[-1][0]] == ["Bash(git push:*)", "WebSearch"]
+    host.remove("WebSearch", done)
+    assert _store(tmp_path).get("own-1b").allowed_tools == ["Bash(git push:*)"]
 
 
 def test_remove_all_of_one_rule_names_it():
@@ -218,9 +234,10 @@ def test_codex_host_keeps_nothing_and_reads_codexs_own_rule_files(tmp_path):
     seen, done = _results()
     host.load(done)
     assert seen[-1] == ([], None)
-    host.remove("anything", done)
-    assert seen[-1] == (None, "Codex chats keep no rules here.")
-    assert host.note() == cp.CODEX_ABOUT and "each request" in host.note()
+    # Nothing to remove, so no Remove; and no claim that nothing runs unasked.
+    assert host.can_remove is False and not hasattr(host, "remove")
+    assert host.empty_text == cp.CODEX_EMPTY != cp.EMPTY
+    assert host.note() == cp.CODEX_ABOUT and "saved rule files" in host.note()
     assert host.mode_text() == "Can edit files in this folder; asks before anything else"
     counted = []
     frame._load_codex_rules = lambda folder, callback: callback(2, False)
@@ -228,4 +245,4 @@ def test_codex_host_keeps_nothing_and_reads_codexs_own_rule_files(tmp_path):
     assert counted == [cp.native_rule_files(2)]
     frame._load_codex_rules = lambda folder, callback: callback("Codex is busy.", True)
     host.native(counted.append)
-    assert counted[-1] == "Saved Codex rule files: couldn't be checked. Codex is busy."
+    assert counted[-1] == "Saved user/system rule files: couldn't be checked. Codex is busy."

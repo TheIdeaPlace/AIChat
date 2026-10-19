@@ -1516,18 +1516,19 @@ class ChatPermissionsDialog(wx.Dialog):
     confirmation that names what goes.
 
     The window does the work through ``host`` (an object with ``load(done)``,
-    ``remove(rule_id, done)``, ``change_mode(done)``, ``mode_text()``,
-    ``can_change_mode()`` and ``note()``; Codex's adds ``native(done)``), whose
-    ``done(rows, error)`` comes back on the UI thread, after the work is
-    finished: a removal is never said to be done before it is.
+    ``change_mode(done)``, ``mode_text()``, ``can_change_mode()``, ``note()``,
+    ``empty_text`` and ``can_remove``, with ``remove(rule_id, done)`` when it can;
+    Codex's adds ``native(done)``), whose ``done(rows, error)`` comes back on the
+    UI thread, after the work is finished: a removal is never said to be done
+    before it is. A host that keeps nothing (Codex, #307) gets no Remove buttons.
     """
 
-    def __init__(self, parent, title: str, host, provider: str = "claude"):
+    def __init__(self, parent, title: str, host):
         super().__init__(parent, title=f"Chat Permissions: {title}",
                          size=dialog_size(parent, 680, 520),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.host = host
-        self.provider = provider
+        self.can_remove = getattr(host, "can_remove", True)
         self.rows = []
         #: Why an action must wait ("" when none must): the list is still
         #: being read, or a removal or mode change hasn't finished.
@@ -1550,10 +1551,14 @@ class ChatPermissionsDialog(wx.Dialog):
         self.list.SetMinSize(dip(self, -1, 150))
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        self.remove_btn = wx.Button(self, label="&Remove...")
-        self.remove_all_btn = wx.Button(self, label="Remove A&ll...")
-        for button in (self.remove_btn, self.remove_all_btn):
-            row.Add(button, 0, wx.RIGHT, 6)
+        self.remove_btn = self.remove_all_btn = None
+        if self.can_remove:
+            self.remove_btn = wx.Button(self, label="&Remove...")
+            self.remove_all_btn = wx.Button(self, label="Remove A&ll...")
+            for button in (self.remove_btn, self.remove_all_btn):
+                row.Add(button, 0, wx.RIGHT, 6)
+            self.remove_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove())
+            self.remove_all_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove_all())
         row.AddStretchSpacer()
         self.close_btn = wx.Button(self, wx.ID_CANCEL, "&Close")
         row.Add(self.close_btn, 0)
@@ -1565,8 +1570,6 @@ class ChatPermissionsDialog(wx.Dialog):
         self.SetEscapeId(wx.ID_CANCEL)
         self._native = ""
         self.change_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_change())
-        self.remove_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove())
-        self.remove_all_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove_all())
         self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         set_list_items_accessible(self.list, self._list_name, lambda index: None)
@@ -1620,7 +1623,7 @@ class ChatPermissionsDialog(wx.Dialog):
             self.list.Set([r.text() for r in self.rows])
             self.list.SetSelection(max(0, min(select, len(self.rows) - 1)))
         else:
-            self.list.Set([chat_permissions.EMPTY])
+            self.list.Set([getattr(self.host, "empty_text", chat_permissions.EMPTY)])
             self.list.SetSelection(0)
         self._name_list()
 
@@ -1652,7 +1655,7 @@ class ChatPermissionsDialog(wx.Dialog):
 
     def _on_list_key(self, event):
         # A Mac's Delete key is Backspace.
-        if (event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE, wx.WXK_BACK)
+        if (self.can_remove and event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE, wx.WXK_BACK)
                 and not event.HasAnyModifiers()):
             self.on_remove()
             return

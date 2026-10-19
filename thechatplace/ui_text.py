@@ -76,8 +76,8 @@ SHORTCUTS = [
                          "selected (or loaded) Chat Place session, from its next turn (File, "
                          "Change Effort and Change Model are beside it)"),
         ("Ctrl+Shift+H", "Chat Permissions: the selected (or loaded) Chat Place chat's permission "
-                         "mode, and the commands and tools it may use without asking; Delete or "
-                         "Remove takes one back, and Remove All takes them all"),
+                         "mode, and, for a Claude chat, the commands and tools it may use without "
+                         "asking; Delete or Remove takes one back, and Remove All takes them all"),
         ("F5", "Refresh the list now and put it back in order (it also refreshes itself "
                "every few seconds, without moving rows while you're in it)"),
         ("Alt+V, O", "Sort Sessions: by status, newest first, oldest first, by title or "

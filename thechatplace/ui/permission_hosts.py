@@ -18,11 +18,20 @@ CODEX_MODES = [(('read-only', 'on-request'), 'Read-only; asks before allowing ch
 
 
 class ClaudePermissions:
+    can_remove = True
+    empty_text = chat_permissions.EMPTY
+
     def __init__(self, frame, info):
-        self.frame, self.info = frame, info
+        self.frame = frame
+        # The record, not its id: a new chat's id can change on its first
+        # turn (Claude reports its own), and the dialog may be open then.
+        self.record = frame.store.get(info.cli_session_id)
 
     def _own(self):
-        return self.frame.store.get(self.info.cli_session_id)
+        record = self.record
+        if record is None or self.frame.store.get(record.cli_session_id) is not record:
+            return None
+        return record
 
     def mode_text(self) -> str:
         own = self._own()
@@ -35,11 +44,14 @@ class ClaudePermissions:
         return True, ""
 
     def change_mode(self, done):
-        self.frame.on_change_permission_mode(self.info)
+        own = self._own()
+        if own is not None:
+            self.frame.on_change_permission_mode(own.to_info())
         done()
 
     def note(self) -> str:
-        running = self.info.cli_session_id in self.frame._runners
+        own = self._own()
+        running = own is not None and own.cli_session_id in self.frame._runners
         return chat_permissions.CLAUDE_RUNNING if running else chat_permissions.CLAUDE_TAKES_EFFECT
 
     def load(self, done):
@@ -70,6 +82,10 @@ class ClaudePermissions:
 
 
 class CodexPermissions:
+    #: Nothing to remove, so the dialog offers no Remove (#307).
+    can_remove = False
+    empty_text = chat_permissions.CODEX_EMPTY
+
     def __init__(self, frame, info, record):
         self.frame, self.info, self.record = frame, info, record
 
@@ -94,11 +110,8 @@ class CodexPermissions:
         return chat_permissions.CODEX_ABOUT
 
     def load(self, done):
-        # Nothing is kept for a Codex chat (#307): the list says so.
+        # Nothing is kept for a Codex chat (#307).
         done([], None)
-
-    def remove(self, rule_id, done):
-        done(None, "Codex chats keep no rules here.")
 
     def native(self, done):
         def counted(result, error):

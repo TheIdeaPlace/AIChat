@@ -463,10 +463,12 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   and **Remove All** takes them all, each after one question that names what goes. With nothing
   kept, the list says "Nothing is allowed beyond the permission mode." For a Claude chat a
   removal counts from the next turn: a running turn keeps the rules it started with, and the
-  dialog says so. A Codex chat keeps no rules here yet, so each of its requests still asks: its
-  dialog shows the permission mode and how many of Codex's own rule files are in effect, as
-  Properties does. Desktop app and terminal sessions are read-only here, so they have none, and
-  a Continue Here copy starts with nothing kept.
+  dialog says so. The Chat Place keeps no Codex approvals yet, so a request Codex shows you
+  always asks; commands covered by Codex's own saved rule files run without asking, as
+  described under Codex below. For a Codex chat the dialog shows the permission mode and how
+  many of those rule files are in effect, with no Remove buttons. Desktop app and terminal
+  sessions are read-only here, so they have none, and a Continue Here copy starts with nothing
+  kept.
 - **Announcements.** When the open session gets a new reply, or one of The Chat Place's sessions
   finishes a turn, or any listed session stops working, it's announced through your screen reader
   (or a system voice when no screen reader is running) and put on the status bar. Settings (Ctrl+Comma) chooses full (the whole

@@ -1999,24 +1999,24 @@ def test_chat_permissions_shows_a_worker_failure_and_never_claims_removal(frame,
     told = []
     monkeypatch.setattr("thechatplace.ui.dialogs.wx.MessageBox",
                         lambda text, *a, **k: told.append(text) or wx.YES)
-    dialog = ChatPermissionsDialog(frame, "Probe", host, "codex")
+    dialog = ChatPermissionsDialog(frame, "Probe", host)
     try:
         dialog.on_remove()
         assert dialog.busy and dialog.list.GetCount() == 1
         dialog.on_remove()   # still waiting on the first: no second removal
         assert told[-1].startswith("Still finishing the last change")
-        pending["done"](None, "Codex couldn't save it.")
-        assert told[-1] == "Couldn't remove it. Codex couldn't save it."
+        pending["done"](None, "It couldn't be saved.")
+        assert told[-1] == "Couldn't remove it. It couldn't be saved."
         assert list(dialog.list.GetStrings()) == [rows[0].text()]
         dialog.on_change()
         assert told[-1] == "Busy now."
     finally:
         dialog.Destroy()
-    failing = SimpleNamespace(**{**vars(host), "load": lambda done: done(None, "Codex isn't available.")})
-    dialog = ChatPermissionsDialog(frame, "Probe", failing, "codex")
+    failing = SimpleNamespace(**{**vars(host), "load": lambda done: done(None, "The store is unreadable.")})
+    dialog = ChatPermissionsDialog(frame, "Probe", failing)
     try:
         assert list(dialog.list.GetStrings()) == [
-            "Couldn't read this chat's permissions. Codex isn't available."]
+            "Couldn't read this chat's permissions. The store is unreadable."]
         # Unknown isn't "nothing allowed": no count, and Remove says why.
         assert dialog.list.GetName() == "Allowed for this chat"
         dialog.on_remove()
@@ -2027,7 +2027,7 @@ def test_chat_permissions_shows_a_worker_failure_and_never_claims_removal(frame,
         dialog.Destroy()
     loading = {}
     slow = SimpleNamespace(**{**vars(host), "load": lambda done: loading.setdefault("done", done)})
-    dialog = ChatPermissionsDialog(frame, "Probe", slow, "codex")
+    dialog = ChatPermissionsDialog(frame, "Probe", slow)
     try:
         dialog.on_remove()
         assert told[-1].startswith("Still checking what this chat allows")
@@ -2035,6 +2035,27 @@ def test_chat_permissions_shows_a_worker_failure_and_never_claims_removal(frame,
         assert dialog.list.GetName() == "Allowed for this chat, 1"
     finally:
         dialog.Destroy()
+
+
+def test_chat_permissions_for_a_codex_chat_keeps_nothing_and_offers_no_remove(frame, env, monkeypatch):
+    from thechatplace import chat_permissions
+    record = OwnSession("codex-own", "Codex chat", str(env["tmp"]), provider="codex",
+                        provider_options={"sandbox": "read-only", "approval_policy": "on-request"})
+    frame.store.add(record)
+    monkeypatch.setattr(frame, "_selected_session", lambda: record.to_info())
+    monkeypatch.setattr(frame, "_load_codex_rules", lambda folder, done: done(2, False))
+
+    def drive(dialog):
+        _permission_delete_key(dialog)   # nothing to remove: nothing happens
+        return (list(dialog.list.GetStrings()), dialog.list.GetName(), dialog.remove_btn,
+                dialog.remove_all_btn, dialog.mode.GetValue(), dialog.note.GetValue())
+    (rows, name, remove, remove_all, mode, note), asked = _chat_permissions(frame, monkeypatch, drive)
+    assert rows == [chat_permissions.CODEX_EMPTY] and name == "Allowed for this chat, 0"
+    assert remove is None and remove_all is None and not asked
+    assert mode == "Read-only; asks before allowing changes"
+    assert note.startswith(chat_permissions.CODEX_ABOUT)
+    assert "Saved user/system rule files in effect: 2." in note
+    assert "Nothing is allowed beyond the permission mode" not in note
 
 
 def test_chat_permissions_backspace_is_a_macs_delete(frame, env, monkeypatch):

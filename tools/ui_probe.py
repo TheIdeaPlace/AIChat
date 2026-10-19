@@ -903,7 +903,7 @@ def d_chat_permissions_codex(frame, env):
                                                             "approval_policy": "on-request"})
     frame._load_codex_rules = lambda folder, done: done(2, False)
     host = CodexPermissions(frame, record.to_info(), record)
-    return lambda: frame._modal(ChatPermissionsDialog(frame, "Codex preview", host, "codex"))
+    return lambda: frame._modal(ChatPermissionsDialog(frame, "Codex preview", host))
 
 
 def d_codex_files(frame, env):
