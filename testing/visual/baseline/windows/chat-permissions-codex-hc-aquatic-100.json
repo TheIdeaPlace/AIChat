@@ -103,7 +103,7 @@
     245
    ],
    "best": [
-    818,
+    1144,
     150
    ],
    "depth": 0,
@@ -111,8 +111,8 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Run git commit (simple commands with reviewed options). Prefix: git commit. Allowed 19 October 2026 at 03:53.",
-    "Run git push (simple commands with reviewed options). Prefix: git push. Allowed 19 October 2026 at 04:53. Network access to github.com (HTTPS)."
+    "Run git commit (simple commands with reviewed options). Prefix: git commit. Allowed 19 October 2026 at 03:53. Write access to C:/Users/vmuser/AppData/Local/Temp/tcp-probe/chat-permissions-codex/.git.",
+    "Run git push (simple commands with reviewed options). Prefix: git push. Allowed 19 October 2026 at 04:53. Write access to C:/Users/vmuser/AppData/Local/Temp/tcp-probe/chat-permissions-codex/.git."
    ],
    "selection": 0
   },
@@ -210,7 +210,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Each rule allows one Git command, such as git commit, in this chat's folder, with only simple options The Chat Place has checked. Anything else still asks.\n\nRemoving a rule applies at once, to Codex's next request, even during a running turn. A command already allowed can't be called back.\n\nSaved Codex rule files in effect: 2. These are Codex's own rule files, outside The Chat Place. They are chan"
+   "value": "Each rule allows one Git command, such as git commit, in this chat's folder, with only simple options The Chat Place has checked, and only with the same limited access Codex asked for when you allowed it. Anything else still asks, including any command Codex wants to run with full access.\n\nRemoving a rule applies at once, to Codex's next request, even during a running turn. A command already allow"
   }
  ],
  "capture": "PrintWindow"

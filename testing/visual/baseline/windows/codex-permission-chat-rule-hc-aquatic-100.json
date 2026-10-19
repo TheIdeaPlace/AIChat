@@ -37,7 +37,7 @@
   {
    "class": "TextCtrl",
    "name": "Request",
-   "label": "Command:\r\npowershell.exe -Command 'git commit -m \"Fix the upload test\"'\r\n\r\nFolder:\r\nC:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission-chat-rule\r\n\r\nIf you allow it, this command may run outside the chat's folder sandbox, where it can change any file you can and use the network.\r\n\r\nAllow for This Chat keeps a rule in The Chat Place: later git commit commands in this chat's folder that use only simple options it has checked are allowed without asking, and you hear when that happens. Anything else still asks. File, Chat Permissions lists and removes the rule. Codex's own session and saved rules stay off.",
+   "label": "Command:\r\npowershell.exe -Command 'git commit -m \"Fix the upload test\"'\r\n\r\nFolder:\r\nC:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission-chat-rule\r\n\r\nThis also needs:\r\nWrite access to C:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission-chat-rule/.git\r\n\r\nAllow for This Chat keeps a rule in The Chat Place: later git commit commands in this chat's folder that ask for this same limited access and use only simple options it has checked are allowed without asking, and you hear when that happens. Anything else still asks. File, Chat Permissions lists and removes the rule. Codex's own session and saved rules stay off.",
    "rect": [
     10,
     34,
@@ -52,7 +52,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Command:\npowershell.exe -Command 'git commit -m \"Fix the upload test\"'\n\nFolder:\nC:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission-chat-rule\n\nIf you allow it, this command may run outside the chat's folder sandbox, where it can change any file you can and use the network.\n\nAllow for This Chat keeps a rule in The Chat Place: later git commit commands in this chat's folder that use only s"
+   "value": "Command:\npowershell.exe -Command 'git commit -m \"Fix the upload test\"'\n\nFolder:\nC:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission-chat-rule\n\nThis also needs:\nWrite access to C:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission-chat-rule/.git\n\nAllow for This Chat keeps a rule in The Chat Place: later git commit commands in this chat's folder that ask for this same limited acces"
   },
   {
    "class": "Button",
@@ -75,7 +75,7 @@
   },
   {
    "class": "Button",
-   "name": "Allow git commit for the rest of this chat, with simple options The Chat Place has checked; anything else still asks",
+   "name": "Allow git commit for the rest of this chat, with the same limited access and simple options The Chat Place has checked; anything else still asks",
    "label": "Allow for This &Chat",
    "rect": [
     327,
