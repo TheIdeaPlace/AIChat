@@ -1044,8 +1044,7 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 | `TheChatPlace.pyw` | Double-click launcher |
 | `thechatplace/transcript.py` | Transcript parser |
 | `thechatplace/sessions.py` | Desktop metadata, terminal sessions, live state, sorting, the list wording |
-| `thechatplace/own_store.py` | Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json`: the latest task list captured for each owned Codex chat, with its turn ID. Saved step text is deleted when that chat's owned session record is removed. |
-| The Chat Place's own sessions |
+| `thechatplace/own_store.py` | The Chat Place's own sessions |
 | `thechatplace/titles.py` | Names you've given desktop app sessions |
 | `thechatplace/prompts.py` | Your saved prompts |
 | `thechatplace/about_you.py` | Finding what Claude knows about you |
