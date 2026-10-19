@@ -24,10 +24,15 @@ class CodexRpcError(RuntimeError):
 
 class CodexApprovalNotSent(CodexRpcError):
     """The approval payload was never queued; manual answers remain safe."""
-    def __init__(self, stale=False):
+    def __init__(self, stale=False, reason='preflight'):
         self.stale = stale
-        super().__init__('Codex request is no longer waiting' if stale else
-                         'Codex approval was not sent. Check ChatGPT sign-in and try Answer again.')
+        reasons = {
+            'preflight': 'Codex approval was not sent. Try Answer again.',
+            'sign_in': 'Codex approvals require ChatGPT sign-in. No approval was sent.',
+            'account_check': 'Codex sign-in could not be checked. No approval was sent.',
+            'encode': 'Codex approval could not be encoded. No approval was sent.',
+        }
+        super().__init__('Codex request is no longer waiting' if stale else reasons.get(reason, reasons['preflight']))
 
 
 class CodexConnectionFailure(CodexRpcError):
@@ -267,17 +272,31 @@ class ReadOnlyCodexConnection:
 
     def respond_request(self, request, result):
         result = request.validate_answer(result)
-        try:
-            if result.get("decision") in (ACCEPT, ACCEPT_SESSION):
+        with self._lock:
+            if self._closed:
+                raise getattr(self, '_failure', None) or CodexConnectionFailure('stream_closed')
+            if self._server_pending.get(request.request_id) is not request:
+                raise CodexApprovalNotSent(stale=True)
+        if result.get("decision") in (ACCEPT, ACCEPT_SESSION):
+            try:
                 account = self.request("account/read", {"refreshToken": True})
-                if not is_chatgpt_account(account):
-                    raise CodexApprovalNotSent()
+            except CodexConnectionFailure:
+                raise  # Preserve the fixed connection reason; reconciliation is still needed.
+            except Exception:
+                with self._lock:
+                    if self._closed:
+                        raise getattr(self, '_failure', None) or CodexConnectionFailure('stream_closed')
+                raise CodexApprovalNotSent(reason='account_check') from None
+            if not is_chatgpt_account(account):
+                raise CodexApprovalNotSent(reason='sign_in')
+        try:
             payload = self._encode({"id": request.request_id, "result": result})
         except Exception:
-            # account/read may have sent bytes, but no approval was queued.
-            raise CodexApprovalNotSent() from None
+            raise CodexApprovalNotSent(reason='encode') from None
         with self._lock:
-            if self._closed or self._server_pending.get(request.request_id) is not request:
+            if self._closed:
+                raise getattr(self, '_failure', None) or CodexConnectionFailure('stream_closed')
+            if self._server_pending.get(request.request_id) is not request:
                 raise CodexApprovalNotSent(stale=True)
             self._outgoing.put(payload)
             del self._server_pending[request.request_id]

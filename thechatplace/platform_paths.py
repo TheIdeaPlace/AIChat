@@ -1373,6 +1373,31 @@ def codex_permission_argument(value: str, cwd: str, root: str) -> bool:
         return False
 
 
+def codex_git_config(cwd: str, root: str) -> tuple[str, str]:
+    """Read only the chat root's ordinary Git metadata, never follow a gitfile."""
+    base = Path(codex_permission_folder(cwd, root))
+    if Path(cwd).resolve(strict=True) != base:
+        raise ValueError('Kept Git commands require the exact chat folder')
+    gitdir = base / '.git'
+    if not gitdir.is_dir() or gitdir.resolve(strict=True) != gitdir or (gitdir / 'commondir').exists():
+        raise ValueError('Kept Git commands require ordinary local .git metadata')
+    for name in ('config', 'HEAD'):
+        path = gitdir / name
+        if not path.is_file() or path.resolve(strict=True) != path:
+            raise ValueError('Redirected Git metadata cannot use kept rules')
+    with (gitdir / 'config').open(encoding='utf-8') as handle:
+        contents = handle.read(128 * 1024 + 1)
+    if len(contents) > 128 * 1024:
+        raise ValueError('Git configuration is too large to verify')
+    return str(gitdir), contents
+
+
+def codex_permission_targets(paths, root: str) -> bool:
+    """A reusable extra grant may cover only literal targets inside the chat."""
+    base = Path(root).resolve(strict=True)
+    return bool(paths) and all(Path(p).resolve(strict=True).is_relative_to(base) for p in paths)
+
+
 def codex_permission_folder(cwd: str, parent: str) -> str:
     """Canonical existing local folder inside the chat, for kept approvals (#307)."""
     paths = [Path(value) for value in (cwd, parent)]

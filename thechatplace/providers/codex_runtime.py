@@ -193,7 +193,7 @@ class CodexChatRuntime:
             # Revoke before changing mode, even if verifying the new mode
             # fails. Never let an earlier grant survive a mode transition.
             with self._permission_lock:
-                self.permission_store.save(native_id, ())
+                self.permission_store.clear(native_id)
             connection, _ = self._binding()
             change = PreparedCodexPolicy(CodexOwnedThreads(connection).resume(proposed))
             with self._lock:

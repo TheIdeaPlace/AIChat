@@ -50,12 +50,14 @@ def test_handshake_partial_utf8_lines_and_context_cleanup(server):
 
 @pytest.mark.parametrize('wrapper', ['default', 'alternate'])
 def test_chat_permission_rules_answer_only_once_over_real_stdio(server, tmp_path, monkeypatch, wrapper):
+    from test_codex_permissions import init_repository
     from test_codex_runtime import wait
     from thechatplace.providers.codex_execution import CodexExecutionConnection
     from thechatplace.providers.codex_runtime import CodexChatRuntime
     from thechatplace.provider_storage import PartitionedFile
     monkeypatch.setenv('TCP_FAKE_PERMISSION_CWD', str(tmp_path))
     monkeypatch.setenv('TCP_FAKE_PERMISSION_WRAPPER', wrapper)
+    init_repository(tmp_path)
     writes = []
     write = PartitionedFile._write
     def checked_write(path, payload):
@@ -744,6 +746,46 @@ def test_api_sign_in_cannot_grant_approval_even_for_a_waiting_owned_request():
         connection.respond_request(request, {'decision': 'accept'})
     assert connection._outgoing.empty()
     connection.respond_request(request, {'decision': 'decline'})
+
+
+def test_approval_preflight_preserves_connection_failure_reason():
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    connection = request_transport()
+    connection._receive(approval_message())
+    request = connection.pop_event()
+    failure = CodexConnectionFailure('stream_closed')
+    def fail(*args):
+        raise failure
+    connection.request = fail
+    with pytest.raises(CodexConnectionFailure) as caught:
+        connection.respond_request(request, {'decision': 'accept'})
+    assert caught.value is failure and 'sign-in' not in str(caught.value)
+    assert connection._outgoing.empty()
+
+
+def test_approval_encoding_failure_does_not_blame_sign_in(monkeypatch):
+    from thechatplace.providers.codex_rpc import CodexApprovalNotSent
+    connection = request_transport()
+    connection._receive(approval_message())
+    request = connection.pop_event()
+    def fail(*args):
+        raise ValueError('synthetic encoding error')
+    monkeypatch.setattr(connection, '_encode', fail)
+    with pytest.raises(CodexApprovalNotSent, match='encoded') as caught:
+        connection.respond_request(request, {'decision': 'accept'})
+    assert 'sign-in' not in str(caught.value) and connection._outgoing.empty()
+
+
+def test_closed_approval_connection_reports_its_original_failure():
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    connection = request_transport()
+    connection._receive(approval_message())
+    request = connection.pop_event()
+    connection._closed = True
+    connection._failure = CodexConnectionFailure('write_failed')
+    with pytest.raises(CodexConnectionFailure) as caught:
+        connection.respond_request(request, {'decision': 'accept'})
+    assert caught.value is connection._failure and connection._outgoing.empty()
 
 
 def test_unowned_duplicate_and_overflowing_requests_are_rejected():

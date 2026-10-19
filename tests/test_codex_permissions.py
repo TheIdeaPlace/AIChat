@@ -3,6 +3,7 @@ import json
 import os
 import shlex
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +16,18 @@ from thechatplace.providers.codex_events import CodexEvent
 from thechatplace.providers.codex_rpc import CodexRpcError, CodexApprovalNotSent
 from thechatplace import platform_paths
 from test_codex_runtime import runtime, wait
+
+
+def init_repository(folder):
+    gitdir = folder / '.git'
+    gitdir.mkdir(exist_ok=True)
+    (gitdir / 'HEAD').write_text('ref: refs/heads/main\n')
+    (gitdir / 'config').write_text('[core]\n bare = false\n[remote "origin"]\n url = https://example.test/repo.git\n')
+
+
+@pytest.fixture(autouse=True)
+def synthetic_repository(tmp_path):
+    init_repository(tmp_path)
 
 
 def wrapped(command, style=None):
@@ -30,7 +43,9 @@ def wrapped(command, style=None):
 def approval(folder, identity='request', command='git commit -m "A change"', **extra):
     params = dict(
         threadId='owned-1', turnId='turn-1', itemId=identity,
-        command=wrapped(command), cwd=str(folder), proposedExecpolicyAmendment=['git', 'commit'])
+        command=wrapped(command), cwd=str(folder), proposedExecpolicyAmendment=['git', 'commit'],
+        additionalPermissions={'fileSystem': {'write': [str(Path(folder) / '.git')]}},
+        availableDecisions=['accept', 'decline', 'cancel'])
     params.update(extra)
     return decode_request(identity, COMMAND, params)
 
@@ -40,7 +55,7 @@ def test_prefix_is_retained_but_only_one_time_wire_answers_are_possible(tmp_path
     rule = candidate(request, str(tmp_path))
     assert request.proposed_prefix == ('git', 'commit')
     assert rule and rule.description == 'Run git commit (simple commands with reviewed options).'
-    assert matches(rule, replace(request, command=wrapped('git commit --amend'), proposed_prefix=()), str(tmp_path))
+    assert matches(rule, replace(request, command=wrapped('git commit --no-edit'), proposed_prefix=()), str(tmp_path))
     for decision in ('acceptForSession', 'acceptWithExecpolicyAmendment'):
         with pytest.raises(ValueError):
             request.approval_answer(decision)
@@ -72,12 +87,12 @@ def test_interpreters_and_wrappers_have_no_chat_offer(exe):
 def test_folder_and_access_cannot_expand(tmp_path):
     root = tmp_path / 'project'
     root.mkdir()
-    (root / '.git').mkdir()
+    init_repository(root)
     child = root / 'child'
     child.mkdir()
     request = approval(root, additionalPermissions={'fileSystem': {'write': [str(root / '.git')]}})
     rule = candidate(request, str(root))
-    assert matches(rule, replace(request, cwd=str(child)), str(root))
+    assert not matches(rule, replace(request, cwd=str(child)), str(root))
     assert not matches(rule, replace(request, cwd=str(tmp_path)), str(root))
     assert not matches(rule, replace(request, cwd=str(root / 'missing')), str(root))
     assert candidate(replace(request, cwd='relative'), str(root)) is None
@@ -323,10 +338,10 @@ def test_reviewed_attacks_never_create_or_match_rules(tmp_path, prefix, script):
 
 
 @pytest.mark.parametrize('path', ['/outside', 'C:/Users/synthetic', 'C:relative', '../outside', 'child/../../outside'])
-def test_git_path_arguments_cannot_escape_even_with_full_escalation(tmp_path, path):
+def test_git_path_arguments_cannot_escape_a_scoped_grant(tmp_path, path):
     request = approval(tmp_path, command='git add inside.txt', proposedExecpolicyAmendment=['git', 'add'])
     rule = candidate(request, str(tmp_path))
-    assert rule and request.outside_sandbox
+    assert rule and not request.outside_sandbox
     outside = replace(request, command=wrapped('git add -- ' + path))
     assert candidate(outside, str(tmp_path)) is None
     assert not matches(rule, outside, str(tmp_path))
@@ -507,7 +522,7 @@ def test_posix_only_accepts_exact_command_switches(shell, flag, monkeypatch):
 @pytest.mark.parametrize('script,prefix', [
     ('git commit -m probe', ['git', 'commit']), ('git push origin main', ['git', 'push']),
 ])
-def test_runner_captures_decode_and_match_with_native_saved_offer_ignored(tmp_path, monkeypatch, shell, script, prefix):
+def test_runner_captures_decode_but_full_escalations_are_not_kept(tmp_path, monkeypatch, shell, script, prefix):
     # Synthetic IDs/paths with the full request shape captured by real Codex
     # 0.162.1 in Actions run 39253925878. The model and prompt were synthetic.
     # Trust lookup is stubbed here to replay either platform on either host;
@@ -525,11 +540,198 @@ def test_runner_captures_decode_and_match_with_native_saved_offer_ignored(tmp_pa
         'proposedExecpolicyAmendment': prefix,
         'availableDecisions': ['accept', {'acceptWithExecpolicyAmendment': {'execpolicy_amendment': prefix}}, 'cancel'],
     })
-    rule = candidate(request, str(tmp_path))
-    assert rule and matches(rule, request, str(tmp_path))
+    assert command_words(request.command)[0] == tuple(script.split())
+    assert candidate(request, str(tmp_path)) is None  # Native captures are full escalations.
+    scoped = approval(tmp_path, command=script, proposedExecpolicyAmendment=prefix)
+    scoped = replace(scoped, command=command)
+    rule = candidate(scoped, str(tmp_path))
+    assert rule and not matches(rule, request, str(tmp_path))
     assert request.outside_sandbox and request.saved_rule_offered
     assert request.offered() == ('accept', 'cancel')
     assert request.approval_answer('accept') == {'decision': 'accept'}
     for decision in ('acceptForSession', 'acceptWithExecpolicyAmendment'):
         with pytest.raises(ValueError):
             request.approval_answer(decision)
+
+
+@pytest.mark.parametrize('location', ['root', 'bare', 'nested'])
+def test_full_escalations_never_reuse_a_rule_with_agent_writable_config(tmp_path, location):
+    scoped = approval(tmp_path, command='git status --short', proposedExecpolicyAmendment=['git', 'status'])
+    rule = candidate(scoped, str(tmp_path))
+    assert rule
+    folder = tmp_path
+    if location != 'root':
+        folder = tmp_path / location
+        folder.mkdir()
+        metadata = folder if location == 'bare' else folder / '.git'
+        metadata.mkdir(exist_ok=True)
+        (metadata / 'HEAD').write_text('ref: refs/heads/main\n')
+        (metadata / 'config').write_text('[core]\n bare = false\n worktree = ..\n fsmonitor = synthetic-command\n')
+    full = approval(folder, command='git status --short', proposedExecpolicyAmendment=['git', 'status'],
+                    additionalPermissions=None)
+    assert full.outside_sandbox
+    assert candidate(full, str(tmp_path)) is None
+    assert not matches(rule, full, str(tmp_path))
+    # The full-escalation restriction applies even to a previously kept
+    # request whose stored scope was made by an older release.
+    older = replace(rule, scope=full.permission_scope)
+    assert not matches(older, full, str(tmp_path))
+
+
+def test_root_config_changes_invalidate_a_scoped_rule(tmp_path):
+    request = approval(tmp_path, command='git status --short', proposedExecpolicyAmendment=['git', 'status'])
+    rule = candidate(request, str(tmp_path))
+    config = tmp_path / '.git' / 'config'
+    config.write_text(config.read_text().replace('bare = false', 'bare = false\n fsmonitor = synthetic-command'))
+    assert candidate(request, str(tmp_path)) is not None
+    assert not matches(rule, request, str(tmp_path))
+
+
+@pytest.mark.parametrize('verb', ['push', 'fetch'])
+@pytest.mark.parametrize('remote', ['hookrepo', '.', './hookrepo'])
+def test_local_path_remotes_cannot_create_or_match_rules(tmp_path, verb, remote):
+    request = approval(tmp_path, command=f'git {verb} origin main', proposedExecpolicyAmendment=['git', verb])
+    rule = candidate(request, str(tmp_path))
+    assert rule
+    (tmp_path / 'hookrepo').mkdir()
+    (tmp_path / 'hookrepo' / 'config').write_text('[core]\n bare = true\n')
+    other = replace(request, command=wrapped(f'git {verb} {remote} main'))
+    assert candidate(other, str(tmp_path)) is None
+    assert not matches(rule, other, str(tmp_path))
+
+
+@pytest.mark.parametrize('url', ['./hookrepo', '.', 'file:///outside', 'ext::synthetic-command'])
+def test_configured_local_or_external_helper_remote_is_not_kept(tmp_path, url):
+    (tmp_path / '.git' / 'config').write_text('[core]\n bare = false\n[remote "origin"]\n url = ' + url + '\n')
+    request = approval(tmp_path, command='git push origin main', proposedExecpolicyAmendment=['git', 'push'])
+    assert candidate(request, str(tmp_path)) is None
+
+
+@pytest.mark.parametrize('location', ['root', 'sub'])
+def test_gitfiles_redirecting_outside_the_chat_are_manual(tmp_path, location):
+    request = approval(tmp_path)
+    rule = candidate(request, str(tmp_path))
+    if location == 'root':
+        (tmp_path / '.git').rename(tmp_path / 'metadata-original')
+        folder = tmp_path
+    else:
+        folder = tmp_path / 'sub'
+        folder.mkdir()
+    (folder / '.git').write_text('gitdir: ' + str(tmp_path.parent / 'otherrepo' / '.git') + '\n')
+    redirected = replace(request, cwd=str(folder))
+    assert candidate(redirected, str(tmp_path)) is None
+    assert not matches(rule, redirected, str(tmp_path))
+
+
+@pytest.mark.parametrize('script', [
+    'git commit -m x @PSVersionTable', 'git commit -m x @HOME',
+    'git commit -m x @env:USERNAME', 'git commit -m "person@example"',
+    "git commit -m '' --amend", 'git commit -m ""', 'git add =ls',
+    'git commit -m "=ls"', 'git add a,b', 'git commit -m "a,b"',
+])
+def test_shell_rewritten_words_never_create_or_match_rules(tmp_path, script):
+    prefix = script.split()[:2]
+    initial = 'git add inside' if prefix[1] == 'add' else 'git commit -m initial'
+    request = approval(tmp_path, command=initial, proposedExecpolicyAmendment=prefix)
+    rule = candidate(request, str(tmp_path))
+    unsafe = replace(request, command=wrapped(script))
+    assert rule and candidate(unsafe, str(tmp_path)) is None
+    assert not matches(rule, unsafe, str(tmp_path))
+
+
+@pytest.mark.parametrize('verb,option', [
+    ('push', '--force'), ('push', '-f'), ('push', '--force-with-lease'),
+    ('push', '--delete'), ('push', '-d'), ('switch', '--force'), ('switch', '-f'),
+    ('switch', '-d'), ('commit', '--amend'), ('add', '--force'), ('add', '-f'),
+])
+def test_destructive_options_require_a_fresh_answer(tmp_path, verb, option):
+    args = {'push': 'origin main', 'switch': 'main', 'commit': '-m initial', 'add': 'inside'}[verb]
+    request = approval(tmp_path, command=f'git {verb} {args}', proposedExecpolicyAmendment=['git', verb])
+    rule = candidate(request, str(tmp_path))
+    unsafe = replace(request, command=wrapped(f'git {verb} {option} {args}'))
+    assert rule and candidate(unsafe, str(tmp_path)) is None
+    assert not matches(rule, unsafe, str(tmp_path))
+
+
+@pytest.mark.parametrize('problem', ['newer', 'unknown', 'corrupt', 'unreadable'])
+def test_mode_change_preserves_unusable_rules_and_still_finishes(tmp_path, monkeypatch, problem):
+    service, connection, _, record, _ = running(tmp_path)
+    try:
+        request = approval(tmp_path)
+        enqueue(service, connection, record, request)
+        service.allow_for_chat(record, request)
+        connection.events.append(CodexEvent('turn_completed', record.cli_session_id, 'turn-1', status='completed'))
+        wait(lambda: service.snapshot(record.cli_session_id).outcome == 'completed')
+        path = service.permission_store._path(record.cli_session_id)
+        raw = json.loads(path.read_text())
+        if problem == 'newer':
+            raw['version'] += 1
+        if problem == 'unknown':
+            raw['rules'][0]['future_field'] = 'keep this'
+        path.write_text('{broken' if problem == 'corrupt' else json.dumps(raw))
+        before = path.read_bytes()
+        with monkeypatch.context() as patch:
+            if problem == 'unreadable':
+                read = Path.read_text
+                def unreadable(self, *args, **kwargs):
+                    if self == path and self.exists():
+                        raise PermissionError('synthetic unreadable rules')
+                    return read(self, *args, **kwargs)
+                patch.setattr(Path, 'read_text', unreadable)
+            change = service.prepare_policy(record, 'read-only', 'on-request')
+            service.finish_policy(change, True)
+        assert service.ready(record) and not service.chat_rules(record)
+        assert not service.snapshot(record.cli_session_id).problem
+        backups = list(path.parent.glob(path.stem + '.preserved-*.json'))
+        assert len(backups) == 1 and backups[0].read_bytes() == before
+        assert json.loads(path.read_text())['rules'] == []
+    finally:
+        service.close()
+
+
+def test_failed_replacement_restores_preserved_rule_file(tmp_path, monkeypatch):
+    store = CodexPermissionStore(tmp_path / 'store')
+    rule = candidate(approval(tmp_path), str(tmp_path))
+    store.save('chat', (rule,))
+    path = store._path('chat')
+    path.write_text('{broken')
+    before = path.read_bytes()
+    def fail(*args):
+        raise OSError('synthetic disk failure')
+    monkeypatch.setattr('thechatplace.providers.codex_permissions.atomic_write_json', fail)
+    with pytest.raises(OSError):
+        store.clear('chat')
+    assert path.read_bytes() == before
+    assert not list(path.parent.glob('*.preserved-*.json'))
+
+
+@pytest.mark.parametrize('profile', [
+    {'fileSystem': {'write': ['OUTSIDE']}},
+    {'network': {'enabled': True}},
+    {'fileSystem': {'write': ['INSIDE']}, 'network': {'enabled': True}},
+    {'fileSystem': {'entries': [{'access': 'deny', 'path': {'type': 'path', 'path': 'INSIDE'}}]}},
+])
+def test_overbroad_or_non_grant_profiles_are_not_kept(tmp_path, profile):
+    text = json.dumps(profile).replace('OUTSIDE', str(tmp_path.parent).replace('\\', '\\\\'))
+    text = text.replace('INSIDE', str(tmp_path / '.git').replace('\\', '\\\\'))
+    request = approval(tmp_path, additionalPermissions=json.loads(text))
+    assert candidate(request, str(tmp_path)) is None
+
+
+@pytest.mark.parametrize('config', [
+    '[CORE]\n worktree = /outside\n', '[core]\n bare = true\n',
+    '[include]\n path = other.conf\n', '[url "ext::synthetic-command"]\n insteadOf = https://\n',
+    '[core]\n bare = false\n[remote "origin"]\n url = https://example.test/repo\n pushurl = ./hookrepo\n',
+    '[core]\n bare = false\n[remote "origin"]\n url = https://example.test/repo\n receivepack = synthetic-command\n',
+])
+def test_unverifiable_repository_config_cannot_keep_push(tmp_path, config):
+    (tmp_path / '.git' / 'config').write_text(config)
+    request = approval(tmp_path, command='git push origin main', proposedExecpolicyAmendment=['git', 'push'])
+    assert candidate(request, str(tmp_path)) is None
+
+
+def test_a_named_host_does_not_narrow_a_network_wide_profile(tmp_path):
+    request = approval(tmp_path, networkApprovalContext={'host': 'example.test', 'protocol': 'https'},
+                       additionalPermissions={'fileSystem': {'write': [str(tmp_path / '.git')]},
+                                              'network': {'enabled': True}})
+    assert candidate(request, str(tmp_path)) is None

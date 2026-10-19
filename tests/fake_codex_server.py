@@ -37,7 +37,7 @@ def permission_request(index):
           'params': {'threadId': 'owned', 'turnId': 'turn', 'itemId': f'command-{index}',
                      'kind': 'command', 'environmentId': 'local',
                      'command': command, 'cwd': os.environ['TCP_FAKE_PERMISSION_CWD'],
-                     'additionalPermissions': {'fileSystem': {'write': [os.environ['TCP_FAKE_PERMISSION_CWD']]}},
+                     'additionalPermissions': {'fileSystem': {'write': [str(Path(os.environ['TCP_FAKE_PERMISSION_CWD']) / '.git')]}},
                      'proposedExecpolicyAmendment': ['git', 'commit'],
                      'availableDecisions': ['accept', {'acceptWithExecpolicyAmendment': {
                          'execpolicy_amendment': ['git', 'commit']}}, 'decline', 'cancel']}})
