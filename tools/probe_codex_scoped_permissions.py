@@ -183,6 +183,7 @@ enabled = true
     scenario['stderr_tail'] = (home / 'stderr.txt').read_text(errors='replace')[-3000:]
     scenario['head_after'] = (work / '.git' / 'HEAD').read_text()
     scenario['outside_file_exists'] = (root / 'outside.txt').exists()
+    scenario['hook_outside_file_exists'] = (root / 'hook-outside.txt').exists()
 
 
 def main():
@@ -192,6 +193,13 @@ def main():
     work = root / 'work'
     work.mkdir()
     subprocess.run(['git', 'init', '-q', str(work)], check=True)
+    subprocess.run(['git', '-C', str(work), 'config', 'user.name', 'Synthetic Probe'], check=True)
+    subprocess.run(['git', '-C', str(work), 'config', 'user.email', 'probe@example.test'], check=True)
+    (work / 'synthetic.txt').write_text('Synthetic permission test.\n')
+    subprocess.run(['git', '-C', str(work), 'add', 'synthetic.txt'], check=True)
+    hook = work / '.git' / 'hooks' / 'pre-commit'
+    hook.write_text(f"#!/bin/sh\nprintf escaped > '{(root / 'hook-outside.txt').as_posix()}'\nexit 0\n")
+    hook.chmod(0o755)
     if os.name == 'nt':
         # Python's owner-only temporary ACL otherwise prevents restricted-token traversal.
         # Synthetic folder only; this gives read access, never outside write access.
@@ -209,11 +217,18 @@ def main():
         {'name': 'outside-write', 'args': {'cmd': outside,
             'sandbox_permissions': 'with_additional_permissions', 'additional_permissions': grant}},
         {'name': 'after-grant', 'args': {'cmd': 'git switch -c after-probe'}},
+        {'name': 'scoped-explicit-path', 'args': {
+            'cmd': f"git -C '{work}' switch -c explicit-probe",
+            'sandbox_permissions': 'with_additional_permissions', 'additional_permissions': grant}},
+        {'name': 'scoped-hook', 'args': {'cmd': 'git commit -m probe',
+            'sandbox_permissions': 'with_additional_permissions', 'additional_permissions': grant}},
         {'name': 'profile-git', 'profile': 'probe-git',
          'args': {'cmd': 'git switch -c profile-probe'}},
         {'name': 'profile-outside', 'profile': 'probe-git', 'args': {'cmd': outside}},
         {'name': 'profile-base', 'profile': 'probe-base',
          'args': {'cmd': 'git switch -c profile-base-probe'}},
+        {'name': 'profile-explicit-path', 'profile': 'probe-git',
+         'args': {'cmd': f"git -C '{work}' switch -c explicit-profile-probe"}},
     ]
     curl = 'curl.exe' if os.name == 'nt' else 'curl'
     scenarios.extend([
