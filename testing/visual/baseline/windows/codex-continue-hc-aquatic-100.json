@@ -232,7 +232,7 @@
   {
    "class": "TextCtrl",
    "name": "About continuing",
-   "label": "This starts a Chat Place session that is a copy of this session, with its whole conversation so far, so you can carry on and reply here. The original, in the desktop app or a terminal, isn't changed, and replies here don't appear in it.\r\n\r\nThe permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
+   "label": "This starts a Chat Place session that is a copy of this session, with its whole conversation so far, so you can carry on and reply here. The original, in the desktop app or a terminal, isn't changed, and replies here don't appear in it. The copy starts with nothing allowed beyond its permission mode.\r\n\r\nThe permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
    "rect": [
     12,
     185,

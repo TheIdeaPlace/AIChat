@@ -13,6 +13,7 @@ from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name
 from .dialogs import CodexPermissionDialog, QuestionDialog, codex_permission_prompt
+from .permission_hosts import CODEX_MODES
 
 
 class CodexChats:
@@ -121,22 +122,27 @@ class CodexChats:
             return 'No Codex chat was started. Your first message is copied to the clipboard.'
         return "No Codex chat was started, and your first message couldn't be kept."
 
-    def _change_codex_permissions(self, info):
+    def _change_codex_permissions(self, info, after=None):
+        """``after()`` runs once the change is finished, refused or cancelled,
+        so File, Chat Permissions can show the new mode (#329)."""
+        after = after or (lambda: None)
         if not info.is_own or not self.sessions.can_create('codex'):
             self._feedback('Only Codex chats started here can change permissions here.')
+            after()
             return
         record = self.store.get(info.cli_session_id, provider='codex')
         if record is None or info.key in self._codex_policy_pending:
             self._feedback('Codex permissions are unavailable or already being changed.')
+            after()
             return
-        choices = [(('read-only', 'on-request'), 'Read-only; asks before allowing changes'),
-                   (('workspace-write', 'on-request'), 'Can edit files in this folder; asks before anything else')]
+        choices = CODEX_MODES
         current = (record.provider_options.get('sandbox', 'read-only'),
                    record.provider_options.get('approval_policy', 'on-request'))
         selected = self._change_setting('Change Permission Mode',
             codex_permission_prompt(self, info.title, record.cwd),
             choices, current)
         if selected is None:
+            after()
             return
         before_cwd, before_options = record.cwd, dict(record.provider_options)
         self._codex_policy_pending.add(info.key)
@@ -145,6 +151,7 @@ class CodexChats:
             if error:
                 self._codex_policy_pending.discard(info.key)
                 self._feedback(change or 'Could not change Codex permissions. Wait for an idle chat or reload to check its status.')
+                after()
                 return
             proposed = change.record()
             saved = self.store.get(record.cli_session_id, 'codex') is record and self._store_write(self.store.update, record.cli_session_id, provider='codex',
@@ -162,6 +169,7 @@ class CodexChats:
                     self._feedback(f'Codex permissions for {info.title}: {label}.')
                 self._update_send_state()
                 self.refresh_sessions()
+                after()
             self._codex_work(lambda: self.sessions.owned_action('finish_policy', record, change, saved), finished)
         self._codex_work(lambda: self.sessions.owned_action('prepare_policy', record, *selected), prepared)
 

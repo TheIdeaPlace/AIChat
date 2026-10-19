@@ -916,6 +916,48 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, Tasks: owned Codex chat with no tasks"
+  },
+  "chat-permissions": {
+   "kind": "dialog",
+   "png": "chat-permissions-light-100.png",
+   "json": "chat-permissions-light-100.json",
+   "title": "Chat Permissions: Visual probe",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions: a Claude chat's kept rules"
+  },
+  "chat-permissions-empty": {
+   "kind": "dialog",
+   "png": "chat-permissions-empty-light-100.png",
+   "json": "chat-permissions-empty-light-100.json",
+   "title": "Chat Permissions: Visual probe",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions with nothing kept"
+  },
+  "chat-permissions-codex": {
+   "kind": "dialog",
+   "png": "chat-permissions-codex-light-100.png",
+   "json": "chat-permissions-codex-light-100.json",
+   "title": "Chat Permissions: Codex preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's rule files"
   }
  },
  "seconds": 94.1

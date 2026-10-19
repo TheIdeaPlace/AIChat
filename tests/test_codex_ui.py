@@ -492,3 +492,41 @@ def test_explicit_empty_plan_clears_the_previous_task_list():
     window._on_codex_update(state)
     window._on_codex_update(replace(state, tasks=()))
     assert not window._chat_tasks
+
+
+# -- Chat Permissions (#329) ---------------------------------------------------------------
+
+
+def test_permission_change_tells_chat_permissions_when_it_is_finished(monkeypatch):
+    from thechatplace.ui import codex_chats
+    w = Window()
+    w._codex_policy_pending = set()
+    finished = []
+    w.sessions = SimpleNamespace(can_create=lambda provider: True)
+    monkeypatch.setattr(codex_chats, 'codex_permission_prompt', lambda *args: 'Synthetic prompt')
+    w._change_setting = lambda *args: None
+    w._change_codex_permissions(w._open, after=lambda: finished.append('cancelled'))
+    w._change_setting = lambda *args: ('workspace-write', 'on-request')
+    w._change_codex_permissions(w._open, after=lambda: finished.append('refused'))
+    w.work[0][1]('Refused', True)
+    assert finished == ['cancelled', 'refused']
+
+
+def test_permission_change_after_runs_once_when_saved_and_when_already_pending(monkeypatch):
+    from thechatplace.ui import codex_chats
+    from dataclasses import replace
+    w = Window()
+    w._codex_policy_pending = set()
+    finished = []
+    w.sessions = SimpleNamespace(can_create=lambda provider: True, owned_action=lambda *a: None)
+    monkeypatch.setattr(codex_chats, 'codex_permission_prompt', lambda *args: 'Synthetic prompt')
+    w._change_setting = lambda *args: ('workspace-write', 'on-request')
+    w._change_codex_permissions(w._open, after=lambda: finished.append('saved'))
+    change = SimpleNamespace(record=lambda: replace(w.record, provider_options={
+        'sandbox': 'workspace-write', 'approval_policy': 'on-request'}))
+    w.work[0][1](change, False)        # prepared, saved, then finished
+    w.work[1][1](None, False)
+    assert finished == ['saved'] and not w._codex_policy_pending
+    w._codex_policy_pending.add(w._open.key)
+    w._change_codex_permissions(w._open, after=lambda: finished.append('pending'))
+    assert finished == ['saved', 'pending'] and len(w.work) == 2

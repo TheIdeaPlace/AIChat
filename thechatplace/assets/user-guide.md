@@ -537,7 +537,7 @@ You hear the change and when it counts, such as "Permission mode for Fix the bui
 next turn." A turn that's already running carries on as it started, and you hear that too. The
 session's heading, at the top of its messages, says its model, and its effort and mode when they
 aren't the defaults: "on Opus at high effort, plan mode". Approving a plan, or allowing something
-"for this session" that switches mode, changes the mode as well; approving a plan starts on the
+"for this chat" that switches mode, changes the mode as well; approving a plan starts on the
 mode you chose here, unless that was plan.
 
 Desktop app and terminal sessions are set in Claude or in the terminal, so for them these items
@@ -624,8 +624,8 @@ Claude wants to run git push. Ctrl+Shift+A answers."), and the session shows as 
 the list. Press **Ctrl+Shift+A** to answer:
 
 - **A permission:** read the whole request (the command, or the file and what would change), then
-  choose **Allow**, **Deny**, or, when Claude Code suggests a rule, **Allow for this session**,
-  named in full ("don't ask again this session for Bash(git push:*)"). Deny is the default button,
+  choose **Allow**, **Deny**, or, when Claude Code suggests a rule, **Allow for This Chat**,
+  named in full ("don't ask again in this chat for Bash(git push:*)"). Deny is the default button,
   so pressing Enter by mistake never allows anything, and you can give a reason Claude reads.
 - **A question:** each question is a group of choices, with Other and a box for your own answer.
   Send Answers, or Don't Answer.
@@ -633,12 +633,34 @@ the list. Press **Ctrl+Shift+A** to answer:
   how Claude carries on, or **Keep Planning**, the default, with what to change.
 
 **Escape answers later.** Nothing is allowed or refused by waiting: the turn keeps waiting, and
-Ctrl+Shift+A brings the same request back. "Allow for this session" lasts for the rest of that
-session, not just the turn. The Chat Place never changes Claude Code's own settings files.
+Ctrl+Shift+A brings the same request back. "Allow for This Chat" lasts for the rest of that
+chat, not just the turn, until you remove it in File, Chat Permissions. The Chat Place never
+changes Claude Code's own settings files.
 
 For a desktop app session, a "needs you" means the desktop app's summary of its latest turn says
 it's waiting on you. Answer it in the desktop app (Ctrl+O). The desktop app doesn't write that
 summary after every turn, so a desktop session can be waiting on you and still show as idle.
+
+### What a chat may do without asking
+
+**File, Chat Permissions** (Ctrl+Shift+H) shows it for a chat started here, working or idle:
+
+- **Permission mode**, in words, with **Change...**, which offers the same choices as Change
+  Permission Mode. A Codex chat's mode can change only once its turn has finished.
+- **Allowed for this chat:** one row per kept rule, read in full: what it allows, the rule
+  itself and when it was allowed, such as "Run git push (any arguments). Bash(git push:*).
+  Allowed 19 October 2026 at 14:05." A rule kept before this release says "Allowed: time not
+  recorded". With nothing kept, the list says "Nothing is allowed beyond the permission mode."
+- **Remove** (or Delete in the list) takes the selected rule back, and **Remove All** takes them
+  all. Each asks once, naming what goes; No is the default.
+
+A removal counts from the chat's next turn: a turn that's running keeps the rules it started
+with, and the dialog says so. The Chat Place keeps no Codex approvals yet, so a request Codex
+shows you always asks; commands covered by Codex's own saved rule files run without asking (see
+the Codex section). For a Codex chat, Chat Permissions shows the permission mode and how many of
+those rule files are in effect, with no Remove buttons; the rule files are changed in Codex.
+Desktop app and terminal sessions are read-only here, so they have no Chat Permissions, and a
+Continue Here copy starts with nothing kept.
 
 ## Organizing your sessions
 

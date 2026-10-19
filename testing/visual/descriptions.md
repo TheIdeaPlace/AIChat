@@ -196,7 +196,7 @@ This is a 720 by 520 dialog. "Search, or type owner/name:" heads a full-width se
 
 ## continue-here: Continue Here (a desktop session)
 
-This uses the same 680 by 620 frame and form style as New Session, but with a narrower label column (fields start at x=114). The rows are Folder (a read-only grey box showing a full path), Title ("Fix the flaky upload test (continued)"), Model, Effort (both "Default (your Claude Code setting)") and Permission mode ("Auto: Claude decides what is safe to run without asking"). "About continuing:" heads a 117-tall read-only box that shows both paragraphs of its note whole, and "First message:" heads a large empty box 196 tall, about a third of the dialog. "Start" (default) and "Cancel" are at the bottom right.
+This uses the same 680 by 620 frame and form style as New Session, but with a narrower label column (fields start at x=114). The rows are Folder (a read-only grey box showing a full path), Title ("Fix the flaky upload test (continued)"), Model, Effort (both "Default (your Claude Code setting)") and Permission mode ("Auto: Claude decides what is safe to run without asking"). "About continuing:" heads a 132-tall read-only box that shows both paragraphs of its note whole, the first now ending "The copy starts with nothing allowed beyond its permission mode." (#332), and "First message:" heads a large empty box 181 tall, about a third of the dialog. "Start" (default) and "Cancel" are at the bottom right.
 
 **What looks off:** The Title box now shows the title from its start, and the About box its whole note (#178 fixed both). The fields' left edges and widths differ by 2 to 6 pixels (Folder 116 to 650, Title 116 to 656, the three dropdowns 114 to 654). Its label column also differs from New Session's, although the two dialogs look like a pair (#178).
 
@@ -469,3 +469,21 @@ disabled and Close is enabled. Both light and High Contrast Aquatic keep the
 same layout and colours described for lists-codex-tasks.
 
 **What looks off:** Only the existing list-focus distinction (#181), as above.
+
+## chat-permissions: File, Chat Permissions for a Claude chat (#332)
+
+A 680 by 520 dialog titled "Chat Permissions: Visual probe". At the top, "Permission mode:" labels a grey read-only box showing "Auto: Claude decides what is safe to run without asking", with "Change..." to its right. "Allowed for this chat:" heads a white list that takes about half the dialog. It has two rows: "Run git push (any arguments). Bash(git push:*). Allowed: time not recorded." (selected, white on blue) and "Fetch pages from docs.python.org. WebFetch(domain:docs.python.org). Allowed 19 October 2026 at 03:53." Below the list, "Remove..." and "Remove All..." sit at the left and "Close" at the right. "About these permissions:" heads a read-only box about 100 tall: "Removing a rule applies from this chat's next turn." The selected row measures 4.53:1 (white on Windows' blue, #0078D4), and unselected rows are black on white. In High Contrast Aquatic the boxes and buttons are white-outlined on near-black (#202020, 16.3:1 for the text), and the selected row is dark text on light aqua (#8EE3F0, 7.9:1).
+
+**What looks off:** The list is mostly empty with two rules. Nothing else.
+
+## chat-permissions-empty: File, Chat Permissions with nothing kept (#332)
+
+The same dialog with one row in the list, "Nothing is allowed beyond the permission mode.", selected. Everything else is as above.
+
+**What looks off:** Nothing.
+
+## chat-permissions-codex: File, Chat Permissions for a Codex chat (#332)
+
+The same 680 by 520 dialog, titled "Chat Permissions: Codex preview". The mode box reads "Can edit files in this folder; asks before anything else", with "Change..." beside it. The list holds one row, "The Chat Place keeps no Codex approvals." (selected). There are no Remove or Remove All buttons, only "Close" at the right under the list. The About box reads "The Chat Place keeps no Codex approvals: when Codex asks you, your answer covers that one request. Codex's own saved rule files are separate, below." Then, as its own paragraph: "Saved user/system rule files in effect: 2. Commands you've told Codex to always allow will run without asking and outside this folder's limits, including the network. Project-supplied command rules are refused. They are Codex's own, and are changed in Codex, not here." Every line fits. High Contrast Aquatic is as for chat-permissions: white-outlined boxes on near-black, and the selected row in light aqua.
+
+**What looks off:** A row on the left of the button line is empty, where a Claude chat has Remove and Remove All. Nothing else.

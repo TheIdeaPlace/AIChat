@@ -93,9 +93,11 @@ from .a11y import set_accessible_name, set_list_items_accessible, set_voiceover_
 from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
+from .permission_hosts import ClaudePermissions, CodexPermissions
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
-from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, FindResultsDialog,
+from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, ChatPermissionsDialog,
+                      FindResultsDialog,
                       FormattedMessageDialog, ListsDialog, WrappingText,
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
@@ -412,6 +414,10 @@ class MainFrame(CodexChats, wx.Frame):
         # key already, so, as with Other Machines, its shortcut is the way in.
         self._item(session, "Change Permission Mode...\tCtrl+Shift+O",
                    lambda e: self.on_change_permission_mode())
+        # What the chat may do without asking, and taking it back (#307).
+        # Every letter is another item's access key, so its shortcut is the way in.
+        self._item(session, "Chat Permissions...\tCtrl+Shift+H",
+                   lambda e: self.on_chat_permissions())
         self._item(session, "Change E&ffort...", lambda e: self.on_change_effort())
         self._item(session, "Rem&ote Control...", lambda e: self.on_remote_control())
         # As with Rename Session, every letter is taken, so the key is its shortcut.
@@ -3169,11 +3175,11 @@ class MainFrame(CodexChats, wx.Frame):
     def _queued_words(count: int) -> str:
         return "1 message queued." if count == 1 else f"{count} messages queued."
 
-    def _own_for_setting(self, what: str):
-        """The selected session and its stored record, for a File, Change
-        item; None (and why, said) for a session whose ``what`` is set
-        elsewhere."""
-        info = self._selected_session()
+    def _own_for_setting(self, what: str, info: Optional[SessionInfo] = None):
+        """The selected session (or ``info``) and its stored record, for a
+        File, Change item; None (and why, said) for a session whose ``what``
+        is set elsewhere."""
+        info = info if info is not None else self._selected_session()
         if info is not None and info.provider != "claude" and not self._require_capability("options", info):
             return None
         if info is None:
@@ -3226,15 +3232,17 @@ class MainFrame(CodexChats, wx.Frame):
         self._update_heading()
         self._feedback(f"{info.title} now uses {model_label(model)}, from its next turn.")
 
-    def on_change_permission_mode(self):
+    def on_change_permission_mode(self, info: Optional[SessionInfo] = None):
         """File, Change Permission Mode (Ctrl+Shift+O, #189): the mode this
         session's next turns start in. Every turn is given its stored mode,
-        as approving a plan already relies on."""
-        selected = self._selected_session()
+        as approving a plan already relies on. ``info`` is the chat Chat
+        Permissions is showing (#329): focus is in that dialog then, so the
+        selected session could be another chat."""
+        selected = info if info is not None else self._selected_session()
         if selected is not None and selected.provider == 'codex':
             self._change_codex_permissions(selected)
             return
-        found = self._own_for_setting("permission mode")
+        found = self._own_for_setting("permission mode", selected)
         if found is None:
             return
         info, own = found
@@ -3250,6 +3258,35 @@ class MainFrame(CodexChats, wx.Frame):
         self._update_heading()
         self._feedback(f"Permission mode for {info.title}: {mode_label(mode)}, "
                        f"{self._from_next_turn(own)}.")
+
+    def on_chat_permissions(self):
+        """File, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission
+        mode, and the rules kept with a chat started here, to read and remove.
+        Codex chats keep none yet: each request still asks (#307)."""
+        info = self._selected_session()
+        if info is None:
+            self._feedback("No session selected.")
+            return
+        if not info.is_own or info.provider not in ("claude", "codex"):
+            where = "terminal" if info.is_terminal else "desktop app"
+            self._feedback(f"{info.title} is {kind_name(info)}: it's read-only here, so it keeps "
+                           f"no permissions in The Chat Place. Its {where} decides what it may do.")
+            return
+        if info.provider == "codex":
+            record = self.store.get(info.cli_session_id, provider="codex")
+            if record is None:
+                self._feedback("This Codex chat is no longer in The Chat Place.")
+                return
+            host = CodexPermissions(self, info, record)
+        else:
+            if self.store.get(info.cli_session_id) is None:
+                self._feedback("This chat is no longer in The Chat Place.")
+                return
+            host = ClaudePermissions(self, info)
+        returning_to = wx.Window.FindFocus()
+        self._modal(ChatPermissionsDialog(self, info.title, host))
+        if returning_to:
+            returning_to.SetFocus()
 
     def on_change_effort(self):
         """File, Change Effort (#189): how hard Claude thinks in this
@@ -3462,10 +3499,17 @@ class MainFrame(CodexChats, wx.Frame):
                     changes["permission_mode"] = mode
                 else:
                     kept = list(own.allowed_tools) if own is not None else []
-                    kept += [r for r in request.session_rules() if r not in kept]
+                    times = dict(own.allowed_tools_at) if own is not None else {}
+                    now = int(time.time() * 1000)
+                    for rule in request.session_rules():
+                        if rule not in kept:
+                            kept.append(rule)
+                            # When it was allowed, for File, Chat Permissions (#329).
+                            times[rule] = now
                     changes["allowed_tools"] = kept
+                    changes["allowed_tools_at"] = times
                 return (allow_response(request, for_session=True),
-                        "Allowed for the rest of this session.", changes)
+                        "Allowed for the rest of this chat.", changes)
             reason = dialog.reason_text()
             return deny_response(reason), "Refused." + (" Claude has your reason." if reason
                                                          else ""), {}
@@ -4752,7 +4796,9 @@ class MainFrame(CodexChats, wx.Frame):
                 selection: Optional[int] = None) -> Optional[int]:
         """A standard single-choice list (wx's own dialog, which screen
         readers handle well). The chosen index, or None."""
-        dialog = wx.SingleChoiceDialog(self, prompt, title, choices)
+        # Over the dialog it was chosen from (Chat Permissions' Change, #329),
+        # so closing it returns there rather than to the disabled window.
+        dialog = wx.SingleChoiceDialog(self._open_modal() or self, prompt, title, choices)
         if selection is not None:
             dialog.SetSelection(selection)  # on the current choice, not the first
         try:

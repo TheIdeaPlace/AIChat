@@ -877,6 +877,35 @@ def d_codex_permission(frame, env):
     return lambda: frame._modal(CodexPermissionDialog(frame, "Codex preview", request))
 
 
+def d_chat_permissions(frame, env):
+    """File, Chat Permissions on a Claude chat with two kept rules: one from
+    before times were kept, one with its time (#329)."""
+    _open(frame, "Visual probe")
+    frame.store.update("own-1", allowed_tools=["Bash(git push:*)", "WebFetch(domain:docs.python.org)"],
+                       allowed_tools_at={"WebFetch(domain:docs.python.org)": 1_792_400_000_000})
+    return frame.on_chat_permissions
+
+
+def d_chat_permissions_empty(frame, env):
+    _open(frame, "Visual probe")
+    frame.store.update("own-1", allowed_tools=[], allowed_tools_at={})
+    return frame.on_chat_permissions
+
+
+def d_chat_permissions_codex(frame, env):
+    """A Codex chat: its mode and Codex's own rule-file count, and nothing
+    kept (#307), through the window's own Codex host."""
+    from thechatplace.own_store import OwnSession
+    from thechatplace.ui.dialogs import ChatPermissionsDialog
+    from thechatplace.ui.permission_hosts import CodexPermissions
+    record = OwnSession("synthetic-codex", "Codex preview", str(env["folders"]["Scratch"]),
+                        provider="codex", provider_options={"sandbox": "workspace-write",
+                                                            "approval_policy": "on-request"})
+    frame._load_codex_rules = lambda folder, done: done(2, False)
+    host = CodexPermissions(frame, record.to_info(), record)
+    return lambda: frame._modal(ChatPermissionsDialog(frame, "Codex preview", host))
+
+
 def d_codex_files(frame, env):
     from thechatplace.providers.codex_requests import CodexRequest, FILES
     from thechatplace.ui.dialogs import CodexPermissionDialog
@@ -1148,6 +1177,11 @@ SURFACES = {
     "update-installed": ("dialog", d_update_installed, "After an update is installed"),
     "permission": ("dialog", d_permission, "Claude asks permission to run a command"),
     "codex-permission": ("dialog", d_codex_permission, "Codex asks for one-time command permission"),
+    "chat-permissions": ("dialog", d_chat_permissions, "File, Chat Permissions: a Claude chat's kept rules"),
+    "chat-permissions-empty": ("dialog", d_chat_permissions_empty,
+                               "File, Chat Permissions with nothing kept"),
+    "chat-permissions-codex": ("dialog", d_chat_permissions_codex,
+                               "File, Chat Permissions: a Codex chat, nothing kept, and Codex's rule files"),
     "codex-files": ("dialog", d_codex_files, "Codex file changes to review before allowing"),
     "codex-question": ("dialog", d_codex_question, "Codex choices and a masked secret answer"),
     "question": ("dialog", d_question, "Claude asks questions (one choice and several choices)"),
@@ -1209,6 +1243,9 @@ DIALOG_CLASSES = {
     "update-installed": "UpdateInstalledDialog",
     "permission": "PermissionDialog",
     "codex-permission": "CodexPermissionDialog",
+    "chat-permissions": "ChatPermissionsDialog",
+    "chat-permissions-empty": "ChatPermissionsDialog",
+    "chat-permissions-codex": "ChatPermissionsDialog",
     "codex-files": "CodexPermissionDialog",
     "codex-question": "QuestionDialog",
     "question": "QuestionDialog",
