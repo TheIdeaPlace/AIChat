@@ -12,3 +12,6 @@ smoke*.json
 ._*
 Thumbs.db
 desktop.ini
+
+# Worktrees an agent makes inside the checkout
+.worktrees/
