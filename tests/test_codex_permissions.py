@@ -501,3 +501,35 @@ def test_posix_only_accepts_exact_command_switches(shell, flag, monkeypatch):
     assert command_words(shlex.join([shell, flag, 'git commit -m synthetic']))[0] == (
         'git', 'commit', '-m', 'synthetic')
     assert not command_words(shlex.join([shell, flag, 'git commit', 'extra-argv']))[0]
+
+
+@pytest.mark.parametrize('shell', ['/bin/bash', r'C:\Program Files\PowerShell\7\pwsh.exe'])
+@pytest.mark.parametrize('script,prefix', [
+    ('git commit -m probe', ['git', 'commit']), ('git push origin main', ['git', 'push']),
+])
+def test_runner_captures_decode_and_match_with_native_saved_offer_ignored(tmp_path, monkeypatch, shell, script, prefix):
+    # Synthetic IDs/paths with the full request shape captured by real Codex
+    # 0.162.1 in Actions run 39253925878. The model and prompt were synthetic.
+    # Trust lookup is stubbed here to replay either platform on either host;
+    # the native probes and stdio matrix exercise the host's real lookup.
+    kind = 'posix' if shell.startswith('/') else 'powershell'
+    monkeypatch.setattr(platform_paths, 'codex_approval_shell', lambda exe: kind if exe == shell else '')
+    if kind == 'posix':
+        command = shell + " -lc '" + script + "'"
+    else:
+        command = '"' + shell.replace('\\', '\\\\') + '" -Command ' + "'" + script + "'"
+    request = decode_request(1, COMMAND, {
+        'kind': 'command', 'threadId': 'synthetic-chat', 'turnId': 'synthetic-turn', 'itemId': 'call1',
+        'startedAtMs': 1, 'environmentId': 'local', 'reason': 'probe', 'command': command,
+        'cwd': str(tmp_path), 'commandActions': [{'type': 'unknown', 'command': script}],
+        'proposedExecpolicyAmendment': prefix,
+        'availableDecisions': ['accept', {'acceptWithExecpolicyAmendment': {'execpolicy_amendment': prefix}}, 'cancel'],
+    })
+    rule = candidate(request, str(tmp_path))
+    assert rule and matches(rule, request, str(tmp_path))
+    assert request.outside_sandbox and request.saved_rule_offered
+    assert request.offered() == ('accept', 'cancel')
+    assert request.approval_answer('accept') == {'decision': 'accept'}
+    for decision in ('acceptForSession', 'acceptWithExecpolicyAmendment'):
+        with pytest.raises(ValueError):
+            request.approval_answer(decision)

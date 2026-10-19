@@ -48,12 +48,14 @@ def test_handshake_partial_utf8_lines_and_context_cleanup(server):
         connection.request("thread/list", {})
 
 
-def test_chat_permission_rules_answer_only_once_over_real_stdio(server, tmp_path, monkeypatch):
+@pytest.mark.parametrize('wrapper', ['default', 'alternate'])
+def test_chat_permission_rules_answer_only_once_over_real_stdio(server, tmp_path, monkeypatch, wrapper):
     from test_codex_runtime import wait
     from thechatplace.providers.codex_execution import CodexExecutionConnection
     from thechatplace.providers.codex_runtime import CodexChatRuntime
     from thechatplace.provider_storage import PartitionedFile
     monkeypatch.setenv('TCP_FAKE_PERMISSION_CWD', str(tmp_path))
+    monkeypatch.setenv('TCP_FAKE_PERMISSION_WRAPPER', wrapper)
     writes = []
     write = PartitionedFile._write
     def checked_write(path, payload):

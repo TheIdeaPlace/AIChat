@@ -131,8 +131,8 @@ decisions. Existing transport validation continues to reject lasting decisions.
 - Run the full test suite. Close #307 and superseded #298 only after the integrated
   feature and required checks are complete.
 - Claude-only listing/removal, timestamps and the button rename can proceed
-  independently. Codex end-to-end integration needs PR #330 and live macOS approval
-  validation; a Mac capture is outstanding, as described below.
+  independently. Codex integration needs PR #330. Native Mac/Windows approval-shape
+  validation is complete, as described below; the integrated UI checks remain here.
 
 ## Backend validation
 
@@ -146,11 +146,27 @@ environmentId: "local"
 additionalPermissions: null
 ```
 
-The synthetic Windows fixture reproduces this Rust shlex serialization, including
-its doubled backslashes inside double quotes. Python `shlex.join` alone produces a
-different Windows representation. The macOS fixture uses `/bin/zsh -lc` with one
-quoted script, and unit tests cover bash/sh and `-c` too. **No live Mac capture
-was available in this session.** Run that check before claiming live macOS support.
+Claude subsequently supplied a credential-free native probe using real Codex
+0.162.1 with a local fake Responses API in an isolated temporary `CODEX_HOME`.
+The workflow runs on GitHub's macOS and Windows runners and declines every approval.
+Its [second attempt](https://github.com/TheIdeaPlace/AIChat/actions/runs/39253925878/attempts/2)
+checked the pushed backend commit `d2130327cccd096279a8f216d6b8cc2f5205348b` on both
+platforms. The `probe-macOS` and `probe-Windows` artifacts' `out-pr330-*.json` files
+show successful candidacy for both `git commit -m probe` and `git push origin main`,
+with completed turns and no probe error. The Mac-capture evidence gap is closed.
+
+The macOS runner used `/bin/bash -lc '...'`; Windows used the double-quoted Program
+Files PowerShell 7 `pwsh.exe` path with doubled backslashes and `-Command`.
+The synthetic stdio tests now exercise bash and zsh on POSIX hosts, and system
+PowerShell and Program Files PowerShell 7 on Windows. The full captured request
+shape is also replayed with synthetic IDs/paths, including `commandActions` and
+the native `acceptWithExecpolicyAmendment` offer, which remains unavailable to TCP.
+Python `shlex.join` alone produces a different Windows serialization, so the fixture
+preserves the captured double quoting/backslashes explicitly.
+
+These native probes establish protocol decoding and rule candidacy. Repeated
+automatic approval and removal use the synthetic stdio tests; full UI, keyboard
+and speech integration still belongs to #329.
 
 Real stdio fake-server tests cover the wrapped first grant, automatic second commit,
 compound-command refusal, immediate removal and exact one-time wire answers.
@@ -164,3 +180,7 @@ integration PR. The PR records current test results.
 Review-fix validation: the full repository run passed 2,542 tests with 7 skipped.
 The latest focused Codex/runtime/transport/storage run passed 376 tests, including
 the final storage guards and copied-chat first-approval check.
+
+Captured-request replay and expanded shell-variant stdio coverage passed all 267
+tests in `test_codex_permissions.py` and `test_codex_rpc.py` after recording the
+native probe results. This evidence/test update changes no production code.

@@ -25,17 +25,22 @@ permission_answers = []
 def permission_request(index):
     command = 'git commit -m synthetic' if index != 3 else 'git commit && rm file'
     if sys.platform == 'win32':
-        shell = os.environ.get('SystemRoot', r'C:\Windows') + r'\System32\WindowsPowerShell\v1.0\powershell.exe'
+        if os.environ.get('TCP_FAKE_PERMISSION_WRAPPER') == 'alternate':
+            shell = os.environ['ProgramFiles'] + r'\PowerShell\7\pwsh.exe'
+        else:
+            shell = os.environ.get('SystemRoot', r'C:\Windows') + r'\System32\WindowsPowerShell\v1.0\powershell.exe'
         command = '"' + shell.replace('\\', '\\\\') + '" -Command ' + shlex.quote(command)
     else:
-        command = shlex.join(['/bin/zsh', '-lc', command])
+        shell = '/bin/zsh' if os.environ.get('TCP_FAKE_PERMISSION_WRAPPER') == 'alternate' else '/bin/bash'
+        command = shlex.join([shell, '-lc', command])
     emit({'id': f'permission-{index}', 'method': 'item/commandExecution/requestApproval',
           'params': {'threadId': 'owned', 'turnId': 'turn', 'itemId': f'command-{index}',
                      'kind': 'command', 'environmentId': 'local',
                      'command': command, 'cwd': os.environ['TCP_FAKE_PERMISSION_CWD'],
                      'additionalPermissions': {'fileSystem': {'write': [os.environ['TCP_FAKE_PERMISSION_CWD']]}},
                      'proposedExecpolicyAmendment': ['git', 'commit'],
-                     'availableDecisions': ['accept', 'acceptForSession', 'decline', 'cancel']}})
+                     'availableDecisions': ['accept', {'acceptWithExecpolicyAmendment': {
+                         'execpolicy_amendment': ['git', 'commit']}}, 'decline', 'cancel']}})
 
 
 def emit(message, partial=False):
