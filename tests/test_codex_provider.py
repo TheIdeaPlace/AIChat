@@ -451,3 +451,81 @@ def test_codex_kind_uses_advertised_origin_without_guessing_a_desktop_app(origin
     info = session_from_thread(thread(source=origin), False)
     assert info.field_values()['kind'] == kind
     assert info.field_values()['provider'] == 'Codex'
+
+
+
+def test_owned_reader_restores_saved_plan_and_refreshes_it_without_history_change(tmp_path, monkeypatch):
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.tasklist import TaskStep
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    saved = CodexPlanStore()
+    saved.save('one', 'turn-1', [TaskStep('test', 'Run the tests', status='in_progress')])
+    connection = Connection(history_pages(history()) + [{'thread': thread()}] * 3)
+    provider = CodexProvider(connection)
+    info = SessionInfo('own', 'codex:one', 'Build', '/example', 'one', provider='codex')
+    reader = provider.open_reader(info)
+    assert reader.refresh()
+    assert [(t.subject, t.status, t.turn, t.changed_turn) for t in reader.transcript.tasks] == [
+        ('Run the tests', 'in_progress', 1, 1)]
+    saved.save('one', 'turn-1', [TaskStep('test', 'Run the tests', status='completed')])
+    assert reader.refresh() and reader.transcript.tasks[0].done
+    assert not reader.refresh()
+    saved.save('one', 'unknown-turn', [TaskStep('wrong', 'Not in this history')])
+    assert reader.refresh() and not reader.transcript.tasks
+    assert all(method != 'thread/resume' for method, _ in connection.calls)
+
+
+def test_foreign_reader_does_not_claim_saved_owned_plan(tmp_path, monkeypatch):
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.tasklist import TaskStep
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    CodexPlanStore().save('one', 'turn-1', [TaskStep('test', 'Run the tests')])
+    info = SessionInfo('external', 'codex:one', 'Build', '/example', 'one', provider='codex')
+    reader = CodexProvider(Connection(history_pages(history()))).open_reader(info)
+    reader.refresh()
+    assert not reader.transcript.tasks
+
+
+def test_plan_text_is_not_a_structured_task_list():
+    data = history()
+    data['turns'][0]['items'].append({'id': 'proposal', 'type': 'plan',
+        'text': '1. Run tests\n2. Complete everything'})
+    assert not transcript_from_thread(data).tasks
+
+
+
+def test_every_codex_message_uses_its_history_turn_including_errors_and_tool_outputs():
+    from thechatplace.transcript import ERROR
+    data = history()
+    data['turns'][0]['items'].append({'type': 'mcpToolCall', 'id': 'mcp', 'server': 'synthetic',
+        'tool': 'read', 'result': {'content': [{'type': 'text', 'text': 'Tool output'}]},
+        'error': {'message': 'Tool failed'}})
+    data['turns'][0]['error'] = {'message': 'Turn failed'}
+    data['turns'].append({**data['turns'][0], 'id': 'turn-2'})
+    transcript = transcript_from_thread(data)
+    assert transcript.turns == 2
+    assert {m.turn for m in transcript.messages if m.key.startswith('turn-1:')} == {1}
+    assert {m.turn for m in transcript.messages if m.key.startswith('turn-2:')} == {2}
+    assert any(m.kind == ERROR and m.turn == 2 for m in transcript.messages)
+
+
+def test_saved_plan_stays_on_its_turn_after_a_later_turn_without_a_plan(tmp_path, monkeypatch):
+    from thechatplace import platform_paths, lists
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.tasklist import TaskStep, is_current
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    CodexPlanStore().save('one', 'turn-1', [TaskStep('test', 'Run the tests', status='in_progress')])
+    data = history()
+    data['turns'].append({**data['turns'][0], 'id': 'turn-2'})
+    reader = CodexProvider(Connection(history_pages(data))).open_reader(
+        SessionInfo('own', 'codex:one', 'Build', '/example', 'one', provider='codex'))
+    reader.refresh()
+    transcript = reader.transcript
+    assert transcript.tasks and transcript.tasks[0].changed_turn == 1
+    assert not is_current(transcript.tasks, transcript.turns)
+    for message in transcript.messages:
+        rows = lists.build(lists.TASKS, lists.SCOPE_MESSAGE, transcript.messages, message,
+                           [], [], str, tasks=transcript.tasks)
+        assert bool(rows) == (message.turn == 1)

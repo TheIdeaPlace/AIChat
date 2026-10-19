@@ -979,15 +979,60 @@ def d_lists_decisions(frame, env):
 def d_lists_tasks(frame, env):
     """View, Tasks (#231): Claude's task list, one step of each state."""
     from thechatplace import lists
-    from thechatplace.transcript import ClaudeTask
+    from thechatplace.tasklist import TaskStep
     _open(frame, "Fix the flaky upload test")
     frame._chat_tasks = [
-        ClaudeTask("1", "Find why the upload test fails", status="completed", turn=1),
-        ClaudeTask("2", "Make the retry wait for the server", status="in_progress",
+        TaskStep("1", "Find why the upload test fails", status="completed", turn=1),
+        TaskStep("2", "Make the retry wait for the server", status="in_progress",
                    active_form="Making the retry wait for the server",
                    description="Wait for the server's ready line before retrying.", turn=1),
-        ClaudeTask("3", "Run the whole test suite", turn=1)]
+        TaskStep("3", "Run the whole test suite", turn=1)]
     return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
+
+
+
+def _codex_plan_preview(frame, env):
+    from dataclasses import replace
+    from thechatplace.tasklist import TaskStep
+    s_main_codex_owned(frame, env)
+    state = replace(frame._codex_states[frame._open.key], plan_received=True, tasks=(
+        TaskStep('first', 'Find why the upload test fails', status='completed'),
+        TaskStep('second', 'Make the retry wait for the server', status='in_progress'),
+        TaskStep('third', 'Run the whole test suite')))
+    frame._on_codex_update(state)
+
+
+def d_lists_codex_tasks(frame, env):
+    from thechatplace import lists
+    _codex_plan_preview(frame, env)
+    return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
+
+
+def d_lists_codex_no_tasks(frame, env):
+    from thechatplace import lists
+    s_main_codex(frame, env)
+    return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
+
+
+def d_lists_codex_owned_no_tasks(frame, env):
+    from thechatplace import lists
+    s_main_codex_owned(frame, env)
+    return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
+
+
+def d_properties_codex_tasks(frame, env):
+    _codex_plan_preview(frame, env)
+    frame.session_list.SetFocus()
+    modal = frame._modal
+    def show_progress(dialog):
+        for index in range(dialog.list.GetCount()):
+            if dialog.list.GetString(index).startswith('Tasks:'):
+                dialog.list.SetSelection(index)
+                dialog.list.SetFirstItem(max(0, index - 10))
+                break
+        return modal(dialog)
+    frame._modal = show_progress
+    return frame.on_properties
 
 
 def d_usage(frame, env):
@@ -1117,6 +1162,10 @@ SURFACES = {
     "lists-commands": ("dialog", d_lists_commands, "View, Lists: Commands"),
     "lists-decisions": ("dialog", d_lists_decisions, "View, Lists: Decisions"),
     "lists-tasks": ("dialog", d_lists_tasks, "View, Tasks: Claude's task list"),
+    "lists-codex-tasks": ("dialog", d_lists_codex_tasks, "View, Tasks: Codex's live plan"),
+    "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "View, Tasks: no task list from an external Codex chat"),
+    "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "View, Tasks: owned Codex chat with no tasks"),
+    "properties-codex-tasks": ("dialog", d_properties_codex_tasks, "Codex Properties with live task progress"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
     "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
     "properties": ("dialog", d_properties, "View, Properties of a session"),
@@ -1174,6 +1223,10 @@ DIALOG_CLASSES = {
     "lists-commands": "ListsDialog",
     "lists-decisions": "ListsDialog",
     "lists-tasks": "ListsDialog",
+    "lists-codex-tasks": "ListsDialog",
+    "lists-codex-no-tasks": "ListsDialog",
+    "lists-codex-owned-no-tasks": "ListsDialog",
+    "properties-codex-tasks": "PropertiesDialog",
     "usage": "UsageDialog",
     "usage-codex": "UsageDialog",
     "properties": "PropertiesDialog",

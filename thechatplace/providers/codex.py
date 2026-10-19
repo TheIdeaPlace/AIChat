@@ -93,6 +93,7 @@ def transcript_from_thread(thread: dict) -> Transcript:
         if turn.get("itemsView") in ("notLoaded", "summary"):
             raise ValueError("Codex returned incomplete turn history")
         transcript.turns += 1
+        first_message = len(transcript.messages)
         timestamp = _timestamp(turn.get("startedAt"))
         for item in turn["items"]:
             if not isinstance(item, dict):
@@ -163,6 +164,10 @@ def transcript_from_thread(thread: dict) -> Transcript:
         if isinstance(error, dict) and _text(error.get("message")):
             transcript.messages.append(ChatMessage(ERROR, error["message"], timestamp,
                                                    _text(turn.get("id")) + ":error"))
+        # Every item, tool output and error belongs to the same 1-based turn
+        # used by saved task snapshots and the Lists message scope (#318).
+        for message in transcript.messages[first_message:]:
+            message.turn = transcript.turns
     return transcript
 
 
@@ -171,11 +176,13 @@ EMPTY_HISTORY = object()
 
 
 class CodexReader:
-    def __init__(self, connection: RpcConnection, native_id: str, *, route=None):
+    def __init__(self, connection: RpcConnection, native_id: str, *, route=None, plan_store=None):
         self.connection, self.native_id = connection, native_id
         # route(native_id) -> EMPTY_HISTORY, an owner connection, or None for
         # the reconnecting discovery connection. Asked on every refresh, since
         # the open chat keeps its reader while the runtime's state changes.
+        self._plan_store = plan_store
+        self._turn_ids = []
         self._route = route
         self._discovery = connection
         self.transcript = Transcript()
@@ -232,6 +239,18 @@ class CodexReader:
             # let backend details or private payloads enter their error text.
             raise ValueError("Couldn't load this Codex chat. Try again, or open it in Codex to read it.") from None
 
+    def _restore_tasks(self, history):
+        if self._plan_store is None:
+            return
+        turn_id, tasks = self._plan_store.load(self.native_id)
+        if turn_id in self._turn_ids:
+            position = self._turn_ids.index(turn_id) + 1
+            for task in tasks:
+                task.turn = task.changed_turn = position
+            history.tasks = list(tasks)
+        else:
+            history.tasks = []
+
     def _refresh(self) -> bool:
         # Codex saves a new thread only at its first turn, so until then only
         # the process that created it knows it. Only positive lifecycle
@@ -253,7 +272,9 @@ class CodexReader:
         stamp = (thread.get("updatedAt"), thread.get("status"))
         if (self._history_stamp == stamp and self._history_checked
                 and time.monotonic() - self._history_checked < 30):
-            return False
+            before = self.transcript.tasks
+            self._restore_tasks(self.transcript)
+            return before != self.transcript.tasks
         if self._failed_stamp == stamp:
             raise ValueError("History unavailable until the chat changes")
         # Legacy threads can be enormous too. Never ask for an unbounded inline
@@ -261,6 +282,8 @@ class CodexReader:
         try:
             thread = self._paginated_thread(thread)
             history = transcript_from_thread(thread)
+            self._turn_ids = [turn["id"] for turn in thread["turns"]]
+            self._restore_tasks(history)
         except Exception:
             self._failed_stamp = stamp
             raise
@@ -497,7 +520,9 @@ class CodexProvider:
     def open_reader(self, session) -> CodexReader:
         self._check(session)
         route = self.runtime.history_route if session.is_own and self.runtime is not None else None
-        return CodexReader(self.connection, session.cli_session_id, route=route)
+        from ..provider_storage import CodexPlanStore
+        return CodexReader(self.connection, session.cli_session_id, route=route,
+                           plan_store=CodexPlanStore() if session.is_own else None)
 
     def last_reply(self, session) -> str:
         reader = self.open_reader(session)

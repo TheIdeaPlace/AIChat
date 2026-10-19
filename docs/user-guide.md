@@ -185,23 +185,28 @@ session you continued. With no session loaded, Ctrl+T says so and changes nothin
 tool calls also count in Links, Export and Find in All Sessions only when it's on for that
 session.
 
-### Claude's task list
+### The task list
 
 On longer work, Claude keeps a list of its steps: what it plans to do, which step it's on, and
 which are done. The Chat Place reads that list for any Claude session, including desktop app
-and terminal sessions.
+and terminal sessions. For Codex chats run here, it captures the task list and saves the latest
+reported steps in The Chat Place's own data folder, so they survive reopening the owned chat.
+Codex task lists from earlier sessions and chats run elsewhere are not available. A proposed plan in the
+conversation is separate from the task checklist.
 
-- **Ctrl+Shift+J** (View, Tasks) lists the steps in Claude's order, each with "to do", "in
+- **Ctrl+Shift+J** (View, Tasks) lists the steps in the provider's order, each with "to do", "in
   progress" or "done". Enter reads a step in full.
 - **Ctrl+Shift+T** (Turn Status) and **Properties** say how far along it is: "Task 3 of 7:
-  Running the tests. 2 done." Once Claude has stopped, they say where: "Stopped at task 3 of 7".
-  Turn Status leaves out a list that's finished, or that's from an earlier turn.
+  Running the tests. 2 done." Once work has stopped, they say where: "Stopped at task 3 of 7".
+  Turn Status leaves out a list that's finished or from an earlier turn.
 - When a step is marked done in the loaded session, you hear it: "Done: Run the tests. 4 of 7."
   That's only at the Full announcement level, and it never cuts off what's being read.
 
-Claude decides when work is worth a list, so short turns usually have none. In The Chat Place's
-own sessions, Claude keeps a list only because The Chat Place asks it to, as the desktop app
+The provider decides when work is worth a list, so short turns usually have none. The list keeps
+its last reported states after a turn finishes, fails or is stopped, or a later message has no
+task update. In The Chat Place's own sessions, Claude keeps a list only because The Chat Place asks it to, as the desktop app
 does. **Settings, "Let Claude keep a task list"** (Alt+K) turns that off from your next message.
+That setting applies only to Claude.
 
 ## Finding things
 
@@ -255,11 +260,10 @@ session list, the messages or the reply box:
 - **Commands:** each command Claude ran: what it said it was doing, then "done", "failed" or
   "no result yet". Its full text shows the command and its output.
 - **Decisions:** each question Claude asked you, with your answer.
-- **Tasks:** Claude's task list, each step with "to do", "in progress" or "done" (see "Claude's
-  task list" above).
+- **Tasks:** the task list, each step with "to do", "in progress" or "done" (see "The task list" above).
 
-In Codex chats, Lists has Code Blocks and Links for now; the other kinds say they aren't listed
-yet (#303).
+In Codex chats, Lists has Code Blocks, Links and tasks captured while run here. The other kinds
+say they aren't listed yet. Tasks explains when no saved list is available (#318).
 
 **Show items from** (Alt+S) chooses **This message** or **The whole chat**. For code blocks and
 links, "this message" is the selected message. For files, commands, decisions and tasks, it's the
@@ -565,7 +569,7 @@ waiting, what you send goes to it at once instead of being queued. Stop ends the
 background work with it.
 
 **Ctrl+Shift+T** (Turn Status) says how long the provider has been working on this turn and what it last
-did, or what is still running in the background, and how far along Claude's task list is. There's
+did, or what is still running in the background, and how far along the task list is. There's
 no time limit on a turn.
 
 ### Commands, skills and attachments

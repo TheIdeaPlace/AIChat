@@ -30,6 +30,8 @@ class CodexChatState:
     notice: str = ''
     token_usage: CodexTokenUsage | None = None
     context_epoch: int = 0
+    tasks: tuple = field(default=(), repr=False)
+    plan_received: bool = False
 
 
 @dataclass(frozen=True)
@@ -41,7 +43,7 @@ class PreparedCodexPolicy:
 
 
 class CodexChatRuntime:
-    """No wx calls or persisted state: callers run actions off the UI thread.
+    """No wx calls: callers run actions and plan persistence off the UI thread.
 
     Only explicit lifecycle actions acquire/reconnect a server. Stream failure
     suspends queues; it cannot resume or replay any prompt automatically.
@@ -65,6 +67,10 @@ class CodexChatRuntime:
         self._problems = {}
         self._stop = threading.Event()
         self._listeners = []
+        from ..provider_storage import CodexPlanStore
+        self.plan_store = CodexPlanStore()
+        self._saved_plans = {}
+        self._plan_lock = threading.Lock()
 
     def _binding(self):
         with self._binding_lock:
@@ -402,7 +408,7 @@ class CodexChatRuntime:
                   NEEDS_YOU if state.requests else WORKING if sending or state.status == 'inProgress' else IDLE)
         return CodexChatState(native_id, status, state.turn_id, state.status,
                               state.replies, state.requests, queued, tuple(unsent), problem, state.file_changes,
-                              state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch)
+                              state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received)
 
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():
@@ -422,7 +428,17 @@ class CodexChatRuntime:
                         self._sending.discard(native_id)
                     unsent = (tuple(unsent) + ((pending[1],) if pending is not None else ())
                               + tuple(self._queues.pop(native_id, ())))
-            state = self.snapshot(native_id)
+            with self._plan_lock:
+                state = self.snapshot(native_id)
+                if state.plan_received:
+                    signature = (state.turn_id, tuple((t.task_id, t.subject, t.status) for t in state.tasks))
+                    if self._saved_plans.get(native_id) != signature:
+                        try:
+                            self.plan_store.save(native_id, state.turn_id, state.tasks)
+                            self._saved_plans[native_id] = signature
+                        except (OSError, ValueError):
+                            # Progress persistence must never cancel a running turn.
+                            pass
             if unsent:
                 state = self.snapshot(native_id, unsent=unsent)
             try:

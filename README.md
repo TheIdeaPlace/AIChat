@@ -187,10 +187,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   one dialog for each kind of thing in a chat: **Code Blocks**, **Links**, **Changed
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
   yet", and its output), **Decisions** (each question Claude asked, with your answer) and
-  **Tasks** (Claude's task list, #231: each step, "to do", "in progress" or "done", in Claude's
-  order). In Codex chats, only Code
-  Blocks and Links are listed for now (#303). **Show
-  items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions and
+  **Tasks** (the task list, #231, #318: each step, "to do", "in progress" or "done", in the provider's
+  order). Codex chats also list tasks captured while run here, alongside Code Blocks and Links (#318).
+  **Show items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions and
   tasks, "this message" is the selected message's turn, from your message to Claude's reply (for
   tasks, the ones added or changed in it). Links,
   commands and decisions list the newest first; code blocks and files are in the order they appear.
@@ -217,8 +216,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   once. References to files in the repository, such as `[main.py](src/main.py)`, aren't listed.
   Only web, email and session links open; anything else, such as a file: path, is marked "copy
   only" and says why if you try. Links in tool calls and results are listed only with Show Tool
-  Activity on. Changed files, commands, decisions and tasks are listed for Claude chats for now; in a
-  Codex chat those kinds say so. Question cards read as
+  Activity on. Changed files, commands and decisions are listed for Claude chats for now. Codex chats
+  also list live tasks captured while run here; older chats and chats run elsewhere may have no
+  saved list. Question cards read as
   "Claude asked: Which version?" with the options in the full text,
   then "You answered: ...". Refused tools read "Permission denied: ...". Tool calls and tool
   results are hidden unless you turn on Show Tool Activity (Ctrl+T). It's set for each session and
@@ -382,7 +382,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   folder, so it has none of these. git and gh are run with no shell and never prompt; branch and
   repository names are checked before either sees them. On a Mac without Apple's Command Line
   Tools, `/usr/bin/git` isn't used, since running it asks to install them.
-- **Claude's task list** (#231). On longer work Claude keeps a list of its steps (Claude Code's
+- **The task list** (#231). On longer work Claude keeps a list of its steps (Claude Code's
   TaskCreate and TaskUpdate, or the older TodoWrite), and The Chat Place reads it from the
   transcript, for desktop app and terminal sessions as well as its own. View, Tasks
   (**Ctrl+Shift+J**) lists it; Turn Status (Ctrl+Shift+T) and Properties say how far along it is
@@ -396,6 +396,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Claude keep a task list" (Alt+K) turns that off, from the next message; it's on to start
   with. The list costs a little context each turn, and Claude decides when a task is worth a
   list, so short turns usually have none.
+  Codex's task list appears in the same Tasks list, Turn Status and Properties while a chat
+  runs here (#318). Its latest reported steps are saved in The Chat Place's own data folder
+  and restored when that owned chat is reopened. The list keeps its last
+  reported states after a turn finishes, fails or is stopped, and remains available if a later
+  message produces no task update. Codex task lists from earlier sessions or chats
+  run elsewhere are not available. Proposed plan text is separate from this checklist.
+  The "Let Claude keep a task list" setting applies only to Claude.
 - **Remote Control.** Settings can turn on Remote Control for The Chat Place's sessions, and
   **File, Remote Control** turns it on or off for one session (or back to the Settings
   default). A session on Remote Control can be reached from claude.ai and your other devices
@@ -532,7 +539,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   the loaded session. A session's lines are its title, provider, kind, folder, status, when it started and
   was last active, the model of its latest reply (for supported chats started here, the model, effort
   and permission mode chosen), how many messages, your messages, the provider's replies, tool calls,
-  links, code blocks and changed files it has, how far along Claude's task list is, how full its
+  links, code blocks and changed files it has, how far along the task list is, how full its
   context is, how many times it was
   compacted, its groups, Remote Control, whether it's archived or hidden, its session and desktop
   app IDs where available. Claude chats also show the transcript file and size; Codex history
@@ -541,8 +548,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   its position in the list ("12 of 40"), its lines, words and characters, its links and code
   blocks, and its ID.
 - **Turn Status** (Ctrl+Shift+T) says how long the provider has been working on the current turn and
-  what it last did. For Claude chats, it also reports background work still running, and how far
-  along the loaded chat's task list is. There's no
+  what it last did, and how far along the loaded chat's task list is when available. For Claude
+  chats, it also reports background work still running. There's no
   time limit on a turn; Stop (Ctrl+Period) ends it, along with anything it started, such as a
   build.
 - **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the
@@ -857,14 +864,14 @@ shows it as plain text instead.
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
 | Messages | Ctrl+L | Lists, on Links: every link in the chat, to open in your browser or copy (also from the session list and the reply box) |
-| Messages | Ctrl+Shift+J | Lists, on Tasks: Claude's task list, each step to do, in progress or done |
+| Messages | Ctrl+Shift+J | Lists, on Tasks: the task list, each step to do, in progress or done |
 | Messages | Ctrl+Shift+C | Copy the message's last code block |
 | Messages | Ctrl+T | Show or hide tool activity in the loaded session |
 | Messages | Ctrl+O | Open this session in the Claude desktop app |
 | Reply box | Ctrl+Enter | Send (Chat Place sessions only); you stay in the reply box |
 | Reply box | Ctrl+Shift+Enter | Send, and save the message as a prompt (asks for its name first) |
 | Reply box | Ctrl+Period | Stop the running turn |
-| Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, what is still running in the background, and how far along Claude's task list is |
+| Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, what is still running in the background, and how far along the task list is |
 | Anywhere | Ctrl+Shift+A | Answer: a provider's permission request, a question or a supported plan |
 | Anywhere | Alt+Enter | Properties of the selected session, or in the messages the selected message |
 | Anywhere | F1 | Keyboard shortcuts |
@@ -891,6 +898,7 @@ Everything it reads is on your own PC, so reading costs nothing.
 | Terminal sessions | Every `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl` that no desktop app or Chat Place session claims and whose records say Claude Code was started interactively (`"entrypoint": "cli"`, where `claude -p` writes `sdk-cli` and the desktop app `claude-desktop`). Its folder and title come from the transcript too. Each is read once, at its start and its last megabyte, and then only what's added to it. |
 | Whether a session is working | `%USERPROFILE%\.claude\sessions\<pid>.json`, which says busy or idle while Claude Code runs it. Files whose process has gone are ignored. |
 | The conversation | `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl`, where `<folder>` is the session's folder with every character that isn't a letter or digit turned into `-`. This was checked against every transcript on Kelly's PC; if it ever misses, the app searches all the project folders for the session id instead. |
+| Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json`: the latest task list captured for each owned Codex chat, with its turn ID. Saved step text is deleted when that chat's owned session record is removed. |
 | The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (and `speech.json` for settings). If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json`. If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
 | Errors | `%APPDATA%\TheChatPlace\error.log`: anything that went wrong unexpectedly, with its traceback |

@@ -403,3 +403,69 @@ Only surfaces where a variant differs in a way worth knowing are listed. Everywh
 - **main-status-bar:** In High Contrast the three status-bar buttons are outlined in white (Aquatic) or black (Desert), with the whole text inside the outline.
 - **All surfaces in hc-desert-100:** The title bars show pale grey text on mid grey (1.2:1), so window titles almost disappear. This is Windows' own inactive title bar, not the app's drawing.
 - **Lists in every variant:** The focused list is marked only by the thin dotted outline. In High Contrast the selected rows of focused and unfocused lists are the same aqua or rust brown, just as they are the same blue in light mode (#181).
+
+
+## lists-codex-tasks: View, Tasks: Codex's live plan (#318)
+
+The 820 by 660 Lists dialog, titled "Lists: Codex history preview", uses the same
+layout as Claude's Tasks. A scope dropdown is above the six-row Kinds list (788 by
+96). Tasks (3) is selected. Below Filter is the 788 by 140 task list with a done
+step, an in-progress step and a to-do step. The first step is selected; the Details
+box (788 by 165) says "Find why the upload test fails" and "Done. Task 1 of 3."
+Copy and Close are at the lower right. All three task names fit on single lines.
+
+Light mode has black text on white (21:1), with white selected text on blue
+#0078D4 (4.53:1). High Contrast Aquatic uses white on #202020 (16.29:1), and dark
+navy #202074 on aqua #8EE3F0 for selected rows (9.47:1). Colours were sampled from
+the screenshots. Both themes keep the same spacing and button positions.
+
+**What looks off:** The existing shared-list focus distinction (#181) remains:
+both Kinds and the task list keep selected rows, and the focused row has a thin
+dotted outline. In light mode its #FF872B dots against #0078D4 measure 1.89:1.
+There are no new clipping, overlap or theme problems in these pictures.
+
+## lists-codex-no-tasks: View, Tasks in an external Codex chat (#318)
+
+The same 820 by 660 layout. Kinds says "Tasks, not available" and the list label
+says "Tasks (0)". The single selected row reads "No task list. Task lists are kept
+only for Codex chats run in The Chat Place." It fits fully on one line. Details is empty,
+Copy is disabled, and Close remains enabled. High Contrast Aquatic changes the
+colours as described for lists-codex-tasks and preserves the layout.
+
+**What looks off:** Only the existing list-focus distinction (#181), as above.
+
+## Shortcuts text update for task lists (#318)
+
+The light-100 and hc-aquatic-100 plain-text shortcut pictures retain the previous
+620 by 520 layout. The comparison reports changed shortcut text, with no controls
+moved or resized; the changed task wording is below the photographed viewport.
+The High Contrast diff shows a small scrollbar-thumb change. The formatted
+shortcuts and user-guide pictures render their headings, tables or paragraphs and
+bottom buttons normally and compare unchanged in the initial viewport. No blank
+page was accepted: the initial blank WebView capture was rerun successfully.
+
+
+## properties-codex-tasks: session Properties with task progress (#318)
+
+A 640 by 360 Properties dialog for "Codex history preview". The 608 by 258
+properties list is scrolled to the selected line "Tasks: Task 2 of 3: Make the
+retry wait for the server. 1 done." The full line fits. Status: Working, model,
+effort, sandbox, approval policy, message counts and Code blocks are visible above
+it, with Groups below it. Copy, Copy All and Close are aligned along the lower
+right. The probe selects this row to show progress rather than the earlier rows
+about title and provider. High Contrast Aquatic preserves the layout and uses the
+same near-black, white and aqua colours as the Codex Tasks screenshots.
+
+**What looks off:** No new clipping, overlap, theme or spacing problems in these
+pictures. The saved-command-rules check says it could not be checked because this
+is the synthetic probe connection, which does not supply that unrelated API.
+
+## lists-codex-owned-no-tasks: View, Tasks in an owned Codex chat without tasks (#323)
+
+The same 820 by 660 dialog uses the shared empty-list wording. Kinds says
+"Tasks (0)" without an unavailable warning. The selected row in the 788 by 140
+list says "No tasks in this chat." The 788 by 165 Details box is empty. Copy is
+disabled and Close is enabled. Both light and High Contrast Aquatic keep the
+same layout and colours described for lists-codex-tasks.
+
+**What looks off:** Only the existing list-focus distinction (#181), as above.

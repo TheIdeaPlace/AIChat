@@ -860,6 +860,62 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, Tasks: Claude's task list"
+  },
+  "lists-codex-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-tasks-light-100.png",
+   "json": "lists-codex-tasks-light-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: Codex's live plan"
+  },
+  "lists-codex-no-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-no-tasks-light-100.png",
+   "json": "lists-codex-no-tasks-light-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: no task list from an external Codex chat"
+  },
+  "properties-codex-tasks": {
+   "kind": "dialog",
+   "png": "properties-codex-tasks-light-100.png",
+   "json": "properties-codex-tasks-light-100.json",
+   "title": "Properties of Codex history preview",
+   "class": "PropertiesDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Properties with live task progress"
+  },
+  "lists-codex-owned-no-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-owned-no-tasks-light-100.png",
+   "json": "lists-codex-owned-no-tasks-light-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: owned Codex chat with no tasks"
   }
  },
  "seconds": 94.1

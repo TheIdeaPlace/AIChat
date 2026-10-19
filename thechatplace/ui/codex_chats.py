@@ -1,5 +1,6 @@
 """UI-thread callbacks for owned Codex chats; all backend actions use workers."""
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 
 import wx
@@ -15,6 +16,14 @@ from .dialogs import CodexPermissionDialog, QuestionDialog, codex_permission_pro
 
 
 class CodexChats:
+    def _codex_task_steps(self, state, turn, messages=None):
+        # Live events can arrive before the new turn is readable in history.
+        # Match its native ID rather than attaching it to the previous turn.
+        messages = self._chat_messages if messages is None else messages
+        position = next((m.turn for m in messages if m.key.startswith(state.turn_id + ':')),
+                        max(1, turn + 1))
+        return [replace(task, turn=position, changed_turn=position) for task in state.tasks]
+
     @staticmethod
     def _codex_status_text(state):
         if state is None:
@@ -284,6 +293,9 @@ class CodexChats:
             summary = ' '.join(request.summary().split())[:200]
             self._say(f'{record.title}: Codex needs your answer. {summary} {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
             self._notify(key, f'{record.title} needs you', summary, needs_you=True)
+        if loaded and state.plan_received:
+            self._apply_tasks(self._codex_task_steps(state, self._chat_turns),
+                              first_load=previous is None)
         finished = (state.native_id, state.turn_id)
         fresh_terminal = (state.turn_id and state.outcome in ('completed', 'failed', 'interrupted')
                           and finished not in self._codex_finished)

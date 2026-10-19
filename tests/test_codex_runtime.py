@@ -767,3 +767,27 @@ def test_permission_change_keeps_project_rule_refusal_reason(tmp_path, monkeypat
         assert not any(method == 'thread/resume' for method, _ in connection.calls)
     finally:
         service.close()
+
+
+
+def test_plan_save_failure_does_not_cancel_turn_or_other_chat(tmp_path, monkeypatch):
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    service, connection, updates = runtime()
+    attempts = []
+    def fail(*args):
+        attempts.append(args)
+        raise OSError('disk unavailable')
+    monkeypatch.setattr(service.plan_store, 'save', fail)
+    try:
+        one, two = service.create('/workspace', 'One'), service.create('/workspace', 'Two')
+        service.send(one, 'First'); service.send(two, 'Second')
+        connection.events.append(CodexEvent('plan_updated', one.cli_session_id, 'turn-1',
+                                           plan=(('Run the tests', 'in_progress'),)))
+        wait(lambda: any(update.tasks for update in updates))
+        assert attempts and not connection.closed
+        assert service.snapshot(one.cli_session_id).outcome == 'inProgress'
+        assert service.snapshot(two.cli_session_id).outcome == 'inProgress'
+        assert not service.snapshot(one.cli_session_id).problem
+    finally:
+        service.close()

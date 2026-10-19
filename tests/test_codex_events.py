@@ -176,3 +176,21 @@ def test_finished_answer_displaces_old_commentary_at_display_limit(limit):
     assert ('answer', 'OK') in buffer.replies
     assert buffer._characters <= buffer.MAX_TEXT
     assert len(buffer._texts) <= buffer.MAX_ITEMS
+
+
+
+@pytest.mark.parametrize('params', [None, {}, {'threadId': 'one', 'turnId': 'turn'},
+    {'threadId': 'one', 'turnId': 'turn', 'plan': {}},
+    *[{'threadId': 'one', 'turnId': 'turn', 'plan': [entry]} for entry in
+      [None, {}, {'step': 'Test', 'status': None}, {'step': '', 'status': 'pending'},
+       {'step': 'Test', 'status': []}, {'step': 'x' * 4097, 'status': 'pending'}]],
+    {'threadId': 'one', 'turnId': 'turn', 'plan': [{'step': 'Test', 'status': 'pending'}] * 257}])
+def test_malformed_optional_plan_is_ignored_without_breaking_execution(params):
+    assert decode_event('turn/plan/updated', params) is None
+
+
+
+def test_future_step_status_keeps_the_snapshot_and_uses_to_do():
+    event = decode_event('turn/plan/updated', {'threadId': 'one', 'turnId': 'turn', 'plan': [
+        {'step': 'Known step', 'status': 'completed'}, {'step': 'Future step', 'status': 'skipped'}]})
+    assert event.plan == (('Known step', 'completed'), ('Future step', 'pending'))

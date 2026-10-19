@@ -77,7 +77,7 @@ for line in sys.stdin:
         rows = [{'runtimeStatus': 'connected', 'tools': {}}] if scenario == 'account-route-mcp' else []
         emit({'id': request['id'], 'result': {'data': rows, 'nextCursor': None}})
         continue
-    if scenario in ('owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown'):
+    if scenario in ('owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown', 'owned-turn-plan'):
         if method == 'account/read':
             result = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
         elif method == 'config/read':
@@ -96,7 +96,21 @@ for line in sys.stdin:
                 for _ in range(256):
                     emit({'method': 'item/commandExecution/outputDelta', 'params': {
                         'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command', 'delta': 'synthetic output\n'}})
-            if scenario != 'owned-turn-hang':
+            if scenario == 'owned-turn-plan':
+                for thread, turn, steps in [
+                        ('foreign', 'turn', [{'step': 'Foreign task', 'status': 'completed'}]),
+                        ('owned', 'wrong-turn', [{'step': 'Wrong turn', 'status': 'completed'}]),
+                        ('owned', 'turn', [{'step': 'Find the cause', 'status': 'inProgress'},
+                                           {'step': 'Run the tests', 'status': 'pending'}])]:
+                    emit({'method': 'turn/plan/updated', 'params': {
+                        'threadId': thread, 'turnId': turn, 'plan': steps}})
+                for _ in range(100):
+                    emit({'method': 'turn/plan/updated', 'params': {'threadId': 'owned', 'turnId': 'turn',
+                          'plan': [{'step': 'Run the tests', 'status': 'inProgress'},
+                                   {'step': 'Find the cause', 'status': 'completed'}]}})
+                emit({'method': 'turn/plan/updated', 'params': {'threadId': 'owned', 'turnId': 'turn',
+                      'plan': [{'step': 'Bad state', 'status': []}]}})
+            if scenario not in ('owned-turn-hang', 'owned-turn-plan'):
                 # Shaped like codex-cli 0.162.1's command approvals (#284):
                 # environmentId and availableDecisions are always present.
                 details = {'kind': 'command', 'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command',
