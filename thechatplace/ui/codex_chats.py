@@ -12,9 +12,8 @@ from .. import announce
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name
-from .dialogs import CHAT_RULE, CodexPermissionDialog, QuestionDialog, codex_permission_prompt
+from .dialogs import CodexPermissionDialog, QuestionDialog, codex_permission_prompt
 from .permission_hosts import CODEX_MODES
-from ..chat_permissions import notice_key
 
 
 class CodexChats:
@@ -51,12 +50,6 @@ class CodexChats:
             text += f' {count} {"message" if count == 1 else "messages"} queued.'
         if state.notice:
             text += ' ' + state.notice
-        allowed = [t for turn, _request, t in getattr(state, 'permission_notices', ())
-                   if state.turn_id and turn == state.turn_id]
-        if allowed:
-            count = len(allowed)
-            text += (f' This turn, {count} {"request was" if count == 1 else "requests were"} '
-                     f'allowed as you said for this chat. Latest: {allowed[-1]}')
         return text
 
     def _codex_work(self, action, done):
@@ -131,7 +124,7 @@ class CodexChats:
 
     def _change_codex_permissions(self, info, after=None):
         """``after()`` runs once the change is finished, refused or cancelled,
-        so Chat Permissions can show the mode and its now-cleared rules."""
+        so File, Chat Permissions can show the new mode (#329)."""
         after = after or (lambda: None)
         if not info.is_own or not self.sessions.can_create('codex'):
             self._feedback('Only Codex chats started here can change permissions here.')
@@ -303,7 +296,6 @@ class CodexChats:
             self._say(f'{record.title}: {state.problem}', interrupt=False)
         if state.notice and (previous is None or previous.notice != state.notice):
             self._say(f'{record.title}: {state.notice}', interrupt=False)
-        self._codex_permission_notices(record, state)
         if state.requests and not state.problem and (previous is None or previous.requests != state.requests):
             request = state.requests[0]
             summary = ' '.join(request.summary().split())[:200]
@@ -353,45 +345,11 @@ class CodexChats:
                 self._refresh_chat()
         self.refresh_sessions()
 
-    def _codex_permission_notices(self, record, state):
-        """Say each request The Chat Place allowed for a chat's kept rule once
-        (#307), quietly, whichever chat is open. Snapshots repeat them, so
-        each is known by chat, turn and request."""
-        seen = self._codex_notices_seen
-        for notice in getattr(state, 'permission_notices', ()):
-            key = notice_key(state.native_id, notice)
-            if key not in seen:
-                seen.add(key)
-                self._say(f'{record.title}: {notice[2]}', interrupt=False)
-
     def _answer_codex_owned(self, info, state):
         record = self.store.get(info.cli_session_id, provider='codex')
         if record is None or not state.requests:
             return
         request = state.requests[0]
-        if request.method == QUESTIONS:
-            self._show_codex_answer(info, record, request, state, None)
-            return
-        # Ask the backend first whether this command can be kept for the
-        # chat (#307): Allow for This Chat is offered only for a candidate.
-        # One question at a time, so a second Ctrl+Shift+A opens no second
-        # dialog behind the first.
-        asking = self._codex_answer_asking
-        if info.key in asking:
-            self._feedback('Still checking this Codex request. Answer opens in a moment.')
-            return
-        asking.add(info.key)
-        self._status('Checking this Codex request.')
-        def asked(rule, error):
-            asking.discard(info.key)
-            current = self._codex_states.get(info.key)
-            if current is None or not any(r is request for r in current.requests):
-                self._feedback('That Codex request is no longer waiting.')
-                return
-            self._show_codex_answer(info, record, request, current, None if error else rule)
-        self._codex_work(lambda: self.sessions.owned_action('chat_rule_candidate', record, request), asked)
-
-    def _show_codex_answer(self, info, record, request, state, chat_rule):
         if request.method == QUESTIONS:
             questions = [dict(id=q.question_id, header=q.header, question=q.text,
                               options=[dict(label=l, description=d) for l, d in q.options],
@@ -400,8 +358,7 @@ class CodexChats:
                                     provider='Codex')
         else:
             detail = dict(state.file_changes).get(request.item_id, '')
-            dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule)
-        keep = False
+            dialog = CodexPermissionDialog(self, info.title, request, detail)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
@@ -410,8 +367,6 @@ class CodexChats:
                     self._stop_codex_owned(info)
                     return
                 result = request.question_answer(dialog.answers())
-            elif dialog.choice == CHAT_RULE:
-                keep, result = True, None
             else:
                 result = request.approval_answer(dialog.choice)
         except ValueError:
@@ -419,14 +374,6 @@ class CodexChats:
             return
         finally:
             dialog.Destroy()
-        if keep:
-            # Saved first, then allowed once; never a lasting Codex decision.
-            words = ' '.join(chat_rule.prefix)
-            def kept(_result, error):
-                self._feedback((_result or 'This command could not be allowed for this chat.') if error
-                               else f'Allowed {words} for the rest of this chat. Answer sent to Codex.')
-            self._codex_work(lambda: self.sessions.owned_action('allow_for_chat', record, request), kept)
-            return
         def done(_result, error):
             self._feedback('This Codex request could not be answered. It may no longer be waiting.'
                            if error else 'Answer sent to Codex.')

@@ -19,8 +19,7 @@ from .codeblocks import find_code_blocks
 from .export import message_moment
 from .message_links import find_links
 from .sessions import STATUS_UNAVAILABLE, WORKING, NEEDS_YOU, SessionInfo, how_long_ago, state_with_detail
-from .transcript import (ASSISTANT, PERMISSION_NOTICE, QUEUED, TAIL_KINDS, TOOL, USER, ChatMessage,
-                         Transcript)
+from .transcript import ASSISTANT, QUEUED, TOOL, USER, ChatMessage, Transcript
 from . import tasklist, usage
 from .ui_text import codex_effort_label
 
@@ -62,7 +61,7 @@ def session_kind(info: SessionInfo) -> str:
 
 def _conversation(transcript: Transcript) -> List[ChatMessage]:
     """The messages the list shows with Show Tool Activity off."""
-    return [m for m in transcript.messages if not m.is_activity and m.kind not in TAIL_KINDS]
+    return [m for m in transcript.messages if not m.is_activity and m.kind != QUEUED]
 
 
 def saved_rule_lines(count=None, error='', *, pending=False):
@@ -197,8 +196,6 @@ def message_properties(message: ChatMessage, position: int, total: int,
     lines.append(f"Code blocks: {len(find_code_blocks(text)):,}")
     if message.kind == QUEUED:
         lines.append("Queued: yes, sent when Claude's turn ends")
-    elif message.kind == PERMISSION_NOTICE:
-        lines.append("Allowed by The Chat Place, for a rule kept with this chat")
     elif message.key:  # a queued row's key is the app's own, not Claude Code's
         lines.append(f"Message ID: {message.key}")
     return lines

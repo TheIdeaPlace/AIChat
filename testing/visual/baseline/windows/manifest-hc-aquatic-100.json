@@ -958,20 +958,6 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "File, Chat Permissions: a Codex chat's kept rules and rule files"
-  },
-  "codex-permission-chat-rule": {
-   "kind": "dialog",
-   "png": "codex-permission-chat-rule-hc-aquatic-100.png",
-   "json": "codex-permission-chat-rule-hc-aquatic-100.json",
-   "title": "Codex needs permission: Codex preview",
-   "class": "CodexPermissionDialog",
-   "size": [
-    700,
-    540
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Codex permission with Allow for This Chat offered"
   }
  },
  "seconds": 91.6

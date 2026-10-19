@@ -463,7 +463,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   and **Remove All** takes them all, each after one question that names what goes. With nothing
   kept, the list says "Nothing is allowed beyond the permission mode." For a Claude chat a
   removal counts from the next turn: a running turn keeps the rules it started with, and the
-  dialog says so. Desktop app and terminal sessions are read-only here, so they have none, and
+  dialog says so. A Codex chat keeps no rules here yet, so each of its requests still asks: its
+  dialog shows the permission mode and how many of Codex's own rule files are in effect, as
+  Properties does. Desktop app and terminal sessions are read-only here, so they have none, and
   a Continue Here copy starts with nothing kept.
 - **Announcements.** When the open session gets a new reply, or one of The Chat Place's sessions
   finishes a turn, or any listed session stops working, it's announced through your screen reader
@@ -624,21 +626,8 @@ and use the network. Only the one-time answers Codex offers for that request are
 Allow Once, Deny (Codex carries on without it) and Deny and Stop Turn, plus Answer Later.
 Deny is the default button when it's offered; otherwise Answer Later is. When Codex offers
 to keep allowing something (for the rest of the session, or as a saved "always allow"
-rule), the dialog says so, but The Chat Place leaves that out: Codex itself keeps nothing.
-Instead, when Codex asks to run an everyday Git command (such as `git commit` or `git push`)
-with simple options The Chat Place has checked, in the chat's folder, and asks only for
-limited extra access there (such as writing to the chat's `.git` folder), Answer also offers
-**Allow for This Chat**, whose full name says what it keeps. The Chat Place keeps that rule
-with the chat and, when a later request in the chat matches it, answers Allow Once for you
-and says so quietly ("Allowed git commit, as you said for this chat."), with a line in the
-messages and in Turn Status. Anything else still asks: other options, a command joined to
-another with `&&`, another folder or different access. A request to run a command with full
-access, outside the folder's limits, is never kept, because Git can run other programs from
-its settings; Codex asks that way for most commands today, so for now this button appears
-only now and then. File, Chat Permissions (Ctrl+Shift+H) lists the rules;
-removing one, or changing the chat's permission mode, counts from Codex's very next request,
-even during a turn, though a command already allowed can't be called back. It also shows how
-many of Codex's own rule files are in effect, as Properties does; those are changed in Codex.
+rule), the dialog says so, but The Chat Place leaves that out: each answer covers one
+request.
 Requests The Chat Place cannot present safely, such as typing into a command that's
 already running or running a command somewhere other than this computer, are declined
 with a notice that says which kind and why; they do not disconnect the chat. Turn Status

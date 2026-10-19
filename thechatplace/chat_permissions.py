@@ -1,16 +1,17 @@
 """What a chat may do without asking, in words, for File, Chat Permissions (#307, #329).
 
 No wx here, so the rows, notes and confirmations can be tested on their own.
-Claude's kept rules are the ``--allowedTools`` rules stored with the chat;
-Codex's are The Chat Place's own kept command rules (never Codex's own saved
-or session rules, which stay off).
+Claude's kept rules are the ``--allowedTools`` rules stored with the chat.
+Codex chats keep none: no safe way to reuse a Codex approval has been found
+yet (#307, #330), so each of its requests still asks, and Codex's own session
+and saved rules stay off.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 import re
-from typing import Iterable, List, Mapping, Optional, Tuple
+from typing import Iterable, List, Mapping, Optional
 
 from .properties import _date
 
@@ -20,12 +21,8 @@ EMPTY = "Nothing is allowed beyond the permission mode."
 CLAUDE_TAKES_EFFECT = "Removing a rule applies from this chat's next turn."
 CLAUDE_RUNNING = ("A turn is running now. It keeps the rules it started with; "
                   "a removal applies from the next turn.")
-CODEX_TAKES_EFFECT = ("Removing a rule applies at once, to Codex's next request, even during "
-                      "a running turn. A command already allowed can't be called back.")
-CODEX_ABOUT = ("Each rule allows one Git command, such as git commit, in this chat's folder, "
-               "with only simple options The Chat Place has checked, and only with the same "
-               "limited access Codex asked for when you allowed it. Anything else still asks, "
-               "including any command Codex wants to run with full access.")
+CODEX_ABOUT = ("Codex chats don't keep rules in The Chat Place: each request Codex makes "
+               "beyond the permission mode asks you, and every answer covers that one request.")
 CODEX_NATIVE = ("These are Codex's own rule files, outside The Chat Place. They are "
                 "changed in Codex, not here.")
 
@@ -37,16 +34,14 @@ class PermissionRow:
     description: str
     syntax: str
     allowed_at_ms: int = 0
-    access: Tuple[str, ...] = ()
 
     def text(self) -> str:
-        """The whole row, read in full: what it allows, the rule itself,
-        when it was allowed, and any extra access it carries."""
+        """The whole row, read in full: what it allows, the rule itself
+        and when it was allowed."""
         parts = [self.description]
         if self.syntax:
             parts.append(self.syntax + ".")
         parts.append(allowed_when(self.allowed_at_ms))
-        parts.extend(a if a.endswith(".") else a + "." for a in self.access)
         return " ".join(parts)
 
 
@@ -103,24 +98,12 @@ def claude_rows(rules: Iterable[str], allowed_at: Optional[Mapping[str, int]] = 
             for rule in rules]
 
 
-def codex_rows(rules) -> List[PermissionRow]:
-    """Rows for ``CodexChatRule``s. The scope is opaque and never shown."""
-    rows = []
-    for rule in rules:
-        rows.append(PermissionRow(rule.rule_id, rule.description,
-                                  "Prefix: " + " ".join(rule.prefix),
-                                  rule.allowed_at_ms, tuple(rule.access)))
-    return rows
-
-
-def confirm_text(row: Optional[PermissionRow], count: int, provider: str) -> str:
+def confirm_text(row: Optional[PermissionRow], count: int) -> str:
     """The one confirmation before a removal, naming what goes."""
-    name = "Codex" if provider == "codex" else "Claude"
-    when = ("from its next request" if provider == "codex" else "from the next turn")
     if row is None:
         rules = "this rule" if count == 1 else f"all {count} rules"
-        return f"Remove {rules} from this chat? {name} will ask again {when}."
-    return f"Remove this rule? {row.description} {name} will ask again {when}."
+        return f"Remove {rules} from this chat? Claude will ask again from the next turn."
+    return f"Remove this rule? {row.description} Claude will ask again from the next turn."
 
 
 def native_rule_files(count=None, error: str = "", *, pending: bool = False) -> str:
@@ -132,28 +115,3 @@ def native_rule_files(count=None, error: str = "", *, pending: bool = False) -> 
     if type(count) is int and count >= 0:
         return f"Saved Codex rule files in effect: {count}. " + CODEX_NATIVE
     return "Saved Codex rule files: not checked."
-
-
-def codex_chat_rule_name(rule) -> str:
-    """The full name of Answer's Allow for This Chat button for a Codex rule."""
-    words = " ".join(rule.prefix)
-    return (f"Allow {words} for the rest of this chat, with the same limited access and "
-            f"simple options The Chat Place has checked; anything else still asks")
-
-
-def codex_chat_rule_note(rule) -> str:
-    """What Answer says when Allow for This Chat is offered for Codex."""
-    words = " ".join(rule.prefix)
-    return (f"Allow for This Chat keeps a rule in The Chat Place: later {words} commands in "
-            f"this chat's folder that ask for this same limited access and use only simple "
-            f"options it has checked are allowed without asking, and you hear when that "
-            f"happens. Anything else still asks. "
-            f"File, Chat Permissions lists and removes the rule. Codex's own session and "
-            f"saved rules stay off.")
-
-
-def notice_key(native_id: str, notice) -> tuple:
-    """Chat ID + turn ID + request ID: one notice, however often a snapshot
-    repeats it. IDs may be strings or integers, so keep their types."""
-    turn_id, request_id = notice[0], notice[1]
-    return (native_id, turn_id, type(request_id).__name__, request_id)

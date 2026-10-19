@@ -6,7 +6,6 @@ import pytest
 
 from thechatplace import chat_permissions as cp
 from thechatplace.own_store import OwnSession, OwnSessionStore
-from thechatplace.providers.codex_permissions import CodexChatRule
 
 ALLOWED_MS = 1_792_400_000_000
 
@@ -37,23 +36,12 @@ def test_row_reads_the_whole_rule_and_when_it_was_allowed():
     assert cp.allowed_when(0) == cp.allowed_when(-5) == "Allowed: time not recorded."
 
 
-def test_codex_rows_show_prefix_time_and_access_but_never_the_scope():
-    rule = CodexChatRule("a" * 32, ("git", "push"), "/work", "SECRET-SCOPE", ALLOWED_MS,
-                         ("Network access to github.com (HTTPS)",))
-    row, = cp.codex_rows([rule])
-    assert row.rule_id == "a" * 32
-    text = row.text()
-    assert text.startswith(rule.description + " Prefix: git push. Allowed ")
-    assert text.endswith("Network access to github.com (HTTPS).")
-    assert "SECRET-SCOPE" not in text
-
-
 def test_confirmations_name_what_goes_and_when_it_counts():
     row = cp.claude_rows(["Bash(git push:*)"])[0]
-    assert cp.confirm_text(row, 1, "claude") == (
+    assert cp.confirm_text(row, 1) == (
         "Remove this rule? Run git push (any arguments). Claude will ask again from the next turn.")
-    assert cp.confirm_text(None, 3, "codex") == (
-        "Remove all 3 rules from this chat? Codex will ask again from its next request.")
+    assert cp.confirm_text(None, 3) == (
+        "Remove all 3 rules from this chat? Claude will ask again from the next turn.")
 
 
 def test_native_rule_file_count_reads_like_properties():
@@ -62,21 +50,6 @@ def test_native_rule_file_count_reads_like_properties():
     assert cp.CODEX_NATIVE in cp.native_rule_files(0)
     assert cp.native_rule_files(None) == "Saved Codex rule files: not checked."
     assert "couldn't be checked. Busy" in cp.native_rule_files(error="Busy")
-
-
-def test_notice_identity_keeps_id_types_apart():
-    assert cp.notice_key("chat", ("turn", 7, "x")) != cp.notice_key("chat", ("turn", "7", "x"))
-    assert cp.notice_key("chat", ("turn", 7, "a")) == cp.notice_key("chat", ("turn", 7, "b"))
-    assert cp.notice_key("one", ("turn", 7, "a")) != cp.notice_key("two", ("turn", 7, "a"))
-
-
-def test_codex_answer_button_and_note_promise_no_unrestricted_arguments():
-    rule = CodexChatRule("a" * 32, ("git", "commit"), "/work", "scope", ALLOWED_MS)
-    name = cp.codex_chat_rule_name(rule)
-    assert name.startswith("Allow git commit for the rest of this chat")
-    assert "anything else still asks" in name and "any arguments" not in name
-    note = cp.codex_chat_rule_note(rule)
-    assert "Anything else still asks" in note and "Codex's own session and saved rules stay off" in note
 
 
 # -- kept-rule times in the session store ------------------------------------------------------
@@ -208,34 +181,6 @@ def _codex(tmp_path, frame):
     return CodexPermissions(frame, record.to_info(), record), record
 
 
-def test_codex_host_uses_worker_actions_and_reports_failures(tmp_path):
-    frame = Frame(tmp_path)
-    host, record = _codex(tmp_path, frame)
-    rule = CodexChatRule("a" * 32, ("git", "commit"), str(tmp_path), "scope", ALLOWED_MS)
-    calls = []
-
-    def action(name, rec, *args):
-        calls.append((name, rec, args))
-        if name == "chat_rules":
-            return (rule,)
-        if name == "remove_chat_rule":
-            if args[0] == "missing":
-                raise ValueError("That chat rule no longer exists")
-            return ()
-    frame.sessions.owned_action = action
-    seen, done = _results()
-    host.load(done)
-    assert seen[-1][0][0].rule_id == "a" * 32 and calls[-1][:2] == ("chat_rules", record)
-    host.remove("a" * 32, done)
-    assert seen[-1] == ([], None) and calls[-1] == ("remove_chat_rule", record, ("a" * 32,))
-    assert frame.said[-1] == "Removed. Codex will ask again from its next request."
-    host.remove("missing", done)
-    assert seen[-1] == (None, "That chat rule no longer exists")
-    host.remove(None, done)
-    assert calls[-1] == ("remove_chat_rule", record, (None,))
-    assert host.mode_text() == "Can edit files in this folder; asks before anything else"
-
-
 def test_codex_host_refuses_a_mode_change_while_working(tmp_path):
     from thechatplace.sessions import IDLE, WORKING
     frame = Frame(tmp_path)
@@ -263,5 +208,24 @@ def test_claude_host_changes_the_mode_of_its_own_chat_not_the_selected_one(tmp_p
 
 def test_remove_all_of_one_rule_names_it():
     row = cp.claude_rows(["WebSearch"])[0]
-    assert cp.confirm_text(row, 1, "claude") == (
+    assert cp.confirm_text(row, 1) == (
         "Remove this rule? Search the web. Claude will ask again from the next turn.")
+
+
+def test_codex_host_keeps_nothing_and_reads_codexs_own_rule_files(tmp_path):
+    frame = Frame(tmp_path)
+    host, record = _codex(tmp_path, frame)
+    seen, done = _results()
+    host.load(done)
+    assert seen[-1] == ([], None)
+    host.remove("anything", done)
+    assert seen[-1] == (None, "Codex chats keep no rules here.")
+    assert host.note() == cp.CODEX_ABOUT and "each request" in host.note()
+    assert host.mode_text() == "Can edit files in this folder; asks before anything else"
+    counted = []
+    frame._load_codex_rules = lambda folder, callback: callback(2, False)
+    host.native(counted.append)
+    assert counted == [cp.native_rule_files(2)]
+    frame._load_codex_rules = lambda folder, callback: callback("Codex is busy.", True)
+    host.native(counted.append)
+    assert counted[-1] == "Saved Codex rule files: couldn't be checked. Codex is busy."

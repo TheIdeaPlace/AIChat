@@ -2,8 +2,8 @@
 
 ``ChatPermissionsDialog`` shows; these do the work. Claude's kept rules are in
 The Chat Place's session store and given to each later turn as
-``--allowedTools``; Codex's are in its provider store, read and changed on a
-worker through the session controller, never on the UI thread.
+``--allowedTools``. A Codex chat keeps none (#307); it shows its mode and how
+many of Codex's own rule files are in effect, read on a worker.
 """
 from __future__ import annotations
 
@@ -73,9 +73,6 @@ class CodexPermissions:
     def __init__(self, frame, info, record):
         self.frame, self.info, self.record = frame, info, record
 
-    def _work(self, action, done):
-        self.frame._codex_work(action, done)
-
     def mode_text(self) -> str:
         options = self.record.provider_options
         current = (options.get('sandbox', 'read-only'), options.get('approval_policy', 'on-request'))
@@ -94,27 +91,14 @@ class CodexPermissions:
         self.frame._change_codex_permissions(self.info, after=done)
 
     def note(self) -> str:
-        return chat_permissions.CODEX_ABOUT + "\n\n" + chat_permissions.CODEX_TAKES_EFFECT
+        return chat_permissions.CODEX_ABOUT
 
     def load(self, done):
-        record = self.record
-        self._work(lambda: self.frame.sessions.owned_action('chat_rules', record),
-                   lambda rules, error: done(None, rules or "Codex isn't available.") if error
-                   else done(chat_permissions.codex_rows(rules), None))
+        # Nothing is kept for a Codex chat (#307): the list says so.
+        done([], None)
 
     def remove(self, rule_id, done):
-        record = self.record
-
-        def finished(rules, error):
-            if error:
-                done(None, rules or "The rule may still be kept.")
-                return
-            self.frame._feedback("Removed. Codex will ask again from its next request."
-                                 if rule_id is not None else
-                                 "Removed all. Codex will ask again from its next request.")
-            done(chat_permissions.codex_rows(rules), None)
-        self._work(lambda: self.frame.sessions.owned_action('remove_chat_rule', record, rule_id),
-                   finished)
+        done(None, "Codex chats keep no rules here.")
 
     def native(self, done):
         def counted(result, error):

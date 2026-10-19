@@ -609,16 +609,8 @@ names none, the dialog says the command may run outside the chat's folder sandbo
 can change any file you can. It offers only the one-time answers Codex allows for that
 request: Allow Once, Deny, Deny and Stop Turn, and always Answer Later. Deny lets Codex carry
 on without it; Deny and Stop Turn also stops the turn. Enter chooses Deny, or Answer Later
-when Deny isn't offered. Codex's own "for the rest of the session" and "always allow" rules
-are never offered or saved. Instead, when Codex asks to run an everyday Git command, such as
-`git commit`, with simple options The Chat Place has checked and only limited extra access in
-the chat's folder (such as writing to its `.git` folder), Answer also offers **Allow for This Chat**,
-whose full name says what it keeps. The Chat Place keeps that rule with the chat: when a later
-request matches, it answers Allow Once for you and says so quietly ("Allowed git commit, as
-you said for this chat."), with a line in the messages and in Turn Status. Anything else still
-asks, such as other options or a command joined to another with `&&`. A command Codex wants to
-run with full access is never kept, and that's how Codex asks for most commands today, so for
-now this button appears only now and then.
+when Deny isn't offered. Each answer covers one request: allowing for the rest of the
+session and Codex's "always allow" rules are never offered or saved.
 Questions show the provider and keep secret answers masked. New Session and Change Permission Mode offer read-only or editing files in the
 selected folder, both with on-request approvals. Finish or Stop active work and
 clear queued messages before changing the policy. Verification and saving must
@@ -651,8 +643,7 @@ summary after every turn, so a desktop session can be waiting on you and still s
 
 ### What a chat may do without asking
 
-**File, Chat Permissions** (Ctrl+Shift+H) shows it for a chat started here, Claude or Codex,
-working or idle:
+**File, Chat Permissions** (Ctrl+Shift+H) shows it for a chat started here, working or idle:
 
 - **Permission mode**, in words, with **Change...**, which offers the same choices as Change
   Permission Mode. A Codex chat's mode can change only once its turn has finished.
@@ -663,10 +654,10 @@ working or idle:
 - **Remove** (or Delete in the list) takes the selected rule back, and **Remove All** takes them
   all. Each asks once, naming what goes; No is the default.
 
-For a Claude chat, a removal counts from its next turn: a turn that's running keeps the rules it
-started with, and the dialog says so. For a Codex chat it counts from Codex's very next request,
-even during a turn; a command already allowed can't be called back. A Codex chat also shows how
-many of Codex's own rule files are in effect, as Properties does; those are changed in Codex.
+A removal counts from the chat's next turn: a turn that's running keeps the rules it started
+with, and the dialog says so. A Codex chat keeps no rules here yet, so each of its requests still
+asks: its Chat Permissions shows the permission mode and how many of Codex's own rule files are
+in effect, as Properties does; those are changed in Codex.
 Desktop app and terminal sessions are read-only here, so they have no Chat Permissions, and a
 Continue Here copy starts with nothing kept.
 

@@ -2062,34 +2062,6 @@ def test_change_permission_mode_for_chat_permissions_changes_that_chat(frame, en
     assert frame.store.get("own-1").permission_mode != "plan"
 
 
-def test_codex_answer_offers_allow_for_this_chat_with_its_full_name(frame):
-    from thechatplace.providers.codex_permissions import CodexChatRule
-    from thechatplace.providers.codex_requests import CodexRequest, COMMAND, SAVED_RULE_NOTE
-    from thechatplace.ui.dialogs import CHAT_RULE, CodexPermissionDialog
-    request = CodexRequest(1, COMMAND, "owned", "turn", "item",
-                           command="/bin/zsh -lc 'git commit -m x'", cwd="/workspace",
-                           decisions=("accept", "cancel"), saved_rule_offered=True)
-    rule = CodexChatRule("a" * 32, ("git", "commit"), "/workspace", "scope", 1)
-    plain = CodexPermissionDialog(frame, "Probe", request)
-    try:
-        assert CHAT_RULE not in plain.buttons
-        assert SAVED_RULE_NOTE in plain.request_text.GetValue()
-    finally:
-        plain.Destroy()
-    offered = CodexPermissionDialog(frame, "Probe", request, chat_rule=rule)
-    try:
-        button = offered.buttons[CHAT_RULE]
-        assert button.GetLabel() == "Allow for This &Chat"
-        assert button.GetName().startswith("Allow git commit for the rest of this chat")
-        text = offered.request_text.GetValue()
-        assert SAVED_RULE_NOTE not in text and "Codex's own session and saved rules stay off" in text
-        labels = [b.GetLabel() for b in offered.buttons.values()]
-        assert labels[:2] == ["&Allow Once", "Allow for This &Chat"]
-        assert offered.GetDefaultItem().GetLabel() != "Allow for This &Chat"
-    finally:
-        offered.Destroy()
-
-
 def test_plan_approval_keeps_the_new_mode(frame, env, monkeypatch):
     from thechatplace.ui import dialogs
     frame.store.update("own-1", permission_mode="plan")

@@ -34,9 +34,6 @@ class Window(CodexChats):
         self._codex_send_pending = {}
         self._codex_delayed_updates = {}
         self._codex_finished = set()
-        self._codex_notices_seen = set()
-        self._codex_answer_asking = set()
-        self._codex_policy_pending = set()
         self._codex_preparing = {}
         self._codex_preparation_running = set()
         self.store = SimpleNamespace(get=lambda *a, **k: self.record, update=lambda *a, **k: None)
@@ -497,125 +494,13 @@ def test_explicit_empty_plan_clears_the_previous_task_list():
     assert not window._chat_tasks
 
 
-# -- Chat Permissions (#307, #329) ----------------------------------------------------------
-
-
-def _waiting_request(request_id=7):
-    from thechatplace.providers.codex_requests import CodexRequest, COMMAND
-    return CodexRequest(request_id, COMMAND, 'owned', 'turn', 'item',
-                        command="/bin/zsh -lc 'git commit -m synthetic'", cwd='/workspace',
-                        decisions=('accept', 'cancel'))
-
-
-def test_kept_rule_answers_are_said_once_per_chat_turn_and_request():
-    w = Window()
-    notices = (('turn', 7, 'Allowed git commit, as you said for this chat.'),)
-    state = CodexChatState('owned', 'working', 'turn', 'inProgress', permission_notices=notices)
-    w._on_codex_update(state)
-    w._on_codex_update(state)  # a repeated snapshot is no new notice
-    said = [t for t in w.said if 'as you said for this chat' in t]
-    assert said == ['My chat: Allowed git commit, as you said for this chat.']
-    # The same request id as a string is a different request; so is another turn.
-    more = notices + (('turn', '7', 'Allowed git commit, as you said for this chat.'),
-                      ('turn-2', 7, 'Allowed git push, as you said for this chat.'))
-    w._on_codex_update(CodexChatState('owned', 'working', 'turn', 'inProgress', permission_notices=more))
-    assert len([t for t in w.said if 'as you said for this chat' in t]) == 3
-
-
-def test_kept_rule_answers_are_said_for_a_chat_that_is_not_open():
-    w = Window()
-    w._open = None
-    w._on_codex_update(CodexChatState('owned', 'working', 'turn', 'inProgress',
-                                      permission_notices=(('turn', 1, 'Allowed git add, as you said for this chat.'),)))
-    assert 'My chat: Allowed git add, as you said for this chat.' in w.said
-
-
-def test_turn_status_counts_this_turns_kept_rule_answers_only():
-    w = Window()
-    notices = (('old-turn', 1, 'Allowed git add, as you said for this chat.'),
-               ('turn', 2, 'Allowed git commit, as you said for this chat.'),
-               ('turn', 3, 'Allowed git push, as you said for this chat.'))
-    state = CodexChatState('owned', 'working', 'turn', 'inProgress', permission_notices=notices)
-    text = w._codex_status_text(state)
-    assert text.endswith('This turn, 2 requests were allowed as you said for this chat. '
-                         'Latest: Allowed git push, as you said for this chat.')
-    assert 'allowed as you said' not in w._codex_status_text(
-        CodexChatState('owned', 'working', 'other', 'inProgress', permission_notices=notices))
-
-
-def _answer(w, monkeypatch, choice, request):
-    from thechatplace.ui import codex_chats
-    shown = []
-
-    class Dialog:
-        def __init__(self, parent, title, req, detail='', chat_rule=None):
-            shown.append(chat_rule)
-            self.choice = choice
-        def ShowModal(self):
-            return codex_chats.wx.ID_OK
-        def Destroy(self):
-            pass
-    monkeypatch.setattr(codex_chats, 'CodexPermissionDialog', Dialog)
-    state = CodexChatState('owned', 'needs you', 'turn', 'inProgress', requests=(request,))
-    w._codex_states['codex:owned'] = state
-    w._answer_codex_owned(w._open, state)
-    return shown
-
-
-def test_answer_asks_for_a_candidate_then_allow_for_this_chat_keeps_and_answers(monkeypatch):
-    from thechatplace.providers.codex_permissions import CodexChatRule
-    from thechatplace.ui.dialogs import CHAT_RULE
-    w = Window()
-    calls = []
-    w.sessions = SimpleNamespace(owned_action=lambda *a: calls.append(a))
-    request = _waiting_request()
-    rule = CodexChatRule('a' * 32, ('git', 'commit'), '/workspace', 'scope', 1)
-    shown = _answer(w, monkeypatch, CHAT_RULE, request)
-    assert not shown  # nothing shown until the backend has answered
-    action, done = w.work[0]
-    action()
-    assert calls[-1][0] == 'chat_rule_candidate' and calls[-1][2] is request
-    done(rule, False)
-    assert shown == [rule]
-    action, done = w.work[1]
-    action()
-    # Routed to allow_for_chat, never to a lasting Codex decision.
-    assert calls[-1][0] == 'allow_for_chat' and calls[-1][2] is request and len(calls[-1]) == 3
-    done(None, False)
-    assert w.said[-1] == 'Allowed git commit for the rest of this chat. Answer sent to Codex.'
-
-
-def test_answer_offers_no_chat_rule_when_the_backend_refuses_or_fails(monkeypatch):
-    w = Window()
-    request = _waiting_request()
-    first = _answer(w, monkeypatch, 'accept', request)
-    w.work[0][1](None, False)
-    w.work.clear()
-    second = _answer(w, monkeypatch, 'accept', request)
-    w.work[0][1]('Codex is not ready', True)
-    assert first == second == [None]
-    # Allow Once is still the one-time path.
-    calls = []
-    w.sessions = SimpleNamespace(owned_action=lambda *a: calls.append(a))
-    w.work[1][0]()
-    assert calls[-1][0] == 'answer' and calls[-1][3] == request.approval_answer('accept')
-
-
-def test_a_second_answer_while_asking_opens_nothing_and_a_gone_request_says_so(monkeypatch):
-    w = Window()
-    request = _waiting_request()
-    shown = _answer(w, monkeypatch, 'accept', request)
-    w._answer_codex_owned(w._open, w._codex_states['codex:owned'])
-    assert len(w.work) == 1
-    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn', 'inProgress')
-    w.work[0][1](None, False)
-    assert not shown and w.said[-1] == 'That Codex request is no longer waiting.'
-    assert not w._codex_answer_asking
+# -- Chat Permissions (#329) ---------------------------------------------------------------
 
 
 def test_permission_change_tells_chat_permissions_when_it_is_finished(monkeypatch):
     from thechatplace.ui import codex_chats
     w = Window()
+    w._codex_policy_pending = set()
     finished = []
     w.sessions = SimpleNamespace(can_create=lambda provider: True)
     monkeypatch.setattr(codex_chats, 'codex_permission_prompt', lambda *args: 'Synthetic prompt')
@@ -631,6 +516,7 @@ def test_permission_change_after_runs_once_when_saved_and_when_already_pending(m
     from thechatplace.ui import codex_chats
     from dataclasses import replace
     w = Window()
+    w._codex_policy_pending = set()
     finished = []
     w.sessions = SimpleNamespace(can_create=lambda provider: True, owned_action=lambda *a: None)
     monkeypatch.setattr(codex_chats, 'codex_permission_prompt', lambda *args: 'Synthetic prompt')
@@ -644,40 +530,3 @@ def test_permission_change_after_runs_once_when_saved_and_when_already_pending(m
     w._codex_policy_pending.add(w._open.key)
     w._change_codex_permissions(w._open, after=lambda: finished.append('pending'))
     assert finished == ['saved', 'pending'] and len(w.work) == 2
-
-
-def test_first_answer_press_shows_checking_and_a_second_says_so(monkeypatch):
-    w = Window()
-    statuses = []
-    w._status = statuses.append
-    request = _waiting_request()
-    _answer(w, monkeypatch, 'accept', request)
-    assert statuses[-1] == 'Checking this Codex request.'
-    w._answer_codex_owned(w._open, w._codex_states['codex:owned'])
-    assert w.said[-1] == 'Still checking this Codex request. Answer opens in a moment.'
-
-
-def test_notice_rows_follow_the_conversation_for_this_turn_only():
-    from thechatplace.ui.main_frame import MainFrame, TAIL_KEYS
-    from thechatplace.transcript import PERMISSION_NOTICE, QUEUED, TAIL_KINDS
-    w = Window()
-    w._codex_states['codex:owned'] = CodexChatState(
-        'owned', 'working', 'turn', 'inProgress', queued=('Next message',),
-        permission_notices=(('old', 1, 'Allowed git add, as you said for this chat.'),
-                            ('turn', 2, 'Allowed git commit, as you said for this chat.')))
-    rows = MainFrame._queued_rows(w)
-    assert [(r.kind, r.text) for r in rows] == [
-        (PERMISSION_NOTICE, 'Allowed git commit, as you said for this chat.'), (QUEUED, 'Next message')]
-    assert all(r.key.startswith(TAIL_KEYS) and r.kind in TAIL_KINDS for r in rows)
-    assert rows[0].list_line() == 'The Chat Place: Allowed git commit, as you said for this chat.'
-
-
-def test_a_notice_row_is_not_a_conversation_message_in_properties():
-    from thechatplace import properties
-    from thechatplace.transcript import ChatMessage, PERMISSION_NOTICE, Transcript
-    row = ChatMessage(PERMISSION_NOTICE, 'Allowed git commit, as you said for this chat.',
-                      key='notice:codex:owned:0')
-    lines = properties.message_properties(row, 3, 3)
-    assert 'Allowed by The Chat Place, for a rule kept with this chat' in lines
-    assert not any(line.startswith('Message ID') for line in lines)
-    assert properties._conversation(Transcript(messages=[row])) == []
