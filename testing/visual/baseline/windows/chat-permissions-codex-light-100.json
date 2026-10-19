@@ -94,7 +94,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Allowed for this chat, 2",
+   "name": "Allowed for this chat, 0",
    "label": "",
    "rect": [
     10,
@@ -103,7 +103,7 @@
     245
    ],
    "best": [
-    1144,
+    264,
     150
    ],
    "depth": 0,
@@ -111,48 +111,9 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Run git commit (simple commands with reviewed options). Prefix: git commit. Allowed 19 October 2026 at 03:53. Write access to C:/Users/vmuser/AppData/Local/Temp/tcp-probe/chat-permissions-codex/.git.",
-    "Run git push (simple commands with reviewed options). Prefix: git push. Allowed 19 October 2026 at 04:53. Write access to C:/Users/vmuser/AppData/Local/Temp/tcp-probe/chat-permissions-codex/.git."
+    "The Chat Place keeps no Codex approvals."
    ],
    "selection": 0
-  },
-  {
-   "class": "Button",
-   "name": "button",
-   "label": "&Remove...",
-   "rect": [
-    8,
-    308,
-    75,
-    23
-   ],
-   "best": [
-    75,
-    23
-   ],
-   "depth": 0,
-   "parent": -1,
-   "enabled": true,
-   "problems": []
-  },
-  {
-   "class": "Button",
-   "name": "button",
-   "label": "Remove A&ll...",
-   "rect": [
-    89,
-    308,
-    90,
-    23
-   ],
-   "best": [
-    90,
-    23
-   ],
-   "depth": 0,
-   "parent": -1,
-   "enabled": true,
-   "problems": []
   },
   {
    "class": "Button",
@@ -210,7 +171,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Each rule allows one Git command, such as git commit, in this chat's folder, with only simple options The Chat Place has checked, and only with the same limited access Codex asked for when you allowed it. Anything else still asks, including any command Codex wants to run with full access.\n\nRemoving a rule applies at once, to Codex's next request, even during a running turn. A command already allow"
+   "value": "The Chat Place keeps no Codex approvals: when Codex asks you, your answer covers that one request. Codex's own saved rule files are separate, below.\n\nSaved user/system rule files in effect: 2. Commands you've told Codex to always allow will run without asking and outside this folder's limits, including the network. Project-supplied command rules are refused. They are Codex's own, and are changed i"
   }
  ],
  "capture": "PrintWindow"
