@@ -1,0 +1,44 @@
+name: Probe Codex scoped permission enforcement
+on:
+  push:
+    branches: [codex/chat-permission-backend]
+    paths:
+      - tools/probe_codex_scoped_permissions.py
+      - .github/workflows/probe-codex-scoped-permissions.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            mode: native
+          - os: windows-latest
+            mode: unelevated
+          - os: windows-latest
+            mode: elevated
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install -g @openai/codex@0.162.1
+      - name: Probe native binary with local synthetic model
+        shell: bash
+        run: |
+          root="$(npm root -g)/@openai/codex"
+          bin=$(find "$root" -type f \( -name codex -o -name codex.exe \) -path '*vendor*' | grep '/bin/' | head -1)
+          python -I tools/probe_codex_scoped_permissions.py "$bin" "$RUNNER_TEMP/scoped-${{ matrix.mode }}.json" '${{ matrix.mode }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codex-scoped-${{ runner.os }}-${{ matrix.mode }}
+          path: ${{ runner.temp }}/scoped-*.json
