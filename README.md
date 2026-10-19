@@ -590,7 +590,8 @@ formatted reading, Find and export use Codex. New Session offers a Provider choi
 Model and Effort offer the model and effort choices available in Codex in New Session and Continue Here. Leave
 Configured Codex model/effort selected to use its settings. Effort choices follow the selected
 model; choices load in the background and are rechecked before the chat starts. If loading fails,
-configured defaults remain available. New Codex chats default to editing files in their selected folder with on-request approvals.
+configured defaults remain available. For which model suits which task, see
+[Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md). New Codex chats default to editing files in their selected folder with on-request approvals.
 Choose read-only in New Session, or change an idle chat started here with File, Change
 Permission Mode (Ctrl+Shift+O). Existing chats retain their saved permissions.
 Continue Here copies a local Codex chat into a new chat started here. These chats
