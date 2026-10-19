@@ -396,11 +396,12 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Claude keep a task list" (Alt+K) turns that off, from the next message; it's on to start
   with. The list costs a little context each turn, and Claude decides when a task is worth a
   list, so short turns usually have none.
-  Codex's live plan appears in the same Tasks list, Turn Status and Properties while a chat
+  Codex's task list appears in the same Tasks list, Turn Status and Properties while a chat
   runs here (#318). Its latest reported steps are saved in The Chat Place's own data folder
-  and restored when that owned chat is reopened. A stopped or failed turn keeps its last
-  reported states; an answer does not mark unfinished steps done. Older Codex chats and chats
-  run elsewhere may have no saved list. Proposed plan text is separate from this checklist.
+  and restored when that owned chat is reopened. The list keeps its last
+  reported states after a turn finishes, fails or is stopped, and remains available if a later
+  message produces no task update. Codex task lists from earlier sessions or chats
+  run elsewhere are not available. Proposed plan text is separate from this checklist.
   The "Let Claude keep a task list" setting applies only to Claude.
 - **Remote Control.** Settings can turn on Remote Control for The Chat Place's sessions, and
   **File, Remote Control** turns it on or off for one session (or back to the Settings
@@ -897,6 +898,7 @@ Everything it reads is on your own PC, so reading costs nothing.
 | Terminal sessions | Every `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl` that no desktop app or Chat Place session claims and whose records say Claude Code was started interactively (`"entrypoint": "cli"`, where `claude -p` writes `sdk-cli` and the desktop app `claude-desktop`). Its folder and title come from the transcript too. Each is read once, at its start and its last megabyte, and then only what's added to it. |
 | Whether a session is working | `%USERPROFILE%\.claude\sessions\<pid>.json`, which says busy or idle while Claude Code runs it. Files whose process has gone are ignored. |
 | The conversation | `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl`, where `<folder>` is the session's folder with every character that isn't a letter or digit turned into `-`. This was checked against every transcript on Kelly's PC; if it ever misses, the app searches all the project folders for the session id instead. |
+| Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json`: the latest task list captured for each owned Codex chat, with its turn ID. Saved step text is deleted when that chat's owned session record is removed. |
 | The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (and `speech.json` for settings). If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json`. If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
 | Errors | `%APPDATA%\TheChatPlace\error.log`: anything that went wrong unexpectedly, with its traceback |
@@ -1042,7 +1044,8 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 | `TheChatPlace.pyw` | Double-click launcher |
 | `thechatplace/transcript.py` | Transcript parser |
 | `thechatplace/sessions.py` | Desktop metadata, terminal sessions, live state, sorting, the list wording |
-| `thechatplace/own_store.py` | The Chat Place's own sessions |
+| `thechatplace/own_store.py` | Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json`: the latest task list captured for each owned Codex chat, with its turn ID. Saved step text is deleted when that chat's owned session record is removed. |
+| The Chat Place's own sessions |
 | `thechatplace/titles.py` | Names you've given desktop app sessions |
 | `thechatplace/prompts.py` | Your saved prompts |
 | `thechatplace/about_you.py` | Finding what Claude knows about you |

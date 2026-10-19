@@ -437,13 +437,58 @@ def test_codex_task_updates_announce_once_and_keep_last_states_on_stop():
 
 
 
-def test_live_plan_uses_its_native_turn_instead_of_the_preceding_history_turn():
+def test_live_plan_uses_real_codex_history_turns_for_message_scope():
     from thechatplace.tasklist import TaskStep
-    from thechatplace.transcript import ChatMessage
+    from thechatplace.providers.codex import transcript_from_thread
+    from test_codex_provider import history
+    from thechatplace import lists
     window = Window()
-    state = CodexChatState('owned', 'working', 'new-turn', 'inProgress',
+    state = CodexChatState('owned', 'working', 'turn-2', 'inProgress',
                            tasks=(TaskStep('test', 'Run the tests'),), plan_received=True)
-    old = [ChatMessage('user', 'Earlier request', key='old-turn:user', turn=1)]
-    assert window._codex_task_steps(state, 1, old)[0].turn == 2
-    current = old + [ChatMessage('user', 'New request', key='new-turn:user', turn=2)]
-    assert window._codex_task_steps(state, 2, current)[0].turn == 2
+    data = history('owned')
+    old = transcript_from_thread(data)
+    assert window._codex_task_steps(state, old.turns, old.messages)[0].turn == 2
+    data['turns'].append({**data['turns'][0], 'id': 'turn-2'})
+    current = transcript_from_thread(data)
+    tasks = window._codex_task_steps(state, current.turns, current.messages)
+    for message in current.messages:
+        rows = lists.build(lists.TASKS, lists.SCOPE_MESSAGE, current.messages, message,
+                           [], [], str, tasks=tasks)
+        assert bool(rows) == (message.turn == 2)
+    assert tasks[0].turn == tasks[0].changed_turn == 2
+
+
+def test_turn_without_plan_keeps_previous_tasks_and_announcement_baseline():
+    from dataclasses import replace
+    from thechatplace.tasklist import TaskStep
+    window = Window()
+    planned = CodexChatState('owned', 'working', 'first', 'inProgress',
+        tasks=(TaskStep('first', 'Find the cause', status='in_progress'),), plan_received=True)
+    window._on_codex_update(planned)
+    window._on_codex_update(replace(planned, state='idle', outcome='completed'))
+    before = window._chat_tasks[:], window._task_statuses.copy()
+    unplanned = CodexChatState('owned', 'working', 'second', 'inProgress')
+    window._on_codex_update(unplanned)
+    window._on_codex_update(replace(unplanned, state='idle', outcome='completed'))
+    assert (window._chat_tasks, window._task_statuses) == before
+    window.said.clear()
+    completed = replace(unplanned, state='idle', outcome='completed', plan_received=True,
+                        tasks=(replace(planned.tasks[0], status='completed'),), replies=(('reply', 'Finished.'),))
+    # A first task update in a later turn must compare with the prior list.
+    completed = replace(completed, turn_id='third')
+    window._on_codex_update(completed)
+    assert window.said[0] == 'Done: Find the cause. 1 of 1.'
+    assert 'Finished.' in window.said[1]
+    window._on_codex_update(completed)
+    assert window.said.count('Done: Find the cause. 1 of 1.') == 1
+
+
+def test_explicit_empty_plan_clears_the_previous_task_list():
+    from dataclasses import replace
+    from thechatplace.tasklist import TaskStep
+    window = Window()
+    state = CodexChatState('owned', 'working', 'turn', 'inProgress',
+                           tasks=(TaskStep('test', 'Run the tests'),), plan_received=True)
+    window._on_codex_update(state)
+    window._on_codex_update(replace(state, tasks=()))
+    assert not window._chat_tasks

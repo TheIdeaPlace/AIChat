@@ -1752,8 +1752,10 @@ class MainFrame(CodexChats, wx.Frame):
         if tasks is not None:
             if self._open.provider == 'codex':
                 state = self._codex_states.get(self._open.key)
-                if state is not None and state.turn_id:
+                if state is not None and state.plan_received:
                     tasks = self._codex_task_steps(state, turns, messages)
+                elif state is not None and state.turn_id and not first_load:
+                    tasks = self._chat_tasks
             self._apply_tasks(tasks, first_load)
         if first_load:
             self._edits_said = len(self._chat_edits)  # what's there is old news
@@ -2124,7 +2126,7 @@ class MainFrame(CodexChats, wx.Frame):
         commands = list(self._chat_commands)
         tasks = list(self._chat_tasks)
         cwd = info.cwd
-        # What only Claude's transcripts carry yet: say so rather than show
+        # For unsupported categories, say so rather than show
         # an empty list that reads as "none" (#279).
         unavailable = {}
         provider = info.provider.capitalize()
@@ -2134,8 +2136,9 @@ class MainFrame(CodexChats, wx.Frame):
             unavailable[lists.COMMANDS] = f"Commands aren't listed for {provider} chats yet."
             unavailable[lists.DECISIONS] = f"Decisions aren't listed for {provider} chats yet."
             if info.provider == 'codex':
-                if not tasks:
-                    unavailable[lists.TASKS] = "No saved task list. Codex plans are captured for chats run here."
+                if not info.is_own:
+                    unavailable[lists.TASKS] = ("No task list. Task lists are kept only for Codex chats "
+                                                "run in The Chat Place.")
             else:
                 unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
 
@@ -2231,9 +2234,11 @@ class MainFrame(CodexChats, wx.Frame):
         own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
         if transcript is not None and info.provider == 'codex':
             state = self._codex_states.get(info.key)
-            if state is not None and state.turn_id:
+            if state is not None and state.plan_received:
                 transcript = dataclasses.replace(transcript, tasks=self._codex_task_steps(
                     state, transcript.turns, transcript.messages))
+            elif (self._open is not None and self._open.key == info.key and self._chat_loaded):
+                transcript = dataclasses.replace(transcript, tasks=list(self._chat_tasks))
         model = transcript.model if transcript is not None else ""
         try:
             lines = properties.session_properties(
@@ -3317,9 +3322,9 @@ class MainFrame(CodexChats, wx.Frame):
         if info is not None and info.provider == "codex" and self._can_edit(info):
             state = self._codex_states.get(info.key)
             text = self._codex_status_text(state)
-            progress = tasklist.progress(self._chat_tasks, state is not None and state.outcome == 'inProgress')
-            if progress:
-                text += ' ' + progress
+            working = state is not None and state.outcome == 'inProgress'
+            if self._chat_tasks and (working or tasklist.is_current(self._chat_tasks, self._chat_turns)):
+                text += ' ' + tasklist.progress(self._chat_tasks, working)
             self._feedback(f"{info.title}: {text}")
             return
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):

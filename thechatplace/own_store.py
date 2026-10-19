@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from . import platform_paths
-from .provider_storage import PartitionedFile
+from .provider_storage import PartitionedFile, CodexPlanStore
 from .claude_cli import EFFORT_LABELS, MODEL_LABELS, is_safe_rule
 from .sessions import IDLE, OWN, SessionInfo
 
@@ -348,5 +348,13 @@ class OwnSessionStore:
 
     def remove(self, cli_session_id: str, provider: str = "claude") -> None:
         """Remove a session (File, Delete Session Permanently) (its transcript is left alone)."""
-        if self._sessions.pop((provider, cli_session_id), None) is not None:
-            self.save()
+        session = self._sessions.pop((provider, cli_session_id), None)
+        if session is not None:
+            try:
+                self.save()
+            except Exception:
+                self._sessions[session.identity] = session
+                raise
+        if provider == 'codex':
+            # Repeating removal also retries cleanup after a sharing violation.
+            CodexPlanStore(self.path.parent / 'provider-tasks' / 'codex').remove(cli_session_id)

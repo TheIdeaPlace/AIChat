@@ -131,7 +131,7 @@
     431
    ],
    "best": [
-    387,
+    444,
     466
    ],
    "depth": 1,
@@ -208,7 +208,7 @@
     140
    ],
    "best": [
-    371,
+    428,
     140
    ],
    "depth": 2,
@@ -216,7 +216,7 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "No saved task list. Codex plans are captured for chats run here."
+    "No task list. Task lists are kept only for Codex chats run in The Chat Place."
    ],
    "selection": 0
   },

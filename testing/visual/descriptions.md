@@ -424,11 +424,11 @@ both Kinds and the task list keep selected rows, and the focused row has a thin
 dotted outline. In light mode its #FF872B dots against #0078D4 measure 1.89:1.
 There are no new clipping, overlap or theme problems in these pictures.
 
-## lists-codex-no-tasks: View, Tasks with no captured plan (#318)
+## lists-codex-no-tasks: View, Tasks in an external Codex chat (#318)
 
 The same 820 by 660 layout. Kinds says "Tasks, not available" and the list label
-says "Tasks (0)". The single selected row reads "No saved task list. Codex plans
-are captured for chats run here." It fits fully on one line. Details is empty,
+says "Tasks (0)". The single selected row reads "No task list. Task lists are kept
+only for Codex chats run in The Chat Place." It fits fully on one line. Details is empty,
 Copy is disabled, and Close remains enabled. High Contrast Aquatic changes the
 colours as described for lists-codex-tasks and preserves the layout.
 
@@ -459,3 +459,13 @@ same near-black, white and aqua colours as the Codex Tasks screenshots.
 **What looks off:** No new clipping, overlap, theme or spacing problems in these
 pictures. The saved-command-rules check says it could not be checked because this
 is the synthetic probe connection, which does not supply that unrelated API.
+
+## lists-codex-owned-no-tasks: View, Tasks in an owned Codex chat without tasks (#323)
+
+The same 820 by 660 dialog uses the shared empty-list wording. Kinds says
+"Tasks (0)" without an unavailable warning. The selected row in the 788 by 140
+list says "No tasks in this chat." The 788 by 165 Details box is empty. Copy is
+disabled and Close is enabled. Both light and High Contrast Aquatic keep the
+same layout and colours described for lists-codex-tasks.
+
+**What looks off:** Only the existing list-focus distinction (#181), as above.

@@ -887,7 +887,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Tasks: no saved Codex list"
+   "about": "View, Tasks: no task list from an external Codex chat"
   },
   "properties-codex-tasks": {
    "kind": "dialog",
@@ -902,6 +902,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Codex Properties with live task progress"
+  },
+  "lists-codex-owned-no-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-owned-no-tasks-light-100.png",
+   "json": "lists-codex-owned-no-tasks-light-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: owned Codex chat with no tasks"
   }
  },
  "seconds": 94.1

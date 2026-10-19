@@ -10311,16 +10311,18 @@ def test_codex_tasks_share_lists_status_and_properties(frame, env, monkeypatch):
     from types import SimpleNamespace
     from thechatplace import lists
     from thechatplace.providers.codex_runtime import CodexChatState
-    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.providers.codex import CodexProvider, transcript_from_thread
     from thechatplace.session_controller import SessionController
     from thechatplace.tasklist import TaskStep
-    from thechatplace.transcript import Transcript
+    from test_codex_provider import history
     _links_session(frame, env)
     frame.sessions = SessionController([CodexProvider(SimpleNamespace(close=lambda: None),
         runtime=SimpleNamespace(close=lambda: None))])
     frame._open = OwnSession('tasks-owned', 'Codex tasks', '/workspace', provider='codex').to_info()
-    tasks = (TaskStep('first', 'Find the cause', status='completed'),
-             TaskStep('second', 'Run the tests', status='in_progress'))
+    transcript = transcript_from_thread(history('tasks-owned'))
+    frame._chat_messages, frame._chat_turns = transcript.messages, transcript.turns
+    tasks = (TaskStep('first', 'Find the cause', status='completed', turn=1, changed_turn=1),
+             TaskStep('second', 'Run the tests', status='in_progress', turn=1, changed_turn=1))
     state = CodexChatState('tasks-owned', 'working', 'turn', 'inProgress', tasks=tasks, plan_received=True)
     frame._codex_states[frame._open.key] = state
     frame._apply_tasks(list(tasks), first_load=True)
@@ -10336,7 +10338,7 @@ def test_codex_tasks_share_lists_status_and_properties(frame, env, monkeypatch):
     assert 'Stopped at task 2 of 2: Run the tests. 1 done.' in said[-1]
     properties = []
     monkeypatch.setattr(frame, '_show_properties', lambda title, rows, *a, **k: properties.extend(rows))
-    frame._session_properties_read(frame._open, Transcript(turns=1), '', 0, '', None)
+    frame._session_properties_read(frame._open, transcript, '', 0, '', None)
     assert 'Tasks: Stopped at task 2 of 2: Run the tests. 1 done.' in properties
 
 
@@ -10345,4 +10347,82 @@ def test_codex_tasks_explain_when_no_list_was_captured(frame, env, monkeypatch):
     monkeypatch.setattr(frame._open, 'provider', 'codex')
     seen = _lists_dialog(frame, monkeypatch, lambda page: None)
     frame.on_tasks()
-    assert seen['rows'] == ["No saved task list. Codex plans are captured for chats run here."]
+    assert seen['rows'] == ["No task list. Task lists are kept only for Codex chats run in The Chat Place."]
+
+
+
+def _codex_task_review_chat(frame, env, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.session_controller import SessionController
+    _links_session(frame, env)
+    frame.sessions = SessionController([CodexProvider(SimpleNamespace(close=lambda: None),
+        runtime=SimpleNamespace(close=lambda: None))])
+    record = OwnSession('tasks-owned', 'Codex tasks', '/workspace', provider='codex')
+    frame.store.add(record)
+    frame._open = record.to_info()
+    monkeypatch.setattr(frame, '_refresh_chat', lambda: None)
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    return record
+
+
+def test_no_plan_in_later_turn_preserves_tasks_in_reader_properties_and_announcements(frame, env, monkeypatch):
+    from dataclasses import replace
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.providers.codex import transcript_from_thread
+    from thechatplace.tasklist import TaskStep
+    from test_codex_provider import history
+    _codex_task_review_chat(frame, env, monkeypatch)
+    data = history('tasks-owned')
+    first = transcript_from_thread(data)
+    state = CodexChatState('tasks-owned', 'working', 'turn-1', 'inProgress',
+        tasks=(TaskStep('test', 'Run the tests', status='in_progress'),), plan_received=True)
+    frame._chat_messages, frame._chat_turns = first.messages, first.turns
+    frame._on_codex_update(state)
+    captured = frame._chat_tasks[:]
+    baseline = frame._task_statuses.copy()
+    data['turns'].append({**data['turns'][0], 'id': 'turn-2'})
+    second = transcript_from_thread(data)
+    second.tasks = captured
+    no_plan = CodexChatState('tasks-owned', 'idle', 'turn-2', 'completed')
+    frame._on_codex_update(no_plan)
+    frame._apply_chat(frame._open_generation, True, second.messages, 0, None,
+                      edits=[], turns=second.turns, commands=[], tasks=second.tasks)
+    assert frame._chat_tasks == captured and frame._task_statuses == baseline
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
+    frame.on_tasks()
+    assert seen['rows'] == ['Run the tests. In progress']
+    frame.on_turn_status()
+    assert env['feedback'][-1] == 'Codex tasks: No Codex turn is running in this chat.'
+    rows = []
+    monkeypatch.setattr(frame, '_show_properties', lambda title, lines, *a, **k: rows.extend(lines))
+    frame._session_properties_read(frame._open, second, '', 0, '', None)
+    assert 'Tasks: Stopped at task 1 of 1: Run the tests. 0 done.' in rows
+    frame._on_codex_update(replace(no_plan, turn_id='turn-3', plan_received=True, tasks=()))
+    frame._apply_chat(frame._open_generation, True, second.messages, 0, None,
+                      edits=[], turns=second.turns, commands=[], tasks=second.tasks)
+    assert not frame._chat_tasks  # an explicit empty update really clears it
+
+
+@pytest.mark.parametrize('done,latest,heard', [(False, True, True), (True, True, False), (False, False, False)])
+def test_codex_idle_turn_status_reports_only_current_unfinished_tasks(frame, env, monkeypatch, done, latest, heard):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.tasklist import TaskStep
+    _codex_task_review_chat(frame, env, monkeypatch)
+    frame._chat_turns = 2
+    frame._chat_tasks = [TaskStep('test', 'Run the tests',
+        status='completed' if done else 'in_progress', turn=2 if latest else 1,
+        changed_turn=2 if latest else 1)]
+    frame._codex_states[frame._open.key] = CodexChatState('tasks-owned', 'idle', 'turn-2', 'completed')
+    frame.on_turn_status()
+    assert ('task' in env['feedback'][-1].split(': ', 1)[1].lower()) == heard
+
+
+def test_owned_codex_chat_without_tasks_uses_shared_empty_text(frame, env, monkeypatch):
+    from thechatplace.sessions import OWN
+    _links_session(frame, env)
+    monkeypatch.setattr(frame._open, 'provider', 'codex')
+    monkeypatch.setattr(frame._open, 'source', OWN)
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
+    frame.on_tasks()
+    assert seen['rows'] == ['No tasks in this chat.']

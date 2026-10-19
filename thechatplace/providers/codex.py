@@ -93,6 +93,7 @@ def transcript_from_thread(thread: dict) -> Transcript:
         if turn.get("itemsView") in ("notLoaded", "summary"):
             raise ValueError("Codex returned incomplete turn history")
         transcript.turns += 1
+        first_message = len(transcript.messages)
         timestamp = _timestamp(turn.get("startedAt"))
         for item in turn["items"]:
             if not isinstance(item, dict):
@@ -163,6 +164,10 @@ def transcript_from_thread(thread: dict) -> Transcript:
         if isinstance(error, dict) and _text(error.get("message")):
             transcript.messages.append(ChatMessage(ERROR, error["message"], timestamp,
                                                    _text(turn.get("id")) + ":error"))
+        # Every item, tool output and error belongs to the same 1-based turn
+        # used by saved task snapshots and the Lists message scope (#318).
+        for message in transcript.messages[first_message:]:
+            message.turn = transcript.turns
     return transcript
 
 

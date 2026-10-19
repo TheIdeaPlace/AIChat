@@ -2,6 +2,8 @@
 properties are made of, from synthetic transcripts."""
 from datetime import datetime, timedelta
 
+import pytest
+
 from thechatplace import properties
 from thechatplace.own_store import OwnSession
 from thechatplace.sessions import DESKTOP, OWN, TERMINAL, SessionInfo
@@ -224,11 +226,12 @@ def test_other_states_still_read_as_before():
 
 
 
-def test_a_codex_plan_waiting_for_permission_is_still_in_progress():
+@pytest.mark.parametrize('provider', ['claude', 'codex'])
+def test_a_task_waiting_for_permission_is_still_in_progress(provider):
     from thechatplace.sessions import NEEDS_YOU
     from thechatplace.tasklist import TaskStep
     from thechatplace.transcript import Transcript
     transcript = Transcript(tasks=[TaskStep('tests', 'Run the tests', status='in_progress')])
-    info = _info(source=OWN, provider='codex', key='codex:cli-a', state=NEEDS_YOU)
+    info = _info(source=OWN, provider=provider, key=f'{provider}:cli-a', state=NEEDS_YOU)
     rows = properties.session_properties(info, transcript, '', 0, None, 0, now_ms=NOW_MS)
     assert 'Tasks: Task 1 of 1: Run the tests. 0 done.' in rows

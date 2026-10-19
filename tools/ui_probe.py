@@ -1014,6 +1014,12 @@ def d_lists_codex_no_tasks(frame, env):
     return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
 
 
+def d_lists_codex_owned_no_tasks(frame, env):
+    from thechatplace import lists
+    s_main_codex_owned(frame, env)
+    return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
+
+
 def d_properties_codex_tasks(frame, env):
     _codex_plan_preview(frame, env)
     frame.session_list.SetFocus()
@@ -1157,7 +1163,8 @@ SURFACES = {
     "lists-decisions": ("dialog", d_lists_decisions, "View, Lists: Decisions"),
     "lists-tasks": ("dialog", d_lists_tasks, "View, Tasks: Claude's task list"),
     "lists-codex-tasks": ("dialog", d_lists_codex_tasks, "View, Tasks: Codex's live plan"),
-    "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "View, Tasks: no saved Codex list"),
+    "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "View, Tasks: no task list from an external Codex chat"),
+    "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "View, Tasks: owned Codex chat with no tasks"),
     "properties-codex-tasks": ("dialog", d_properties_codex_tasks, "Codex Properties with live task progress"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
     "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
@@ -1218,6 +1225,7 @@ DIALOG_CLASSES = {
     "lists-tasks": "ListsDialog",
     "lists-codex-tasks": "ListsDialog",
     "lists-codex-no-tasks": "ListsDialog",
+    "lists-codex-owned-no-tasks": "ListsDialog",
     "properties-codex-tasks": "PropertiesDialog",
     "usage": "UsageDialog",
     "usage-codex": "UsageDialog",

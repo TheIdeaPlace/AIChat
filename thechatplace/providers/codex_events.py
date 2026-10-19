@@ -60,9 +60,9 @@ def decode_event(method, params):
             for entry in plan:
                 if (not isinstance(entry, dict) or not isinstance(entry.get('step'), str)
                         or not entry['step'].strip() or len(entry['step']) > 4096
-                        or not isinstance(entry.get('status'), str) or entry['status'] not in states):
+                        or not isinstance(entry.get('status'), str)):
                     return None
-                steps.append((entry['step'], states[entry['status']]))
+                steps.append((entry['step'], states.get(entry['status'], 'pending')))
             return CodexEvent('plan_updated', thread_id, turn_id, plan=tuple(steps))
         except ValueError:
             return None

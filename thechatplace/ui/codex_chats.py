@@ -293,6 +293,9 @@ class CodexChats:
             summary = ' '.join(request.summary().split())[:200]
             self._say(f'{record.title}: Codex needs your answer. {summary} {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
             self._notify(key, f'{record.title} needs you', summary, needs_you=True)
+        if loaded and state.plan_received:
+            self._apply_tasks(self._codex_task_steps(state, self._chat_turns),
+                              first_load=previous is None)
         finished = (state.native_id, state.turn_id)
         fresh_terminal = (state.turn_id and state.outcome in ('completed', 'failed', 'interrupted')
                           and finished not in self._codex_finished)
@@ -320,9 +323,6 @@ class CodexChats:
             self._feedback(f'{count} unsent message' + ('s are' if count != 1 else ' is')
                            + f' back in the {destination}.')
         if loaded:
-            if state.turn_id:
-                self._apply_tasks(self._codex_task_steps(state, self._chat_turns),
-                                  first_load=previous is None or previous.turn_id != state.turn_id)
             if fresh_terminal:
                 # A verified turn ended even if second-resolution catalog
                 # metadata is unchanged. Bypass the reader's history cache and

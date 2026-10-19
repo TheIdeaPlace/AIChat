@@ -189,22 +189,22 @@ session.
 
 On longer work, Claude keeps a list of its steps: what it plans to do, which step it's on, and
 which are done. The Chat Place reads that list for any Claude session, including desktop app
-and terminal sessions. For Codex chats run here, it captures the live plan and saves the latest
+and terminal sessions. For Codex chats run here, it captures the task list and saves the latest
 reported steps in The Chat Place's own data folder, so they survive reopening the owned chat.
-Older Codex chats and chats run elsewhere may have no saved list. A proposed plan in the
+Codex task lists from earlier sessions and chats run elsewhere are not available. A proposed plan in the
 conversation is separate from the task checklist.
 
 - **Ctrl+Shift+J** (View, Tasks) lists the steps in the provider's order, each with "to do", "in
   progress" or "done". Enter reads a step in full.
 - **Ctrl+Shift+T** (Turn Status) and **Properties** say how far along it is: "Task 3 of 7:
   Running the tests. 2 done." Once work has stopped, they say where: "Stopped at task 3 of 7".
-  For Claude chats, Turn Status leaves out a list that's finished or from an earlier turn.
+  Turn Status leaves out a list that's finished or from an earlier turn.
 - When a step is marked done in the loaded session, you hear it: "Done: Run the tests. 4 of 7."
   That's only at the Full announcement level, and it never cuts off what's being read.
 
-The provider decides when work is worth a list, so short turns usually have none. Stopping or
-failing a turn keeps its last reported task states; an answer does not mark every step done. In The Chat Place's
-own sessions, Claude keeps a list only because The Chat Place asks it to, as the desktop app
+The provider decides when work is worth a list, so short turns usually have none. The list keeps
+its last reported states after a turn finishes, fails or is stopped, or a later message has no
+task update. In The Chat Place's own sessions, Claude keeps a list only because The Chat Place asks it to, as the desktop app
 does. **Settings, "Let Claude keep a task list"** (Alt+K) turns that off from your next message.
 That setting applies only to Claude.
 

@@ -493,3 +493,39 @@ def test_plan_text_is_not_a_structured_task_list():
     data['turns'][0]['items'].append({'id': 'proposal', 'type': 'plan',
         'text': '1. Run tests\n2. Complete everything'})
     assert not transcript_from_thread(data).tasks
+
+
+
+def test_every_codex_message_uses_its_history_turn_including_errors_and_tool_outputs():
+    from thechatplace.transcript import ERROR
+    data = history()
+    data['turns'][0]['items'].append({'type': 'mcpToolCall', 'id': 'mcp', 'server': 'synthetic',
+        'tool': 'read', 'result': {'content': [{'type': 'text', 'text': 'Tool output'}]},
+        'error': {'message': 'Tool failed'}})
+    data['turns'][0]['error'] = {'message': 'Turn failed'}
+    data['turns'].append({**data['turns'][0], 'id': 'turn-2'})
+    transcript = transcript_from_thread(data)
+    assert transcript.turns == 2
+    assert {m.turn for m in transcript.messages if m.key.startswith('turn-1:')} == {1}
+    assert {m.turn for m in transcript.messages if m.key.startswith('turn-2:')} == {2}
+    assert any(m.kind == ERROR and m.turn == 2 for m in transcript.messages)
+
+
+def test_saved_plan_stays_on_its_turn_after_a_later_turn_without_a_plan(tmp_path, monkeypatch):
+    from thechatplace import platform_paths, lists
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.tasklist import TaskStep, is_current
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    CodexPlanStore().save('one', 'turn-1', [TaskStep('test', 'Run the tests', status='in_progress')])
+    data = history()
+    data['turns'].append({**data['turns'][0], 'id': 'turn-2'})
+    reader = CodexProvider(Connection(history_pages(data))).open_reader(
+        SessionInfo('own', 'codex:one', 'Build', '/example', 'one', provider='codex'))
+    reader.refresh()
+    transcript = reader.transcript
+    assert transcript.tasks and transcript.tasks[0].changed_turn == 1
+    assert not is_current(transcript.tasks, transcript.turns)
+    for message in transcript.messages:
+        rows = lists.build(lists.TASKS, lists.SCOPE_MESSAGE, transcript.messages, message,
+                           [], [], str, tasks=transcript.tasks)
+        assert bool(rows) == (message.turn == 1)

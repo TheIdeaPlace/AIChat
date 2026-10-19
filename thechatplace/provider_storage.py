@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 
@@ -80,6 +82,22 @@ class PartitionedFile:
 class CodexPlanStore:
     """Latest live plan captured here, never a write to provider history (#318)."""
 
+    # All instances share this lock: readers and the runtime use separate
+    # stores, but Windows cannot replace a target held open by either reader.
+    _io_lock = threading.RLock()
+
+    @staticmethod
+    def _retry_sharing(action):
+        for attempt in range(5):
+            try:
+                return action()
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                # Other processes (or antivirus) can also hold the target.
+                # Retry this save now, including a turn's final notification.
+                time.sleep(.01 * 2 ** attempt)
+
     def __init__(self, root=None):
         from .platform_paths import app_data_dir
         self.root = Path(root) if root is not None else app_data_dir() / 'provider-tasks' / 'codex'
@@ -89,11 +107,20 @@ class CodexPlanStore:
         return self.root / (hashlib.sha256(native_id.encode('utf-8')).hexdigest() + '.json')
 
     def save(self, native_id, turn_id, tasks):
-        PartitionedFile._write(self._path(native_id), {
-            'provider': 'codex', 'native_id': native_id, 'turn_id': turn_id,
-            'tasks': [{'task_id': t.task_id, 'subject': t.subject, 'status': t.status} for t in tasks]})
+        payload = {'provider': 'codex', 'native_id': native_id, 'turn_id': turn_id,
+                   'tasks': [{'task_id': t.task_id, 'subject': t.subject, 'status': t.status} for t in tasks]}
+        with self._io_lock:
+            self._retry_sharing(lambda: PartitionedFile._write(self._path(native_id), payload))
+
+    def remove(self, native_id):
+        with self._io_lock:
+            self._retry_sharing(lambda: self._path(native_id).unlink(missing_ok=True))
 
     def load(self, native_id):
+        with self._io_lock:
+            return self._load(native_id)
+
+    def _load(self, native_id):
         from .tasklist import TaskStep, TASK_STATUSES
         try:
             raw = json.loads(self._path(native_id).read_text(encoding='utf-8'))

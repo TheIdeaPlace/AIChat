@@ -109,7 +109,7 @@ for line in sys.stdin:
                           'plan': [{'step': 'Run the tests', 'status': 'inProgress'},
                                    {'step': 'Find the cause', 'status': 'completed'}]}})
                 emit({'method': 'turn/plan/updated', 'params': {'threadId': 'owned', 'turnId': 'turn',
-                      'plan': [{'step': 'Bad state', 'status': 'unexpected'}]}})
+                      'plan': [{'step': 'Bad state', 'status': []}]}})
             if scenario not in ('owned-turn-hang', 'owned-turn-plan'):
                 # Shaped like codex-cli 0.162.1's command approvals (#284):
                 # environmentId and availableDecisions are always present.
