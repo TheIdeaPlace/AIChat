@@ -916,6 +916,62 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, Tasks: owned Codex chat with no tasks"
+  },
+  "chat-permissions": {
+   "kind": "dialog",
+   "png": "chat-permissions-light-100.png",
+   "json": "chat-permissions-light-100.json",
+   "title": "Chat Permissions: Visual probe",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions: a Claude chat's kept rules"
+  },
+  "chat-permissions-empty": {
+   "kind": "dialog",
+   "png": "chat-permissions-empty-light-100.png",
+   "json": "chat-permissions-empty-light-100.json",
+   "title": "Chat Permissions: Visual probe",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions with nothing kept"
+  },
+  "chat-permissions-codex": {
+   "kind": "dialog",
+   "png": "chat-permissions-codex-light-100.png",
+   "json": "chat-permissions-codex-light-100.json",
+   "title": "Chat Permissions: Codex preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions: a Codex chat's kept rules and rule files"
+  },
+  "codex-permission-chat-rule": {
+   "kind": "dialog",
+   "png": "codex-permission-chat-rule-light-100.png",
+   "json": "codex-permission-chat-rule-light-100.json",
+   "title": "Codex needs permission: Codex preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex permission with Allow for This Chat offered"
   }
  },
  "seconds": 94.1

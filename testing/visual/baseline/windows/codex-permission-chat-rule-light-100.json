@@ -1,0 +1,135 @@
+{
+ "title": "Codex needs permission: Codex preview",
+ "class": "CodexPermissionDialog",
+ "size": [
+  700,
+  540
+ ],
+ "client": [
+  684,
+  501
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Request:",
+   "rect": [
+    8,
+    8,
+    46,
+    16
+   ],
+   "best": [
+    46,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Request",
+   "label": "Command:\r\npowershell.exe -Command 'git commit -m \"Fix the upload test\"'\r\n\r\nFolder:\r\nC:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission-chat-rule\r\n\r\nIf you allow it, this command may run outside the chat's folder sandbox, where it can change any file you can and use the network.\r\n\r\nAllow for This Chat keeps a rule in The Chat Place: later git commit commands in this chat's folder that use only simple options it has checked are allowed without asking, and you hear when that happens. Anything else still asks. File, Chat Permissions lists and removes the rule. Codex's own session and saved rules stay off.",
+   "rect": [
+    10,
+    34,
+    668,
+    422
+   ],
+   "best": [
+    127,
+    160
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Command:\npowershell.exe -Command 'git commit -m \"Fix the upload test\"'\n\nFolder:\nC:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission-chat-rule\n\nIf you allow it, this command may run outside the chat's folder sandbox, where it can change any file you can and use the network.\n\nAllow for This Chat keeps a rule in The Chat Place: later git commit commands in this chat's folder that use only s"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Allow Once",
+   "rect": [
+    239,
+    470,
+    82,
+    23
+   ],
+   "best": [
+    82,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "Allow git commit for the rest of this chat, with simple options The Chat Place has checked; anything else still asks",
+   "label": "Allow for This &Chat",
+   "rect": [
+    327,
+    470,
+    122,
+    23
+   ],
+   "best": [
+    122,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Deny and &Stop Turn",
+   "rect": [
+    455,
+    470,
+    126,
+    23
+   ],
+   "best": [
+    126,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    587,
+    470,
+    89,
+    23
+   ],
+   "best": [
+    89,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

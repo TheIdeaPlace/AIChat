@@ -1,0 +1,217 @@
+{
+ "title": "Chat Permissions: Codex preview",
+ "class": "ChatPermissionsDialog",
+ "size": [
+  680,
+  520
+ ],
+ "client": [
+  664,
+  481
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission &mode:",
+   "rect": [
+    8,
+    11,
+    96,
+    16
+   ],
+   "best": [
+    96,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Permission mode",
+   "label": "",
+   "rect": [
+    112,
+    10,
+    465,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Can edit files in this folder; asks before anything else"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&hange...",
+   "rect": [
+    581,
+    8,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Allowed for this chat:",
+   "rect": [
+    8,
+    39,
+    113,
+    16
+   ],
+   "best": [
+    113,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Allowed for this chat, 2",
+   "label": "",
+   "rect": [
+    10,
+    57,
+    648,
+    245
+   ],
+   "best": [
+    818,
+    150
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Run git commit (simple commands with reviewed options). Prefix: git commit. Allowed 19 October 2026 at 03:53.",
+    "Run git push (simple commands with reviewed options). Prefix: git push. Allowed 19 October 2026 at 04:53. Network access to github.com (HTTPS)."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Remove...",
+   "rect": [
+    8,
+    308,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Remove A&ll...",
+   "rect": [
+    89,
+    308,
+    90,
+    23
+   ],
+   "best": [
+    90,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Close",
+   "rect": [
+    581,
+    308,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Abou&t these permissions:",
+   "rect": [
+    8,
+    339,
+    134,
+    16
+   ],
+   "best": [
+    134,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About these permissions",
+   "label": "",
+   "rect": [
+    10,
+    365,
+    648,
+    110
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Each rule allows one Git command, such as git commit, in this chat's folder, with only simple options The Chat Place has checked. Anything else still asks.\n\nRemoving a rule applies at once, to Codex's next request, even during a running turn. A command already allowed can't be called back.\n\nSaved Codex rule files in effect: 2. These are Codex's own rule files, outside The Chat Place. They are chan"
+  }
+ ],
+ "capture": "PrintWindow"
+}

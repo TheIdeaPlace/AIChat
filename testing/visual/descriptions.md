@@ -196,7 +196,7 @@ This is a 720 by 520 dialog. "Search, or type owner/name:" heads a full-width se
 
 ## continue-here: Continue Here (a desktop session)
 
-This uses the same 680 by 620 frame and form style as New Session, but with a narrower label column (fields start at x=114). The rows are Folder (a read-only grey box showing a full path), Title ("Fix the flaky upload test (continued)"), Model, Effort (both "Default (your Claude Code setting)") and Permission mode ("Auto: Claude decides what is safe to run without asking"). "About continuing:" heads a 117-tall read-only box that shows both paragraphs of its note whole, and "First message:" heads a large empty box 196 tall, about a third of the dialog. "Start" (default) and "Cancel" are at the bottom right.
+This uses the same 680 by 620 frame and form style as New Session, but with a narrower label column (fields start at x=114). The rows are Folder (a read-only grey box showing a full path), Title ("Fix the flaky upload test (continued)"), Model, Effort (both "Default (your Claude Code setting)") and Permission mode ("Auto: Claude decides what is safe to run without asking"). "About continuing:" heads a 132-tall read-only box that shows both paragraphs of its note whole, the first now ending "The copy starts with nothing allowed beyond its permission mode." (#332), and "First message:" heads a large empty box 181 tall, about a third of the dialog. "Start" (default) and "Cancel" are at the bottom right.
 
 **What looks off:** The Title box now shows the title from its start, and the About box its whole note (#178 fixed both). The fields' left edges and widths differ by 2 to 6 pixels (Folder 116 to 650, Title 116 to 656, the three dropdowns 114 to 654). Its label column also differs from New Session's, although the two dialogs look like a pair (#178).
 
@@ -469,3 +469,27 @@ disabled and Close is enabled. Both light and High Contrast Aquatic keep the
 same layout and colours described for lists-codex-tasks.
 
 **What looks off:** Only the existing list-focus distinction (#181), as above.
+
+## chat-permissions: File, Chat Permissions for a Claude chat (#332)
+
+A 680 by 520 dialog titled "Chat Permissions: Visual probe". At the top, "Permission mode:" labels a grey read-only box showing "Auto: Claude decides what is safe to run without asking", with "Change..." to its right. "Allowed for this chat:" heads a white list that takes about half the dialog. It has two rows: "Run git push (any arguments). Bash(git push:*). Allowed: time not recorded." (selected, white on blue) and "Fetch pages from docs.python.org. WebFetch(domain:docs.python.org). Allowed 19 October 2026 at 03:53." Below the list, "Remove..." and "Remove All..." sit at the left and "Close" at the right. "About these permissions:" heads a read-only box about 100 tall: "Removing a rule applies from this chat's next turn." The selected row measures 4.53:1 (white on Windows' blue, #0078D4), and unselected rows are black on white. In High Contrast Aquatic the boxes and buttons are white-outlined on near-black (#202020, 16.3:1 for the text), and the selected row is dark text on light aqua (#8EE3F0, 7.9:1).
+
+**What looks off:** The list is mostly empty with two rules. Nothing else.
+
+## chat-permissions-empty: File, Chat Permissions with nothing kept (#332)
+
+The same dialog with one row in the list, "Nothing is allowed beyond the permission mode.", selected. Everything else is as above.
+
+**What looks off:** Nothing.
+
+## chat-permissions-codex: File, Chat Permissions for a Codex chat (#332)
+
+The same layout, titled "Chat Permissions: Codex preview". The mode box reads "Can edit files in this folder; asks before anything else". The list has two rows: "Run git commit (simple commands with reviewed options). Prefix: git commit. Allowed 19 October 2026 at 03:53." (selected), and "Run git push (simple commands with reviewed options). Prefix: git push. Allowed 19 October 2026 at 04:53. Network access to github.com (HTTPS)." The second is wider than the list, so its end is hidden and a horizontal scroll bar runs along the list's bottom. The About box holds three paragraphs: what a rule allows ("Each rule allows one Git command..."), when a removal counts ("Removing a rule applies at once, to Codex's next request..."), and "Saved Codex rule files in effect: 2." with the sentence saying those are Codex's own. The last paragraph runs past the box's bottom, and the box's own scroll bar reaches it. High Contrast is as for chat-permissions.
+
+**What looks off:** Long rows need the horizontal scroll bar to be read by sight; a screen reader reads each row whole.
+
+## codex-permission-chat-rule: Codex permission with Allow for This Chat (#332)
+
+The Codex permission dialog (700 by 540) for "powershell.exe -Command 'git commit -m "Fix the upload test"'". The Request box shows the command, the folder, the warning that the command may run outside the folder sandbox, and a paragraph that begins "Allow for This Chat keeps a rule in The Chat Place: later git commit commands in this chat's folder that use only simple options it has checked are allowed without asking..." and ends "Codex's own session and saved rules stay off." The old "Codex also offered to keep allowing this..." paragraph is replaced by it. Four buttons sit at the bottom right: "Allow Once", "Allow for This Chat", "Deny and Stop Turn" and "Answer Later". The last is the default (blue outline), because this request offers no Deny. Button text is black on near-white (20.6:1). In High Contrast Aquatic the buttons are white-outlined on near-black, and Answer Later is filled light aqua.
+
+**What looks off:** The Request box is mostly empty. Nothing else.
