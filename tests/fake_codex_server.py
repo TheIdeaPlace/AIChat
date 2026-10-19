@@ -1,5 +1,6 @@
 """Synthetic stdio server; never reads account data or runs an agent."""
 import json
+import os
 from pathlib import Path
 import sys
 import threading
@@ -17,6 +18,18 @@ account_reads = 0
 config_reads = 0
 server_answer = None
 owned_active = False
+permission_answers = []
+
+
+def permission_request(index):
+    command = 'git commit -m synthetic' if index != 3 else 'git commit && rm file'
+    emit({'id': f'permission-{index}', 'method': 'item/commandExecution/requestApproval',
+          'params': {'threadId': 'owned', 'turnId': 'turn', 'itemId': f'command-{index}',
+                     'kind': 'command', 'environmentId': 'local',
+                     'command': command, 'cwd': os.environ['TCP_FAKE_PERMISSION_CWD'],
+                     'additionalPermissions': {'fileSystem': {'write': [os.environ['TCP_FAKE_PERMISSION_CWD']]}},
+                     'proposedExecpolicyAmendment': ['git', 'commit'],
+                     'availableDecisions': ['accept', 'acceptForSession', 'decline', 'cancel']}})
 
 
 def emit(message, partial=False):
@@ -38,6 +51,15 @@ for line in sys.stdin:
     method = request.get("method")
     if method is None and ('result' in request or 'error' in request):
         server_answer = request
+        if len(sys.argv) > 1 and sys.argv[1] == 'owned-chat-permissions':
+            permission_answers.append(request)
+            if len(permission_answers) < 4:
+                permission_request(len(permission_answers) + 1)
+            else:
+                owned_active = False
+                emit({'method': 'turn/completed', 'params': {'threadId': 'owned',
+                      'turn': {'id': 'turn', 'status': 'completed'}}})
+            continue
         if len(sys.argv) > 1 and sys.argv[1] in ('owned-turn-approval', 'owned-turn-command-output', 'owned-turn-unsupported', 'owned-turn-unknown'):
             owned_active = False
             emit({'method': 'turn/completed', 'params': {'threadId': 'owned',
@@ -73,6 +95,32 @@ for line in sys.stdin:
         emit({"id": request["id"], "result": result})
         continue
     scenario = sys.argv[1] if len(sys.argv) > 1 else ""
+    if scenario == 'owned-chat-permissions':
+        cwd = os.environ['TCP_FAKE_PERMISSION_CWD']
+        if method == 'account/read':
+            result = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
+        elif method == 'config/read':
+            result = {'config': {}, 'layers': LAYERS}
+        elif method == 'mcpServerStatus/list':
+            result = {'data': [], 'nextCursor': None}
+        elif method == 'thread/start':
+            result = {'thread': {'id': 'owned', 'createdAt': 1, 'status': {'type': 'idle'}, 'ephemeral': False},
+                      'cwd': cwd, 'model': 'synthetic', 'modelProvider': 'openai',
+                      'sandbox': {'type': 'readOnly'}, 'approvalPolicy': 'on-request', 'approvalsReviewer': 'user'}
+        elif method == 'thread/read':
+            result = {'thread': {'id': 'owned', 'modelProvider': 'openai', 'cwd': cwd,
+                                'status': {'type': 'active' if owned_active else 'idle'}},
+                      'permissionAnswers': permission_answers}
+        elif method == 'turn/start':
+            owned_active = True
+            emit({'id': request['id'], 'result': {'turn': {'id': 'turn', 'status': 'inProgress'}}})
+            permission_request(1)
+            continue
+        else:
+            emit({'id': request['id'], 'error': {'message': 'Unsupported synthetic method'}})
+            continue
+        emit({'id': request['id'], 'result': result})
+        continue
     if method == 'mcpServerStatus/list':
         rows = [{'runtimeStatus': 'connected', 'tools': {}}] if scenario == 'account-route-mcp' else []
         emit({'id': request['id'], 'result': {'data': rows, 'nextCursor': None}})

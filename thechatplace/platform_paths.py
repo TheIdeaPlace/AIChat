@@ -1347,6 +1347,25 @@ def codex_rule_layers_clear(layers) -> bool:
     return count is not None and not blocked
 
 
+def codex_permission_folder(cwd: str, parent: str) -> str:
+    """Canonical existing local folder inside the chat, for kept approvals (#307)."""
+    paths = [Path(value) for value in (cwd, parent)]
+    if any(not p.is_absolute() or str(p).startswith(('\\\\', '//')) for p in paths):
+        raise ValueError('Local absolute folders required')
+    child, root = (p.resolve(strict=True) for p in paths)
+    if not child.is_dir() or not root.is_dir() or not child.is_relative_to(root):
+        raise ValueError('Approval folder is outside this chat')
+    return str(root)
+
+
+def codex_permission_path(value: str) -> str:
+    """Resolve an extra-access path; uncertain or nonlocal paths cannot be kept."""
+    path = Path(value)
+    if not path.is_absolute() or str(path).startswith(('\\\\', '//')):
+        raise ValueError('Local absolute permission path required')
+    return str(path.resolve(strict=True))
+
+
 def codex_workspace_root(cwd: str) -> str:
     """Bind write access to an existing canonical folder, never a drive root."""
     if not isinstance(cwd, str) or not cwd.strip():

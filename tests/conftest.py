@@ -29,6 +29,14 @@ def app():
 
 
 @pytest.fixture(autouse=True)
+def _isolated_codex_permissions(monkeypatch, tmp_path):
+    from thechatplace.providers import codex_runtime
+    from thechatplace.providers.codex_permissions import CodexPermissionStore
+    monkeypatch.setattr(codex_runtime, 'CodexPermissionStore',
+                        lambda: CodexPermissionStore(tmp_path / 'chat-permissions'))
+
+
+@pytest.fixture(autouse=True)
 def _fresh_last_messages(monkeypatch):
     """Each test starts with nothing remembered for the Last message column
     (#146): no cached transcript ends, no sessions known to have none."""
