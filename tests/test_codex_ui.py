@@ -23,6 +23,10 @@ class Window(CodexChats):
         self.record = OwnSession('owned', 'My chat', '/workspace', provider='codex')
         self._open = self.record.to_info()
         self._open_generation = 0
+        self._chat_turns = 1
+        self._chat_messages = []
+        self._chat_tasks = []
+        self._task_statuses = None
         self._reader = object()
         self.reply_text = Text('New draft')
         self._codex_states = {}
@@ -38,6 +42,10 @@ class Window(CodexChats):
         self.notified = []
         self.work = []
         self.sessions = SimpleNamespace(owned_action=lambda *a: None)
+    def _apply_tasks(self, tasks, first_load):
+        from thechatplace.ui.main_frame import MainFrame
+        MainFrame._apply_tasks(self, tasks, first_load)
+
     def _notify(self, *args, **kwargs):
         self.notified.append((args, kwargs))
     def _gone(self):
@@ -406,3 +414,36 @@ def test_permission_change_feedback_keeps_the_safe_refusal(monkeypatch):
     reason = 'Project rules were refused. Rules folder: /synthetic/.codex/rules'
     w.work[0][1](reason, True)
     assert w.said[-1] == reason
+
+
+
+def test_codex_task_updates_announce_once_and_keep_last_states_on_stop():
+    from dataclasses import replace
+    from thechatplace.tasklist import TaskStep
+    window = Window()
+    active = CodexChatState('owned', 'working', turn_id='turn', outcome='inProgress',
+        tasks=(TaskStep('first', 'Find the cause', status='in_progress'),
+               TaskStep('second', 'Run the tests')), plan_received=True)
+    window._on_codex_update(active)
+    assert not any(text.startswith('Done:') for text in window.said)
+    updated = replace(active, tasks=(replace(active.tasks[1], status='in_progress'),
+                                    replace(active.tasks[0], status='completed')))
+    window._on_codex_update(updated)
+    window._on_codex_update(updated)
+    assert window.said.count('Done: Find the cause. 1 of 2.') == 1
+    window._on_codex_update(replace(updated, state='idle', outcome='interrupted'))
+    assert [(t.subject, t.status) for t in window._chat_tasks] == [
+        ('Run the tests', 'in_progress'), ('Find the cause', 'completed')]
+
+
+
+def test_live_plan_uses_its_native_turn_instead_of_the_preceding_history_turn():
+    from thechatplace.tasklist import TaskStep
+    from thechatplace.transcript import ChatMessage
+    window = Window()
+    state = CodexChatState('owned', 'working', 'new-turn', 'inProgress',
+                           tasks=(TaskStep('test', 'Run the tests'),), plan_received=True)
+    old = [ChatMessage('user', 'Earlier request', key='old-turn:user', turn=1)]
+    assert window._codex_task_steps(state, 1, old)[0].turn == 2
+    current = old + [ChatMessage('user', 'New request', key='new-turn:user', turn=2)]
+    assert window._codex_task_steps(state, 2, current)[0].turn == 2

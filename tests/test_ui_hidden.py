@@ -10303,3 +10303,46 @@ def test_settings_that_fit_dont_scroll(frame):
     finally:
         dialog.Destroy()
 
+
+
+
+def test_codex_tasks_share_lists_status_and_properties(frame, env, monkeypatch):
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from thechatplace import lists
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.session_controller import SessionController
+    from thechatplace.tasklist import TaskStep
+    from thechatplace.transcript import Transcript
+    _links_session(frame, env)
+    frame.sessions = SessionController([CodexProvider(SimpleNamespace(close=lambda: None),
+        runtime=SimpleNamespace(close=lambda: None))])
+    frame._open = OwnSession('tasks-owned', 'Codex tasks', '/workspace', provider='codex').to_info()
+    tasks = (TaskStep('first', 'Find the cause', status='completed'),
+             TaskStep('second', 'Run the tests', status='in_progress'))
+    state = CodexChatState('tasks-owned', 'working', 'turn', 'inProgress', tasks=tasks, plan_received=True)
+    frame._codex_states[frame._open.key] = state
+    frame._apply_tasks(list(tasks), first_load=True)
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
+    frame.on_tasks()
+    assert seen['rows'] == ['Find the cause. Done', 'Run the tests. In progress']
+    said = []
+    monkeypatch.setattr(frame, '_feedback', said.append)
+    frame.on_turn_status()
+    assert 'Task 2 of 2: Run the tests. 1 done.' in said[-1]
+    frame._codex_states[frame._open.key] = replace(state, state='idle', outcome='interrupted')
+    frame.on_turn_status()
+    assert 'Stopped at task 2 of 2: Run the tests. 1 done.' in said[-1]
+    properties = []
+    monkeypatch.setattr(frame, '_show_properties', lambda title, rows, *a, **k: properties.extend(rows))
+    frame._session_properties_read(frame._open, Transcript(turns=1), '', 0, '', None)
+    assert 'Tasks: Stopped at task 2 of 2: Run the tests. 1 done.' in properties
+
+
+def test_codex_tasks_explain_when_no_list_was_captured(frame, env, monkeypatch):
+    _links_session(frame, env)
+    monkeypatch.setattr(frame._open, 'provider', 'codex')
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
+    frame.on_tasks()
+    assert seen['rows'] == ["No saved task list. Codex plans are captured for chats run here."]

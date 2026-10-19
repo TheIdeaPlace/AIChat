@@ -203,7 +203,7 @@ def decision_items(messages: Sequence[ChatMessage], turn: Optional[int]) -> List
 
 
 def task_items(tasks: Sequence[TaskStep], turn: Optional[int]) -> List[ListItem]:
-    """Claude's task list in its own order, the order Claude works through
+    """The task list in provider order, the order the provider works through
     it. For one turn, the tasks it added or changed."""
     total = len(tasks)
     items: List[ListItem] = []

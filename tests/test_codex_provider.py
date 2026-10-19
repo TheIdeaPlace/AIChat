@@ -451,3 +451,45 @@ def test_codex_kind_uses_advertised_origin_without_guessing_a_desktop_app(origin
     info = session_from_thread(thread(source=origin), False)
     assert info.field_values()['kind'] == kind
     assert info.field_values()['provider'] == 'Codex'
+
+
+
+def test_owned_reader_restores_saved_plan_and_refreshes_it_without_history_change(tmp_path, monkeypatch):
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.tasklist import TaskStep
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    saved = CodexPlanStore()
+    saved.save('one', 'turn-1', [TaskStep('test', 'Run the tests', status='in_progress')])
+    connection = Connection(history_pages(history()) + [{'thread': thread()}] * 3)
+    provider = CodexProvider(connection)
+    info = SessionInfo('own', 'codex:one', 'Build', '/example', 'one', provider='codex')
+    reader = provider.open_reader(info)
+    assert reader.refresh()
+    assert [(t.subject, t.status, t.turn, t.changed_turn) for t in reader.transcript.tasks] == [
+        ('Run the tests', 'in_progress', 1, 1)]
+    saved.save('one', 'turn-1', [TaskStep('test', 'Run the tests', status='completed')])
+    assert reader.refresh() and reader.transcript.tasks[0].done
+    assert not reader.refresh()
+    saved.save('one', 'unknown-turn', [TaskStep('wrong', 'Not in this history')])
+    assert reader.refresh() and not reader.transcript.tasks
+    assert all(method != 'thread/resume' for method, _ in connection.calls)
+
+
+def test_foreign_reader_does_not_claim_saved_owned_plan(tmp_path, monkeypatch):
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.tasklist import TaskStep
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    CodexPlanStore().save('one', 'turn-1', [TaskStep('test', 'Run the tests')])
+    info = SessionInfo('external', 'codex:one', 'Build', '/example', 'one', provider='codex')
+    reader = CodexProvider(Connection(history_pages(history()))).open_reader(info)
+    reader.refresh()
+    assert not reader.transcript.tasks
+
+
+def test_plan_text_is_not_a_structured_task_list():
+    data = history()
+    data['turns'][0]['items'].append({'id': 'proposal', 'type': 'plan',
+        'text': '1. Run tests\n2. Complete everything'})
+    assert not transcript_from_thread(data).tasks

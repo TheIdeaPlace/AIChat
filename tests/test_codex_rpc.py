@@ -1062,3 +1062,42 @@ def test_mac_candidates_include_codex_packages(tmp_path, monkeypatch):
     candidates = platform_paths.codex_native_candidates()
     assert tmp_path / ".codex/packages/standalone/current/bin/codex" in candidates
     assert candidates[-1] == tmp_path / ".codex/packages/app-server-daemon/current/bin/codex"
+
+
+
+def test_live_plan_real_stdio_survives_bursts_and_stop_and_is_saved(server, tmp_path, monkeypatch):
+    import time
+    from thechatplace.providers.codex_execution import CodexExecutionConnection
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.tasklist import progress
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    start, _ = server
+    connection = CodexExecutionConnection('owned-turn-plan', start=start, initialize=False)
+    service = CodexChatRuntime(factory=lambda exe: connection)
+    def wait(predicate):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(.01)
+        assert predicate()
+    try:
+        record = service.create('/workspace', 'Synthetic plan')
+        service.send(record, 'Work through the steps')
+        wait(lambda: len(service.snapshot('owned').tasks) == 2
+             and service.snapshot('owned').tasks[0].subject == 'Run the tests')
+        state = service.snapshot('owned')
+        assert [(t.subject, t.status) for t in state.tasks] == [
+            ('Run the tests', 'in_progress'), ('Find the cause', 'completed')]
+        assert state.outcome == 'inProgress' and not state.problem
+        wait(lambda: CodexPlanStore().load('owned')[0] == 'turn')
+        service.stop(record)
+        wait(lambda: service.snapshot('owned').outcome == 'interrupted')
+        assert service.snapshot('owned').tasks == state.tasks
+        assert progress(state.tasks, False) == 'Stopped at task 1 of 2: Run the tests. 1 done.'
+        turn_id, tasks = CodexPlanStore().load('owned')
+        assert turn_id == 'turn' and tasks == state.tasks
+        assert not CodexPlanStore().load('foreign')[1]
+    finally:
+        service.close()

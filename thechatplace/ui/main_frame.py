@@ -1750,6 +1750,10 @@ class MainFrame(CodexChats, wx.Frame):
         if commands is not None:
             self._chat_commands = commands
         if tasks is not None:
+            if self._open.provider == 'codex':
+                state = self._codex_states.get(self._open.key)
+                if state is not None and state.turn_id:
+                    tasks = self._codex_task_steps(state, turns, messages)
             self._apply_tasks(tasks, first_load)
         if first_load:
             self._edits_said = len(self._chat_edits)  # what's there is old news
@@ -2071,7 +2075,7 @@ class MainFrame(CodexChats, wx.Frame):
         self.on_lists(lists.LINKS, lists.SCOPE_CHAT)
 
     def on_tasks(self):
-        """View, Tasks (Ctrl+Shift+J, #231): Claude's task list for the whole
+        """View, Tasks (Ctrl+Shift+J, #231): the task list for the whole
         chat, on the Lists dialog's Tasks tab."""
         self.on_lists(lists.TASKS, lists.SCOPE_CHAT)
 
@@ -2092,7 +2096,7 @@ class MainFrame(CodexChats, wx.Frame):
 
     def on_lists(self, category: Optional[str] = None, scope: Optional[str] = None):
         """View, Lists (Ctrl+Shift+I, #279): code blocks, links, changed
-        files, commands, decisions and Claude's tasks (#231), for the selected
+        files, commands, decisions and tasks (#231, #318), for the selected
         message or the whole chat. It opens on the kind used last; Code
         Blocks, Links, Changed Files and Tasks open it on their own kind. The
         messages are as the list shows them (tool calls and results only with
@@ -2129,7 +2133,11 @@ class MainFrame(CodexChats, wx.Frame):
         if info.provider != "claude":
             unavailable[lists.COMMANDS] = f"Commands aren't listed for {provider} chats yet."
             unavailable[lists.DECISIONS] = f"Decisions aren't listed for {provider} chats yet."
-            unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
+            if info.provider == 'codex':
+                if not tasks:
+                    unavailable[lists.TASKS] = "No saved task list. Codex plans are captured for chats run here."
+            else:
+                unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
 
         def build(tab, tab_scope):
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
@@ -2221,6 +2229,11 @@ class MainFrame(CodexChats, wx.Frame):
                            "Alt+Enter again."))
             return
         own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
+        if transcript is not None and info.provider == 'codex':
+            state = self._codex_states.get(info.key)
+            if state is not None and state.turn_id:
+                transcript = dataclasses.replace(transcript, tasks=self._codex_task_steps(
+                    state, transcript.turns, transcript.messages))
         model = transcript.model if transcript is not None else ""
         try:
             lines = properties.session_properties(
@@ -3304,6 +3317,9 @@ class MainFrame(CodexChats, wx.Frame):
         if info is not None and info.provider == "codex" and self._can_edit(info):
             state = self._codex_states.get(info.key)
             text = self._codex_status_text(state)
+            progress = tasklist.progress(self._chat_tasks, state is not None and state.outcome == 'inProgress')
+            if progress:
+                text += ' ' + progress
             self._feedback(f"{info.title}: {text}")
             return
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):

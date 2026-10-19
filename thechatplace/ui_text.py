@@ -130,7 +130,7 @@ SHORTCUTS = [
                    "browser, Ctrl+C copies its address (also from the session list and the "
                    "reply box)"),
         ("Ctrl+Shift+J", "Lists, on Tasks for the whole chat: the task list, each step "
-                         "with whether it's to do, in progress or done (Claude chats)"),
+                         "with whether it's to do, in progress or done"),
         ("Ctrl+T", "Show or hide tool activity in the loaded session"),
         ("Ctrl+O", "Open this session in the Claude desktop app"),
     ]),

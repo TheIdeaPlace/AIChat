@@ -415,3 +415,53 @@ def test_retargeted_workspace_blocks_turn_before_any_rpc(tmp_path, monkeypatch):
     monkeypatch.setattr(real, 'request', lambda *args: pytest.fail('Changed scope must fail before RPC'))
     with pytest.raises(CodexRpcError, match='workspace could not be verified'):
         real._verify_turn_route(params)
+
+
+
+@pytest.mark.parametrize('outcome', ['completed', 'failed', 'interrupted'])
+def test_plan_snapshots_route_to_verified_turn_and_replace_in_provider_order(outcome):
+    from thechatplace.providers.codex_events import decode_event
+    from thechatplace.tasklist import newly_done, statuses
+    c = Connection()
+    one, two = c.proof('one'), c.proof('two')
+    executor = CodexTurnExecutor(c)
+    a, b = executor.start(one, 'A'), executor.start(two, 'B')
+    def plan(thread, turn, steps):
+        return decode_event('turn/plan/updated', {'threadId': thread, 'turnId': turn,
+            'plan': [{'step': text, 'status': status} for text, status in steps]})
+    c.events.extend([plan('one', a.turn_id, [('First', 'inProgress'), ('Second', 'pending')]),
+                     plan('two', b.turn_id, [('Other', 'pending')]),
+                     plan('one', 'wrong', [('Wrong turn', 'completed')]),
+                     plan('foreign', a.turn_id, [('Foreign', 'completed')])])
+    assert executor.drain() == frozenset({'one', 'two'})
+    before = executor.snapshot(one).tasks
+    revised = plan('one', a.turn_id, [('Second', 'inProgress'), ('First', 'completed')])
+    c.events.append(revised)
+    assert executor.drain() == frozenset({'one'})
+    tasks = executor.snapshot(one).tasks
+    assert [t.subject for t in tasks] == ['Second', 'First']
+    assert [t.subject for t in newly_done(statuses(before), tasks)] == ['First']
+    assert tasks[1].task_id == before[0].task_id
+    c.events.append(revised)
+    assert not executor.drain()
+    c.events.append(CodexEvent('turn_completed', 'one', a.turn_id, status=outcome))
+    executor.drain()
+    assert executor.snapshot(one).tasks == tasks
+    c.events.append(plan('one', a.turn_id, []))
+    assert not executor.drain()  # late updates cannot rewrite a finished plan
+    executor.start(one, 'A new turn')
+    assert not executor.snapshot(one).tasks and not executor.snapshot(one).plan_received
+    assert executor.snapshot(two).tasks[0].subject == 'Other'
+
+
+def test_repeated_task_names_have_distinct_ids_and_empty_plan_clears():
+    c = Connection(); proof = c.proof('one'); executor = CodexTurnExecutor(c)
+    turn = executor.start(proof, 'Work')
+    event = CodexEvent('plan_updated', 'one', turn.turn_id,
+                      plan=(('Test', 'pending'), ('Test', 'completed')))
+    c.events.append(event); executor.drain()
+    tasks = executor.snapshot(proof).tasks
+    assert len({t.task_id for t in tasks}) == 2
+    c.events.append(CodexEvent('plan_updated', 'one', turn.turn_id))
+    executor.drain()
+    assert executor.snapshot(proof).plan_received and not executor.snapshot(proof).tasks

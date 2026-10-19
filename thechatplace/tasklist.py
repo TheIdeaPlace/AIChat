@@ -1,19 +1,19 @@
 """The task list in words (#231): how far along the work is.
 
-``transcript.py`` reads the list from TaskCreate, TaskUpdate and TodoWrite
-calls into ``Transcript.tasks``. This module says it: a row for each task in
+Provider adapters supply ``TaskStep`` lists. Claude transcript parsing and
+Codex live plan updates stay in their respective adapters. This module says it: a row for each task in
 View, Lists, the progress line Turn Status and Properties give, and what's
 announced when a task is marked done. No window is needed, so it's all tested
 without one.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
-
 from dataclasses import dataclass
+from typing import Dict, List, Optional, Sequence
 
 TASK_PENDING, TASK_IN_PROGRESS, TASK_COMPLETED = "pending", "in_progress", "completed"
 TASK_STATUSES = (TASK_PENDING, TASK_IN_PROGRESS, TASK_COMPLETED)
+
 
 @dataclass
 class TaskStep:
@@ -31,6 +31,7 @@ class TaskStep:
     @property
     def done(self) -> bool:
         return self.status == TASK_COMPLETED
+
 
 #: Each status as the list and Properties say it.
 STATE_WORDS = {TASK_PENDING: "To do", TASK_IN_PROGRESS: "In progress", TASK_COMPLETED: "Done"}
@@ -58,9 +59,9 @@ def detail(task: TaskStep, position: int, total: int) -> str:
 
 
 def progress(tasks: Sequence[TaskStep], working: bool = True) -> str:
-    """Where Claude is on its list, in one sentence, or "" without one:
-    "Task 3 of 7: Running the tests. 2 done." While Claude is ``working``,
-    the step it's on is named by what Claude says it's doing, so it reads as
+    """Where the provider is on its list, in one sentence, or "" without one:
+    "Task 3 of 7: Running the tests. 2 done." While the provider is ``working``,
+    the step it's on is named by what the provider says it's doing, so it reads as
     a sentence; otherwise by its name, as where it stopped."""
     total = len(tasks)
     if not total:

@@ -221,3 +221,14 @@ def test_other_states_still_read_as_before():
     result = properties.session_properties(_info(state=NEEDS_YOU, detail="Approve Bash"), None,
                                            "", 0, None, 0, now_ms=NOW_MS)
     assert "Status: Needs you: Approve Bash" in result
+
+
+
+def test_a_codex_plan_waiting_for_permission_is_still_in_progress():
+    from thechatplace.sessions import NEEDS_YOU
+    from thechatplace.tasklist import TaskStep
+    from thechatplace.transcript import Transcript
+    transcript = Transcript(tasks=[TaskStep('tests', 'Run the tests', status='in_progress')])
+    info = _info(source=OWN, provider='codex', key='codex:cli-a', state=NEEDS_YOU)
+    rows = properties.session_properties(info, transcript, '', 0, None, 0, now_ms=NOW_MS)
+    assert 'Tasks: Task 1 of 1: Run the tests. 0 done.' in rows

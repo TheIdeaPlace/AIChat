@@ -187,10 +187,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   one dialog for each kind of thing in a chat: **Code Blocks**, **Links**, **Changed
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
   yet", and its output), **Decisions** (each question Claude asked, with your answer) and
-  **Tasks** (the task list, #231: each step, "to do", "in progress" or "done", in Claude's
-  order). In Codex chats, only Code
-  Blocks and Links are listed for now (#303). **Show
-  items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions and
+  **Tasks** (the task list, #231, #318: each step, "to do", "in progress" or "done", in the provider's
+  order). Codex chats also list tasks captured while run here, alongside Code Blocks and Links (#318).
+  **Show items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions and
   tasks, "this message" is the selected message's turn, from your message to Claude's reply (for
   tasks, the ones added or changed in it). Links,
   commands and decisions list the newest first; code blocks and files are in the order they appear.
@@ -217,8 +216,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   once. References to files in the repository, such as `[main.py](src/main.py)`, aren't listed.
   Only web, email and session links open; anything else, such as a file: path, is marked "copy
   only" and says why if you try. Links in tool calls and results are listed only with Show Tool
-  Activity on. Changed files, commands, decisions and tasks are listed for Claude chats for now; in a
-  Codex chat those kinds say so. Question cards read as
+  Activity on. Changed files, commands and decisions are listed for Claude chats for now. Codex chats
+  also list live tasks captured while run here; older chats and chats run elsewhere may have no
+  saved list. Question cards read as
   "Claude asked: Which version?" with the options in the full text,
   then "You answered: ...". Refused tools read "Permission denied: ...". Tool calls and tool
   results are hidden unless you turn on Show Tool Activity (Ctrl+T). It's set for each session and
@@ -382,7 +382,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   folder, so it has none of these. git and gh are run with no shell and never prompt; branch and
   repository names are checked before either sees them. On a Mac without Apple's Command Line
   Tools, `/usr/bin/git` isn't used, since running it asks to install them.
-- **the task list** (#231). On longer work Claude keeps a list of its steps (Claude Code's
+- **The task list** (#231). On longer work Claude keeps a list of its steps (Claude Code's
   TaskCreate and TaskUpdate, or the older TodoWrite), and The Chat Place reads it from the
   transcript, for desktop app and terminal sessions as well as its own. View, Tasks
   (**Ctrl+Shift+J**) lists it; Turn Status (Ctrl+Shift+T) and Properties say how far along it is
@@ -396,6 +396,12 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Claude keep a task list" (Alt+K) turns that off, from the next message; it's on to start
   with. The list costs a little context each turn, and Claude decides when a task is worth a
   list, so short turns usually have none.
+  Codex's live plan appears in the same Tasks list, Turn Status and Properties while a chat
+  runs here (#318). Its latest reported steps are saved in The Chat Place's own data folder
+  and restored when that owned chat is reopened. A stopped or failed turn keeps its last
+  reported states; an answer does not mark unfinished steps done. Older Codex chats and chats
+  run elsewhere may have no saved list. Proposed plan text is separate from this checklist.
+  The "Let Claude keep a task list" setting applies only to Claude.
 - **Remote Control.** Settings can turn on Remote Control for The Chat Place's sessions, and
   **File, Remote Control** turns it on or off for one session (or back to the Settings
   default). A session on Remote Control can be reached from claude.ai and your other devices
@@ -541,8 +547,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   its position in the list ("12 of 40"), its lines, words and characters, its links and code
   blocks, and its ID.
 - **Turn Status** (Ctrl+Shift+T) says how long the provider has been working on the current turn and
-  what it last did. For Claude chats, it also reports background work still running, and how far
-  along the loaded chat's task list is. There's no
+  what it last did, and how far along the loaded chat's task list is when available. For Claude
+  chats, it also reports background work still running. There's no
   time limit on a turn; Stop (Ctrl+Period) ends it, along with anything it started, such as a
   build.
 - **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the

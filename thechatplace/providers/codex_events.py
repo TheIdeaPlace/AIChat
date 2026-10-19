@@ -1,6 +1,8 @@
 """Typed streaming data; no UI calls, tool permissions or inference (#184)."""
 from dataclasses import dataclass
 import time
+import hashlib
+from ..tasklist import TaskStep
 from .codex_tokens import CodexTokenUsage, decode_tokens
 
 
@@ -19,6 +21,7 @@ class CodexEvent:
     item_id: str = ""
     text: str = ""
     status: str = ""
+    plan: tuple = ()
 
 
 def _id(value):
@@ -43,6 +46,26 @@ def decode_event(method, params):
     rather than assuming deltas describe the final reply. Backend error bodies
     are not copied into these displayable events.
     """
+    if method == 'turn/plan/updated':
+        # Optional display data must never break execution on a bad shape.
+        if not isinstance(params, dict):
+            return None
+        try:
+            thread_id, turn_id = _id(params.get('threadId')), _id(params.get('turnId'))
+            plan = params.get('plan')
+            if not isinstance(plan, list) or len(plan) > 256:
+                return None
+            steps = []
+            states = {'pending': 'pending', 'inProgress': 'in_progress', 'completed': 'completed'}
+            for entry in plan:
+                if (not isinstance(entry, dict) or not isinstance(entry.get('step'), str)
+                        or not entry['step'].strip() or len(entry['step']) > 4096
+                        or not isinstance(entry.get('status'), str) or entry['status'] not in states):
+                    return None
+                steps.append((entry['step'], states[entry['status']]))
+            return CodexEvent('plan_updated', thread_id, turn_id, plan=tuple(steps))
+        except ValueError:
+            return None
     if method == 'thread/tokenUsage/updated':
         if not isinstance(params, dict):
             return None
@@ -142,6 +165,8 @@ class CodexTurnBuffer:
         self.truncated = False
         self.started_at = time.monotonic()
         self.activity = "Codex is working."
+        self.tasks = ()
+        self.plan_received = False
 
     @property
     def replies(self):
@@ -162,6 +187,18 @@ class CodexTurnBuffer:
         if ((event.thread_id, event.turn_id) != (self.thread_id, self.turn_id)
                 or self.status != "inProgress"):
             return False
+        if event.kind == 'plan_updated':
+            # There are no native step IDs. Text plus occurrence survives a
+            # reorder without inventing continuity for renamed steps (#318).
+            occurrences, tasks = {}, []
+            for subject, status in event.plan:
+                occurrence = occurrences.get(subject, 0)
+                occurrences[subject] = occurrence + 1
+                identity = hashlib.sha256(subject.encode('utf-8')).hexdigest() + ':' + str(occurrence)
+                tasks.append(TaskStep(identity, subject, status=status))
+            changed = not self.plan_received or self.tasks != tuple(tasks)
+            self.tasks, self.plan_received = tuple(tasks), True
+            return changed
         if event.kind == 'display_truncated':
             self.truncated = True
             return True

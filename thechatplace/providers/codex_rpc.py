@@ -447,7 +447,7 @@ class ReadOnlyCodexConnection:
                     # must not crowd out Stop, approvals or completion (#247).
                     if getattr(event, 'kind', None) == 'tool_output_delta':
                         return
-                    if getattr(event, 'kind', None) in ('text_delta', 'text_completed', 'activity', 'file_changes'):
+                    if getattr(event, 'kind', None) in ('text_delta', 'text_completed', 'activity', 'file_changes', 'plan_updated'):
                         self._display_event(event)
                         return
                     if getattr(event, "kind", None) == "turn_completed":

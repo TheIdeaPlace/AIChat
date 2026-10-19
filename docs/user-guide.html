@@ -170,22 +170,27 @@ activity shown in Fix the build." Continue Here keeps it on in the copy if it wa
 session you continued. With no session loaded, Ctrl+T says so and changes nothing. A session's
 tool calls also count in Links, Export and Find in All Sessions only when it's on for that
 session.</p>
-<h3>the task list</h3>
+<h3>The task list</h3>
 <p>On longer work, Claude keeps a list of its steps: what it plans to do, which step it's on, and
 which are done. The Chat Place reads that list for any Claude session, including desktop app
-and terminal sessions.</p>
+and terminal sessions. For Codex chats run here, it captures the live plan and saves the latest
+reported steps in The Chat Place's own data folder, so they survive reopening the owned chat.
+Older Codex chats and chats run elsewhere may have no saved list. A proposed plan in the
+conversation is separate from the task checklist.</p>
 <ul>
-<li><strong>Ctrl+Shift+J</strong> (View, Tasks) lists the steps in Claude's order, each with "to do", "in
+<li><strong>Ctrl+Shift+J</strong> (View, Tasks) lists the steps in the provider's order, each with "to do", "in
   progress" or "done". Enter reads a step in full.</li>
 <li><strong>Ctrl+Shift+T</strong> (Turn Status) and <strong>Properties</strong> say how far along it is: "Task 3 of 7:
-  Running the tests. 2 done." Once Claude has stopped, they say where: "Stopped at task 3 of 7".
-  Turn Status leaves out a list that's finished, or that's from an earlier turn.</li>
+  Running the tests. 2 done." Once work has stopped, they say where: "Stopped at task 3 of 7".
+  For Claude chats, Turn Status leaves out a list that's finished or from an earlier turn.</li>
 <li>When a step is marked done in the loaded session, you hear it: "Done: Run the tests. 4 of 7."
   That's only at the Full announcement level, and it never cuts off what's being read.</li>
 </ul>
-<p>Claude decides when work is worth a list, so short turns usually have none. In The Chat Place's
+<p>The provider decides when work is worth a list, so short turns usually have none. Stopping or
+failing a turn keeps its last reported task states; an answer does not mark every step done. In The Chat Place's
 own sessions, Claude keeps a list only because The Chat Place asks it to, as the desktop app
-does. <strong>Settings, "Let Claude keep a task list"</strong> (Alt+K) turns that off from your next message.</p>
+does. <strong>Settings, "Let Claude keep a task list"</strong> (Alt+K) turns that off from your next message.
+That setting applies only to Claude.</p>
 <h2 id="finding-things">Finding things</h2>
 <h3>In this session</h3>
 <p><strong>Ctrl+F</strong> in the messages (View, Find) finds the next message containing some text. It searches
@@ -228,11 +233,10 @@ session list, the messages or the reply box:</p>
 <li><strong>Commands:</strong> each command Claude ran: what it said it was doing, then "done", "failed" or
   "no result yet". Its full text shows the command and its output.</li>
 <li><strong>Decisions:</strong> each question Claude asked you, with your answer.</li>
-<li><strong>Tasks:</strong> the task list, each step with "to do", "in progress" or "done" (see "Claude's
-  task list" above).</li>
+<li><strong>Tasks:</strong> the task list, each step with "to do", "in progress" or "done" (see "The task list" above).</li>
 </ul>
-<p>In Codex chats, Lists has Code Blocks and Links for now; the other kinds say they aren't listed
-yet (#303).</p>
+<p>In Codex chats, Lists has Code Blocks, Links and tasks captured while run here. The other kinds
+say they aren't listed yet. Tasks explains when no saved list is available (#318).</p>
 <p><strong>Show items from</strong> (Alt+S) chooses <strong>This message</strong> or <strong>The whole chat</strong>. For code blocks and
 links, "this message" is the selected message. For files, commands, decisions and tasks, it's the
 selected message's turn: from your message to Claude's reply (for tasks, the steps added or

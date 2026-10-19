@@ -21,6 +21,8 @@ class CodexTurnState:
     notice: str = ''
     token_usage: CodexTokenUsage | None = None
     context_epoch: int = 0
+    tasks: tuple = field(default=(), repr=False)
+    plan_received: bool = False
 
 
 class CodexExecutionConnection(CodexLifecycleConnection):
@@ -228,7 +230,8 @@ class CodexTurnExecutor:
                              and (r.thread_id, r.turn_id) == (buffer.thread_id, buffer.turn_id))
             return CodexTurnState(buffer.turn_id, buffer.status, buffer.replies, requests, buffer.file_changes,
                                   buffer.started_at, buffer.activity, self._notices.get(proof.native_id, ''),
-                                  self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0))
+                                  self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0),
+                                  tuple(replace(t) for t in buffer.tasks), buffer.plan_received)
 
     def answer(self, proof, request, result):
         if not self.connection.owns_runtime(proof):
@@ -304,7 +307,7 @@ class CodexTurnExecutor:
                     pending = self._pending_events.get(event.thread_id)
                     if pending is not None:
                         presentation = isinstance(event, CodexEvent) and event.kind in (
-                            'text_delta', 'text_completed', 'activity', 'file_changes', 'display_truncated')
+                            'text_delta', 'text_completed', 'activity', 'file_changes', 'plan_updated', 'display_truncated')
                         if presentation:
                             for index, old in enumerate(pending):
                                 if (isinstance(old, CodexEvent) and old.turn_id == event.turn_id
@@ -317,7 +320,7 @@ class CodexTurnExecutor:
                                     break
                             else:
                                 displays = [i for i, old in enumerate(pending) if isinstance(old, CodexEvent)
-                                            and old.kind in ('text_delta', 'text_completed', 'activity', 'file_changes')]
+                                            and old.kind in ('text_delta', 'text_completed', 'activity', 'file_changes', 'plan_updated')]
                                 if len(displays) >= 128:
                                     pending.pop(displays[0])
                                     if not any(getattr(e, 'kind', '') == 'display_truncated' for e in pending):

@@ -75,3 +75,44 @@ class PartitionedFile:
         finally:
             if os.path.exists(tmp):
                 os.unlink(tmp)
+
+
+class CodexPlanStore:
+    """Latest live plan captured here, never a write to provider history (#318)."""
+
+    def __init__(self, root=None):
+        from .platform_paths import app_data_dir
+        self.root = Path(root) if root is not None else app_data_dir() / 'provider-tasks' / 'codex'
+
+    def _path(self, native_id):
+        import hashlib
+        return self.root / (hashlib.sha256(native_id.encode('utf-8')).hexdigest() + '.json')
+
+    def save(self, native_id, turn_id, tasks):
+        PartitionedFile._write(self._path(native_id), {
+            'provider': 'codex', 'native_id': native_id, 'turn_id': turn_id,
+            'tasks': [{'task_id': t.task_id, 'subject': t.subject, 'status': t.status} for t in tasks]})
+
+    def load(self, native_id):
+        from .tasklist import TaskStep, TASK_STATUSES
+        try:
+            raw = json.loads(self._path(native_id).read_text(encoding='utf-8'))
+            if (not isinstance(raw, dict) or raw.get('provider') != 'codex'
+                    or raw.get('native_id') != native_id or not isinstance(raw.get('turn_id'), str)
+                    or not raw['turn_id'] or not isinstance(raw.get('tasks'), list)
+                    or len(raw['tasks']) > 256):
+                return '', ()
+            tasks = []
+            for step in raw['tasks']:
+                if (not isinstance(step, dict)
+                        or any(not isinstance(step.get(k), str) or not step[k].strip()
+                               for k in ('task_id', 'subject', 'status'))
+                        or len(step['subject']) > 4096 or len(step['task_id']) > 256
+                        or step['status'] not in TASK_STATUSES):
+                    return '', ()
+                tasks.append(TaskStep(step['task_id'], step['subject'], status=step['status']))
+            if len({t.task_id for t in tasks}) != len(tasks):
+                return '', ()
+            return raw['turn_id'], tuple(tasks)
+        except (OSError, ValueError, UnicodeError):
+            return '', ()
