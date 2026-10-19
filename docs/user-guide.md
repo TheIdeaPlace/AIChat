@@ -611,8 +611,7 @@ request: Allow Once, Deny, Deny and Stop Turn, and always Answer Later. Deny let
 on without it; Deny and Stop Turn also stops the turn. Enter chooses Deny, or Answer Later
 when Deny isn't offered. Codex's own "for the rest of the session" and "always allow" rules
 are never offered or saved. Instead, for a few everyday Git commands with simple options The
-Chat Place has checked, such as `git commit` in the chat's folder, it also offers **Allow for
-This Chat**, whose full name says what it keeps. The Chat Place keeps that rule with the chat:
+Chat Place has checked, such as `git commit` in the chat's folder, it also offers **Allow for This Chat**, whose full name says what it keeps. The Chat Place keeps that rule with the chat:
 when a later request matches, it answers Allow Once for you and says so quietly ("Allowed git
 commit, as you said for this chat."), with a line in the messages and in Turn Status. Anything
 else still asks, such as other options or a command joined to another with `&&`.

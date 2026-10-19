@@ -1895,7 +1895,7 @@ def _chat_permissions(frame, monkeypatch, drive, answers=()):
     return seen.get("result"), asked
 
 
-def _delete_key(dialog):
+def _permission_delete_key(dialog):
     event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
     event.SetKeyCode(wx.WXK_DELETE)
     dialog._on_list_key(event)
@@ -1915,9 +1915,9 @@ def test_chat_permissions_lists_rules_and_delete_removes_after_confirming(frame,
         assert rows[1].startswith("Search the web. WebSearch. Allowed ")
         assert dialog.list.GetName() == "Allowed for this chat, 3"
         dialog.list.SetSelection(1)
-        _delete_key(dialog)      # answered No: nothing goes
+        _permission_delete_key(dialog)      # answered No: nothing goes
         assert dialog.list.GetCount() == 3
-        _delete_key(dialog)      # answered Yes
+        _permission_delete_key(dialog)      # answered Yes
         # The row that took its place is selected.
         return list(dialog.list.GetStrings()), dialog.list.GetSelection(), dialog.mode.GetValue()
     (after, selected, mode), asked = _chat_permissions(frame, monkeypatch, drive, [wx.NO, wx.YES])

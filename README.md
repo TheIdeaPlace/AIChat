@@ -626,8 +626,7 @@ Deny is the default button when it's offered; otherwise Answer Later is. When Co
 to keep allowing something (for the rest of the session, or as a saved "always allow"
 rule), the dialog says so, but The Chat Place leaves that out: Codex itself keeps nothing.
 Instead, for a few everyday Git commands with simple options The Chat Place has checked
-(such as `git commit` or `git push` in the chat's folder), Answer also offers **Allow for
-This Chat**, whose full name says what it keeps. The Chat Place keeps that rule with the chat
+(such as `git commit` or `git push` in the chat's folder), Answer also offers **Allow for This Chat**, whose full name says what it keeps. The Chat Place keeps that rule with the chat
 and, when a later request in the chat matches it, answers Allow Once for you and says so
 quietly ("Allowed git commit, as you said for this chat."), with a line in the messages and
 in Turn Status. Anything else still asks: other options, a command joined to another with
