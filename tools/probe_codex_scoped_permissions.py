@@ -102,15 +102,33 @@ def run(binary, root, work, scenario, port, windows_mode):
     (home / 'config.toml').write_text(f'''model = "gpt-5.1-codex"
 model_provider = "probe"
 approvals_reviewer = "user"
+default_permissions = "probe-base"
 [features]
 exec_permission_approvals = true
 request_permissions_tool = true
+network_proxy = {str(bool(scenario.get('network_probe'))).lower()}
 [model_providers.probe]
 name = "probe"
 base_url = "http://127.0.0.1:{port}/v1"
 wire_api = "responses"
 request_max_retries = 0
 stream_max_retries = 0
+[permissions.probe-base]
+extends = ":workspace"
+[permissions.probe-base.filesystem]
+":tmpdir" = "read"
+":slash_tmp" = "read"
+[permissions.probe-git]
+extends = "probe-base"
+[permissions.probe-git.filesystem.":workspace_roots"]
+".git" = "write"
+[permissions.probe-network]
+extends = "probe-base"
+[permissions.probe-network.network]
+enabled = true
+[permissions.probe-network.network.domains]
+"example.com" = "allow"
+"example.org" = "deny"
 ''', encoding='utf-8')
     env = dict(os.environ, CODEX_HOME=str(home))
     for key in ('OPENAI_API_KEY', 'CODEX_API_KEY'):
@@ -136,15 +154,23 @@ stream_max_retries = 0
                     rpc.handle(rpc.read())
                 if not scenario['sandbox_setup'].get('success'):
                     raise RuntimeError('Windows sandbox setup failed')
-            thread = rpc.request('thread/start', {
-                'cwd': str(work), 'sandbox': 'workspace-write', 'approvalPolicy': 'on-request'})
+            thread_params = {'cwd': str(work), 'approvalPolicy': 'on-request'}
+            if scenario.get('profile'):
+                thread_params['permissions'] = scenario['profile']
+            else:
+                thread_params['sandbox'] = 'workspace-write'
+            thread = rpc.request('thread/start', thread_params)
             scenario['thread_settings'] = {key: value for key, value in thread.items() if key != 'thread'}
-            rpc.request('turn/start', {
+            turn_params = {
                 'threadId': thread['thread']['id'],
                 'sandboxPolicy': {'type': 'workspaceWrite', 'writableRoots': [str(work)],
                                   'networkAccess': False, 'excludeTmpdirEnvVar': True,
                                   'excludeSlashTmp': True},
-                'input': [{'type': 'text', 'text': 'Execute the synthetic permission probe.'}]})
+                'input': [{'type': 'text', 'text': 'Execute the synthetic permission probe.'}]}
+            if scenario.get('profile'):
+                del turn_params['sandboxPolicy']
+                turn_params['permissions'] = scenario['profile']
+            rpc.request('turn/start', turn_params)
             while 'turn_completed' not in scenario:
                 rpc.handle(rpc.read())
         except Exception as error:
@@ -183,7 +209,21 @@ def main():
         {'name': 'outside-write', 'args': {'cmd': outside,
             'sandbox_permissions': 'with_additional_permissions', 'additional_permissions': grant}},
         {'name': 'after-grant', 'args': {'cmd': 'git switch -c after-probe'}},
+        {'name': 'profile-git', 'profile': 'probe-git',
+         'args': {'cmd': 'git switch -c profile-probe'}},
+        {'name': 'profile-outside', 'profile': 'probe-git', 'args': {'cmd': outside}},
+        {'name': 'profile-base', 'profile': 'probe-base',
+         'args': {'cmd': 'git switch -c profile-base-probe'}},
     ]
+    curl = 'curl.exe' if os.name == 'nt' else 'curl'
+    scenarios.extend([
+        {'name': 'network-allowed', 'profile': 'probe-network', 'network_probe': True,
+         'args': {'cmd': f'{curl} -I --max-time 5 https://example.com'}},
+        {'name': 'network-denied', 'profile': 'probe-network', 'network_probe': True,
+         'args': {'cmd': f'{curl} -I --max-time 5 https://example.org'}},
+        {'name': 'network-direct-bypass', 'profile': 'probe-network', 'network_probe': True,
+         'args': {'cmd': f"{curl} --noproxy '*' -I --max-time 5 https://example.org"}},
+    ])
     for scenario in scenarios:
         scenario['args'].update(login=False, workdir=str(work), max_output_tokens=1000)
         run(binary, root, work, scenario, server.server_address[1], windows_mode)
