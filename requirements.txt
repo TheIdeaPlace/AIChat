@@ -1,6 +1,6 @@
 wxPython>=4.2
 # Full messages as formatted pages (rendering.py, issue #190).
-markdown==3.11
+markdown==3.11.1
 # Automatic updates (installed copies only; a source run ignores it).
 velopack==1.2.161
 # JAWS speech from the app itself (screen_readers.py, issue #98).
