@@ -610,11 +610,15 @@ can change any file you can. It offers only the one-time answers Codex allows fo
 request: Allow Once, Deny, Deny and Stop Turn, and always Answer Later. Deny lets Codex carry
 on without it; Deny and Stop Turn also stops the turn. Enter chooses Deny, or Answer Later
 when Deny isn't offered. Codex's own "for the rest of the session" and "always allow" rules
-are never offered or saved. Instead, for a few everyday Git commands with simple options The
-Chat Place has checked, such as `git commit` in the chat's folder, it also offers **Allow for This Chat**, whose full name says what it keeps. The Chat Place keeps that rule with the chat:
-when a later request matches, it answers Allow Once for you and says so quietly ("Allowed git
-commit, as you said for this chat."), with a line in the messages and in Turn Status. Anything
-else still asks, such as other options or a command joined to another with `&&`.
+are never offered or saved. Instead, when Codex asks to run an everyday Git command, such as
+`git commit`, with simple options The Chat Place has checked and only limited extra access in
+the chat's folder (such as writing to its `.git` folder), Answer also offers **Allow for This Chat**,
+whose full name says what it keeps. The Chat Place keeps that rule with the chat: when a later
+request matches, it answers Allow Once for you and says so quietly ("Allowed git commit, as
+you said for this chat."), with a line in the messages and in Turn Status. Anything else still
+asks, such as other options or a command joined to another with `&&`. A command Codex wants to
+run with full access is never kept, and that's how Codex asks for most commands today, so for
+now this button appears only now and then.
 Questions show the provider and keep secret answers masked. New Session and Change Permission Mode offer read-only or editing files in the
 selected folder, both with on-request approvals. Finish or Stop active work and
 clear queued messages before changing the policy. Verification and saving must

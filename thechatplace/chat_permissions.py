@@ -23,7 +23,9 @@ CLAUDE_RUNNING = ("A turn is running now. It keeps the rules it started with; "
 CODEX_TAKES_EFFECT = ("Removing a rule applies at once, to Codex's next request, even during "
                       "a running turn. A command already allowed can't be called back.")
 CODEX_ABOUT = ("Each rule allows one Git command, such as git commit, in this chat's folder, "
-               "with only simple options The Chat Place has checked. Anything else still asks.")
+               "with only simple options The Chat Place has checked, and only with the same "
+               "limited access Codex asked for when you allowed it. Anything else still asks, "
+               "including any command Codex wants to run with full access.")
 CODEX_NATIVE = ("These are Codex's own rule files, outside The Chat Place. They are "
                 "changed in Codex, not here.")
 
@@ -135,16 +137,17 @@ def native_rule_files(count=None, error: str = "", *, pending: bool = False) -> 
 def codex_chat_rule_name(rule) -> str:
     """The full name of Answer's Allow for This Chat button for a Codex rule."""
     words = " ".join(rule.prefix)
-    return (f"Allow {words} for the rest of this chat, with simple options The Chat Place "
-            f"has checked; anything else still asks")
+    return (f"Allow {words} for the rest of this chat, with the same limited access and "
+            f"simple options The Chat Place has checked; anything else still asks")
 
 
 def codex_chat_rule_note(rule) -> str:
     """What Answer says when Allow for This Chat is offered for Codex."""
     words = " ".join(rule.prefix)
     return (f"Allow for This Chat keeps a rule in The Chat Place: later {words} commands in "
-            f"this chat's folder that use only simple options it has checked are allowed "
-            f"without asking, and you hear when that happens. Anything else still asks. "
+            f"this chat's folder that ask for this same limited access and use only simple "
+            f"options it has checked are allowed without asking, and you hear when that "
+            f"happens. Anything else still asks. "
             f"File, Chat Permissions lists and removes the rule. Codex's own session and "
             f"saved rules stay off.")
 

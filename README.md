@@ -625,12 +625,17 @@ Allow Once, Deny (Codex carries on without it) and Deny and Stop Turn, plus Answ
 Deny is the default button when it's offered; otherwise Answer Later is. When Codex offers
 to keep allowing something (for the rest of the session, or as a saved "always allow"
 rule), the dialog says so, but The Chat Place leaves that out: Codex itself keeps nothing.
-Instead, for a few everyday Git commands with simple options The Chat Place has checked
-(such as `git commit` or `git push` in the chat's folder), Answer also offers **Allow for This Chat**, whose full name says what it keeps. The Chat Place keeps that rule with the chat
-and, when a later request in the chat matches it, answers Allow Once for you and says so
-quietly ("Allowed git commit, as you said for this chat."), with a line in the messages and
-in Turn Status. Anything else still asks: other options, a command joined to another with
-`&&`, another folder or wider access. File, Chat Permissions (Ctrl+Shift+H) lists the rules;
+Instead, when Codex asks to run an everyday Git command (such as `git commit` or `git push`)
+with simple options The Chat Place has checked, in the chat's folder, and asks only for
+limited extra access there (such as writing to the chat's `.git` folder), Answer also offers
+**Allow for This Chat**, whose full name says what it keeps. The Chat Place keeps that rule
+with the chat and, when a later request in the chat matches it, answers Allow Once for you
+and says so quietly ("Allowed git commit, as you said for this chat."), with a line in the
+messages and in Turn Status. Anything else still asks: other options, a command joined to
+another with `&&`, another folder or different access. A request to run a command with full
+access, outside the folder's limits, is never kept, because Git can run other programs from
+its settings; Codex asks that way for most commands today, so for now this button appears
+only now and then. File, Chat Permissions (Ctrl+Shift+H) lists the rules;
 removing one, or changing the chat's permission mode, counts from Codex's very next request,
 even during a turn, though a command already allowed can't be called back. It also shows how
 many of Codex's own rule files are in effect, as Properties does; those are changed in Codex.

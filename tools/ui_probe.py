@@ -884,9 +884,11 @@ def d_codex_permission_chat_rule(frame, env):
     # Allow for This Chat beside Allow Once (#307), with the note that
     # replaces "nothing lasting is offered", on the real shape's wrapper.
     folder = env["tmp"].as_posix()
+    # Only a scoped request can be kept (#330): Git's own folder, not full access.
     request = CodexRequest(1, COMMAND, "probe", "turn", "item",
                            command="powershell.exe -Command 'git commit -m \"Fix the upload test\"'",
-                           cwd=folder, decisions=("accept", "cancel"), saved_rule_offered=True)
+                           cwd=folder, decisions=("accept", "cancel"), saved_rule_offered=True,
+                           extra_access=(f"Write access to {folder}/.git",))
     rule = CodexChatRule("a" * 32, ("git", "commit"), folder, "scope", 1_792_400_000_000)
     return lambda: frame._modal(CodexPermissionDialog(frame, "Codex preview", request,
                                                       chat_rule=rule))
@@ -915,9 +917,10 @@ def d_chat_permissions_codex(frame, env):
     from thechatplace.providers.codex_permissions import CodexChatRule
     from thechatplace.ui.dialogs import ChatPermissionsDialog
     folder = env["tmp"].as_posix()
-    rules = (CodexChatRule("a" * 32, ("git", "commit"), folder, "scope", 1_792_400_000_000),
-             CodexChatRule("b" * 32, ("git", "push"), folder, "scope", 1_792_403_600_000,
-                           ("Network access to github.com (HTTPS)",)))
+    # Kept rules carry the limited access they were allowed with (#330).
+    git = (f"Write access to {folder}/.git",)
+    rules = (CodexChatRule("a" * 32, ("git", "commit"), folder, "scope", 1_792_400_000_000, git),
+             CodexChatRule("b" * 32, ("git", "push"), folder, "scope", 1_792_403_600_000, git))
     host = SimpleNamespace(
         mode_text=lambda: "Can edit files in this folder; asks before anything else",
         can_change_mode=lambda: (True, ""), change_mode=lambda done: done(),
