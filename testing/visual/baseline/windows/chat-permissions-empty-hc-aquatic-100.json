@@ -203,13 +203,13 @@
    ],
    "best": [
     127,
-    110
+    128
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Removing a rule applies from this chat's next turn."
+   "value": "Removing a rule applies from this chat's next turn.\n\nFrom Claude Code's own settings. These apply to every Claude session working in this folder, here, in the desktop app or a terminal. The Chat Place only reads them; change them in Claude Code, for example with /permissions.\nClaude Code's own settings allow nothing extra for this folder."
   }
  ],
  "capture": "PrintWindow"
