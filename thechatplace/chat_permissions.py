@@ -93,11 +93,21 @@ def describe_claude_rule(rule: str) -> str:
     return f"Use {tool} for {content}." if content else f"Use {tool}."
 
 
-def claude_rows(rules: Iterable[str], allowed_at: Optional[Mapping[str, int]] = None
+#: A kept folder's row id, beside rules' own text as theirs.
+FOLDER = "folder:"
+
+
+def claude_rows(rules: Iterable[str], allowed_at: Optional[Mapping[str, int]] = None,
+                dirs: Iterable[str] = (), dirs_at: Optional[Mapping[str, int]] = None
                 ) -> List[PermissionRow]:
-    allowed_at = allowed_at or {}
-    return [PermissionRow(rule, describe_claude_rule(rule), rule, int(allowed_at.get(rule) or 0))
+    """Rules, then the folders kept beside them (#332)."""
+    allowed_at, dirs_at = allowed_at or {}, dirs_at or {}
+    rows = [PermissionRow(rule, describe_claude_rule(rule), rule, int(allowed_at.get(rule) or 0))
             for rule in rules]
+    rows += [PermissionRow(FOLDER + folder, f"Work in the folder {folder}.", "",
+                           int(dirs_at.get(folder) or 0))
+             for folder in dirs]
+    return rows
 
 
 def confirm_text(row: Optional[PermissionRow], count: int) -> str:

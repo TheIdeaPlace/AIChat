@@ -242,8 +242,17 @@ def is_safe_rule(rule: str) -> bool:
     return isinstance(rule, str) and bool(_SAFE_RULE.fullmatch(rule))
 
 
+def is_safe_dir(folder: str) -> bool:
+    """A folder Claude Code suggested working in, fit to give back as
+    ``--add-dir``: absolute, one line, and never readable as a flag."""
+    return (isinstance(folder, str) and 0 < len(folder) <= 1024
+            and not folder.startswith("-") and not any(c in folder for c in "\r\n\0")
+            and platform_paths.is_absolute_path(folder))
+
+
 def _common_flags(permission_mode: str, model: str = "",
-                  allowed_tools: Collection[str] = (), effort: str = "") -> List[str]:
+                  allowed_tools: Collection[str] = (), effort: str = "",
+                  allowed_dirs: Collection[str] = ()) -> List[str]:
     permission_mode = normalize_permission_mode(permission_mode)
     if permission_mode not in PERMISSION_MODE_VALUES:
         raise ValueError(f"Unknown permission mode: {permission_mode!r}")
@@ -270,6 +279,13 @@ def _common_flags(permission_mode: str, model: str = "",
         # each turn. The option takes several values; the flag after it ends
         # the list.
         flags += ["--allowedTools", *rules]
+    dirs = [folder for folder in allowed_dirs if is_safe_dir(folder)]
+    if dirs:
+        # Folders kept with "Allow for This Chat" (#332). Checked with Claude
+        # Code 2.1: a command that writes, such as mkdir, asks again on the
+        # next turn unless both its rule and the folder it writes in are
+        # given; a folder lasts only for the process, as a rule does.
+        flags += ["--add-dir", *dirs]
     return flags
 
 
@@ -279,11 +295,13 @@ def new_session_id() -> str:
 
 def build_new_command(executable: str, session_id: str, title: str,
                       permission_mode: str, model: str = "",
-                      allowed_tools: Collection[str] = (), effort: str = "") -> List[str]:
+                      allowed_tools: Collection[str] = (), effort: str = "",
+                      allowed_dirs: Collection[str] = ()) -> List[str]:
     """Command for the first turn of a new session. The prompt goes on stdin."""
     if not platform_paths.is_safe_id(session_id):
         raise ValueError("Not a valid session id.")
-    command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort),
+    command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
+                                          allowed_dirs),
                "--session-id", session_id]
     title = " ".join((title or "").split())
     if title:
@@ -342,7 +360,7 @@ def build_resume_command(executable: str, session_id: str, permission_mode: str,
                          own_ids: Collection[str],
                          desktop_ids: Collection[str], model: str = "",
                          allowed_tools: Collection[str] = (), title: str = "",
-                         effort: str = "") -> List[str]:
+                         effort: str = "", allowed_dirs: Collection[str] = ()) -> List[str]:
     """Command for a later turn. Refuses anything but The Chat Place's own sessions.
 
     ``--name`` goes on every turn, not just the first (#123). Other sessions
@@ -352,7 +370,8 @@ def build_resume_command(executable: str, session_id: str, permission_mode: str,
     2.1.286: ``--resume`` with ``--name`` is accepted and keeps the title.
     """
     check_resume_allowed(session_id, own_ids, desktop_ids)
-    command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort)]
+    command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
+                                          allowed_dirs)]
     title = " ".join((title or "").split())
     if title:
         command += ["--name", title]
@@ -532,6 +551,17 @@ class PermissionRequest:
                     rules.append(text)
         return rules
 
+    def session_dirs(self) -> List[str]:
+        """The folders Claude Code suggests letting this chat work in."""
+        dirs = []
+        for suggestion in self.suggestions:
+            if not isinstance(suggestion, dict) or suggestion.get("type") != "addDirectories":
+                continue
+            for folder in suggestion.get("directories") or []:
+                if is_safe_dir(folder) and folder not in dirs:
+                    dirs.append(folder)
+        return dirs
+
     def session_mode(self) -> str:
         """A permission mode Claude Code suggests switching to instead
         ("acceptEdits" for a file edit), or ""."""
@@ -544,16 +574,30 @@ class PermissionRequest:
     def allow_for_session_label(self) -> str:
         """What "Allow for This Chat" means for this request, in full for a
         screen reader, or "" when Claude Code has nothing to suggest. The
-        rule or mode is kept with the chat (#187, #329)."""
-        mode = self.session_mode()
+        rule (with any folder suggested with it) or mode is kept with the chat
+        (#187, #329, #332). A rule comes first: it is what Claude Code offers
+        first, and a mode switch would allow far more than this request."""
+        rules, dirs, mode = self.session_rules(), self.session_dirs(), self.session_mode()
+        if rules:
+            label = "Allow, and don't ask again in this chat for " + ", ".join(rules)
+            return label + (" in " + ", ".join(dirs) if dirs else "")
         if mode == "acceptEdits":
             return "Allow, and accept all file edits for the rest of this chat"
         if mode:
             return f"Allow, and switch this chat to {mode} mode"
-        rules = self.session_rules()
-        if rules:
-            return "Allow, and don't ask again in this chat for " + ", ".join(rules)
+        if dirs:
+            return "Allow, and let this chat work in " + ", ".join(dirs)
         return ""
+
+    def kept_for_chat(self):
+        """What Allow for This Chat keeps: (rules, folders, mode), as
+        allow_for_session_label describes it."""
+        rules, dirs, mode = self.session_rules(), self.session_dirs(), self.session_mode()
+        if rules:
+            return rules, dirs, ""
+        if mode:
+            return [], [], mode
+        return [], dirs, ""
 
 
 def allow_response(request: PermissionRequest, updated_input: Optional[dict] = None,
@@ -567,20 +611,22 @@ def allow_response(request: PermissionRequest, updated_input: Optional[dict] = N
     if mode:
         updates.append({"type": "setMode", "mode": mode, "destination": "session"})
     elif for_session:
-        session_mode = request.session_mode()
+        kept_rules, kept_dirs, session_mode = request.kept_for_chat()
         if session_mode:
             updates.append({"type": "setMode", "mode": session_mode, "destination": "session"})
-        else:
-            rules = []
-            for rule in request.session_rules():
-                name, _, content = rule.partition("(")
-                entry = {"toolName": name}
-                if content:
-                    entry["ruleContent"] = content[:-1]
-                rules.append(entry)
-            if rules:
-                updates.append({"type": "addRules", "rules": rules, "behavior": "allow",
-                                "destination": "session"})
+        rules = []
+        for rule in kept_rules:
+            name, _, content = rule.partition("(")
+            entry = {"toolName": name}
+            if content:
+                entry["ruleContent"] = content[:-1]
+            rules.append(entry)
+        if rules:
+            updates.append({"type": "addRules", "rules": rules, "behavior": "allow",
+                            "destination": "session"})
+        if kept_dirs:
+            updates.append({"type": "addDirectories", "directories": kept_dirs,
+                            "destination": "session"})
     if updates:
         response["updatedPermissions"] = updates
     return response

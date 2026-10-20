@@ -1874,6 +1874,41 @@ def test_allow_for_this_chat_keeps_when_each_rule_was_allowed(frame, env, monkey
     assert env["feedback"][-1] == "Allowed for the rest of this chat."
 
 
+def test_allow_for_this_chat_keeps_the_rule_and_folder_claude_code_suggests(frame, env, fake_runner,
+                                                                        monkeypatch):
+    """The shape real Claude Code 2.1 sends for mkdir (#332): a rule, its folder
+    and a mode switch. The rule and folder are kept, not the mode, and the next
+    turn is given both (without both, Claude Code asks again)."""
+    from thechatplace.ui import dialogs
+    folder = str(env["tmp"])
+    request = _request(tool_input={"command": "mkdir capture-dir"}, suggestions=[
+        {"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": "mkdir capture-dir *"}],
+         "behavior": "allow", "destination": "localSettings"},
+        {"type": "addDirectories", "directories": [folder], "destination": "session"},
+        {"type": "setMode", "mode": "acceptEdits", "destination": "session"}])
+    runner = _waiting_turn(frame, request)
+
+    class Picks(dialogs.PermissionDialog):
+        def ShowModal(self):
+            assert self.session_button.GetName() == (
+                f"Allow, and don't ask again in this chat for Bash(mkdir capture-dir *) in {folder}")
+            self.choice = dialogs.ALLOW_SESSION
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.main_frame.PermissionDialog", Picks)
+    frame.on_answer()
+    updates = runner.responses[0][1]["updatedPermissions"]
+    assert [u["type"] for u in updates] == ["addRules", "addDirectories"]
+    own = frame.store.get("own-1")
+    assert own.allowed_tools == ["Bash(mkdir capture-dir *)"] and own.allowed_dirs == [folder]
+    assert own.permission_mode != "acceptEdits" and folder in own.allowed_dirs_at
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Made it."))
+    frame.reply_text.SetValue("again")
+    frame.on_send()
+    command = fake_runner.instances[-1].command
+    assert command[command.index("--allowedTools") + 1] == "Bash(mkdir capture-dir *)"
+    assert command[command.index("--add-dir") + 1] == folder
+
+
 def _chat_permissions(frame, monkeypatch, drive, answers=()):
     """Open File, Chat Permissions on the selected chat; ``drive(dialog)``
     runs while it's open. Confirmations answer from ``answers`` in turn."""

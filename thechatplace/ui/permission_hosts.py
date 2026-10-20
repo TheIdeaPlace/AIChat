@@ -59,26 +59,37 @@ class ClaudePermissions:
         if own is None:
             done(None, "This chat is no longer in The Chat Place.")
             return
-        done(chat_permissions.claude_rows(own.allowed_tools, own.allowed_tools_at), None)
+        done(chat_permissions.claude_rows(own.allowed_tools, own.allowed_tools_at,
+                                          own.allowed_dirs, own.allowed_dirs_at), None)
 
     def remove(self, rule_id, done):
         own = self._own()
         if own is None:
             done(None, "This chat is no longer in The Chat Place.")
             return
-        if rule_id is not None and rule_id not in own.allowed_tools:
+        folder = rule_id[len(chat_permissions.FOLDER):] if rule_id and rule_id.startswith(
+            chat_permissions.FOLDER) else None
+        if rule_id is not None and folder is None and rule_id not in own.allowed_tools \
+                or folder is not None and folder not in own.allowed_dirs:
             done(None, "That rule is no longer kept.")
             return
-        kept = [] if rule_id is None else [r for r in own.allowed_tools if r != rule_id]
+        if rule_id is None:
+            kept, folders = [], []
+        elif folder is None:
+            kept, folders = [r for r in own.allowed_tools if r != rule_id], list(own.allowed_dirs)
+        else:
+            kept, folders = list(own.allowed_tools), [d for d in own.allowed_dirs if d != folder]
         times = {r: t for r, t in own.allowed_tools_at.items() if r in kept}
+        folder_times = {d: t for d, t in own.allowed_dirs_at.items() if d in folders}
         if not self.frame._store_write(self.frame.store.update, own.cli_session_id,
-                                       allowed_tools=kept, allowed_tools_at=times):
+                                       allowed_tools=kept, allowed_tools_at=times,
+                                       allowed_dirs=folders, allowed_dirs_at=folder_times):
             done(None, "It couldn't be saved, so the chat still keeps it.")
             return
         self.frame._feedback("Removed. Claude will ask again from the next turn."
                              if rule_id is not None else
                              "Removed all. Claude will ask again from the next turn.")
-        done(chat_permissions.claude_rows(kept, times), None)
+        done(chat_permissions.claude_rows(kept, times, folders, folder_times), None)
 
 
 class CodexPermissions:

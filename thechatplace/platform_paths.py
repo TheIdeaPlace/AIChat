@@ -259,6 +259,15 @@ def is_safe_id(value: str) -> bool:
     return bool(value) and bool(_SAFE_ID.match(value))
 
 
+def is_absolute_path(value: str) -> bool:
+    """A full path on this computer's terms: with a drive or a UNC share on
+    Windows (``C:\\work``), from the root on a Mac (``/Users/me/work``)."""
+    if sys.platform == "win32":
+        drive, _rest = ntpath.splitdrive(value)
+        return bool(drive) and ntpath.isabs(value)
+    return value.startswith("/")
+
+
 #: ``process_start`` for a process you may not look at: not one of yours,
 #: so not a Claude Code you started (a system service, say).
 NOT_YOURS = -1

@@ -246,3 +246,43 @@ def test_codex_host_keeps_nothing_and_reads_codexs_own_rule_files(tmp_path):
     frame._load_codex_rules = lambda folder, callback: callback("Codex is busy.", True)
     host.native(counted.append)
     assert counted[-1] == "Saved user/system rule files: couldn't be checked. Codex is busy."
+
+
+def test_kept_folders_are_listed_after_rules_and_can_be_removed(tmp_path):
+    from thechatplace.ui.permission_hosts import ClaudePermissions
+    folder = str(tmp_path / "work")
+    frame = Frame(tmp_path)
+    frame.store.update("own-1", allowed_dirs=[folder], allowed_dirs_at={folder: ALLOWED_MS})
+    host = ClaudePermissions(frame, frame.store.get("own-1").to_info())
+    seen, done = _results()
+    host.load(done)
+    rows = seen[-1][0]
+    assert [r.rule_id for r in rows] == ["Bash(git push:*)", "WebSearch", cp.FOLDER + folder]
+    assert rows[-1].text().startswith(f"Work in the folder {folder}. Allowed ")
+    host.remove(cp.FOLDER + folder, done)
+    assert [r.rule_id for r in seen[-1][0]] == ["Bash(git push:*)", "WebSearch"]
+    kept = _store(tmp_path).get("own-1")
+    assert kept.allowed_dirs == [] and kept.allowed_dirs_at == {}
+    assert kept.allowed_tools == ["Bash(git push:*)", "WebSearch"]
+    host.remove(cp.FOLDER + folder, done)
+    assert seen[-1] == (None, "That rule is no longer kept.")
+    frame.store.update("own-1", allowed_dirs=[folder])
+    host.remove(None, done)
+    kept = _store(tmp_path).get("own-1")
+    assert seen[-1] == ([], None) and kept.allowed_tools == [] and kept.allowed_dirs == []
+
+
+def test_kept_folders_survive_a_restart_and_bad_ones_are_dropped(tmp_path):
+    from thechatplace.own_store import _session_from_dict
+    folder = str(tmp_path)
+    loaded = _session_from_dict({
+        "cli_session_id": "own-1", "title": "Chat", "cwd": folder,
+        "allowed_dirs": [folder, "-x", "relative", 3],
+        "allowed_dirs_at": {folder: ALLOWED_MS, "relative": ALLOWED_MS, "gone": ALLOWED_MS}})
+    assert loaded.allowed_dirs == [folder] and loaded.allowed_dirs_at == {folder: ALLOWED_MS}
+    codex = _session_from_dict({"cli_session_id": "codex-1", "title": "Chat", "cwd": folder,
+                                "provider": "codex", "allowed_dirs": [folder]})
+    assert codex.allowed_dirs == []
+    store = _store(tmp_path)
+    store.add(OwnSession("own-2", "Chat", folder, allowed_dirs=[folder]))
+    assert _store(tmp_path).get("own-2").allowed_dirs == [folder]

@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 
 from . import platform_paths
 from .provider_storage import PartitionedFile, CodexPlanStore
-from .claude_cli import EFFORT_LABELS, MODEL_LABELS, is_safe_rule
+from .claude_cli import EFFORT_LABELS, MODEL_LABELS, is_safe_dir, is_safe_rule
 from .sessions import IDLE, OWN, SessionInfo
 
 
@@ -49,6 +49,10 @@ class OwnSession:
     #: Permissions. Older releases don't write it, so a rule may have no time;
     #: none is ever made up for it.
     allowed_tools_at: Dict[str, int] = field(default_factory=dict)
+    #: Folders kept with "Allow for This Chat" beside a rule (#332), given to
+    #: every later turn as ``--add-dir``, and when each was allowed.
+    allowed_dirs: List[str] = field(default_factory=list)
+    allowed_dirs_at: Dict[str, int] = field(default_factory=dict)
     #: Continued from another session (#189): its Claude Code id, used to
     #: start the copy again if the first turn never got going, and its title,
     #: for the heading.
@@ -130,6 +134,16 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             values[name] = {r: t for r, t in times.items()
                             if is_safe_rule(r) and type(t) is int and t > 0}
             continue
+        if name == "allowed_dirs":
+            # Only full paths that can't read as a flag.
+            dirs = item[name] if isinstance(item[name], list) else []
+            values[name] = [d for d in dirs if is_safe_dir(d)]
+            continue
+        if name == "allowed_dirs_at":
+            times = item[name] if isinstance(item[name], dict) else {}
+            values[name] = {d: t for d, t in times.items()
+                            if is_safe_dir(d) and type(t) is int and t > 0}
+            continue
         value = item[name]
         kind = _TYPES[name]
         if kind in ("str", str):
@@ -151,6 +165,9 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
     kept = values.get("allowed_tools", [])
     values["allowed_tools_at"] = {r: t for r, t in values.get("allowed_tools_at", {}).items()
                                   if r in kept}
+    folders = values.get("allowed_dirs", [])
+    values["allowed_dirs_at"] = {d: t for d, t in values.get("allowed_dirs_at", {}).items()
+                                 if d in folders}
     if values.get("fork_source") and not platform_paths.is_safe_id(values["fork_source"]):
         values["fork_source"] = ""
     if provider == "codex":
@@ -161,6 +178,8 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             values[name] = ""
         values["allowed_tools"] = []
         values["allowed_tools_at"] = {}
+        values["allowed_dirs"] = []
+        values["allowed_dirs_at"] = {}
         values["permission_mode"] = "auto"
     return OwnSession(**values)
 
