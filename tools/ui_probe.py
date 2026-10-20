@@ -878,11 +878,13 @@ def d_codex_permission(frame, env):
 
 
 def d_chat_permissions(frame, env):
-    """File, Chat Permissions on a Claude chat with two kept rules: one from
-    before times were kept, one with its time (#329)."""
+    """File, Chat Permissions on a Claude chat with two kept rules (one from
+    before times were kept, one with its time, #329) and a kept folder (#334)."""
     _open(frame, "Visual probe")
+    folder = str(env["folders"]["Scratch"])
     frame.store.update("own-1", allowed_tools=["Bash(git push:*)", "WebFetch(domain:docs.python.org)"],
-                       allowed_tools_at={"WebFetch(domain:docs.python.org)": 1_792_400_000_000})
+                       allowed_tools_at={"WebFetch(domain:docs.python.org)": 1_792_400_000_000},
+                       allowed_dirs=[folder], allowed_dirs_at={folder: 1_792_400_000_000})
     return frame.on_chat_permissions
 
 
