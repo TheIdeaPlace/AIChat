@@ -1518,7 +1518,8 @@ class ChatPermissionsDialog(wx.Dialog):
     The window does the work through ``host`` (an object with ``load(done)``,
     ``change_mode(done)``, ``mode_text()``, ``can_change_mode()``, ``note()``,
     ``empty_text`` and ``can_remove``, with ``remove(rule_id, done)`` when it can;
-    Codex's adds ``native(done)``), whose ``done(rows, error)`` comes back on the
+    a host may add ``native(done)`` and ``native_pending`` for a read-only note:
+    Codex's rule files, or Claude Code's own settings), whose ``done(rows, error)`` comes back on the
     UI thread, after the work is finished: a removal is never said to be done
     before it is. A host that keeps nothing (Codex, #307) gets no Remove buttons.
     """

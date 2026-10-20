@@ -2058,7 +2058,7 @@ def test_chat_permissions_shows_claude_codes_own_rules_for_the_folder(frame, env
     (note, rows), _asked = _chat_permissions(frame, monkeypatch, drive)
     assert asked == [frame.store.get("own-1").cwd]
     assert "Allowed without asking: Run npm test. Bash(npm test). From your settings" in note
-    assert "Not applied until you trust this folder in Claude Code" in note
+    assert "Not applied until this exact folder is trusted in Claude Code" in note
     # Read only: never rows of the chat's own list, so never removed here.
     assert not any("npm test" in row for row in rows)
 

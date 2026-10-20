@@ -34,18 +34,31 @@ INTRO = ("From Claude Code's own settings. These apply to every Claude session w
 NONE = "Claude Code's own settings allow nothing extra for this folder."
 
 
+#: A settings file bigger than this isn't read: a project's own file is
+#: small, and one from a cloned repository could be anything.
+MAX_SIZE = 1024 * 1024
+
+WAITING = ("Not applied until this exact folder is trusted in Claude Code (open a terminal in "
+           "this folder, run claude once, and answer yes when it asks whether you trust the "
+           "files in this folder): the allow rules in this folder's shared settings, ")
+UNKNOWN = ("Applied only if this folder is trusted in Claude Code, and whether it is couldn't "
+           "be checked: the allow rules in this folder's shared settings, ")
+
+
 @dataclass(frozen=True)
 class SettingsRule:
     kind: str          # allow, ask or deny
     rule: str
     source: str        # "your settings", "this folder's shared settings", ...
     path: str
-    applied: bool = True
+    applied: Optional[bool] = True   # None: depends on trust that couldn't be checked
 
 
 def _rules(path: Path) -> Optional[dict]:
     """A settings file's ``permissions``, or None when it's missing or unreadable."""
     try:
+        if path.stat().st_size > MAX_SIZE:
+            return None
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return None
@@ -68,30 +81,34 @@ def rules_for(folder: str) -> Tuple[List[SettingsRule], List[str]]:
         for kind, _label in KINDS:
             entries = permissions.get(kind)
             for rule in entries if isinstance(entries, list) else []:
-                if isinstance(rule, str) and rule.strip():
+                # One line, whatever a cloned repository's file holds, so
+                # no rule can pass for another line of the note.
+                text = " ".join(rule.split()) if isinstance(rule, str) else ""
+                if text:
                     # Claude Code ignores a shared project file's allow
                     # rules until the folder is trusted.
-                    applied = not (shared and kind == "allow" and not trusted)
-                    found.append(SettingsRule(kind, rule.strip(), source, str(path), applied))
+                    applied = True
+                    if shared and kind == "allow":
+                        applied = None if trusted is None else trusted
+                    found.append(SettingsRule(kind, text, source, str(path), applied))
     return found, unreadable
 
 
 def describe(rules: List[SettingsRule], unreadable: List[str] = ()) -> str:
     """The note Chat Permissions shows, one line per rule, readable by line."""
     lines = [INTRO]
-    applied = [r for r in rules if r.applied]
+    applied = [r for r in rules if r.applied is True]
     if not applied:
         lines.append(NONE)
     for kind, label in KINDS:
         for r in (r for r in applied if r.kind == kind):
             lines.append(f"{label}: {describe_claude_rule(r.rule)} {r.rule}. From {r.source}, "
                          f"{r.path}.")
-    waiting = [r for r in rules if not r.applied]
-    if waiting:
-        lines.append("Not applied until you trust this folder in Claude Code (open it in "
-                     "Claude Code once and accept): the allow rules in this folder's shared "
-                     "settings, " + waiting[0].path + ":")
-        lines.extend(f"{describe_claude_rule(r.rule)} {r.rule}." for r in waiting)
+    for state, words in ((False, WAITING), (None, UNKNOWN)):
+        waiting = [r for r in rules if r.applied is state]
+        if waiting:
+            lines.append(words + waiting[0].path + ":")
+            lines.extend(f"{describe_claude_rule(r.rule)} {r.rule}." for r in waiting)
     for path in unreadable:
         lines.append(f"Couldn't read {path}, so its rules aren't listed.")
     return "\n".join(lines)

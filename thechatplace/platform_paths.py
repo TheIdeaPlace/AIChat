@@ -61,8 +61,9 @@ def claude_managed_settings() -> List[Path]:
 
 def claude_settings_files(folder: str) -> List[tuple]:
     """(whose, path, shared project file?) for every Claude Code settings file
-    that can apply to a chat working in ``folder``, in Claude Code's order.
-    Only the folder itself: a parent's ``.claude`` doesn't apply (#336)."""
+    that can apply to a chat working in ``folder``, listed in this order (the
+    note groups the rules by kind). Only the folder itself: a parent's
+    ``.claude`` doesn't apply (#336)."""
     home = claude_home()
     files = [("your administrator's policy", path, False) for path in claude_managed_settings()]
     files += [("your settings", home / "settings.json", False)]
@@ -73,13 +74,16 @@ def claude_settings_files(folder: str) -> List[tuple]:
     return files
 
 
-def claude_folder_trusted(folder: str) -> bool:
+def claude_folder_trusted(folder: str) -> Optional[bool]:
     """Whether Claude Code's trust dialog was accepted for exactly ``folder``
-    (``projects[<folder>].hasTrustDialogAccepted`` in ~/.claude.json)."""
+    (``projects[<folder>].hasTrustDialogAccepted`` in ~/.claude.json), or
+    None when that file can't be read (Claude Code rewrites it often)."""
     try:
         data = json.loads(claude_config_file().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return False
+    except (OSError, ValueError):
+        return None
     projects = data.get("projects") if isinstance(data, dict) else None
     if not isinstance(projects, dict) or not folder:
         return False
