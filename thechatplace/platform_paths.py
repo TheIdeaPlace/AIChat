@@ -65,8 +65,7 @@ def claude_settings_files(folder: str) -> List[tuple]:
     Only the folder itself: a parent's ``.claude`` doesn't apply (#336)."""
     home = claude_home()
     files = [("your administrator's policy", path, False) for path in claude_managed_settings()]
-    files += [("your settings", home / "settings.json", False),
-              ("your local settings", home / "settings.local.json", False)]
+    files += [("your settings", home / "settings.json", False)]
     if folder:
         project = Path(folder) / ".claude"
         files += [("this folder's shared settings", project / "settings.json", True),

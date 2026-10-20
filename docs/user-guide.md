@@ -638,7 +638,7 @@ and terminal sessions are read-only here, so they have no Chat Permissions.
 4. **Claude Code's own settings,** for every Claude session: here, in the desktop app and in a
    terminal. The Chat Place only reads them; change them in Claude Code, for example with
    `/permissions` in a terminal session. They come from:
-   - your settings (`.claude\settings.json` in your user folder, and its `settings.local.json`);
+   - your settings (`.claude\settings.json` in your user folder);
    - the chat's folder: its `.claude\settings.local.json`, and its shared `.claude\settings.json`,
      whose allow rules count only once you've trusted that folder in Claude Code (open the
      folder in Claude Code once and accept). A parent folder's settings don't count;

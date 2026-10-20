@@ -5,7 +5,7 @@ The Chat Place never writes these files. Every turn it runs is Claude Code
 itself, so these rules apply to its chats as they do in the desktop app and a
 terminal. Checked with Claude Code 2.1.296 (``claude -p --debug``):
 
-- your user settings apply everywhere;
+- your user settings (``~/.claude/settings.json``) apply everywhere;
 - the chat folder's ``.claude/settings.local.json`` applies;
 - the chat folder's shared ``.claude/settings.json`` applies, but its allow
   rules are ignored until the folder is trusted in Claude Code ("this
