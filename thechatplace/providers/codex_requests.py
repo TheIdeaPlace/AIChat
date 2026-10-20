@@ -8,6 +8,7 @@ approval, and may add ``additionalPermissions`` (extra folders or network) or
 plain words is shown; anything else is declined, with a fixed reason (#284).
 """
 from dataclasses import dataclass, field
+import json
 import unicodedata
 
 from .codex_events import _id
@@ -153,6 +154,8 @@ class CodexRequest:
     network_host: str = field(default='', repr=False)
     network_protocol: str = ''
     saved_rule_offered: bool = False
+    proposed_prefix: tuple = field(default=(), repr=False)
+    permission_scope: str = field(default='', repr=False)
 
     def offered(self):
         """The decisions to offer, in order. Never one Codex didn't list."""
@@ -408,7 +411,13 @@ def _decode_command(common, params):
     return CodexRequest(**common, command=command, cwd=cwd,
                         reason=_text(params.get('reason'), optional=True),
                         decisions=decisions, extra_access=extra, network_host=host,
-                        network_protocol=protocol, saved_rule_offered=saved)
+                        network_protocol=protocol, saved_rule_offered=saved,
+                        proposed_prefix=tuple(params.get('proposedExecpolicyAmendment') or ()),
+                        permission_scope=json.dumps({
+                            'permissions': params.get('additionalPermissions'),
+                            'network': params.get('networkApprovalContext'),
+                            'outside_sandbox': not extra and not host,
+                        }, sort_keys=True, separators=(',', ':')))
 
 
 def decode_request(request_id, method, params):

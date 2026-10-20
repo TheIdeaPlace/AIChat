@@ -510,6 +510,18 @@ class CodexProvider:
     def answer_owned(self, record, request, result):
         return self.runtime.answer(record, request, result)
 
+    def chat_rules_owned(self, record):
+        return self.runtime.chat_rules(record)
+
+    def remove_chat_rule_owned(self, record, rule_id=None):
+        return self.runtime.remove_chat_rule(record, rule_id)
+
+    def chat_rule_candidate_owned(self, record, request):
+        return self.runtime.chat_rule_candidate(record, request)
+
+    def allow_for_chat_owned(self, record, request):
+        return self.runtime.allow_for_chat(record, request)
+
     def owned_ready(self, record):
         return self.runtime is not None and self.runtime.ready(record)
 

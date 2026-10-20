@@ -25,3 +25,7 @@ shipped.
 - [Codex CLI discovery](codex-cli-discovery.md): Finder launches, native npm/bundle lookup, three-state settings and Windows evidence (#277).
 
 - [Codex live task lists](codex-live-tasks.md): installed history checks, event routing, saved snapshots and visual review (#318).
+
+- [Chat Permissions](chat-permissions.md): Codex backend contract and Claude's shared UI integration checklist (#307).
+
+- [Native Codex scoped execution](codex-scoped-execution-investigation.md): sandbox enforcement probes, platform limits, and the remaining repeated-approval work (#307, #330).

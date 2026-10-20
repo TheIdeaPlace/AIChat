@@ -1414,6 +1414,76 @@ def codex_rule_layers_clear(layers) -> bool:
     return count is not None and not blocked
 
 
+def codex_approval_shell(executable: str) -> str:
+    """Only platform shell locations whose wrapper grammar we understand (#307)."""
+    if sys.platform == 'win32':
+        trusted = [_windows_program('System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')]
+        program_files = os.environ.get('ProgramFiles')
+        if program_files:
+            trusted.append(ntpath.join(program_files, 'PowerShell', '7', 'pwsh.exe'))
+        if ntpath.normcase(executable) in {ntpath.normcase(p) for p in trusted}:
+            return 'powershell'
+    elif executable in ('/bin/bash', '/bin/zsh', '/bin/sh'):
+        return 'posix'
+    return ''
+
+
+def codex_permission_argument(value: str, cwd: str, root: str) -> bool:
+    """Refuse absolute, drive-qualified, escaping and symlink-escaping arguments."""
+    if (not value or value.startswith(('/', '\\')) or ntpath.splitdrive(value)[0]
+            or '..' in value.replace('\\', '/').split('/')):
+        return False
+    try:
+        base = Path(root).resolve(strict=True)
+        return (Path(cwd) / value).resolve().is_relative_to(base)
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
+def codex_git_config(cwd: str, root: str) -> tuple[str, str]:
+    """Read only the chat root's ordinary Git metadata, never follow a gitfile."""
+    base = Path(codex_permission_folder(cwd, root))
+    if Path(cwd).resolve(strict=True) != base:
+        raise ValueError('Kept Git commands require the exact chat folder')
+    gitdir = base / '.git'
+    if not gitdir.is_dir() or gitdir.resolve(strict=True) != gitdir or (gitdir / 'commondir').exists():
+        raise ValueError('Kept Git commands require ordinary local .git metadata')
+    for name in ('config', 'HEAD'):
+        path = gitdir / name
+        if not path.is_file() or path.resolve(strict=True) != path:
+            raise ValueError('Redirected Git metadata cannot use kept rules')
+    with (gitdir / 'config').open(encoding='utf-8') as handle:
+        contents = handle.read(128 * 1024 + 1)
+    if len(contents) > 128 * 1024:
+        raise ValueError('Git configuration is too large to verify')
+    return str(gitdir), contents
+
+
+def codex_permission_targets(paths, root: str) -> bool:
+    """A reusable extra grant may cover only literal targets inside the chat."""
+    base = Path(root).resolve(strict=True)
+    return bool(paths) and all(Path(p).resolve(strict=True).is_relative_to(base) for p in paths)
+
+
+def codex_permission_folder(cwd: str, parent: str) -> str:
+    """Canonical existing local folder inside the chat, for kept approvals (#307)."""
+    paths = [Path(value) for value in (cwd, parent)]
+    if any(not p.is_absolute() or str(p).startswith(('\\\\', '//')) for p in paths):
+        raise ValueError('Local absolute folders required')
+    child, root = (p.resolve(strict=True) for p in paths)
+    if not child.is_dir() or not root.is_dir() or not child.is_relative_to(root):
+        raise ValueError('Approval folder is outside this chat')
+    return str(root)
+
+
+def codex_permission_path(value: str) -> str:
+    """Resolve an extra-access path; uncertain or nonlocal paths cannot be kept."""
+    path = Path(value)
+    if not path.is_absolute() or str(path).startswith(('\\\\', '//')):
+        raise ValueError('Local absolute permission path required')
+    return str(path.resolve(strict=True))
+
+
 def codex_workspace_root(cwd: str) -> str:
     """Bind write access to an existing canonical folder, never a drive root."""
     if not isinstance(cwd, str) or not cwd.strip():

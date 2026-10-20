@@ -48,6 +48,54 @@ def test_handshake_partial_utf8_lines_and_context_cleanup(server):
         connection.request("thread/list", {})
 
 
+@pytest.mark.parametrize('wrapper', ['default', 'alternate'])
+def test_chat_permission_rules_answer_only_once_over_real_stdio(server, tmp_path, monkeypatch, wrapper):
+    from test_codex_permissions import init_repository
+    from test_codex_runtime import wait
+    from thechatplace.providers.codex_execution import CodexExecutionConnection
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    from thechatplace.provider_storage import PartitionedFile
+    monkeypatch.setenv('TCP_FAKE_PERMISSION_CWD', str(tmp_path))
+    monkeypatch.setenv('TCP_FAKE_PERMISSION_WRAPPER', wrapper)
+    init_repository(tmp_path)
+    writes = []
+    write = PartitionedFile._write
+    def checked_write(path, payload):
+        assert path.is_relative_to(tmp_path)
+        assert '.codex' not in path.parts and '.claude' not in path.parts
+        writes.append(path)
+        write(path, payload)
+    monkeypatch.setattr(PartitionedFile, '_write', staticmethod(checked_write))
+    start, _ = server
+    connection = CodexExecutionConnection('owned-chat-permissions', start=start, initialize=False)
+    updates = []
+    service = CodexChatRuntime(updates.append, factory=lambda exe: connection)
+    try:
+        record = service.create(str(tmp_path), 'Synthetic permissions')
+        service.send(record, 'Synthetic turn')
+        wait(lambda: bool(service.snapshot('owned').requests))
+        service.allow_for_chat(record, service.snapshot('owned').requests[0])
+        wait(lambda: bool(service.snapshot('owned').permission_notices))
+        wait(lambda: bool(service.snapshot('owned').requests))
+        compound = service.snapshot('owned').requests[0]
+        assert compound.request_id == 'permission-3'
+        assert service.chat_rule_candidate(record, compound) is None
+        service.remove_chat_rule(record)
+        service.answer(record, compound, compound.approval_answer('decline'))
+        wait(lambda: bool(service.snapshot('owned').requests))
+        after_removal = service.snapshot('owned').requests[0]
+        assert after_removal.request_id == 'permission-4'
+        service.answer(record, after_removal, after_removal.approval_answer('decline'))
+        wait(lambda: service.snapshot('owned').outcome == 'completed')
+        result = connection.request('thread/read', {'threadId': 'owned'})
+        assert [a['result'] for a in result['permissionAnswers']] == [
+            {'decision': 'accept'}, {'decision': 'accept'},
+            {'decision': 'decline'}, {'decision': 'decline'}]
+        assert writes and all(p.parent == service.permission_store.root for p in writes)
+    finally:
+        service.close()
+
+
 @pytest.mark.parametrize('scenario', ['owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown'])
 def test_runtime_midturn_request_hang_and_protocol_failure_use_real_stdio(server, scenario, tmp_path, monkeypatch):
     import time
@@ -698,6 +746,46 @@ def test_api_sign_in_cannot_grant_approval_even_for_a_waiting_owned_request():
         connection.respond_request(request, {'decision': 'accept'})
     assert connection._outgoing.empty()
     connection.respond_request(request, {'decision': 'decline'})
+
+
+def test_approval_preflight_preserves_connection_failure_reason():
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    connection = request_transport()
+    connection._receive(approval_message())
+    request = connection.pop_event()
+    failure = CodexConnectionFailure('stream_closed')
+    def fail(*args):
+        raise failure
+    connection.request = fail
+    with pytest.raises(CodexConnectionFailure) as caught:
+        connection.respond_request(request, {'decision': 'accept'})
+    assert caught.value is failure and 'sign-in' not in str(caught.value)
+    assert connection._outgoing.empty()
+
+
+def test_approval_encoding_failure_does_not_blame_sign_in(monkeypatch):
+    from thechatplace.providers.codex_rpc import CodexApprovalNotSent
+    connection = request_transport()
+    connection._receive(approval_message())
+    request = connection.pop_event()
+    def fail(*args):
+        raise ValueError('synthetic encoding error')
+    monkeypatch.setattr(connection, '_encode', fail)
+    with pytest.raises(CodexApprovalNotSent, match='encoded') as caught:
+        connection.respond_request(request, {'decision': 'accept'})
+    assert 'sign-in' not in str(caught.value) and connection._outgoing.empty()
+
+
+def test_closed_approval_connection_reports_its_original_failure():
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    connection = request_transport()
+    connection._receive(approval_message())
+    request = connection.pop_event()
+    connection._closed = True
+    connection._failure = CodexConnectionFailure('write_failed')
+    with pytest.raises(CodexConnectionFailure) as caught:
+        connection.respond_request(request, {'decision': 'accept'})
+    assert caught.value is connection._failure and connection._outgoing.empty()
 
 
 def test_unowned_duplicate_and_overflowing_requests_are_rejected():
