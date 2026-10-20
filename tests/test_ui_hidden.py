@@ -1910,6 +1910,44 @@ def test_allow_for_this_chat_keeps_the_rule_and_folder_claude_code_suggests(fram
     assert command[command.index("--add-dir") + 1] == folder
 
 
+def test_allow_for_this_chat_keeps_a_read_rule_for_a_folder_outside_the_chat(frame, env,
+                                                                         fake_runner, monkeypatch):
+    """Captured from Claude Code 2.1.296: a PowerShell command that lists a
+    folder outside the chat's own suggests only a Read rule for that folder.
+    Allow for This Chat is offered, keeps it, lists it, and the next turn gets it."""
+    from thechatplace import chat_permissions
+    from thechatplace.ui import dialogs
+    request = _request(tool="PowerShell",
+                       tool_input={"command": "Get-ChildItem C:/Users/probe/GitHub -Directory"},
+                       suggestions=[{"type": "addRules", "behavior": "allow", "destination": "session",
+                                     "rules": [{"toolName": "Read",
+                                                "ruleContent": "//c/Users/probe/GitHub/**"}]}])
+    _waiting_turn(frame, request)
+
+    class Picks(dialogs.PermissionDialog):
+        def ShowModal(self):
+            assert self.session_button is not None
+            assert self.session_button.GetName() == (
+                "Allow, and don't ask again in this chat for Read(//c/Users/probe/GitHub/**)")
+            # As a click on the button does.
+            self.session_button.Command(wx.CommandEvent(wx.wxEVT_BUTTON, self.session_button.GetId()))
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.main_frame.PermissionDialog", Picks)
+    frame.on_answer()
+    own = frame.store.get("own-1")
+    assert own.allowed_tools == ["Read(//c/Users/probe/GitHub/**)"]
+    from thechatplace.ui.permission_hosts import ClaudePermissions
+    rows = []
+    ClaudePermissions(frame, own.to_info()).load(lambda found, error: rows.extend(found or []))
+    assert [r.text().split(" Allowed ")[0] for r in rows] == [
+        "Read //c/Users/probe/GitHub/**. Read(//c/Users/probe/GitHub/**)."]
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Listed."))
+    frame.reply_text.SetValue("again")
+    frame.on_send()
+    command = fake_runner.instances[-1].command
+    assert command[command.index("--allowedTools") + 1] == "Read(//c/Users/probe/GitHub/**)"
+
+
 def _chat_permissions(frame, monkeypatch, drive, answers=()):
     """Open File, Chat Permissions on the selected chat; ``drive(dialog)``
     runs while it's open. Confirmations answer from ``answers`` in turn."""
