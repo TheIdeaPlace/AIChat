@@ -472,7 +472,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   and **Remove All** takes them all, each after one question that names what goes. With nothing
   kept, the list says "Nothing is allowed beyond the permission mode." For a Claude chat a
   removal counts from the next turn: a running turn keeps the rules it started with, and the
-  dialog says so. The Chat Place keeps no Codex approvals yet, so a request Codex shows you
+  dialog says so. Its About box (Alt+T) also lists, read only, the rules from Claude Code's own
+  settings that apply to the chat's folder: your settings, the folder's
+  `.claude\settings.local.json`, its shared `.claude\settings.json` (whose allow rules count
+  only once the folder is trusted in Claude Code, and are listed as waiting until then) and any
+  administrator's policy; a parent folder's settings don't count. Each is named with its file.
+  These apply to every Claude session in that folder, The Chat Place never changes them, and
+  you change them in Claude Code (for example with `/permissions`). The Chat Place keeps no Codex approvals yet, so a request Codex shows you
   always asks; commands covered by Codex's own saved rule files run without asking, as
   described under Codex below. For a Codex chat the dialog shows the permission mode and how
   many of those rule files are in effect, with no Remove buttons. Desktop app and terminal

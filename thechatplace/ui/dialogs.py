@@ -1579,7 +1579,7 @@ class ChatPermissionsDialog(wx.Dialog):
         self.reload()
         native = getattr(host, "native", None)
         if callable(native):
-            self._native = chat_permissions.native_rule_files(pending=True)
+            self._native = getattr(host, "native_pending", "")
             native(self._native_ready)
         self._show_note()
         wx.CallAfter(self.list.SetFocus)

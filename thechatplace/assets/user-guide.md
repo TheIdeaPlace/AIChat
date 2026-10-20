@@ -72,9 +72,7 @@ If Codex isn't installed or its status can't be read, it says what is needed.
 
 The window has three parts, in Tab order:
 
-1. The **session list**: every session, one per line.
-2. The **messages** of the session you've loaded.
-3. The **reply box**, with Send and Stop. For a session you reply to somewhere else (the desktop
+1. The **session list**: every session, one per line. 2. The **messages** of the session you've loaded. 3. The **reply box**, with Send and Stop. For a session you reply to somewhere else (the desktop
    app or a terminal), the same place holds a short note saying where you reply, followed by the
    Open in Claude and Continue Here buttons that apply to it (see Kinds of session).
 
@@ -142,12 +140,7 @@ Read as Plain Text is Option+P, and Command+W closes the page as well as Escape.
 
 Other things you can do with a message:
 
-- **Ctrl+C** copies the whole message.
-- **Ctrl+Shift+B** lists the message's code blocks, by language and size, with each one's code to
-  read and copy. **Ctrl+Shift+C** copies the last code block at once.
-- **Ctrl+Shift+I** lists code blocks, links, changed files, commands, decisions and tasks, for this
-  message or the whole chat, and **Ctrl+L** goes straight to its links: see "Lists" below.
-  **Ctrl+F** and **Ctrl+Shift+S** find text in this session or in all of them: see "Finding
+- **Ctrl+C** copies the whole message. - **Ctrl+Shift+B** lists the message's code blocks, by language and size, with each one's code to read and copy. **Ctrl+Shift+C** copies the last code block at once. - **Ctrl+Shift+I** lists code blocks, links, changed files, commands, decisions and tasks, for this message or the whole chat, and **Ctrl+L** goes straight to its links: see "Lists" below. **Ctrl+F** and **Ctrl+Shift+S** find text in this session or in all of them: see "Finding
   things" below.
 - The Applications key (or Shift+F10) opens the message's menu.
 
@@ -157,8 +150,7 @@ was refused appear as "Permission denied: …".
 ### Command results and compaction
 
 Claude Code's local commands, such as `/compact`, `/context` and `/cost`, show their
-output as **Claude Code** messages, even with Show Tool Activity off. A compaction
-also leaves a **Conversation compacted** row and announces what happened without
+output as **Claude Code** messages, even with Show Tool Activity off. A compaction also leaves a **Conversation compacted** row and announces what happened without
 interrupting sent-message read-back. When Claude reports before/after token counts,
 the row and announcement include them, and Usage and Context updates to the reported
 post-compaction count. The summary of earlier conversation remains tool activity,
@@ -212,8 +204,7 @@ That setting applies only to Claude.
 
 ### In this session
 
-**Ctrl+F** in the messages (View, Find) finds the next message containing some text. It searches
-each message's whole text, not just the first line you see. **F3** and **Shift+F3** find the next
+**Ctrl+F** in the messages (View, Find) finds the next message containing some text. It searches each message's whole text, not just the first line you see. **F3** and **Shift+F3** find the next
 and previous match, going round from the other end when they reach one, and saying so.
 
 ### In every session
@@ -253,14 +244,11 @@ hear "No messages contain …" and no list opens.
 **Ctrl+Shift+I** (View, Lists) opens one dialog listing each kind of thing in a chat, from the
 session list, the messages or the reply box:
 
-- **Code Blocks:** each code block, by language and size, with its code to read.
-- **Links:** each link, its words and where it goes, then who wrote it and roughly when.
-- **Changed Files** (Claude chats): each file Claude changed, with how many lines were added and
+- **Code Blocks:** each code block, by language and size, with its code to read. - **Links:** each link, its words and where it goes, then who wrote it and roughly when. - **Changed Files** (Claude chats): each file Claude changed, with how many lines were added and
   removed, and its changes to read line by line.
 - **Commands:** each command Claude ran: what it said it was doing, then "done", "failed" or
   "no result yet". Its full text shows the command and its output.
-- **Decisions:** each question Claude asked you, with your answer.
-- **Tasks:** the task list, each step with "to do", "in progress" or "done" (see "The task list" above).
+- **Decisions:** each question Claude asked you, with your answer. - **Tasks:** the task list, each step with "to do", "in progress" or "done" (see "The task list" above).
 
 In Codex chats, Lists has Code Blocks, Links and tasks captured while run here. The other kinds
 say they aren't listed yet. Tasks explains when no saved list is available (#318).
@@ -276,9 +264,7 @@ has: "Commands (12)". Tab and Shift+Tab reach it like any other list. Arrow thro
 items below change to that kind; **Enter** moves to that kind's list. From anywhere in Lists,
 these change the kind and leave you on its list:
 
-- **On Windows:** **Ctrl+Tab** and **Ctrl+Shift+Tab**, or **Ctrl+Page Down** and **Ctrl+Page Up**.
-- **On a Mac:** **Cmd+Shift+]** and **Cmd+Shift+[**, as for tabs in Safari and Finder, or
-  **Cmd+Page Down** and **Cmd+Page Up** (with fn on a laptop). Control+Tab is left to macOS, which
+- **On Windows:** **Ctrl+Tab** and **Ctrl+Shift+Tab**, or **Ctrl+Page Down** and **Ctrl+Page Up**. - **On a Mac:** **Cmd+Shift+]** and **Cmd+Shift+[**, as for tabs in Safari and Finder, or **Cmd+Page Down** and **Cmd+Page Up** (with fn on a laptop). Control+Tab is left to macOS, which
   uses it to move between groups of controls. On keyboard layouts where ] and [ need Option, use
   Cmd+Page Down and Page Up.
 - **On Windows, Ctrl+1** to **Ctrl+6** go straight to Code Blocks, Links, Changed Files, Commands,
@@ -286,18 +272,14 @@ these change the kind and leave you on its list:
 
 Lists opens on the kind you used last. Some keys open it on their own kind:
 
-- **Ctrl+Shift+B** in the messages: Code Blocks, for the selected message.
-- **Ctrl+L** (View, Links): Links, for the whole chat.
-- **Ctrl+Shift+J** (View, Tasks): Tasks, for the whole chat.
-- **Ctrl+Shift+D** (View, Changed Files): Changed Files, for the selected message's turn (your
+- **Ctrl+Shift+B** in the messages: Code Blocks, for the selected message. - **Ctrl+L** (View, Links): Links, for the whole chat. - **Ctrl+Shift+J** (View, Tasks): Tasks, for the whole chat. - **Ctrl+Shift+D** (View, Changed Files): Changed Files, for the selected message's turn (your
   latest message's, if none is selected) if it changed any files, otherwise for the whole chat.
 
 For every kind:
 
 - **Enter** reads the item in full in the Details box below the list. For links, Enter (or
   Open) opens the link in your browser and closes Lists.
-- **Ctrl+C** (or Copy) copies the item: the code, the link's address, the file's path, the
-  command, or your answer. You hear what was copied. For links, **Ctrl+Shift+C** (or Copy as
+- **Ctrl+C** (or Copy) copies the item: the code, the link's address, the file's path, the command, or your answer. You hear what was copied. For links, **Ctrl+Shift+C** (or Copy as
   Markdown) copies a Markdown link.
 - **Type** to narrow the list: the letters go into the Filter box (Alt+F), and the list's label
   says how many match, such as "Links (2 of 12)". Down Arrow goes back to the list.
@@ -321,8 +303,7 @@ deliberate: if two programs both worked in one session at the same time, its con
 get tangled. Where the reply box would be, a read-only session has a short note saying where you
 reply, followed by the buttons that apply to it. **Ctrl+3** moves to that note.
 
-To list one kind, use View, Show Sessions (Alt+V, H): **Desktop App Sessions** (Code and
-Cowork together), **Cowork Sessions**, **Terminal Sessions** or **Chat Place Sessions**. Ctrl+F in
+To list one kind, use View, Show Sessions (Alt+V, H): **Desktop App Sessions** (Code and Cowork together), **Cowork Sessions**, **Terminal Sessions** or **Chat Place Sessions**. Ctrl+F in
 the session list also finds sessions by "cowork" or "terminal".
 
 ### Desktop app sessions
@@ -403,10 +384,7 @@ The Claude-specific desktop and Cowork actions are shown in this table:
 
 | Kind | Started in | Its line adds | You reply | Open in Claude | Continue Here |
 |---|---|---|---|---|---|
-| **Desktop app session** | The Claude desktop app's Code tab | "desktop app session" | in the desktop app | yes | yes |
-| **Cowork session** | The desktop app's Cowork tab | "Cowork session" | in the desktop app | yes | no |
-| **Terminal session** | A terminal, by typing `claude` | "terminal session" | in that terminal | no | yes |
-| **Chat Place session** | The Chat Place (File, New Session) | "Chat Place session" | here, in the reply box | no | not needed |
+| **Desktop app session** | The Claude desktop app's Code tab | "desktop app session" | in the desktop app | yes | yes | | **Cowork session** | The desktop app's Cowork tab | "Cowork session" | in the desktop app | yes | no | | **Terminal session** | A terminal, by typing `claude` | "terminal session" | in that terminal | no | yes | | **Chat Place session** | The Chat Place (File, New Session) | "Chat Place session" | here, in the reply box | no | not needed |
 
 ### Local Codex chats
 
@@ -488,15 +466,13 @@ permission modes below describe Claude chats. Then fill in:
 - **Folder:** the project folder the session works in. It starts at the folder you used most recently.
   The list holds the folders your sessions have used, The Chat Place's and the desktop app's,
   newest first: on Windows, Up and Down Arrow move through it, and Alt+Down Arrow opens it. You
-  can also type a folder, or choose one with **Browse** (Alt+B).
-- **From GitHub** (Alt+G) lists your GitHub repositories, and you hear how many. Type to narrow
+  can also type a folder, or choose one with **Browse** (Alt+B). - **From GitHub** (Alt+G) lists your GitHub repositories, and you hear how many. Type to narrow
   the list, or type owner/name (or a GitHub address) for that repository, even one that isn't
   yours, then press Enter. If the repository is already in your GitHub folder, that folder is
   used; otherwise it's cloned there first, and you hear "Cloning" and then "Cloned". Cancel
   stops a clone and leaves nothing behind. This uses the GitHub CLI (gh), signed in with gh auth
   login; if it can't list your repositories, the list says why.
-- **Work in** (Alt+I): **The folder as it is** (it says which branch the folder is on), or
-  **A new worktree**, a separate copy of the repository on a branch of its own, so the
+- **Work in** (Alt+I): **The folder as it is** (it says which branch the folder is on), or **A new worktree**, a separate copy of the repository on a branch of its own, so the
   session's changes stay apart from the folder and from your other sessions. With a worktree,
   choose a branch in **Branch** (Alt+R), or type a new name to make that branch from the
   folder's current one. A branch that's already checked out somewhere isn't offered, since a
@@ -504,8 +480,7 @@ permission modes below describe Claude chats. Then fill in:
   the session starts once it's made, inside the repository's .claude folder where Claude Code
   and the desktop app make theirs. It stays there when you're done; remove it with git worktree
   remove.
-- **Title:** optional; without one, it's made from the first words of your message.
-- **Model:** Default (your Claude Code setting), Opus, Sonnet or Haiku, each the latest of its
+- **Title:** optional; without one, it's made from the first words of your message. - **Model:** Default (your Claude Code setting), Opus, Sonnet or Haiku, each the latest of its
   kind. File, Change Model changes it later, from the next turn. Fable isn't offered, because on
   some plans it bills to usage credits without asking; if a turn would run on Fable anyway, The
   Chat Place stops it before anything is sent, and says why.
@@ -528,8 +503,7 @@ For a Claude session started by The Chat Place, these File menu items change wha
 Each opens a list that starts on the current choice, marked "(now)"; choose another and press
 Enter, or Escape to leave it as it is.
 
-- **Change Model** (Alt+F, D): Default, Opus, Sonnet or Haiku.
-- **Change Effort** (Alt+F, F): Default, Low, Medium, High, Extra high or Max. Models that don't
+- **Change Model** (Alt+F, D): Default, Opus, Sonnet or Haiku. - **Change Effort** (Alt+F, F): Default, Low, Medium, High, Extra high or Max. Models that don't
   support effort levels ignore it.
 - **Change Permission Mode** (Ctrl+Shift+O): auto, accept edits, manual or plan.
 
@@ -589,11 +563,9 @@ These are for The Chat Place's own sessions:
 Keep messages you send often as prompts, each with a name, and put one in the reply box when you
 need it:
 
-- **Ctrl+Shift+P** (File, Prompts) lists your prompts by name, with the selected one's text below
-  it (Alt+X to read it). **Enter**, or Use, puts the prompt in the reply box of the loaded Chat
+- **Ctrl+Shift+P** (File, Prompts) lists your prompts by name, with the selected one's text below it (Alt+X to read it). **Enter**, or Use, puts the prompt in the reply box of the loaded Chat
   Place session, at the cursor, ready to change and send.
-- In the same dialog, **New** and **Edit** ask for a name and the text (Enter starts a new line in
-  the text, and Ctrl+Enter saves). **Delete** asks first. **Move Up** and **Move Down** change the
+- In the same dialog, **New** and **Edit** ask for a name and the text (Enter starts a new line in the text, and Ctrl+Enter saves). **Delete** asks first. **Move Up** and **Move Down** change the
   order. Each change is saved straight away, and you hear what happened, such as "Prompt saved:
   Review". Escape closes.
 - **Ctrl+Shift+Enter** in the reply box saves what you've typed as a prompt and sends it. It asks
@@ -623,14 +595,13 @@ has a plan for you to approve, the turn waits for you. You hear it ("Fix the bui
 Claude wants to run git push. Ctrl+Shift+A answers."), and the session shows as "needs you" in
 the list. Press **Ctrl+Shift+A** to answer:
 
-- **A permission:** read the whole request (the command, or the file and what would change), then
-  choose **Allow**, **Deny**, or, when Claude Code suggests a rule, **Allow for This Chat**,
-  named in full ("don't ask again in this chat for Bash(git push:*)"). Deny is the default button,
-  so pressing Enter by mistake never allows anything, and you can give a reason Claude reads.
+- **A permission:** read the whole request (the command, or the file and what would change), then choose **Allow** (this request only), **Allow for This Chat** (keep a rule so it doesn't ask again in this chat; shown when Claude Code suggests one, and named in full) or **Deny**. Deny is
+  the default button, so pressing Enter by mistake never allows anything, and you can give a
+  reason Claude reads. "Permissions: what a chat may do without asking" below explains every
+  level.
 - **A question:** each question is a group of choices, with Other and a box for your own answer.
   Send Answers, or Don't Answer.
-- **A plan:** read it (Read Formatted shows it as a page, by heading), then **Approve**, choosing
-  how Claude carries on, or **Keep Planning**, the default, with what to change.
+- **A plan:** read it (Read Formatted shows it as a page, by heading), then **Approve**, choosing how Claude carries on, or **Keep Planning**, the default, with what to change.
 
 **Escape answers later.** Nothing is allowed or refused by waiting: the turn keeps waiting, and
 Ctrl+Shift+A brings the same request back. "Allow for This Chat" lasts for the rest of that
@@ -641,29 +612,66 @@ For a desktop app session, a "needs you" means the desktop app's summary of its 
 it's waiting on you. Answer it in the desktop app (Ctrl+O). The desktop app doesn't write that
 summary after every turn, so a desktop session can be waiting on you and still show as idle.
 
-### What a chat may do without asking
+## Permissions: what a chat may do without asking
 
-**File, Chat Permissions** (Ctrl+Shift+H) shows it for a chat started here, working or idle:
+Several things together decide whether a chat asks you before it acts. **File, Chat Permissions** (Ctrl+Shift+H) shows them for a chat started here, working or idle. Desktop app
+and terminal sessions are read-only here, so they have no Chat Permissions.
 
-- **Permission mode**, in words, with **Change...**, which offers the same choices as Change
-  Permission Mode. A Codex chat's mode can change only once its turn has finished.
-- **Allowed for this chat:** one row per kept rule, read in full: what it allows, the rule
-  itself and when it was allowed, such as "Run git push (any arguments). Bash(git push:*).
-  Allowed 19 October 2026 at 14:05." For a command that writes, such as `mkdir`, the folder it
-  works in is kept too, on its own row ("Work in the folder …"), since Claude Code asks again
-  without it. Claude can then use that folder as it uses the chat's own folder. Removing a rule
-  leaves its folder; remove the folder's row too to take it back. A rule kept before this release says "Allowed: time not
+### For a Claude chat, from narrowest to widest
+
+1. **Your answer to one request.** When Claude asks (you hear it, and Ctrl+Shift+A answers): - **Allow** lets this one request run. Nothing is kept, and the same request asks again
+     next time.
+   - **Allow for This Chat** (shown when Claude Code suggests something to keep) lets it run and
+     keeps a rule with this chat, so later requests it covers don't ask. Its full name says
+     what it keeps, such as "Allow, and don't ask again in this chat for Bash(git push:*)". For a
+     command that writes, such as `mkdir`, it also keeps the folder the command works in ("…, and
+     let Claude work in the folder …"), because Claude Code asks again without it; Claude can then
+     use that folder as it uses the chat's own. When Claude Code suggests no rule, only accepting
+     all edits, this button switches the chat to Accept Edits instead.
+   - **Deny** refuses, and can carry a reason Claude reads. It's the default button. 2. **Rules kept with this chat.** What you allowed with Allow for This Chat. They last for the
+   rest of the chat, across turns and restarts, until you remove them, and no other chat gets
+   them. A Continue Here copy starts with none.
+3. **The chat's permission mode.** Auto (Claude decides what's safe), Accept Edits (file edits
+   don't ask), Manual (anything that needs approval asks) or Plan (plans only, changes nothing).
+   It's kept with the chat; change it with Change Permission Mode (Ctrl+Shift+O) or the Change
+   button in Chat Permissions. A change counts from the next turn.
+4. **Claude Code's own settings,** for every Claude session: here, in the desktop app and in a
+   terminal. The Chat Place only reads them; change them in Claude Code, for example with
+   `/permissions` in a terminal session. They come from:
+   - your settings (`.claude\settings.json` in your user folder, and its `settings.local.json`);
+   - the chat's folder: its `.claude\settings.local.json`, and its shared `.claude\settings.json`,
+     whose allow rules count only once you've trusted that folder in Claude Code (open the
+     folder in Claude Code once and accept). A parent folder's settings don't count;
+   - an administrator's policy, if your computer has one.
+
+   Each rule says what it does: allowed without asking, always asks, or never allowed. A "never
+   allowed" rule wins over anything you allow.
+
+Claude Code also never asks about commands it knows only read, such as `git status`, even in
+Manual.
+
+### Chat Permissions for a Claude chat
+
+- **Permission mode**, in words, with **Change...**. - **Allowed for this chat:** one row per kept rule or folder, read in full: what it allows, the
+  rule itself and when it was allowed, such as "Run git push (any arguments). Bash(git push:*).
+  Allowed 19 October 2026 at 14:05." A rule kept before this release says "Allowed: time not
   recorded". With nothing kept, the list says "Nothing is allowed beyond the permission mode."
-- **Remove** (or Delete in the list) takes the selected rule back, and **Remove All** takes them
-  all. Each asks once, naming what goes; No is the default.
+- **Remove** (or Delete in the list) takes the selected row back, and **Remove All** takes them
+  all. Each asks once, naming what goes; No is the default. Removing a rule leaves a folder kept
+  with it; remove the folder's row too. A removal counts from the next turn: a turn that's
+  running keeps the rules it started with, and the dialog says so.
+- **About these permissions** (Alt+T) says when a removal counts, then lists the rules from
+  Claude Code's own settings that apply to this chat's folder, each with its file, and any shared
+  rules waiting for the folder to be trusted. These can't be removed here.
 
-A removal counts from the chat's next turn: a turn that's running keeps the rules it started
-with, and the dialog says so. The Chat Place keeps no Codex approvals yet, so a request Codex
-shows you always asks; commands covered by Codex's own saved rule files run without asking (see
-the Codex section). For a Codex chat, Chat Permissions shows the permission mode and how many of
-those rule files are in effect, with no Remove buttons; the rule files are changed in Codex.
-Desktop app and terminal sessions are read-only here, so they have no Chat Permissions, and a
-Continue Here copy starts with nothing kept.
+### For a Codex chat
+
+The Chat Place keeps no Codex approvals yet, so each request Codex shows you asks, and your
+answer covers that one request; Codex's own "for the rest of the session" and "always allow"
+offers are never used. Commands covered by Codex's own saved rule files run without asking (see
+"Local Codex chats" above). Chat Permissions shows the permission mode, with Change (once the
+chat's turn has finished), and how many of those rule files are in effect. It has no Remove
+buttons, since nothing is kept here; the rule files are changed in Codex.
 
 ## Organizing your sessions
 
@@ -716,11 +724,9 @@ The dialog has two lists. **Available columns** (Alt+V in the dialog) are the on
 Down, Move to Top, Move to Bottom and Reset to Default do what they say, and each tells you what
 happened ("Status moved to top, 1 of 11"). The keys work too:
 
-- **Enter** in Available columns adds the column to the end of the line.
-- **Delete** in Shown columns removes one (on a Mac, Delete or Fn+Delete). At least one column
+- **Enter** in Available columns adds the column to the end of the line. - **Delete** in Shown columns removes one (on a Mac, Delete or Fn+Delete). At least one column
   is always shown.
-- **Alt+Up** and **Alt+Down** in Shown columns move the column up or down; **Alt+Home** and
-  **Alt+End** move it to the top or bottom. On a Mac these use Option.
+- **Alt+Up** and **Alt+Down** in Shown columns move the column up or down; **Alt+Home** and **Alt+End** move it to the top or bottom. On a Mac these use Option.
 
 You stay on the column you moved. The preview at the bottom reads the selected session's line as
 it will be. **OK** saves your choice and changes the list at once, still on the same session;
@@ -772,9 +778,7 @@ when no screen reader is running) and put on the status bar. **Ctrl+Shift+R** re
 
 **Settings** (Ctrl+Comma) chooses how much is said:
 
-- **Full** reads the whole reply.
-- **Summary** reads the session's name and the reply's first sentence.
-- **Silent** puts it on the status bar only.
+- **Full** reads the whole reply. - **Summary** reads the session's name and the reply's first sentence. - **Silent** puts it on the status bar only.
 
 Settings also chooses whether every listed session is announced or just the open one, which
 speech engine and rate to use, whether your own messages are read back when they're sent, and
@@ -814,8 +818,7 @@ notification is shown.
   from, when, where it is in the list, how many lines, words and characters, links and code blocks
   it has. Elsewhere it's the loaded session. Ctrl+C copies the selected line, Copy All (Alt+A)
   copies every line, and Escape closes the list. On a Mac the key is Option+Return.
-- **Export** (Ctrl+E) saves a session's conversation as Markdown, a web page or plain text.
-- **What Claude Knows About You** (Ctrl+Shift+K) lists what Claude Code keeps about you: your
+- **Export** (Ctrl+E) saves a session's conversation as Markdown, a web page or plain text. - **What Claude Knows About You** (Ctrl+Shift+K) lists what Claude Code keeps about you: your
   instructions (CLAUDE.md files), the memories it saved, your skills, subagents, commands and
   settings. Enter reads one, and Edit in Your Editor opens it in your own editor.
 
@@ -923,8 +926,7 @@ here passes your message on, and the other session's reply comes back to that se
 
 **Sending a message:**
 
-1. Load your session and press **Ctrl+Shift+M** (File, Other Machines).
-2. The first time, the list only offers **Refresh the list (asks Claude)**. Choose it. Claude
+1. Load your session and press **Ctrl+Shift+M** (File, Other Machines). 2. The first time, the list only offers **Refresh the list (asks Claude)**. Choose it. Claude
    looks up your sessions on other computers, as a turn in this session, and says what it found.
 3. When it has answered, press **Ctrl+Shift+M** again. Now the list has each session on your
    other computers and how it is: "idle", "working", "needs you" or "offline".
@@ -962,13 +964,10 @@ won't install while any provider is working in one of its sessions, and it warns
 haven't sent. Updating never touches your sessions or settings.
 
 The Help menu's update item always says which version you're running, such as
-**Check for Updates (running 0.1.4)**. When a newer version has been found, it says so instead,
-such as **Update to 0.1.5 Available**, and choosing it offers the update. Alt+H, U reaches it
+**Check for Updates (running 0.1.4)**. When a newer version has been found, it says so instead, such as **Update to 0.1.5 Available**, and choosing it offers the update. Alt+H, U reaches it
 either way.
 
-The first time The Chat Place starts after an update, **The Chat Place Update Installed** says
-which version you now have. **See what's new** (Alt+W) opens that version's release notes in your
-browser; **Close** or Escape goes back to the app. To stop it appearing, clear "Tell me when an
+The first time The Chat Place starts after an update, **The Chat Place Update Installed** says which version you now have. **See what's new** (Alt+W) opens that version's release notes in your browser; **Close** or Escape goes back to the app. To stop it appearing, clear "Tell me when an
 update has been installed, with a link to what's new" in Settings (Ctrl+Comma).
 
 ## When something isn't right

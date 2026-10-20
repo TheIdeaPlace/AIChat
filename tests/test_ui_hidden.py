@@ -2038,7 +2038,29 @@ def test_chat_permissions_says_a_running_turn_keeps_its_rules(frame, env, monkey
     from thechatplace import chat_permissions
     _waiting_turn(frame)
     note, _asked = _chat_permissions(frame, monkeypatch, lambda dialog: dialog.note.GetValue())
-    assert note == chat_permissions.CLAUDE_RUNNING
+    assert note.startswith(chat_permissions.CLAUDE_RUNNING)
+
+
+def test_chat_permissions_shows_claude_codes_own_rules_for_the_folder(frame, env, monkeypatch):
+    """Read only, on a worker, after the chat's own rules (#336)."""
+    from thechatplace import claude_settings
+    folder_rules = [claude_settings.SettingsRule("allow", "Bash(npm test)", "your settings",
+                                                 "C:/probe/.claude/settings.json"),
+                    claude_settings.SettingsRule("allow", "Bash(make)", "this folder's shared settings",
+                                                 "C:/probe/work/.claude/settings.json", applied=False)]
+    asked = []
+    monkeypatch.setattr(claude_settings, "rules_for", lambda folder: asked.append(folder) or (folder_rules, []))
+    select(frame, "Hub probe")
+
+    def drive(dialog):
+        pump(lambda: "From Claude Code's own settings" in dialog.note.GetValue())
+        return dialog.note.GetValue(), list(dialog.list.GetStrings())
+    (note, rows), _asked = _chat_permissions(frame, monkeypatch, drive)
+    assert asked == [frame.store.get("own-1").cwd]
+    assert "Allowed without asking: Run npm test. Bash(npm test). From your settings" in note
+    assert "Not applied until you trust this folder in Claude Code" in note
+    # Read only: never rows of the chat's own list, so never removed here.
+    assert not any("npm test" in row for row in rows)
 
 
 def test_chat_permissions_is_for_chats_started_here(frame, env, monkeypatch):
