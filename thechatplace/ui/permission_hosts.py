@@ -7,7 +7,7 @@ many of Codex's own rule files are in effect, read on a worker.
 """
 from __future__ import annotations
 
-from .. import chat_permissions
+from .. import chat_permissions, claude_settings
 from ..claude_cli import PERMISSION_MODES, normalize_permission_mode
 from ..sessions import NEEDS_YOU, WORKING
 
@@ -20,6 +20,7 @@ CODEX_MODES = [(('read-only', 'on-request'), 'Read-only; asks before allowing ch
 class ClaudePermissions:
     can_remove = True
     empty_text = chat_permissions.EMPTY
+    native_pending = "Checking Claude Code's own settings for this folder..."
 
     def __init__(self, frame, info):
         self.frame = frame
@@ -62,6 +63,17 @@ class ClaudePermissions:
         done(chat_permissions.claude_rows(own.allowed_tools, own.allowed_tools_at,
                                           own.allowed_dirs, own.allowed_dirs_at), None)
 
+    def native(self, done):
+        """The rules in Claude Code's own settings for this chat's folder,
+        read on a worker (a folder on a network drive can be slow), #336."""
+        own = self._own()
+        folder = own.cwd if own is not None else ""
+
+        def read():
+            return claude_settings.describe(*claude_settings.rules_for(folder))
+        self.frame._codex_work(read, lambda text, error: done(
+            "Claude Code's own settings couldn't be read." if error else text))
+
     def remove(self, rule_id, done):
         own = self._own()
         if own is None:
@@ -96,6 +108,7 @@ class CodexPermissions:
     #: Nothing to remove, so the dialog offers no Remove (#307).
     can_remove = False
     empty_text = chat_permissions.CODEX_EMPTY
+    native_pending = chat_permissions.native_rule_files(pending=True)
 
     def __init__(self, frame, info, record):
         self.frame, self.info, self.record = frame, info, record

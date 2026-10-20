@@ -31,7 +31,7 @@ Help, Keyboard Shortcuts (F1).</p>
 <p>The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
 Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products.</p>
-<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-session">Reading a session</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#kinds-of-session">Kinds of session</a></li><li><a href="#starting-a-session-and-replying">Starting a session and replying</a></li><li><a href="#answering-permissions-and-questions">Answering permissions and questions</a></li><li><a href="#organizing-your-sessions">Organizing your sessions</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-sessions">Links to sessions</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-sessions-on-other-computers">Your sessions on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#when-something-isn-t-right">When something isn't right</a></li><li><a href="#good-to-know">Good to know</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
+<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-session">Reading a session</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#kinds-of-session">Kinds of session</a></li><li><a href="#starting-a-session-and-replying">Starting a session and replying</a></li><li><a href="#answering-permissions-and-questions">Answering permissions and questions</a></li><li><a href="#permissions-what-a-chat-may-do-without-asking">Permissions: what a chat may do without asking</a></li><li><a href="#organizing-your-sessions">Organizing your sessions</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-sessions">Links to sessions</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-sessions-on-other-computers">Your sessions on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#when-something-isn-t-right">When something isn't right</a></li><li><a href="#good-to-know">Good to know</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
 <p>You need:</p>
 <ul>
 <li>Windows 10 or 11, or a Mac with Apple silicon.</li>
@@ -585,9 +585,10 @@ Claude wants to run git push. Ctrl+Shift+A answers."), and the session shows as 
 the list. Press <strong>Ctrl+Shift+A</strong> to answer:</p>
 <ul>
 <li><strong>A permission:</strong> read the whole request (the command, or the file and what would change), then
-  choose <strong>Allow</strong>, <strong>Deny</strong>, or, when Claude Code suggests a rule, <strong>Allow for This Chat</strong>,
-  named in full ("don't ask again in this chat for Bash(git push:*)"). Deny is the default button,
-  so pressing Enter by mistake never allows anything, and you can give a reason Claude reads.</li>
+  choose <strong>Allow</strong> (this request only), <strong>Allow for This Chat</strong> (keep a rule so it doesn't ask
+  again in this chat; shown when Claude Code suggests one, and named in full) or <strong>Deny</strong>. Deny is
+  the default button, so pressing Enter by mistake never allows anything, and you can give a
+  reason Claude reads. "Permissions: what a chat may do without asking" below explains every level.</li>
 <li><strong>A question:</strong> each question is a group of choices, with Other and a box for your own answer.
   Send Answers, or Don't Answer.</li>
 <li><strong>A plan:</strong> read it (Read Formatted shows it as a page, by heading), then <strong>Approve</strong>, choosing
@@ -600,28 +601,52 @@ changes Claude Code's own settings files.</p>
 <p>For a desktop app session, a "needs you" means the desktop app's summary of its latest turn says
 it's waiting on you. Answer it in the desktop app (Ctrl+O). The desktop app doesn't write that
 summary after every turn, so a desktop session can be waiting on you and still show as idle.</p>
-<h3>What a chat may do without asking</h3>
-<p><strong>File, Chat Permissions</strong> (Ctrl+Shift+H) shows it for a chat started here, working or idle:</p>
+<h2 id="permissions-what-a-chat-may-do-without-asking">Permissions: what a chat may do without asking</h2>
+<p>Several things together decide whether a chat asks you before it acts. <strong>File, Chat Permissions</strong> (Ctrl+Shift+H) shows them for a chat started here, working or idle. Desktop app and terminal sessions are read-only here, so they have no Chat Permissions.</p>
+<h3>For a Claude chat</h3>
+<ol>
+<li>
+<p><strong>Your answer to one request.</strong> When Claude asks, you hear it, and Ctrl+Shift+A answers:</p>
 <ul>
-<li><strong>Permission mode</strong>, in words, with <strong>Change...</strong>, which offers the same choices as Change
-  Permission Mode. A Codex chat's mode can change only once its turn has finished.</li>
-<li><strong>Allowed for this chat:</strong> one row per kept rule, read in full: what it allows, the rule
-  itself and when it was allowed, such as "Run git push (any arguments). Bash(git push:*).
-  Allowed 19 October 2026 at 14:05." For a command that writes, such as <code>mkdir</code>, the folder it
-  works in is kept too, on its own row ("Work in the folder …"), since Claude Code asks again
-  without it. Claude can then use that folder as it uses the chat's own folder. Removing a rule
-  leaves its folder; remove the folder's row too to take it back. A rule kept before this release says "Allowed: time not
-  recorded". With nothing kept, the list says "Nothing is allowed beyond the permission mode."</li>
-<li><strong>Remove</strong> (or Delete in the list) takes the selected rule back, and <strong>Remove All</strong> takes them
-  all. Each asks once, naming what goes; No is the default.</li>
+<li><strong>Allow</strong> lets this one request run. Nothing is kept; the same request asks again next time.</li>
+<li><strong>Allow for This Chat</strong> lets it run and keeps a rule with this chat, so later requests the rule covers don't ask. It's shown only when Claude Code suggests something to keep, and its name says what it keeps, such as "Allow, and don't ask again in this chat for <code>Bash(git push:*)</code>". For a command that writes, such as <code>mkdir</code>, it also keeps the folder the command works in ("…, and let Claude work in the folder …"), because Claude Code asks again without it; Claude can then use that folder as it uses the chat's own. When Claude Code suggests only accepting file edits, it switches the chat to Accept edits instead.</li>
+<li><strong>Deny</strong> refuses, and can carry a reason Claude reads. It's the default button.</li>
 </ul>
-<p>A removal counts from the chat's next turn: a turn that's running keeps the rules it started
-with, and the dialog says so. The Chat Place keeps no Codex approvals yet, so a request Codex
-shows you always asks; commands covered by Codex's own saved rule files run without asking (see
-the Codex section). For a Codex chat, Chat Permissions shows the permission mode and how many of
-those rule files are in effect, with no Remove buttons; the rule files are changed in Codex.
-Desktop app and terminal sessions are read-only here, so they have no Chat Permissions, and a
-Continue Here copy starts with nothing kept.</p>
+</li>
+<li>
+<p><strong>Rules kept with this chat.</strong> What you kept with Allow for This Chat. They last across turns and restarts until you remove them in Chat Permissions. No other chat gets them, and a Continue Here copy starts with none.</p>
+</li>
+<li>
+<p><strong>The chat's permission mode.</strong> Auto: Claude decides what is safe to run without asking. Accept edits: file edits don't ask; commands that need approval do. Manual: anything that needs approval asks. Plan: Claude plans and changes nothing. Change it with Change Permission Mode (Ctrl+Shift+O) or Change in Chat Permissions; it counts from the next turn.</p>
+</li>
+<li>
+<p><strong>Claude Code's own settings.</strong> These apply to every Claude session in the folder: here, in the desktop app and in a terminal. The Chat Place only reads them; change them in Claude Code, for example with <code>/permissions</code>. They come from:</p>
+<ul>
+<li>your settings: <code>.claude\settings.json</code> in your user folder;</li>
+<li>the chat's folder: its <code>.claude\settings.local.json</code>, and its shared <code>.claude\settings.json</code>, whose allow rules count only once that exact folder is trusted in Claude Code (see below);</li>
+<li>an administrator's policy file, if your computer has one.</li>
+</ul>
+<p>A parent folder's settings don't count.</p>
+</li>
+</ol>
+<h3>How the levels combine</h3>
+<ul>
+<li>A "never allowed" rule in Claude Code's settings refuses without asking, even if you allowed it for this chat or the mode would allow it.</li>
+<li>An "always asks" rule in Claude Code's settings asks every time, even after Allow for This Chat.</li>
+<li>Otherwise, anything allowed at any level runs without asking.</li>
+<li>Claude Code never asks about commands it knows only read, such as <code>git status</code>, even in Manual.</li>
+</ul>
+<h3>Trusting a folder in Claude Code</h3>
+<p>A folder's shared <code>.claude\settings.json</code> usually comes with the project, so Claude Code ignores its allow rules until you've said you trust that folder. To trust it, open a terminal in that exact folder, run <code>claude</code>, and answer yes when it asks whether you trust the files in this folder. Trust is for that folder only: trusting a parent folder, or the repository a worktree was made from, doesn't count. Until then, Chat Permissions lists those rules as waiting.</p>
+<h3>Chat Permissions for a Claude chat</h3>
+<ul>
+<li><strong>Permission mode</strong>, in words, with <strong>Change...</strong>.</li>
+<li><strong>Allowed for this chat:</strong> one row per kept rule or folder, read in full: what it allows, the rule itself and when it was allowed, such as "Run git push (any arguments). Bash(git push:*). Allowed 19 October 2026 at 14:05." A rule kept before this release says "Allowed: time not recorded". With nothing kept, the list says "Nothing is allowed beyond the permission mode."</li>
+<li><strong>Remove</strong> (or Delete in the list) takes the selected row back, and <strong>Remove All</strong> takes them all. Each asks once, naming what goes; No is the default. Removing a rule leaves a folder kept with it; remove the folder's row too. A removal counts from the next turn: a turn that's running keeps the rules it started with, and the dialog says so.</li>
+<li><strong>About these permissions</strong> (Alt+T) says when a removal counts, then lists the rules from Claude Code's own settings that apply to this chat's folder, each with its file, and any shared rules waiting for the folder to be trusted. These can't be removed here.</li>
+</ul>
+<h3>For a Codex chat</h3>
+<p>The Chat Place keeps no Codex approvals yet, so each request Codex shows you asks, and your answer covers that one request; Codex's own "for the rest of the session" and "always allow" offers are never used. Commands covered by Codex's own saved rule files run without asking (see "Local Codex chats" above). Chat Permissions shows the permission mode, with Change (once the chat's turn has finished), and how many of those rule files are in effect. It has no Remove buttons, since nothing is kept here; the rule files are changed in Codex.</p>
 <h2 id="organizing-your-sessions">Organizing your sessions</h2>
 <p>With many sessions, these keep the list manageable.</p>
 <h3>Choosing which sessions are listed</h3>

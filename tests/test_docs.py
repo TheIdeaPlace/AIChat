@@ -48,3 +48,14 @@ def test_contents_links_survive_awkward_headings():
     assert ids == ["contents", "groups", "groups-2", "contents-2", "use-claude-p",
                    "section-5", "über-more"]
     assert body.index("<h1>") < body.index("<nav")
+
+
+
+def test_the_guides_lists_and_tables_are_never_joined_onto_one_line():
+    """Each list item and table row starts its own line: a reflow once joined
+    them, and the guide then read as run-on text (#336)."""
+    import re
+    guide = (ROOT / "thechatplace" / "assets" / "user-guide.md").read_text(encoding="utf-8")
+    joined = [line for line in guide.splitlines()
+              if re.search(r"\S\s+- \*\*", line) or line.count(" | ") > 8]
+    assert joined == []

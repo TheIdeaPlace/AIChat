@@ -20,6 +20,7 @@ app (none of this is documented, so every caller treats it as best effort):
 """
 from __future__ import annotations
 
+import json
 import ntpath
 import os
 import platform
@@ -39,6 +40,59 @@ def claude_home() -> Path:
     if override:
         return Path(override)
     return Path.home() / ".claude"
+
+
+def claude_config_file() -> Path:
+    """``~/.claude.json``, where Claude Code records which folders you've
+    trusted (inside CLAUDE_CONFIG_DIR when that is set)."""
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    return Path(override) / ".claude.json" if override else Path.home() / ".claude.json"
+
+
+def claude_managed_settings() -> List[Path]:
+    """Where an administrator's Claude Code policy can be (#336)."""
+    if sys.platform == "win32":
+        return [Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "ClaudeCode"
+                / "managed-settings.json",
+                Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "ClaudeCode"
+                / "managed-settings.json"]
+    return [Path("/Library/Application Support/ClaudeCode/managed-settings.json")]
+
+
+def claude_settings_files(folder: str) -> List[tuple]:
+    """(whose, path, shared project file?) for every Claude Code settings file
+    that can apply to a chat working in ``folder``, listed in this order (the
+    note groups the rules by kind). Only the folder itself: a parent's
+    ``.claude`` doesn't apply (#336)."""
+    home = claude_home()
+    files = [("your administrator's policy", path, False) for path in claude_managed_settings()]
+    files += [("your settings", home / "settings.json", False)]
+    if folder:
+        project = Path(folder) / ".claude"
+        files += [("this folder's shared settings", project / "settings.json", True),
+                  ("this folder's local settings", project / "settings.local.json", False)]
+    return files
+
+
+def claude_folder_trusted(folder: str) -> Optional[bool]:
+    """Whether Claude Code's trust dialog was accepted for exactly ``folder``
+    (``projects[<folder>].hasTrustDialogAccepted`` in ~/.claude.json), or
+    None when that file can't be read (Claude Code rewrites it often)."""
+    try:
+        data = json.loads(claude_config_file().read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError):
+        return None
+    projects = data.get("projects") if isinstance(data, dict) else None
+    if not isinstance(projects, dict) or not folder:
+        return False
+    want = folder.replace("\\", "/").rstrip("/")
+    same = (lambda a, b: a.lower() == b.lower()) if sys.platform == "win32" else (lambda a, b: a == b)
+    for key, value in projects.items():
+        if isinstance(key, str) and same(key.replace("\\", "/").rstrip("/"), want):
+            return isinstance(value, dict) and value.get("hasTrustDialogAccepted") is True
+    return False
 
 
 def projects_dir() -> Path:
