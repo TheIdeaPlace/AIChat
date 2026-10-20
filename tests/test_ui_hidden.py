@@ -1891,7 +1891,8 @@ def test_allow_for_this_chat_keeps_the_rule_and_folder_claude_code_suggests(fram
     class Picks(dialogs.PermissionDialog):
         def ShowModal(self):
             assert self.session_button.GetName() == (
-                f"Allow, and don't ask again in this chat for Bash(mkdir capture-dir *) in {folder}")
+                f"Allow, and don't ask again in this chat for Bash(mkdir capture-dir *), "
+                f"and let Claude work in the folder {folder}")
             self.choice = dialogs.ALLOW_SESSION
             return wx.ID_OK
     monkeypatch.setattr("thechatplace.ui.main_frame.PermissionDialog", Picks)

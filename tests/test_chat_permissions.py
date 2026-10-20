@@ -38,10 +38,16 @@ def test_row_reads_the_whole_rule_and_when_it_was_allowed():
 
 def test_confirmations_name_what_goes_and_when_it_counts():
     row = cp.claude_rows(["Bash(git push:*)"])[0]
-    assert cp.confirm_text(row, 1) == (
+    assert cp.confirm_text(row, [row]) == (
         "Remove this rule? Run git push (any arguments). Claude will ask again from the next turn.")
-    assert cp.confirm_text(None, 3) == (
+    rows = cp.claude_rows(["A", "B", "C"])
+    assert cp.confirm_text(None, rows) == (
         "Remove all 3 rules from this chat? Claude will ask again from the next turn.")
+    mixed = cp.claude_rows(["A", "B"], dirs=["/work"])
+    assert cp.confirm_text(None, mixed) == (
+        "Remove all 2 rules and 1 folder from this chat? Claude will ask again from the next turn.")
+    assert cp.confirm_text(mixed[-1], mixed) == (
+        "Remove this folder? Work in the folder /work. Claude will ask again from the next turn.")
 
 
 def test_native_rule_file_count_reads_like_properties():
@@ -151,7 +157,7 @@ def test_claude_host_lists_removes_one_then_all_and_keeps_times_in_step(tmp_path
     assert kept.allowed_tools == ["Bash(git push:*)"] and kept.allowed_tools_at == {}
     assert frame.said[-1] == "Removed. Claude will ask again from the next turn."
     host.remove("WebSearch", done)
-    assert seen[-1] == (None, "That rule is no longer kept.")
+    assert seen[-1] == (None, "That is no longer kept.")
     host.remove(None, done)
     assert seen[-1] == ([], None)
     assert _store(tmp_path).get("own-1").allowed_tools == []
@@ -224,7 +230,7 @@ def test_claude_host_follows_its_chat_when_claude_reports_a_new_id(tmp_path):
 
 def test_remove_all_of_one_rule_names_it():
     row = cp.claude_rows(["WebSearch"])[0]
-    assert cp.confirm_text(row, 1) == (
+    assert cp.confirm_text(row, [row]) == (
         "Remove this rule? Search the web. Claude will ask again from the next turn.")
 
 
@@ -265,7 +271,7 @@ def test_kept_folders_are_listed_after_rules_and_can_be_removed(tmp_path):
     assert kept.allowed_dirs == [] and kept.allowed_dirs_at == {}
     assert kept.allowed_tools == ["Bash(git push:*)", "WebSearch"]
     host.remove(cp.FOLDER + folder, done)
-    assert seen[-1] == (None, "That rule is no longer kept.")
+    assert seen[-1] == (None, "That is no longer kept.")
     frame.store.update("own-1", allowed_dirs=[folder])
     host.remove(None, done)
     kept = _store(tmp_path).get("own-1")

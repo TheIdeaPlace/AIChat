@@ -1772,7 +1772,8 @@ def test_a_suggested_rule_comes_before_a_mode_switch_and_keeps_its_folder(tmp_pa
     request = _captured_mkdir(folder)
     assert request.kept_for_chat() == (["Bash(mkdir capture-dir *)"], [folder], "")
     assert request.allow_for_session_label() == (
-        f"Allow, and don't ask again in this chat for Bash(mkdir capture-dir *) in {folder}")
+        f"Allow, and don't ask again in this chat for Bash(mkdir capture-dir *), "
+        f"and let Claude work in the folder {folder}")
     updates = cli.allow_response(request, for_session=True)["updatedPermissions"]
     assert updates == [
         {"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": "mkdir capture-dir *"}],
@@ -1794,7 +1795,7 @@ def test_a_mode_switch_only_without_a_rule_and_a_folder_only_without_either(tmp_
     assert both.kept_for_chat() == ([], [], "acceptEdits")
     only = cli.PermissionRequest("r4", "PowerShell", {"command": "mkdir x"}, suggestions=[
         {"type": "addDirectories", "directories": [folder], "destination": "session"}])
-    assert only.allow_for_session_label() == f"Allow, and let this chat work in {folder}"
+    assert only.allow_for_session_label() == f"Allow, and let Claude work in the folder {folder}"
 
 
 def test_suggested_folders_that_could_read_as_a_flag_are_dropped(tmp_path):
@@ -1818,3 +1819,27 @@ def test_kept_folders_go_to_every_turn_after_the_rules(tmp_path):
     assert resumed[resumed.index("--add-dir") + 1] == folder
     assert "--add-dir" not in cli.build_new_command(
         "claude.exe", "11111111-1111-1111-1111-111111111111", "T", "manual")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows path forms")
+def test_kept_folders_are_specific_folders_on_windows():
+    for wide in ("C:\\", "C:", "C:folder", "\\\\server", "\\\\server\\share",
+                 "\\\\.\\pipe\\x", "\\\\?\\C:\\work", "/c/Users/k"):
+        assert not cli.is_safe_dir(wide), wide
+    for folder in ("C:\\work", "C:\\Users\\k\\.worktrees", "\\\\server\\share\\work"):
+        assert cli.is_safe_dir(folder), folder
+
+
+def test_a_kept_folder_on_a_mac_is_below_the_root(monkeypatch):
+    monkeypatch.setattr(platform_paths.sys, "platform", "darwin")
+    assert not cli.is_safe_dir("/") and not cli.is_safe_dir("relative")
+    assert cli.is_safe_dir("/Users/k/work")
+
+
+def test_kellys_mkdir_request_names_its_folder_in_windows_form(tmp_path):
+    """Captured: for ``mkdir -p /c/Users/.../.worktrees/x`` Claude Code 2.1.296
+    suggested the folder as ``C:\\Users\\...\\.worktrees``, not ``/c/...``,
+    so it is kept (#334)."""
+    folder = str(tmp_path / ".worktrees")
+    request = _captured_mkdir(folder)
+    assert request.session_dirs() == [folder]

@@ -244,10 +244,10 @@ def is_safe_rule(rule: str) -> bool:
 
 def is_safe_dir(folder: str) -> bool:
     """A folder Claude Code suggested working in, fit to give back as
-    ``--add-dir``: absolute, one line, and never readable as a flag."""
+    ``--add-dir``: one specific full path, one line, and never readable as a flag."""
     return (isinstance(folder, str) and 0 < len(folder) <= 1024
             and not folder.startswith("-") and not any(c in folder for c in "\r\n\0")
-            and platform_paths.is_absolute_path(folder))
+            and platform_paths.is_specific_folder(folder))
 
 
 def _common_flags(permission_mode: str, model: str = "",
@@ -579,14 +579,16 @@ class PermissionRequest:
         first, and a mode switch would allow far more than this request."""
         rules, dirs, mode = self.session_rules(), self.session_dirs(), self.session_mode()
         if rules:
+            # Both grants by name: the folder is a working folder for every
+            # tool on later turns, not only for this rule (--add-dir).
             label = "Allow, and don't ask again in this chat for " + ", ".join(rules)
-            return label + (" in " + ", ".join(dirs) if dirs else "")
+            return label + (", and let Claude work in " + _folders_words(dirs) if dirs else "")
         if mode == "acceptEdits":
             return "Allow, and accept all file edits for the rest of this chat"
         if mode:
             return f"Allow, and switch this chat to {mode} mode"
         if dirs:
-            return "Allow, and let this chat work in " + ", ".join(dirs)
+            return "Allow, and let Claude work in " + _folders_words(dirs)
         return ""
 
     def kept_for_chat(self):
@@ -598,6 +600,10 @@ class PermissionRequest:
         if mode:
             return [], [], mode
         return [], dirs, ""
+
+
+def _folders_words(dirs: List[str]) -> str:
+    return ("the folder " if len(dirs) == 1 else "the folders ") + ", ".join(dirs)
 
 
 def allow_response(request: PermissionRequest, updated_input: Optional[dict] = None,

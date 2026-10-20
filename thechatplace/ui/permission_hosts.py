@@ -71,7 +71,7 @@ class ClaudePermissions:
             chat_permissions.FOLDER) else None
         if rule_id is not None and folder is None and rule_id not in own.allowed_tools \
                 or folder is not None and folder not in own.allowed_dirs:
-            done(None, "That rule is no longer kept.")
+            done(None, "That is no longer kept.")
             return
         if rule_id is None:
             kept, folders = [], []

@@ -110,12 +110,21 @@ def claude_rows(rules: Iterable[str], allowed_at: Optional[Mapping[str, int]] = 
     return rows
 
 
-def confirm_text(row: Optional[PermissionRow], count: int) -> str:
-    """The one confirmation before a removal, naming what goes."""
-    if row is None:
-        rules = "this rule" if count == 1 else f"all {count} rules"
-        return f"Remove {rules} from this chat? Claude will ask again from the next turn."
-    return f"Remove this rule? {row.description} Claude will ask again from the next turn."
+def _kind(row: PermissionRow) -> str:
+    return "folder" if row.rule_id.startswith(FOLDER) else "rule"
+
+
+def confirm_text(row: Optional[PermissionRow], rows: List[PermissionRow]) -> str:
+    """The one confirmation before a removal, naming what goes: ``row``, or
+    with None all of ``rows``, counted as rules and folders."""
+    after = "Claude will ask again from the next turn."
+    if row is not None:
+        return f"Remove this {_kind(row)}? {row.description} {after}"
+    folders = sum(1 for r in rows if _kind(r) == "folder")
+    rules = len(rows) - folders
+    parts = [f"{n} {word}{'' if n == 1 else 's'}"
+             for n, word in ((rules, "rule"), (folders, "folder")) if n]
+    return f"Remove all {' and '.join(parts)} from this chat? {after}"
 
 
 def native_rule_files(count=None, error: str = "", *, pending: bool = False) -> str:
