@@ -3494,20 +3494,28 @@ class MainFrame(CodexChats, wx.Frame):
                 return allow_response(request), "Allowed.", {}
             if dialog.choice == ALLOW_SESSION:
                 changes = {}
-                mode = request.session_mode()
+                rules, dirs, mode = request.kept_for_chat()
                 if mode:
                     changes["permission_mode"] = mode
                 else:
+                    # The rule and the folders suggested with it: a command
+                    # that writes needs both on later turns (#332). When each
+                    # was allowed, for File, Chat Permissions (#329).
+                    now = int(time.time() * 1000)
                     kept = list(own.allowed_tools) if own is not None else []
                     times = dict(own.allowed_tools_at) if own is not None else {}
-                    now = int(time.time() * 1000)
-                    for rule in request.session_rules():
+                    for rule in rules:
                         if rule not in kept:
                             kept.append(rule)
-                            # When it was allowed, for File, Chat Permissions (#329).
                             times[rule] = now
-                    changes["allowed_tools"] = kept
-                    changes["allowed_tools_at"] = times
+                    folders = list(own.allowed_dirs) if own is not None else []
+                    folder_times = dict(own.allowed_dirs_at) if own is not None else {}
+                    for folder in dirs:
+                        if folder not in folders:
+                            folders.append(folder)
+                            folder_times[folder] = now
+                    changes.update(allowed_tools=kept, allowed_tools_at=times,
+                                   allowed_dirs=folders, allowed_dirs_at=folder_times)
                 return (allow_response(request, for_session=True),
                         "Allowed for the rest of this chat.", changes)
             reason = dialog.reason_text()
@@ -3903,7 +3911,8 @@ class MainFrame(CodexChats, wx.Frame):
                     exe, own.cli_session_id, own.permission_mode,
                     own_ids={s.cli_session_id for s in self.store.all()},
                     desktop_ids=self._snapshot.desktop_cli_ids, model=own.model,
-                    allowed_tools=own.allowed_tools, title=own.title, effort=own.effort)
+                    allowed_tools=own.allowed_tools, title=own.title, effort=own.effort,
+                    allowed_dirs=own.allowed_dirs)
             else:
                 # The first turn never got as far as creating the session:
                 # start it again rather than resume something that isn't there.
@@ -3921,7 +3930,8 @@ class MainFrame(CodexChats, wx.Frame):
                     command = build_new_command(exe, own.cli_session_id, own.title,
                                                 own.permission_mode, own.model,
                                                 allowed_tools=own.allowed_tools,
-                                                effort=own.effort)
+                                                effort=own.effort,
+                                                allowed_dirs=own.allowed_dirs)
         except (ResumeRefused, ValueError) as exc:
             return str(exc)
         self._start_turn(own.cli_session_id, command, own.cwd, message, own.title,

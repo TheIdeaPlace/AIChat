@@ -1698,7 +1698,7 @@ class ChatPermissionsDialog(wx.Dialog):
             self._tell("Select the rule to remove first.")
             return
         row = self.rows[index]
-        if not self._confirm(chat_permissions.confirm_text(row, 1)):
+        if not self._confirm(chat_permissions.confirm_text(row, self.rows)):
             self.list.SetFocus()
             return
         self._remove(row.rule_id, index)
@@ -1708,7 +1708,7 @@ class ChatPermissionsDialog(wx.Dialog):
             return
         # One rule is named, as Remove names it.
         only = self.rows[0] if len(self.rows) == 1 else None
-        if not self._confirm(chat_permissions.confirm_text(only, len(self.rows))):
+        if not self._confirm(chat_permissions.confirm_text(only, self.rows)):
             self.list.SetFocus()
             return
         self._remove(None, 0)

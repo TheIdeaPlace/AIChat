@@ -94,7 +94,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Allowed for this chat, 2",
+   "name": "Allowed for this chat, 3",
    "label": "",
    "rect": [
     10,
@@ -103,7 +103,7 @@
     245
    ],
    "best": [
-    605,
+    776,
     150
    ],
    "depth": 0,
@@ -112,7 +112,8 @@
    "problems": [],
    "items": [
     "Run git push (any arguments). Bash(git push:*). Allowed: time not recorded.",
-    "Fetch pages from docs.python.org. WebFetch(domain:docs.python.org). Allowed 19 October 2026 at 03:53."
+    "Fetch pages from docs.python.org. WebFetch(domain:docs.python.org). Allowed 19 October 2026 at 03:53.",
+    "Work in the folder C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\chat-permissions\\Projects\\Scratch. Allowed 19 October 2026 at 03:53."
    ],
    "selection": 0
   },

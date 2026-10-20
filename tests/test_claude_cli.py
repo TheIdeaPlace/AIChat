@@ -1751,3 +1751,95 @@ def test_local_command_result_can_echo_the_transcript_output_without_assistant_t
     output = read_transcript(tmp_path / 'synthetic-command.jsonl').visible()[0]
     assert output.text == clean_command_output(events[-1].text)
     assert len(output.text) <= MAX_COMMAND_OUTPUT and '\x1b' not in output.text
+
+
+# -- What Claude Code 2.1 really suggests (#332) ---------------------------------------------
+# Shapes captured from real `claude -p` (manual mode, the app's own flags); the
+# paths here are synthetic. A command that writes, such as mkdir, comes with a
+# rule, the folder it writes in, and a switch to accept edits.
+
+
+def _captured_mkdir(folder):
+    return cli.PermissionRequest("r1", "Bash", {"command": "mkdir capture-dir"}, suggestions=[
+        {"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": "mkdir capture-dir *"}],
+         "behavior": "allow", "destination": "localSettings"},
+        {"type": "addDirectories", "directories": [folder], "destination": "session"},
+        {"type": "setMode", "mode": "acceptEdits", "destination": "session"}])
+
+
+def test_a_suggested_rule_comes_before_a_mode_switch_and_keeps_its_folder(tmp_path):
+    folder = str(tmp_path)
+    request = _captured_mkdir(folder)
+    assert request.kept_for_chat() == (["Bash(mkdir capture-dir *)"], [folder], "")
+    assert request.allow_for_session_label() == (
+        f"Allow, and don't ask again in this chat for Bash(mkdir capture-dir *), "
+        f"and let Claude work in the folder {folder}")
+    updates = cli.allow_response(request, for_session=True)["updatedPermissions"]
+    assert updates == [
+        {"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": "mkdir capture-dir *"}],
+         "behavior": "allow", "destination": "session"},
+        {"type": "addDirectories", "directories": [folder], "destination": "session"}]
+
+
+def test_a_mode_switch_only_without_a_rule_and_a_folder_only_without_either(tmp_path):
+    folder = str(tmp_path)
+    write = cli.PermissionRequest("r2", "Write", {"file_path": "x"}, suggestions=[
+        {"type": "setMode", "mode": "acceptEdits", "destination": "session"}])
+    assert write.kept_for_chat() == ([], [], "acceptEdits")
+    assert cli.allow_response(write, for_session=True)["updatedPermissions"] == [
+        {"type": "setMode", "mode": "acceptEdits", "destination": "session"}]
+    both = cli.PermissionRequest("r3", "PowerShell", {"command": "mkdir x"}, suggestions=[
+        {"type": "addDirectories", "directories": [folder], "destination": "session"},
+        {"type": "setMode", "mode": "acceptEdits", "destination": "session"}])
+    # A folder alone doesn't stop the next turn asking; the mode does.
+    assert both.kept_for_chat() == ([], [], "acceptEdits")
+    only = cli.PermissionRequest("r4", "PowerShell", {"command": "mkdir x"}, suggestions=[
+        {"type": "addDirectories", "directories": [folder], "destination": "session"}])
+    assert only.allow_for_session_label() == f"Allow, and let Claude work in the folder {folder}"
+
+
+def test_suggested_folders_that_could_read_as_a_flag_are_dropped(tmp_path):
+    request = cli.PermissionRequest("r5", "Bash", {"command": "mkdir x"}, suggestions=[
+        {"type": "addDirectories", "destination": "session",
+         "directories": ["--dangerously-skip-permissions", "relative", "", 7, str(tmp_path) + "\nx",
+                         str(tmp_path), str(tmp_path)]}])
+    assert request.session_dirs() == [str(tmp_path)]
+
+
+def test_kept_folders_go_to_every_turn_after_the_rules(tmp_path):
+    folder = str(tmp_path)
+    new = cli.build_new_command("claude.exe", "11111111-1111-1111-1111-111111111111", "T", "manual",
+                                allowed_tools=["Bash(mkdir capture-dir *)"],
+                                allowed_dirs=[folder, "-x"])
+    start = new.index("--allowedTools")
+    assert new[start:start + 4] == ["--allowedTools", "Bash(mkdir capture-dir *)", "--add-dir", folder]
+    assert new[start + 4] == "--session-id"
+    resumed = cli.build_resume_command("claude.exe", "own-1", "manual", own_ids={"own-1"},
+                                       desktop_ids=set(), allowed_dirs=[folder])
+    assert resumed[resumed.index("--add-dir") + 1] == folder
+    assert "--add-dir" not in cli.build_new_command(
+        "claude.exe", "11111111-1111-1111-1111-111111111111", "T", "manual")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows path forms")
+def test_kept_folders_are_specific_folders_on_windows():
+    for wide in ("C:\\", "C:", "C:folder", "\\\\server", "\\\\server\\share",
+                 "\\\\.\\pipe\\x", "\\\\?\\C:\\work", "/c/Users/k"):
+        assert not cli.is_safe_dir(wide), wide
+    for folder in ("C:\\work", "C:\\Users\\k\\.worktrees", "\\\\server\\share\\work"):
+        assert cli.is_safe_dir(folder), folder
+
+
+def test_a_kept_folder_on_a_mac_is_below_the_root(monkeypatch):
+    monkeypatch.setattr(platform_paths.sys, "platform", "darwin")
+    assert not cli.is_safe_dir("/") and not cli.is_safe_dir("relative")
+    assert cli.is_safe_dir("/Users/k/work")
+
+
+def test_kellys_mkdir_request_names_its_folder_in_windows_form(tmp_path):
+    """Captured: for ``mkdir -p /c/Users/.../.worktrees/x`` Claude Code 2.1.296
+    suggested the folder as ``C:\\Users\\...\\.worktrees``, not ``/c/...``,
+    so it is kept (#334)."""
+    folder = str(tmp_path / ".worktrees")
+    request = _captured_mkdir(folder)
+    assert request.session_dirs() == [folder]

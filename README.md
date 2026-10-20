@@ -443,8 +443,15 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   **Ctrl+Shift+A** opens the answer:
   - **Permission:** the whole request (the command, or the file and what would change) to
     read by line, then **Allow**, **Allow for This Chat** (shown when Claude Code suggests
-    a rule, and named in full, such as "don't ask again in this chat for Bash(git push:*)"),
-    or **Deny**, which is the default button and can carry a reason Claude reads.
+    something to keep, and named in full, such as "don't ask again in this chat for
+    Bash(git push:*)"), or **Deny**, which is the default button and can carry a reason Claude
+    reads. For a command that writes, such as `mkdir`, Claude Code also suggests the folder it
+    works in, and Allow for This Chat keeps both, as its full name says ("…, and let Claude work
+    in the folder …"); without both, Claude Code would ask again next turn. A kept folder is
+    given to every later turn as an extra working folder, so Claude can use it as it uses the
+    chat's own folder, with any tool. The Chat Place never keeps a whole drive or share. When
+    Claude Code suggests no rule, only a switch to accepting edits, Allow for This Chat switches
+    the chat's mode instead.
   - **Questions:** each question is a group of options with their descriptions, with Other
     and a box to type your own answer; Send Answers, or Don't Answer.
   - **Plan:** the plan to read (Read Formatted shows it as a page, by heading), then **Approve**, choosing the mode to carry on in (accept
@@ -456,8 +463,10 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
 
   **File, Chat Permissions** (Ctrl+Shift+H) shows what a chat started here may do without
   asking: its permission mode in words, with **Change...** (the same choices as Change
-  Permission Mode), and the rules kept with the chat, one to a row, each read in full: what it
-  allows, the rule itself and when it was allowed ("Run git push (any arguments).
+  Permission Mode), and the rules and folders kept with the chat, one to a row, each read in
+  full (a folder reads "Work in the folder …"). Removing a rule leaves a folder kept with it;
+  remove the folder's row too to take that back. Each row says what it allows, the rule itself
+  and when it was allowed ("Run git push (any arguments).
   Bash(git push:*). Allowed 19 October 2026 at 14:05."). A rule kept before this release says
   "Allowed: time not recorded". **Remove** (or Delete in the list) takes the selected rule back,
   and **Remove All** takes them all, each after one question that names what goes. With nothing

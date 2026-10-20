@@ -649,7 +649,10 @@ summary after every turn, so a desktop session can be waiting on you and still s
   Permission Mode. A Codex chat's mode can change only once its turn has finished.
 - **Allowed for this chat:** one row per kept rule, read in full: what it allows, the rule
   itself and when it was allowed, such as "Run git push (any arguments). Bash(git push:*).
-  Allowed 19 October 2026 at 14:05." A rule kept before this release says "Allowed: time not
+  Allowed 19 October 2026 at 14:05." For a command that writes, such as `mkdir`, the folder it
+  works in is kept too, on its own row ("Work in the folder …"), since Claude Code asks again
+  without it. Claude can then use that folder as it uses the chat's own folder. Removing a rule
+  leaves its folder; remove the folder's row too to take it back. A rule kept before this release says "Allowed: time not
   recorded". With nothing kept, the list says "Nothing is allowed beyond the permission mode."
 - **Remove** (or Delete in the list) takes the selected rule back, and **Remove All** takes them
   all. Each asks once, naming what goes; No is the default.

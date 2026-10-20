@@ -259,6 +259,19 @@ def is_safe_id(value: str) -> bool:
     return bool(value) and bool(_SAFE_ID.match(value))
 
 
+def is_specific_folder(value: str) -> bool:
+    """A full path to a folder below a drive or share: ``C:\\work`` or
+    ``\\\\server\\share\\work`` on Windows, ``/Users/me/work`` on a Mac. Never a
+    whole drive (``C:\\``), a share's root, the Mac's root or a Windows device
+    path (``\\\\.\\`` or ``\\\\?\\``), which would give far more than one folder (#334)."""
+    if sys.platform == "win32":
+        if value.startswith(("\\\\.\\", "\\\\?\\", "//./", "//?/")):
+            return False
+        drive, rest = ntpath.splitdrive(value)
+        return bool(drive) and ntpath.isabs(value) and bool(rest.strip("\\/"))
+    return value.startswith("/") and bool(value.strip("/"))
+
+
 #: ``process_start`` for a process you may not look at: not one of yours,
 #: so not a Claude Code you started (a system service, say).
 NOT_YOURS = -1
