@@ -1,5 +1,15 @@
 # Chat Permissions: Codex backend and Claude integration
 
+**Parked design, not the shipping contract.** Following Kelly's decision in
+[PR #330](https://github.com/TheIdeaPlace/AIChat/pull/330#issuecomment-6272308479),
+this backend remains a draft. Claude's #332 targets main independently; Codex
+kept-rule controls are parked on `parked/codex-kept-rules-ui`. Shipping Codex Chat
+Permissions shows its mode and native rule-file count, with existing approval
+behavior. The contract and checklist below document the parked implementation.
+Claude's third review found that inherited `.git` grants can plant code for later
+unsandboxed execution; the Mac probe does not resolve that risk. #333 tracks the
+design prerequisite and remaining findings. #307 remains open.
+
 Native execution follow-up: [scoped execution investigation](codex-scoped-execution-investigation.md).
 Real Codex 0.162.1 executes a `.git`-only grant on macOS while blocking outside
 writes. Windows elevated/unelevated still fail `.git` writes, and managed networking
