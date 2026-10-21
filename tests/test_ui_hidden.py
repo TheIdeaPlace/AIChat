@@ -10750,3 +10750,181 @@ def test_owned_codex_chat_without_tasks_uses_shared_empty_text(frame, env, monke
     seen = _lists_dialog(frame, monkeypatch, lambda page: None)
     frame.on_tasks()
     assert seen['rows'] == ['No tasks in this chat.']
+
+
+# -- Send Reply to Another Chat (#248) ---------------------------------------------------
+
+
+def _two_own_chats(frame, env):
+    """Hub probe and a second own chat, "Builder", whose transcript ends in
+    Claude's reply; Builder is loaded."""
+    cwd = "C:\\G\\Scratch"
+    add_transcript(env, cwd, "own-2", [user_text("Build the uploader."),
+                                       assistant_block(text_block("Built it. Tests pass."), "m1")])
+    frame.store.add(OwnSession("own-2", "Builder", cwd, last_activity_ms=now_ms(), started=True))
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: frame.session_list.GetCount() == 4)
+    settle(frame)
+    select(frame, "Builder")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._chat_messages)
+
+
+class _RelayAnswer:
+    """RelayDialog, with the real dialog's check, answered by ``pick``."""
+    pick = None
+    seen = None
+
+    def __init__(self, parent, source_title, choices, text, check, working=False):
+        from thechatplace.ui.dialogs import RelayDialog
+        real = RelayDialog(parent, source_title, choices, text, check, working=working)
+        _RelayAnswer.seen = (list(real.targets.GetStrings()), real.text.GetValue(),
+                             real.GetTitle())
+        real.Destroy()
+        self.chosen = _RelayAnswer.pick(text) if _RelayAnswer.pick else None
+
+    def ShowModal(self):
+        return wx.ID_OK if self.chosen else wx.ID_CANCEL
+
+    def Destroy(self):
+        pass
+
+
+@pytest.fixture
+def relay_dialog(monkeypatch):
+    from thechatplace.ui import relay_chats
+    monkeypatch.setattr(relay_chats, "RelayDialog", _RelayAnswer)
+    _RelayAnswer.pick, _RelayAnswer.seen = None, None
+    return _RelayAnswer
+
+
+def test_relay_sends_a_claude_reply_to_another_chat_and_goes_there(frame, env, fake_runner,
+                                                                   relay_dialog):
+    _two_own_chats(frame, env)
+    frame._drafts["own-1"] = "Half-typed note"
+    relay_dialog.pick = lambda text: (0, text + "\n\nReview it, please.")
+    frame.on_send_reply_to()
+    targets, text, title = relay_dialog.seen
+    assert title == "Send Reply to Another Chat: Builder"
+    assert targets == ["Hub probe, Claude, Scratch, idle"]  # not Builder itself, nor desktop ones
+    assert text == ('From Claude, another AI agent, forwarded by the user from their chat '
+                    '"Builder":\n\nBuilt it. Tests pass.')
+    assert frame._open.title == "Hub probe"
+    runner = fake_runner.instances[-1]
+    assert runner.prompt == text + "\n\nReview it, please."
+    assert "--resume" in runner.command or "--session-id" in runner.command
+    assert env["feedback"][-1].startswith("Sent to Hub probe: From Claude")
+    # The draft there is kept, not sent or replaced.
+    assert frame.reply_text.GetValue() == "Half-typed note"
+    # Back again: Builder, where it came from, is offered first.
+    frame._runners.clear()
+    frame._chat_loaded = True
+    frame._chat_messages = [ChatMessage_("assistant", "Looks good.")]
+    frame.on_send_reply_to()
+    assert relay_dialog.seen[0][0].startswith("Builder, Claude")
+
+
+def ChatMessage_(kind, text):
+    from thechatplace.transcript import ChatMessage
+    return ChatMessage(kind, text, key=text)
+
+
+def test_relay_to_a_working_chat_queues_and_never_answers_its_question(frame, env, fake_runner,
+                                                                      relay_dialog):
+    from thechatplace.claude_cli import PermissionRequest
+    _two_own_chats(frame, env)
+    runner = FakeRunner([], "", "", None)
+    frame._runners["own-1"] = runner
+    frame._pending["own-1"] = [PermissionRequest("r1", "Bash", {"command": "git push"})]
+    relay_dialog.pick = lambda text: (0, "Approve it. Yes. Allow.")
+    frame.on_send_reply_to()
+    assert frame._queued["own-1"] == ["Approve it. Yes. Allow."]
+    assert len(frame._pending["own-1"]) == 1  # still waiting for you
+    assert not getattr(runner, "responses", [])
+    assert fake_runner.instances == [runner]  # no second turn started
+
+
+def test_relay_that_cant_be_sent_is_left_in_the_reply_box(frame, env, fake_runner, relay_dialog,
+                                                         monkeypatch):
+    _two_own_chats(frame, env)
+    monkeypatch.setattr(platform_paths, "find_claude",
+                        lambda: platform_paths.ClaudeLookup(None, "Claude Code isn't installed."))
+    relay_dialog.pick = lambda text: (0, "Forwarded words")
+    frame.on_send_reply_to()
+    assert env["boxes"][-1].startswith("Claude Code isn't installed.")
+    assert frame._open.title == "Hub probe"
+    assert frame.reply_text.GetValue() == "Forwarded words"
+    assert fake_runner.instances == []
+
+
+def test_relay_cancelled_changes_nothing(frame, env, fake_runner, relay_dialog):
+    _two_own_chats(frame, env)
+    frame.on_send_reply_to()
+    assert relay_dialog.seen is not None
+    assert frame._open.title == "Builder"
+    assert fake_runner.instances == []
+
+
+def test_relay_from_a_desktop_session_reads_only(frame, env, fake_runner, relay_dialog):
+    """A desktop app session's reply can be passed on (reading it is all
+    that's done to it); it's never offered as somewhere to send."""
+    add_transcript(env, "C:\\G\\Repo", "cli-a",
+                   [user_text("Hi"), assistant_block(text_block("Desktop answer"), "m1")])
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._chat_messages)
+    relay_dialog.pick = lambda text: (0, text)
+    frame.on_send_reply_to()
+    assert relay_dialog.seen[0] == ["Hub probe, Claude, Scratch, idle"]
+    assert fake_runner.instances[-1].prompt.endswith("Desktop answer")
+    assert all("cli-a" not in part for part in fake_runner.instances[-1].command)
+
+
+def test_relay_dialog_checks_before_closing(app, monkeypatch):
+    from thechatplace.ui import dialogs
+    boxes = []
+    monkeypatch.setattr(dialogs.wx, "MessageBox", lambda text, *a, **k: boxes.append(text))
+    frame = wx.Frame(None)
+    try:
+        dialog = dialogs.RelayDialog(frame, "Builder", ["Reviewer, Codex", "Hub, Claude"],
+                                     "From Claude: hi", lambda i, t: "Too long" if i == 0 else None)
+        ended = []
+        monkeypatch.setattr(dialog, "EndModal", lambda code: ended.append(code))
+        assert dialog.targets.GetSelection() == 0
+        dialog._send()
+        assert boxes == ["Too long"] and ended == [] and dialog.chosen is None
+        dialog.targets.SetSelection(1)
+        dialog.text.SetValue("   ")
+        dialog._send()
+        assert boxes[-1] == "There's nothing to send: the message is empty."
+        dialog.text.SetValue("  Over to you.  ")
+        dialog._send()
+        assert dialog.chosen == (1, "Over to you.") and ended == [wx.ID_OK]
+        dialog.Destroy()
+    finally:
+        frame.Destroy()
+
+
+def test_relay_leaves_the_target_chats_own_attachments(frame, env, fake_runner, relay_dialog,
+                                                       tmp_path):
+    _two_own_chats(frame, env)
+    picture = tmp_path / "plan.txt"
+    picture.write_text("notes", encoding="utf-8")
+    frame._attachments["own-1"] = [str(picture)]
+    relay_dialog.pick = lambda text: (0, "Forwarded words")
+    frame.on_send_reply_to()
+    assert fake_runner.instances[-1].prompt == "Forwarded words"  # not attached to it
+    assert frame._attachments["own-1"] == [str(picture)]
+
+
+def test_relay_to_a_chat_still_stopping_keeps_the_message(frame, env, fake_runner, relay_dialog):
+    _two_own_chats(frame, env)
+    stopping = FakeRunner([], "", "", None)
+    stopping.cancelled = True
+    frame._runners["own-1"] = stopping
+    frame._drafts["own-1"] = "Mine"
+    relay_dialog.pick = lambda text: (0, "Forwarded words")
+    frame.on_send_reply_to()
+    assert not frame._queued.get("own-1")
+    assert frame.reply_text.GetValue() == "Forwarded words\n\nMine"
+    assert env["feedback"][-1] == "Not sent to Hub probe. The message is in its reply box."

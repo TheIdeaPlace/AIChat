@@ -958,6 +958,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's rule files"
+  },
+  "relay": {
+   "kind": "dialog",
+   "png": "relay-hc-aquatic-100.png",
+   "json": "relay-hc-aquatic-100.json",
+   "title": "Send Reply to Another Chat: Codex history preview (still working; this is its latest reply so far)",
+   "class": "RelayDialog",
+   "size": [
+    700,
+    560
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Send Reply to Another Chat: a Codex reply going to a Claude chat"
   }
  },
  "seconds": 91.6

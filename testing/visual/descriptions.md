@@ -380,6 +380,12 @@ This is a 620 by 460 dialog. "Name:" heads a single-line box holding "Review". "
 
 **What looks off:** Nothing. It is simple and matches the other dialogs.
 
+## relay: Send Reply to Another Chat: a Codex reply going to a Claude chat (#248)
+
+This is a 700 by 560 dialog titled "Send Reply to Another Chat: Codex history preview (still working; this is its latest reply so far)", since the probe's Codex chat is mid-turn. "Send to:" heads a list about 120 high with one row, "Visual probe, Claude, Scratch, idle", selected. "Message:" heads a large multi-line box filling most of the dialog: its first line is "From Codex, another AI agent, forwarded by the user from their chat "Codex history preview":", then the reply's Markdown as plain text, with a scroll bar. "Send" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic the boxes are dark with white text, and the selected row and Send button are cyan with dark text. Measured contrast: 4.53:1 for the light theme's selected row (Windows' highlight), 7.89:1 for High Contrast's, 16:1 or more for the rest.
+
+**What looks off:** Nothing. The list is mostly empty with one chat, as it would be with few chats.
+
 ## rename: Rename Session (wx's own text entry dialog)
 
 This is a small 346 by 153 dialog. The line "New name for Visual probe:" sits above a text box 300 wide holding "Visual probe", which is selected in blue. A thin divider line runs below it, and then "OK" and "Cancel" sit at the bottom right.

@@ -436,6 +436,23 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   a message during one of its turns, so a message that arrives between turns waits for the
   next one. The other computer's own conversation can't be read from here; only what its
   Claude sends back.
+- **Send a reply to another chat (File, Send Reply to Another Chat, Ctrl+Shift+E).** Pass
+  what one agent said to another, for example so Codex can review what Claude built, or so
+  Claude can answer Codex's review. It sends the selected reply in the messages list, or the
+  latest one if a message of yours is selected. Choose the chat it goes to: any of The Chat
+  Place's own chats, Claude or Codex, other than this one (desktop app, terminal and hidden
+  chats aren't offered). The message starts with a line saying which agent wrote it and in
+  which chat, so the agent reading it knows these are another agent's words, not yours. Read
+  it and change or add to it in the Message box (Enter there starts a new line), then press
+  Ctrl+Enter, or Enter in the list, to send it. The Chat Place goes to that chat and sends it
+  as if you'd typed it: queued if that chat is working, and after Codex has got the chat ready
+  if it wasn't (going to another chat before then leaves it unsent, in that chat's reply box).
+  If it can't be sent, it's left in that chat's reply box. While the chat it comes from is
+  still working, the dialog's title says so: the reply may be a step on the way. The chat it
+  came from is first in the list next time, so sending the answer back is Ctrl+Shift+E then
+  Enter. It's also on a reply's menu in the messages list (Applications key). A forwarded
+  message is only ever a message: it can't answer a question or approve anything, which still
+  comes to you.
 - **Claude asks, you answer.** In The Chat Place's own sessions, when Claude needs permission
   for something the permission mode doesn't allow, asks you a question, or has a plan for you
   to approve, the turn waits for you. It's announced ("Build needs you. Claude wants to run
@@ -883,6 +900,7 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+P | Prompts: use, add, edit, reorder or delete your saved prompts |
 | Anywhere | Ctrl+Shift+F | Attach files or images to the next message |
 | Anywhere | Ctrl+Shift+M | Other machines: list your sessions on other computers and message one |
+| Anywhere | Ctrl+Shift+E | Send Reply to Another Chat: pass the selected (or latest) reply to another Chat Place chat, Claude or Codex |
 | Anywhere | Ctrl+Shift+I | Lists: code blocks, links, changed files, commands, decisions and Claude's tasks, for this message or the whole chat |
 | Anywhere | Ctrl+Shift+D | Lists, on Changed Files: each change to read by line |
 | Anywhere | Ctrl+Shift+U | Usage and context: a list of how full the context is, and each plan limit |

@@ -53,7 +53,7 @@ import wx
 from ..changes import summary_text
 from ..codeblocks import find_code_blocks
 from .. import (__version__, about_you, announce, attachments, bugreport, codex_signin, signin, export, hub, links,
-               platform_paths, properties, remote, usage, workplaces)
+               platform_paths, properties, relay, remote, usage, workplaces)
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
                           TurnRunner, allow_response, answer_questions_response,
@@ -93,6 +93,7 @@ from .a11y import set_accessible_name, set_list_items_accessible, set_voiceover_
 from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
+from .relay_chats import RelayChats
 from .permission_hosts import ClaudePermissions, CodexPermissions
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
@@ -177,7 +178,7 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
                    + "), in a supported desktop app or in a terminal.")
 
 
-class MainFrame(CodexChats, wx.Frame):
+class MainFrame(CodexChats, RelayChats, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -209,6 +210,11 @@ class MainFrame(CodexChats, wx.Frame):
         self._codex_policy_pending = set()
         self._codex_delayed_updates = {}
         self._codex_finished = set()
+        # Send Reply to Another Chat (#248): which chat last sent a reply to
+        # which (to offer sending back first), and a message waiting for a
+        # Codex chat to be ready.
+        self._relay_partners: Dict[str, str] = {}
+        self._relay_waiting: Dict[str, str] = {}
         if sessions is None:
             providers = [ClaudeConversations()]
             if self.speech.includes_codex():
@@ -423,6 +429,10 @@ class MainFrame(CodexChats, wx.Frame):
         # As with Rename Session, every letter is taken, so the key is its shortcut.
         self._item(session, "Other Machines...\tCtrl+Shift+M",
                    lambda e: self.on_other_machines())
+        # A reply from the loaded chat to another of yours, Claude or Codex
+        # (#248). Every letter is taken, so its shortcut is the way in.
+        self._item(session, "Send Reply to Another Chat...\tCtrl+Shift+E",
+                   lambda e: self.on_send_reply_to())
         self._item(session, "&Refresh\tF5",
                    lambda e: self.refresh_sessions(force=True, resort=True))
         # Delete and Shift+Delete belong to the session list (its char hook):
@@ -1411,6 +1421,7 @@ class MainFrame(CodexChats, wx.Frame):
 
     def open_session(self, info: SessionInfo):
         self._save_draft()
+        self._drop_waiting_relay(going_to=info)
         self._clear_activity()  # another session's tool calls aren't news here
         self._open = info
         self._sync_activity_controls(info.key in self.tool_activity)
@@ -1478,6 +1489,7 @@ class MainFrame(CodexChats, wx.Frame):
         self._clear_activity()
         self._spoken.clear()
         self._select_on_load = None
+        self._drop_waiting_relay()
         self._open = None
         self._sync_activity_controls(False)
         self._open_generation += 1
@@ -2056,6 +2068,10 @@ class MainFrame(CodexChats, wx.Frame):
         has_code = message is not None and bool(find_code_blocks(message.text))
         blocks = menu.Append(wx.ID_ANY, "Code &Blocks...\tCtrl+Shift+B")
         copy_code = menu.Append(wx.ID_ANY, "Copy &Last Code Block\tCtrl+Shift+C")
+        relay_item = menu.Append(wx.ID_ANY, "&Send Reply to Another Chat...\tCtrl+Shift+E")
+        relay_item.Enable(message is not None and message.kind in relay.RELAYABLE)
+        menu.Bind(wx.EVT_MENU, lambda e: self.on_send_reply_to(), relay_item)
+        # Properties stays last, as on the session list's menu.
         props = menu.Append(wx.ID_ANY, "&Properties...\tAlt+Enter")
         read.Enable(message is not None)
         copy.Enable(message is not None)
@@ -3831,30 +3847,40 @@ class MainFrame(CodexChats, wx.Frame):
             self._feedback("Type a message first.")
             self.reply_text.SetFocus()
             return
+        if self._send_claude(info, message, attached):
+            self.reply_text.SetValue("")
+            self._drafts.pop(session_id, None)
+        # Stay in the reply box; new messages arrive at the end of the list.
+        self.reply_text.SetFocus()
+
+    def _send_claude(self, info: SessionInfo, message: str, attached: List[str]) -> bool:
+        """Send ``message`` (and ``attached``) into an own Claude chat, as
+        Send does: a follow-up, queued, or a new turn. True once it's on its
+        way, so the caller can clear what it came from; False when it stays
+        with the caller (still stopping, or a problem shown). Send Reply to
+        Another Chat (#248) uses it too."""
+        session_id = info.cli_session_id
         runner = self._runners.get(session_id)
         if runner is not None and runner.cancelled:
             # Queuing behind a stopped turn would only bounce back when the
             # stop lands, so keep the text and say why.
             self._feedback("Still stopping. Send again in a moment.")
-            self.reply_text.SetFocus()
-            return
+            return False
         if runner is not None and runner.waiting_on_background:
             # Claude has answered and is only waiting for background work
             # (#161): the message goes in now, as the next one, rather than
             # waiting for work that may take an hour.
             prompt, images = attachments.build(message, attached)
             if runner.send_follow_up(prompt, images):
-                self._clear_attachments(session_id)
-                self.reply_text.SetValue("")
-                self._drafts.pop(session_id, None)
+                if attached:  # a relayed message leaves the chat's own attachments
+                    self._clear_attachments(session_id)
                 self._update_send_state()
                 said = announce.sent_text(info.title, message, self.speech.announce,
                                           self.speech.announce_own)
                 if images:
                     said += f" With {len(images)} image{'s' if len(images) != 1 else ''}."
                 self._feedback(said)
-                self.reply_text.SetFocus()
-                return
+                return True
             # Claude started on the finished work just now: queue it.
         if runner is not None:
             # Queue it rather than refuse: the turn's reply comes first, then
@@ -3863,28 +3889,24 @@ class MainFrame(CodexChats, wx.Frame):
             # Queued text carries attachments as @"path": images included.
             queued_text, _images = attachments.build(message, attached, images_inline=False)
             self._queued.setdefault(session_id, []).append(queued_text)
-            self._clear_attachments(session_id)
-            self.reply_text.SetValue("")
-            self._drafts.pop(session_id, None)
+            if attached:
+                self._clear_attachments(session_id)
             self._update_send_state()
             self._rebuild_chat_list()  # the queued message joins the list
             # Only the newly added words are read back, not the whole queue.
             self._feedback(announce.queued_text(info.title, message, self.speech.announce,
                                                 self.speech.announce_own,
                                                 added=bool(waiting)))
-            self.reply_text.SetFocus()
-            return
+            return True
         prompt, images = attachments.build(message, attached)
         problem = self._send_now(session_id, prompt, images=images, spoken=message,
                                  attached=attached)
         if problem:
             wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
-            return
-        self._clear_attachments(session_id)
-        self.reply_text.SetValue("")
-        self._drafts.pop(session_id, None)
-        # Stay in the reply box; new messages arrive at the end of the list.
-        self.reply_text.SetFocus()
+            return False
+        if attached:
+            self._clear_attachments(session_id)
+        return True
 
     def _send_now(self, session_id: str, message: str, queued: bool = False,
                   images: Optional[List[dict]] = None, spoken: Optional[str] = None,
