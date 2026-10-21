@@ -2068,10 +2068,11 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
         has_code = message is not None and bool(find_code_blocks(message.text))
         blocks = menu.Append(wx.ID_ANY, "Code &Blocks...\tCtrl+Shift+B")
         copy_code = menu.Append(wx.ID_ANY, "Copy &Last Code Block\tCtrl+Shift+C")
-        props = menu.Append(wx.ID_ANY, "&Properties...\tAlt+Enter")
         relay_item = menu.Append(wx.ID_ANY, "&Send Reply to Another Chat...\tCtrl+Shift+E")
         relay_item.Enable(message is not None and message.kind in relay.RELAYABLE)
         menu.Bind(wx.EVT_MENU, lambda e: self.on_send_reply_to(), relay_item)
+        # Properties stays last, as on the session list's menu.
+        props = menu.Append(wx.ID_ANY, "&Properties...\tAlt+Enter")
         read.Enable(message is not None)
         copy.Enable(message is not None)
         props.Enable(message is not None)
