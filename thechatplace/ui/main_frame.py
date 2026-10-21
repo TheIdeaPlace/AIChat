@@ -1932,7 +1932,9 @@ class MainFrame(CodexChats, wx.Frame):
             return 0
         order = [m.key for m in self._chat_messages]
         if key not in order:
-            return len(visible_keys) - 1
+            return next((row for row in range(len(visible_keys) - 1, -1, -1)
+                         if not visible_keys[row].startswith(("queued:", "notice:"))),
+                        len(visible_keys) - 1)
         position = order.index(key)
         best = 0
         for row, visible_key in enumerate(visible_keys):

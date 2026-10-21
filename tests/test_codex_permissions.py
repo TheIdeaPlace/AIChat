@@ -120,8 +120,9 @@ def prepared_runtime(tmp_path):
             pass
     executor = Executor()
     service._executor = executor
-    # Prevent the background event consumer from competing with this explicit
-    # dispatch test; native/stdin tests cover event-driven dispatch separately.
+    # Dispatch runs synchronously here. The old listener keeps draining its
+    # original executor; _auto_answer must ignore that replaced binding (#338).
+    # Native/stdin tests cover the normal event-driven worker separately.
     service._notify = lambda *a, **kw: None
     service._launch_approval = lambda target: target()
     return service, connection, record, proof, executor, req
@@ -196,6 +197,50 @@ def test_unreadable_or_unmatched_request_stays_manual_after_recovery(tmp_path, m
         assert not executor.answers
         service.answer(record, req, req.approval_answer('decline'))
         assert executor.answers == [{'decision': 'decline'}]
+    finally:
+        service.close()
+
+
+def test_stale_executor_cannot_forget_a_request_already_left_manual(tmp_path):
+    service, connection, record, proof, executor, req = prepared_runtime(tmp_path)
+    try:
+        service._auto_answer(proof, executor)  # No rule: leave this request manual.
+        stale = SimpleNamespace(waiting=lambda _proof: ())
+        assert not service._auto_answer(proof, stale)
+        service.permission_store.save(record.cli_session_id, (candidate(req, str(tmp_path)),))
+        assert not service._auto_answer(proof, executor)
+        assert service.snapshot(record.cli_session_id).requests == (req,)
+        assert not executor.answers
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize('failure_at', ['load', 'match', 'notify'])
+def test_unexpected_approval_worker_failure_restores_all_manual_requests(tmp_path, monkeypatch, failure_at):
+    from thechatplace.providers import codex_runtime
+    service, connection, record, proof, executor, req = prepared_runtime(tmp_path)
+    sibling = replace(req, request_id=2)
+    executor.current.append(sibling)
+    service.permission_store.save(record.cli_session_id, (candidate(req, str(tmp_path)),))
+    workers, errors = [], []
+    service._launch_approval = workers.append
+    monkeypatch.setattr(codex_runtime, 'record_failure', errors.append)
+    def fail(*args, **kwargs):
+        raise RuntimeError('synthetic unexpected failure')
+    if failure_at == 'load':
+        monkeypatch.setattr(service.permission_store, 'load', fail)
+    elif failure_at == 'match':
+        monkeypatch.setattr(codex_runtime, 'matches', fail)
+    else:
+        monkeypatch.setattr(service, '_notify', fail)
+    try:
+        assert service._auto_answer(proof, executor)
+        assert not service.snapshot(record.cli_session_id).requests
+        workers[0]()
+        assert service.snapshot(record.cli_session_id).requests == (req, sibling)
+        assert not executor.answers
+        assert not service._auto_answer(proof, executor)
+        assert errors
     finally:
         service.close()
 

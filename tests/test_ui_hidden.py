@@ -9401,12 +9401,15 @@ def test_codex_kept_approval_button_names_its_scope_and_has_safe_default(frame, 
         dialog.Destroy()
 
 
-def test_opening_chat_selects_latest_reply_before_permission_notices(frame, monkeypatch):
-    from thechatplace.transcript import ChatMessage, ASSISTANT, PERMISSION_NOTICE
+@pytest.mark.parametrize('old_key', [None, 'missing-message'])
+def test_opening_chat_selects_latest_reply_before_permission_notices(frame, monkeypatch, old_key):
+    from thechatplace.transcript import ChatMessage, ASSISTANT, PERMISSION_NOTICE, QUEUED
     visible = [ChatMessage(ASSISTANT, 'Latest reply', key='reply'),
-               ChatMessage(PERMISSION_NOTICE, 'Allowed git commit', key='notice:commit')]
+               ChatMessage(PERMISSION_NOTICE, 'Allowed git commit', key='notice:commit'),
+               ChatMessage(QUEUED, 'Queued prompt', key='queued:prompt')]
+    frame._chat_messages = visible[:1]
     monkeypatch.setattr(frame, '_visible_messages', lambda: visible)
-    frame._rebuild_chat_list(focus_newest=True)
+    frame._rebuild_chat_list(focus_newest=old_key is None, keep_key=old_key)
     assert frame._chat_keys[frame.chat_list.GetSelection()] == 'reply'
 
 

@@ -38,4 +38,4 @@ fetch/diff/log. Other commands remain manual.
 The native probe is `tools/probe_codex_remembered_approvals.py --out <temp>/result.json`.
 It uses real Codex with a local synthetic model, disposable Git trees and no
 account credentials, and tests repeated operations, restart, copies and removal.
-The synthetic stdio test separately exercises TCP's actual runtime event loop.
+The synthetic stdio test separately exercises The Chat Place's actual runtime event loop.

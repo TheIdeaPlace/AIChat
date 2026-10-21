@@ -527,24 +527,43 @@ class CodexChatRuntime:
 
     def _auto_answer(self, proof, executor):
         with self._permission_lock:
+            pending = executor.waiting(proof)
             with self._lock:
                 if (self._stop.is_set() or self._problems.get(proof.native_id)
-                        or proof.native_id in self._reopening or proof.native_id in self._stopping):
+                        or proof.native_id in self._reopening or proof.native_id in self._stopping
+                        or executor is not self._executor or self._proofs.get(proof.native_id) is not proof):
                     return False
-            pending = executor.waiting(proof)
-            live_turns = {r.turn_id for r in pending}
-            self._permission_evaluated = {key for key in self._permission_evaluated
-                                        if key[0] != proof.native_id or key[1] in live_turns}
-            fresh = tuple(r for r in pending if (proof.native_id, r.turn_id, r.request_id) not in self._permission_evaluated)
-            if not fresh:
-                return False
-            keys = {(proof.native_id, r.turn_id, r.request_id) for r in fresh}
-            self._permission_evaluated.update(keys)  # Even a read failure is a final evaluation.
-            self._permission_pending.update(keys)
+                # A listener from a replaced binding cannot erase the current
+                # executor's already-checked requests (#338).
+                live_turns = {r.turn_id for r in pending}
+                self._permission_evaluated = {key for key in self._permission_evaluated
+                                            if key[0] != proof.native_id or key[1] in live_turns}
+                fresh = tuple(r for r in pending if (proof.native_id, r.turn_id, r.request_id) not in self._permission_evaluated)
+                if not fresh:
+                    return False
+                keys = {(proof.native_id, r.turn_id, r.request_id) for r in fresh}
+                self._permission_evaluated.update(keys)  # Even a read failure is a final evaluation.
+                self._permission_pending.update(keys)
         self._launch_approval(lambda: self._answer_remembered(proof, executor, fresh))
         return True
 
     def _answer_remembered(self, proof, executor, pending):
+        try:
+            self._process_remembered(proof, executor, pending)
+        except Exception as error:
+            record_failure(error)
+        finally:
+            # Include selection and the first notification: neither can leave
+            # a waiting request hidden if it fails unexpectedly (#338).
+            with self._permission_lock:
+                self._permission_pending.difference_update(
+                    (proof.native_id, r.turn_id, r.request_id) for r in pending)
+            try:
+                self._notify(proof.native_id)
+            except Exception as error:
+                record_failure(error)
+
+    def _process_remembered(self, proof, executor, pending):
         with self._permission_lock:
             try:
                 rules = self.permission_store.load(proof.native_id)
