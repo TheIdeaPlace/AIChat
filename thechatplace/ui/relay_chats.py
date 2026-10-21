@@ -47,7 +47,9 @@ class RelayChats:
 
     def _relay_source_working(self, info) -> bool:
         """Still working, its latest reply may be a step on the way ("Let me
-        check the tests"), not its answer: the dialog says so."""
+        check the tests"), not its answer: the dialog says so. A chat of The
+        Chat Place's own is working only while it has a turn here; the list's
+        state lags a few seconds, and would call a just-finished one busy."""
         if info.provider == "claude":
             runner = self._runners.get(info.cli_session_id)
             if runner is not None:
@@ -56,6 +58,8 @@ class RelayChats:
             state = self._codex_states.get(info.key)
             if state is not None:
                 return state.outcome == "inProgress" or state.state == WORKING
+        if info.is_own:
+            return False
         return info.state == WORKING
 
     def _relay(self, source, target, text):

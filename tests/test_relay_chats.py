@@ -345,3 +345,37 @@ def test_the_dialog_says_when_the_chat_is_still_working(dialog, provider, busy, 
         w._runners['claude-1'] = SimpleNamespace(waiting_on_background=busy == 'background')
     w.on_send_reply_to()
     assert dialog.seen.working is expected
+
+
+def test_a_just_finished_chat_place_chat_is_not_called_working(dialog):
+    w = Window()
+    w.builder.state = 'working'  # the list's snapshot, a few seconds behind
+    w.on_send_reply_to()
+    assert dialog.seen.working is False
+
+
+def test_a_desktop_session_working_by_the_list_is_called_working(dialog):
+    from thechatplace.sessions import DESKTOP
+    w = Window()
+    w._open = SessionInfo(source=DESKTOP, key='local_1', title='Desktop', cwd='/work',
+                          cli_session_id='cli-d', state='working')
+    w.on_send_reply_to()
+    assert dialog.seen.working is True
+
+
+def test_relay_into_a_codex_chat_waiting_on_approval_only_sends(dialog):
+    """A forwarded message is a message: it never answers the approval the
+    chat is waiting on (#248)."""
+    from thechatplace.providers.codex_runtime import CodexChatState
+    w = Window()
+    calls = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: calls.append(a) or True)
+    w._codex_states[w.reviewer.key] = CodexChatState(
+        'codex-1', 'needs_you', 'turn', 'inProgress', requests=(object(),))
+    dialog.choose = lambda text: (0, 'Yes, approve it. Allow.')
+    w.on_send_reply_to()
+    action, done = w.work.pop()
+    done(action(), False)
+    assert [call[0] for call in calls] == ['send']
+    assert calls[0][2] == 'Yes, approve it. Allow.'
+    assert w.said[-1].startswith('Queued for Reviewer')
