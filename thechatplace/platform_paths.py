@@ -236,6 +236,30 @@ def app_data_dir() -> Path:
     return _roaming_dir() / APP_DIR_NAME
 
 
+def codex_approval_shell(executable: str) -> str:
+    """Only known native shell wrappers can be remembered (#307)."""
+    if sys.platform == 'win32':
+        trusted = [_windows_program('System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')]
+        if os.environ.get('ProgramFiles'):
+            trusted.append(ntpath.join(os.environ['ProgramFiles'], 'PowerShell', '7', 'pwsh.exe'))
+        if ntpath.normcase(executable) in {ntpath.normcase(p) for p in trusted}:
+            return 'powershell'
+    elif executable in ('/bin/bash', '/bin/zsh', '/bin/sh'):
+        return 'posix'
+    return ''
+
+
+def codex_approval_folder(cwd: str, chat_folder: str) -> str:
+    """Remember only the exact existing local chat folder, never a child/alias."""
+    paths = [Path(value) for value in (cwd, chat_folder)]
+    if any(not p.is_absolute() or str(p).startswith(('\\\\', '//')) for p in paths):
+        raise ValueError('Local absolute folders required')
+    resolved = [p.resolve(strict=True) for p in paths]
+    if resolved[0] != resolved[1] or not resolved[0].is_dir():
+        raise ValueError('Remembered approvals require the exact chat folder')
+    return str(resolved[0])
+
+
 def codex_diagnostic_path() -> Path:
     return app_data_dir() / "codex-errors.log"
 

@@ -609,8 +609,9 @@ names none, the dialog says the command may run outside the chat's folder sandbo
 can change any file you can. It offers only the one-time answers Codex allows for that
 request: Allow Once, Deny, Deny and Stop Turn, and always Answer Later. Deny lets Codex carry
 on without it; Deny and Stop Turn also stops the turn. Enter chooses Deny, or Answer Later
-when Deny isn't offered. Each answer covers one request: allowing for the rest of the
-session and Codex's "always allow" rules are never offered or saved.
+when Deny isn't offered. For eligible Git commands, **Allow for This Chat** remembers your
+approval in The Chat Place only, for the current chat. Codex's own session and saved-rule
+choices are never sent. Other answers cover one request.
 Questions show the provider and keep secret answers masked. New Session and Change Permission Mode offer read-only or editing files in the
 selected folder, both with on-request approvals. Finish or Stop active work and
 clear queued messages before changing the policy. Verification and saving must
@@ -686,7 +687,27 @@ A folder's shared `.claude\settings.json` usually comes with the project, so Cla
 
 ### For a Codex chat
 
-The Chat Place keeps no Codex approvals yet, so each request Codex shows you asks, and your answer covers that one request; Codex's own "for the rest of the session" and "always allow" offers are never used. Commands covered by Codex's own saved rule files run without asking (see "Local Codex chats" above). Chat Permissions shows the permission mode, with Change (once the chat's turn has finished), and how many of those rule files are in effect. It has no Remove buttons, since nothing is kept here; the rule files are changed in Codex.
+**Allow for This Chat** remembers an eligible Git command prefix for this chat and its exact
+working folder. It supports ordinary arguments for `git status`, `switch`, `add`, `commit`,
+`push`, `fetch`, `diff` and `log`. Force/delete operations, unknown options, compound commands,
+shell expansion, other working folders, and requests for separately listed extra access
+still ask. The button appears only when this request can be remembered.
+
+A remembered approval has the same authority as **Allow Once**. The command may run outside
+the sandbox, access other files and the network, and run Git hooks or configured programs.
+The working folder identifies where it starts; it does not confine what it can do.
+
+Approvals survive restarting the app. A Continue Here copy starts with none. TCP sends
+one-time answers on your behalf and announces automatic approvals once. The current turn's
+automatic approvals appear after the conversation and in Turn Status. Codex keeps no native
+approval, and neither Codex's nor Claude's settings are changed.
+
+**Chat Permissions** lists each kept approval and its date, with **Remove**, Delete (Backspace
+on Mac) and **Remove All**. Removal applies before the next approval is sent, even during a
+running turn; work already approved may finish. Changing mode clears the kept approvals.
+The mode can change once the turn has finished. Codex's own rule-file count remains separate
+and read only. Native rules can still allow commands independently (see "Local Codex chats"
+above), so removing a TCP approval does not remove a native rule.
 
 ## Organizing your sessions
 

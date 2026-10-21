@@ -1475,15 +1475,31 @@ class CodexPermissionDialog(wx.Dialog):
     button when offered; otherwise Answer Later is, so a stray Enter never
     allows anything or stops the turn.
     """
-    def __init__(self, parent, session_title, request, file_detail=""):
+    def __init__(self, parent, session_title, request, file_detail="", *, chat_rule=None):
         super().__init__(parent, title=f"Codex needs permission: {session_title}",
                          size=dialog_size(parent, 700, 540),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        self.request_text = _read_only_text(self, request.detail(file_detail), "Request")
+        detail = request.detail(file_detail)
+        if chat_rule is not None:
+            from ..providers.codex_permissions import NOTICE
+            from ..providers.codex_requests import SAVED_RULE_NOTE
+            detail = detail.replace(SAVED_RULE_NOTE, 'Codex offered to keep a native approval. '
+                                    'The Chat Place instead remembers your choice only in this chat; Codex keeps no approval.')
+            detail += '\n\nRemember for this chat: ' + chat_rule.description + '\n\n' + NOTICE
+        self.request_text = _read_only_text(self, detail, "Request")
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
+        self.chat_rule_button = None
+        if chat_rule is not None:
+            self.chat_rule_button = wx.Button(self, label='Allow for This &Chat')
+            name = 'Allow for this chat: ' + chat_rule.description
+            self.chat_rule_button.SetToolTip(name)
+            set_accessible_name(self.chat_rule_button, name)
+            self.chat_rule_button.Enable(request.reviewable(file_detail))
+            self.chat_rule_button.Bind(wx.EVT_BUTTON, lambda event: self._choose('tcp_chat_rule'))
+            sizer.Add(self.chat_rule_button, 0, wx.ALIGN_RIGHT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         reviewable = request.reviewable(file_detail)
         self.buttons = {}
@@ -1699,7 +1715,8 @@ class ChatPermissionsDialog(wx.Dialog):
             self._tell("Select the rule to remove first.")
             return
         row = self.rows[index]
-        if not self._confirm(chat_permissions.confirm_text(row, self.rows)):
+        if not self._confirm(chat_permissions.confirm_text(row, self.rows, **(
+                {'after': self.host.removal_effect} if hasattr(self.host, 'removal_effect') else {}))):
             self.list.SetFocus()
             return
         self._remove(row.rule_id, index)
@@ -1709,7 +1726,8 @@ class ChatPermissionsDialog(wx.Dialog):
             return
         # One rule is named, as Remove names it.
         only = self.rows[0] if len(self.rows) == 1 else None
-        if not self._confirm(chat_permissions.confirm_text(only, self.rows)):
+        if not self._confirm(chat_permissions.confirm_text(only, self.rows, **(
+                {'after': self.host.removal_effect} if hasattr(self.host, 'removal_effect') else {}))):
             self.list.SetFocus()
             return
         self._remove(None, 0)

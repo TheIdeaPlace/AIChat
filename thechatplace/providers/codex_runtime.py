@@ -6,7 +6,8 @@ from .codex_connection import ManagedCodexConnection
 from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_policy import CodexPolicy
-from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure
+from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent
+from .codex_permissions import CodexPermissionStore, candidate, matches
 from .codex_tokens import CodexTokenUsage
 from ..codex_diagnostics import record_failure, safe_reason
 from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE
@@ -32,6 +33,7 @@ class CodexChatState:
     context_epoch: int = 0
     tasks: tuple = field(default=(), repr=False)
     plan_received: bool = False
+    permission_notices: tuple = field(default=(), repr=False)
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,10 @@ class CodexChatRuntime:
         self.plan_store = CodexPlanStore()
         self._saved_plans = {}
         self._plan_lock = threading.Lock()
+        self.permission_store = CodexPermissionStore()
+        self._permission_lock = threading.RLock()
+        self._permission_attempts = set()
+        self._permission_notices = {}
 
     def _binding(self):
         with self._binding_lock:
@@ -184,6 +190,8 @@ class CodexChatRuntime:
                 raise CodexRpcError('Wait until this Codex chat has no work in progress')
             self._reopening.add(native_id)
         try:
+            with self._permission_lock:
+                self.permission_store.clear(native_id)
             connection, _ = self._binding()
             change = PreparedCodexPolicy(CodexOwnedThreads(connection).resume(proposed))
             with self._lock:
@@ -394,12 +402,108 @@ class CodexChatRuntime:
         executor.answer(proof, request, result)
         self._notify(proof.native_id)
 
+    def _permission_record(self, record):
+        if (not isinstance(record, OwnSession)
+                or record.provider != 'codex' or record.started is not True):
+            raise CodexRpcError('Remembered Codex approvals require a chat started in The Chat Place')
+
+    def chat_rule_candidate(self, record, request):
+        self._permission_record(record)
+        proof, executor = self._context(record)
+        if not any(r is request for r in executor.waiting(proof)):
+            return None
+        return candidate(request, proof.cwd)
+
+    def chat_rules(self, record):
+        self._permission_record(record)
+        with self._permission_lock:
+            return self.permission_store.load(record.cli_session_id)
+
+    def remove_chat_rule(self, record, rule_id):
+        self._permission_record(record)
+        with self._permission_lock:
+            if rule_id is None:
+                self.permission_store.clear(record.cli_session_id)
+                return ()
+            rules = self.permission_store.load(record.cli_session_id)
+            kept = tuple(r for r in rules if r.rule_id != rule_id)
+            if len(kept) == len(rules):
+                raise ValueError('That approval is no longer kept')
+            self.permission_store.save(record.cli_session_id, kept)
+            return kept
+
+    def allow_for_chat(self, record, request):
+        self._permission_record(record)
+        with self._permission_lock:
+            rule = self.chat_rule_candidate(record, request)
+            if rule is None:
+                raise ValueError('This request cannot be remembered; open Answer again')
+            proof, executor = self._context(record)
+            previous = self.permission_store.load(proof.native_id)
+            kept = tuple(r for r in previous if (r.prefix, r.folder, r.shell) != (rule.prefix, rule.folder, rule.shell))
+            self.permission_store.save(proof.native_id, (*kept, rule))
+            key = (proof.native_id, request.turn_id, request.request_id)
+            self._permission_attempts.add(key)
+            try:
+                executor.answer(proof, request, request.approval_answer('accept'))
+            except CodexApprovalNotSent:
+                self.permission_store.save(proof.native_id, previous)
+                raise
+            except Exception:
+                with self._lock:
+                    self._problems[proof.native_id] = 'Could not confirm the approval. Reload this chat; the answer will not be resent.'
+                raise
+        self._notify(proof.native_id)
+        return rule
+
+    def _auto_answer(self, proof, executor):
+        changed = False
+        with self._permission_lock:
+            with self._lock:
+                if (self._stop.is_set() or self._problems.get(proof.native_id)
+                        or proof.native_id in self._reopening or proof.native_id in self._stopping):
+                    return False
+            pending = executor.waiting(proof)
+            if not pending:
+                return False
+            live_turns = {r.turn_id for r in pending}
+            self._permission_attempts = {key for key in self._permission_attempts
+                                        if key[0] != proof.native_id or key[1] in live_turns}
+            try:
+                rules = self.permission_store.load(proof.native_id)
+            except (ValueError, OSError, UnicodeError):
+                return False  # Never infer an approval from unreadable state.
+            for request in pending:
+                key = (proof.native_id, request.turn_id, request.request_id)
+                if key in self._permission_attempts:
+                    continue
+                rule = next((r for r in rules if matches(r, request, proof.cwd)), None)
+                if rule is None:
+                    continue
+                self._permission_attempts.add(key)  # Before dispatch: uncertain sends are never retried.
+                try:
+                    executor.answer(proof, request, request.approval_answer('accept'))
+                except CodexApprovalNotSent:
+                    continue
+                except Exception:
+                    with self._lock:
+                        self._problems[proof.native_id] = 'Could not confirm an automatic approval. Reload this chat; the answer will not be resent.'
+                    return True
+                with self._lock:
+                    notices = self._permission_notices.setdefault(proof.native_id, [])
+                    notices.append((request.turn_id, request.request_id,
+                                    'Allowed ' + ' '.join(rule.prefix) + ', as you said for this chat.'))
+                    del notices[:-128]
+                changed = True
+        return changed
+
     def snapshot(self, native_id, *, unsent=()):
         with self._lock:
             proof, executor = self._proofs.get(native_id), self._executor
             queued = tuple(self._queues.get(native_id, ()))
             problem = self._problems.get(native_id, '')
             sending = native_id in self._sending
+            permission_notices = tuple(self._permission_notices.get(native_id, ()))
         if proof is None or executor is None:
             return CodexChatState(native_id, STATUS_UNAVAILABLE)
         state = executor.snapshot(proof)
@@ -408,7 +512,8 @@ class CodexChatRuntime:
                   NEEDS_YOU if state.requests else WORKING if sending or state.status == 'inProgress' else IDLE)
         return CodexChatState(native_id, status, state.turn_id, state.status,
                               state.replies, state.requests, queued, tuple(unsent), problem, state.file_changes,
-                              state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received)
+                              state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received,
+                              permission_notices)
 
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():
@@ -462,8 +567,10 @@ class CodexChatRuntime:
                 return
             with self._lock:
                 proofs = {p.native_id: p for p in self._proofs.values() if p.connection is connection}
-            for native_id in changed:
-                proof = proofs.get(native_id)
+            for native_id, proof in proofs.items():
+                auto_answered = self._auto_answer(proof, executor)
+                if native_id not in changed and not auto_answered:
+                    continue
                 if proof is not None:
                     if executor.snapshot(proof).status != 'inProgress':
                         with self._lock:

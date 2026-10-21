@@ -2,8 +2,8 @@
 
 ``ChatPermissionsDialog`` shows; these do the work. Claude's kept rules are in
 The Chat Place's session store and given to each later turn as
-``--allowedTools``. A Codex chat keeps none (#307); it shows its mode and how
-many of Codex's own rule files are in effect, read on a worker.
+``--allowedTools``. Codex consent records stay in TCP and authorize one-time
+answers, separately from Codex's native rule files (#307).
 """
 from __future__ import annotations
 
@@ -105,13 +105,14 @@ class ClaudePermissions:
 
 
 class CodexPermissions:
-    #: Nothing to remove, so the dialog offers no Remove (#307).
-    can_remove = False
-    empty_text = chat_permissions.CODEX_EMPTY
+    #: TCP consent records, separate from native saved rule files (#307).
+    can_remove = True
+    empty_text = 'No command approvals are remembered for this chat.'
     native_pending = chat_permissions.native_rule_files(pending=True)
 
     def __init__(self, frame, info, record):
         self.frame, self.info, self.record = frame, info, record
+        self.removal_effect = 'Codex will ask again on the next matching request. Work already approved may finish.'
 
     def mode_text(self) -> str:
         options = self.record.provider_options
@@ -131,11 +132,27 @@ class CodexPermissions:
         self.frame._change_codex_permissions(self.info, after=done)
 
     def note(self) -> str:
-        return chat_permissions.CODEX_ABOUT
+        from ..providers.codex_permissions import NOTICE
+        return ('Removal applies before the next approval is sent; work already approved may finish. '
+                'Changing mode clears remembered approvals. ' + NOTICE)
 
     def load(self, done):
-        # Nothing is kept for a Codex chat (#307).
-        done([], None)
+        self.frame._codex_work(lambda: self.frame.sessions.owned_action('chat_rules', self.record),
+                               lambda rules, error: done(None if error else self._rows(rules),
+                                                        (rules or 'Remembered approvals could not be read. No approvals were changed; close and reopen this dialog to retry.') if error else None))
+
+    @staticmethod
+    def _rows(rules):
+        return [chat_permissions.PermissionRow(r.rule_id, r.description, ' '.join(r.prefix), r.allowed_at_ms)
+                for r in rules]
+
+    def remove(self, rule_id, done):
+        def removed(rules, error):
+            if not error:
+                self.frame._feedback('Removed. The next matching request will ask again; work already approved may finish.')
+            done(None if error else self._rows(rules),
+                 (rules or 'The removal could not be saved. Open Chat Permissions to check what is still kept.') if error else None)
+        self.frame._codex_work(lambda: self.frame.sessions.owned_action('remove_chat_rule', self.record, rule_id), removed)
 
     def native(self, done):
         def counted(result, error):

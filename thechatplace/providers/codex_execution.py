@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from .codex_events import CodexTurnBuffer, CodexTokenUsageEvent, CodexEvent, _text
 from .codex_tokens import CodexTokenUsage
 from .codex_owned import CodexLifecycleConnection
-from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure
+from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent
 from .codex_requests import CodexRequest, CodexRequestResolved, CodexRequestDeclined, QUESTIONS
 
 
@@ -241,7 +241,7 @@ class CodexTurnExecutor:
             if (self._requests.get(request.request_id) is not request or buffer is None
                     or buffer.status != 'inProgress'
                     or (request.thread_id, request.turn_id) != (proof.native_id, buffer.turn_id)):
-                raise CodexRpcError('Codex request is no longer waiting')
+                raise CodexApprovalNotSent('Codex request is no longer waiting')
         self.connection.respond_request(request, result)
         with self._lock:
             self._requests.pop(request.request_id, None)

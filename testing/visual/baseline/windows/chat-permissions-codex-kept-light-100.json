@@ -1,0 +1,217 @@
+{
+ "title": "Chat Permissions: Codex preview",
+ "class": "ChatPermissionsDialog",
+ "size": [
+  680,
+  520
+ ],
+ "client": [
+  664,
+  481
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission &mode:",
+   "rect": [
+    8,
+    11,
+    96,
+    16
+   ],
+   "best": [
+    96,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Permission mode",
+   "label": "",
+   "rect": [
+    112,
+    10,
+    465,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Read-only; asks before allowing changes"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&hange...",
+   "rect": [
+    581,
+    8,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Allowed for this chat:",
+   "rect": [
+    8,
+    39,
+    113,
+    16
+   ],
+   "best": [
+    113,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Allowed for this chat, 2",
+   "label": "",
+   "rect": [
+    10,
+    57,
+    648,
+    245
+   ],
+   "best": [
+    1254,
+    150
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Run git commit with supported arguments, starting in C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\chat-permissions-codex-kept\\Projects\\Scratch. May run outside the sandbox. git commit. Allowed 19 October 2026 at 03:53.",
+    "Run git push with supported arguments, starting in C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\chat-permissions-codex-kept\\Projects\\Scratch. May run outside the sandbox. git push. Allowed 19 October 2026 at 03:53."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Remove...",
+   "rect": [
+    8,
+    308,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Remove A&ll...",
+   "rect": [
+    89,
+    308,
+    90,
+    23
+   ],
+   "best": [
+    90,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Close",
+   "rect": [
+    581,
+    308,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Abou&t these permissions:",
+   "rect": [
+    8,
+    339,
+    134,
+    16
+   ],
+   "best": [
+    134,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About these permissions",
+   "label": "",
+   "rect": [
+    10,
+    365,
+    648,
+    110
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Removal applies before the next approval is sent; work already approved may finish. Changing mode clears remembered approvals. Remembered approvals have the same authority as Allow Once: matching commands may run outside the sandbox, change files elsewhere, use the network, and run Git hooks or other configured programs. The folder identifies where the command starts; it does not confine what it c"
+  }
+ ],
+ "capture": "PrintWindow"
+}

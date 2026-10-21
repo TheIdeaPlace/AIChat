@@ -484,6 +484,18 @@ The same dialog with one row in the list, "Nothing is allowed beyond the permiss
 
 ## chat-permissions-codex: File, Chat Permissions for a Codex chat (#332)
 
-The same 680 by 520 dialog, titled "Chat Permissions: Codex preview". The mode box reads "Can edit files in this folder; asks before anything else", with "Change..." beside it. The list holds one row, "The Chat Place keeps no Codex approvals." (selected). There are no Remove or Remove All buttons, only "Close" at the right under the list. The About box reads "The Chat Place keeps no Codex approvals: when Codex asks you, your answer covers that one request. Codex's own saved rule files are separate, below." Then, as its own paragraph: "Saved user/system rule files in effect: 2. Commands you've told Codex to always allow will run without asking and outside this folder's limits, including the network. Project-supplied command rules are refused. They are Codex's own, and are changed in Codex, not here." Every line fits. High Contrast Aquatic is as for chat-permissions: white-outlined boxes on near-black, and the selected row in light aqua.
+The same 680 by 520 dialog, titled "Chat Permissions: Codex preview". The mode box reads "Can edit files in this folder; asks before anything else", with Change beside it. The selected list entry reads "No command approvals are remembered for this chat." Remove and Remove All now sit below the list on the left, with Close on the right. The About box explains when removal counts, that remembered commands may run outside the sandbox, and that TCP alone keeps the approval. The native-rule paragraph continues below the initial viewport and can be scrolled. High Contrast Aquatic uses white outlines and text on near-black, and an aqua selected row. Control sizes and positions match the earlier dialog; only the two buttons and the text changed.
 
-**What looks off:** A row on the left of the button line is empty, where a Claude chat has Remove and Remove All. Nothing else.
+**What looks off:** Nothing in these pictures.
+
+## codex-permission-kept: Answer with a TCP remembered approval (#307)
+
+A 700 by 540 dialog. Request heads a 668 by 391 read-only box showing the command, starting folder, execution authority and remembered approval scope. Allow for This Chat sits just below that box on the right. The bottom row contains Allow Once, Deny, Deny and Stop Turn, and Answer Later. Deny retains the default outline. Light mode uses black text and a white request box on a pale-grey dialog. High Contrast uses white outlines and text on near-black, with aqua Deny. All labels fit, with substantial empty space below the request explanation. Pixel measurements give 21:1 for ordinary light text and 16.29:1 for ordinary High Contrast text; the light default-button outline is 3.97:1 against the dialog background.
+
+**What looks off:** Nothing in these pictures.
+
+## chat-permissions-codex-kept: Review remembered Codex commands (#307)
+
+A 680 by 520 dialog. Permission mode and Change run across the top. A 648 by 245 list takes the middle, with git commit selected above git push. Long rows continue beyond the initial horizontal viewport; a horizontal scrollbar runs below them. Remove and Remove All sit below the list at the left, and Close at the right. A 648 by 110 About box explains removal, mode changes and command authority. High Contrast uses white outlines, near-black backgrounds and an aqua selected row. The selected light text measures 4.53:1 (#FFFFFF on #0078D4); High Contrast selected glyph cores measure 7.89:1 (#263B50 on #8EE3F0).
+
+**What looks off:** Nothing in these pictures; long rules use the scrollbar.

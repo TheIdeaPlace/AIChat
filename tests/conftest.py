@@ -12,6 +12,9 @@ import pytest  # noqa: E402
 def _isolated_codex_diagnostics(monkeypatch, tmp_path):
     from thechatplace import platform_paths
     monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: tmp_path / 'codex-errors.log')
+    from thechatplace.providers import codex_runtime
+    from thechatplace.providers.codex_permissions import CodexPermissionStore
+    monkeypatch.setattr(codex_runtime, 'CodexPermissionStore', lambda: CodexPermissionStore(tmp_path / 'permissions'))
 
 
 @pytest.fixture(scope="session")

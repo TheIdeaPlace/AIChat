@@ -22,6 +22,10 @@ class CodexRpcError(RuntimeError):
     """Public diagnostics never include raw RPC payloads or stderr."""
 
 
+class CodexApprovalNotSent(CodexRpcError):
+    """Approval failed before queueing bytes; manual Answer is still usable."""
+
+
 class CodexConnectionFailure(CodexRpcError):
     """Fixed connection reasons, never server payloads or exception text."""
     REASONS = {
@@ -259,14 +263,17 @@ class ReadOnlyCodexConnection:
 
     def respond_request(self, request, result):
         result = request.validate_answer(result)
-        if result.get("decision") in (ACCEPT, ACCEPT_SESSION):
-            account = self.request("account/read", {"refreshToken": True})
-            if not is_chatgpt_account(account):
-                raise CodexRpcError("Codex approvals require ChatGPT sign-in")
-        payload = self._encode({"id": request.request_id, "result": result})
+        try:
+            if result.get("decision") in (ACCEPT, ACCEPT_SESSION):
+                account = self.request("account/read", {"refreshToken": True})
+                if not is_chatgpt_account(account):
+                    raise CodexRpcError("Codex approvals require ChatGPT sign-in")
+            payload = self._encode({"id": request.request_id, "result": result})
+        except Exception as error:
+            raise CodexApprovalNotSent("Codex approval was not sent. Check the connection and ChatGPT sign-in.") from error
         with self._lock:
             if self._closed or self._server_pending.get(request.request_id) is not request:
-                raise CodexRpcError("Codex request is no longer waiting")
+                raise CodexApprovalNotSent("Codex request is no longer waiting")
             self._outgoing.put(payload)
             del self._server_pending[request.request_id]
 

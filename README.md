@@ -480,10 +480,10 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   These apply to every Claude session in that folder, The Chat Place never changes them, and
   you change them in Claude Code (for example with `/permissions`). A "never allowed" rule there
   refuses without asking, and an "always asks" rule asks every time, even after Allow for This
-  Chat. The Chat Place keeps no Codex approvals yet, so a request Codex shows you
-  always asks; commands covered by Codex's own saved rule files run without asking, as
-  described under Codex below. For a Codex chat the dialog shows the permission mode and how
-  many of those rule files are in effect, with no Remove buttons. Desktop app and terminal
+  Chat. For a Codex chat, the dialog lists command approvals kept here and when you allowed
+  them, with Remove and Remove All. Removal applies before the next approval is sent, including
+  during a running turn; work already approved may finish. Changing mode clears the kept
+  approvals. Codex's own saved rule-file count remains separate and read only. Desktop app and terminal
   sessions are read-only here, so they have none, and a Continue Here copy starts with nothing
   kept.
 - **Announcements.** When the open session gets a new reply, or one of The Chat Place's sessions
@@ -644,9 +644,20 @@ sandbox, and the dialog says so: if you allow it, the command can change any fil
 and use the network. Only the one-time answers Codex offers for that request are shown:
 Allow Once, Deny (Codex carries on without it) and Deny and Stop Turn, plus Answer Later.
 Deny is the default button when it's offered; otherwise Answer Later is. When Codex offers
-to keep allowing something (for the rest of the session, or as a saved "always allow"
-rule), the dialog says so, but The Chat Place leaves that out: each answer covers one
-request.
+to keep a native approval (for the session or as a saved rule), The Chat Place leaves that
+native choice out and sends only one-time answers. For an eligible Git command,
+**Allow for This Chat** remembers its prefix only in
+The Chat Place's own data, for this chat and its exact working folder. It survives restarting
+the app; a Continue Here copy starts empty. Supported operations are `git status`, `switch`,
+`add`, `commit`, `push`, `fetch`, `diff` and `log`, with ordinary supported arguments.
+Unknown options, force or delete operations, compound commands, shell expansion, a changed
+working folder, and requests for separately listed extra access still ask.
+Remembering has the same authority as **Allow Once**: the command may run outside the sandbox,
+including Git hooks and configured programs, and may access files elsewhere and the network.
+The working folder is where it starts, not a confinement boundary. TCP sends one-time answers
+on your behalf; it never creates a native Codex session approval or saved rule. Automatic
+approvals are announced once, shown after the conversation for the current turn and recorded
+in Turn Status. File, Chat Permissions (Ctrl+Shift+H) lists and removes them.
 Requests The Chat Place cannot present safely, such as typing into a command that's
 already running or running a command somewhere other than this computer, are declined
 with a notice that says which kind and why; they do not disconnect the chat. Turn Status

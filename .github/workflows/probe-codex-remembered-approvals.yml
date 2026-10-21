@@ -1,0 +1,36 @@
+name: Probe TCP remembered Codex approvals
+on:
+  push:
+    branches: [codex/native-command-approvals]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        codex: ['0.162.1', '0.163.0']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install -g @openai/codex@${{ matrix.codex }}
+      - name: Exercise real Codex with a local synthetic model
+        shell: bash
+        run: |
+          root="$(npm root -g)/@openai/codex"
+          binary=$(find "$root" -type f \( -name codex -o -name codex.exe \) -path '*vendor*' | head -1)
+          python tools/probe_codex_remembered_approvals.py --codex "$binary" --out "$RUNNER_TEMP/native-approvals.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-approvals-${{ runner.os }}-${{ matrix.codex }}
+          path: ${{ runner.temp }}/native-approvals.json

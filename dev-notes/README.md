@@ -25,3 +25,5 @@ shipped.
 - [Codex CLI discovery](codex-cli-discovery.md): Finder launches, native npm/bundle lookup, three-state settings and Windows evidence (#277).
 
 - [Codex live task lists](codex-live-tasks.md): installed history checks, event routing, saved snapshots and visual review (#318).
+
+- [TCP-owned remembered approvals](codex-remembered-approvals.md): consent authority, matching and revocation for #307.

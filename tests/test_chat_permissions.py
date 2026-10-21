@@ -234,16 +234,16 @@ def test_remove_all_of_one_rule_names_it():
         "Remove this rule? Search the web. Claude will ask again from the next turn.")
 
 
-def test_codex_host_keeps_nothing_and_reads_codexs_own_rule_files(tmp_path):
+def test_codex_host_reads_tcp_rules_and_codexs_separate_native_rule_files(tmp_path):
     frame = Frame(tmp_path)
     host, record = _codex(tmp_path, frame)
+    frame.sessions.owned_action = lambda *args: ()
     seen, done = _results()
     host.load(done)
     assert seen[-1] == ([], None)
-    # Nothing to remove, so no Remove; and no claim that nothing runs unasked.
-    assert host.can_remove is False and not hasattr(host, "remove")
-    assert host.empty_text == cp.CODEX_EMPTY != cp.EMPTY
-    assert host.note() == cp.CODEX_ABOUT and "saved rule files" in host.note()
+    assert host.can_remove and callable(host.remove)
+    assert host.empty_text != cp.EMPTY
+    assert 'outside the sandbox' in host.note() and 'does not confine' in host.note()
     assert host.mode_text() == "Can edit files in this folder; asks before anything else"
     counted = []
     frame._load_codex_rules = lambda folder, callback: callback(2, False)
@@ -276,6 +276,17 @@ def test_kept_folders_are_listed_after_rules_and_can_be_removed(tmp_path):
     host.remove(None, done)
     kept = _store(tmp_path).get("own-1")
     assert seen[-1] == ([], None) and kept.allowed_tools == [] and kept.allowed_dirs == []
+
+
+def test_codex_file_failures_are_truthful_errors_even_without_safe_native_reason(tmp_path):
+    frame = Frame(tmp_path)
+    host, record = _codex(tmp_path, frame)
+    frame._codex_work = lambda action, done: done(None, True)
+    seen, done = _results()
+    host.load(done)
+    assert seen[-1][0] is None and seen[-1][1]
+    host.remove(None, done)
+    assert seen[-1][0] is None and 'could not be saved' in seen[-1][1]
 
 
 def test_kept_folders_survive_a_restart_and_bad_ones_are_dropped(tmp_path):

@@ -2,9 +2,8 @@
 
 No wx here, so the rows, notes and confirmations can be tested on their own.
 Claude's kept rules are the ``--allowedTools`` rules stored with the chat.
-The Chat Place keeps no Codex approvals: no safe way to reuse one has been
-found yet (#307, #330). Codex's own saved rule files are its own, and stay in
-effect (#257); the dialog says how many there are.
+Codex approvals kept here delegate Allow Once authority to matching commands;
+they do not claim to sandbox Git. Native saved rules stay separate (#257).
 """
 from __future__ import annotations
 
@@ -114,10 +113,10 @@ def _kind(row: PermissionRow) -> str:
     return "folder" if row.rule_id.startswith(FOLDER) else "rule"
 
 
-def confirm_text(row: Optional[PermissionRow], rows: List[PermissionRow]) -> str:
+def confirm_text(row: Optional[PermissionRow], rows: List[PermissionRow],
+                 after: str = "Claude will ask again from the next turn.") -> str:
     """The one confirmation before a removal, naming what goes: ``row``, or
     with None all of ``rows``, counted as rules and folders."""
-    after = "Claude will ask again from the next turn."
     if row is not None:
         return f"Remove this {_kind(row)}? {row.description} {after}"
     folders = sum(1 for r in rows if _kind(r) == "folder")

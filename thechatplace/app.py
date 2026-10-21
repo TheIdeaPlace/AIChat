@@ -76,6 +76,8 @@ def smoke_test(out_path: str) -> int:
         report["codex_reader"] = True
         from .providers.codex_runtime import CodexChatRuntime  # noqa: F401
         report["codex_execution"] = True
+        from .providers.codex_permissions import CodexPermissionStore  # noqa: F401
+        report["codex_permissions"] = True
     except Exception as exc:  # noqa: BLE001
         problems.append(f"wx/ui: {exc}")
     try:

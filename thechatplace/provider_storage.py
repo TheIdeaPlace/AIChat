@@ -79,6 +79,11 @@ class PartitionedFile:
                 os.unlink(tmp)
 
 
+def atomic_write_json(path, payload):
+    """Public atomic writer for provider companion stores."""
+    PartitionedFile._write(path, payload)
+
+
 class CodexPlanStore:
     """Latest live plan captured here, never a write to provider history (#318)."""
 
