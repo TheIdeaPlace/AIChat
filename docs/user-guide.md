@@ -689,15 +689,17 @@ A folder's shared `.claude\settings.json` usually comes with the project, so Cla
 
 **Allow for This Chat** remembers an eligible Git command prefix for this chat and its exact
 working folder. It supports ordinary arguments for `git status`, `switch`, `add`, `commit`,
-`push`, `fetch`, `diff` and `log`. Force/delete operations, unknown options, compound commands,
+`push`, `fetch`, `diff` and `log`. Explicit force or delete options in the command, unknown options, compound commands,
 shell expansion, other working folders, and requests for separately listed extra access
 still ask. The button appears only when this request can be remembered.
 
 A remembered approval has the same authority as **Allow Once**. The command may run outside
 the sandbox, access other files and the network, and run Git hooks or configured programs.
 The working folder identifies where it starts; it does not confine what it can do.
+A plain push follows the repository's configuration, which can itself request forced updates
+or deletion.
 
-Approvals survive restarting the app. A Continue Here copy starts with none. TCP sends
+Approvals survive restarting the app. A Continue Here copy starts with none. The Chat Place sends
 one-time answers on your behalf and announces automatic approvals once. The current turn's
 automatic approvals appear after the conversation and in Turn Status. Codex keeps no native
 approval, and neither Codex's nor Claude's settings are changed.
@@ -707,7 +709,7 @@ on Mac) and **Remove All**. Removal applies before the next approval is sent, ev
 running turn; work already approved may finish. Changing mode clears the kept approvals.
 The mode can change once the turn has finished. Codex's own rule-file count remains separate
 and read only. Native rules can still allow commands independently (see "Local Codex chats"
-above), so removing a TCP approval does not remove a native rule.
+above), so removing The Chat Place's own approval does not remove a native rule.
 
 ## Organizing your sessions
 

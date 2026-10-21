@@ -22,7 +22,7 @@ from .codex_requests import COMMAND, ACCEPT
 NOTICE = ('Remembered approvals have the same authority as Allow Once: matching commands '
           'may run outside the sandbox, change files elsewhere, use the network, and run '
           'Git hooks or other configured programs. The folder identifies where the command '
-          'starts; it does not confine what it can access. Only this Chat Place chat keeps '
+          'starts; it does not confine what it can access. Only this chat in The Chat Place keeps '
           'the approval. No Codex or Claude settings or rules are changed.')
 
 
@@ -192,3 +192,11 @@ class CodexPermissionStore:
                 # its contents. A failed rename propagates; never claim removal.
                 path = self._path(native_id)
                 path.rename(path.with_name(path.stem + '.preserved-' + uuid.uuid4().hex + '.json'))
+
+    def remove(self, native_id):
+        """Permanent chat deletion also removes its preserved approval files."""
+        with self._io_lock:
+            path = self._path(native_id)
+            path.unlink(missing_ok=True)
+            for preserved in self.root.glob(path.stem + '.preserved-*.json'):
+                preserved.unlink(missing_ok=True)

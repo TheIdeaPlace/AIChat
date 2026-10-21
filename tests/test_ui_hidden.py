@@ -9393,10 +9393,31 @@ def test_codex_kept_approval_button_names_its_scope_and_has_safe_default(frame, 
         assert 'outside the sandbox' in dialog.request_text.GetValue()
         assert SAVED_RULE_NOTE not in dialog.request_text.GetValue()
         assert 'only in this chat' in dialog.request_text.GetValue()
+        assert 'If you choose Allow for This Chat' in dialog.request_text.GetValue()
+        assert 'Allow Once keeps no approval' in dialog.request_text.GetValue()
         assert dialog.GetDefaultItem().GetId() == wx.ID_CANCEL
         assert dialog.GetEscapeId() == wx.ID_CANCEL
     finally:
         dialog.Destroy()
+
+
+def test_opening_chat_selects_latest_reply_before_permission_notices(frame, monkeypatch):
+    from thechatplace.transcript import ChatMessage, ASSISTANT, PERMISSION_NOTICE
+    visible = [ChatMessage(ASSISTANT, 'Latest reply', key='reply'),
+               ChatMessage(PERMISSION_NOTICE, 'Allowed git commit', key='notice:commit')]
+    monkeypatch.setattr(frame, '_visible_messages', lambda: visible)
+    frame._rebuild_chat_list(focus_newest=True)
+    assert frame._chat_keys[frame.chat_list.GetSelection()] == 'reply'
+
+
+@pytest.mark.parametrize('count,noun', [(1, 'request'), (2, 'requests')])
+def test_codex_turn_status_remembered_approval_count(frame, count, noun):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    notices = tuple(('turn', i, 'Allowed git commit, as you said for this chat.') for i in range(count))
+    state = CodexChatState('owned', 'working', 'turn', 'inProgress', permission_notices=notices)
+    text = frame._codex_status_text(state)
+    assert f'{count} {noun} allowed automatically.' in text
+    assert text.count('as you said for this chat') == 1
 
 
 def test_owned_codex_ui_creates_sends_queues_and_recovers_stopped_text(frame):

@@ -8,7 +8,7 @@ import pytest
 from thechatplace.providers.codex_events import CodexEvent
 from thechatplace.providers.codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from thechatplace.providers.codex_owned import CodexOwnedThread
-from thechatplace.providers.codex_rpc import CodexRpcError, CodexTurnRejected
+from thechatplace.providers.codex_rpc import CodexRpcError, CodexTurnRejected, CodexApprovalNotSent
 
 
 class Connection:
@@ -333,7 +333,7 @@ def test_mismatched_request_during_start_clears_waiting_and_closes_uncertain_str
     assert not executor._requests
     with pytest.raises(CodexRpcError):
         executor.start(proof, 'Retry')
-    with pytest.raises(CodexRpcError):
+    with pytest.raises(CodexApprovalNotSent):
         executor.answer(proof, valid, {'decision': 'accept'})
 
 

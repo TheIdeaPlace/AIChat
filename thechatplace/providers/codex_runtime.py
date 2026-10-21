@@ -1,12 +1,13 @@
 """Worker-owned Codex lifecycle, streaming and queued sends for the controller."""
 from dataclasses import dataclass, field, replace
+from contextlib import contextmanager
 import threading
 
 from .codex_connection import ManagedCodexConnection
 from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_policy import CodexPolicy
-from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent
+from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent, CodexRememberedApprovalError
 from .codex_permissions import CodexPermissionStore, candidate, matches
 from .codex_tokens import CodexTokenUsage
 from ..codex_diagnostics import record_failure, safe_reason
@@ -75,7 +76,9 @@ class CodexChatRuntime:
         self._plan_lock = threading.Lock()
         self.permission_store = CodexPermissionStore()
         self._permission_lock = threading.RLock()
-        self._permission_attempts = set()
+        self._permission_evaluated = set()
+        self._permission_pending = set()
+        self._manual_permission_locks = {}
         self._permission_notices = {}
 
     def _binding(self):
@@ -399,6 +402,10 @@ class CodexChatRuntime:
 
     def answer(self, record, request, result):
         proof, executor = self._context(record)
+        with self._permission_lock:
+            key = (proof.native_id, request.turn_id, request.request_id)
+            self._permission_evaluated.add(key)
+            self._permission_pending.discard(key)
         executor.answer(proof, request, result)
         self._notify(proof.native_id)
 
@@ -435,67 +442,151 @@ class CodexChatRuntime:
     def allow_for_chat(self, record, request):
         self._permission_record(record)
         with self._permission_lock:
+            grant_lock = self._manual_permission_locks.setdefault(record.cli_session_id, threading.Lock())
+        # Serialize explicit grants for this chat without holding the dispatch
+        # lock during sign-in. A failed grant cannot roll back a later one.
+        with grant_lock:
+            return self._allow_for_chat(record, request)
+
+    def _allow_for_chat(self, record, request):
+        with self._permission_lock:
             rule = self.chat_rule_candidate(record, request)
             if rule is None:
                 raise ValueError('This request cannot be remembered; open Answer again')
             proof, executor = self._context(record)
             previous = self.permission_store.load(proof.native_id)
-            kept = tuple(r for r in previous if (r.prefix, r.folder, r.shell) != (rule.prefix, rule.folder, rule.shell))
-            self.permission_store.save(proof.native_id, (*kept, rule))
+            existing = next((r for r in previous if (r.prefix, r.folder, r.shell) == (rule.prefix, rule.folder, rule.shell)), None)
+            added = existing is None
+            if added:
+                self.permission_store.save(proof.native_id, (*previous, rule))
+            else:
+                rule = existing
             key = (proof.native_id, request.turn_id, request.request_id)
-            self._permission_attempts.add(key)
+            self._permission_evaluated.add(key)
+            self._permission_pending.discard(key)
+        try:
+            executor.answer(proof, request, request.approval_answer('accept'),
+                            dispatch_guard=lambda: self._approval_dispatch(proof, executor, request, rule))
+        except CodexApprovalNotSent as error:
             try:
-                executor.answer(proof, request, request.approval_answer('accept'))
-            except CodexApprovalNotSent:
-                self.permission_store.save(proof.native_id, previous)
-                raise
+                if added:
+                    with self._permission_lock:
+                        current = self.permission_store.load(proof.native_id)
+                        if rule in current:
+                            self.permission_store.save(proof.native_id, tuple(r for r in current if r != rule))
             except Exception:
                 with self._lock:
-                    self._problems[proof.native_id] = 'Could not confirm the approval. Reload this chat; the answer will not be resent.'
-                raise
+                    self._problems[proof.native_id] = CodexRememberedApprovalError.REASONS['cleanup_failed']
+                self._notify(proof.native_id)
+                raise CodexRememberedApprovalError('cleanup_failed') from error
+            raise CodexRememberedApprovalError('not_sent') from error
+        except Exception as error:
+            with self._permission_lock:
+                try:
+                    kept = rule in self.permission_store.load(proof.native_id)
+                except (OSError, ValueError, UnicodeError):
+                    kept = True  # A failed read is not evidence of removal.
+            problem = CodexRememberedApprovalError('kept_uncertain' if kept else 'removed_uncertain')
+            with self._lock:
+                self._problems[proof.native_id] = str(problem)
+            self._notify(proof.native_id)
+            raise problem from error
+        # The explicit grant also applies to siblings already waiting now. A
+        # later storage recovery or unrelated change must never reconsider one.
+        with self._permission_lock:
+            for sibling in executor.waiting(proof):
+                if (sibling is not request and matches(rule, sibling, proof.cwd)
+                        and (proof.native_id, sibling.turn_id, sibling.request_id) not in self._permission_pending):
+                    self._permission_evaluated.discard((proof.native_id, sibling.turn_id, sibling.request_id))
+        self._auto_answer(proof, executor)
         self._notify(proof.native_id)
         return rule
 
+    @contextmanager
+    def _approval_dispatch(self, proof, executor, request, rule, *, automatic=False):
+        with self._permission_lock:
+            key = (proof.native_id, request.turn_id, request.request_id)
+            with self._lock:
+                available = (not self._stop.is_set() and not self._problems.get(proof.native_id)
+                    and proof.native_id not in self._reopening and proof.native_id not in self._stopping
+                    and self._proofs.get(proof.native_id) is proof and self._executor is executor)
+            if (not available or not proof.connection.owns_runtime(proof)
+                    or not any(r is request for r in executor.waiting(proof))
+                    or automatic and key not in self._permission_pending):
+                raise CodexApprovalNotSent('Codex request is no longer eligible')
+            try:
+                kept = rule in self.permission_store.load(proof.native_id)
+            except (ValueError, OSError, UnicodeError):
+                kept = False
+            if not kept:
+                raise CodexApprovalNotSent('The remembered approval was removed or could not be read')
+            yield  # Removal and the final wire enqueue share this short lock.
+
+    def _launch_approval(self, target):
+        threading.Thread(target=target, name='codex-remembered-approval', daemon=True).start()
+
     def _auto_answer(self, proof, executor):
-        changed = False
         with self._permission_lock:
             with self._lock:
                 if (self._stop.is_set() or self._problems.get(proof.native_id)
                         or proof.native_id in self._reopening or proof.native_id in self._stopping):
                     return False
             pending = executor.waiting(proof)
-            if not pending:
-                return False
             live_turns = {r.turn_id for r in pending}
-            self._permission_attempts = {key for key in self._permission_attempts
+            self._permission_evaluated = {key for key in self._permission_evaluated
                                         if key[0] != proof.native_id or key[1] in live_turns}
+            fresh = tuple(r for r in pending if (proof.native_id, r.turn_id, r.request_id) not in self._permission_evaluated)
+            if not fresh:
+                return False
+            keys = {(proof.native_id, r.turn_id, r.request_id) for r in fresh}
+            self._permission_evaluated.update(keys)  # Even a read failure is a final evaluation.
+            self._permission_pending.update(keys)
+        self._launch_approval(lambda: self._answer_remembered(proof, executor, fresh))
+        return True
+
+    def _answer_remembered(self, proof, executor, pending):
+        with self._permission_lock:
             try:
                 rules = self.permission_store.load(proof.native_id)
             except (ValueError, OSError, UnicodeError):
-                return False  # Never infer an approval from unreadable state.
+                rules = ()
+            selected = {}
             for request in pending:
                 key = (proof.native_id, request.turn_id, request.request_id)
-                if key in self._permission_attempts:
-                    continue
                 rule = next((r for r in rules if matches(r, request, proof.cwd)), None)
+                if rule is not None and key in self._permission_pending:
+                    selected[key] = rule
+                else:
+                    self._permission_pending.discard(key)
+        # Unmatched requests are available to Answer before any slow sign-in
+        # check for a matching sibling begins.
+        self._notify(proof.native_id)
+        for request in pending:
+            key = (proof.native_id, request.turn_id, request.request_id)
+            try:
+                rule = selected.get(key)
                 if rule is None:
                     continue
-                self._permission_attempts.add(key)  # Before dispatch: uncertain sends are never retried.
                 try:
-                    executor.answer(proof, request, request.approval_answer('accept'))
+                    executor.answer(proof, request, request.approval_answer('accept'), dispatch_guard=lambda:
+                                    self._approval_dispatch(proof, executor, request, rule, automatic=True))
                 except CodexApprovalNotSent:
                     continue
                 except Exception:
                     with self._lock:
                         self._problems[proof.native_id] = 'Could not confirm an automatic approval. Reload this chat; the answer will not be resent.'
-                    return True
+                    continue
                 with self._lock:
                     notices = self._permission_notices.setdefault(proof.native_id, [])
                     notices.append((request.turn_id, request.request_id,
                                     'Allowed ' + ' '.join(rule.prefix) + ', as you said for this chat.'))
                     del notices[:-128]
-                changed = True
-        return changed
+            except (ValueError, OSError, UnicodeError):
+                pass  # Never infer approval from unreadable state, or retry later.
+            finally:
+                with self._permission_lock:
+                    self._permission_pending.discard(key)
+                self._notify(proof.native_id)
 
     def snapshot(self, native_id, *, unsent=()):
         with self._lock:
@@ -507,11 +598,14 @@ class CodexChatRuntime:
         if proof is None or executor is None:
             return CodexChatState(native_id, STATUS_UNAVAILABLE)
         state = executor.snapshot(proof)
+        with self._permission_lock:
+            requests = tuple(r for r in state.requests if
+                (native_id, r.turn_id, r.request_id) not in self._permission_pending)
         live = proof.connection.owns_runtime(proof) and not problem
         status = (STATUS_UNAVAILABLE if not live or state.status == 'unknown' else
-                  NEEDS_YOU if state.requests else WORKING if sending or state.status == 'inProgress' else IDLE)
+                  NEEDS_YOU if requests else WORKING if sending or state.status == 'inProgress' else IDLE)
         return CodexChatState(native_id, status, state.turn_id, state.status,
-                              state.replies, state.requests, queued, tuple(unsent), problem, state.file_changes,
+                              state.replies, requests, queued, tuple(unsent), problem, state.file_changes,
                               state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received,
                               permission_notices)
 

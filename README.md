@@ -650,11 +650,12 @@ native choice out and sends only one-time answers. For an eligible Git command,
 The Chat Place's own data, for this chat and its exact working folder. It survives restarting
 the app; a Continue Here copy starts empty. Supported operations are `git status`, `switch`,
 `add`, `commit`, `push`, `fetch`, `diff` and `log`, with ordinary supported arguments.
-Unknown options, force or delete operations, compound commands, shell expansion, a changed
+Unknown options, explicit force or delete options in the command, compound commands, shell expansion, a changed
 working folder, and requests for separately listed extra access still ask.
 Remembering has the same authority as **Allow Once**: the command may run outside the sandbox,
 including Git hooks and configured programs, and may access files elsewhere and the network.
-The working folder is where it starts, not a confinement boundary. TCP sends one-time answers
+The working folder is where it starts, not a confinement boundary. A plain push follows the
+repository's configuration, which can itself request forced updates or deletion. The Chat Place sends one-time answers
 on your behalf; it never creates a native Codex session approval or saved rule. Automatic
 approvals are announced once, shown after the conversation for the current turn and recorded
 in Turn Status. File, Chat Permissions (Ctrl+Shift+H) lists and removes them.

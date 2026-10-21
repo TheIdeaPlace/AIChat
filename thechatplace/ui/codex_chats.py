@@ -52,7 +52,8 @@ class CodexChats:
             text += ' ' + state.notice
         notices = [text for turn, _identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
         if notices:
-            text += f' {len(notices)} requests allowed as you said for this chat. Latest: ' + notices[-1]
+            count = len(notices)
+            text += f' {count} {"request" if count == 1 else "requests"} allowed automatically. Latest: ' + notices[-1]
         return text
 
     def _codex_work(self, action, done):
@@ -195,7 +196,7 @@ class CodexChats:
                     # A saved folder-editing chat reopened read-only: reloading
                     # it after fixing the sandbox prepares it again (#257).
                     _result += ' Reload this chat to try again.'
-                self._feedback(_result or 'Could not prepare this Codex chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in Codex before restarting TCP.')
+                self._feedback(_result or 'Could not prepare this Codex chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in Codex before restarting The Chat Place.')
             self._update_send_state()
         self._codex_work(prepare, done)
 
@@ -405,7 +406,7 @@ class CodexChats:
         finally:
             dialog.Destroy()
         def done(_result, error):
-            self._feedback('This Codex request could not be answered. It may no longer be waiting.'
+            self._feedback((_result or 'This Codex request could not be answered. It may no longer be waiting.')
                            if error else 'Approval kept for this chat and answer sent to Codex.' if keep else 'Answer sent to Codex.')
         action = (lambda: self.sessions.owned_action('allow_for_chat', record, request)) if keep else (
             lambda: self.sessions.owned_action('answer', record, request, result))

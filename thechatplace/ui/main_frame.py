@@ -1916,7 +1916,9 @@ class MainFrame(CodexChats, wx.Frame):
         else:
             self.chat_list.Set(lines)
             if focus_newest or not keys:
-                self.chat_list.SetSelection(len(lines) - 1)
+                newest = next((i for i in range(len(visible) - 1, -1, -1)
+                               if visible[i].kind not in TAIL_KINDS), len(lines) - 1)
+                self.chat_list.SetSelection(newest)
             elif selected_key in keys:
                 self.chat_list.SetSelection(keys.index(selected_key))
             else:

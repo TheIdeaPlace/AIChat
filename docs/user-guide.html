@@ -649,13 +649,15 @@ summary after every turn, so a desktop session can be waiting on you and still s
 <h3>For a Codex chat</h3>
 <p><strong>Allow for This Chat</strong> remembers an eligible Git command prefix for this chat and its exact
 working folder. It supports ordinary arguments for <code>git status</code>, <code>switch</code>, <code>add</code>, <code>commit</code>,
-<code>push</code>, <code>fetch</code>, <code>diff</code> and <code>log</code>. Force/delete operations, unknown options, compound commands,
+<code>push</code>, <code>fetch</code>, <code>diff</code> and <code>log</code>. Explicit force or delete options in the command, unknown options, compound commands,
 shell expansion, other working folders, and requests for separately listed extra access
 still ask. The button appears only when this request can be remembered.</p>
 <p>A remembered approval has the same authority as <strong>Allow Once</strong>. The command may run outside
 the sandbox, access other files and the network, and run Git hooks or configured programs.
-The working folder identifies where it starts; it does not confine what it can do.</p>
-<p>Approvals survive restarting the app. A Continue Here copy starts with none. TCP sends
+The working folder identifies where it starts; it does not confine what it can do.
+A plain push follows the repository's configuration, which can itself request forced updates
+or deletion.</p>
+<p>Approvals survive restarting the app. A Continue Here copy starts with none. The Chat Place sends
 one-time answers on your behalf and announces automatic approvals once. The current turn's
 automatic approvals appear after the conversation and in Turn Status. Codex keeps no native
 approval, and neither Codex's nor Claude's settings are changed.</p>
@@ -664,7 +666,7 @@ on Mac) and <strong>Remove All</strong>. Removal applies before the next approva
 running turn; work already approved may finish. Changing mode clears the kept approvals.
 The mode can change once the turn has finished. Codex's own rule-file count remains separate
 and read only. Native rules can still allow commands independently (see "Local Codex chats"
-above), so removing a TCP approval does not remove a native rule.</p>
+above), so removing The Chat Place's own approval does not remove a native rule.</p>
 <h2 id="organizing-your-sessions">Organizing your sessions</h2>
 <p>With many sessions, these keep the list manageable.</p>
 <h3>Choosing which sessions are listed</h3>

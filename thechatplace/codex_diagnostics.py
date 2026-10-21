@@ -4,7 +4,7 @@ import threading
 import time
 
 from . import platform_paths
-from .providers.codex_rpc import CodexTurnRejected, CodexConnectionFailure, CodexRequestTimeout
+from .providers.codex_rpc import CodexTurnRejected, CodexConnectionFailure, CodexRequestTimeout, CodexRememberedApprovalError
 
 _LOCK = threading.Lock()
 _LIMIT = 65536
@@ -14,7 +14,7 @@ _CONNECTION = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ Codex connection fail
 
 
 def safe_reason(error):
-    if type(error) in (CodexTurnRejected, CodexConnectionFailure, CodexRequestTimeout):
+    if type(error) in (CodexTurnRejected, CodexConnectionFailure, CodexRequestTimeout, CodexRememberedApprovalError):
         text = type(error).REASONS.get(error.code, '')
         if type(error) is CodexTurnRejected and error.code == 'project_rules':
             folder = getattr(error, 'rules_folder', '')

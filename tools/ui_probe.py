@@ -916,7 +916,8 @@ def d_codex_permission_kept(frame, env):
     folder = str(env['folders']['Scratch'])
     request = decode_request(1, COMMAND, dict(threadId='probe', turnId='turn', itemId='item',
         command='git commit -m first', cwd=folder, proposedExecpolicyAmendment=['git', 'commit'],
-        availableDecisions=['accept', 'decline', 'cancel']))
+        availableDecisions=['accept', 'decline', 'cancel',
+            {'acceptWithExecpolicyAmendment': {'execpolicy_amendment': ['git', 'commit']}}]))
     return lambda: frame._modal(CodexPermissionDialog(frame, 'Codex preview', request,
                                                      chat_rule=candidate(request, folder)))
 

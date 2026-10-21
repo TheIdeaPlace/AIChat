@@ -233,16 +233,19 @@ class CodexTurnExecutor:
                                   self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0),
                                   tuple(replace(t) for t in buffer.tasks), buffer.plan_received)
 
-    def answer(self, proof, request, result):
+    def answer(self, proof, request, result, *, dispatch_guard=None):
         if not self.connection.owns_runtime(proof):
-            raise CodexRpcError('Codex execution requires a verified owned chat')
+            raise CodexApprovalNotSent('Codex execution requires a verified owned chat')
         with self._lock:
             buffer = self._turns.get(proof.native_id)
             if (self._requests.get(request.request_id) is not request or buffer is None
                     or buffer.status != 'inProgress'
                     or (request.thread_id, request.turn_id) != (proof.native_id, buffer.turn_id)):
                 raise CodexApprovalNotSent('Codex request is no longer waiting')
-        self.connection.respond_request(request, result)
+        if dispatch_guard is None:
+            self.connection.respond_request(request, result)
+        else:
+            self.connection.respond_request(request, result, dispatch_guard=dispatch_guard)
         with self._lock:
             self._requests.pop(request.request_id, None)
 

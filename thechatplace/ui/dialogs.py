@@ -1487,7 +1487,8 @@ class CodexPermissionDialog(wx.Dialog):
             from ..providers.codex_permissions import NOTICE
             from ..providers.codex_requests import SAVED_RULE_NOTE
             detail = detail.replace(SAVED_RULE_NOTE, 'Codex offered to keep a native approval. '
-                                    'The Chat Place instead remembers your choice only in this chat; Codex keeps no approval.')
+                                    'If you choose Allow for This Chat, The Chat Place remembers it only in this chat. '
+                                    'Allow Once keeps no approval. Codex keeps no approval with either choice.')
             detail += '\n\nRemember for this chat: ' + chat_rule.description + '\n\n' + NOTICE
         self.request_text = _read_only_text(self, detail, "Request")
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)

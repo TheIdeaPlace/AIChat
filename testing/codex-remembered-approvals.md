@@ -1,12 +1,12 @@
 # Test remembered Codex approvals (#307)
 
 The candidate is on `codex/native-command-approvals`. It has not been merged or
-released. Close the installed copy before starting the test copy: TCP deliberately
-allows one instance at a time. The candidate uses the normal TCP session store;
+released. Close the installed copy before starting the test copy: The Chat Place deliberately
+allows one instance at a time. The candidate uses The Chat Place's normal session store;
 only its own new `provider-permissions/codex` files hold remembered approvals.
-No Codex/Claude settings, native rules or transcript files are edited by TCP.
+No Codex/Claude settings, native rules or transcript files are edited by The Chat Place.
 
-Use a disposable repository and a Codex chat started in TCP. Suggested sequence:
+Use a disposable repository and a Codex chat started in The Chat Place. Suggested sequence:
 
 1. Ask to create a branch, add a file and commit. Open Answer with Ctrl+Shift+A.
    Read the request and its authority; choose Allow for This Chat for each offered
@@ -15,17 +15,19 @@ Use a disposable repository and a Codex chat started in TCP. Suggested sequence:
    Deny, or Answer Later when Deny is unavailable.
 2. Ask for another edit and commit. Matching add/commit requests should continue
    automatically, each with one quiet announcement. Ctrl+Shift+T reports automatic
-   approvals and the current turn's messages have a TCP notice after the conversation.
+   approvals and the current turn's messages have an approval notice after the conversation.
+   Opening the chat should select the latest conversation message rather than that notice.
 3. Ctrl+Shift+H lists the rules and dates. Remove commit with Delete (Backspace on
    Mac). Hear the named confirmation. After removal, the row taking its place
    should be selected. The next commit should ask, including during a running turn.
-4. Restart TCP: remaining approvals should still work. Continue Here should create
+4. Restart The Chat Place: remaining approvals should still work. Continue Here should create
    a copy with no approvals. Changing permission mode should clear this chat's rules.
 5. In a disposable remote you control, try two ordinary HTTPS pushes. Approve push
    for this chat once; the next matching push should not interrupt. The credential-
    free automated probe uses a local bare remote, so this authenticated check still
-   needs your signed-in environment. Force pushes, unknown options and compound
-   commands should still ask. Native saved Codex rules can independently skip prompts.
+   needs your signed-in environment. Explicit force or delete options, unknown options and compound
+   commands should still ask. Plain push follows the repository's configuration. Native saved
+   Codex rules can independently skip prompts.
 
 These are human consent records with Allow Once authority, including Git hooks
 and configured programs. They do not enforce confinement to the starting folder,
