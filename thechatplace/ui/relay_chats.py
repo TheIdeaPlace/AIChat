@@ -8,6 +8,7 @@ heard, and the same key sends that answer back.
 import wx
 
 from .. import relay
+from ..sessions import WORKING
 from .dialogs import RelayDialog
 
 
@@ -34,7 +35,8 @@ class RelayChats:
             return
         dialog = RelayDialog(self, info.title, [relay.describe(t) for t in targets],
                              relay.message_text(message, info.title),
-                             lambda index, text: relay.too_long(targets[index].provider, text))
+                             lambda index, text: relay.too_long(targets[index].provider, text),
+                             working=self._relay_source_working(info))
         try:
             if dialog.ShowModal() != wx.ID_OK or dialog.chosen is None:
                 return
@@ -43,15 +45,30 @@ class RelayChats:
             dialog.Destroy()
         self._relay(info, targets[index], text)
 
+    def _relay_source_working(self, info) -> bool:
+        """Still working, its latest reply may be a step on the way ("Let me
+        check the tests"), not its answer: the dialog says so."""
+        if info.provider == "claude":
+            runner = self._runners.get(info.cli_session_id)
+            if runner is not None:
+                return not runner.waiting_on_background
+        elif info.provider == "codex":
+            state = self._codex_states.get(info.key)
+            if state is not None:
+                return state.outcome == "inProgress" or state.state == WORKING
+        return info.state == WORKING
+
     def _relay(self, source, target, text):
         """Go to ``target`` and send ``text`` there, as Send would. Text that
-        can't go is put in the target's reply box, never dropped."""
+        can't go is put in the target's reply box, or on the clipboard when
+        there's no reply box for it, never dropped."""
         self._relay_partners[target.key] = source.key
         self.open_session(target)
         if target.provider == "codex":
             record = self.store.get(target.cli_session_id, provider="codex")
             if record is None:
-                self._feedback(f"Couldn't find {target.title} in The Chat Place's chats.")
+                self._relay_kept(text, f"Couldn't find {target.title} in The Chat Place's chats, "
+                                       "so the message wasn't sent.")
                 return
             if target.key in self._codex_preparing:
                 # Codex must get a chat ready (reading its history first)
@@ -61,9 +78,23 @@ class RelayChats:
                 return
             self._send_codex_owned(record, text)
             return
+        if target.provider != "claude":
+            # Only Claude's runner is left, and another provider's ID must
+            # never reach it (CLAUDE.md); a new provider adds its own branch.
+            self._relay_kept(text, f"The Chat Place can't send to {target.title} yet.")
+            return
         if not self._send_claude(target, text, []):
             self._give_back(target.cli_session_id, text, True)
             self._save_draft()
+            self._feedback(f"Not sent to {target.title}. The message is in its reply box.")
+            self.reply_text.SetFocus()
+
+    def _relay_kept(self, text, why):
+        """Somewhere to keep a message that has no reply box to go in."""
+        if self._copy_text(text):
+            self._feedback(f"{why} It's copied to the clipboard.")
+        else:
+            self._feedback(f"{why} It couldn't be kept.")
 
     def _relay_prepared(self, key, record, failed) -> str:
         """A Codex chat a message was waiting for is ready, or failed to be.
@@ -78,12 +109,19 @@ class RelayChats:
         self._send_codex_owned(record, text)
         return ""
 
-    def _drop_waiting_relay(self):
+    def _drop_waiting_relay(self, going_to=None):
         """Leaving a Codex chat before it was ready: its message stays as
-        that chat's draft, and you hear that it wasn't sent."""
+        that chat's draft, and you hear that it wasn't sent. Loading the same
+        chat again keeps it waiting. ``going_to`` None means the chat is being
+        forgotten, with no reply box to keep it in: it's copied instead."""
         info = self._open
-        text = self._relay_waiting.pop(info.key, None) if info is not None else None
+        if info is None or (going_to is not None and going_to.key == info.key):
+            return
+        text = self._relay_waiting.pop(info.key, None)
         if text is None:
+            return
+        if going_to is None:
+            self._relay_kept(text, f"The message for {info.title} wasn't sent.")
             return
         self._restore_codex_text(info.key, (text,))
         self._feedback(f"The message for {info.title} wasn't sent. It's in that chat's reply box.")

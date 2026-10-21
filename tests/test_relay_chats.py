@@ -23,6 +23,9 @@ class Text:
     def SetValue(self, value):
         self.value = value
 
+    def SetFocus(self):
+        self.focused = True
+
 
 def _own(native, title, provider):
     return SessionInfo(source=OWN, key=f'{provider}:{native}' if provider == 'codex' else native,
@@ -59,6 +62,8 @@ class Window(CodexChats, RelayChats):
         self.said, self.work, self.opened, self.claude_sent = [], [], [], []
         self.claude_accepts = True
         self.codex_ready = True
+        self._runners, self._codex_states = {}, {}
+        self.copied = []
 
     # what the relay calls on the window
     def _selected_message(self):
@@ -68,7 +73,10 @@ class Window(CodexChats, RelayChats):
         return info.is_own
 
     def open_session(self, info):
-        self._drop_waiting_relay()
+        # As MainFrame's: the reply box is saved first, then a message
+        # waiting for the chat being left is dropped into its draft.
+        self._save_draft()
+        self._drop_waiting_relay(going_to=info)
         self._open = info
         self._open_generation += 1
         self.opened.append(info.title)
@@ -98,6 +106,10 @@ class Window(CodexChats, RelayChats):
     def _feedback(self, text):
         self.said.append(text)
 
+    def _copy_text(self, text):
+        self.copied.append(text)
+        return True
+
     def _gone(self):
         return False
 
@@ -110,9 +122,9 @@ class FakeDialog:
     choose = None
     seen = None
 
-    def __init__(self, parent, source_title, choices, text, check):
+    def __init__(self, parent, source_title, choices, text, check, working=False):
         FakeDialog.seen = SimpleNamespace(title=source_title, choices=choices, text=text,
-                                          check=check)
+                                          check=check, working=working)
         self.chosen = None if FakeDialog.choose is None else FakeDialog.choose(text)
 
     def ShowModal(self):
@@ -247,7 +259,6 @@ def test_leaving_a_codex_chat_before_it_is_ready_keeps_the_message_as_its_draft(
     dialog.choose = lambda text: (0, 'Forwarded words')
     w.on_send_reply_to()
     generation = w._open_generation
-    w._save_draft()
     w.open_session(w.other)
     assert w._codex_drafts['codex:codex-1'] == 'Forwarded words'
     assert w.said[-1] == "The message for Reviewer wasn't sent. It's in that chat's reply box."
@@ -265,3 +276,72 @@ def test_a_codex_send_that_fails_puts_the_message_back(dialog):
     w.on_send_reply_to()
     w.work[0][1]('Codex could not confirm this send.', True)
     assert w.reply_text.value == 'Forwarded words'
+
+
+def test_loading_the_waiting_codex_chat_again_keeps_the_message_waiting(dialog):
+    w = Window()
+    w.codex_ready = False
+    dialog.choose = lambda text: (0, 'Forwarded words')
+    w.on_send_reply_to()
+    w.open_session(w.reviewer)  # Enter on its row, to see how it's doing
+    assert w._relay_waiting == {'codex:codex-1': 'Forwarded words'}
+    assert "wasn't sent" not in w.said[-1]
+    w._prepare_codex_owned(w._open_generation)
+    w.work.pop()[1](None, False)
+    assert len(w.work) == 1  # sent once it's ready
+
+
+def test_forgetting_the_waiting_codex_chat_copies_the_message(dialog):
+    w = Window()
+    w.codex_ready = False
+    dialog.choose = lambda text: (0, 'Forwarded words')
+    w.on_send_reply_to()
+    w._drop_waiting_relay()  # unload_session: the chat is going away
+    assert w.copied == ['Forwarded words']
+    assert w.said[-1] == "The message for Reviewer wasn't sent. It's copied to the clipboard."
+    assert w._relay_waiting == {}
+
+
+def test_a_codex_chat_gone_from_the_store_keeps_the_message_on_the_clipboard(dialog):
+    w = Window()
+    del w.records['codex-1']
+    dialog.choose = lambda text: (0, 'Forwarded words')
+    w.on_send_reply_to()
+    assert w.work == [] and w.copied == ['Forwarded words']
+    assert w.said[-1].endswith("so the message wasn't sent. It's copied to the clipboard.")
+
+
+def test_another_provider_never_reaches_the_claude_runner(dialog):
+    w = Window()
+    w.reviewer.provider = 'ollama'
+    w.reviewer.key = 'ollama:codex-1'
+    dialog.choose = lambda text: (0, 'Forwarded words')
+    w.on_send_reply_to()
+    assert w.claude_sent == [] and w.work == []
+    assert w.copied == ['Forwarded words']
+    assert w.said[-1].startswith("The Chat Place can't send to Reviewer yet.")
+
+
+def test_a_failed_claude_send_says_where_the_message_is(dialog):
+    w = Window()
+    w.claude_accepts = False
+    dialog.choose = lambda text: (1, 'Forwarded words')
+    w.on_send_reply_to()
+    assert w.said[-1] == 'Not sent to Second opinion. The message is in its reply box.'
+    assert getattr(w.reply_text, 'focused', False)
+
+
+@pytest.mark.parametrize('provider, busy, expected', [
+    ('claude', 'runner', True), ('claude', 'background', False), ('claude', None, False),
+    ('codex', 'inProgress', True), ('codex', 'completed', False)])
+def test_the_dialog_says_when_the_chat_is_still_working(dialog, provider, busy, expected):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    w = Window()
+    if provider == 'codex':
+        w._open = w.reviewer
+        w._chat_messages = [ChatMessage(ASSISTANT, 'Checking.', key='a', assistant_name='Codex')]
+        w._codex_states[w.reviewer.key] = CodexChatState('codex-1', 'idle', 'turn', busy)
+    elif busy:
+        w._runners['claude-1'] = SimpleNamespace(waiting_on_background=busy == 'background')
+    w.on_send_reply_to()
+    assert dialog.seen.working is expected

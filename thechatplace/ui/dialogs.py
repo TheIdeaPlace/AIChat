@@ -2808,8 +2808,14 @@ class RelayDialog(wx.Dialog):
     why the message can't go to that chat, or None; the dialog stays open
     with the reason, so nothing written is lost."""
 
-    def __init__(self, parent, source_title: str, choices, text: str, check):
-        super().__init__(parent, title=f"Send Reply to Another Chat: {source_title}",
+    def __init__(self, parent, source_title: str, choices, text: str, check,
+                 working: bool = False):
+        # Said first, with the title: the chat is mid-turn, so the reply
+        # may be a step on the way rather than its answer.
+        title = f"Send Reply to Another Chat: {source_title}"
+        if working:
+            title += " (still working; this is its latest reply so far)"
+        super().__init__(parent, title=title,
                          size=dialog_size(parent, 700, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._check = check

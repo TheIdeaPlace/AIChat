@@ -446,10 +446,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   it and change or add to it in the Message box (Enter there starts a new line), then press
   Ctrl+Enter, or Enter in the list, to send it. The Chat Place goes to that chat and sends it
   as if you'd typed it: queued if that chat is working, and after Codex has got the chat ready
-  if it wasn't. If it can't be sent, it's left in that chat's reply box. The chat it came from
-  is first in the list next time, so sending the answer back is Ctrl+Shift+E then Enter. It's
-  also on the messages list's menu (Applications key). A forwarded message is only ever a
-  message: it can't answer a question or approve anything, which still comes to you.
+  if it wasn't (going to another chat before then leaves it unsent, in that chat's reply box).
+  If it can't be sent, it's left in that chat's reply box. While the chat it comes from is
+  still working, the dialog's title says so: the reply may be a step on the way. The chat it
+  came from is first in the list next time, so sending the answer back is Ctrl+Shift+E then
+  Enter. It's also on a reply's menu in the messages list (Applications key). A forwarded
+  message is only ever a message: it can't answer a question or approve anything, which still
+  comes to you.
 - **Claude asks, you answer.** In The Chat Place's own sessions, when Claude needs permission
   for something the permission mode doesn't allow, asks you a question, or has a plan for you
   to approve, the turn waits for you. It's announced ("Build needs you. Claude wants to run

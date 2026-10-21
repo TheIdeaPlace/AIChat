@@ -604,7 +604,8 @@ need it:
 
 Two agents can work on the same thing, with you passing their words between them: Claude builds
 and Codex reviews, say, or you ask both and let each answer the other. **Ctrl+Shift+E** (File,
-Send Reply to Another Chat, also on the messages list's menu) does the copying and pasting.
+Send Reply to Another Chat, also on a reply's menu in the messages list) does the copying and
+pasting.
 
 1. In the chat with the reply, select it in the messages list. If a message of yours is
    selected instead, the latest reply is used.
@@ -614,12 +615,15 @@ Send Reply to Another Chat, also on the messages list's menu) does the copying a
    in which chat, so the agent reading it knows these are another agent's words, not yours.
    Change it or add your own words; Enter there starts a new line.
 4. Press **Ctrl+Enter** (or **Enter** in the list, or Send). The Chat Place goes to that chat and
-   sends it, just as if you'd typed it there: you hear "Sent to" and the chat's name, it's queued
-   if that chat is working, and a Codex chat that wasn't ready gets ready first.
+   sends it, just as if you'd typed it there: you hear what was sent and where, as when you send,
+   and it's queued if that chat is working. A Codex chat that isn't ready yet gets ready first
+   ("Getting Reviewer ready"), and the message goes when it is; if you go to another chat before
+   then, it isn't sent and stays in that chat's reply box.
 
 When the answer comes, press **Ctrl+Shift+E** again: the chat the reply came from is first in the
 list, so **Enter** sends the answer back. If a message can't be sent, it's left in that chat's
-reply box, so nothing is lost.
+reply box, so nothing is lost. If the dialog's title says the chat is still working, the reply
+you're sending may be a step on the way rather than its answer.
 
 A forwarded message is only ever a message. It can't answer a question or approve a tool for the
 other agent: those still come to you, in each chat, as they always do.

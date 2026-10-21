@@ -187,8 +187,10 @@ class CodexChats:
         def done(_result, error):
             self._codex_preparation_running.discard(key)
             self._codex_preparing.pop(key, None)
-            # A reply sent here from another chat waited for this (#248).
-            relayed = self._relay_prepared(key, record, error)
+            # A reply sent here from another chat waited for this (#248);
+            # RelayChats provides it, so a window without that sends none.
+            relay = getattr(self, '_relay_prepared', None)
+            relayed = relay(key, record, error) if relay is not None else ''
             if error:
                 if isinstance(_result, str) and _result.startswith(CodexTurnRejected.REASONS['sandbox_unavailable']):
                     # A saved folder-editing chat reopened read-only: reloading

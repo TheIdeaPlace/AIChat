@@ -10775,9 +10775,9 @@ class _RelayAnswer:
     pick = None
     seen = None
 
-    def __init__(self, parent, source_title, choices, text, check):
+    def __init__(self, parent, source_title, choices, text, check, working=False):
         from thechatplace.ui.dialogs import RelayDialog
-        real = RelayDialog(parent, source_title, choices, text, check)
+        real = RelayDialog(parent, source_title, choices, text, check, working=working)
         _RelayAnswer.seen = (list(real.targets.GetStrings()), real.text.GetValue(),
                              real.GetTitle())
         real.Destroy()
@@ -10903,3 +10903,28 @@ def test_relay_dialog_checks_before_closing(app, monkeypatch):
         dialog.Destroy()
     finally:
         frame.Destroy()
+
+
+def test_relay_leaves_the_target_chats_own_attachments(frame, env, fake_runner, relay_dialog,
+                                                       tmp_path):
+    _two_own_chats(frame, env)
+    picture = tmp_path / "plan.txt"
+    picture.write_text("notes", encoding="utf-8")
+    frame._attachments["own-1"] = [str(picture)]
+    relay_dialog.pick = lambda text: (0, "Forwarded words")
+    frame.on_send_reply_to()
+    assert fake_runner.instances[-1].prompt == "Forwarded words"  # not attached to it
+    assert frame._attachments["own-1"] == [str(picture)]
+
+
+def test_relay_to_a_chat_still_stopping_keeps_the_message(frame, env, fake_runner, relay_dialog):
+    _two_own_chats(frame, env)
+    stopping = FakeRunner([], "", "", None)
+    stopping.cancelled = True
+    frame._runners["own-1"] = stopping
+    frame._drafts["own-1"] = "Mine"
+    relay_dialog.pick = lambda text: (0, "Forwarded words")
+    frame.on_send_reply_to()
+    assert not frame._queued.get("own-1")
+    assert frame.reply_text.GetValue() == "Forwarded words\n\nMine"
+    assert env["feedback"][-1] == "Not sent to Hub probe. The message is in its reply box."

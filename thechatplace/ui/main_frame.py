@@ -1421,7 +1421,7 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
 
     def open_session(self, info: SessionInfo):
         self._save_draft()
-        self._drop_waiting_relay()
+        self._drop_waiting_relay(going_to=info)
         self._clear_activity()  # another session's tool calls aren't news here
         self._open = info
         self._sync_activity_controls(info.key in self.tool_activity)
@@ -3871,7 +3871,8 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
             # waiting for work that may take an hour.
             prompt, images = attachments.build(message, attached)
             if runner.send_follow_up(prompt, images):
-                self._clear_attachments(session_id)
+                if attached:  # a relayed message leaves the chat's own attachments
+                    self._clear_attachments(session_id)
                 self._update_send_state()
                 said = announce.sent_text(info.title, message, self.speech.announce,
                                           self.speech.announce_own)
@@ -3887,7 +3888,8 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
             # Queued text carries attachments as @"path": images included.
             queued_text, _images = attachments.build(message, attached, images_inline=False)
             self._queued.setdefault(session_id, []).append(queued_text)
-            self._clear_attachments(session_id)
+            if attached:
+                self._clear_attachments(session_id)
             self._update_send_state()
             self._rebuild_chat_list()  # the queued message joins the list
             # Only the newly added words are read back, not the whole queue.
@@ -3901,7 +3903,8 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
         if problem:
             wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
             return False
-        self._clear_attachments(session_id)
+        if attached:
+            self._clear_attachments(session_id)
         return True
 
     def _send_now(self, session_id: str, message: str, queued: bool = False,
