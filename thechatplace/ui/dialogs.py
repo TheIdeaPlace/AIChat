@@ -2800,6 +2800,75 @@ def press_focused_button_on_a_mac(event) -> bool:
     return False
 
 
+class RelayDialog(wx.Dialog):
+    """File, Send Reply to Another Chat (#248): which chat to send a reply
+    to, and the message, labelled with who wrote it, to read and change
+    first. Enter in the list sends; in the message, Enter starts a new line
+    and Ctrl+Enter sends, as in the reply box. ``check(index, text)`` says
+    why the message can't go to that chat, or None; the dialog stays open
+    with the reason, so nothing written is lost."""
+
+    def __init__(self, parent, source_title: str, choices, text: str, check):
+        super().__init__(parent, title=f"Send Reply to Another Chat: {source_title}",
+                         size=dialog_size(parent, 700, 560),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._check = check
+        self.chosen = None
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(self, label="Send &to:"), 0, wx.LEFT | wx.TOP, 8)
+        self.targets = wx.ListBox(self, choices=list(choices), style=wx.LB_SINGLE)
+        set_accessible_name(self.targets, "Send to")
+        self.targets.SetMinSize(dip(self, -1, 120))
+        if choices:
+            self.targets.SetSelection(0)
+        sizer.Add(self.targets, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        sizer.Add(wx.StaticText(self, label="&Message:"), 0, wx.LEFT | wx.TOP, 8)
+        self.text = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_RICH2)
+        set_accessible_name(self.text, "Message")
+        self.text.SetMinSize(dip(self, -1, 200))
+        sizer.Add(self.text, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        send = wx.Button(self, wx.ID_OK, "&Send")
+        send.SetDefault()
+        row.Add(send, 0, wx.RIGHT, 6)
+        row.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
+        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        send.Bind(wx.EVT_BUTTON, lambda e: self._send())
+        self.targets.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self._send())
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        wx.CallAfter(self.targets.SetFocus)
+
+    def _on_key(self, event):
+        enter = event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+        if enter and event.ControlDown() and not event.AltDown():
+            self._send()
+            return
+        if enter and not event.HasAnyModifiers() and wx.Window.FindFocus() is self.targets:
+            self._send()
+            return
+        if press_focused_button_on_a_mac(event):
+            return
+        event.Skip()
+
+    def _send(self):
+        index = self.targets.GetSelection()
+        if not (0 <= index < self.targets.GetCount()):
+            wx.Bell()
+            self.targets.SetFocus()
+            return
+        text = self.text.GetValue().strip()
+        problem = "There's nothing to send: the message is empty." if not text \
+            else self._check(index, text)
+        if problem:
+            wx.MessageBox(problem, self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
+            self.text.SetFocus()
+            return
+        self.chosen = (index, text)
+        self.EndModal(wx.ID_OK)
+
+
 class PromptsDialog(wx.Dialog):
     """File, Prompts (#131): your saved prompts by name, the selected one's
     text to read, and Use, New, Edit, Delete, Move Up and Move Down. Use

@@ -5,6 +5,7 @@ import pytest
 
 pytest.importorskip('wx')
 from thechatplace.ui.codex_chats import CodexChats
+from thechatplace.ui.relay_chats import RelayChats
 from thechatplace.providers.codex_runtime import CodexChatState
 from thechatplace.own_store import OwnSession
 
@@ -18,7 +19,7 @@ class Text:
         self.value = value
 
 
-class Window(CodexChats):
+class Window(CodexChats, RelayChats):
     def __init__(self):
         self.record = OwnSession('owned', 'My chat', '/workspace', provider='codex')
         self._open = self.record.to_info()
@@ -36,6 +37,7 @@ class Window(CodexChats):
         self._codex_finished = set()
         self._codex_preparing = {}
         self._codex_preparation_running = set()
+        self._relay_waiting = {}
         self.store = SimpleNamespace(get=lambda *a, **k: self.record, update=lambda *a, **k: None)
         self.speech = SimpleNamespace(announce='full', announce_own=True)
         self.said = []

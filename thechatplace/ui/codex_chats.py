@@ -187,12 +187,14 @@ class CodexChats:
         def done(_result, error):
             self._codex_preparation_running.discard(key)
             self._codex_preparing.pop(key, None)
+            # A reply sent here from another chat waited for this (#248).
+            relayed = self._relay_prepared(key, record, error)
             if error:
                 if isinstance(_result, str) and _result.startswith(CodexTurnRejected.REASONS['sandbox_unavailable']):
                     # A saved folder-editing chat reopened read-only: reloading
                     # it after fixing the sandbox prepares it again (#257).
                     _result += ' Reload this chat to try again.'
-                self._feedback(_result or 'Could not prepare this Codex chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in Codex before restarting TCP.')
+                self._feedback(relayed + (_result or 'Could not prepare this Codex chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in Codex before restarting TCP.'))
             self._update_send_state()
         self._codex_work(prepare, done)
 
