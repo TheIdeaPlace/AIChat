@@ -5219,12 +5219,14 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
 
     def _unsent_text(self) -> bool:
         self._save_draft()
-        return any(text.strip() for drafts in (self._drafts, self._codex_drafts)
+        return any(text.strip() for drafts in (self._drafts, self._codex_drafts, self._relay_waiting)
                    for text in drafts.values())
 
     def _active_owned_turn_count(self) -> int:
-        """Protect quits and updates for every currently supported runtime."""
-        codex = set(self._codex_send_pending)
+        """Protect quits and updates for every currently supported runtime.
+        A reply forwarded to a Codex chat that is still getting ready (#248)
+        counts: it's on its way, and quitting would lose it."""
+        codex = set(self._codex_send_pending) | set(self._relay_waiting)
         codex.update(key for key, state in self._codex_states.items()
                      if state.state == WORKING or state.outcome == 'inProgress' or state.requests)
         return len(self._runners) + len(codex)
@@ -5913,7 +5915,8 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
     def _on_close(self, event: wx.CloseEvent):
         count = self._active_owned_turn_count()
         if count and event.CanVeto():
-            queued = bool(self._queued) or any(state.queued for state in self._codex_states.values())
+            queued = (bool(self._queued) or bool(self._relay_waiting)
+                      or any(state.queued for state in self._codex_states.values()))
             answer = wx.MessageBox(
                 f"Work is running in {count} Chat Place session"
                 f"{'s' if count != 1 else ''}. Quit anyway? The running turn"

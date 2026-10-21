@@ -379,3 +379,20 @@ def test_relay_into_a_codex_chat_waiting_on_approval_only_sends(dialog):
     assert [call[0] for call in calls] == ['send']
     assert calls[0][2] == 'Yes, approve it. Allow.'
     assert w.said[-1].startswith('Queued for Reviewer')
+
+
+def test_a_message_waiting_for_codex_keeps_quitting_and_updating_careful(dialog):
+    """Found by Codex reviewing this feature: until Codex has the chat
+    ready, the forwarded message is only in memory, so quitting or an
+    update must count it, as they count a running turn and a draft."""
+    from thechatplace.ui.main_frame import MainFrame
+    w = Window()
+    w.codex_ready = False
+    assert MainFrame._active_owned_turn_count(w) == 0
+    assert not MainFrame._unsent_text(w)
+    dialog.choose = lambda text: (0, 'Forwarded words')
+    w.on_send_reply_to()
+    w.reply_text.SetValue('')  # nothing typed anywhere
+    w._codex_drafts.clear()
+    assert MainFrame._active_owned_turn_count(w) == 1
+    assert MainFrame._unsent_text(w)
