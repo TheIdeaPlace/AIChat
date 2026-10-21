@@ -10928,3 +10928,26 @@ def test_relay_to_a_chat_still_stopping_keeps_the_message(frame, env, fake_runne
     assert not frame._queued.get("own-1")
     assert frame.reply_text.GetValue() == "Forwarded words\n\nMine"
     assert env["feedback"][-1] == "Not sent to Hub probe. The message is in its reply box."
+
+
+def test_quit_prompt_names_a_forwarded_message_still_waiting(frame, env, fake_runner,
+                                                              monkeypatch):
+    """Only a reply forwarded to a Codex chat still getting ready (#248):
+    no turn is running, and that message is what would be lost."""
+    from thechatplace.ui import main_frame
+    boxes = []
+    # No, so the window stays open for the second question.
+    monkeypatch.setattr(main_frame.wx, "MessageBox", lambda text, *a, **k: boxes.append(text) or wx.NO)
+    frame._relay_waiting["codex:gone"] = "Forwarded words"
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    assert event.GetVeto()
+    assert boxes[-1] == ("The message forwarded to a Codex chat is waiting for that chat "
+                                "to be ready. Quit anyway? It will not be sent.")
+    _start(frame, fake_runner)
+    frame._on_close(event)
+    assert boxes[-1] == ("Work is running in 1 Chat Place session. Quit anyway? The "
+                                "running turn will be stopped. The message forwarded to a Codex "
+                                "chat will not be sent.")
+    frame._relay_waiting.clear()

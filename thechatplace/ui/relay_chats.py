@@ -93,6 +93,19 @@ class RelayChats:
             self._feedback(f"Not sent to {target.title}. The message is in its reply box.")
             self.reply_text.SetFocus()
 
+    def _relay_waiting_text(self) -> str:
+        """What quitting or updating now would lose, "" if nothing: "the
+        message forwarded to Reviewer"."""
+        if not self._relay_waiting:
+            return ""
+        titles = []
+        for key in self._relay_waiting:
+            info = self._current_info(key)
+            titles.append(info.title if info is not None else "a Codex chat")
+        if len(titles) == 1:
+            return f"the message forwarded to {titles[0]}"
+        return f"the messages forwarded to {', '.join(titles[:-1])} and {titles[-1]}"
+
     def _relay_kept(self, text, why):
         """Somewhere to keep a message that has no reply box to go in."""
         if self._copy_text(text):

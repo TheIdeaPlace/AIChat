@@ -106,6 +106,19 @@ class Window(CodexChats, RelayChats):
     def _feedback(self, text):
         self.said.append(text)
 
+    @property
+    def _running_codex_keys(self):
+        from thechatplace.ui.main_frame import MainFrame
+        return lambda: MainFrame._running_codex_keys(self)
+
+    @property
+    def _running_turn_count(self):
+        from thechatplace.ui.main_frame import MainFrame
+        return lambda: MainFrame._running_turn_count(self)
+
+    def _current_info(self, key):
+        return next((s for s in self._snapshot.sessions if s.key == key), None)
+
     def _copy_text(self, text):
         self.copied.append(text)
         return True
@@ -379,3 +392,40 @@ def test_relay_into_a_codex_chat_waiting_on_approval_only_sends(dialog):
     assert [call[0] for call in calls] == ['send']
     assert calls[0][2] == 'Yes, approve it. Allow.'
     assert w.said[-1].startswith('Queued for Reviewer')
+
+
+def test_a_message_waiting_for_codex_keeps_quitting_and_updating_careful(dialog):
+    """Found by Codex reviewing this feature: until Codex has the chat
+    ready, the forwarded message is only in memory, so quitting or an
+    update must count it, as they count a running turn and a draft."""
+    from thechatplace.ui.main_frame import MainFrame
+    w = Window()
+    w.codex_ready = False
+    assert MainFrame._active_owned_turn_count(w) == 0
+    assert not MainFrame._unsent_text(w)
+    dialog.choose = lambda text: (0, 'Forwarded words')
+    w.on_send_reply_to()
+    w._codex_drafts.clear()  # nothing typed anywhere
+    assert MainFrame._active_owned_turn_count(w) == 1
+    assert MainFrame._running_turn_count(w) == 0
+    assert MainFrame._unsent_text(w)
+    assert w._relay_waiting_text() == 'the message forwarded to Reviewer'
+    # Ready: the send takes over the count, then nothing is left.
+    w._prepare_codex_owned(w._open_generation)
+    w.work.pop()[1](None, False)
+    assert not w._relay_waiting and MainFrame._active_owned_turn_count(w) == 1
+    w.work.pop()[1](False, False)
+    assert MainFrame._active_owned_turn_count(w) == 0
+    assert w._relay_waiting_text() == ''
+
+
+def test_a_message_that_fails_to_go_to_codex_is_a_draft_not_work(dialog):
+    from thechatplace.ui.main_frame import MainFrame
+    w = Window()
+    w.codex_ready = False
+    dialog.choose = lambda text: (0, 'Forwarded words')
+    w.on_send_reply_to()
+    w._prepare_codex_owned(w._open_generation)
+    w.work.pop()[1]('Codex connection interrupted.', True)
+    assert MainFrame._active_owned_turn_count(w) == 0
+    assert MainFrame._unsent_text(w)  # it's that chat's draft now

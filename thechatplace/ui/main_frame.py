@@ -5099,9 +5099,13 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
             self._say(f"{text} Help, {item} installs it, or the Update "
                       "button on the status bar.")
             return
-        if self._active_owned_turn_count():
+        if self._running_turn_count():
             self._say(f"{text} It can be installed once the running turns finish; use Help, "
                       f"{item} then.", force=True)
+            return
+        if self._relay_waiting:
+            self._say(f"{text} It can be installed once {self._relay_waiting_text()} has "
+                      f"gone; use Help, {item} then.", force=True)
             return
         # The dialog says it all; the screen reader reads it, so nothing is
         # spoken first. No is the default, so a stray Enter installs nothing.
@@ -5219,15 +5223,23 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
 
     def _unsent_text(self) -> bool:
         self._save_draft()
-        return any(text.strip() for drafts in (self._drafts, self._codex_drafts)
+        return any(text.strip() for drafts in (self._drafts, self._codex_drafts, self._relay_waiting)
                    for text in drafts.values())
 
+    def _running_codex_keys(self) -> set:
+        keys = set(self._codex_send_pending)
+        keys.update(key for key, state in self._codex_states.items()
+                    if state.state == WORKING or state.outcome == 'inProgress' or state.requests)
+        return keys
+
+    def _running_turn_count(self) -> int:
+        return len(self._runners) + len(self._running_codex_keys())
+
     def _active_owned_turn_count(self) -> int:
-        """Protect quits and updates for every currently supported runtime."""
-        codex = set(self._codex_send_pending)
-        codex.update(key for key, state in self._codex_states.items()
-                     if state.state == WORKING or state.outcome == 'inProgress' or state.requests)
-        return len(self._runners) + len(codex)
+        """Protect quits and updates for every currently supported runtime.
+        A reply forwarded to a Codex chat that is still getting ready (#248)
+        counts: it's on its way, and quitting would lose it."""
+        return len(self._runners) + len(self._running_codex_keys() | set(self._relay_waiting))
 
     def _modal_open(self) -> bool:
         """A dialog of ours is open. A native message box isn't among wx's
@@ -5287,7 +5299,7 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
         self._update_busy = False
         # Applying exits at once; a turn sent, a dialog opened or a reply begun
         # while the announcement played would be lost.
-        if self._runners or self._modal_open() or self._unsent_text():
+        if self._active_owned_turn_count() or self._modal_open() or self._unsent_text():
             self._restart_timers()
             self._say(self._install_later_text(result), force=True)
             return
@@ -5911,15 +5923,24 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
     # ---------------------------------------------------------------- close
 
     def _on_close(self, event: wx.CloseEvent):
-        count = self._active_owned_turn_count()
-        if count and event.CanVeto():
+        count = self._running_turn_count()
+        waiting = self._relay_waiting_text()
+        if (count or waiting) and event.CanVeto():
             queued = bool(self._queued) or any(state.queued for state in self._codex_states.values())
-            answer = wx.MessageBox(
-                f"Work is running in {count} Chat Place session"
-                f"{'s' if count != 1 else ''}. Quit anyway? The running turn"
-                f"{'s' if count != 1 else ''} will be stopped"
-                f"{', and queued messages will not be sent.' if queued else '.'}",
-                f"Quit {APP_NAME}", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
+            if count:
+                question = (f"Work is running in {count} Chat Place session"
+                            f"{'s' if count != 1 else ''}. Quit anyway? The running turn"
+                            f"{'s' if count != 1 else ''} will be stopped"
+                            f"{', and queued messages will not be sent.' if queued else '.'}")
+                if waiting:
+                    question += f" {waiting[0].upper()}{waiting[1:]} will not be sent."
+            else:
+                # Not a running turn (#248): a reply forwarded to a Codex
+                # chat that is still getting ready, held only in memory.
+                question = (f"{waiting[0].upper()}{waiting[1:]} is waiting for that chat to be "
+                            "ready. Quit anyway? It will not be sent.")
+            answer = wx.MessageBox(question, f"Quit {APP_NAME}",
+                                   wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
             if answer != wx.YES:
                 event.Veto()
                 return
