@@ -225,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     1020,
-    895
+    926
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -538,6 +538,48 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Main window with no sessions at all (a first run)"
+  },
+  "main-agents": {
+   "kind": "window",
+   "png": "main-agents-light-150.png",
+   "json": "main-agents-light-150.json",
+   "title": "Uploader fix — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "An agent conversation loaded: both agents' messages, and a reply waiting to be handed on"
+  },
+  "agent-new": {
+   "kind": "dialog",
+   "png": "agent-new-light-150.png",
+   "json": "agent-new-light-150.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    1080,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, New Agent Conversation: a new Claude chat and a new Codex chat"
+  },
+  "agent-hand-off": {
+   "kind": "dialog",
+   "png": "agent-hand-off-light-150.png",
+   "json": "agent-hand-off-light-150.json",
+   "title": "Hand Off: Uploader fix",
+   "class": "RelayDialog",
+   "size": [
+    1050,
+    840
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "An agent conversation's hand-off (Ctrl+Shift+E): a reply going to the other agent"
   }
  },
  "seconds": 93.2

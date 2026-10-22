@@ -392,6 +392,8 @@ A 720 by 720 dialog titled "New Agent Conversation". From the top: "Title:" with
 
 **What looks off:** Nothing. When an existing chat is chosen, its permission row and (with no new chat) the folder row disappear, and the rows below move up.
 
+**At 175%:** the controls are taller than the screen allows, so they scroll above Start and Cancel, which stay in view; the opening message box is below the fold until you scroll, as in Settings.
+
 ## agent-hand-off: An agent conversation's hand-off, Ctrl+Shift+E (#248)
 
 The Send Reply to Another Chat dialog with its own title, "Hand Off: Uploader fix", 700 by 560. "Send to:" lists one row, "Claude 1, Visual probe", selected. "Message:" holds "From Claude 2 (agent conversation "Uploader fix"):", a blank line, and "One problem: close() can run twice when the upload is cancelled. Guard it with a flag." "Send" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic the boxes are dark with white text, and the selected row and Send are cyan with dark text.
