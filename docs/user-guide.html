@@ -565,6 +565,31 @@ need it:</p>
   for the prompt's name first, starting with the message's first few words. Press Escape there
   and nothing is saved or sent: your message stays in the reply box.</li>
 </ul>
+<h3>Sending a reply to another chat</h3>
+<p>Two agents can work on the same thing, with you passing their words between them: Claude builds
+and Codex reviews, say, or you ask both and let each answer the other. <strong>Ctrl+Shift+E</strong> (File,
+Send Reply to Another Chat, also on a reply's menu in the messages list) does the copying and
+pasting.</p>
+<ol>
+<li>In the chat with the reply, select it in the messages list. If a message of yours is
+   selected instead, the latest reply is used.</li>
+<li>Press <strong>Ctrl+Shift+E</strong>. <strong>Send to</strong> lists The Chat Place's own chats, Claude and Codex, other
+   than this one. Desktop app, terminal and hidden chats aren't offered.</li>
+<li>Below it, <strong>Message</strong> has the reply, starting with a line that says which agent wrote it and
+   in which chat, so the agent reading it knows these are another agent's words, not yours.
+   Change it or add your own words; Enter there starts a new line.</li>
+<li>Press <strong>Ctrl+Enter</strong> (or <strong>Enter</strong> in the list, or Send). The Chat Place goes to that chat and
+   sends it, just as if you'd typed it there: you hear what was sent and where, as when you send,
+   and it's queued if that chat is working. A Codex chat that isn't ready yet gets ready first
+   ("Getting Reviewer ready"), and the message goes when it is; if you go to another chat before
+   then, it isn't sent and stays in that chat's reply box.</li>
+</ol>
+<p>When the answer comes, press <strong>Ctrl+Shift+E</strong> again: the chat the reply came from is first in the
+list, so <strong>Enter</strong> sends the answer back. If a message can't be sent, it's left in that chat's
+reply box, so nothing is lost. If the dialog's title says the chat is still working, the reply
+you're sending may be a step on the way rather than its answer.</p>
+<p>A forwarded message is only ever a message. It can't answer a question or approve a tool for the
+other agent: those still come to you, in each chat, as they always do.</p>
 <h2 id="answering-permissions-and-questions">Answering permissions and questions</h2>
 <p><strong>Answer</strong> (Ctrl+Shift+A, File, Answer) handles the loaded chat first. A Codex permission
 request shows the command, its folder and Codex's reason, and a "This also needs" list when

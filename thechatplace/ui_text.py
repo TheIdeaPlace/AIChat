@@ -154,6 +154,10 @@ SHORTCUTS = [
         ("Ctrl+Shift+M", "Other machines: list your sessions on other computers and send one "
                          "a message, through Claude in the loaded Chat Place session (it needs "
                          "Remote Control on)"),
+        ("Ctrl+Shift+E", "Send Reply to Another Chat: the selected reply (or the latest one) "
+                         "goes to another Chat Place chat, Claude or Codex, labelled with who "
+                         "wrote it; read and change it first, then Enter sends and you go to "
+                         "that chat"),
         ("Ctrl+Shift+D", "Lists, on Changed Files (Claude chats): what changed in the selected "
          "message's turn (your latest, if none is selected) or in the whole chat; Enter on a file "
          "reads its changes line by line"),

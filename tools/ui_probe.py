@@ -1154,6 +1154,13 @@ def d_prompt_edit(frame, env):
                                                  "Review this change for bugs."))
 
 
+def d_relay(frame, env):
+    """Codex's reply, on its way to the Claude chat (#248)."""
+    s_main_codex_owned(frame, env)
+    frame.chat_list.SetFocus()
+    return frame.on_send_reply_to
+
+
 def d_rename(frame, env):
     _select(frame, "Visual probe")
     return frame.on_rename
@@ -1247,6 +1254,7 @@ SURFACES = {
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
     "prompts": ("dialog", d_prompts, "File, Prompts"),
     "prompt-edit": ("dialog", d_prompt_edit, "Editing a saved prompt"),
+    "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "rename": ("dialog", d_rename, "Rename Session (wx's own text entry dialog)"),
     "main-empty": ("window", s_main_start, "Main window with no sessions at all (a first run)"),
 }
@@ -1312,6 +1320,7 @@ DIALOG_CLASSES = {
     "session-columns": "SessionColumnsDialog",
     "prompts": "PromptsDialog",
     "prompt-edit": "PromptEditDialog",
+    "relay": "RelayDialog",
     "rename": "TextEntryDialog",
 }
 
