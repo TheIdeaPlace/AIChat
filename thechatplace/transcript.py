@@ -64,6 +64,8 @@ PEER = "peer"
 #: Not from the transcript: a message of yours waiting for the turn to end
 #: (#50), shown at the end of the messages list.
 QUEUED = "queued"
+PERMISSION_NOTICE = "permission_notice"
+TAIL_KINDS = frozenset({QUEUED, PERMISSION_NOTICE})
 TOOL_RESULT = "tool_result"
 CONTEXT = "context"
 EVENT = "event"
@@ -84,6 +86,7 @@ LABELS = {
     TOOL: "Tool",
     PEER: "From another session",
     QUEUED: "Queued",
+    PERMISSION_NOTICE: "The Chat Place",
     TOOL_RESULT: "Tool result",
     CONTEXT: "Context",
     EVENT: "Event",

@@ -173,6 +173,12 @@ class SessionController:
             raise ValueError("This provider cannot check saved command rules")
         return backend.saved_rule_count(cwd)
 
+    def saved_rules(self, provider, cwd):
+        backend = self._providers.get(provider)
+        if self._closed or backend is None or not callable(getattr(backend, 'saved_rules', None)):
+            raise ValueError("This provider cannot read saved command rules")
+        return backend.saved_rules(cwd)
+
     def model_choices(self, provider):
         backend = self._providers.get(provider)
         if self._closed or backend is None or not callable(getattr(backend, 'model_choices', None)):
@@ -190,7 +196,8 @@ class SessionController:
         return self._provider(source).fork_owned(source, title, **options)
 
     def owned_action(self, action, record, *args):
-        if action not in ("prepare", "reopen", "send", "stop", "answer", "ready", "prepare_policy", "finish_policy"):
+        if action not in ("prepare", "reopen", "send", "stop", "answer", "ready", "prepare_policy", "finish_policy",
+                          "chat_rule_candidate", "allow_for_chat", "chat_rules", "remove_chat_rule"):
             raise ValueError("Unsupported owned chat action")
         if not isinstance(record, OwnSession) or record.provider == "claude":
             raise ValueError("Foreign owned chat required")

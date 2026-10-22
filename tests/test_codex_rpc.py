@@ -48,6 +48,40 @@ def test_handshake_partial_utf8_lines_and_context_cleanup(server):
         connection.request("thread/list", {})
 
 
+def test_tcp_kept_approval_uses_real_stdio_listener_and_removal(server, tmp_path):
+    import time
+    from thechatplace.providers.codex_execution import CodexExecutionConnection
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    start, _ = server
+    connection = CodexExecutionConnection('owned-turn-kept', start=start, initialize=False)
+    service = CodexChatRuntime(factory=lambda exe: connection)
+    def wait(predicate):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(.01)
+        assert predicate()
+    try:
+        record = service.create(str(tmp_path), 'Synthetic kept approval')
+        service.send(record, 'First commit')
+        wait(lambda: service.snapshot('owned').requests)
+        service.allow_for_chat(record, service.snapshot('owned').requests[0])
+        wait(lambda: service.snapshot('owned').outcome == 'completed')
+        service.send(record, 'Second commit')
+        wait(lambda: service.snapshot('owned').outcome == 'completed')
+        assert service.snapshot('owned').permission_notices == (
+            ('turn-2', 'approval', 'Allowed git commit, as you said for this chat.'),)
+        service.remove_chat_rule(record, None)
+        service.send(record, 'Third commit')
+        wait(lambda: service.snapshot('owned').requests)
+        request = service.snapshot('owned').requests[0]
+        service.answer(record, request, request.approval_answer('decline'))
+        wait(lambda: service.snapshot('owned').outcome == 'completed')
+    finally:
+        service.close()
+
+
 @pytest.mark.parametrize('scenario', ['owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown'])
 def test_runtime_midturn_request_hang_and_protocol_failure_use_real_stdio(server, scenario, tmp_path, monkeypatch):
     import time

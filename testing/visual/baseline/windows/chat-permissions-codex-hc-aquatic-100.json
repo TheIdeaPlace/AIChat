@@ -100,10 +100,10 @@
     10,
     57,
     648,
-    245
+    186
    ],
    "best": [
-    264,
+    329,
     150
    ],
    "depth": 0,
@@ -111,9 +111,47 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "The Chat Place keeps no Codex approvals."
+    "No command approvals are remembered for this chat."
    ],
    "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Remove...",
+   "rect": [
+    8,
+    249,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Remove A&ll...",
+   "rect": [
+    89,
+    249,
+    90,
+    23
+   ],
+   "best": [
+    90,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
   },
   {
    "class": "Button",
@@ -121,7 +159,7 @@
    "label": "&Close",
    "rect": [
     581,
-    308,
+    249,
     75,
     23
    ],
@@ -140,7 +178,7 @@
    "label": "Abou&t these permissions:",
    "rect": [
     8,
-    339,
+    280,
     134,
     16
    ],
@@ -159,9 +197,9 @@
    "label": "",
    "rect": [
     10,
-    365,
+    306,
     648,
-    110
+    169
    ],
    "best": [
     127,
@@ -171,7 +209,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "The Chat Place keeps no Codex approvals: when Codex asks you, your answer covers that one request. Codex's own saved rule files are separate, below.\n\nSaved user/system rule files in effect: 2. Commands you've told Codex to always allow will run without asking and outside this folder's limits, including the network. Project-supplied command rules are refused. They are Codex's own, and are changed i"
+   "value": "Removal applies before the next approval is sent; work already approved may finish. Changing mode clears remembered approvals. Remembered approvals have the same authority as Allow Once: matching commands may run outside the sandbox, change files elsewhere, use the network, and run Git hooks or other configured programs. The folder identifies where the command starts; it does not confine what it c"
   }
  ],
  "capture": "PrintWindow"

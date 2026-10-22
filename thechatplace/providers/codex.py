@@ -321,6 +321,19 @@ class CodexProvider:
         result = self.connection.request('config/read', {'cwd': cwd, 'includeLayers': True})
         return verify_codex_rule_layers(result)
 
+    def saved_rules(self, cwd):
+        """Worker-only: the rules in Codex's saved rule files, read only (#307),
+        as ``codex_saved_rules.describe`` takes them. One scan of the folders,
+        so the list can't claim nothing is allowed when they weren't read."""
+        from .. import codex_saved_rules, platform_paths
+        result = self.connection.request('config/read', {'cwd': cwd, 'includeLayers': True})
+        layers = result.get('layers') if isinstance(result, dict) else None
+        files, blocked = platform_paths.codex_saved_rule_files(layers)
+        if files is None:
+            return [], [], 0, codex_saved_rules.UNCHECKED
+        problem = codex_saved_rules.project_rules(blocked) if blocked else ''
+        return (*codex_saved_rules.rules_in(files), problem)
+
     def model_choices(self):
         """Worker-only discovery; never creates or resumes an owned chat."""
         return read_models(self.connection)
@@ -509,6 +522,18 @@ class CodexProvider:
 
     def answer_owned(self, record, request, result):
         return self.runtime.answer(record, request, result)
+
+    def chat_rule_candidate_owned(self, record, request):
+        return self.runtime.chat_rule_candidate(record, request)
+
+    def allow_for_chat_owned(self, record, request):
+        return self.runtime.allow_for_chat(record, request)
+
+    def chat_rules_owned(self, record):
+        return self.runtime.chat_rules(record)
+
+    def remove_chat_rule_owned(self, record, rule_id):
+        return self.runtime.remove_chat_rule(record, rule_id)
 
     def owned_ready(self, record):
         return self.runtime is not None and self.runtime.ready(record)

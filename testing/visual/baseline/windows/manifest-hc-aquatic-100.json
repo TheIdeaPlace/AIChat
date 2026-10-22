@@ -957,7 +957,35 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's rule files"
+   "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's saved rules"
+  },
+  "codex-permission-kept": {
+   "kind": "dialog",
+   "png": "codex-permission-kept-hc-aquatic-100.png",
+   "json": "codex-permission-kept-hc-aquatic-100.json",
+   "title": "Codex needs permission: Codex preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Remember a Codex command for this TCP chat"
+  },
+  "chat-permissions-codex-kept": {
+   "kind": "dialog",
+   "png": "chat-permissions-codex-kept-hc-aquatic-100.png",
+   "json": "chat-permissions-codex-kept-hc-aquatic-100.json",
+   "title": "Chat Permissions: Codex preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Review and remove TCP-kept Codex approvals"
   },
   "relay": {
    "kind": "dialog",

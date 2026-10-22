@@ -22,6 +22,23 @@ class CodexRpcError(RuntimeError):
     """Public diagnostics never include raw RPC payloads or stderr."""
 
 
+class CodexApprovalNotSent(CodexRpcError):
+    """Approval failed before queueing bytes; manual Answer is still usable."""
+
+
+class CodexRememberedApprovalError(CodexRpcError):
+    REASONS = {
+        'not_sent': 'The answer was not sent and no new approval was kept. Open Answer to try again.',
+        'kept_uncertain': 'The approval was kept, but its answer could not be confirmed. Reload this chat before continuing; the answer will not be resent.',
+        'removed_uncertain': 'The approval was removed, but its earlier answer could not be confirmed. Reload this chat before continuing; the answer will not be resent.',
+        'cleanup_failed': 'The answer was not sent, but removing the new approval failed. Check File, Chat Permissions before continuing.',
+    }
+
+    def __init__(self, code):
+        self.code = code
+        super().__init__(self.REASONS[code])
+
+
 class CodexConnectionFailure(CodexRpcError):
     """Fixed connection reasons, never server payloads or exception text."""
     REASONS = {
@@ -257,18 +274,25 @@ class ReadOnlyCodexConnection:
     def _accept_server_request(self, request):
         return False  # read-only callers never receive executable approvals
 
-    def respond_request(self, request, result):
+    def respond_request(self, request, result, *, dispatch_guard=None):
         result = request.validate_answer(result)
-        if result.get("decision") in (ACCEPT, ACCEPT_SESSION):
-            account = self.request("account/read", {"refreshToken": True})
-            if not is_chatgpt_account(account):
-                raise CodexRpcError("Codex approvals require ChatGPT sign-in")
-        payload = self._encode({"id": request.request_id, "result": result})
-        with self._lock:
-            if self._closed or self._server_pending.get(request.request_id) is not request:
-                raise CodexRpcError("Codex request is no longer waiting")
-            self._outgoing.put(payload)
-            del self._server_pending[request.request_id]
+        try:
+            if result.get("decision") in (ACCEPT, ACCEPT_SESSION):
+                account = self.request("account/read", {"refreshToken": True})
+                if not is_chatgpt_account(account):
+                    raise CodexRpcError("Codex approvals require ChatGPT sign-in")
+            payload = self._encode({"id": request.request_id, "result": result})
+        except Exception as error:
+            raise CodexApprovalNotSent("Codex approval was not sent. Check the connection and ChatGPT sign-in.") from error
+        from contextlib import nullcontext
+        # Sign-in can take seconds. The caller's revocation lock covers only
+        # the final check and enqueue, never the account/read round trip.
+        with dispatch_guard() if dispatch_guard is not None else nullcontext():
+            with self._lock:
+                if self._closed or self._server_pending.get(request.request_id) is not request:
+                    raise CodexApprovalNotSent("Codex request is no longer waiting")
+                self._outgoing.put(payload)
+                del self._server_pending[request.request_id]
 
     def _request(self, method, params):
         if not isinstance(params, dict):

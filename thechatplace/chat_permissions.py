@@ -2,9 +2,8 @@
 
 No wx here, so the rows, notes and confirmations can be tested on their own.
 Claude's kept rules are the ``--allowedTools`` rules stored with the chat.
-The Chat Place keeps no Codex approvals: no safe way to reuse one has been
-found yet (#307, #330). Codex's own saved rule files are its own, and stay in
-effect (#257); the dialog says how many there are.
+Codex approvals kept here delegate Allow Once authority to matching commands;
+they do not claim to sandbox Git. Native saved rules stay separate (#257).
 """
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ import re
 from typing import Iterable, List, Mapping, Optional
 
 from .properties import _date
-from .ui_text import CODEX_SAVED_RULES_NOTE
 
 #: What the list says when nothing is kept (#307).
 EMPTY = "Nothing is allowed beyond the permission mode."
@@ -22,11 +20,6 @@ EMPTY = "Nothing is allowed beyond the permission mode."
 CLAUDE_TAKES_EFFECT = "Removing a rule applies from this chat's next turn."
 CLAUDE_RUNNING = ("A turn is running now. It keeps the rules it started with; "
                   "a removal applies from the next turn.")
-#: What a Codex chat's list says: The Chat Place keeps nothing for it.
-CODEX_EMPTY = "The Chat Place keeps no Codex approvals."
-CODEX_ABOUT = ("The Chat Place keeps no Codex approvals: when Codex asks you, your answer "
-               "covers that one request. Codex's own saved rule files are separate, below.")
-CODEX_NATIVE = ("They are Codex's own, and are changed in Codex, not here.")
 
 
 @dataclass(frozen=True)
@@ -114,10 +107,10 @@ def _kind(row: PermissionRow) -> str:
     return "folder" if row.rule_id.startswith(FOLDER) else "rule"
 
 
-def confirm_text(row: Optional[PermissionRow], rows: List[PermissionRow]) -> str:
+def confirm_text(row: Optional[PermissionRow], rows: List[PermissionRow],
+                 after: str = "Claude will ask again from the next turn.") -> str:
     """The one confirmation before a removal, naming what goes: ``row``, or
     with None all of ``rows``, counted as rules and folders."""
-    after = "Claude will ask again from the next turn."
     if row is not None:
         return f"Remove this {_kind(row)}? {row.description} {after}"
     folders = sum(1 for r in rows if _kind(r) == "folder")
@@ -126,17 +119,3 @@ def confirm_text(row: Optional[PermissionRow], rows: List[PermissionRow]) -> str
              for n, word in ((rules, "rule"), (folders, "folder")) if n]
     return f"Remove all {' and '.join(parts)} from this chat? {after}"
 
-
-def native_rule_files(count=None, error: str = "", *, pending: bool = False) -> str:
-    """The Codex rule-file count, as Properties says it (#257), read-only."""
-    if error:
-        return "Saved user/system rule files: couldn't be checked. " + error
-    if pending:
-        return "Saved user/system rule files: checking..."
-    if type(count) is int and count > 0:
-        # As Properties words it (#257), with what such rules mean.
-        return (f"Saved user/system rule files in effect: {count}. "
-                + CODEX_SAVED_RULES_NOTE + " " + CODEX_NATIVE)
-    if count == 0:
-        return "Saved user/system rule files in effect: 0."
-    return "Saved user/system rule files: not checked."

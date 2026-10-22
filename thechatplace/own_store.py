@@ -391,3 +391,5 @@ class OwnSessionStore:
         if provider == 'codex':
             # Repeating removal also retries cleanup after a sharing violation.
             CodexPlanStore(self.path.parent / 'provider-tasks' / 'codex').remove(cli_session_id)
+            from .providers.codex_permissions import CodexPermissionStore
+            CodexPermissionStore(self.path.parent / 'provider-permissions' / 'codex').remove(cli_session_id)

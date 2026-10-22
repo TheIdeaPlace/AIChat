@@ -83,7 +83,7 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         SessionInfo, field_short_name, group_view, in_view, end_sentence, state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
-                          PEER, PLAN, QUESTION, QUEUED, TOOL, TOOL_RESULT, ChatMessage,
+                          PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, TAIL_KINDS, TOOL, TOOL_RESULT, ChatMessage,
                           clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
@@ -1798,7 +1798,7 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
                 self._select_match(target, loaded=True)
                 return
             note = f" Couldn't read {unreadable} lines." if unreadable else ""
-            count = sum(1 for m in self._visible_messages() if m.kind != QUEUED)
+            count = sum(1 for m in self._visible_messages() if m.kind not in TAIL_KINDS)
             if self._announce_load:
                 self._announce_load = False
                 self._feedback(f"Loaded {self._open.title}, {count} "
@@ -1902,8 +1902,8 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
         current = list(self.chat_list.GetStrings())
         # Queued messages (#50) are a tail after the conversation: new
         # messages go in before it, so the rows above never move.
-        old_body = [k for k in old_keys if not k.startswith("queued:")]
-        body = [k for k in keys if not k.startswith("queued:")]
+        old_body = [k for k in old_keys if not k.startswith(("queued:", "notice:"))]
+        body = [k for k in keys if not k.startswith(("queued:", "notice:"))]
         if (not focus_newest and keep_key is None and old_keys and keys
                 and body[: len(old_body)] == old_body and len(current) == len(old_keys)
                 and old_keys[: len(old_body)] == old_body):
@@ -1920,7 +1920,7 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
                     self.chat_list.Delete(tail_start)
                 if new_tail:
                     self.chat_list.Append(new_tail)
-                if selected_key is not None and selected_key.startswith("queued:") \
+                if selected_key is not None and selected_key.startswith(("queued:", "notice:")) \
                         and keys:
                     self.chat_list.SetSelection(
                         keys.index(selected_key) if selected_key in keys
@@ -1928,7 +1928,9 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
         else:
             self.chat_list.Set(lines)
             if focus_newest or not keys:
-                self.chat_list.SetSelection(len(lines) - 1)
+                newest = next((i for i in range(len(visible) - 1, -1, -1)
+                               if visible[i].kind not in TAIL_KINDS), len(lines) - 1)
+                self.chat_list.SetSelection(newest)
             elif selected_key in keys:
                 self.chat_list.SetSelection(keys.index(selected_key))
             else:
@@ -1942,7 +1944,9 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
             return 0
         order = [m.key for m in self._chat_messages]
         if key not in order:
-            return len(visible_keys) - 1
+            return next((row for row in range(len(visible_keys) - 1, -1, -1)
+                         if not visible_keys[row].startswith(("queued:", "notice:"))),
+                        len(visible_keys) - 1)
         position = order.index(key)
         best = 0
         for row, visible_key in enumerate(visible_keys):
@@ -2133,11 +2137,11 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
             self._feedback("The messages are still loading.")
             return
         category = category or self._lists_category
-        messages = [m for m in self._visible_messages() if m.kind != QUEUED]
+        messages = [m for m in self._visible_messages() if m.kind not in TAIL_KINDS]
         selected = self._selected_message() or (messages[-1] if messages else None)
         # A queued message isn't in a turn yet: its files, commands and
         # decisions are the latest turn's.
-        turn = self._chat_turns if selected is not None and selected.kind == QUEUED else None
+        turn = self._chat_turns if selected is not None and selected.kind in TAIL_KINDS else None
         if scope is None:
             scope = lists.SCOPE_CHAT
         try:
@@ -2520,7 +2524,7 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
         off the window's thread). (messages, None), (None, session), or
         (None, None) when the backend has no history."""
         if self._open is not None and info.key == self._open.key and self._chat_loaded:
-            return [m for m in self._visible_messages() if m.kind != QUEUED], None
+            return [m for m in self._visible_messages() if m.kind not in TAIL_KINDS], None
         try:
             return None, info if self.sessions.has_history(info) else None
         except ValueError:
@@ -2744,7 +2748,7 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
         if not self._require_capability("changes", info):
             return
         selected = self._selected_message()
-        turn = selected.turn if selected is not None and selected.kind != QUEUED else self._chat_turns
+        turn = selected.turn if selected is not None and selected.kind not in TAIL_KINDS else self._chat_turns
         scope = (lists.SCOPE_MESSAGE if any(e.turn == turn for e in self._chat_edits)
                  else lists.SCOPE_CHAT)
         self.on_lists(lists.FILES, scope)
@@ -4306,8 +4310,12 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
         info = self._open
         if info is not None and info.is_own and info.provider == "codex":
             state = self._codex_states.get(info.key)
-            return [ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
-                    for i, text in enumerate(state.queued if state is not None else ())]
+            if state is None:
+                return []
+            notices = [ChatMessage(PERMISSION_NOTICE, text, key=f"notice:{info.key}:{turn}:{identity}")
+                       for turn, identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
+            return notices + [ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
+                              for i, text in enumerate(state.queued)]
         if info is None or not info.is_own or info.provider != "claude":
             return []
         return [ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")
@@ -4768,7 +4776,7 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
             row = [m.key for m in visible].index(match.message_key)
         where = f"Loaded {match.title}. " if loaded else ""
         if row is None or row >= self.chat_list.GetCount():
-            count = sum(1 for m in visible if m.kind != QUEUED)
+            count = sum(1 for m in visible if m.kind not in TAIL_KINDS)
             self._feedback(f"{where}{count} message{('s' if count != 1 else '')}. The message found isn't in the list now; if it was a tool call, {key_name('Ctrl+T')} shows them.")
             return False
         self.chat_list.SetSelection(row)

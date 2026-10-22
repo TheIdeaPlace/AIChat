@@ -1,5 +1,6 @@
 """Synthetic stdio server; never reads account data or runs an agent."""
 import json
+import shlex
 from pathlib import Path
 import sys
 import threading
@@ -17,6 +18,9 @@ account_reads = 0
 config_reads = 0
 server_answer = None
 owned_active = False
+owned_cwd = '/workspace'
+owned_turn = 'turn'
+owned_turn_count = 0
 
 
 def emit(message, partial=False):
@@ -38,10 +42,10 @@ for line in sys.stdin:
     method = request.get("method")
     if method is None and ('result' in request or 'error' in request):
         server_answer = request
-        if len(sys.argv) > 1 and sys.argv[1] in ('owned-turn-approval', 'owned-turn-command-output', 'owned-turn-unsupported', 'owned-turn-unknown'):
+        if len(sys.argv) > 1 and sys.argv[1] in ('owned-turn-approval', 'owned-turn-command-output', 'owned-turn-unsupported', 'owned-turn-unknown', 'owned-turn-kept'):
             owned_active = False
             emit({'method': 'turn/completed', 'params': {'threadId': 'owned',
-                  'turn': {'id': 'turn', 'status': 'completed'}}})
+                  'turn': {'id': owned_turn, 'status': 'completed'}}})
         continue
     if method == "initialize":
         if len(sys.argv) > 1 and sys.argv[1] == "hang-init":
@@ -77,21 +81,26 @@ for line in sys.stdin:
         rows = [{'runtimeStatus': 'connected', 'tools': {}}] if scenario == 'account-route-mcp' else []
         emit({'id': request['id'], 'result': {'data': rows, 'nextCursor': None}})
         continue
-    if scenario in ('owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown', 'owned-turn-plan'):
+    if scenario in ('owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown', 'owned-turn-plan', 'owned-turn-kept'):
         if method == 'account/read':
             result = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
         elif method == 'config/read':
             result = {'config': {}, 'layers': LAYERS}
         elif method == 'thread/start':
+            if scenario == 'owned-turn-kept':
+                owned_cwd = params['cwd']
             result = {'thread': {'id': 'owned', 'createdAt': 1, 'status': {'type': 'idle'}, 'ephemeral': False},
-                      'cwd': '/workspace', 'model': 'synthetic', 'modelProvider': 'openai',
+                      'cwd': owned_cwd, 'model': 'synthetic', 'modelProvider': 'openai',
                       'sandbox': {'type': 'readOnly'}, 'approvalPolicy': 'on-request', 'approvalsReviewer': 'user'}
         elif method == 'thread/read':
-            result = {'thread': {'id': 'owned', 'modelProvider': 'openai', 'cwd': '/workspace',
+            result = {'thread': {'id': 'owned', 'modelProvider': 'openai', 'cwd': owned_cwd,
                                 'status': {'type': 'active' if owned_active else 'idle'}}}
         elif method == 'turn/start':
             owned_active = True
-            emit({'id': request['id'], 'result': {'turn': {'id': 'turn', 'status': 'inProgress'}}})
+            if scenario == 'owned-turn-kept':
+                owned_turn_count += 1
+                owned_turn = f'turn-{owned_turn_count}'
+            emit({'id': request['id'], 'result': {'turn': {'id': owned_turn, 'status': 'inProgress'}}})
             if scenario == 'owned-turn-command-output':
                 for _ in range(256):
                     emit({'method': 'item/commandExecution/outputDelta', 'params': {
@@ -123,6 +132,12 @@ for line in sys.stdin:
                                'execpolicy_amendment': ['synthetic']}}, 'decline', 'cancel']}
                 if scenario == 'owned-turn-unsupported':
                     details['kind'] = 'writeStdin'
+                if scenario == 'owned-turn-kept':
+                    shell = ['C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe', '-Command'] if sys.platform == 'win32' else ['/bin/bash', '-lc']
+                    details.update(turnId=owned_turn, cwd=owned_cwd,
+                                   command=shlex.join([*shell, f'git commit -m commit{owned_turn_count}']),
+                                   proposedExecpolicyAmendment=['git', 'commit'])
+                    del details['additionalPermissions']
                 emit({'id': 'approval', 'method': 'future/unsupportedRequest' if scenario == 'owned-turn-unknown'
                       else 'item/commandExecution/requestApproval', 'params': details})
             continue

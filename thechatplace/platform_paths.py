@@ -236,6 +236,30 @@ def app_data_dir() -> Path:
     return _roaming_dir() / APP_DIR_NAME
 
 
+def codex_approval_shell(executable: str) -> str:
+    """Only known native shell wrappers can be remembered (#307)."""
+    if sys.platform == 'win32':
+        trusted = [_windows_program('System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')]
+        if os.environ.get('ProgramFiles'):
+            trusted.append(ntpath.join(os.environ['ProgramFiles'], 'PowerShell', '7', 'pwsh.exe'))
+        if ntpath.normcase(executable) in {ntpath.normcase(p) for p in trusted}:
+            return 'powershell'
+    elif executable in ('/bin/bash', '/bin/zsh', '/bin/sh'):
+        return 'posix'
+    return ''
+
+
+def codex_approval_folder(cwd: str, chat_folder: str) -> str:
+    """Remember only the exact existing local chat folder, never a child/alias."""
+    paths = [Path(value) for value in (cwd, chat_folder)]
+    if any(not p.is_absolute() or str(p).startswith(('\\\\', '//')) for p in paths):
+        raise ValueError('Local absolute folders required')
+    resolved = [p.resolve(strict=True) for p in paths]
+    if resolved[0] != resolved[1] or not resolved[0].is_dir():
+        raise ValueError('Remembered approvals require the exact chat folder')
+    return str(resolved[0])
+
+
 def codex_diagnostic_path() -> Path:
     return app_data_dir() / "codex-errors.log"
 
@@ -1356,6 +1380,14 @@ def codex_rule_inventory(layers):
     An allow rule can bypass both the folder sandbox and the approval UI (#257).
     This is a bounded snapshot check, not upstream per-thread rule isolation.
     """
+    files, blocked = codex_saved_rule_files(layers)
+    return (None, "") if files is None else (len(files), blocked)
+
+
+def codex_saved_rule_files(layers):
+    """The user/system rule files themselves, for Chat Permissions to list
+    (#307), and any folder of project-supplied rules; (None, "") when the
+    layers can't be trusted, as for the count."""
     if not isinstance(layers, list) or not 1 <= len(layers) <= 64:
         return None, ""
     no_folder = {'packagedDefaults', 'mdm', 'enterpriseManaged', 'sessionFlags',
@@ -1386,7 +1418,8 @@ def codex_rule_inventory(layers):
             return None, ""
         folder = (path if kind == 'project' else path.parent) / 'rules'
         folders[folder] = folders.get(folder, False) or kind == 'project'
-    count = saved = 0
+    count = 0
+    saved = []
     blocked = ""
     for folder, project in folders.items():
         try:
@@ -1401,7 +1434,7 @@ def codex_rule_inventory(layers):
                         if project:
                             blocked = str(folder)
                         else:
-                            saved += 1
+                            saved.append(Path(entry.path))
         except FileNotFoundError:
             continue  # Codex also permits a genuinely absent rules directory.
         except OSError:

@@ -50,6 +50,10 @@ class CodexChats:
             text += f' {count} {"message" if count == 1 else "messages"} queued.'
         if state.notice:
             text += ' ' + state.notice
+        notices = [text for turn, _identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
+        if notices:
+            count = len(notices)
+            text += f' {count} {"request" if count == 1 else "requests"} allowed automatically. Latest: ' + notices[-1]
         return text
 
     def _codex_work(self, action, done):
@@ -79,6 +83,9 @@ class CodexChats:
 
     def _load_codex_rules(self, folder, callback):
         self._codex_work(lambda: self.sessions.saved_rule_count('codex', folder), callback)
+
+    def _load_codex_saved_rules(self, folder, callback):
+        self._codex_work(lambda: self.sessions.saved_rules('codex', folder), callback)
 
     def _load_codex_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
@@ -196,7 +203,7 @@ class CodexChats:
                     # A saved folder-editing chat reopened read-only: reloading
                     # it after fixing the sandbox prepares it again (#257).
                     _result += ' Reload this chat to try again.'
-                self._feedback(relayed + (_result or 'Could not prepare this Codex chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in Codex before restarting TCP.'))
+                self._feedback(relayed + (_result or 'Could not prepare this Codex chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in Codex before restarting The Chat Place.'))
             self._update_send_state()
         self._codex_work(prepare, done)
 
@@ -291,6 +298,14 @@ class CodexChats:
         if record is None:
             return
         loaded = self._open is not None and self._open.key == key
+        seen = getattr(self, '_codex_permission_notices_seen', None)
+        if seen is None:
+            seen = self._codex_permission_notices_seen = set()
+        for notice in getattr(state, 'permission_notices', ()):
+            identity = (state.native_id, notice[0], notice[1])
+            if identity not in seen:
+                seen.add(identity)
+                self._say(f'{record.title}: {notice[2]}', interrupt=False)
         if loaded and (state.token_usage is not None or previous is not None and previous.token_usage is not None):
             self._check_context()
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
@@ -354,6 +369,23 @@ class CodexChats:
         if record is None or not state.requests:
             return
         request = state.requests[0]
+        if request.method != QUESTIONS:
+            pending = getattr(self, '_codex_answer_checks', None)
+            if pending is None:
+                pending = self._codex_answer_checks = set()
+            if info.key in pending:
+                self._feedback('Still checking this Codex request.')
+                return
+            pending.add(info.key)
+            def checked(rule, error):
+                pending.discard(info.key)
+                if not self._gone():
+                    self._show_codex_answer(info, record, request, state, None if error else rule)
+            self._codex_work(lambda: self.sessions.owned_action('chat_rule_candidate', record, request), checked)
+            return
+        self._show_codex_answer(info, record, request, state, None)
+
+    def _show_codex_answer(self, info, record, request, state, chat_rule):
         if request.method == QUESTIONS:
             questions = [dict(id=q.question_id, header=q.header, question=q.text,
                               options=[dict(label=l, description=d) for l, d in q.options],
@@ -362,7 +394,8 @@ class CodexChats:
                                     provider='Codex')
         else:
             detail = dict(state.file_changes).get(request.item_id, '')
-            dialog = CodexPermissionDialog(self, info.title, request, detail)
+            dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule)
+        keep = False
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
@@ -372,13 +405,16 @@ class CodexChats:
                     return
                 result = request.question_answer(dialog.answers())
             else:
-                result = request.approval_answer(dialog.choice)
+                keep = dialog.choice == 'tcp_chat_rule'
+                result = None if keep else request.approval_answer(dialog.choice)
         except ValueError:
             self._feedback('These Codex answers are invalid. Open Answer and choose again.')
             return
         finally:
             dialog.Destroy()
         def done(_result, error):
-            self._feedback('This Codex request could not be answered. It may no longer be waiting.'
-                           if error else 'Answer sent to Codex.')
-        self._codex_work(lambda: self.sessions.owned_action('answer', record, request, result), done)
+            self._feedback((_result or 'This Codex request could not be answered. It may no longer be waiting.')
+                           if error else 'Approval kept for this chat and answer sent to Codex.' if keep else 'Answer sent to Codex.')
+        action = (lambda: self.sessions.owned_action('allow_for_chat', record, request)) if keep else (
+            lambda: self.sessions.owned_action('answer', record, request, result))
+        self._codex_work(action, done)

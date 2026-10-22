@@ -2082,6 +2082,27 @@ def test_chat_permissions_change_uses_change_permission_mode(frame, env, monkeyp
     assert frame.store.get("own-1").permission_mode == "acceptEdits"
 
 
+def test_chat_permissions_reads_native_rules_again_after_a_mode_change(frame):
+    """What a Codex rule means can depend on the mode (never-ask refuses a
+    rule that says to ask), so Change re-reads the rules (#307)."""
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import ChatPermissionsDialog
+    state = {"mode": "Asks"}
+    host = SimpleNamespace(mode_text=lambda: state["mode"], can_change_mode=lambda: (True, ""),
+                           change_mode=lambda done: (state.update(mode="Never asks"), done()),
+                           note=lambda: "Note.", load=lambda done: done([], None),
+                           native_pending="Checking...",
+                           native=lambda done: done("Rules while " + state["mode"]))
+    dialog = ChatPermissionsDialog(frame, "Probe", host)
+    try:
+        assert dialog.note.GetValue() == "Note.\n\nRules while Asks"
+        dialog.on_change()
+        assert dialog.mode.GetValue() == "Never asks"
+        assert dialog.note.GetValue() == "Note.\n\nRules while Never asks"
+    finally:
+        dialog.Destroy()
+
+
 def test_chat_permissions_shows_a_worker_failure_and_never_claims_removal(frame, monkeypatch):
     from types import SimpleNamespace
     from thechatplace import chat_permissions
@@ -2133,25 +2154,54 @@ def test_chat_permissions_shows_a_worker_failure_and_never_claims_removal(frame,
         dialog.Destroy()
 
 
-def test_chat_permissions_for_a_codex_chat_keeps_nothing_and_offers_no_remove(frame, env, monkeypatch):
+def test_chat_permissions_for_a_codex_chat_shows_empty_remembered_list(frame, env, monkeypatch):
     from thechatplace import chat_permissions
     record = OwnSession("codex-own", "Codex chat", str(env["tmp"]), provider="codex",
                         provider_options={"sandbox": "read-only", "approval_policy": "on-request"})
     frame.store.add(record)
     monkeypatch.setattr(frame, "_selected_session", lambda: record.to_info())
-    monkeypatch.setattr(frame, "_load_codex_rules", lambda folder, done: done(2, False))
+    from thechatplace.codex_saved_rules import SavedRule
+    monkeypatch.setattr(frame, "_load_codex_saved_rules", lambda folder, done: done(
+        ([SavedRule("allow", "git push", "/codex/rules/default.rules")], [], 0, ""), False))
+    monkeypatch.setattr(frame, '_codex_work', lambda action, done: done((), False))
 
     def drive(dialog):
-        _permission_delete_key(dialog)   # nothing to remove: nothing happens
         return (list(dialog.list.GetStrings()), dialog.list.GetName(), dialog.remove_btn,
                 dialog.remove_all_btn, dialog.mode.GetValue(), dialog.note.GetValue())
     (rows, name, remove, remove_all, mode, note), asked = _chat_permissions(frame, monkeypatch, drive)
-    assert rows == [chat_permissions.CODEX_EMPTY] and name == "Allowed for this chat, 0"
-    assert remove is None and remove_all is None and not asked
+    assert rows == ['No command approvals are remembered for this chat.'] and name == "Allowed for this chat, 0"
+    assert remove is not None and remove_all is not None and not asked
     assert mode == "Read-only; asks before allowing changes"
-    assert note.startswith(chat_permissions.CODEX_ABOUT)
-    assert "Saved user/system rule files in effect: 2." in note
+    assert note.startswith('Removal applies before the next approval is sent')
+    assert "From Codex's own saved rules." in note
+    assert "Allowed without asking: commands starting with git push." in note
     assert "Nothing is allowed beyond the permission mode" not in note
+
+
+def test_chat_permissions_codex_removal_uses_backend_and_restores_selection(frame, env, monkeypatch):
+    from thechatplace.providers.codex_permissions import CodexChatRule
+    record = OwnSession('codex-own', 'Codex chat', str(env['tmp']), provider='codex')
+    frame.store.add(record)
+    rules = [CodexChatRule('a' * 32, ('git', 'commit'), record.cwd, ('direct',), 1792400000000),
+             CodexChatRule('b' * 32, ('git', 'push'), record.cwd, ('direct',), 1792400000000)]
+    def action(name, target, *args):
+        assert target is record
+        if name == 'remove_chat_rule':
+            rules[:] = [r for r in rules if r.rule_id != args[0]]
+        return tuple(rules)
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    monkeypatch.setattr(frame, '_selected_session', lambda: record.to_info())
+    monkeypatch.setattr(frame, '_load_codex_saved_rules', lambda folder, done: done(([], [], 0, ""), False))
+    def drive(dialog):
+        pump(lambda: dialog.loaded)
+        dialog.list.SetSelection(0)
+        _permission_delete_key(dialog)
+        pump(lambda: len(dialog.rows) == 1)
+        return dialog.list.GetSelection(), dialog.list.GetString(0)
+    (selection, text), asked = _chat_permissions(frame, monkeypatch, drive, [wx.YES])
+    assert selection == 0 and text.startswith('Run git push')
+    assert 'Codex will ask again on the next matching request' in asked[0][0]
+    assert [r.prefix for r in rules] == [('git', 'push')]
 
 
 def test_chat_permissions_backspace_is_a_macs_delete(frame, env, monkeypatch):
@@ -9311,6 +9361,9 @@ def test_codex_command_approval_offers_only_listed_choices_and_reads_extra_acces
         assert dialog.GetDefaultItem().GetId() == wx.ID_CANCEL
         text = dialog.request_text.GetValue()
         assert 'This also needs:\nWrite access to /workspace/.git' in text and SAVED_RULE_NOTE in text
+        # Why there's no Allow for This Chat (#307).
+        from thechatplace.ui.dialogs import CODEX_NOT_KEPT
+        assert SAVED_RULE_NOTE + ' ' + CODEX_NOT_KEPT in text and dialog.chat_rule_button is None
         dialog.buttons['cancel'].Command(wx.CommandEvent(wx.wxEVT_BUTTON))
         assert dialog.choice == 'cancel'
     finally:
@@ -9351,6 +9404,50 @@ def test_codex_provider_switch_restores_claude_choices(frame):
         assert dialog.model.IsEnabled() and dialog.model.GetSelection() == 1
     finally:
         dialog.Destroy()
+
+
+def test_codex_kept_approval_button_names_its_scope_and_has_safe_default(frame, tmp_path):
+    from thechatplace.providers.codex_permissions import candidate
+    from thechatplace.providers.codex_requests import COMMAND, decode_request, SAVED_RULE_NOTE
+    from thechatplace.ui.dialogs import CodexPermissionDialog
+    request = decode_request(1, COMMAND, dict(threadId='owned', turnId='turn', itemId='item',
+        command='git commit -m first', cwd=str(tmp_path), proposedExecpolicyAmendment=['git', 'commit'],
+        availableDecisions=['accept', {'acceptWithExecpolicyAmendment': {'execpolicy_amendment': ['git', 'commit']}}, 'cancel']))
+    dialog = CodexPermissionDialog(frame, 'Owned', request, chat_rule=candidate(request, str(tmp_path)))
+    try:
+        assert dialog.chat_rule_button is not None
+        assert 'git commit' in dialog.chat_rule_button.GetToolTipText()
+        assert 'outside the sandbox' in dialog.request_text.GetValue()
+        assert SAVED_RULE_NOTE not in dialog.request_text.GetValue()
+        assert 'only in this chat' in dialog.request_text.GetValue()
+        assert 'If you choose Allow for This Chat' in dialog.request_text.GetValue()
+        assert 'Allow Once keeps no approval' in dialog.request_text.GetValue()
+        assert dialog.GetDefaultItem().GetId() == wx.ID_CANCEL
+        assert dialog.GetEscapeId() == wx.ID_CANCEL
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize('old_key', [None, 'missing-message'])
+def test_opening_chat_selects_latest_reply_before_permission_notices(frame, monkeypatch, old_key):
+    from thechatplace.transcript import ChatMessage, ASSISTANT, PERMISSION_NOTICE, QUEUED
+    visible = [ChatMessage(ASSISTANT, 'Latest reply', key='reply'),
+               ChatMessage(PERMISSION_NOTICE, 'Allowed git commit', key='notice:commit'),
+               ChatMessage(QUEUED, 'Queued prompt', key='queued:prompt')]
+    frame._chat_messages = visible[:1]
+    monkeypatch.setattr(frame, '_visible_messages', lambda: visible)
+    frame._rebuild_chat_list(focus_newest=old_key is None, keep_key=old_key)
+    assert frame._chat_keys[frame.chat_list.GetSelection()] == 'reply'
+
+
+@pytest.mark.parametrize('count,noun', [(1, 'request'), (2, 'requests')])
+def test_codex_turn_status_remembered_approval_count(frame, count, noun):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    notices = tuple(('turn', i, 'Allowed git commit, as you said for this chat.') for i in range(count))
+    state = CodexChatState('owned', 'working', 'turn', 'inProgress', permission_notices=notices)
+    text = frame._codex_status_text(state)
+    assert f'{count} {noun} allowed automatically.' in text
+    assert text.count('as you said for this chat') == 1
 
 
 def test_owned_codex_ui_creates_sends_queues_and_recovers_stopped_text(frame):
