@@ -312,11 +312,9 @@ class AgentChats:
             if self._agent_deliver(conversation, index, message, relay=relay):
                 sent.append(conversation.members[index].name)
                 if message is not text:
+                    # The receiving chat's history shows it went; no note too.
                     carried = conversation.members[pending.from_index].name
                     conversation.pending = None
-                    self._agent_note(conversation, f"Passed {carried}'s reply to "
-                                                   f"{conversation.members[index].name} with "
-                                                   "your message.")
         if len(targets) == 1 and sent:
             conversation.next_index = conversation.next_after(targets[0])
         self._agent_after_change(conversation)
@@ -551,9 +549,7 @@ class AgentChats:
             text = agents.relay_text(conversation, index, reply)
             conversation.exchanges += 1
             if self._agent_deliver(conversation, to, text, relay=True):
-                self._agent_note(conversation, f"Passed {member.name}'s reply to {target} "
-                                               f"(exchange {conversation.exchanges} of "
-                                               f"{conversation.turn_limit}).")
+                # Shown by the receiving chat's history; Turn Status has the count.
                 self._agent_after_change(conversation)
                 self._agent_say(conversation, said)
                 return
@@ -613,8 +609,7 @@ class AgentChats:
         conversation.paused, conversation.stop_reason, conversation.exchanges = False, "", 1
         if self._agent_deliver(conversation, pending.to_index, edited, relay=True):
             conversation.next_index = conversation.next_after(pending.to_index)
-            self._agent_note(conversation, f"You passed {frm.name}'s reply to {to.name}.")
-            self._feedback(f"Passed to {to.name}.")
+            self._feedback(f"Passed {frm.name}'s reply to {to.name}.")
         else:
             conversation.pending = pending
         self._agent_after_change(conversation)

@@ -188,7 +188,8 @@ def test_handing_on_sends_the_labelled_reply_and_restarts_a_stopped_relay(tmp_pa
     assert sent.endswith('From Claude (agent conversation "Fix 247"):\n\nBuilt it.\n\nFocus on locking.')
     saved = w.saved
     assert saved.pending is None and saved.next_index == 0
-    assert saved.notes[-1].text == "You passed Claude's reply to Codex."
+    assert not saved.notes  # the receiving chat's history shows the hand-off
+    assert w.feedback[-1] == "Passed Claude's reply to Codex."
 
 
 def test_nothing_waiting_to_hand_on(tmp_path):
@@ -218,7 +219,7 @@ def test_automatic_mode_passes_replies_up_to_the_limit(tmp_path):
     assert saved.exchanges == 3 and saved.paused
     assert saved.stop_reason == 'Stopped after 3 exchanges, the turn limit.'
     assert saved.pending == Pending(1, 0, 'v2 looks right now.')
-    assert 'Passed Claude\'s reply to Codex (exchange 1 of 3).' in [n.text for n in saved.notes]
+    assert [n.text for n in saved.notes] == ['Stopped after 3 exchanges, the turn limit.']
     assert w.said[-1].endswith(key_name('Ctrl+Shift+E') + ' hands it to Claude.')
     # Your next message starts a fresh run.
     w.send('Carry on.')
@@ -514,7 +515,7 @@ def test_typing_to_the_agent_a_reply_waits_for_sends_the_reply_too(tmp_path):
                          'The user adds:\n\nAlso check performance.')
     assert w.saved.pending is None
     assert w.feedback[-1] == "Sent Claude's reply and your message to Codex."
-    assert w.saved.notes[-1].text == "Passed Claude's reply to Codex with your message."
+    assert not w.saved.notes
 
 
 def test_refused_tools_are_said_and_pause_automatic_mode(tmp_path):

@@ -555,7 +555,6 @@ def _agents_world(frame, env, pending=True):
     if pending:
         conversation.pending = agents.Pending(1, 0, "One problem: close() can run twice when "
                                                     "the upload is cancelled. Guard it with a flag.")
-    conversation.add_note("Passed Claude 1's reply to Claude 2.")
     frame.agents.add(conversation)
     frame.refresh_sessions(force=True)
     fake_env.pump(lambda: any(k.startswith("agents:") for k in frame._list_keys), timeout=10)

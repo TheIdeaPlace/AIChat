@@ -463,8 +463,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   one row in the session list (Provider "Claude + Codex", Kind "agent conversation"); its
   member chats leave the list, and File, Agent Conversation Members goes to either one.
   Loaded, its messages list has both agents' messages in order, each starting with who said
-  it ("Codex: ...", "You, to Claude: ...") and the relay's own lines ("Relay: Passed Claude's
-  reply to Codex."). What you type goes to the agent whose turn it is; start it with @ and a
+  it ("Codex: ...", "You, to Claude: ...") and the relay's own lines ("Relay: Claude's reply
+  passed to Codex.", with what went if you changed it on the way, and why the relay
+  stopped). What you type goes to the agent whose turn it is; start it with @ and a
   name ("@Codex check the tests") to choose, or "@all" for both. Each agent is told once, at
   the start, who the other agent is, that its messages aren't yours, and to end its reply
   with DONE when the work is finished.
