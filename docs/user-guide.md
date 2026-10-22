@@ -674,8 +674,7 @@ are then shown but not passed on).
   exchanges unless you choose another). It stops sooner when an agent ends its reply with
   DONE, when the replies start repeating each other, when an agent asked you something during
   its turn, or when a turn fails. You hear why, and the last reply waits for Ctrl+Shift+E. A
-  message from you, or a reply you hand on, starts it again with a fresh count. Settings can
-  announce every reply, or only when it stops or needs you.
+  message from you, or a reply you hand on, starts it again with a fresh count.
 
 **Stopping:** **Ctrl+Period** stops both agents and the relay. **Ctrl+Shift+T** says what each
 agent is doing, how far the count has got, and who your next message goes to.

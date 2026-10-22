@@ -474,9 +474,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   - **Automatic**, once turned on in Settings: replies go across by themselves, up to a turn
     limit (6 exchanges unless you choose another, here or with File, Agent Conversation
     Hand-offs). It stops early when an agent says DONE, when the replies start repeating,
-    when an agent asked you something during its turn, or when a turn fails. Settings can
-    announce every reply, or only a stop. Sending a message, or handing a reply on, starts it
-    again with a fresh count.
+    when an agent asked you something during its turn, or when a turn fails. Sending a
+    message, or handing a reply on, starts it again with a fresh count.
   - **Stop** (Ctrl+Period) stops both agents and the relay; **Turn Status** (Ctrl+Shift+T)
     says what each agent is doing, the count, and who your next message goes to.
   - Permissions and questions still come to you, from each agent, through Answer

@@ -200,11 +200,8 @@ class SpeechSettings:
     codex_enabled: Optional[bool] = None
     new_session_provider: str = "claude"
     #: Agent conversations (#248): replies may go across by themselves only
-    #: once this is on; the default turn limit for those; and whether each
-    #: such reply is announced, or only a stop or something that needs you.
+    #: once this is on. Each conversation chooses its own turn limit.
     agent_auto_mode: bool = False
-    agent_turn_limit: int = 6
-    agent_announce_each: bool = True
 
     def includes_codex(self) -> bool:
         """Only a found native CLI enables discovery, even with an explicit on."""
@@ -259,11 +256,6 @@ class SpeechSettings:
         settings.codex_enabled = choice if type(choice) is bool else None
         settings.new_session_provider = ("codex" if raw.get("new_session_provider") == "codex" else "claude")
         settings.agent_auto_mode = raw.get("agent_auto_mode") is True
-        from .agents import clamp_limit, DEFAULT_TURN_LIMIT
-        limit = raw.get("agent_turn_limit", DEFAULT_TURN_LIMIT)
-        settings.agent_turn_limit = (clamp_limit(limit) if isinstance(limit, int)
-                                     and not isinstance(limit, bool) else DEFAULT_TURN_LIMIT)
-        settings.agent_announce_each = raw.get("agent_announce_each") is not False
         from .sessions import clean_fields, FIELD_PROVIDER, FIELD_TITLE
         settings.session_fields = clean_fields(raw.get("session_fields"))
         if raw.get("provider_column_added") is not True and FIELD_PROVIDER not in settings.session_fields:

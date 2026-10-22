@@ -176,8 +176,7 @@ class AgentChats:
                 folders.append(info.cwd)
         dialog = AgentConversationDialog(
             self, existing, new_kinds, folders=folders[:20],
-            auto_allowed=self.speech.agent_auto_mode,
-            turn_limit=self.speech.agent_turn_limit)
+            auto_allowed=self.speech.agent_auto_mode)
         try:
             if dialog.ShowModal() != wx.ID_OK or dialog.result is None:
                 return
@@ -571,14 +570,10 @@ class AgentChats:
                      f"{stop} {hint}".strip(), needs_you=True)
 
     def _agent_say(self, conversation, text, always=False):
-        """Automatic mode can turn off hearing each reply (Settings); what
-        needs you is always said."""
-        if not text:
-            return
-        if always or conversation.mode != MODE_AUTO or self.speech.agent_announce_each:
+        """Each reply is news, queued behind what you're hearing rather than
+        cutting it off; the announcement level (Settings) applies as ever."""
+        if text:
             self._say(text, interrupt=False)
-        else:
-            self._status(text)
 
     # -- handing on -----------------------------------------------------------------------
 

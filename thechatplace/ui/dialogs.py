@@ -961,28 +961,12 @@ class SettingsDialog(wx.Dialog):
         outer.Add(self.codex_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Agent conversations (#248): automatic hand-offs are off until
-        # turned on here, and then chosen for each conversation.
+        # turned on here; each conversation then chooses it, and its limit.
         self.agent_auto = wx.CheckBox(body, label=_wrapped(
             self, "Let a&gent conversations hand replies across automatically",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.agent_auto.SetValue(speech.agent_auto_mode)
         outer.Add(self.agent_auto, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-        limit_row = wx.BoxSizer(wx.HORIZONTAL)
-        # Short, so the row fits beside the spin box; its name says it all.
-        limit_row.Add(wx.StaticText(body, label="Their t&urn limit (exchanges):"),
-                      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        from ..agents import MAX_TURN_LIMIT
-        self.agent_limit = wx.SpinCtrl(body, min=1, max=MAX_TURN_LIMIT,
-                                       initial=speech.agent_turn_limit)
-        set_accessible_name(self.agent_limit,
-                            "Default turn limit for automatic agent conversations, in exchanges")
-        limit_row.Add(self.agent_limit, 0)
-        outer.Add(limit_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-        self.agent_announce = wx.CheckBox(body, label=_wrapped(
-            self, "Announce e&very reply in automatic agent conversations",
-            self.GetClientSize().width - 20 - _check_box_glyph(self)))
-        self.agent_announce.SetValue(speech.agent_announce_each)
-        outer.Add(self.agent_announce, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # #141: the dialog at the first start after an update.
         self.update_notice = wx.CheckBox(
@@ -1052,7 +1036,7 @@ class SettingsDialog(wx.Dialog):
             narrower = (self.GetClientSize().width - 20 - _check_box_glyph(self)
                         - wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self))
             for box in (self.remote_control, self.task_list, self.codex_enabled,
-                        self.agent_auto, self.agent_announce):
+                        self.agent_auto):
                 box.SetLabel(_wrapped(self, box.GetLabel().replace("\n", " "), narrower))
         body.SetMinSize((-1, content.GetMinSize().height))
         _fit_height(self)
@@ -1087,8 +1071,6 @@ class SettingsDialog(wx.Dialog):
                                        else self._codex_choice),
                                    update_installed_notice=self.update_notice.GetValue(),
                                    agent_auto_mode=self.agent_auto.GetValue(),
-                                   agent_turn_limit=self.agent_limit.GetValue(),
-                                   agent_announce_each=self.agent_announce.GetValue(),
                                    recent_folder_limit=self.recent_limit.GetValue())
 
 

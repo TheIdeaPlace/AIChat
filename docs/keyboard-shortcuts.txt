@@ -58,7 +58,7 @@ Reply box:
   Ctrl+V with a picture copied: Attach the picture to a Claude message (a screenshot from Win+Shift+S, say)
   Ctrl+Shift+M: Other machines: list your sessions on other computers and send one a message, through Claude in the loaded Chat Place session (it needs Remote Control on)
   Ctrl+Shift+E: Send Reply to Another Chat: the selected reply (or the latest one) goes to another Chat Place chat, Claude or Codex, labelled with who wrote it; read and change it first, then Enter sends and you go to that chat. In an agent conversation, hands the waiting reply to the other agent
-  Ctrl+Shift+G: New Agent Conversation: two chats, Claude or Codex, new or your own, that pass replies to each other; you approve each hand-off, or let them go automatically up to a turn limit (Settings)
+  Ctrl+Shift+G: New Agent Conversation: two chats, Claude or Codex, new or your own, that pass replies to each other; you approve each hand-off, or, once Settings allows it, let them go automatically up to a turn limit
   Ctrl+Shift+D: Lists, on Changed Files (Claude chats): what changed in the selected message's turn (your latest, if none is selected) or in the whole chat; Enter on a file reads its changes line by line
   Ctrl+Shift+U: Usage and context: read the active provider's reported context and account allowances and reset times; Ctrl+C copies a line
   Ctrl+Shift+T: Turn status: how long the provider has been working, on what, what is still running in the background, whether a message is queued, and how far along the task list is

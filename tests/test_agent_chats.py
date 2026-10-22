@@ -10,6 +10,7 @@ from thechatplace.agents import (MODE_AUTO, AgentConversationStore, Member, Pend
 from thechatplace.own_store import OwnSession
 from thechatplace.sessions import NEEDS_YOU, WORKING
 from thechatplace.ui.agent_chats import AgentChats
+from thechatplace.ui_text import key_name
 
 
 class Text:
@@ -40,8 +41,8 @@ class Window(AgentChats):
         self.agents.add(self.conversation)
         self.cid = self.conversation.conversation_id
         self.speech = SimpleNamespace(announce='full', announce_own=True,
-                                      agent_auto_mode=auto_setting, agent_announce_each=True,
-                                      agent_turn_limit=6, session_order='newest')
+                                      agent_auto_mode=auto_setting,
+                                      session_order='newest')
         self._runners, self._pending, self._codex_states = {}, {}, {}
         self._agent_awaiting, self._agent_asked = {}, set()
         self._agent_last_reply, self._agent_last_heard = {}, {}
@@ -154,7 +155,7 @@ def test_approve_mode_waits_for_you_and_says_how_to_hand_it_on(tmp_path):
     assert saved.pending == Pending(0, 1, 'Built it. Tests pass.')
     assert not w.codex_sent
     assert w.said[-1].startswith('Claude in Fix 247 replied. Built it. Tests pass.')
-    assert w.said[-1].endswith('Ctrl+Shift+E hands it to Codex.')
+    assert w.said[-1].endswith(key_name('Ctrl+Shift+E') + ' hands it to Codex.')
     assert w.notified[-1][2] is True
     row = agents.rows([], [saved])[-1]
     assert row.state == NEEDS_YOU and "Claude's reply waiting to go to Codex" in row.detail
@@ -218,7 +219,7 @@ def test_automatic_mode_passes_replies_up_to_the_limit(tmp_path):
     assert saved.stop_reason == 'Stopped after 3 exchanges, the turn limit.'
     assert saved.pending == Pending(1, 0, 'v2 looks right now.')
     assert 'Passed Claude\'s reply to Codex (exchange 1 of 3).' in [n.text for n in saved.notes]
-    assert w.said[-1].endswith('Ctrl+Shift+E hands it to Claude.')
+    assert w.said[-1].endswith(key_name('Ctrl+Shift+E') + ' hands it to Claude.')
     # Your next message starts a fresh run.
     w.send('Carry on.')
     assert w.saved.exchanges == 0 and not w.saved.paused
@@ -540,11 +541,11 @@ def test_the_status_line_says_when_a_member_waits_for_you(tmp_path):
     from thechatplace.providers.codex_runtime import CodexChatState
     w = Window(tmp_path)
     w._pending['c1'] = [object()]
-    assert w._agent_send_state(w._open) == 'Claude is waiting for you. Ctrl+Shift+A answers.'
+    assert w._agent_send_state(w._open) == 'Claude is waiting for you. ' + key_name('Ctrl+Shift+A') + ' answers.'
     w._pending.clear()
     w._codex_states['codex:x1'] = CodexChatState('x1', 'needs_you', 't', 'inProgress',
                                                  requests=(object(),))
-    assert w._agent_send_state(w._open) == 'Codex is waiting for you. Ctrl+Shift+A answers.'
+    assert w._agent_send_state(w._open) == 'Codex is waiting for you. ' + key_name('Ctrl+Shift+A') + ' answers.'
 
 
 def test_a_hand_off_whose_reply_changed_meanwhile_sends_nothing(tmp_path, monkeypatch):
