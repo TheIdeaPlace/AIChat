@@ -591,6 +591,58 @@ reply box, so nothing is lost. If the dialog's title says the chat is still work
 you're sending may be a step on the way rather than its answer.</p>
 <p>A forwarded message is only ever a message. It can't answer a question or approve a tool for the
 other agent: those still come to you, in each chat, as they always do.</p>
+<h3>Agent conversations</h3>
+<p>An agent conversation puts two chats, Claude and Codex or two of either, in one conversation
+with you, and passes each one's replies to the other. It's Send Reply to Another Chat done for
+you, turn after turn.</p>
+<p><strong>Starting one:</strong> press <strong>Ctrl+Shift+G</strong> (File, New Agent Conversation).</p>
+<ul>
+<li><strong>Title:</strong> the conversation's name. Left empty, it's the opening message's first line.</li>
+<li><strong>First agent's chat</strong> and <strong>Second agent's chat:</strong> a new Claude or Codex chat, or one of
+  your own chats, which keeps its history. A chat can be in one conversation at a time.</li>
+<li><strong>Role</strong> (optional) for each, such as "Build the fix" and "Review each change; don't edit
+  files". Each agent is told its role and the other's.</li>
+<li><strong>New chat's permission:</strong> for a new chat, its permission mode, as in New Session. <strong>Folder
+  for new chats</strong> is where they work.</li>
+<li><strong>Hand-offs:</strong> approve each one, or automatic (offered once it's on in Settings), with a
+  <strong>Turn limit</strong>.</li>
+<li><strong>Who goes first:</strong> the first agent, the second, or both.</li>
+<li><strong>Opening message</strong>, then <strong>Ctrl+Enter</strong> (or Start).</li>
+</ul>
+<p>The conversation is one row in the session list, with Provider "Claude + Codex" and Kind "agent
+conversation". Its two chats leave the list while they're in it; <strong>File, Agent Conversation
+Members</strong> goes to either one.</p>
+<p><strong>Reading it:</strong> the messages list has both agents' messages in order. Each starts with who said
+it: "Claude: …", "Codex: …", "You, to Codex: …". The relay's own lines start with "Relay", such as
+"Relay: Passed Claude's reply to Codex." Enter reads any of them in full, including the setup
+each agent was sent at the start.</p>
+<p><strong>Writing in it:</strong> what you type goes to the agent whose turn it is (Turn Status says which).
+Start with @ and a name to choose: "@Codex check the tests", or "@all" for both (their replies
+are then shown but not passed on).</p>
+<p><strong>Hand-offs:</strong></p>
+<ul>
+<li><strong>Approve each</strong> (the default): when an agent answers, you hear its reply, then "Ctrl+Shift+E
+  hands it to Codex". The row says a reply is waiting. <strong>Ctrl+Shift+E</strong> shows the reply,
+  labelled with who wrote it; change or add to it, then Ctrl+Enter sends it on.</li>
+<li><strong>Automatic:</strong> turn on "Let agent conversations hand replies across automatically" in
+  Settings, then choose Automatic in New Agent Conversation, or for a conversation with <strong>File,
+  Agent Conversation Hand-offs</strong>. Replies go across by themselves until the turn limit (6
+  exchanges unless you choose another). It stops sooner when an agent ends its reply with
+  DONE, when the replies start repeating each other, when an agent asked you something during
+  its turn, or when a turn fails. You hear why, and the last reply waits for Ctrl+Shift+E. A
+  message from you, or a reply you hand on, starts it again with a fresh count. Settings can
+  announce every reply, or only when it stops or needs you.</li>
+</ul>
+<p><strong>Stopping:</strong> <strong>Ctrl+Period</strong> stops both agents and the relay. <strong>Ctrl+Shift+T</strong> says what each
+agent is doing, how far the count has got, and who your next message goes to.</p>
+<p><strong>Safety:</strong> each agent asks you for permissions and answers as it always does, through
+<strong>Ctrl+Shift+A</strong>. A message from one agent goes to the other only as a message, labelled as
+another agent's words; it can never answer a question or approve anything. Each agent is told
+to take instructions only from you. Every message uses that agent's own subscription, so
+automatic mode spends both.</p>
+<p><strong>Rename</strong> (F2), <strong>Properties</strong> (Alt+Enter) and <strong>Delete</strong> (Shift+Delete) work on the
+conversation's row. Deleting it keeps both chats, with everything said in them, and puts them
+back in the list.</p>
 <h2 id="answering-permissions-and-questions">Answering permissions and questions</h2>
 <p><strong>Answer</strong> (Ctrl+Shift+A, File, Answer) handles the loaded chat first. A Codex permission
 request shows the command, its folder and Codex's reason, and a "This also needs" list when

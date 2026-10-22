@@ -454,6 +454,35 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Enter. It's also on a reply's menu in the messages list (Applications key). A forwarded
   message is only ever a message: it can't answer a question or approve anything, which still
   comes to you.
+- **Agent conversations (File, New Agent Conversation, Ctrl+Shift+G).** Two of The Chat
+  Place's own chats, Claude and Codex (or two of either), talk to each other in one
+  conversation, with you in it. Choose each agent's chat: one of yours, keeping its history,
+  or a new Claude or Codex chat (with its permission, in a folder you choose), and give each
+  a role if you like ("Build the fix", "Review each change; don't edit files"). Choose how
+  replies go across, who answers first, and write the opening message. The conversation is
+  one row in the session list (Provider "Claude + Codex", Kind "agent conversation"); its
+  member chats leave the list, and File, Agent Conversation Members goes to either one.
+  Loaded, its messages list has both agents' messages in order, each starting with who said
+  it ("Codex: ...", "You, to Claude: ...") and the relay's own lines ("Relay: Passed Claude's
+  reply to Codex."). What you type goes to the agent whose turn it is; start it with @ and a
+  name ("@Codex check the tests") to choose, or "@all" for both. Each agent is told once, at
+  the start, who the other agent is, that its messages aren't yours, and to end its reply
+  with DONE when the work is finished.
+  - **Approve each hand-off** (the default): when an agent answers, you hear its reply and
+    "Ctrl+Shift+E hands it to Codex"; Ctrl+Shift+E shows the reply, labelled with who wrote
+    it, to read and change before it goes. The conversation's row says a reply is waiting.
+  - **Automatic**, once turned on in Settings: replies go across by themselves, up to a turn
+    limit (6 exchanges unless you choose another, here or with File, Agent Conversation
+    Hand-offs). It stops early when an agent says DONE, when the replies start repeating,
+    when an agent asked you something during its turn, or when a turn fails. Settings can
+    announce every reply, or only a stop. Sending a message, or handing a reply on, starts it
+    again with a fresh count.
+  - **Stop** (Ctrl+Period) stops both agents and the relay; **Turn Status** (Ctrl+Shift+T)
+    says what each agent is doing, the count, and who your next message goes to.
+  - Permissions and questions still come to you, from each agent, through Answer
+    (Ctrl+Shift+A): a message from one agent can never answer or approve anything for the
+    other. Rename (F2), Properties (Alt+Enter) and Delete (Shift+Delete) work on the row;
+    deleting it keeps both chats and their histories and puts them back in the list.
 - **Claude asks, you answer.** In The Chat Place's own sessions, when Claude needs permission
   for something the permission mode doesn't allow, asks you a question, or has a plan for you
   to approve, the turn waits for you. It's announced ("Build needs you. Claude wants to run
@@ -916,7 +945,8 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+P | Prompts: use, add, edit, reorder or delete your saved prompts |
 | Anywhere | Ctrl+Shift+F | Attach files or images to the next message |
 | Anywhere | Ctrl+Shift+M | Other machines: list your sessions on other computers and message one |
-| Anywhere | Ctrl+Shift+E | Send Reply to Another Chat: pass the selected (or latest) reply to another Chat Place chat, Claude or Codex |
+| Anywhere | Ctrl+Shift+E | Send Reply to Another Chat: pass the selected (or latest) reply to another Chat Place chat, Claude or Codex; in an agent conversation, hand the waiting reply on |
+| Anywhere | Ctrl+Shift+G | New Agent Conversation: two chats that pass replies to each other |
 | Anywhere | Ctrl+Shift+I | Lists: code blocks, links, changed files, commands, decisions and Claude's tasks, for this message or the whole chat |
 | Anywhere | Ctrl+Shift+D | Lists, on Changed Files: each change to read by line |
 | Anywhere | Ctrl+Shift+U | Usage and context: a list of how full the context is, and each plan limit |

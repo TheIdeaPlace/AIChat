@@ -29,11 +29,21 @@ class CombinedReader:
         self._signature = None
         self.transcript = Transcript()
 
+    _GONE = object()
+
     def _reader(self, member):
-        if member.identity not in self._readers:
+        """The member's reader; _GONE when its chat is gone; None while it
+        has no history yet (a new chat before its first turn), asked again
+        next time."""
+        reader = self._readers.get(member.identity)
+        if reader is None:
             info = self._member_info(member)
-            self._readers[member.identity] = self._open_member(info) if info is not None else None
-        return self._readers[member.identity]
+            if info is None:
+                return self._GONE
+            reader = self._open_member(info)
+            if reader is not None:
+                self._readers[member.identity] = reader
+        return reader
 
     def refresh(self) -> bool:
         conversation = self._store.get(self._id)
@@ -44,15 +54,18 @@ class CombinedReader:
         for member in conversation.members:
             try:
                 reader = self._reader(member)
-                if reader is None:
+                if reader is self._GONE:
                     histories.append(None)
+                    continue
+                if reader is None:
+                    histories.append([])
                     continue
                 changed = reader.refresh() or changed
                 histories.append(list(reader.transcript.messages))
             except Exception:  # noqa: BLE001 - one member mustn't hide the rest
                 self._readers.pop(member.identity, None)
                 histories.append(None)
-        signature = (tuple(h is None for h in histories), len(conversation.notes),
+        signature = (tuple(-1 if h is None else len(h) for h in histories), len(conversation.notes),
                      tuple(m.name for m in conversation.members))
         changed = changed or signature != self._signature
         self._signature = signature

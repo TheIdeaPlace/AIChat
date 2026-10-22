@@ -531,6 +531,57 @@ def s_main_own(frame, env):
     _open(frame, "Visual probe")
 
 
+def _agents_world(frame, env, pending=True):
+    """An agent conversation (#248): the probe's own session and a second
+    one that reviewed it, with a reply waiting to be handed on."""
+    import fake_env
+    from records import assistant_block, text_block, user_text
+    from thechatplace import agents
+    from thechatplace.own_store import OwnSession
+    cwd = env["folders"]["Scratch"]
+    probe = agents.Member("claude", "own-1", "Claude", "Build the uploader fix")
+    reviewer = agents.Member("claude", "probe-review", "Claude 2", "Review each change")
+    members = [probe, reviewer]
+    members[0].name, members[1].name = agents.member_names(members)
+    conversation = agents.new_conversation("Uploader fix", members)
+    conversation.briefed = [0, 1]
+    fake_env.add_transcript(env, cwd, "probe-review", [
+        user_text(agents.outgoing(agents.new_conversation("Uploader fix", members), 1,
+                                  agents.relay_text(conversation, 0, "Flushed before signalling."))),
+        assistant_block(text_block("One problem: close() can run twice when the upload "
+                                   "is cancelled. Guard it with a flag."), "r1")])
+    frame.store.add(OwnSession("probe-review", "Uploader review", cwd,
+                               last_activity_ms=fake_env.now_ms()))
+    if pending:
+        conversation.pending = agents.Pending(1, 0, "One problem: close() can run twice when "
+                                                    "the upload is cancelled. Guard it with a flag.")
+    conversation.add_note("Passed Claude 1's reply to Claude 2.")
+    frame.agents.add(conversation)
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: any(k.startswith("agents:") for k in frame._list_keys), timeout=10)
+    return conversation
+
+
+def s_main_agents(frame, env):
+    _agents_world(frame, env)
+    _open(frame, "Uploader fix")
+
+
+def d_agent_new(frame, env):
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    from thechatplace.sessions import OWN, SessionInfo
+    folder = env["folders"]["Scratch"]
+    existing = [SessionInfo(OWN, "own:own-1", "Visual probe", folder, "own-1"),
+                SessionInfo(OWN, "codex:probe", "Codex review", folder, "probe", provider="codex")]
+    return lambda: frame._modal(AgentConversationDialog(
+        frame, existing, ["claude", "codex"], folders=[folder], auto_allowed=True))
+
+
+def d_agent_hand_off(frame, env):
+    s_main_agents(frame, env)
+    return frame.on_send_reply_to
+
+
 def s_main_compacted(frame, env):
     from thechatplace.transcript import COMPACTION, COMMAND_OUTPUT, ChatMessage
     s_main_own(frame, env)
@@ -1173,6 +1224,8 @@ SURFACES = {
                        "Compaction and command output remain visible with tool activity off."),
     "main-start": ("window", s_main_start, "Main window as it opens: session list, no session loaded"),
     "main-own": ("window", s_main_own, "An own session loaded: messages and the reply box"),
+    "main-agents": ("window", s_main_agents, "An agent conversation loaded: both agents' "
+                                             "messages, and a reply waiting to be handed on"),
     "main-own-working": ("window", s_main_own_working,
                          "An own session mid-turn, one more message queued and a draft typed"),
     "main-attachments": ("window", s_main_attachments,
@@ -1255,6 +1308,10 @@ SURFACES = {
     "prompts": ("dialog", d_prompts, "File, Prompts"),
     "prompt-edit": ("dialog", d_prompt_edit, "Editing a saved prompt"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
+    "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
+                                         "new Codex chat"),
+    "agent-hand-off": ("dialog", d_agent_hand_off, "An agent conversation's hand-off "
+                                                   "(Ctrl+Shift+E): a reply going to the other agent"),
     "rename": ("dialog", d_rename, "Rename Session (wx's own text entry dialog)"),
     "main-empty": ("window", s_main_start, "Main window with no sessions at all (a first run)"),
 }
@@ -1321,6 +1378,8 @@ DIALOG_CLASSES = {
     "prompts": "PromptsDialog",
     "prompt-edit": "PromptEditDialog",
     "relay": "RelayDialog",
+    "agent-new": "AgentConversationDialog",
+    "agent-hand-off": "RelayDialog",
     "rename": "TextEntryDialog",
 }
 
