@@ -957,7 +957,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's rule files"
+   "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's saved rules"
   },
   "codex-permission-kept": {
    "kind": "dialog",
