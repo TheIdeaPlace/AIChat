@@ -52,12 +52,13 @@ class AgentChats:
             index = conversation.member_index(provider, old_id)
             conversation.members[index].native_id = new_id
             self._agent_save(conversation)
-        for table in (self._agent_awaiting, self._agent_last_reply):
+        for table in (self._agent_awaiting, self._agent_last_reply, self._agent_last_sent):
             if (provider, old_id) in table:
                 table[(provider, new_id)] = table.pop((provider, old_id))
-        if (provider, old_id) in self._agent_asked:
-            self._agent_asked.discard((provider, old_id))
-            self._agent_asked.add((provider, new_id))
+        for found in (self._agent_asked, self._agent_unconfirmed):
+            if (provider, old_id) in found:
+                found.discard((provider, old_id))
+                found.add((provider, new_id))
 
     def _agent_send_state(self, info) -> str:
         """The one-line status under the reply box for a conversation."""
@@ -246,17 +247,18 @@ class AgentChats:
 
             def done(record, error):
                 if error:
-                    made = [r.title for r in records] + made_codex
+                    # New Claude chats aren't saved until every member exists,
+                    # so only Codex chats already made are left behind.
                     kept = ""
                     if plan.message.strip() and self._copy_text(plan.message):
                         kept = " Your opening message is copied to the clipboard."
-                    left = (f" {' and '.join(made)} {'was' if len(made) == 1 else 'were'} "
-                            "started and stay in the list." if made else "")
+                    left = (f" {' and '.join(made_codex)} "
+                            f"{'was' if len(made_codex) == 1 else 'were'} made and "
+                            f"{'stays' if len(made_codex) == 1 else 'stay'} in the list."
+                            if made_codex else "")
                     self._feedback("Couldn't start the Codex chat for the agent conversation, so "
                                    "it wasn't started. " + (record or "Check Codex sign-in.")
                                    + kept + left)
-                    for record_made in records:
-                        self._store_write(self.store.add, record_made)
                     self.refresh_sessions()
                     return
                 if not self._store_write(self.store.add, record):
@@ -338,6 +340,7 @@ class AgentChats:
         message = agents.outgoing(conversation, index, text)
         identity = member.identity
         self._agent_awaiting[identity] = (conversation.conversation_id, relay)
+        self._agent_last_sent[identity] = message
         if index not in conversation.briefed:
             # Until its first turn ends well, a failure takes "briefed" back,
             # so the setup goes again with the next message.
@@ -374,16 +377,17 @@ class AgentChats:
             self._send_codex_owned(record, message, announce_send=False, restore=False,
                                    on_result=result)
             return
-        waiting = self._agent_codex_waiting.setdefault(key, [])
-        waiting.append((conversation_id, index, message))
-        if len(waiting) > 1:
+        self._agent_codex_waiting.setdefault(key, []).append((conversation_id, index, message))
+        if key in self._agent_codex_preparing:
             return  # already being got ready
+        self._agent_codex_preparing.add(key)
 
         def prepare():
             self.sessions.owned_action("prepare", record)
 
         def done(problem, error):
             # Anything Stop or Delete took out of the list doesn't go.
+            self._agent_codex_preparing.discard(key)
             items = self._agent_codex_waiting.pop(key, [])
             for cid, slot, text in items:
                 if error:
@@ -395,6 +399,17 @@ class AgentChats:
             self.refresh_sessions()
         self._codex_work(prepare, done)
         self.refresh_sessions()
+
+    def _agent_forget_waiting(self, conversation_id):
+        """Stop or Delete: its messages waiting for a Codex member don't go.
+        A preparation already running finishes, and sends nothing of these."""
+        for key in list(self._agent_codex_waiting):
+            items = [item for item in self._agent_codex_waiting[key]
+                     if item[0] != conversation_id]
+            if items:
+                self._agent_codex_waiting[key] = items
+            else:
+                del self._agent_codex_waiting[key]
 
     def _agent_send_failed(self, conversation_id, index, text, problem):
         """Nothing goes missing: the message comes back to the conversation's
@@ -436,16 +451,41 @@ class AgentChats:
         if (provider, native_id) in self._agent_awaiting:
             self._agent_asked.add((provider, native_id))
 
-    def _agent_answered(self, provider, native_id, reply):
-        """A member answered and left work running in the background (#161):
-        its turn ends later, perhaps with nothing more to say, so its reply
-        is kept for then."""
+    def _agent_answered(self, provider, native_id, reply, failed=False, detail=""):
+        """A member answered and left work running in the background (#161),
+        which can take an hour: its reply goes through the conversation now
+        (said, handed on or waiting for you). When the turn finally ends,
+        that's no longer the conversation's news."""
         if (provider, native_id) in self._agent_awaiting and (reply or "").strip():
-            self._agent_background_reply[(provider, native_id)] = reply
+            self._agent_turn_ended(provider, native_id, reply, failed, detail=detail)
 
-    def _agent_unsent(self, provider, native_id):
+    def _agent_take_unsent(self, provider, native_id, text) -> bool:
+        """A member's turn ended before its message reached it: a message the
+        conversation sent comes back to the conversation, not to the hidden
+        member chat. True if it was the conversation's."""
+        awaited = self._agent_awaiting.get((provider, native_id))
+        if awaited is None:
+            return False
+        conversation = self.agents.get(awaited[0])
+        if conversation is None:
+            return False
+        body = text.partition(agents.SETUP_END)[2].strip() if agents.SETUP_END in text else text
+        if self._agent_is_open(conversation):
+            current = self.reply_text.GetValue()
+            self.reply_text.SetValue(body + ("\n\n" + current if current.strip() else ""))
+            self._feedback("The message that didn't go is back in the reply box.")
+        elif self._copy_text(body):
+            self._feedback(f"{conversation.title}: the message that didn't go is copied to the "
+                           "clipboard.")
+        return True
+
+    def _agent_unsent(self, provider, native_id, texts=()):
         """A member gave a conversation's message back unsent: the turn it
-        was waiting for won't come."""
+        was waiting for won't come. Only when it's the conversation's own
+        message: text you queued in the member chat yourself isn't."""
+        sent = self._agent_last_sent.get((provider, native_id))
+        if sent is None or (texts and sent not in texts):
+            return
         awaited = self._agent_awaiting.pop((provider, native_id), None)
         if awaited is None:
             return
@@ -471,7 +511,6 @@ class AgentChats:
         conversation = self.agents.containing(provider, native_id)
         if conversation is None:
             self._agent_awaiting.pop(identity, None)
-            self._agent_background_reply.pop(identity, None)
             return
         if self._agent_is_open(conversation):
             self._refresh_chat()
@@ -480,9 +519,6 @@ class AgentChats:
             # turn asked you doesn't carry over to that one.
             self._agent_asked.discard(identity)
             return
-        if not (reply or "").strip():
-            reply = self._agent_background_reply.pop(identity, reply)
-        self._agent_background_reply.pop(identity, None)
         awaited = self._agent_awaiting.pop(identity, None)
         asked = identity in self._agent_asked
         self._agent_asked.discard(identity)
@@ -624,7 +660,6 @@ class AgentChats:
         stopped, taken_back = [], []
         for member in conversation.members:
             self._agent_awaiting.pop(member.identity, None)
-            self._agent_background_reply.pop(member.identity, None)
             member_info = self._agent_member_info(member)
             if member_info is None:
                 continue
@@ -643,10 +678,7 @@ class AgentChats:
                                                    or state.state == WORKING))):
                     self._stop_codex_owned(member_info)
                     stopped.append(member.name)
-        for key in [k for k, items in self._agent_codex_waiting.items()
-                    if any(cid == conversation.conversation_id for cid, _i, _t in items)]:
-            self._agent_codex_waiting[key] = [item for item in self._agent_codex_waiting[key]
-                                              if item[0] != conversation.conversation_id]
+        self._agent_forget_waiting(conversation.conversation_id)
         conversation.paused, conversation.stop_reason = True, "Stopped."
         dropped = conversation.pending is not None
         conversation.pending = None
@@ -801,15 +833,11 @@ class AgentChats:
         if answer != wx.YES:
             return
         for member in conversation.members:
-            for table in (self._agent_awaiting, self._agent_last_reply,
-                          self._agent_background_reply):
+            for table in (self._agent_awaiting, self._agent_last_reply, self._agent_last_sent):
                 table.pop(member.identity, None)
             self._agent_asked.discard(member.identity)
             self._agent_unconfirmed.discard(member.identity)
-        for key in list(self._agent_codex_waiting):
-            self._agent_codex_waiting[key] = [
-                item for item in self._agent_codex_waiting[key]
-                if item[0] != conversation.conversation_id]
+        self._agent_forget_waiting(conversation.conversation_id)
         self._agent_last_heard.pop(conversation.conversation_id, None)
         try:
             self.agents.remove(conversation.conversation_id)

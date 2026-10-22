@@ -474,15 +474,21 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     it, to read and change before it goes. The conversation's row says a reply is waiting.
   - **Automatic**, once turned on in Settings: replies go across by themselves, up to a turn
     limit (6 exchanges unless you choose another, here or with File, Agent Conversation
-    Hand-offs). It stops early when an agent says DONE, when the replies start repeating,
-    when an agent asked you something during its turn, or when a turn fails. Sending a
-    message, or handing a reply on, starts it again with a fresh count.
-  - **Stop** (Ctrl+Period) stops both agents and the relay; **Turn Status** (Ctrl+Shift+T)
-    says what each agent is doing, the count, and who your next message goes to.
+    Hand-offs). It pauses, with the last reply waiting for Ctrl+Shift+E, when an agent asked
+    you something during its turn, a tool was refused, or a turn fails. It finishes, with
+    nothing waiting, when an agent says DONE or the replies start repeating. Sending a
+    message, or handing a reply on, starts it again with a fresh count. A reply given before
+    background work (a build, say) is handed on when it's given.
+  - Writing to the agent a reply is waiting for sends that reply too, ahead of your words.
+  - **Stop** (Ctrl+Period) stops both agents and the relay; a waiting reply isn't passed on,
+    and a message that hadn't gone comes back to the reply box. **Turn Status**
+    (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
+    to.
   - Permissions and questions still come to you, from each agent, through Answer
     (Ctrl+Shift+A): a message from one agent can never answer or approve anything for the
     other. Rename (F2), Properties (Alt+Enter) and Delete (Shift+Delete) work on the row;
-    deleting it keeps both chats and their histories and puts them back in the list.
+    deleting it keeps both chats and their histories and puts them back in the list. A
+    member chat can't be deleted while it's in a conversation.
 - **Claude asks, you answer.** In The Chat Place's own sessions, when Claude needs permission
   for something the permission mode doesn't allow, asks you a question, or has a plan for you
   to approve, the turn waits for you. It's announced ("Build needs you. Claude wants to run

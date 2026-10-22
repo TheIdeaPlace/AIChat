@@ -241,7 +241,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._agent_last_heard: Dict[str, str] = {}
         self._agent_codex_waiting: Dict[str, list] = {}
         self._agent_unconfirmed: set = set()
-        self._agent_background_reply: Dict[tuple, str] = {}
+        self._agent_last_sent: Dict[tuple, str] = {}
+        self._agent_codex_preparing: set = set()
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -4372,7 +4373,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                                f"{problem.rstrip('.')}. It's back in the message box.")
                     self._feedback(refused)
                     self._last_announcement = refused
-            if unsent:
+            if unsent and not self._agent_take_unsent("claude", session_id,
+                                                      "\n\n".join(unsent)):
                 self._give_back(session_id, "\n\n".join(unsent), is_open)
             self._update_send_state()
             failed_turn = event.kind == "failed" or event.is_error
@@ -4393,7 +4395,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         denials = event.denials or self._denials.get(session_id, [])
         self._denials[session_id] = []  # said now, not again at the turn's end
         quiet = self._agent_quiet("claude", session_id)
-        self._agent_answered("claude", session_id, event.text)
+        self._agent_answered(
+            "claude", session_id, event.text, event.is_error,
+            detail=(usage.friendly_error(event.text) if event.is_error else
+                    f"{len(denials)} tool{'s were' if len(denials) != 1 else ' was'} refused: "
+                    + "; ".join(denials) if denials else ""))
         if event.is_error:
             self._said_problems[session_id] = announce.status_text(event.text or "error", 120)
         elif denials:
@@ -5261,7 +5267,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._say(f"{text} It can be installed once the running turns finish; use Help, "
                       f"{item} then.", force=True)
             return
-        if self._relay_waiting:
+        if self._relay_waiting_text():
             self._say(f"{text} It can be installed once {self._relay_waiting_text()} has "
                       f"gone; use Help, {item} then.", force=True)
             return

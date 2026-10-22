@@ -619,7 +619,8 @@ goes on to say what went. Enter reads any of them in full, including the setup e
 sent at the start.</p>
 <p><strong>Writing in it:</strong> what you type goes to the agent whose turn it is (Turn Status says which).
 Start with @ and a name to choose: "@Codex check the tests", or "@all" for both (their replies
-are then shown but not passed on).</p>
+are then shown but not passed on). If a reply is waiting to go to the agent you write to, it goes
+along with your words, ahead of them, instead of being dropped.</p>
 <p><strong>Hand-offs:</strong></p>
 <ul>
 <li><strong>Approve each</strong> (the default): when an agent answers, you hear its reply, then "Ctrl+Shift+E
@@ -628,13 +629,18 @@ are then shown but not passed on).</p>
 <li><strong>Automatic:</strong> turn on "Let agent conversations hand replies across automatically" in
   Settings, then choose Automatic in New Agent Conversation, or for a conversation with
   <strong>File, Agent Conversation Hand-offs</strong>. Replies go across by themselves until the turn limit (6
-  exchanges unless you choose another). It stops sooner when an agent ends its reply with
-  DONE, when the replies start repeating each other, when an agent asked you something during
-  its turn, or when a turn fails. You hear why, and the last reply waits for Ctrl+Shift+E. A
-  message from you, or a reply you hand on, starts it again with a fresh count.</li>
+  exchanges unless you choose another). It pauses when an agent asked you something during
+  its turn, or a tool was refused, or a turn fails: you hear why, and the last reply waits for
+  Ctrl+Shift+E. It finishes when an agent ends its reply with DONE, or when the replies start
+  repeating each other: you hear that, and nothing waits. A message from you, or a reply you
+  hand on, starts it again with a fresh count.</li>
 </ul>
-<p><strong>Stopping:</strong> <strong>Ctrl+Period</strong> stops both agents and the relay. <strong>Ctrl+Shift+T</strong> says what each
-agent is doing, how far the count has got, and who your next message goes to.</p>
+<p>An agent that answers and leaves work running in the background, such as a build, is handed on
+when it answers, not when the work finishes.</p>
+<p><strong>Stopping:</strong> <strong>Ctrl+Period</strong> stops both agents and the relay. A reply that was waiting to be
+handed on isn't passed on, and a message that hadn't gone yet comes back to the reply box.
+<strong>Ctrl+Shift+T</strong> says what each agent is doing, how far the count has got, and who your next
+message goes to.</p>
 <p><strong>Safety:</strong> each agent asks you for permissions and answers as it always does, through
 <strong>Ctrl+Shift+A</strong>. A message from one agent goes to the other only as a message, labelled as
 another agent's words; it can never answer a question or approve anything. Each agent is told
@@ -642,7 +648,8 @@ to take instructions only from you. Every message uses that agent's own subscrip
 automatic mode spends both.</p>
 <p><strong>Rename</strong> (F2), <strong>Properties</strong> (Alt+Enter) and <strong>Delete</strong> (Shift+Delete) work on the
 conversation's row. Deleting it keeps both chats, with everything said in them, and puts them
-back in the list.</p>
+back in the list. A chat can't be deleted while it's in a conversation: delete the conversation
+first.</p>
 <h2 id="answering-permissions-and-questions">Answering permissions and questions</h2>
 <p><strong>Answer</strong> (Ctrl+Shift+A, File, Answer) handles the loaded chat first. A Codex permission
 request shows the command, its folder and Codex's reason, and a "This also needs" list when

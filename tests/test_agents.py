@@ -346,3 +346,15 @@ def test_a_passed_on_reply_reads_once_unless_you_changed_it():
     assert shown[-1].text == ("Claude's reply passed to Codex. What went, with your changes:\n\n"
                               "Built it.\n\nCheck the lock.")
     assert all(m.assistant_name in ("Claude", "Codex") for m in shown)
+
+
+
+def test_a_codex_reply_of_several_messages_passed_on_unchanged_reads_once():
+    conversation = _conversation()
+    codex = [_m(USER, "Review", 0, "u0"),
+             _m(ASSISTANT, "I'll read the diff first.", 1, "a1", assistant_name="Codex"),
+             _m(ASSISTANT, "One bug: close() runs twice.", 2, "a2", assistant_name="Codex")]
+    joined = "I'll read the diff first.\n\nOne bug: close() runs twice."
+    claude = [_m(USER, agents.relay_text(conversation, 1, joined), 3, "u1")]
+    shown = agents.combine(conversation, [claude, codex])
+    assert shown[-1].text == "Codex's reply passed to Claude."

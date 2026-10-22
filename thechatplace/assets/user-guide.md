@@ -662,7 +662,8 @@ sent at the start.
 
 **Writing in it:** what you type goes to the agent whose turn it is (Turn Status says which).
 Start with @ and a name to choose: "@Codex check the tests", or "@all" for both (their replies
-are then shown but not passed on).
+are then shown but not passed on). If a reply is waiting to go to the agent you write to, it goes
+along with your words, ahead of them, instead of being dropped.
 
 **Hand-offs:**
 
@@ -672,13 +673,19 @@ are then shown but not passed on).
 - **Automatic:** turn on "Let agent conversations hand replies across automatically" in
   Settings, then choose Automatic in New Agent Conversation, or for a conversation with
   **File, Agent Conversation Hand-offs**. Replies go across by themselves until the turn limit (6
-  exchanges unless you choose another). It stops sooner when an agent ends its reply with
-  DONE, when the replies start repeating each other, when an agent asked you something during
-  its turn, or when a turn fails. You hear why, and the last reply waits for Ctrl+Shift+E. A
-  message from you, or a reply you hand on, starts it again with a fresh count.
+  exchanges unless you choose another). It pauses when an agent asked you something during
+  its turn, or a tool was refused, or a turn fails: you hear why, and the last reply waits for
+  Ctrl+Shift+E. It finishes when an agent ends its reply with DONE, or when the replies start
+  repeating each other: you hear that, and nothing waits. A message from you, or a reply you
+  hand on, starts it again with a fresh count.
 
-**Stopping:** **Ctrl+Period** stops both agents and the relay. **Ctrl+Shift+T** says what each
-agent is doing, how far the count has got, and who your next message goes to.
+An agent that answers and leaves work running in the background, such as a build, is handed on
+when it answers, not when the work finishes.
+
+**Stopping:** **Ctrl+Period** stops both agents and the relay. A reply that was waiting to be
+handed on isn't passed on, and a message that hadn't gone yet comes back to the reply box.
+**Ctrl+Shift+T** says what each agent is doing, how far the count has got, and who your next
+message goes to.
 
 **Safety:** each agent asks you for permissions and answers as it always does, through
 **Ctrl+Shift+A**. A message from one agent goes to the other only as a message, labelled as
@@ -688,7 +695,8 @@ automatic mode spends both.
 
 **Rename** (F2), **Properties** (Alt+Enter) and **Delete** (Shift+Delete) work on the
 conversation's row. Deleting it keeps both chats, with everything said in them, and puts them
-back in the list.
+back in the list. A chat can't be deleted while it's in a conversation: delete the conversation
+first.
 
 ## Answering permissions and questions
 

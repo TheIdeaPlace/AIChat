@@ -47,7 +47,8 @@ class Window(AgentChats):
         self._agent_awaiting, self._agent_asked = {}, set()
         self._agent_last_reply, self._agent_last_heard = {}, {}
         self._agent_codex_waiting = {}
-        self._agent_unconfirmed, self._agent_background_reply = set(), {}
+        self._agent_unconfirmed, self._agent_last_sent = set(), {}
+        self._agent_codex_preparing = set()
         self._codex_send_pending, self._queued = {}, {}
         self._open = agents.rows([], [self.conversation])[-1]
         self.reply_text = Text()
@@ -606,3 +607,81 @@ def test_opening_or_renaming_doesnt_move_a_conversation_up(tmp_path):
     assert w.saved.last_activity_ms == before
     w.send('Hello')
     assert w.saved.last_activity_ms > before
+
+
+
+# -- found in the second review -------------------------------------------------------------
+
+
+def test_a_background_reply_goes_through_the_conversation_at_once(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_answered('claude', 'c1', 'Built; the server keeps running.')
+    assert w.codex_sent[-1][1].endswith('Built; the server keeps running.')  # handed on now
+    w._agent_turn_ended('claude', 'c1', '', False)  # the turn's real end, an hour later
+    assert len(w.codex_sent) == 1 and not w.saved.paused
+
+
+def test_tools_refused_before_background_work_pause_automatic_mode(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_answered('claude', 'c1', 'Built.', detail='1 tool was refused: Bash')
+    assert not w.codex_sent
+    assert w.saved.stop_reason == 'Paused: 1 tool was refused: Bash'
+
+
+def test_text_you_queued_yourself_isnt_the_conversations(tmp_path):
+    w = Window(tmp_path)
+    w.send('@Codex review')
+    w._agent_unsent('codex', 'x1', ('Something you typed in the Codex chat',))
+    assert ('codex', 'x1') in w._agent_awaiting and not w.saved.paused
+    sent = w._agent_last_sent[('codex', 'x1')]
+    w._agent_unsent('codex', 'x1', (sent,))
+    assert ('codex', 'x1') not in w._agent_awaiting
+
+
+def test_a_message_that_never_reached_claude_comes_back_to_the_conversation(tmp_path):
+    w = Window(tmp_path)
+    w.reply_text.SetValue('typed since')
+    w.send('Build it.')
+    sent = w.claude_sent[-1][1]
+    assert w._agent_take_unsent('claude', 'c1', sent)
+    assert w.reply_text.value == 'Build it.\n\ntyped since'
+    assert not w._agent_take_unsent('claude', 'nobody', 'x')
+
+
+def test_a_new_ids_state_follows_it(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_rename_member('claude', 'c1', 'c2')
+    assert ('claude', 'c2') in w._agent_unconfirmed and ('claude', 'c2') in w._agent_last_sent
+
+
+def test_one_preparation_per_codex_member_and_nothing_left_after_stop(tmp_path):
+    w = Window(tmp_path, codex_ready=False)
+    w._stop_codex_owned = lambda info: None
+    w.send('@Codex one')
+    w._agent_stop(w._open)
+    assert 'codex:x1' not in w._agent_codex_waiting
+    w.send('@Codex two')  # the first preparation is still running
+    assert len(w.work) == 1
+    w.work.pop()[1](None, False)
+    assert [t.split('\n\n')[-1] for _n, t, _r in w.codex_sent] == ['two']
+
+
+def test_a_failed_codex_member_leaves_no_unsaved_claude_chat(tmp_path):
+    w = Window(tmp_path)
+    w.store.add = lambda record: pytest.fail('nothing should be saved')
+    w._store_write = lambda method, *a, **k: method(*a, **k) or True
+    plan = SimpleNamespace(
+        title='Pair', folder=str(tmp_path), mode='approve', turn_limit=6, message='Hello',
+        first=0, to_all=False,
+        members=[SimpleNamespace(info=None, provider='claude', role='', permission='auto'),
+                 SimpleNamespace(info=None, provider='codex', role='', permission='read-only')])
+    w.sessions.create_owned = lambda *a, **k: None
+    w._agent_create(plan)
+    w.work.pop()[1]('Codex is not signed in.', True)
+    assert w.copied == ['Hello']
+    assert w.feedback[-1] == ("Couldn't start the Codex chat for the agent conversation, so it "
+                              "wasn't started. Codex is not signed in. Your opening message is "
+                              "copied to the clipboard.")

@@ -446,18 +446,30 @@ def combine(conversation: AgentConversation,
     return _merge_your_messages(conversation, messages)
 
 
+def _sent_forms(shown: List[ChatMessage], name: str) -> set:
+    """What a member's latest reply, passed on unchanged, can look like: its
+    last message (Claude's result), or all of its turn's messages joined, as
+    Codex's are."""
+    turn: List[str] = []
+    for message in reversed(shown):
+        if message.kind in (ASSISTANT, PLAN) and message.assistant_name == name:
+            turn.append(message.text.strip())
+        elif turn and message.kind in (USER, RELAY):
+            break
+    if not turn:
+        return set()
+    return {turn[0], "\n\n".join(reversed(turn))}
+
+
 def _trim_relays(messages: List[ChatMessage]) -> List[ChatMessage]:
     """A passed-on reply reads as one line, unless it was changed on the
     way: then what went is there to read in full. The relayed body rides in
     ``assistant_name`` until here, and never leaves this module."""
-    last: Dict[str, str] = {}
-    result = []
+    result: List[ChatMessage] = []
     for message in messages:
-        if message.kind in (ASSISTANT, PLAN):
-            last[message.assistant_name] = message.text.strip()
         if message.kind == RELAY and message.sender and message.assistant_name:
             body = message.assistant_name
-            if body != last.get(message.sender, ""):
+            if body.strip() not in _sent_forms(result, message.sender):
                 message = replace(message, text=f"{message.text} What went, with your "
                                                 f"changes:\n\n{body}")
             message = replace(message, sender="", assistant_name="Claude")
