@@ -9340,6 +9340,9 @@ def test_codex_command_approval_offers_only_listed_choices_and_reads_extra_acces
         assert dialog.GetDefaultItem().GetId() == wx.ID_CANCEL
         text = dialog.request_text.GetValue()
         assert 'This also needs:\nWrite access to /workspace/.git' in text and SAVED_RULE_NOTE in text
+        # Why there's no Allow for This Chat (#307).
+        from thechatplace.ui.dialogs import CODEX_NOT_KEPT
+        assert SAVED_RULE_NOTE + ' ' + CODEX_NOT_KEPT in text and dialog.chat_rule_button is None
         dialog.buttons['cancel'].Command(wx.CommandEvent(wx.wxEVT_BUTTON))
         assert dialog.choice == 'cancel'
     finally:

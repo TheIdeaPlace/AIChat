@@ -1467,6 +1467,12 @@ class PermissionDialog(wx.Dialog):
         return self.reason.GetValue().strip()
 
 
+#: Why a Codex request has no Allow for This Chat (#307).
+CODEX_NOT_KEPT = ("The Chat Place can keep only some Git commands for a chat (status, switch, "
+                  "add, commit, push, fetch, diff and log), so this one isn't listed in Chat "
+                  "Permissions.")
+
+
 class CodexPermissionDialog(wx.Dialog):
     """Codex decisions: only the one-time ones Codex listed (#284).
 
@@ -1490,6 +1496,11 @@ class CodexPermissionDialog(wx.Dialog):
                                     'If you choose Allow for This Chat, The Chat Place remembers it only in this chat. '
                                     'Allow Once keeps no approval. Codex keeps no approval with either choice.')
             detail += '\n\nRemember for this chat: ' + chat_rule.description + '\n\n' + NOTICE
+        else:
+            # Say why there's no Allow for This Chat, so approving and then
+            # finding Chat Permissions empty isn't a surprise (#307).
+            from ..providers.codex_requests import SAVED_RULE_NOTE
+            detail = detail.replace(SAVED_RULE_NOTE, SAVED_RULE_NOTE + ' ' + CODEX_NOT_KEPT)
         self.request_text = _read_only_text(self, detail, "Request")
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
         self.chat_rule_button = None
