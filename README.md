@@ -441,7 +441,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Claude can answer Codex's review. It sends the selected reply in the messages list, or the
   latest one if a message of yours is selected. Choose the chat it goes to: any of The Chat
   Place's own chats, Claude or Codex, other than this one (desktop app, terminal and hidden
-  chats aren't offered). The message starts with a line saying which agent wrote it and in
+  chats aren't offered). The chat must already be started; start it first with File, New
+  Session (Ctrl+N). The message starts with a line saying which agent wrote it and in
   which chat, so the agent reading it knows these are another agent's words, not yours. Read
   it and change or add to it in the Message box (Enter there starts a new line), then press
   Ctrl+Enter, or Enter in the list, to send it. The Chat Place goes to that chat and sends it

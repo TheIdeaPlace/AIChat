@@ -611,7 +611,8 @@ pasting.
 1. In the chat with the reply, select it in the messages list. If a message of yours is
    selected instead, the latest reply is used.
 2. Press **Ctrl+Shift+E**. **Send to** lists The Chat Place's own chats, Claude and Codex, other
-   than this one. Desktop app, terminal and hidden chats aren't offered.
+   than this one. Desktop app, terminal and hidden chats aren't offered. The chat you send to
+   must already be started: start it first with File, New Session (Ctrl+N).
 3. Below it, **Message** has the reply, starting with a line that says which agent wrote it and
    in which chat, so the agent reading it knows these are another agent's words, not yours.
    Change it or add your own words; Enter there starts a new line.
