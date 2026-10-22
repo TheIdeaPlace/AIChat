@@ -50,18 +50,6 @@ def test_confirmations_name_what_goes_and_when_it_counts():
         "Remove this folder? Work in the folder /work. Claude will ask again from the next turn.")
 
 
-def test_native_rule_file_count_reads_like_properties():
-    from thechatplace.ui_text import CODEX_SAVED_RULES_NOTE
-    assert cp.native_rule_files(pending=True) == "Saved user/system rule files: checking..."
-    two = cp.native_rule_files(2)
-    # Properties' words, and what such rules let run without asking.
-    assert two.startswith("Saved user/system rule files in effect: 2. ")
-    assert CODEX_SAVED_RULES_NOTE in two and cp.CODEX_NATIVE in two
-    assert cp.native_rule_files(0) == "Saved user/system rule files in effect: 0."
-    assert cp.native_rule_files(None) == "Saved user/system rule files: not checked."
-    assert "couldn't be checked. Busy" in cp.native_rule_files(error="Busy")
-
-
 # -- kept-rule times in the session store ------------------------------------------------------
 
 
@@ -248,7 +236,7 @@ def test_codex_host_reads_tcp_rules_and_codexs_separate_native_rule_files(tmp_pa
     from thechatplace import codex_saved_rules
     from thechatplace.codex_saved_rules import SavedRule
     listed, folders = [], []
-    rules = ([SavedRule("allow", "git commit", "/codex/rules/default.rules")], [], 0)
+    rules = ([SavedRule("allow", "git commit", "/codex/rules/default.rules")], [], 0, "")
     def load(folder, callback):
         folders.append(folder)
         callback(rules, False)
@@ -256,10 +244,13 @@ def test_codex_host_reads_tcp_rules_and_codexs_separate_native_rule_files(tmp_pa
     host.native(listed.append)
     assert folders == [record.cwd]
     assert listed == [codex_saved_rules.describe(*rules)]
-    assert "Allowed without asking: git commit." in listed[0]
+    assert "Allowed without asking: commands starting with git commit." in listed[0]
+    record.provider_options["approval_policy"] = "never"
+    host.native(listed.append)
+    assert listed[-1] == codex_saved_rules.describe(*rules, never_asks=True)
     frame._load_codex_saved_rules = lambda folder, callback: callback("Codex is busy.", True)
     host.native(listed.append)
-    assert listed[-1] == "Saved user/system rule files: couldn't be checked. Codex is busy."
+    assert listed[-1] == "Couldn't list Codex's own saved rules. Codex is busy."
     frame._load_codex_saved_rules = lambda folder, callback: callback(None, True)
     host.native(listed.append)
     assert listed[-1].endswith("Codex didn't say why.")

@@ -159,7 +159,8 @@ class CodexPermissions:
         without asking here says why (#307). Read on a worker."""
         def listed(result, error):
             if error:
-                done(chat_permissions.native_rule_files(error=result or "Codex didn't say why."))
+                done(codex_saved_rules.ERROR + (result or "Codex didn't say why."))
             else:
-                done(codex_saved_rules.describe(*result))
+                never = self.record.provider_options.get('approval_policy') == 'never'
+                done(codex_saved_rules.describe(*result, never_asks=never))
         self.frame._load_codex_saved_rules(self.record.cwd, listed)

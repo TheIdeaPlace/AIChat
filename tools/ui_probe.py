@@ -907,7 +907,7 @@ def d_chat_permissions_codex(frame, env):
     saved = str(env["folders"]["Scratch"]) + "/default.rules"
     frame._load_codex_saved_rules = lambda folder, done: done((
         [SavedRule("allow", "git commit", saved), SavedRule("allow", "git push", saved),
-         SavedRule("forbidden", "git push --force", saved)], [], 0), False)
+         SavedRule("forbidden", "git push --force", saved)], [], 0, ""), False)
     host = CodexPermissions(frame, record.to_info(), record)
     host.load = lambda done: done([], None)
     return lambda: frame._modal(ChatPermissionsDialog(frame, "Codex preview", host))

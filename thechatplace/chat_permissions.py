@@ -13,7 +13,6 @@ import re
 from typing import Iterable, List, Mapping, Optional
 
 from .properties import _date
-from .ui_text import CODEX_SAVED_RULES_NOTE
 
 #: What the list says when nothing is kept (#307).
 EMPTY = "Nothing is allowed beyond the permission mode."
@@ -25,7 +24,6 @@ CLAUDE_RUNNING = ("A turn is running now. It keeps the rules it started with; "
 CODEX_EMPTY = "The Chat Place keeps no Codex approvals."
 CODEX_ABOUT = ("The Chat Place keeps no Codex approvals: when Codex asks you, your answer "
                "covers that one request. Codex's own saved rule files are separate, below.")
-CODEX_NATIVE = ("They are Codex's own, and are changed in Codex, not here.")
 
 
 @dataclass(frozen=True)
@@ -125,17 +123,3 @@ def confirm_text(row: Optional[PermissionRow], rows: List[PermissionRow],
              for n, word in ((rules, "rule"), (folders, "folder")) if n]
     return f"Remove all {' and '.join(parts)} from this chat? {after}"
 
-
-def native_rule_files(count=None, error: str = "", *, pending: bool = False) -> str:
-    """The Codex rule-file count, as Properties says it (#257), read-only."""
-    if error:
-        return "Saved user/system rule files: couldn't be checked. " + error
-    if pending:
-        return "Saved user/system rule files: checking..."
-    if type(count) is int and count > 0:
-        # As Properties words it (#257), with what such rules mean.
-        return (f"Saved user/system rule files in effect: {count}. "
-                + CODEX_SAVED_RULES_NOTE + " " + CODEX_NATIVE)
-    if count == 0:
-        return "Saved user/system rule files in effect: 0."
-    return "Saved user/system rule files: not checked."

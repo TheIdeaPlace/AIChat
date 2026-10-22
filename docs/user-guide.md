@@ -712,8 +712,10 @@ The mode can change once the turn has finished.
 
 Below the list, **About these permissions** (Alt+T) also lists Codex's own saved rules: the
 commands you've told Codex to always allow, and any it always asks about or never allows,
-with the file each comes from. They apply to every Codex chat, so a command there runs
-without asking even with nothing kept in this chat. The Chat Place only reads them; change
+with the file each comes from. Each rule covers any command that starts with its words, so
+a rule for `git push` also covers `git push --force`. They apply to every Codex chat, so a
+command there runs without asking even with nothing kept in this chat. In a chat set never to
+ask, Codex refuses a command that a rule says to ask about. The Chat Place only reads them; change
 them in Codex or edit the file. Removing The Chat Place's own approval does not remove a
 Codex rule.
 
