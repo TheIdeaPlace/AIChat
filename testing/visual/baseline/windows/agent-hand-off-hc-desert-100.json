@@ -1,0 +1,139 @@
+{
+ "title": "Hand Off: Uploader fix",
+ "class": "RelayDialog",
+ "size": [
+  700,
+  560
+ ],
+ "client": [
+  684,
+  521
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Send &to:",
+   "rect": [
+    8,
+    8,
+    44,
+    16
+   ],
+   "best": [
+    44,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Send to",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    668,
+    120
+   ],
+   "best": [
+    159,
+    120
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Claude 1, Visual probe"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Message:",
+   "rect": [
+    8,
+    152,
+    50,
+    16
+   ],
+   "best": [
+    50,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Message",
+   "label": "From Claude 2 (agent conversation \"Uploader fix\"):\r\n\r\nOne problem: close() can run twice when the upload is cancelled. Guard it with a flag.",
+   "rect": [
+    10,
+    170,
+    668,
+    314
+   ],
+   "best": [
+    127,
+    200
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "From Claude 2 (agent conversation \"Uploader fix\"):\n\nOne problem: close() can run twice when the upload is cancelled. Guard it with a flag."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Send",
+   "rect": [
+    520,
+    490,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    601,
+    490,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

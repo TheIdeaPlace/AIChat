@@ -1,0 +1,524 @@
+{
+ "title": "New Agent Conversation",
+ "class": "AgentConversationDialog",
+ "size": [
+  1260,
+  956
+ ],
+ "client": [
+  1236,
+  892
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "ScrolledWindow",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    0,
+    1236,
+    834
+   ],
+   "best": [
+    952,
+    29
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Title:",
+   "rect": [
+    8,
+    8,
+    45,
+    31
+   ],
+   "best": [
+    45,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Title",
+   "label": "",
+   "rect": [
+    10,
+    41,
+    1190,
+    38
+   ],
+   "best": [
+    192,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "First &agent's chat:",
+   "rect": [
+    8,
+    85,
+    163,
+    31
+   ],
+   "best": [
+    163,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "First agent's chat",
+   "label": "",
+   "rect": [
+    8,
+    116,
+    1190,
+    38
+   ],
+   "best": [
+    312,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "New Claude chat"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "First agent's &role (optional), such as Build the fix:",
+   "rect": [
+    8,
+    162,
+    448,
+    31
+   ],
+   "best": [
+    448,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "First agent's role (optional)",
+   "label": "",
+   "rect": [
+    10,
+    195,
+    1190,
+    38
+   ],
+   "best": [
+    192,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "First agent's new chat &permission:",
+   "rect": [
+    8,
+    239,
+    313,
+    31
+   ],
+   "best": [
+    313,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "First agent's new chat permission",
+   "label": "",
+   "rect": [
+    8,
+    270,
+    1190,
+    38
+   ],
+   "best": [
+    796,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Auto: Claude decides what is safe to run without asking"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "S&econd agent's chat:",
+   "rect": [
+    8,
+    316,
+    193,
+    31
+   ],
+   "best": [
+    193,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Second agent's chat",
+   "label": "",
+   "rect": [
+    8,
+    347,
+    1190,
+    38
+   ],
+   "best": [
+    312,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "New Codex chat"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Second agent's r&ole (optional), such as Review each change:",
+   "rect": [
+    8,
+    393,
+    557,
+    31
+   ],
+   "best": [
+    557,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Second agent's role (optional)",
+   "label": "",
+   "rect": [
+    10,
+    426,
+    1190,
+    38
+   ],
+   "best": [
+    192,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Second agent's new chat permissio&n:",
+   "rect": [
+    8,
+    470,
+    343,
+    31
+   ],
+   "best": [
+    343,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Second agent's new chat permission",
+   "label": "",
+   "rect": [
+    8,
+    501,
+    1190,
+    38
+   ],
+   "best": [
+    528,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Read-only; asks before allowing changes"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Folder for new chats:",
+   "rect": [
+    8,
+    547,
+    194,
+    31
+   ],
+   "best": [
+    194,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ComboBox",
+   "name": "Folder for new chats",
+   "label": "",
+   "rect": [
+    8,
+    578,
+    1051,
+    38
+   ],
+   "best": [
+    767,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "Browse for the folder for new chats",
+   "label": "&Browse...",
+   "rect": [
+    1065,
+    578,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Hand-offs:",
+   "rect": [
+    8,
+    628,
+    99,
+    31
+   ],
+   "best": [
+    99,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Hand-offs",
+   "label": "",
+   "rect": [
+    8,
+    659,
+    1190,
+    38
+   ],
+   "best": [
+    610,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Approve each hand-off: you pass each reply on (Ctrl+Shift+E)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Who goes f&irst:",
+   "rect": [
+    8,
+    705,
+    141,
+    31
+   ],
+   "best": [
+    141,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Who answers first",
+   "label": "",
+   "rect": [
+    8,
+    736,
+    1190,
+    38
+   ],
+   "best": [
+    369,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "First agent"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Opening &message (Enter starts a new line; Ctrl+Enter starts the conversation):",
+   "rect": [
+    8,
+    782,
+    716,
+    31
+   ],
+   "best": [
+    716,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Opening message",
+   "label": "",
+   "rect": [
+    10,
+    815,
+    1190,
+    210
+   ],
+   "best": [
+    222,
+    210
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Start",
+   "rect": [
+    956,
+    842,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    1095,
+    842,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

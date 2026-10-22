@@ -458,10 +458,29 @@
   {
    "class": "CheckBox",
    "name": "check",
+   "label": "Let a&gent conversations hand replies across automatically",
+   "rect": [
+    6,
+    863,
+    575,
+    30
+   ],
+   "best": [
+    575,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
    "label": "&Tell me when an update has been installed, with a link to what's new",
    "rect": [
     10,
-    863,
+    899,
     677,
     30
    ],

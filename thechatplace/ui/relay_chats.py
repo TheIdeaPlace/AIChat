@@ -15,6 +15,9 @@ from .dialogs import RelayDialog
 class RelayChats:
     def on_send_reply_to(self):
         info = self._open
+        if info is not None and info.provider == "agents":
+            self.on_agent_hand_off()  # an agent conversation's hand-off (#248)
+            return
         if info is None:
             self._feedback("Load a chat first, then send one of its replies to another chat.")
             return
@@ -96,12 +99,15 @@ class RelayChats:
     def _relay_waiting_text(self) -> str:
         """What quitting or updating now would lose, "" if nothing: "the
         message forwarded to Reviewer"."""
-        if not self._relay_waiting:
-            return ""
         titles = []
         for key in self._relay_waiting:
             info = self._current_info(key)
             titles.append(info.title if info is not None else "a Codex chat")
+        # An agent conversation's message waiting for its Codex member (#248).
+        waiting = getattr(self, "_agent_waiting_names", None)
+        titles += waiting() if waiting is not None else []
+        if not titles:
+            return ""
         if len(titles) == 1:
             return f"the message forwarded to {titles[0]}"
         return f"the messages forwarded to {', '.join(titles[:-1])} and {titles[-1]}"

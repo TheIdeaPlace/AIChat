@@ -1,0 +1,435 @@
+{
+ "title": "Uploader fix — The Chat Place",
+ "class": "MainFrame",
+ "size": [
+  1500,
+  968
+ ],
+ "client": [
+  1478,
+  838
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    0,
+    1478,
+    838
+   ],
+   "best": [
+    890,
+    999
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Session &list:",
+   "rect": [
+    8,
+    8,
+    92,
+    26
+   ],
+   "best": [
+    92,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Session list",
+   "label": "",
+   "rect": [
+    10,
+    44,
+    575,
+    788
+   ],
+   "best": [
+    1566,
+    104
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app session",
+    "Write the release notes for 0.2, Claude, AIChat, idle, active 1 hour ago, desktop app session",
+    "A session whose title goes on and on to show what a very long title does to the session list and the heading above the messages, Claude, Website, idle, active yesterday, desktop app session",
+    "Uploader fix, Claude, Scratch, needs you: Claude 2's reply waiting to go to Claude 1, active just now, agent conversation"
+   ],
+   "selection": 3
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Uploader fix, Scratch, needs you: Claude 2's reply waiting to go to Claude 1. Agent conversation, Claude.",
+   "rect": [
+    599,
+    8,
+    871,
+    26
+   ],
+   "best": [
+    825,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Messages in Uploader fix (needs you: Claude 2's reply waiting to go to Claude 1, agent conversation):",
+   "rect": [
+    599,
+    42,
+    871,
+    26
+   ],
+   "best": [
+    83,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Messages in Uploader fix (needs you: Claude 2's reply waiting to go to Claude 1, agent conversation)",
+   "label": "",
+   "rect": [
+    601,
+    70,
+    871,
+    395
+   ],
+   "best": [
+    955,
+    129
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "You, to Claude 1: Make the uploader flush before it signals.",
+    "Claude 1: ## What changed",
+    "Relay: Setup sent to Claude 2: who the other agent is, the roles, and to end with DONE when the work is finished.",
+    "Relay: Claude 1's reply passed to Claude 2. What went, with your changes:",
+    "Claude 2: One problem: close() can run twice when the upload is cancelled. Guard it with a flag."
+   ],
+   "selection": 4
+  },
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    599,
+    471,
+    871,
+    282
+   ],
+   "best": [
+    518,
+    282
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Your message (Ctrl+Enter sends):",
+   "rect": [
+    599,
+    471,
+    262,
+    26
+   ],
+   "best": [
+    262,
+    26
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Your message",
+   "label": "",
+   "rect": [
+    601,
+    503,
+    871,
+    180
+   ],
+   "best": [
+    191,
+    180
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Sen&d",
+   "rect": [
+    599,
+    687,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Sto&p",
+   "rect": [
+    719,
+    687,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&ommands...",
+   "rect": [
+    839,
+    687,
+    137,
+    36
+   ],
+   "best": [
+    137,
+    36
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "A&ttach Files...",
+   "rect": [
+    982,
+    687,
+    135,
+    36
+   ],
+   "best": [
+    135,
+    36
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Claude 2's reply is waiting to go to Claude 1. Ctrl+Shift+E hands it on.",
+   "rect": [
+    599,
+    727,
+    871,
+    26
+   ],
+   "best": [
+    1,
+    26
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Show tool &activity",
+   "rect": [
+    599,
+    761,
+    177,
+    25
+   ],
+   "best": [
+    177,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&New Session...",
+   "rect": [
+    599,
+    794,
+    145,
+    36
+   ],
+   "best": [
+    145,
+    36
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Refresh",
+   "rect": [
+    750,
+    794,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StatusBar",
+   "name": "statusBar",
+   "label": "",
+   "rect": [
+    0,
+    838,
+    1478,
+    44
+   ],
+   "best": [
+    386,
+    44
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Status",
+   "label": "Loaded Uploader fix, 5 messages.",
+   "rect": [
+    2,
+    842,
+    710,
+    37
+   ],
+   "best": [
+    150,
+    120
+   ],
+   "depth": 1,
+   "parent": 17,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Loaded session",
+   "label": "Uploader fix: needs you, Claude 2's reply waiting to go to Claude 1",
+   "rect": [
+    717,
+    842,
+    475,
+    37
+   ],
+   "best": [
+    150,
+    120
+   ],
+   "depth": 1,
+   "parent": 17,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "2 sessions need you",
+   "rect": [
+    1197,
+    842,
+    210,
+    37
+   ],
+   "best": [
+    171,
+    33
+   ],
+   "depth": 1,
+   "parent": 17,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

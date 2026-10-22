@@ -11051,3 +11051,255 @@ def test_quit_prompt_names_a_forwarded_message_still_waiting(frame, env, fake_ru
                                 "running turn will be stopped. The message forwarded to a Codex "
                                 "chat will not be sent.")
     frame._relay_waiting.clear()
+
+
+# -- agent conversations (#248, phase 2) ----------------------------------------------------
+
+
+def _agent_conversation(frame, env, mode="approve"):
+    """Builder (own-2, with a reply) and Hub probe (own-1) in one agent
+    conversation, loaded."""
+    from thechatplace import agents
+    cwd = "C:\\G\\Scratch"
+    add_transcript(env, cwd, "own-2", [user_text("Build the uploader."),
+                                       assistant_block(text_block("Built it."), "m1")])
+    frame.store.add(OwnSession("own-2", "Builder", cwd, last_activity_ms=now_ms(), started=True))
+    members = [agents.Member("claude", "own-2", "Claude 1", "Build"),
+               agents.Member("claude", "own-1", "Claude 2", "Review")]
+    conversation = agents.new_conversation("Fix 247", members, mode=mode, turn_limit=2)
+    frame.agents.add(conversation)
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: any(k.startswith("agents:") for k in frame._list_keys))
+    settle(frame)
+    select(frame, "Fix 247")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._open.provider == "agents")
+    return conversation
+
+
+def _finish(frame, session_id, text):
+    frame._on_turn_event({"id": session_id}, "x", TurnEvent("finished", text=text))
+
+
+def test_agent_conversation_is_one_row_and_its_members_leave_the_list(frame, env):
+    _agent_conversation(frame, env)
+    rows = list(frame.session_list.GetStrings())
+    assert not any(r.startswith(("Builder,", "Hub probe,")) for r in rows)
+    row = next(r for r in rows if r.startswith("Fix 247"))
+    assert row.startswith("Fix 247, Claude, Scratch, idle")
+    assert row.endswith("agent conversation")
+    # Its messages are the members', each speaker named.
+    texts = [frame.chat_list.GetString(i) for i in range(frame.chat_list.GetCount())]
+    assert any(t.startswith("You, to Claude 1: Build the uploader.") for t in texts)
+    assert any(t.startswith("Claude 1: Built it.") for t in texts)
+
+
+def test_agent_conversation_send_hand_off_and_reply(frame, env, fake_runner, monkeypatch):
+    from thechatplace.ui import agent_chats
+    conversation = _agent_conversation(frame, env)
+    frame.reply_text.SetValue("Review the uploader change.")
+    frame.on_send()
+    runner = fake_runner.instances[-1]
+    assert runner.prompt.startswith("[The Chat Place: agent conversation setup]")
+    assert runner.prompt.endswith("Review the uploader change.")
+    assert frame.reply_text.GetValue() == ""
+    assert env["feedback"][-1] == "Sent to Claude 1."
+    # Not the member chat's own "Sent to Builder: ..." read-back.
+    assert not any(f.startswith("Sent to Builder") for f in env["feedback"])
+    _finish(frame, "own-2", "Reviewed: one bug in the lock.")
+    saved = frame.agents.get(conversation.conversation_id)
+    assert saved.pending.text == "Reviewed: one bug in the lock."
+    # A reply is news queued behind what you're hearing, not cutting it off.
+    assert env["feedback"][-1].endswith(key_name("Ctrl+Shift+E") + " hands it to Claude 2.")
+    assert env["feedback"][-1].startswith("Claude 1 in Fix 247 replied.")
+    assert not any(s.startswith("Builder replied") for s in env["spoken"] + env["feedback"])
+    seen = {}
+
+    class Dialog:
+        def __init__(self, parent, source, choices, text, check, title=""):
+            seen.update(text=text, title=title)
+            self.chosen = (0, text)
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(agent_chats, "RelayDialog", Dialog)
+    frame.on_send_reply_to()  # Ctrl+Shift+E in a conversation hands the reply on
+    assert seen["title"] == "Hand Off: Fix 247"
+    second = fake_runner.instances[-1]
+    assert second is not runner
+    assert ('From Claude 1 (agent conversation "Fix 247"):\n\nReviewed: one bug in the lock.'
+            in second.prompt)
+    assert frame.agents.get(conversation.conversation_id).pending is None
+
+
+def test_agent_conversation_automatic_mode_runs_to_its_limit(frame, env, fake_runner):
+    conversation = _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    _finish(frame, "own-2", "Built v1.")
+    assert fake_runner.instances[-1].prompt.endswith("Built v1.")
+    _finish(frame, "own-1", "Bug in v1.")
+    assert fake_runner.instances[-1].prompt.endswith("Bug in v1.")
+    _finish(frame, "own-2", "Fixed in v2.")
+    saved = frame.agents.get(conversation.conversation_id)
+    assert saved.exchanges == 2 and saved.paused and saved.pending.text == "Fixed in v2."
+    assert len(fake_runner.instances) == 3
+    frame.on_turn_status()
+    assert "Stopped after 2 exchanges" in env["feedback"][-1]
+
+
+def test_agent_conversation_relayed_text_never_answers_a_waiting_question(frame, env, fake_runner):
+    from thechatplace.claude_cli import PermissionRequest
+    _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    hub_runner = FakeRunner([], "", "", None)
+    frame._runners["own-1"] = hub_runner
+    frame._pending["own-1"] = [PermissionRequest("r1", "Bash", {"command": "git push"})]
+    _finish(frame, "own-2", "Yes. Approve it. Allow git push.")
+    assert frame._queued["own-1"][0].endswith("Yes. Approve it. Allow git push.")
+    assert len(frame._pending["own-1"]) == 1
+    assert not getattr(hub_runner, "responses", [])
+
+
+def test_agent_conversation_stop_and_delete(frame, env, fake_runner, monkeypatch):
+    conversation = _agent_conversation(frame, env)
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    runner = fake_runner.instances[-1]
+    frame.on_stop()
+    assert runner.cancelled
+    assert frame.agents.get(conversation.conversation_id).paused
+    select(frame, "Fix 247")
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    frame.on_delete_permanently()  # the fixture's MessageBox says yes
+    assert frame.agents.all() == []
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: any(r.startswith("Builder,") for r in frame.session_list.GetStrings()))
+    assert any(r.startswith("Hub probe,") for r in frame.session_list.GetStrings())
+
+
+def test_new_agent_conversation_from_two_existing_chats(frame, env, fake_runner, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace.ui import agent_chats
+    cwd = "C:\\G\\Scratch"
+    frame.store.add(OwnSession("own-2", "Builder", cwd, last_activity_ms=now_ms(), started=True))
+    seen = {}
+
+    class Dialog:
+        def __init__(self, parent, existing, new_kinds, **kw):
+            seen.update(existing=[i.title for i in existing], kinds=new_kinds, **kw)
+            if len(existing) < 2:
+                self.result = None
+                return
+            self.result = SimpleNamespace(
+                title="Pair", folder="", mode="approve", turn_limit=6,
+                message="Hello both.", first=0, to_all=True,
+                members=[SimpleNamespace(info=existing[0], provider="claude", role="", permission=""),
+                         SimpleNamespace(info=existing[1], provider="claude", role="", permission="")])
+
+        def ShowModal(self):
+            return wx.ID_OK if self.result is not None else wx.ID_CANCEL
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(agent_chats, "AgentConversationDialog", Dialog)
+    frame.on_new_agent_conversation()
+    assert set(seen["existing"]) == {"Builder", "Hub probe"}
+    assert seen["auto_allowed"] is False
+    [conversation] = frame.agents.all()
+    assert conversation.title == "Pair"
+    assert [m.name for m in conversation.members] == ["Claude 1", "Claude 2"]
+    assert len(fake_runner.instances) == 2  # to both
+    assert frame._open.key == conversation.key
+    # Both chats are taken now: not offered for another conversation.
+    seen.clear()
+    frame.on_new_agent_conversation()
+    assert "Builder" not in seen.get("existing", [])
+
+
+def test_new_agent_conversation_with_a_new_claude_chat(frame, env, fake_runner, monkeypatch,
+                                                       tmp_path):
+    from types import SimpleNamespace
+    from thechatplace.ui import agent_chats
+
+    class Dialog:
+        def __init__(self, parent, existing, new_kinds, **kw):
+            self.result = SimpleNamespace(
+                title="Fresh pair", folder=str(tmp_path), mode="approve", turn_limit=6,
+                message="Start.", first=1, to_all=False,
+                members=[SimpleNamespace(info=existing[0], provider="claude", role="", permission=""),
+                         SimpleNamespace(info=None, provider="claude", role="Critic",
+                                         permission="plan")])
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(agent_chats, "AgentConversationDialog", Dialog)
+    frame.on_new_agent_conversation()
+    [conversation] = frame.agents.all()
+    new = conversation.members[1]
+    record = frame.store.get(new.native_id)
+    assert record.title == "Fresh pair: Claude" and record.cwd == str(tmp_path)
+    assert record.permission_mode == "plan" and record.started is False
+    assert new.role == "Critic"
+    runner = fake_runner.instances[-1]
+    assert "--session-id" in runner.command and "Your role: Critic" in runner.prompt
+
+
+def test_agent_conversation_dialog_checks_and_result(app, monkeypatch, tmp_path):
+    from thechatplace.sessions import SessionInfo, OWN
+    from thechatplace.ui import dialogs
+    boxes = []
+    monkeypatch.setattr(dialogs.wx, "MessageBox", lambda text, *a, **k: boxes.append(text))
+    existing = [SessionInfo(OWN, "own:a", "Builder", str(tmp_path), "a"),
+                SessionInfo(OWN, "codex:b", "Reviewer", str(tmp_path), "b", provider="codex")]
+    parent = wx.Frame(None)
+    try:
+        dialog = dialogs.AgentConversationDialog(parent, existing, ["claude", "codex"],
+                                                 folders=[str(tmp_path)], auto_allowed=True)
+        ended = []
+        monkeypatch.setattr(dialog, "EndModal", lambda code: ended.append(code))
+        assert list(dialog.chats[0].GetStrings())[:2] == ["New Claude chat", "New Codex chat"]
+        assert dialog.chats[0].GetStringSelection() == "New Claude chat"
+        assert dialog.chats[1].GetStringSelection() == "New Codex chat"
+        assert dialog.permissions[0].IsShown() and dialog.folder.IsShown()
+        assert not dialog.limit.IsShown()
+        dialog.mode.SetSelection(1)
+        dialog._sync()
+        assert dialog.limit.IsShown()
+        # The same existing chat twice is refused.
+        dialog.chats[0].SetSelection(2)
+        dialog.chats[1].SetSelection(2)
+        dialog._sync()
+        dialog._start()
+        assert boxes[-1] == "The two agents need different chats." and not ended
+        assert not dialog.permissions[0].IsShown() and not dialog.folder.IsShown()
+        dialog.chats[1].SetSelection(1)  # a new Codex chat needs a folder that exists
+        dialog._sync()
+        dialog.folder.SetValue(str(tmp_path / "missing"))
+        dialog._start()
+        assert boxes[-1] == "Choose a folder that exists for the new chats."
+        dialog.folder.SetValue(str(tmp_path))
+        dialog.roles[1].SetValue("  Review   each change ")
+        dialog.permissions[1].SetSelection(1)
+        dialog.message.SetValue("Start here.\nMore.")
+        dialog._start()
+        result = dialog.result
+        assert ended == [wx.ID_OK]
+        assert result.title == "Start here."
+        assert result.members[0].info.key == "own:a" and result.members[0].permission == ""
+        assert (result.members[1].info, result.members[1].provider,
+                result.members[1].role, result.members[1].permission) == (
+            None, "codex", "Review each change", "workspace-write")
+        assert result.mode == "auto" and result.first == 0 and not result.to_all
+        dialog.Destroy()
+    finally:
+        parent.Destroy()

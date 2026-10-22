@@ -157,7 +157,11 @@ SHORTCUTS = [
         ("Ctrl+Shift+E", "Send Reply to Another Chat: the selected reply (or the latest one) "
                          "goes to another Chat Place chat, Claude or Codex, labelled with who "
                          "wrote it; read and change it first, then Enter sends and you go to "
-                         "that chat"),
+                         "that chat. In an agent conversation, hands the waiting reply to the "
+                         "other agent"),
+        ("Ctrl+Shift+G", "New Agent Conversation: two chats, Claude or Codex, new or your own, "
+                         "that pass replies to each other; you approve each hand-off, or, once "
+                         "Settings allows it, let them go automatically up to a turn limit"),
         ("Ctrl+Shift+D", "Lists, on Changed Files (Claude chats): what changed in the selected "
          "message's turn (your latest, if none is selected) or in the whole chat; Enter on a file "
          "reads its changes line by line"),
