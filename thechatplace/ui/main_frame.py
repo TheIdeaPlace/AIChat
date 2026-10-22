@@ -240,6 +240,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._agent_last_reply: Dict[tuple, str] = {}
         self._agent_last_heard: Dict[str, str] = {}
         self._agent_codex_waiting: Dict[str, list] = {}
+        self._agent_unconfirmed: set = set()
+        self._agent_background_reply: Dict[tuple, str] = {}
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -453,7 +455,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         # (#248). Every letter is taken, so its shortcut is the way in.
         self._item(session, "Send Reply to Another Chat...\tCtrl+Shift+E",
                    lambda e: self.on_send_reply_to())
-        # Agent conversations (#248). As above, the keys are the way in.
+        # Agent conversations (#248). Every letter is taken: New has its
+        # shortcut, and the other two are on the conversation row's menu too.
         self._item(session, "New Agent Conversation...\tCtrl+Shift+G",
                    lambda e: self.on_new_agent_conversation())
         self._item(session, "Agent Conversation Members...",
@@ -898,7 +901,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         except ValueError:
             supported = False
         if not supported:
-            self._feedback(f"This action isn't available for {info.provider.capitalize()} chats yet.")
+            kind = ("agent conversations" if info.provider == AGENTS
+                    else f"{info.provider.capitalize()} chats")
+            self._feedback(f"This action isn't available for {kind} yet.")
         return supported
 
     # ----------------------------------------------------------- session list
@@ -1329,6 +1334,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if info is not None and info.provider == AGENTS:
             self._agent_delete(info)
             return
+        if info is not None and info.is_own:
+            conversation = self.agents.containing(info.provider, info.cli_session_id)
+            if conversation is not None:
+                wx.MessageBox(f"{info.title} is in the agent conversation {conversation.title}. "
+                              "Delete the conversation first (Shift+Delete on its row); its "
+                              "chats come back to the list, and then this one can be deleted.",
+                              APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
+                return
         if info is not None and info.provider != "claude" and not self._require_capability("delete", info):
             return
         if info is None:
@@ -1599,7 +1612,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         info = self._open
         if info is None:
             return
-        if info.provider != "claude":
+        if info.provider == AGENTS:
+            kind = f"Agent conversation, {info.provider_label}"
+        elif info.provider != "claude":
             kind = f"{info.provider.capitalize()} chat" + ("" if self._can_edit(info) else ", read-only")
         elif info.is_own:
             kind = "Chat Place session"
@@ -1645,6 +1660,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             kind = f", on {model_label(own.model)}" if own is not None else ""
         elif info.provider == "codex" and self._can_edit(info):
             kind = ", on Codex"
+        elif info.provider == AGENTS:
+            kind = ", agent conversation"
         if info.provider == "codex" and info.state == STATUS_UNAVAILABLE:
             state = ""
         description = state + kind if state else kind.lstrip(", ")
@@ -2473,13 +2490,19 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             item.Enable(enable)
             actions[item.GetId()] = handler
         add("&Load Session\tEnter", self.on_open_session)
+        conversation = info.provider == AGENTS
+        if conversation:
+            # An agent conversation (#248): its members and hand-offs here,
+            # and none of a single chat's Claude commands.
+            add("Agent Conversation &Members...", self.on_agent_members)
+            add("&Hand-offs...", self.on_agent_mode)
         add("Open in &Claude\tCtrl+O", self.on_open_in_claude, info.can_open_in_claude)
-        add("Copy Session Lin&k...\tCtrl+Shift+L", self.on_copy_session_link)
-        if not info.is_own:
+        add("Copy Session Lin&k...\tCtrl+Shift+L", self.on_copy_session_link, not conversation)
+        if not info.is_own and not conversation:
             # Heard as unavailable for a Cowork session (#91), whose button is hidden.
             add("Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here, not info.cowork)
         add("Re&name Session...\tF2", self.on_rename)
-        add("&Remote Control...", self.on_remote_control)
+        add("&Remote Control...", self.on_remote_control, not conversation)
         menu.AppendSeparator()
         add("Add to &Group...\tCtrl+G", self.on_add_to_group)
         add("Remove from Gro&up...", self.on_remove_from_group,
@@ -2490,7 +2513,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             add("&Bring Back Session", self.on_unhide)
         else:
             add("H&ide Session\tDelete", self.on_hide)
-        if info.is_own:
+        if info.is_own or conversation:
             add("Delete Session &Permanently...\tShift+Delete", self.on_delete_permanently)
         menu.AppendSeparator()
         add("Pr&operties...\tAlt+Enter", self.on_properties)
@@ -2909,6 +2932,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if modal is not None or key is None:
             return
         info = self._current_info(key)
+        if info is None:
+            # A member of an agent conversation isn't in the list on its own:
+            # its conversation is (#248).
+            provider, _sep, native = key.partition(":")
+            conversation = self.agents.containing("claude" if provider == "own" else provider, native)
+            if conversation is not None:
+                key = conversation.key
+                info = self._current_info(key)
         if info is None:
             return
         if self._open is not None and self._open.key == key:
@@ -4344,9 +4375,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             if unsent:
                 self._give_back(session_id, "\n\n".join(unsent), is_open)
             self._update_send_state()
-            self._agent_turn_ended("claude", session_id, event.text,
-                                   event.kind == "failed" or event.is_error,
-                                   more_queued=session_id in self._runners)
+            failed_turn = event.kind == "failed" or event.is_error
+            self._agent_turn_ended(
+                "claude", session_id, event.text, failed_turn,
+                more_queued=session_id in self._runners,
+                detail=(usage.friendly_error(event.text) if failed_turn
+                        else f"{detail}: " + "; ".join(denials) if denials else ""))
             self.refresh_sessions()
 
     def _answered_with_background(self, session_id: str, title: str, event: TurnEvent,
@@ -4358,6 +4392,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         background = announce.background_text((event.data or {}).get("tasks") or [])
         denials = event.denials or self._denials.get(session_id, [])
         self._denials[session_id] = []  # said now, not again at the turn's end
+        quiet = self._agent_quiet("claude", session_id)
+        self._agent_answered("claude", session_id, event.text)
         if event.is_error:
             self._said_problems[session_id] = announce.status_text(event.text or "error", 120)
         elif denials:
@@ -4369,7 +4405,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._store_write(self.store.update, session_id, unread=not is_open,
                           last_activity_ms=int(time.time() * 1000))
         key = self._own_key(session_id)
-        if event.is_error:
+        if quiet:
+            pass  # its conversation says it when the turn ends (#248)
+        elif event.is_error:
             self._notify(key, f"{title}: something failed",
                          f"{usage.friendly_error(event.text)} {background}", needs_you=True)
             self._say(f"{title}: something failed. {usage.friendly_error(event.text)} "
@@ -5343,8 +5381,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
     def _unsent_text(self) -> bool:
         self._save_draft()
-        return any(text.strip() for drafts in (self._drafts, self._codex_drafts, self._relay_waiting)
-                   for text in drafts.values())
+        return (any(text.strip() for drafts in (self._drafts, self._codex_drafts, self._relay_waiting)
+                    for text in drafts.values())
+                or any(text.strip() for items in getattr(self, "_agent_codex_waiting", {}).values()
+                       for _cid, _index, text in items))
 
     def _running_codex_keys(self) -> set:
         keys = set(self._codex_send_pending)
@@ -5359,7 +5399,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         """Protect quits and updates for every currently supported runtime.
         A reply forwarded to a Codex chat that is still getting ready (#248)
         counts: it's on its way, and quitting would lose it."""
-        return len(self._runners) + len(self._running_codex_keys() | set(self._relay_waiting))
+        agent_waiting = {key for key, items in getattr(self, "_agent_codex_waiting", {}).items()
+                         if items}
+        return len(self._runners) + len(self._running_codex_keys() | set(self._relay_waiting)
+                                        | agent_waiting)
 
     def _modal_open(self) -> bool:
         """A dialog of ours is open. A native message box isn't among wx's

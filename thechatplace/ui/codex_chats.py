@@ -302,6 +302,10 @@ class CodexChats:
         previous = self._codex_states.get(key)
         self._codex_states[key] = state
         self._restore_codex_text(key, state.unsent)
+        if state.unsent:
+            agent_unsent = getattr(self, '_agent_unsent', None)
+            if agent_unsent is not None:
+                agent_unsent('codex', state.native_id)
         record = self.store.get(state.native_id, provider='codex')
         if record is None:
             return
@@ -368,7 +372,9 @@ class CodexChats:
             agent_ended = getattr(self, '_agent_turn_ended', None)
             if agent_ended is not None:
                 agent_ended('codex', state.native_id, reply, state.outcome != 'completed',
-                            more_queued=bool(state.queued))
+                            more_queued=bool(state.queued),
+                            detail=state.problem or ('' if state.outcome == 'completed'
+                                                     else f'The Codex turn {state.outcome}.'))
         if loaded:
             if fresh_terminal:
                 # A verified turn ended even if second-resolution catalog

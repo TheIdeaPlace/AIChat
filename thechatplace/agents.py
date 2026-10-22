@@ -399,8 +399,12 @@ def _classify(conversation: AgentConversation, index: int, message: ChatMessage,
             return shown
     match = _RELAY_LABEL.match(text.lstrip())
     if match:
-        shown.append(ChatMessage(RELAY, f"{match.group(1)}'s reply passed to {name}.\n\n{text}",
-                                 message.timestamp, key, turn=message.turn))
+        # The reply itself is in the list already, as its agent's message;
+        # only what you added or changed is shown here (``_trim_relays``).
+        body = text.lstrip().split("\n", 1)[1].strip() if "\n" in text.lstrip() else ""
+        shown.append(ChatMessage(RELAY, f"{match.group(1)}'s reply passed to {name}.",
+                                 message.timestamp, key, sender=match.group(1),
+                                 turn=message.turn, assistant_name=body))
     else:
         shown.append(replace(message, text=text, key=key, sender=name))
     return shown
@@ -438,8 +442,27 @@ def combine(conversation: AgentConversation,
                                     f"agents:note:{note.at_ms}:{number}")))
         order += 1
     entries.sort(key=lambda e: (e[0], e[2]))
-    messages = [e[3] for e in entries]
+    messages = _trim_relays([e[3] for e in entries])
     return _merge_your_messages(conversation, messages)
+
+
+def _trim_relays(messages: List[ChatMessage]) -> List[ChatMessage]:
+    """A passed-on reply reads as one line, unless it was changed on the
+    way: then what went is there to read in full. The relayed body rides in
+    ``assistant_name`` until here, and never leaves this module."""
+    last: Dict[str, str] = {}
+    result = []
+    for message in messages:
+        if message.kind in (ASSISTANT, PLAN):
+            last[message.assistant_name] = message.text.strip()
+        if message.kind == RELAY and message.sender and message.assistant_name:
+            body = message.assistant_name
+            if body != last.get(message.sender, ""):
+                message = replace(message, text=f"{message.text} What went, with your "
+                                                f"changes:\n\n{body}")
+            message = replace(message, sender="", assistant_name="Claude")
+        result.append(message)
+    return result
 
 
 def _merge_your_messages(conversation: AgentConversation,

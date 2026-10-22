@@ -331,3 +331,18 @@ def test_odd_values_in_a_record_are_made_safe(tmp_path):
     assert loaded.mode == "approve" and loaded.turn_limit == 1 and loaded.exchanges == 0
     assert loaded.next_index == 1 and loaded.briefed == [0]
     assert loaded.pending is None and loaded.paused is False
+
+
+def test_a_passed_on_reply_reads_once_unless_you_changed_it():
+    conversation = _conversation()
+    claude = [_m(ASSISTANT, "Built it.", 1, "a1")]
+    plain = [_m(USER, agents.relay_text(conversation, 0, "Built it."), 2, "u1")]
+    changed = [_m(USER, agents.relay_text(conversation, 0, "Built it.") + "\n\nCheck the lock.",
+                  2, "u1")]
+    shown = agents.combine(conversation, [claude, plain])
+    assert [(m.label, m.text) for m in shown] == [
+        ("Claude", "Built it."), ("Relay", "Claude's reply passed to Codex.")]
+    shown = agents.combine(conversation, [claude, changed])
+    assert shown[-1].text == ("Claude's reply passed to Codex. What went, with your changes:\n\n"
+                              "Built it.\n\nCheck the lock.")
+    assert all(m.assistant_name in ("Claude", "Codex") for m in shown)

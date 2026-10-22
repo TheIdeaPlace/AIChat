@@ -41,11 +41,13 @@ class Window(AgentChats):
         self.cid = self.conversation.conversation_id
         self.speech = SimpleNamespace(announce='full', announce_own=True,
                                       agent_auto_mode=auto_setting, agent_announce_each=True,
-                                      agent_turn_limit=6)
+                                      agent_turn_limit=6, session_order='newest')
         self._runners, self._pending, self._codex_states = {}, {}, {}
         self._agent_awaiting, self._agent_asked = {}, set()
         self._agent_last_reply, self._agent_last_heard = {}, {}
         self._agent_codex_waiting = {}
+        self._agent_unconfirmed, self._agent_background_reply = set(), {}
+        self._codex_send_pending, self._queued = {}, {}
         self._open = agents.rows([], [self.conversation])[-1]
         self.reply_text = Text()
         self._snapshot = SimpleNamespace(sessions=[self._open])
@@ -101,6 +103,13 @@ class Window(AgentChats):
 
     def _can_edit(self, info):
         return True
+
+    def _take_queued(self, native):
+        queued = self._queued.pop(native, None)
+        return "\n\n".join(queued) if queued else None
+
+    def _current_info(self, key):
+        return None
 
     # helpers
     @property
@@ -406,3 +415,192 @@ def test_the_mixin_never_answers_a_request(tmp_path):
     source = inspect.getsource(agent_chats)
     for forbidden in ('_apply_answer', 'respond(', "'answer'", '"answer"', 'allow_response'):
         assert forbidden not in source
+
+
+# -- found in review --------------------------------------------------------------------
+
+
+def test_a_reply_given_before_background_work_is_the_one_handed_on(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_answered('claude', 'c1', 'Built it; the tests run in the background.')
+    w._agent_turn_ended('claude', 'c1', '', False)  # the turn ends later with no text
+    assert w.saved.pending.text == 'Built it; the tests run in the background.'
+    assert not w.saved.paused
+
+
+def test_conversation_rows_take_their_place_in_the_list(tmp_path):
+    from thechatplace.sessions import OWN, SessionInfo
+    w = Window(tmp_path)
+    old = SessionInfo(OWN, 'own:old', 'Old chat', '/w', 'old', last_activity_ms=1)
+    rows = w._agent_rows([old])
+    assert [r.title for r in rows] == ['Fix 247', 'Old chat']  # newest first
+
+
+def test_stop_stops_a_codex_send_in_flight_and_takes_back_claudes_queue(tmp_path):
+    w = Window(tmp_path)
+    stopped = []
+    w._stop_codex_owned = lambda info: stopped.append(info.cli_session_id)
+    runner = SimpleNamespace(cancel=lambda: None)
+    w._runners['c1'] = runner
+    w._queued['c1'] = [agents.SETUP_START + '\nsetup\n' + agents.SETUP_END + '\n\nQueued words']
+    w._codex_send_pending['codex:x1'] = 1
+    w._agent_stop(w._open)
+    assert stopped == ['x1']
+    assert w.reply_text.value == 'Queued words'
+    assert w.feedback[-1].endswith("A message that hadn't gone yet is back in the reply box.")
+
+
+def test_stop_ends_a_waiting_reply(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built it.', False)
+    w._agent_stop(w._open)
+    assert w.saved.pending is None
+    assert w.feedback[-1].endswith("The waiting reply wasn't passed on.")
+
+
+def test_deleting_a_conversation_forgets_what_waits_for_codex(tmp_path, monkeypatch):
+    from thechatplace.ui import agent_chats
+    w = Window(tmp_path, codex_ready=False)
+    w.session_list = SimpleNamespace(SetFocus=lambda: None)
+    w.unload_session = lambda: None
+    monkeypatch.setattr(agent_chats.wx, 'MessageBox', lambda *a, **k: agent_chats.wx.YES)
+    w.send('@Codex review this')
+    w._agent_delete(w._open)
+    action, done = w.work.pop()
+    done(None, False)
+    assert w.codex_sent == []
+    assert w.agents.all() == []
+
+
+def test_a_failed_first_send_sends_the_setup_again_next_time(tmp_path):
+    w = Window(tmp_path, codex_ready=False)
+    w.send('@Codex review this')
+    w.work.pop()[1]('Codex connection interrupted.', True)
+    assert 1 not in w.saved.briefed
+    w.codex_ready = True
+    w.send('@Codex review this')
+    assert w.codex_sent[-1][1].startswith(agents.SETUP_START)
+
+
+def test_a_failed_first_claude_turn_sends_the_setup_again(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Not signed in', True, detail='Claude Code is not signed in.')
+    assert 0 not in w.saved.briefed
+    assert w.said[-1] == ("Fix 247: Claude's turn failed. Claude Code is not signed in. "
+                          "The relay stopped.")
+    w.send('@Claude try again')
+    assert w.claude_sent[-1][1].startswith(agents.SETUP_START)
+
+
+def test_a_good_first_turn_keeps_the_setup_sent(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built.', False)
+    w._agent_turn_ended('claude', 'c1', 'oops', True)  # a later failure, not awaited
+    assert 0 in w.saved.briefed
+
+
+def test_typing_to_the_agent_a_reply_waits_for_sends_the_reply_too(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)
+    w.send('Also check performance.')
+    sent = w.codex_sent[-1][1]
+    assert sent.endswith('From Claude (agent conversation "Fix 247"):\n\nBuilt v1.\n\n'
+                         'The user adds:\n\nAlso check performance.')
+    assert w.saved.pending is None
+    assert w.feedback[-1] == "Sent Claude's reply and your message to Codex."
+    assert w.saved.notes[-1].text == "Passed Claude's reply to Codex with your message."
+
+
+def test_refused_tools_are_said_and_pause_automatic_mode(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built it, but could not push.', False,
+                        detail='1 tool was refused: Bash')
+    assert not w.codex_sent
+    assert w.saved.stop_reason == 'Paused: 1 tool was refused: Bash'
+    assert '1 tool was refused: Bash' in w.said[-1]
+
+
+def test_done_finishes_without_leaving_the_row_needing_you(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Finished.\nDONE', False)
+    saved = w.saved
+    assert saved.pending is None and saved.paused
+    assert agents.rows([], [saved])[-1].state != NEEDS_YOU
+    assert w.notified[-1][2] is False
+
+
+def test_the_status_line_says_when_a_member_waits_for_you(tmp_path):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    w = Window(tmp_path)
+    w._pending['c1'] = [object()]
+    assert w._agent_send_state(w._open) == 'Claude is waiting for you. Ctrl+Shift+A answers.'
+    w._pending.clear()
+    w._codex_states['codex:x1'] = CodexChatState('x1', 'needs_you', 't', 'inProgress',
+                                                 requests=(object(),))
+    assert w._agent_send_state(w._open) == 'Codex is waiting for you. Ctrl+Shift+A answers.'
+
+
+def test_a_hand_off_whose_reply_changed_meanwhile_sends_nothing(tmp_path, monkeypatch):
+    from thechatplace.ui import agent_chats
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)
+
+    class Dialog:
+        def __init__(self, parent, source, choices, text, check, title=''):
+            self.chosen = (0, text)
+            # A newer reply arrives while the dialog is open.
+            conversation = w.agents.get(w.cid)
+            conversation.pending = Pending(0, 1, 'Built v2.')
+            w.agents.put(conversation)
+
+        def ShowModal(self):
+            return agent_chats.wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(agent_chats, 'RelayDialog', Dialog)
+    sent_before = len(w.codex_sent)
+    w.on_agent_hand_off()
+    assert len(w.codex_sent) == sent_before
+    assert w.saved.pending.text == 'Built v2.'
+    assert w.feedback[-1].startswith('The waiting reply changed while the dialog was open.')
+
+
+def test_a_message_given_back_unsent_ends_the_wait(tmp_path):
+    w = Window(tmp_path)
+    w.send('@Codex review')
+    w._agent_unsent('codex', 'x1')
+    assert ('codex', 'x1') not in w._agent_awaiting
+    assert w.saved.stop_reason == "Codex didn't take the message."
+
+
+def test_quitting_counts_a_message_waiting_for_a_codex_member(tmp_path):
+    from thechatplace.ui.main_frame import MainFrame
+    w = Window(tmp_path, codex_ready=False)
+    w._relay_waiting, w._drafts, w._codex_drafts = {}, {}, {}
+    w._save_draft = lambda: None
+    w._running_codex_keys = lambda: set()
+    assert MainFrame._active_owned_turn_count(w) == 0 and not MainFrame._unsent_text(w)
+    w.send('@Codex review this')
+    assert MainFrame._active_owned_turn_count(w) == 1
+    assert MainFrame._unsent_text(w)
+    assert w._agent_waiting_names() == ['Codex in Fix 247']
+
+
+def test_opening_or_renaming_doesnt_move_a_conversation_up(tmp_path):
+    w = Window(tmp_path)
+    before = w.saved.last_activity_ms
+    import time
+    time.sleep(0.01)
+    w._agent_rename(w._open, 'New name')
+    assert w.saved.last_activity_ms == before
+    w.send('Hello')
+    assert w.saved.last_activity_ms > before
