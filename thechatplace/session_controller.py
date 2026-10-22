@@ -173,6 +173,12 @@ class SessionController:
             raise ValueError("This provider cannot check saved command rules")
         return backend.saved_rule_count(cwd)
 
+    def saved_rules(self, provider, cwd):
+        backend = self._providers.get(provider)
+        if self._closed or backend is None or not callable(getattr(backend, 'saved_rules', None)):
+            raise ValueError("This provider cannot read saved command rules")
+        return backend.saved_rules(cwd)
+
     def model_choices(self, provider):
         backend = self._providers.get(provider)
         if self._closed or backend is None or not callable(getattr(backend, 'model_choices', None)):

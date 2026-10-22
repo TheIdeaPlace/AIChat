@@ -483,7 +483,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Chat. For a Codex chat, the dialog lists command approvals kept here and when you allowed
   them, with Remove and Remove All. Removal applies before the next approval is sent, including
   during a running turn; work already approved may finish. Changing mode clears the kept
-  approvals. Codex's own saved rule-file count remains separate and read only. Desktop app and terminal
+  approvals. Its About box also lists Codex's own saved rules, read only: the commands you've
+  told Codex to always allow (which run without asking in every Codex chat), and any it always
+  asks about or never allows, with the file each comes from. Desktop app and terminal
   sessions are read-only here, so they have none, and a Continue Here copy starts with nothing
   kept.
 - **Announcements.** When the open session gets a new reply, or one of The Chat Place's sessions
@@ -682,8 +684,9 @@ Codex keeps your own saved command rules in effect, including user rules such
 as `~/.codex/rules/default.rules` and system rules installed for your computer.
 Commands you've told Codex to always allow will run without asking and outside
 the folder's limits, so they can change files elsewhere and use the network.
-New Session and Change Permission Mode explain this; Properties
-shows the number of active user/system rule files, without showing their contents.
+New Session and Change Permission Mode explain this. Properties shows how many
+user/system rule files are in effect, and Chat Permissions (Ctrl+Shift+H) lists the
+commands in them: allowed without asking, always asks, or never allowed.
 
 The Chat Place refuses rules supplied by a project: `.codex/rules` in the selected
 folder or its parent projects. Choose a folder without those rules, or move the

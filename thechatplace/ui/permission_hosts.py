@@ -7,7 +7,7 @@ answers, separately from Codex's native rule files (#307).
 """
 from __future__ import annotations
 
-from .. import chat_permissions, claude_settings
+from .. import chat_permissions, claude_settings, codex_saved_rules
 from ..claude_cli import PERMISSION_MODES, normalize_permission_mode
 from ..sessions import NEEDS_YOU, WORKING
 
@@ -108,7 +108,7 @@ class CodexPermissions:
     #: TCP consent records, separate from native saved rule files (#307).
     can_remove = True
     empty_text = 'No command approvals are remembered for this chat.'
-    native_pending = chat_permissions.native_rule_files(pending=True)
+    native_pending = "Checking Codex's own saved rules..."
 
     def __init__(self, frame, info, record):
         self.frame, self.info, self.record = frame, info, record
@@ -155,7 +155,11 @@ class CodexPermissions:
         self.frame._codex_work(lambda: self.frame.sessions.owned_action('remove_chat_rule', self.record, rule_id), removed)
 
     def native(self, done):
-        def counted(result, error):
-            done(chat_permissions.native_rule_files(None if error else result,
-                                                    (result or "Codex didn't say why.") if error else ""))
-        self.frame._load_codex_rules(self.record.cwd, counted)
+        """Codex's own saved rules, listed read only, so a command that runs
+        without asking here says why (#307). Read on a worker."""
+        def listed(result, error):
+            if error:
+                done(chat_permissions.native_rule_files(error=result or "Codex didn't say why."))
+            else:
+                done(codex_saved_rules.describe(*result))
+        self.frame._load_codex_saved_rules(self.record.cwd, listed)

@@ -84,6 +84,9 @@ class CodexChats:
     def _load_codex_rules(self, folder, callback):
         self._codex_work(lambda: self.sessions.saved_rule_count('codex', folder), callback)
 
+    def _load_codex_saved_rules(self, folder, callback):
+        self._codex_work(lambda: self.sessions.saved_rules('codex', folder), callback)
+
     def _load_codex_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 

@@ -245,13 +245,24 @@ def test_codex_host_reads_tcp_rules_and_codexs_separate_native_rule_files(tmp_pa
     assert host.empty_text != cp.EMPTY
     assert 'outside the sandbox' in host.note() and 'does not confine' in host.note()
     assert host.mode_text() == "Can edit files in this folder; asks before anything else"
-    counted = []
-    frame._load_codex_rules = lambda folder, callback: callback(2, False)
-    host.native(counted.append)
-    assert counted == [cp.native_rule_files(2)]
-    frame._load_codex_rules = lambda folder, callback: callback("Codex is busy.", True)
-    host.native(counted.append)
-    assert counted[-1] == "Saved user/system rule files: couldn't be checked. Codex is busy."
+    from thechatplace import codex_saved_rules
+    from thechatplace.codex_saved_rules import SavedRule
+    listed, folders = [], []
+    rules = ([SavedRule("allow", "git commit", "/codex/rules/default.rules")], [], 0)
+    def load(folder, callback):
+        folders.append(folder)
+        callback(rules, False)
+    frame._load_codex_saved_rules = load
+    host.native(listed.append)
+    assert folders == [record.cwd]
+    assert listed == [codex_saved_rules.describe(*rules)]
+    assert "Allowed without asking: git commit." in listed[0]
+    frame._load_codex_saved_rules = lambda folder, callback: callback("Codex is busy.", True)
+    host.native(listed.append)
+    assert listed[-1] == "Saved user/system rule files: couldn't be checked. Codex is busy."
+    frame._load_codex_saved_rules = lambda folder, callback: callback(None, True)
+    host.native(listed.append)
+    assert listed[-1].endswith("Codex didn't say why.")
 
 
 def test_kept_folders_are_listed_after_rules_and_can_be_removed(tmp_path):

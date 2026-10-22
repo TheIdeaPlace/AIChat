@@ -2139,7 +2139,9 @@ def test_chat_permissions_for_a_codex_chat_shows_empty_remembered_list(frame, en
                         provider_options={"sandbox": "read-only", "approval_policy": "on-request"})
     frame.store.add(record)
     monkeypatch.setattr(frame, "_selected_session", lambda: record.to_info())
-    monkeypatch.setattr(frame, "_load_codex_rules", lambda folder, done: done(2, False))
+    from thechatplace.codex_saved_rules import SavedRule
+    monkeypatch.setattr(frame, "_load_codex_saved_rules", lambda folder, done: done(
+        ([SavedRule("allow", "git push", "/codex/rules/default.rules")], [], 0), False))
     monkeypatch.setattr(frame, '_codex_work', lambda action, done: done((), False))
 
     def drive(dialog):
@@ -2150,7 +2152,8 @@ def test_chat_permissions_for_a_codex_chat_shows_empty_remembered_list(frame, en
     assert remove is not None and remove_all is not None and not asked
     assert mode == "Read-only; asks before allowing changes"
     assert note.startswith('Removal applies before the next approval is sent')
-    assert "Saved user/system rule files in effect: 2." in note
+    assert "From Codex's own saved rules." in note
+    assert "Allowed without asking: git push." in note
     assert "Nothing is allowed beyond the permission mode" not in note
 
 
@@ -2167,7 +2170,7 @@ def test_chat_permissions_codex_removal_uses_backend_and_restores_selection(fram
         return tuple(rules)
     monkeypatch.setattr(frame.sessions, 'owned_action', action)
     monkeypatch.setattr(frame, '_selected_session', lambda: record.to_info())
-    monkeypatch.setattr(frame, '_load_codex_rules', lambda folder, done: done(0, False))
+    monkeypatch.setattr(frame, '_load_codex_saved_rules', lambda folder, done: done(([], [], 0), False))
     def drive(dialog):
         pump(lambda: dialog.loaded)
         dialog.list.SetSelection(0)

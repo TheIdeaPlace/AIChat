@@ -321,6 +321,15 @@ class CodexProvider:
         result = self.connection.request('config/read', {'cwd': cwd, 'includeLayers': True})
         return verify_codex_rule_layers(result)
 
+    def saved_rules(self, cwd):
+        """Worker-only: the rules in Codex's saved rule files, read only (#307)."""
+        from .codex_rpc import verify_codex_rule_layers
+        from .. import codex_saved_rules, platform_paths
+        result = self.connection.request('config/read', {'cwd': cwd, 'includeLayers': True})
+        verify_codex_rule_layers(result)
+        files, _blocked = platform_paths.codex_saved_rule_files(result.get('layers'))
+        return codex_saved_rules.rules_in(files or ())
+
     def model_choices(self):
         """Worker-only discovery; never creates or resumes an owned chat."""
         return read_models(self.connection)
