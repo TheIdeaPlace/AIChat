@@ -45,7 +45,40 @@ def test_page_allows_nothing_remote():
     page = message_page('Claude "says"', "Hello")
     assert "default-src 'none'" in page
     assert "<title>Claude &quot;says&quot;</title>" in page
-    assert '<main aria-label="Claude &quot;says&quot;"><p>Hello</p></main>' in page
+    assert "<body><p>Hello</p></body>" in page
+
+
+def test_page_in_the_app_has_no_landmark():
+    # A landmark around the whole window only added "main region" before
+    # the message (#341); the published pages keep an unnamed one.
+    from thechatplace.rendering import html_page
+    page = message_page("Message: Claude", "Hello", heading="Claude")
+    assert "<main" not in page and "aria-label=\"Message" not in page
+    assert "<body><main><p>x</p></main></body>" in html_page("Guide", "<p>x</p>", landmark=True)
+
+
+def test_message_page_starts_with_who_wrote_it():
+    page = message_page("Message: Claude", "# Plan\n\nText\n\n## Step <one>\n\nSetext\n------\n\n###### Deep",
+                        heading="Claude")
+    body = page[page.index("<body>"):]
+    assert body.startswith("<body><h1>Claude</h1>")
+    # The message's own headings move down one level, under the speaker.
+    assert "<h2>Plan</h2>" in body and "<h3>Step &lt;one&gt;</h3>" in body
+    assert "<h3>Setext</h3>" in body and "<h6>Deep</h6>" in body
+    assert body.count("<h1>") == 1
+
+
+def test_message_page_heading_is_escaped_and_code_is_left_alone():
+    page = message_page("t", "```html\n<h1>not a heading</h1>\n```\n\nSay <h2> here", heading="From <Codex>")
+    assert "<h1>From &lt;Codex&gt;</h1>" in page
+    assert "&lt;h1&gt;not a heading&lt;/h1&gt;" in page and "Say &lt;h2&gt; here" in page
+    assert page.count("<h1>") == 1 and "<h2" not in page
+
+
+def test_message_page_without_a_heading_is_unchanged():
+    # The User Guide and Claude's plan bring their own headings.
+    page = message_page("User Guide", "# The Chat Place")
+    assert "<body><h1>The Chat Place</h1></body>" in page
 
 
 def test_formatted_setting_round_trips(tmp_path):

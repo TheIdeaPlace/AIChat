@@ -2628,7 +2628,8 @@ def test_full_message_opens_as_a_formatted_page(frame, env, monkeypatch):
     frame.on_read_message()
     title, page = shown[0]
     assert title == "Message: Claude"
-    assert "<h2>Result</h2>" in page and "<th>a</th>" in page and "<td>2</td>" in page
+    # The speaker is heading 1 and the message's "## Result" moves under it (#341).
+    assert "<h1>Claude</h1>\n<h3>Result</h3>" in page and "<th>a</th>" in page and "<td>2</td>" in page
 
 
 def test_read_as_plain_text_and_the_setting_open_the_text_box(frame, env, monkeypatch):
@@ -9718,9 +9719,11 @@ def test_message_dialogs_use_equal_provider_labels(frame, monkeypatch, provider)
     finally:
         dialog.Destroy()
     shown = []
-    monkeypatch.setattr(frame, '_show_page', lambda title, page: shown.append(title) or True)
+    monkeypatch.setattr(frame, '_show_page', lambda title, page: shown.append((title, page)) or True)
     frame._show_formatted(ChatMessage(ASSISTANT, 'Synthetic text', assistant_name=provider))
-    assert shown == [f'Message: {provider}']
+    assert [title for title, _page in shown] == [f'Message: {provider}']
+    # The page starts with who wrote it as heading 1 (#341).
+    assert f'<body><h1>{provider}</h1>' in shown[0][1]
 
 
 @pytest.mark.parametrize('source', ['terminal', 'editor', 'app_server'])

@@ -76,10 +76,10 @@ def documents() -> Dict[str, str]:
     """Each file's name and what it should hold."""
     guide = user_guide_path().read_text(encoding="utf-8")
     return {
-        "keyboard-shortcuts.html": html_page(TITLE, shortcuts_html(platform="all")) + "\n",
+        "keyboard-shortcuts.html": html_page(TITLE, shortcuts_html(platform="all"), landmark=True) + "\n",
         "keyboard-shortcuts.md": _markdown(),
         "keyboard-shortcuts.txt": f"{TITLE}\n\n{shortcuts_text(platform='all')}\n",
-        "user-guide.html": html_page(GUIDE_TITLE, _with_contents(markdown_to_html(guide))) + "\n",
+        "user-guide.html": html_page(GUIDE_TITLE, _with_contents(markdown_to_html(guide)), landmark=True) + "\n",
         "user-guide.md": guide,
     }
 

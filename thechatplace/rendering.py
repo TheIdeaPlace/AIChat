@@ -36,6 +36,7 @@ from .links import parse_link
 _CODE = re.compile(r'<pre><code(?: class="language-([^"]+)")?>(.*?)</code></pre>', re.DOTALL)
 _HREF = re.compile(r'<a href="([^"]*)"')
 _SAFE_LINK = re.compile(r"(?i)^(https?:|mailto:)")
+_HTML_HEADING = re.compile(r"<(/?)h([1-6])(?=[\s>])")
 
 
 def opens_in_browser(href: str) -> bool:
@@ -125,18 +126,38 @@ def markdown_to_html(text: str) -> str:
     return _HREF.sub(link, _CODE.sub(code_region, body))
 
 
-def html_page(title: str, body_html: str) -> str:
+def shift_html_headings(body_html: str, by: int = 1) -> str:
+    """Every heading in ``body_html`` ``by`` levels deeper, at most level 6.
+    Safe on the converter's output: raw HTML is switched off, so a "<h1" in a
+    message's text or code is already escaped and never matches."""
+    return _HTML_HEADING.sub(lambda m: f"<{m.group(1)}h{min(int(m.group(2)) + by, 6)}",
+                             body_html)
+
+
+def html_page(title: str, body_html: str, *, landmark: bool = False) -> str:
     """A whole page around ``body_html``, which must already be safe HTML.
-    ``title`` is the window's and the page's name."""
+    ``title`` is the window's and the page's name.
+
+    In the app the page is the whole window, so it has no landmark: one
+    around everything only made the screen reader say "Message: Claude, main
+    region" before the message (#341). ``landmark`` wraps it in ``<main>``
+    for the pages published on the web, where it sits among other pages."""
     name = html.escape(title, quote=True)
+    body = f"<main>{body_html}</main>" if landmark else body_html
     return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
             "<meta http-equiv=\"Content-Security-Policy\" "
             "content=\"default-src 'none'; style-src 'unsafe-inline'\">"
             f"<title>{name}</title><style>{_STYLE}</style></head>"
-            f"<body><main aria-label=\"{name}\">{body_html}</main></body></html>")
+            f"<body>{body}</body></html>")
 
 
-def message_page(title: str, text: str) -> str:
-    """A message's markdown as a whole page."""
-    return html_page(title, markdown_to_html(text))
+def message_page(title: str, text: str, heading: str = "") -> str:
+    """A message's markdown as a whole page. With ``heading`` (who wrote it,
+    "Claude"), the page starts with it as heading 1 and the message's own
+    headings move down a level under it (#341), so H finds the top of the
+    message and the outline reads speaker, then the message's sections."""
+    body = markdown_to_html(text)
+    if heading:
+        body = f"<h1>{html.escape(heading)}</h1>\n{shift_html_headings(body)}"
+    return html_page(title, body)
