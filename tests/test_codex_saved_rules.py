@@ -63,6 +63,8 @@ def test_a_word_cant_break_onto_another_line(tmp_path):
 
 def test_control_characters_and_quotes_are_shown_not_obeyed():
     assert csr._word('a" or "b') == '"a\\" or \\"b"'
+    # A backslash is doubled first, so an escaped quote reads only one way.
+    assert csr._word('a\\" b') == '"a\\\\\\" b"'
     assert csr._word("z\x00w") == '"z\\u0000w"'
     assert csr._word("\u202egit") == '"\\u202egit"'
     assert csr._word("e\x1bf") == '"e\\u001bf"'

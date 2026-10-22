@@ -2082,6 +2082,27 @@ def test_chat_permissions_change_uses_change_permission_mode(frame, env, monkeyp
     assert frame.store.get("own-1").permission_mode == "acceptEdits"
 
 
+def test_chat_permissions_reads_native_rules_again_after_a_mode_change(frame):
+    """What a Codex rule means can depend on the mode (never-ask refuses a
+    rule that says to ask), so Change re-reads the rules (#307)."""
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import ChatPermissionsDialog
+    state = {"mode": "Asks"}
+    host = SimpleNamespace(mode_text=lambda: state["mode"], can_change_mode=lambda: (True, ""),
+                           change_mode=lambda done: (state.update(mode="Never asks"), done()),
+                           note=lambda: "Note.", load=lambda done: done([], None),
+                           native_pending="Checking...",
+                           native=lambda done: done("Rules while " + state["mode"]))
+    dialog = ChatPermissionsDialog(frame, "Probe", host)
+    try:
+        assert dialog.note.GetValue() == "Note.\n\nRules while Asks"
+        dialog.on_change()
+        assert dialog.mode.GetValue() == "Never asks"
+        assert dialog.note.GetValue() == "Note.\n\nRules while Never asks"
+    finally:
+        dialog.Destroy()
+
+
 def test_chat_permissions_shows_a_worker_failure_and_never_claims_removal(frame, monkeypatch):
     from types import SimpleNamespace
     from thechatplace import chat_permissions

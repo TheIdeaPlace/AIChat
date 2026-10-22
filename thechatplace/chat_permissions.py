@@ -20,10 +20,6 @@ EMPTY = "Nothing is allowed beyond the permission mode."
 CLAUDE_TAKES_EFFECT = "Removing a rule applies from this chat's next turn."
 CLAUDE_RUNNING = ("A turn is running now. It keeps the rules it started with; "
                   "a removal applies from the next turn.")
-#: What a Codex chat's list says: The Chat Place keeps nothing for it.
-CODEX_EMPTY = "The Chat Place keeps no Codex approvals."
-CODEX_ABOUT = ("The Chat Place keeps no Codex approvals: when Codex asks you, your answer "
-               "covers that one request. Codex's own saved rule files are separate, below.")
 
 
 @dataclass(frozen=True)

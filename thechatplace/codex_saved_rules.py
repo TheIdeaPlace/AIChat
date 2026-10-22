@@ -85,7 +85,10 @@ def _word(value) -> Optional[str]:
         text = _visible(value)
         if text and text == value and not any(c in text for c in ' "'):
             return text
-        return '"' + text.replace('"', '\\"') + '"'
+        # Backslashes first, then quotes, then the control escapes, so each
+        # reads only one way.
+        text = " ".join(value.split()).replace('\\', '\\\\').replace('"', '\\"')
+        return '"' + _visible(text) + '"'
     if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
         words = [_word(v) for v in value]
         return None if None in words else "(" + " or ".join(words) + ")"

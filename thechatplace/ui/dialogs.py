@@ -1468,9 +1468,9 @@ class PermissionDialog(wx.Dialog):
 
 
 #: Why a Codex request has no Allow for This Chat (#307).
-CODEX_NOT_KEPT = ("The Chat Place can keep only some Git commands for a chat (status, switch, "
-                  "add, commit, push, fetch, diff and log), so this one isn't listed in Chat "
-                  "Permissions.")
+CODEX_NOT_KEPT = ("Allow for This Chat isn't offered for this request, so approving it keeps "
+                  "nothing in Chat Permissions. The Chat Place can keep only some Git commands, "
+                  "with their usual options: status, switch, add, commit, push, fetch, diff and log.")
 
 
 class CodexPermissionDialog(wx.Dialog):
@@ -1594,7 +1594,9 @@ class ChatPermissionsDialog(wx.Dialog):
         sizer.Add(row, 0, wx.EXPAND | wx.ALL, 8)
         sizer.Add(wx.StaticText(self, label="Abou&t these permissions:"), 0, wx.LEFT, 8)
         self.note = _read_only_text(self, "", "About these permissions", min_height=110)
-        sizer.Add(self.note, 0, wx.EXPAND | wx.ALL, 8)
+        # A share of the height: it can list Claude Code's or Codex's own
+        # rules, which shouldn't start below the fold (#307).
+        sizer.Add(self.note, 1, wx.EXPAND | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
         self._native = ""
@@ -1775,6 +1777,13 @@ class ChatPermissionsDialog(wx.Dialog):
                 return
             self.busy = ""
             self.refresh_mode()
+            # Read the host's own rules again: what they mean can depend on
+            # the mode (a Codex chat that never asks refuses a rule that
+            # says to ask, #307).
+            native = getattr(self.host, "native", None)
+            if callable(native):
+                self._native = getattr(self.host, "native_pending", "")
+                native(self._native_ready)
             self._show_note()
             self.reload(self.list.GetSelection())
             # Back to Change, unless you've moved on while it was checked.
