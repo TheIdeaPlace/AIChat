@@ -966,7 +966,9 @@ class SettingsDialog(wx.Dialog):
             self, "Let a&gent conversations hand replies across automatically",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.agent_auto.SetValue(speech.agent_auto_mode)
-        outer.Add(self.agent_auto, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        # A little less below it than the others, so Settings still fits a
+        # 768-high screen without scrolling (it did by 2 pixels on a Mac).
+        outer.Add(self.agent_auto, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
 
         # #141: the dialog at the first start after an update.
         self.update_notice = wx.CheckBox(
