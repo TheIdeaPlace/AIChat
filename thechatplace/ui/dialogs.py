@@ -963,14 +963,13 @@ class SettingsDialog(wx.Dialog):
         # Agent conversations (#248): automatic hand-offs are off until
         # turned on here, and then chosen for each conversation.
         self.agent_auto = wx.CheckBox(body, label=_wrapped(
-            self, "Let a&gent conversations hand replies across automatically, up to a turn "
-                  "limit (chosen for each conversation; otherwise you approve each hand-off)",
+            self, "Let a&gent conversations hand replies across automatically",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.agent_auto.SetValue(speech.agent_auto_mode)
         outer.Add(self.agent_auto, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         limit_row = wx.BoxSizer(wx.HORIZONTAL)
-        limit_row.Add(wx.StaticText(body, label="Default t&urn limit for automatic agent "
-                                                "conversations (exchanges):"),
+        # Short, so the row fits beside the spin box; its name says it all.
+        limit_row.Add(wx.StaticText(body, label="Their t&urn limit (exchanges):"),
                       0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
         from ..agents import MAX_TURN_LIMIT
         self.agent_limit = wx.SpinCtrl(body, min=1, max=MAX_TURN_LIMIT,
@@ -980,8 +979,7 @@ class SettingsDialog(wx.Dialog):
         limit_row.Add(self.agent_limit, 0)
         outer.Add(limit_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         self.agent_announce = wx.CheckBox(body, label=_wrapped(
-            self, "Announce e&very reply in automatic agent conversations (otherwise only when "
-                  "one stops or needs you)",
+            self, "Announce e&very reply in automatic agent conversations",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.agent_announce.SetValue(speech.agent_announce_each)
         outer.Add(self.agent_announce, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)

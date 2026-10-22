@@ -643,16 +643,16 @@ you, turn after turn.
   your own chats, which keeps its history. A chat can be in one conversation at a time.
 - **Role** (optional) for each, such as "Build the fix" and "Review each change; don't edit
   files". Each agent is told its role and the other's.
-- **New chat's permission:** for a new chat, its permission mode, as in New Session. **Folder
-  for new chats** is where they work.
+- **New chat's permission:** for a new chat, its permission mode, as in New Session.
+  **Folder for new chats** is where they work.
 - **Hand-offs:** approve each one, or automatic (offered once it's on in Settings), with a
   **Turn limit**.
 - **Who goes first:** the first agent, the second, or both.
 - **Opening message**, then **Ctrl+Enter** (or Start).
 
 The conversation is one row in the session list, with Provider "Claude + Codex" and Kind "agent
-conversation". Its two chats leave the list while they're in it; **File, Agent Conversation
-Members** goes to either one.
+conversation". Its two chats leave the list while they're in it;
+**File, Agent Conversation Members** goes to either one.
 
 **Reading it:** the messages list has both agents' messages in order. Each starts with who said
 it: "Claude: …", "Codex: …", "You, to Codex: …". The relay's own lines start with "Relay", such as
@@ -669,8 +669,8 @@ are then shown but not passed on).
   hands it to Codex". The row says a reply is waiting. **Ctrl+Shift+E** shows the reply,
   labelled with who wrote it; change or add to it, then Ctrl+Enter sends it on.
 - **Automatic:** turn on "Let agent conversations hand replies across automatically" in
-  Settings, then choose Automatic in New Agent Conversation, or for a conversation with **File,
-  Agent Conversation Hand-offs**. Replies go across by themselves until the turn limit (6
+  Settings, then choose Automatic in New Agent Conversation, or for a conversation with
+  **File, Agent Conversation Hand-offs**. Replies go across by themselves until the turn limit (6
   exchanges unless you choose another). It stops sooner when an agent ends its reply with
   DONE, when the replies start repeating each other, when an agent asked you something during
   its turn, or when a turn fails. You hear why, and the last reply waits for Ctrl+Shift+E. A

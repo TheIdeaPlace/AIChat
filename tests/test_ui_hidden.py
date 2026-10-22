@@ -11106,8 +11106,10 @@ def test_agent_conversation_send_hand_off_and_reply(frame, env, fake_runner, mon
     _finish(frame, "own-2", "Reviewed: one bug in the lock.")
     saved = frame.agents.get(conversation.conversation_id)
     assert saved.pending.text == "Reviewed: one bug in the lock."
-    assert env["spoken"][-1].endswith(key_name("Ctrl+Shift+E") + " hands it to Claude 2.")
-    assert not any(s.startswith("Builder replied") for s in env["spoken"])
+    # A reply is news queued behind what you're hearing, not cutting it off.
+    assert env["feedback"][-1].endswith(key_name("Ctrl+Shift+E") + " hands it to Claude 2.")
+    assert env["feedback"][-1].startswith("Claude 1 in Fix 247 replied.")
+    assert not any(s.startswith("Builder replied") for s in env["spoken"] + env["feedback"])
     seen = {}
 
     class Dialog:
@@ -11189,6 +11191,9 @@ def test_new_agent_conversation_from_two_existing_chats(frame, env, fake_runner,
     class Dialog:
         def __init__(self, parent, existing, new_kinds, **kw):
             seen.update(existing=[i.title for i in existing], kinds=new_kinds, **kw)
+            if len(existing) < 2:
+                self.result = None
+                return
             self.result = SimpleNamespace(
                 title="Pair", folder="", mode="approve", turn_limit=6,
                 message="Hello both.", first=0, to_all=True,
@@ -11196,7 +11201,7 @@ def test_new_agent_conversation_from_two_existing_chats(frame, env, fake_runner,
                          SimpleNamespace(info=existing[1], provider="claude", role="", permission="")])
 
         def ShowModal(self):
-            return wx.ID_OK
+            return wx.ID_OK if self.result is not None else wx.ID_CANCEL
 
         def Destroy(self):
             pass
