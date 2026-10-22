@@ -60,7 +60,7 @@ Claude's nine-item review on #307 is addressed on this test branch:
 7. The native-choice note is conditional on Allow for This Chat; user text spells
    out The Chat Place.
 8. Turn Status pluralizes request counts without repeating the consent phrase.
-9. Version remains 0.1.9. The open 0.1.10 notes file is preparation, not a release.
+9. Released in 0.2.0.
 
 Validation: ClaudeTesting ran the complete suite: **2,528 passed, 7 skipped** in
 172 seconds. The portable PyInstaller build's VM smoke report has no problems,
