@@ -301,11 +301,13 @@ class CodexChats:
             return
         previous = self._codex_states.get(key)
         self._codex_states[key] = state
-        self._restore_codex_text(key, state.unsent)
-        if state.unsent:
+        unsent = state.unsent
+        if unsent:
+            # An agent conversation's own message goes back to it (#248).
             agent_unsent = getattr(self, '_agent_unsent', None)
             if agent_unsent is not None:
-                agent_unsent('codex', state.native_id, state.unsent)
+                unsent = agent_unsent('codex', state.native_id, unsent)
+        self._restore_codex_text(key, unsent)
         record = self.store.get(state.native_id, provider='codex')
         if record is None:
             return

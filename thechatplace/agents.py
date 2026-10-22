@@ -395,8 +395,9 @@ def _classify(conversation: AgentConversation, index: int, message: ChatMessage,
         # One line: the whole setup read on every arrow (the list reads each
         # message in full) was 90 words of noise, heard in the NVDA run.
         # The member chat itself has it word for word.
-        shown.append(ChatMessage(RELAY, f"Setup sent to {name}: who the other agent is, the "
-                                        "roles, and to end with DONE when the work is finished.",
+        roles = "the roles, " if any(m.role for m in conversation.members) else ""
+        shown.append(ChatMessage(RELAY, f"Setup sent to {name}: who the other agent is, {roles}"
+                                        "and to end with DONE when the work is finished.",
                                  message.timestamp, key + ":setup", turn=message.turn))
         text = rest.strip()
         if not text:

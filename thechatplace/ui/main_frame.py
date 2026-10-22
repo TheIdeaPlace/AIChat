@@ -243,6 +243,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._agent_unconfirmed: set = set()
         self._agent_last_sent: Dict[tuple, str] = {}
         self._agent_codex_preparing: set = set()
+        self._agent_answered_early: set = set()
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -4399,7 +4400,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             "claude", session_id, event.text, event.is_error,
             detail=(usage.friendly_error(event.text) if event.is_error else
                     f"{len(denials)} tool{'s were' if len(denials) != 1 else ' was'} refused: "
-                    + "; ".join(denials) if denials else ""))
+                    + "; ".join(denials) if denials else ""),
+            more_queued=bool(self._queued.get(session_id)))
         if event.is_error:
             self._said_problems[session_id] = announce.status_text(event.text or "error", 120)
         elif denials:

@@ -42,7 +42,8 @@ class AgentChats:
     def _agent_quiet(self, provider, native_id) -> bool:
         """A member's turn that the conversation started: the conversation
         announces its reply, by the conversation's name, not the member chat."""
-        return (provider, native_id) in self._agent_awaiting
+        identity = (provider, native_id)
+        return identity in self._agent_awaiting or identity in self._agent_answered_early
 
     def _agent_rename_member(self, provider, old_id, new_id):
         """Claude chose another id for a new member chat on its first turn:
@@ -451,13 +452,20 @@ class AgentChats:
         if (provider, native_id) in self._agent_awaiting:
             self._agent_asked.add((provider, native_id))
 
-    def _agent_answered(self, provider, native_id, reply, failed=False, detail=""):
+    def _agent_answered(self, provider, native_id, reply, failed=False, detail="",
+                        more_queued=False):
         """A member answered and left work running in the background (#161),
         which can take an hour: its reply goes through the conversation now
         (said, handed on or waiting for you). When the turn finally ends,
         that's no longer the conversation's news."""
-        if (provider, native_id) in self._agent_awaiting and (reply or "").strip():
-            self._agent_turn_ended(provider, native_id, reply, failed, detail=detail)
+        identity = (provider, native_id)
+        if identity in self._agent_awaiting and (reply or "").strip():
+            # More of the conversation's text queued for it goes in as a
+            # follow-up: the wait carries on for that answer instead.
+            self._agent_turn_ended(provider, native_id, reply, failed, detail=detail,
+                                   more_queued=more_queued)
+            if not more_queued:
+                self._agent_answered_early.add(identity)
 
     def _agent_take_unsent(self, provider, native_id, text) -> bool:
         """A member's turn ended before its message reached it: a message the
@@ -477,30 +485,38 @@ class AgentChats:
         elif self._copy_text(body):
             self._feedback(f"{conversation.title}: the message that didn't go is copied to the "
                            "clipboard.")
+        else:
+            return False  # it stays in the member chat's own reply box, not lost
         return True
 
     def _agent_unsent(self, provider, native_id, texts=()):
         """A member gave a conversation's message back unsent: the turn it
         was waiting for won't come. Only when it's the conversation's own
-        message: text you queued in the member chat yourself isn't."""
+        message: text you queued in the member chat yourself isn't. Returns
+        the texts left for the member chat's own reply box: the
+        conversation's goes back to the conversation instead."""
+        texts = tuple(texts)
         sent = self._agent_last_sent.get((provider, native_id))
         if sent is None or (texts and sent not in texts):
-            return
-        awaited = self._agent_awaiting.pop((provider, native_id), None)
+            return texts
+        awaited = self._agent_awaiting.get((provider, native_id))
         if awaited is None:
-            return
+            return texts
         conversation = self.agents.get(awaited[0])
+        kept = self._agent_take_unsent(provider, native_id, sent)
+        self._agent_awaiting.pop((provider, native_id), None)
         if conversation is None:
-            return
+            return texts
         index = conversation.member_index(provider, native_id)
         if index is not None:
             self._agent_unbrief(conversation, index)
             name = conversation.members[index].name
             conversation.paused, conversation.stop_reason = True, f"{name} didn't take the message."
-            self._agent_note(conversation, f"{name} didn't take the message; it's in {name}'s "
-                                           "own chat's reply box (File, Agent Conversation "
-                                           "Members).")
+            self._agent_note(conversation, f"{name} didn't take the message." if kept
+                             else f"{name} didn't take the message; it's in {name}'s own chat's "
+                                  "reply box (File, Agent Conversation Members).")
             self._agent_after_change(conversation)
+        return tuple(t for t in texts if t != sent) if kept else texts
 
     def _agent_turn_ended(self, provider, native_id, reply, failed, *, more_queued=False,
                           detail=""):
@@ -509,6 +525,9 @@ class AgentChats:
         failed, or what was refused, which the member chat would have said."""
         identity = (provider, native_id)
         conversation = self.agents.containing(provider, native_id)
+        if not more_queued:
+            # The real end of a turn the conversation already handled (#161).
+            self._agent_answered_early.discard(identity)
         if conversation is None:
             self._agent_awaiting.pop(identity, None)
             return

@@ -48,7 +48,7 @@ class Window(AgentChats):
         self._agent_last_reply, self._agent_last_heard = {}, {}
         self._agent_codex_waiting = {}
         self._agent_unconfirmed, self._agent_last_sent = set(), {}
-        self._agent_codex_preparing = set()
+        self._agent_codex_preparing, self._agent_answered_early = set(), set()
         self._codex_send_pending, self._queued = {}, {}
         self._open = agents.rows([], [self.conversation])[-1]
         self.reply_text = Text()
@@ -685,3 +685,45 @@ def test_a_failed_codex_member_leaves_no_unsaved_claude_chat(tmp_path):
     assert w.feedback[-1] == ("Couldn't start the Codex chat for the agent conversation, so it "
                               "wasn't started. Codex is not signed in. Your opening message is "
                               "copied to the clipboard.")
+
+
+
+# -- found in the final review -----------------------------------------------------------------
+
+
+def test_queued_conversation_text_keeps_the_wait_after_a_background_answer(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_answered('claude', 'c1', 'Built; tests run in the background.', more_queued=True)
+    assert ('claude', 'c1') in w._agent_awaiting  # the queued follow-up's answer is awaited
+    assert w.saved.pending is None
+    w._agent_turn_ended('claude', 'c1', 'Also checked X.', False)
+    assert w.saved.pending.text == 'Also checked X.'
+
+
+def test_the_late_end_of_a_handled_turn_stays_quiet(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_answered('claude', 'c1', 'Built.')
+    assert ('claude', 'c1') not in w._agent_awaiting
+    assert w._agent_quiet('claude', 'c1')  # its "finished" an hour later says nothing
+    w._agent_turn_ended('claude', 'c1', '', False)
+    assert not w._agent_quiet('claude', 'c1')
+
+
+def test_a_message_that_cant_be_kept_anywhere_stays_with_the_member(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._open = None
+    w._copy_text = lambda text: False
+    assert not w._agent_take_unsent('claude', 'c1', w.claude_sent[-1][1])
+
+
+def test_a_codex_message_given_back_goes_to_the_conversation(tmp_path):
+    w = Window(tmp_path)
+    w.send('@Codex review this')
+    sent = w._agent_last_sent[('codex', 'x1')]
+    left = w._agent_unsent('codex', 'x1', ('Mine', sent))
+    assert left == ('Mine',)  # only your own text goes to the member chat's box
+    assert w.reply_text.value == 'review this'
+    assert w.saved.notes[-1].text == "Codex didn't take the message."

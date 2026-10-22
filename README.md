@@ -475,8 +475,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   - **Automatic**, once turned on in Settings: replies go across by themselves, up to a turn
     limit (6 exchanges unless you choose another, here or with File, Agent Conversation
     Hand-offs). It pauses, with the last reply waiting for Ctrl+Shift+E, when an agent asked
-    you something during its turn, a tool was refused, or a turn fails. It finishes, with
-    nothing waiting, when an agent says DONE or the replies start repeating. Sending a
+    you something during its turn or a tool was refused. It stops when a turn fails, and
+    you hear why. It finishes, with nothing waiting, when an agent says DONE or the replies
+    start repeating. Sending a
     message, or handing a reply on, starts it again with a fresh count. A reply given before
     background work (a build, say) is handed on when it's given.
   - Writing to the agent a reply is waiting for sends that reply too, ahead of your words.

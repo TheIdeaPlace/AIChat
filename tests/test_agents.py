@@ -200,13 +200,13 @@ def test_the_combined_view_names_each_speaker_in_time_order():
                                "Passed Claude's reply to Codex.")]
     shown = agents.combine(conversation, [claude, codex])
     assert [(m.label, m.text.split("\n")[0]) for m in shown] == [
-        ("Relay", "Setup sent to Claude: who the other agent is, the roles, and to end with "
-                  "DONE when the work is finished."),
+        ("Relay", "Setup sent to Claude: who the other agent is, and to end with DONE when "
+                  "the work is finished."),
         ("You, to Claude", "Build it."),
         ("Claude", "Built it."),
         ("Relay", "Passed Claude's reply to Codex."),
-        ("Relay", "Setup sent to Codex: who the other agent is, the roles, and to end with "
-                  "DONE when the work is finished."),
+        ("Relay", "Setup sent to Codex: who the other agent is, and to end with DONE when "
+                  "the work is finished."),
         ("Relay", "Claude's reply passed to Codex."),
         ("Codex", "One bug."),
     ]
@@ -360,3 +360,12 @@ def test_a_codex_reply_of_several_messages_passed_on_unchanged_reads_once():
     claude = [_m(USER, agents.relay_text(conversation, 1, joined), 3, "u1")]
     shown = agents.combine(conversation, [claude, codex])
     assert shown[-1].text == "Codex's reply passed to Claude."
+
+
+
+def test_the_setup_line_mentions_roles_only_when_there_are_some():
+    conversation = _conversation()
+    conversation.members[1].role = "Review"
+    shown = agents.combine(conversation, [[_m(USER, agents.outgoing(conversation, 0, "Go"), 0, "u")], []])
+    assert shown[0].text == ("Setup sent to Claude: who the other agent is, the roles, and to end "
+                             "with DONE when the work is finished.")
