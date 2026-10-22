@@ -84,6 +84,14 @@ class SessionController:
             finally:
                 self._claude_discovery.collect_current = None
 
+    def add_provider(self, provider: ConversationProvider):
+        """A backend that needs the controller itself, such as agent
+        conversations reading their members through it (#248). It has no
+        discovery of its own: the window builds its rows."""
+        if provider.provider_id in self._providers:
+            raise ValueError(f"Duplicate provider: {provider.provider_id}")
+        self._providers[provider.provider_id] = provider
+
     def _merge_owned(self, snapshot, owned):
         """Overlay TCP metadata without granting writes or loading a thread.
 

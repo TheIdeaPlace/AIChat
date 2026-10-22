@@ -15,6 +15,9 @@ from .dialogs import RelayDialog
 class RelayChats:
     def on_send_reply_to(self):
         info = self._open
+        if info is not None and info.provider == "agents":
+            self.on_agent_hand_off()  # an agent conversation's hand-off (#248)
+            return
         if info is None:
             self._feedback("Load a chat first, then send one of its replies to another chat.")
             return

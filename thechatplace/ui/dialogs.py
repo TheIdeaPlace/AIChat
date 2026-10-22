@@ -5,6 +5,7 @@ import dataclasses
 import os
 import sys
 import threading
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Optional
 
@@ -959,6 +960,32 @@ class SettingsDialog(wx.Dialog):
         self.codex_enabled.Bind(wx.EVT_CHECKBOX, self._on_codex_choice)
         outer.Add(self.codex_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        # Agent conversations (#248): automatic hand-offs are off until
+        # turned on here, and then chosen for each conversation.
+        self.agent_auto = wx.CheckBox(body, label=_wrapped(
+            self, "Let a&gent conversations hand replies across automatically, up to a turn "
+                  "limit (chosen for each conversation; otherwise you approve each hand-off)",
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
+        self.agent_auto.SetValue(speech.agent_auto_mode)
+        outer.Add(self.agent_auto, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        limit_row = wx.BoxSizer(wx.HORIZONTAL)
+        limit_row.Add(wx.StaticText(body, label="Default t&urn limit for automatic agent "
+                                                "conversations (exchanges):"),
+                      0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        from ..agents import MAX_TURN_LIMIT
+        self.agent_limit = wx.SpinCtrl(body, min=1, max=MAX_TURN_LIMIT,
+                                       initial=speech.agent_turn_limit)
+        set_accessible_name(self.agent_limit,
+                            "Default turn limit for automatic agent conversations, in exchanges")
+        limit_row.Add(self.agent_limit, 0)
+        outer.Add(limit_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        self.agent_announce = wx.CheckBox(body, label=_wrapped(
+            self, "Announce e&very reply in automatic agent conversations (otherwise only when "
+                  "one stops or needs you)",
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
+        self.agent_announce.SetValue(speech.agent_announce_each)
+        outer.Add(self.agent_announce, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         # #141: the dialog at the first start after an update.
         self.update_notice = wx.CheckBox(
             body, label="&Tell me when an update has been installed, with a link to what's new")
@@ -1026,7 +1053,8 @@ class SettingsDialog(wx.Dialog):
         if height + chrome > screen_area(self).height:
             narrower = (self.GetClientSize().width - 20 - _check_box_glyph(self)
                         - wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self))
-            for box in (self.remote_control, self.task_list, self.codex_enabled):
+            for box in (self.remote_control, self.task_list, self.codex_enabled,
+                        self.agent_auto, self.agent_announce):
                 box.SetLabel(_wrapped(self, box.GetLabel().replace("\n", " "), narrower))
         body.SetMinSize((-1, content.GetMinSize().height))
         _fit_height(self)
@@ -1060,6 +1088,9 @@ class SettingsDialog(wx.Dialog):
                                        or self.codex_enabled.GetValue() != self._initial_codex_effective
                                        else self._codex_choice),
                                    update_installed_notice=self.update_notice.GetValue(),
+                                   agent_auto_mode=self.agent_auto.GetValue(),
+                                   agent_turn_limit=self.agent_limit.GetValue(),
+                                   agent_announce_each=self.agent_announce.GetValue(),
                                    recent_folder_limit=self.recent_limit.GetValue())
 
 
@@ -2848,10 +2879,11 @@ class RelayDialog(wx.Dialog):
     with the reason, so nothing written is lost."""
 
     def __init__(self, parent, source_title: str, choices, text: str, check,
-                 working: bool = False):
+                 working: bool = False, title: str = ""):
         # Said first, with the title: the chat is mid-turn, so the reply
-        # may be a step on the way rather than its answer.
-        title = f"Send Reply to Another Chat: {source_title}"
+        # may be a step on the way rather than its answer. An agent
+        # conversation's hand-off (#248) gives its own title.
+        title = title or f"Send Reply to Another Chat: {source_title}"
         if working:
             title += " (still working; this is its latest reply so far)"
         super().__init__(parent, title=title,
@@ -2912,6 +2944,241 @@ class RelayDialog(wx.Dialog):
             return
         self.chosen = (index, text)
         self.EndModal(wx.ID_OK)
+
+
+class AgentConversationDialog(wx.Dialog):
+    """File, New Agent Conversation (#248): two chats, each an existing one
+    of The Chat Place's own or a new Claude or Codex chat, with a role each;
+    how hand-offs go; who answers first; and the opening message. Ctrl+Enter
+    starts it from anywhere, as Send does in the reply box. ``result`` holds
+    what was chosen once Start is pressed."""
+
+    NEW_LABELS = {"claude": "New Claude chat", "codex": "New Codex chat"}
+    SLOT_NAMES = ("First agent", "Second agent")
+    #: Each agent's labels, with access keys no other control here uses.
+    LABELS = (("First &agent's chat:", "First agent's &role (optional), such as Build the fix:",
+               "First agent's new chat &permission:"),
+              ("S&econd agent's chat:", "Second agent's r&ole (optional), such as Review each "
+               "change:", "Second agent's new chat permissio&n:"))
+
+    def __init__(self, parent, existing, new_kinds, folders=(), auto_allowed=False,
+                 turn_limit=6):
+        super().__init__(parent, title="New Agent Conversation",
+                         size=dialog_size(parent, 720, 720),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        from ..agents import MAX_TURN_LIMIT
+        from ..claude_cli import DEFAULT_PERMISSION_MODE
+        from .permission_hosts import CODEX_MODES
+        self.result = None
+        self._existing = list(existing)
+        self._new_kinds = list(new_kinds)
+        self._auto_allowed = auto_allowed
+        self._claude_modes = PERMISSION_MODES
+        self._codex_modes = CODEX_MODES
+        self._options = ([("new", kind) for kind in self._new_kinds]
+                         + [("chat", info) for info in self._existing])
+        labels = ([self.NEW_LABELS[kind] for kind in self._new_kinds]
+                  + [f"{i.title}, {i.provider.capitalize()}, {i.repo}" for i in self._existing])
+        body = wx.ScrolledWindow(self, style=wx.VSCROLL)
+        body.SetScrollRate(0, 10)
+        outer = wx.BoxSizer(wx.VERTICAL)
+        outer.Add(wx.StaticText(body, label="&Title:"), 0, wx.LEFT | wx.TOP, 8)
+        self.title_box = wx.TextCtrl(body)
+        self.title_box.SetMaxLength(200)
+        set_accessible_name(self.title_box, "Title")
+        outer.Add(self.title_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+
+        self.chats, self.roles, self.permissions, self._permission_labels = [], [], [], []
+        for slot, name in enumerate(self.SLOT_NAMES):
+            chat_label, role_label, permission_text = self.LABELS[slot]
+            outer.Add(wx.StaticText(body, label=chat_label), 0, wx.LEFT | wx.TOP, 8)
+            choice = wx.Choice(body, choices=labels)
+            set_accessible_name(choice, f"{name}'s chat")
+            outer.Add(choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+            outer.Add(wx.StaticText(body, label=role_label), 0, wx.LEFT | wx.TOP, 8)
+            role = wx.TextCtrl(body)
+            role.SetMaxLength(500)
+            set_accessible_name(role, f"{name}'s role (optional)")
+            outer.Add(role, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+            permission_label = wx.StaticText(body, label=permission_text)
+            outer.Add(permission_label, 0, wx.LEFT | wx.TOP, 8)
+            permission = wx.Choice(body)
+            set_accessible_name(permission, f"{name}'s new chat permission")
+            outer.Add(permission, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+            self.chats.append(choice)
+            self.roles.append(role)
+            self.permissions.append(permission)
+            self._permission_labels.append(permission_label)
+            choice.Bind(wx.EVT_CHOICE, lambda e: self._sync())
+
+        self.folder_label = wx.StaticText(body, label="&Folder for new chats:")
+        outer.Add(self.folder_label, 0, wx.LEFT | wx.TOP, 8)
+        folder_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.folder = wx.ComboBox(body, choices=list(folders), value=folders[0] if folders else "")
+        set_accessible_name(self.folder, "Folder for new chats")
+        folder_row.Add(self.folder, 1, wx.RIGHT, 6)
+        self.browse = wx.Button(body, label="&Browse...")
+        set_accessible_name(self.browse, "Browse for the folder for new chats")
+        self.browse.Bind(wx.EVT_BUTTON, self._on_browse)
+        folder_row.Add(self.browse, 0)
+        outer.Add(folder_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+
+        outer.Add(wx.StaticText(body, label="&Hand-offs:"), 0, wx.LEFT | wx.TOP, 8)
+        modes = [f"Approve each hand-off: you pass each reply on ({key_name('Ctrl+Shift+E')})"]
+        if auto_allowed:
+            modes.append("Automatic: replies go across by themselves, up to a limit")
+        self.mode = wx.Choice(body, choices=modes)
+        self.mode.SetSelection(0)
+        set_accessible_name(self.mode, "Hand-offs")
+        self.mode.Bind(wx.EVT_CHOICE, lambda e: self._sync())
+        outer.Add(self.mode, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        self.limit_label = wx.StaticText(body, label="Turn &limit (exchanges before it stops):")
+        outer.Add(self.limit_label, 0, wx.LEFT | wx.TOP, 8)
+        self.limit = wx.SpinCtrl(body, min=1, max=MAX_TURN_LIMIT, initial=turn_limit)
+        set_accessible_name(self.limit, "Turn limit, in exchanges")
+        outer.Add(self.limit, 0, wx.LEFT | wx.RIGHT, 8)
+
+        outer.Add(wx.StaticText(body, label="Who goes f&irst:"), 0, wx.LEFT | wx.TOP, 8)
+        self.first = wx.Choice(body, choices=["First agent", "Second agent",
+                                              "Both (their replies aren't passed on)"])
+        self.first.SetSelection(0)
+        set_accessible_name(self.first, "Who answers first")
+        outer.Add(self.first, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        outer.Add(wx.StaticText(body, label=f"Opening &message ({key_name('Enter')} starts a new "
+                                            f"line; {key_name('Ctrl+Enter')} starts the "
+                                            "conversation):"),
+                  0, wx.LEFT | wx.TOP, 8)
+        self.message = wx.TextCtrl(body, style=wx.TE_MULTILINE | wx.TE_RICH2)
+        self.message.SetMinSize(dip(self, -1, 120))
+        set_accessible_name(self.message, "Opening message")
+        outer.Add(self.message, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        body.SetSizer(outer)
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(body, 1, wx.EXPAND)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        start = wx.Button(self, wx.ID_OK, "&Start")
+        start.SetDefault()
+        row.Add(start, 0, wx.RIGHT, 6)
+        row.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
+        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self._body = body
+        start.Bind(wx.EVT_BUTTON, lambda e: self._start())
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        # A Claude chat and a Codex chat, new or the most recent of each.
+        self._default(0, "claude")
+        self._default(1, "codex" if self._pick(0)[1] != "codex" else "claude")
+        self._default_permission = DEFAULT_PERMISSION_MODE
+        self._sync()
+        body.FitInside()
+        wx.CallAfter(self.title_box.SetFocus)
+
+    def _pick(self, slot):
+        index = self.chats[slot].GetSelection()
+        if not (0 <= index < len(self._options)):
+            return None, None
+        kind, value = self._options[index]
+        return (None, value) if kind == "new" else (value, value.provider)
+
+    def _default(self, slot, provider):
+        taken = self.chats[0].GetSelection() if slot == 1 else -1
+        for wanted in (("new", provider), ("chat", provider), ("new", None), ("chat", None)):
+            for index, (kind, value) in enumerate(self._options):
+                if index == taken and kind == "chat":
+                    continue
+                value_provider = value if kind == "new" else value.provider
+                if kind == wanted[0] and (wanted[1] is None or value_provider == wanted[1]):
+                    self.chats[slot].SetSelection(index)
+                    return
+        if self._options:
+            self.chats[slot].SetSelection(0)
+
+    def _sync(self):
+        """Each new chat's permission choice, the folder and the turn limit
+        are there only when they apply."""
+        any_new = False
+        for slot in range(2):
+            info, provider = self._pick(slot)
+            new = info is None and provider is not None
+            any_new = any_new or new
+            permission = self.permissions[slot]
+            if new:
+                modes = self._claude_modes if provider == "claude" else self._codex_modes
+                labels = [label for _value, label in modes]
+                if list(permission.GetStrings()) != labels:
+                    permission.Set(labels)
+                    permission.SetSelection(0)
+            permission.Show(new)
+            self._permission_labels[slot].Show(new)
+        for control in (self.folder_label, self.folder, self.browse):
+            control.Show(any_new)
+        auto = self._auto_allowed and self.mode.GetSelection() == 1
+        self.limit_label.Show(auto)
+        self.limit.Show(auto)
+        self._body.Layout()
+        self._body.FitInside()
+
+    def _on_browse(self, _event):
+        with wx.DirDialog(self, "Choose the folder for the new chats", self.folder.GetValue(),
+                          style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dialog:
+            if dialog.ShowModal() == wx.ID_OK:
+                self.folder.SetValue(dialog.GetPath())
+        self.folder.SetFocus()
+
+    def _on_key(self, event):
+        if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+                and event.ControlDown() and not event.AltDown()):
+            self._start()
+            return
+        if press_focused_button_on_a_mac(event):
+            return
+        event.Skip()
+
+    def _problem(self):
+        picks = [self._pick(slot) for slot in range(2)]
+        if any(provider is None for _info, provider in picks):
+            return "Choose a chat for each agent.", self.chats[0]
+        if picks[0][0] is not None and picks[1][0] is not None \
+                and picks[0][0].key == picks[1][0].key:
+            return "The two agents need different chats.", self.chats[1]
+        if any(info is None for info, _provider in picks):
+            folder = self.folder.GetValue().strip()
+            if not folder or not os.path.isdir(folder):
+                return ("Choose a folder that exists for the new chats.", self.folder)
+        return None, None
+
+    def _start(self):
+        problem, control = self._problem()
+        if problem:
+            wx.MessageBox(problem, self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
+            control.SetFocus()
+            return
+        members = []
+        for slot in range(2):
+            info, provider = self._pick(slot)
+            permission = ""
+            if info is None:
+                index = max(self.permissions[slot].GetSelection(), 0)
+                modes = self._claude_modes if provider == "claude" else self._codex_modes
+                value = modes[index][0]
+                permission = value if provider == "claude" else value[0]
+            members.append(SimpleNamespace(info=info, provider=provider,
+                                           role=" ".join(self.roles[slot].GetValue().split()),
+                                           permission=permission))
+        first = self.first.GetSelection()
+        self.result = SimpleNamespace(
+            title=" ".join(self.title_box.GetValue().split()) or self._default_title(),
+            members=members, folder=self.folder.GetValue().strip(),
+            mode="auto" if self._auto_allowed and self.mode.GetSelection() == 1 else "approve",
+            turn_limit=self.limit.GetValue(), message=self.message.GetValue().strip(),
+            first=0 if first == 2 else max(first, 0), to_all=first == 2)
+        self.EndModal(wx.ID_OK)
+
+    def _default_title(self):
+        line = self.message.GetValue().strip().split("\n")[0]
+        return line[:60] if line else "Agent conversation"
 
 
 class PromptsDialog(wx.Dialog):

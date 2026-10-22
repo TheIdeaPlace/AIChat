@@ -207,7 +207,9 @@ class CodexChats:
             self._update_send_state()
         self._codex_work(prepare, done)
 
-    def _send_codex_owned(self, record, text):
+    def _send_codex_owned(self, record, text, announce_send=True, restore=True, on_result=None):
+        """``announce_send`` and ``restore`` off: an agent conversation (#248)
+        says what was sent, and keeps the text if it fails (``on_result``)."""
         key = record.to_info().key
         self._codex_send_pending[key] = self._codex_send_pending.get(key, 0) + 1
         def done(queued, error):
@@ -216,9 +218,13 @@ class CodexChats:
                 self._codex_send_pending[key] = remaining
             else:
                 del self._codex_send_pending[key]
-            if error:
+            if error and not restore:
+                pass
+            elif error:
                 self._restore_codex_text(key, (text,))
                 self._feedback(queued or 'Codex could not confirm this send. Check the chat history before sending again.')
+            elif not announce_send:
+                pass
             else:
                 formatter = announce.queued_text if queued else announce.sent_text
                 self._feedback(formatter(record.title, text, self.speech.announce,
@@ -227,6 +233,8 @@ class CodexChats:
                 for state in self._codex_delayed_updates.pop(key, ()):
                     self._on_codex_update(state)
             self._update_send_state()
+            if on_result is not None:
+                on_result(queued, error)
         self._codex_work(lambda: self.sessions.owned_action('send', record, text), done)
 
     def _stop_codex_owned(self, info):
@@ -315,6 +323,10 @@ class CodexChats:
             self._say(f'{record.title}: {state.problem}', interrupt=False)
         if state.notice and (previous is None or previous.notice != state.notice):
             self._say(f'{record.title}: {state.notice}', interrupt=False)
+        if state.requests:
+            agent_asked = getattr(self, '_agent_member_asked', None)
+            if agent_asked is not None:
+                agent_asked('codex', state.native_id)
         if state.requests and not state.problem and (previous is None or previous.requests != state.requests):
             request = state.requests[0]
             summary = ' '.join(request.summary().split())[:200]
@@ -337,8 +349,11 @@ class CodexChats:
             # Use the same configured announcement level as Claude replies.
             if reply:
                 text = announce.reply_text(record.title, reply, self.speech.announce)
-            self._say(text, interrupt=False)
-            if state.outcome != 'interrupted':
+            agent_quiet = getattr(self, '_agent_quiet', None)
+            quiet = agent_quiet is not None and agent_quiet('codex', state.native_id)
+            if not quiet:  # an agent conversation says it, by its own name (#248)
+                self._say(text, interrupt=False)
+            if state.outcome != 'interrupted' and not quiet:
                 self._notify(key, f'{record.title}: Codex ' + ('answered' if state.outcome == 'completed' else state.outcome),
                              text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
@@ -349,6 +364,11 @@ class CodexChats:
             destination = 'reply box' if loaded else f'draft for {record.title}'
             self._feedback(f'{count} unsent message' + ('s are' if count != 1 else ' is')
                            + f' back in the {destination}.')
+        if fresh_terminal:
+            agent_ended = getattr(self, '_agent_turn_ended', None)
+            if agent_ended is not None:
+                agent_ended('codex', state.native_id, reply, state.outcome != 'completed',
+                            more_queued=bool(state.queued))
         if loaded:
             if fresh_terminal:
                 # A verified turn ended even if second-resolution catalog

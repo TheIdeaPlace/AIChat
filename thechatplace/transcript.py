@@ -72,6 +72,9 @@ EVENT = "event"
 COMPACTION = "compaction"
 COMMAND_OUTPUT = "command_output"
 COMMAND_ERROR = "command_error"
+#: An agent conversation's own line (#248): the relay passing a reply on, the
+#: setup it sent, or why it stopped. Never from a transcript.
+RELAY = "relay"
 MAX_COMMAND_OUTPUT = 16_384
 
 LABELS = {
@@ -93,6 +96,7 @@ LABELS = {
     COMPACTION: "Context",
     COMMAND_OUTPUT: "Claude Code",
     COMMAND_ERROR: "Claude Code error",
+    RELAY: "Relay",
 }
 
 #: Kinds hidden unless "show tool activity" is on.
@@ -120,6 +124,9 @@ class ChatMessage:
     def label(self) -> str:
         if self.kind == PEER and self.sender:
             return f"From {self.sender}"
+        if self.kind == USER and self.sender:
+            # In an agent conversation (#248): who your words went to.
+            return f"You, to {self.sender}"
         if self.kind == ASSISTANT:
             return self.assistant_name
         return LABELS.get(self.kind, self.kind.capitalize())

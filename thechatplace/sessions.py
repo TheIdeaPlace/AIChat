@@ -106,6 +106,12 @@ class SessionInfo:
     #: Agent backend, separate from where a session was discovered. Existing
     #: Claude keys stay unchanged so groups, hidden rows and titles survive.
     provider: str = "claude"
+    #: What the Provider column says when it isn't the provider's own name:
+    #: "Claude + Codex" for an agent conversation (#248).
+    provider_label: str = ""
+    #: An agent conversation's members' providers, so View, Show Sessions,
+    #: Claude Chats (or Codex Chats) lists it too.
+    member_providers: tuple = ()
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -132,6 +138,7 @@ class SessionInfo:
         if self.cowork:
             return "Cowork session"
         return {DESKTOP: "desktop app session", TERMINAL: "terminal session",
+                "agents": "agent conversation",
                 "editor": "editor session", "command_line": "command-line session",
                 "app_server": "other app session"}.get(self.source, "external session")
 
@@ -203,7 +210,7 @@ class SessionInfo:
                       + ", ".join(self.groups))
         return {
             FIELD_TITLE: self.title or "Untitled session",
-            FIELD_PROVIDER: self.provider.capitalize(),
+            FIELD_PROVIDER: self.provider_label or self.provider.capitalize(),
             FIELD_FOLDER: self.repo,
             FIELD_STATUS: state,
             FIELD_NEW_REPLY: "new reply" if self.unread else "",
@@ -412,7 +419,8 @@ def in_view(info: SessionInfo, view: str) -> bool:
     if info.archived:
         return False
     if view in (VIEW_CLAUDE, VIEW_CODEX):
-        return info.provider == view.removeprefix("provider:")
+        wanted = view.removeprefix("provider:")
+        return info.provider == wanted or wanted in info.member_providers
     if view == VIEW_ACTIVE:
         return info.state in (NEEDS_YOU, WORKING)
     if view == VIEW_NEEDS_YOU:
