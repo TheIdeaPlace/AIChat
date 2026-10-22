@@ -200,17 +200,19 @@ def test_the_combined_view_names_each_speaker_in_time_order():
                                "Passed Claude's reply to Codex.")]
     shown = agents.combine(conversation, [claude, codex])
     assert [(m.label, m.text.split("\n")[0]) for m in shown] == [
-        ("Relay", "Setup sent to Claude."),
+        ("Relay", "Setup sent to Claude: who the other agent is, the roles, and to end with "
+                  "DONE when the work is finished."),
         ("You, to Claude", "Build it."),
         ("Claude", "Built it."),
         ("Relay", "Passed Claude's reply to Codex."),
-        ("Relay", "Setup sent to Codex."),
+        ("Relay", "Setup sent to Codex: who the other agent is, the roles, and to end with "
+                  "DONE when the work is finished."),
         ("Relay", "Claude's reply passed to Codex."),
         ("Codex", "One bug."),
     ]
     assert len({m.key for m in shown}) == len(shown)
-    # The setup's text is there to read in full.
-    assert agents.SETUP_START in shown[0].text
+    # One line, not the whole setup (heard in the NVDA run).
+    assert agents.SETUP_START not in shown[0].text
 
 
 def test_your_words_sent_to_both_read_as_one_message():

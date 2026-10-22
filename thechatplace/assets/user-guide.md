@@ -657,8 +657,8 @@ conversation". Its two chats leave the list while they're in it;
 **Reading it:** the messages list has both agents' messages in order. Each starts with who said
 it: "Claude: …", "Codex: …", "You, to Codex: …". The relay's own lines start with "Relay", such as
 "Relay: Claude's reply passed to Codex." If you changed a reply before handing it on, that line
-goes on to say what went. Enter reads any of them in full, including the setup each agent was
-sent at the start.
+goes on to say what went. Enter reads any of them in full. The setup each agent was sent at
+the start is one line here; its own chat has it word for word.
 
 **Writing in it:** what you type goes to the agent whose turn it is (Turn Status says which).
 Start with @ and a name to choose: "@Codex check the tests", or "@all" for both (their replies

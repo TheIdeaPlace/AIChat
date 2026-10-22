@@ -392,7 +392,11 @@ def _classify(conversation: AgentConversation, index: int, message: ChatMessage,
     shown: List[ChatMessage] = []
     if text.lstrip().startswith(SETUP_START):
         setup, _sep, rest = text.partition(SETUP_END)
-        shown.append(ChatMessage(RELAY, f"Setup sent to {name}.\n\n{setup}{SETUP_END}",
+        # One line: the whole setup read on every arrow (the list reads each
+        # message in full) was 90 words of noise, heard in the NVDA run.
+        # The member chat itself has it word for word.
+        shown.append(ChatMessage(RELAY, f"Setup sent to {name}: who the other agent is, the "
+                                        "roles, and to end with DONE when the work is finished.",
                                  message.timestamp, key + ":setup", turn=message.turn))
         text = rest.strip()
         if not text:
