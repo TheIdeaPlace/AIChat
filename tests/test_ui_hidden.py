@@ -2629,8 +2629,7 @@ def test_full_message_opens_as_a_formatted_page(frame, env, monkeypatch):
     title, page = shown[0]
     assert title == "Message: Claude"
     # The speaker is heading 1 and the message's "## Result" moves under it (#341).
-    assert "<h1>Claude</h1>
-<h3>Result</h3>" in page and "<th>a</th>" in page and "<td>2</td>" in page
+    assert "<h1>Claude</h1>\n<h3>Result</h3>" in page and "<th>a</th>" in page and "<td>2</td>" in page
 
 
 def test_read_as_plain_text_and_the_setting_open_the_text_box(frame, env, monkeypatch):
