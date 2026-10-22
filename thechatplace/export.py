@@ -133,7 +133,8 @@ def to_html(title: str, messages: Iterable, folder: str = "",
         body.append(f'<section aria-labelledby="m{number}">'
                     f'<h2 id="m{number}">{html.escape(heading)}</h2>'
                     f"{markdown_to_html(shift_headings(message.text))}</section>")
-    return html_page(title, "\n".join(body))
+    # A saved file is opened in a browser, like the published pages (#341).
+    return html_page(title, "\n".join(body), landmark=True)
 
 
 def render(fmt: str, title: str, messages: Iterable, folder: str = "",

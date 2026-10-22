@@ -30,6 +30,7 @@ def test_web_page_is_inert_and_structured():
     assert '<section aria-labelledby="m2"><h2 id="m2">Claude</h2><h3>Plan</h3>' in page
     assert "<b>" not in page and "&lt;b&gt;" in page  # HTML in a message is text
     assert "default-src 'none'" in page
+    assert "<body><main><h1>" in page  # a file opened in a browser keeps its landmark (#341)
 
 
 def test_message_times_and_heading_shift_limits():
