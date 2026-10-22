@@ -175,8 +175,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   says the session's state and whether it's read-only. **Enter** (or the context menu's Read Full
   Message, with the Applications key, Shift+F10, VO+Shift+M or a right-click) shows the whole
   message as a formatted page. It starts with who wrote it as heading 1, and your screen reader's
-  browse mode moves by heading (H), table (T, then its cell commands), list (L) and code block (each is a region: R in JAWS, D in NVDA, named
-  like "Code block, Python, 14 lines"). Links open in your browser. **Read as Plain Text** (Alt+P)
+  browse mode moves by heading (H), table (T, then its cell commands), list (L) and code block
+  (each is a region: R in JAWS, D in NVDA, named like "Code block, Python, 14 lines"). Links open in your browser. **Read as Plain Text** (Alt+P)
   switches to a read-only text box, to read by line, word and character (Option+P on a Mac), and
   Settings can make that the default. Escape closes either, back on the same message. On a Mac the
   page is shown by the system's WebKit, and VoiceOver moves through it with the rotor (VO+U) and its
