@@ -9718,9 +9718,11 @@ def test_message_dialogs_use_equal_provider_labels(frame, monkeypatch, provider)
     finally:
         dialog.Destroy()
     shown = []
-    monkeypatch.setattr(frame, '_show_page', lambda title, page: shown.append(title) or True)
+    monkeypatch.setattr(frame, '_show_page', lambda title, page: shown.append((title, page)) or True)
     frame._show_formatted(ChatMessage(ASSISTANT, 'Synthetic text', assistant_name=provider))
-    assert shown == [f'Message: {provider}']
+    assert [title for title, _page in shown] == [f'Message: {provider}']
+    # The page starts with who wrote it as heading 1 (#341).
+    assert f'<body><h1>{provider}</h1>' in shown[0][1]
 
 
 @pytest.mark.parametrize('source', ['terminal', 'editor', 'app_server'])

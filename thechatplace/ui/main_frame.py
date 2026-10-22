@@ -2007,7 +2007,7 @@ class MainFrame(CodexChats, RelayChats, wx.Frame):
         shown, or Kelly chose Read as Plain Text: the caller opens the text
         box instead."""
         title = f"Message: {message.label}"
-        return self._show_page(title, message_page(title, message.text))
+        return self._show_page(title, message_page(title, message.text, heading=message.label))
 
     def on_user_guide(self, _event=None):
         """Help, User Guide (#104): the guide as a page, read by heading like
