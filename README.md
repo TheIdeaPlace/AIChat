@@ -458,16 +458,19 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Place's own chats, Claude and Codex (or two of either), talk to each other in one
   conversation, with you in it. Choose each agent's chat: one of yours, keeping its history,
   or a new Claude or Codex chat (with its permission, in a folder you choose), and give each
-  a role if you like ("Build the fix", "Review each change; don't edit files"). Choose how
-  replies go across, who answers first, and write the opening message. The conversation is
+  a role if you like ("Build the fix", "Review each change; don't edit files"). Kind of
+  conversation fills in the roles, new chats' permissions and who goes first for a builder
+  and reviewer, a second opinion, a debate, or plan and do. An optional third agent joins
+  in turn: replies go from the first to the second, the second to the third, and back.
+  Choose how replies go across, who answers first, and write the opening message. The conversation is
   one row in the session list (Provider "Claude + Codex", Kind "agent conversation"); its
-  member chats leave the list, and File, Agent Conversation Members goes to either one.
-  Loaded, its messages list has both agents' messages in order, each starting with who said
+  member chats leave the list, and File, Agent Conversation Members goes to any of them.
+  Loaded, its messages list has every agent's messages in order, each starting with who said
   it ("Codex: ...", "You, to Claude: ...") and the relay's own lines ("Relay: Claude's reply
   passed to Codex.", with what went if you changed it on the way, and why the relay
   stopped). What you type goes to the agent whose turn it is; start it with @ and a
   name ("@Codex check the tests"), or the name and a comma ("Codex, what's broken?"), to
-  choose, or "@all" for both. Each agent is told once, at
+  choose, or "@all" for every agent. Each agent is told once, at
   the start, who the other agent is, that its messages aren't yours, and to end its reply
   with DONE when the work is finished.
   - **Approve each hand-off** (the default): when an agent answers, you hear its reply, and
@@ -488,7 +491,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   - Writing to the agent a reply is waiting for sends that reply too, ahead of your words,
     and so does "@all". Writing only to the agent that sent it sets it aside (you hear so):
     you've carried on with that agent instead.
-  - **Stop** (Ctrl+Period) stops both agents and the relay; a waiting reply isn't passed on,
+  - **Stop** (Ctrl+Period) stops every agent and the relay; a waiting reply isn't passed on,
     and a message that hadn't gone comes back to the reply box. **Turn Status**
     (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
     to. **Usage and Context** (Ctrl+Shift+U) lists each agent's context and each provider's
@@ -498,6 +501,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     asks first if either provider is near a usage limit.
   - The relay's own lines are one line each in the list; Enter reads exactly what was sent
     (the setup each agent got, or the reply as it went).
+  - A reply passed on ends with the files its agent changed in that turn, so a reviewer
+    knows what to look at.
   - Permissions and questions still come to you, from each agent, through Answer
     (Ctrl+Shift+A): a message from one agent can never answer or approve anything for the
     other. Rename (F2), Properties (Alt+Enter) and Delete (Shift+Delete) work on the row;

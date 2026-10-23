@@ -2929,29 +2929,34 @@ class RelayDialog(wx.Dialog):
 
 
 class AgentConversationDialog(wx.Dialog):
-    """File, New Agent Conversation (#248): two chats, each an existing one
-    of The Chat Place's own or a new Claude or Codex chat, with a role each;
-    how hand-offs go; who answers first; and the opening message. Ctrl+Enter
+    """File, New Agent Conversation (#248): what kind of conversation (a
+    template fills in roles, permissions and who goes first, or your own);
+    two chats, and an optional third, each an existing one of The Chat
+    Place's own or a new Claude or Codex chat, with a role each; how
+    hand-offs go; who answers first; and the opening message. Ctrl+Enter
     starts it from anywhere, as Send does in the reply box. ``result`` holds
     what was chosen once Start is pressed."""
 
     NEW_LABELS = {"claude": "New Claude chat", "codex": "New Codex chat"}
-    SLOT_NAMES = ("First agent", "Second agent")
+    NO_THIRD = "No third agent"
+    SLOT_NAMES = ("First agent", "Second agent", "Third agent")
     #: Each agent's labels, with access keys no other control here uses.
     LABELS = (("First &agent's chat:", "First agent's &role (optional), such as Build the fix:",
                "First agent's new chat &permission:"),
               ("S&econd agent's chat:", "Second agent's r&ole (optional), such as Review each "
-               "change:", "Second agent's new chat permissio&n:"))
+               "change:", "Second agent's new chat permissio&n:"),
+              ("Thir&d agent's chat (optional):", "Third agent's role (optional), such as "
+               "&Check the facts:", "Third a&gent's new chat permission:"))
 
     def __init__(self, parent, existing, new_kinds, folders=(), auto_allowed=False,
                  turn_limit=6):
         super().__init__(parent, title="New Agent Conversation",
-                         size=dialog_size(parent, 720, 720),
+                         size=dialog_size(parent, 720, 760),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        from ..agents import MAX_TURN_LIMIT
-        from ..claude_cli import DEFAULT_PERMISSION_MODE
+        from ..agents import MAX_TURN_LIMIT, TEMPLATES
         from .permission_hosts import CODEX_MODES
         self.result = None
+        self._templates = TEMPLATES
         self._existing = list(existing)
         self._new_kinds = list(new_kinds)
         self._auto_allowed = auto_allowed
@@ -2964,6 +2969,13 @@ class AgentConversationDialog(wx.Dialog):
         body = wx.ScrolledWindow(self, style=wx.VSCROLL)
         body.SetScrollRate(0, 10)
         outer = wx.BoxSizer(wx.VERTICAL)
+        outer.Add(wx.StaticText(body, label="&Kind of conversation:"), 0, wx.LEFT | wx.TOP, 8)
+        self.template = wx.Choice(body, choices=["Your own roles"]
+                                  + [f"{t.name}: {t.description}" for t in TEMPLATES])
+        self.template.SetSelection(0)
+        set_accessible_name(self.template, "Kind of conversation")
+        self.template.Bind(wx.EVT_CHOICE, lambda e: self._apply_template())
+        outer.Add(self.template, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         outer.Add(wx.StaticText(body, label="&Title:"), 0, wx.LEFT | wx.TOP, 8)
         self.title_box = wx.TextCtrl(body)
         self.title_box.SetMaxLength(200)
@@ -2971,13 +2983,16 @@ class AgentConversationDialog(wx.Dialog):
         outer.Add(self.title_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
         self.chats, self.roles, self.permissions, self._permission_labels = [], [], [], []
+        self._role_labels = []
         for slot, name in enumerate(self.SLOT_NAMES):
             chat_label, role_label, permission_text = self.LABELS[slot]
             outer.Add(wx.StaticText(body, label=chat_label), 0, wx.LEFT | wx.TOP, 8)
-            choice = wx.Choice(body, choices=labels)
-            set_accessible_name(choice, f"{name}'s chat")
+            choices = ([self.NO_THIRD] if slot == 2 else []) + labels
+            choice = wx.Choice(body, choices=choices)
+            set_accessible_name(choice, f"{name}'s chat" + (" (optional)" if slot == 2 else ""))
             outer.Add(choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
-            outer.Add(wx.StaticText(body, label=role_label), 0, wx.LEFT | wx.TOP, 8)
+            role_text = wx.StaticText(body, label=role_label)
+            outer.Add(role_text, 0, wx.LEFT | wx.TOP, 8)
             role = wx.TextCtrl(body)
             role.SetMaxLength(500)
             set_accessible_name(role, f"{name}'s role (optional)")
@@ -2989,6 +3004,7 @@ class AgentConversationDialog(wx.Dialog):
             outer.Add(permission, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
             self.chats.append(choice)
             self.roles.append(role)
+            self._role_labels.append(role_text)
             self.permissions.append(permission)
             self._permission_labels.append(permission_label)
             choice.Bind(wx.EVT_CHOICE, lambda e: self._sync())
@@ -3006,7 +3022,7 @@ class AgentConversationDialog(wx.Dialog):
         outer.Add(folder_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
         outer.Add(wx.StaticText(body, label="&Hand-offs:"), 0, wx.LEFT | wx.TOP, 8)
-        modes = [f"Approve each hand-off: you pass each reply on ({key_name('Ctrl+Shift+E')})"]
+        modes = [f"Approve each hand-off: you pass each reply on (type, or {key_name('Ctrl+Shift+E')})"]
         if auto_allowed:
             modes.append("Automatic: replies go across by themselves, up to a limit")
         self.mode = wx.Choice(body, choices=modes)
@@ -3021,9 +3037,7 @@ class AgentConversationDialog(wx.Dialog):
         outer.Add(self.limit, 0, wx.LEFT | wx.RIGHT, 8)
 
         outer.Add(wx.StaticText(body, label="Who goes f&irst:"), 0, wx.LEFT | wx.TOP, 8)
-        self.first = wx.Choice(body, choices=["First agent", "Second agent",
-                                              "Both (their replies aren't passed on)"])
-        self.first.SetSelection(0)
+        self.first = wx.Choice(body)
         set_accessible_name(self.first, "Who answers first")
         outer.Add(self.first, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         outer.Add(wx.StaticText(body, label=f"Opening &message ({key_name('Enter')} starts a new "
@@ -3049,16 +3063,22 @@ class AgentConversationDialog(wx.Dialog):
         self._body = body
         start.Bind(wx.EVT_BUTTON, lambda e: self._start())
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
-        # A Claude chat and a Codex chat, new or the most recent of each.
+        # A Claude chat and a Codex chat, new or the most recent of each;
+        # no third agent unless you choose one.
         self._default(0, "claude")
         self._default(1, "codex" if self._pick(0)[1] != "codex" else "claude")
-        self._default_permission = DEFAULT_PERMISSION_MODE
+        self.chats[2].SetSelection(0)
         self._sync()
+        self.first.SetSelection(0)
         body.FitInside()
-        wx.CallAfter(self.title_box.SetFocus)
+        wx.CallAfter(self.template.SetFocus)
+
+    def _slots(self):
+        """The agents chosen: two, or three with a third."""
+        return 3 if self.chats[2].GetSelection() > 0 else 2
 
     def _pick(self, slot):
-        index = self.chats[slot].GetSelection()
+        index = self.chats[slot].GetSelection() - (1 if slot == 2 else 0)
         if not (0 <= index < len(self._options)):
             return None, None
         kind, value = self._options[index]
@@ -3077,30 +3097,64 @@ class AgentConversationDialog(wx.Dialog):
         if self._options:
             self.chats[slot].SetSelection(0)
 
+    def _modes(self, provider):
+        return self._claude_modes if provider == "claude" else self._codex_modes
+
     def _sync(self):
-        """Each new chat's permission choice, the folder and the turn limit
-        are there only when they apply."""
+        """Each new chat's permission choice, the third agent's role, the
+        folder, the turn limit and who can go first follow what's chosen."""
         any_new = False
-        for slot in range(2):
+        slots = self._slots()
+        for slot in range(3):
             info, provider = self._pick(slot)
-            new = info is None and provider is not None
+            used = slot < slots
+            new = used and info is None and provider is not None
             any_new = any_new or new
             permission = self.permissions[slot]
             if new:
-                modes = self._claude_modes if provider == "claude" else self._codex_modes
-                labels = [label for _value, label in modes]
+                labels = [label for _value, label in self._modes(provider)]
                 if list(permission.GetStrings()) != labels:
                     permission.Set(labels)
                     permission.SetSelection(0)
             permission.Show(new)
             self._permission_labels[slot].Show(new)
+            if slot == 2:
+                self.roles[2].Show(used)
+                self._role_labels[2].Show(used)
         for control in (self.folder_label, self.folder, self.browse):
             control.Show(any_new)
         auto = self._auto_allowed and self.mode.GetSelection() == 1
         self.limit_label.Show(auto)
         self.limit.Show(auto)
+        firsts = list(self.SLOT_NAMES[:slots]) + [
+            "Everyone (their replies aren't passed on)" if slots > 2
+            else "Both (their replies aren't passed on)"]
+        if list(self.first.GetStrings()) != firsts:
+            chosen = self.first.GetSelection()
+            self.first.Set(firsts)
+            self.first.SetSelection(chosen if 0 <= chosen < slots else 0)
         self._body.Layout()
         self._body.FitInside()
+
+    def _apply_template(self):
+        """A template fills in each agent's role, a new chat's permission and
+        who goes first; you can change any of them after."""
+        index = self.template.GetSelection() - 1
+        if not (0 <= index < len(self._templates)):
+            return
+        template = self._templates[index]
+        for slot, role in enumerate(template.roles):
+            self.roles[slot].SetValue(role)
+        self._sync()
+        for slot, (claude_mode, codex_sandbox) in enumerate(template.permissions):
+            info, provider = self._pick(slot)
+            if info is not None or provider is None:
+                continue
+            wanted = claude_mode if provider == "claude" else codex_sandbox
+            for position, (value, _label) in enumerate(self._modes(provider)):
+                if (value if provider == "claude" else value[0]) == wanted:
+                    self.permissions[slot].SetSelection(position)
+        self.first.SetSelection(template.first)
 
     def _on_browse(self, _event):
         with wx.DirDialog(self, "Choose the folder for the new chats", self.folder.GetValue(),
@@ -3119,12 +3173,13 @@ class AgentConversationDialog(wx.Dialog):
         event.Skip()
 
     def _problem(self):
-        picks = [self._pick(slot) for slot in range(2)]
+        slots = self._slots()
+        picks = [self._pick(slot) for slot in range(slots)]
         if any(provider is None for _info, provider in picks):
             return "Choose a chat for each agent.", self.chats[0]
-        if picks[0][0] is not None and picks[1][0] is not None \
-                and picks[0][0].key == picks[1][0].key:
-            return "The two agents need different chats.", self.chats[1]
+        keys = [info.key for info, _provider in picks if info is not None]
+        if len(keys) != len(set(keys)):
+            return "Each agent needs a different chat.", self.chats[1]
         if any(info is None for info, _provider in picks):
             folder = self.folder.GetValue().strip()
             if not folder or not os.path.isdir(folder):
@@ -3138,24 +3193,25 @@ class AgentConversationDialog(wx.Dialog):
             control.SetFocus()
             return
         members = []
-        for slot in range(2):
+        slots = self._slots()
+        for slot in range(slots):
             info, provider = self._pick(slot)
             permission = ""
             if info is None:
                 index = max(self.permissions[slot].GetSelection(), 0)
-                modes = self._claude_modes if provider == "claude" else self._codex_modes
-                value = modes[index][0]
+                value = self._modes(provider)[index][0]
                 permission = value if provider == "claude" else value[0]
             members.append(SimpleNamespace(info=info, provider=provider,
                                            role=" ".join(self.roles[slot].GetValue().split()),
                                            permission=permission))
         first = self.first.GetSelection()
+        to_all = first == slots
         self.result = SimpleNamespace(
             title=" ".join(self.title_box.GetValue().split()) or self._default_title(),
             members=members, folder=self.folder.GetValue().strip(),
             mode="auto" if self._auto_allowed and self.mode.GetSelection() == 1 else "approve",
             turn_limit=self.limit.GetValue(), message=self.message.GetValue().strip(),
-            first=0 if first == 2 else max(first, 0), to_all=first == 2)
+            first=0 if to_all else max(first, 0), to_all=to_all)
         self.EndModal(wx.ID_OK)
 
     def _default_title(self):

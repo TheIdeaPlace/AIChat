@@ -49,6 +49,7 @@ class Window(AgentChats):
         self._agent_codex_waiting = {}
         self._agent_unconfirmed, self._agent_last_sent = set(), {}
         self._agent_codex_preparing, self._agent_answered_early = set(), set()
+        self._agent_turn_files = {}
         self._codex_send_pending, self._queued = {}, {}
         self._open = agents.rows([], [self.conversation])[-1]
         self.reply_text = Text()
@@ -1025,3 +1026,92 @@ def test_conversation_usage_isnt_shown_once_you_move_on(tmp_path, monkeypatch):
     w._open = None
     done(action(), False)
     assert not w._agent_usage_busy
+
+
+# -- phase 3 -------------------------------------------------------------------------------
+
+
+def _three(w):
+    """The window's conversation with a third agent, a second Claude chat."""
+    w.records[('claude', 'c2')] = OwnSession('c2', 'Fact chat', '/work')
+    conversation = w.agents.get(w.cid)
+    conversation.members.append(Member('claude', 'c2', 'Claude 2', 'Check the facts'))
+    w.agents.put(conversation)
+    return conversation
+
+
+def test_three_agents_hand_on_round_in_turn(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    _three(w)
+    w.turn_limit = 6
+    w.send('Plan it.')
+    w._agent_turn_ended('claude', 'c1', 'Plan v1.', False)
+    assert w.codex_sent[-1][1].split('\n\n')[-1] == 'Plan v1.'
+    w._agent_turn_ended('codex', 'x1', 'Codex notes.', False)
+    assert [n for n, _t in w.claude_sent] == ['c1', 'c2']
+    assert w.claude_sent[-1][1].endswith('Codex notes.')
+    w._agent_turn_ended('claude', 'c2', 'Facts checked.', False)
+    assert [n for n, _t in w.claude_sent][-1] == 'c1'
+
+
+def test_three_agents_approve_mode_waits_for_the_next_in_turn(tmp_path):
+    w = Window(tmp_path)
+    _three(w)
+    w.send('@Codex review it.')
+    w._agent_turn_ended('codex', 'x1', 'One bug.', False)
+    assert (w.saved.pending.from_index, w.saved.pending.to_index) == (1, 2)
+
+
+def test_files_claude_edited_go_with_its_reply(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_tool_used('claude', 'c1', 'C:/work/app.py')
+    w._agent_tool_used('claude', 'c1', 'C:/work/app.py')
+    w._agent_tool_used('claude', 'c1', '')
+    w._agent_tool_used('codex', 'nobody', 'C:/work/other.py')  # not awaited
+    w._agent_turn_ended('claude', 'c1', 'Built it.', False)
+    sent = w.codex_sent[-1][1]
+    assert sent.endswith('Built it.\n\nFiles Claude changed in that turn:\n- C:/work/app.py')
+    assert w._agent_turn_files == {}
+
+
+def test_files_codex_changed_wait_with_its_reply(tmp_path):
+    w = Window(tmp_path)
+    w.send('@Codex fix it.')
+    w._agent_turn_ended('codex', 'x1', 'Fixed.', False, files=['src/a.py'])
+    assert w.saved.pending.files == ('src/a.py',)
+    w.send('Thanks, check it.')
+    assert w.claude_sent[-1][1].split(agents.USER_ADDS)[0].endswith('- src/a.py')
+
+
+def test_a_new_turn_starts_its_own_file_list(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_tool_used('claude', 'c1', 'old.py')
+    w._agent_stop(w._open)
+    w.send('Build it again.')
+    w._agent_turn_ended('claude', 'c1', 'Built.', False)
+    assert 'old.py' not in w.codex_sent[-1][1]
+
+
+def test_three_new_chats_are_named_apart(tmp_path):
+    w = Window(tmp_path)
+    w.records[('codex', 'x9')] = OwnSession('x9', 'Spare chat', '/work', provider='codex')
+    added = []
+    w.store.add = added.append
+    w._store_write = lambda method, *a, **k: method(*a, **k) or True
+    w.refresh_sessions = lambda **k: None
+    w._agent_open = lambda conversation: None
+    plan = SimpleNamespace(
+        title='Pair', folder=str(tmp_path), mode='approve', turn_limit=6, message='',
+        first=0, to_all=False,
+        members=[SimpleNamespace(info=None, provider='claude', role='Build', permission='auto'),
+                 SimpleNamespace(info=w.records[('codex', 'x9')].to_info(), provider='codex',
+                                 role='Review', permission=''),
+                 SimpleNamespace(info=None, provider='claude', role='Facts', permission='plan')])
+    w._agent_create(plan)
+    assert [r.title for r in added] == ['Pair: Claude 1', 'Pair: Claude 2']
+    assert [r.permission_mode for r in added] == ['auto', 'plan']
+    made = [c for c in w.agents.all() if c.title == 'Pair'][0]
+    assert [m.name for m in made.members] == ['Claude 1', 'Codex', 'Claude 2']
+    assert [m.role for m in made.members] == ['Build', 'Review', 'Facts']

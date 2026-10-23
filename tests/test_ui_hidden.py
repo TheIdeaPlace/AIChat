@@ -11280,7 +11280,7 @@ def test_agent_conversation_dialog_checks_and_result(app, monkeypatch, tmp_path)
         dialog.chats[1].SetSelection(2)
         dialog._sync()
         dialog._start()
-        assert boxes[-1] == "The two agents need different chats." and not ended
+        assert boxes[-1] == "Each agent needs a different chat." and not ended
         assert not dialog.permissions[0].IsShown() and not dialog.folder.IsShown()
         dialog.chats[1].SetSelection(1)  # a new Codex chat needs a folder that exists
         dialog._sync()
@@ -11300,6 +11300,49 @@ def test_agent_conversation_dialog_checks_and_result(app, monkeypatch, tmp_path)
                 result.members[1].role, result.members[1].permission) == (
             None, "codex", "Review each change", "workspace-write")
         assert result.mode == "auto" and result.first == 0 and not result.to_all
+        assert len(result.members) == 2  # no third agent unless you choose one
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
+def test_agent_conversation_dialog_template_and_third_agent(app, monkeypatch, tmp_path):
+    """Phase 3: a template fills in roles, new chats' permissions and who
+    goes first; a third agent is optional, and brings its role and
+    permission, and "Everyone" to who goes first."""
+    from thechatplace.agents import TEMPLATES
+    from thechatplace.sessions import SessionInfo, OWN
+    from thechatplace.ui import dialogs
+    existing = [SessionInfo(OWN, "own:a", "Builder", str(tmp_path), "a")]
+    parent = wx.Frame(None)
+    try:
+        dialog = dialogs.AgentConversationDialog(parent, existing, ["claude", "codex"],
+                                                 folders=[str(tmp_path)])
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        assert dialog.template.GetStringSelection() == "Your own roles"
+        assert not dialog.roles[2].IsShown() and not dialog.permissions[2].IsShown()
+        assert list(dialog.first.GetStrings()) == [
+            "First agent", "Second agent", "Both (their replies aren't passed on)"]
+        review = [t.key for t in TEMPLATES].index("build-review")
+        dialog.template.SetSelection(review + 1)
+        dialog._apply_template()
+        assert dialog.roles[0].GetValue() == TEMPLATES[review].roles[0]
+        assert dialog.roles[1].GetValue() == TEMPLATES[review].roles[1]
+        # A new Claude builder may edit; a new Codex reviewer is read-only.
+        assert dialog.permissions[0].GetStringSelection().startswith("Accept edits")
+        assert dialog.permissions[1].GetStringSelection().startswith("Read-only")
+        dialog.chats[2].SetSelection(1)  # a third agent: a new Claude chat
+        dialog._sync()
+        assert dialog.roles[2].IsShown() and dialog.permissions[2].IsShown()
+        assert list(dialog.first.GetStrings())[2:] == [
+            "Third agent", "Everyone (their replies aren't passed on)"]
+        dialog.roles[2].SetValue("Check the facts")
+        dialog.first.SetSelection(3)
+        dialog._start()
+        result = dialog.result
+        assert [m.provider for m in result.members] == ["claude", "codex", "claude"]
+        assert result.members[2].role == "Check the facts"
+        assert result.to_all and result.first == 0
         dialog.Destroy()
     finally:
         parent.Destroy()

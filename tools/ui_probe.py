@@ -576,6 +576,25 @@ def d_agent_new(frame, env):
         frame, existing, ["claude", "codex"], folders=[folder], auto_allowed=True))
 
 
+def d_agent_new_three(frame, env):
+    """Phase 3: the Builder and reviewer template, with a third agent."""
+    from thechatplace.agents import TEMPLATES
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    folder = env["folders"]["Scratch"]
+
+    def show():
+        dialog = AgentConversationDialog(frame, [], ["claude", "codex"], folders=[folder],
+                                         auto_allowed=True)
+        dialog.template.SetSelection([t.key for t in TEMPLATES].index("build-review") + 1)
+        dialog._apply_template()
+        dialog.chats[2].SetSelection(1)
+        dialog._sync()
+        dialog.roles[2].SetValue("Check the facts")
+        dialog.first.SetSelection(3)
+        frame._modal(dialog)
+    return show
+
+
 def d_agent_hand_off(frame, env):
     s_main_agents(frame, env)
     return frame.on_send_reply_to
@@ -1309,6 +1328,8 @@ SURFACES = {
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
                                          "new Codex chat"),
+    "agent-new-three": ("dialog", d_agent_new_three, "New Agent Conversation with the Builder "
+                                                     "and reviewer template and a third agent"),
     "agent-hand-off": ("dialog", d_agent_hand_off, "An agent conversation's hand-off "
                                                    "(Ctrl+Shift+E): a reply going to the other agent"),
     "rename": ("dialog", d_rename, "Rename Session (wx's own text entry dialog)"),
@@ -1378,6 +1399,7 @@ DIALOG_CLASSES = {
     "prompt-edit": "PromptEditDialog",
     "relay": "RelayDialog",
     "agent-new": "AgentConversationDialog",
+    "agent-new-three": "AgentConversationDialog",
     "agent-hand-off": "RelayDialog",
     "rename": "TextEntryDialog",
 }

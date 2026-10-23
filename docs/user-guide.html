@@ -593,34 +593,48 @@ you're sending may be a step on the way rather than its answer.</p>
 other agent: those still come to you, in each chat, as they always do.</p>
 <h3>Agent conversations</h3>
 <p>An agent conversation puts two chats, Claude and Codex or two of either, in one conversation
-with you, and passes each one's replies to the other. It's Send Reply to Another Chat done for
-you, turn after turn.</p>
+with you, and passes each one's replies to the other. A third chat can join, and then replies
+go round in turn: the first agent's to the second, the second's to the third, the third's back
+to the first. It's Send Reply to Another Chat done for you, turn after turn.</p>
 <p><strong>Starting one:</strong> press <strong>Ctrl+Shift+G</strong> (File, New Agent Conversation).</p>
 <ul>
+<li><strong>Kind of conversation:</strong> "Your own roles", or a ready-made kind that fills in the roles,
+  new chats' permissions and who goes first, which you can still change:</li>
+<li><strong>Builder and reviewer:</strong> one builds; the other reviews each change without editing, and
+    the builder fixes what it finds. A new reviewer chat can't edit files.</li>
+<li><strong>Second opinion:</strong> one answers; the other gives its own answer and says where it agrees
+    or differs. Neither changes files.</li>
+<li><strong>Debate:</strong> each argues for a different approach and answers the other's points; you
+    decide.</li>
+<li><strong>Plan and do:</strong> one makes a plan without changing anything; the other carries it out.</li>
 <li><strong>Title:</strong> the conversation's name. Left empty, it's the opening message's first line.</li>
 <li><strong>First agent's chat</strong> and <strong>Second agent's chat:</strong> a new Claude or Codex chat, or one of
   your own chats, which keeps its history. A chat can be in one conversation at a time.</li>
+<li><strong>Third agent's chat</strong> (optional): "No third agent" unless you choose one.</li>
 <li><strong>Role</strong> (optional) for each, such as "Build the fix" and "Review each change; don't edit
-  files". Each agent is told its role and the other's.</li>
+  files". Each agent is told its role and the others'.</li>
 <li><strong>New chat's permission:</strong> for a new chat, its permission mode, as in New Session.
   <strong>Folder for new chats</strong> is where they work.</li>
 <li><strong>Hand-offs:</strong> approve each one, or automatic (offered once it's on in Settings), with a
   <strong>Turn limit</strong>.</li>
-<li><strong>Who goes first:</strong> the first agent, the second, or both.</li>
+<li><strong>Who goes first:</strong> any one agent, or all of them (Both, or Everyone with three).</li>
 <li><strong>Opening message</strong>, then <strong>Ctrl+Enter</strong> (or Start).</li>
 </ul>
 <p>The conversation is one row in the session list, with Provider "Claude + Codex" and Kind "agent
-conversation". Its two chats leave the list while they're in it;
-<strong>File, Agent Conversation Members</strong> goes to either one.</p>
-<p><strong>Reading it:</strong> the messages list has both agents' messages in order. Each starts with who said
+conversation". Its chats leave the list while they're in it;
+<strong>File, Agent Conversation Members</strong> goes to any of them.</p>
+<p><strong>Reading it:</strong> the messages list has every agent's messages in order. Each starts with who said
 it: "Claude: …", "Codex: …", "You, to Codex: …". The relay's own lines start with "Relay", such as
 "Relay: Claude's reply passed to Codex." If you changed a reply before handing it on, that line
 adds "with your changes". Each is one line in the list, and Enter reads exactly what was sent:
 the setup each agent got, word for word, or the reply as it went. When you type with a reply
 waiting, your words follow that line as your own message.</p>
+<p><strong>Files that changed:</strong> when an agent edits files in its turn, the reply that's passed on ends
+with a list of them, "Files Claude changed in that turn", so a reviewer knows what to look at.
+The list is part of what was sent, so Enter on the relay line reads it.</p>
 <p><strong>Writing in it:</strong> what you type goes to the agent whose turn it is (Turn Status says which).
 Start with @ and a name to choose: "@Codex check the tests", or with the name and a comma, as
-you'd write to someone: "Codex, what's broken?". "@all" goes to both (their replies
+you'd write to someone: "Codex, what's broken?". "@all" goes to every agent (their replies
 are then shown but not passed on). If a reply is waiting to go to the agent you write to, it goes
 along with your words, ahead of them, instead of being dropped; "@all" takes it along too. If you
 write only to the agent that sent it, you've carried on with that agent instead, so the waiting
@@ -643,12 +657,13 @@ reply is set aside, and you hear so.</p>
   starts it again with a fresh count.</li>
 </ul>
 <p>In either mode, the relay finishes when an agent ends its reply with DONE, when the replies
-start repeating each other, or when the agents are only thanking each other. You hear that, and the last reply still waits for <strong>Ctrl+Shift+E</strong>,
-because a reviewer's DONE usually comes with its findings, which the other agent needs. The row
-doesn't say it needs you for it. Anything you write to the other agent takes it along.</p>
+start repeating each other, or when the agents are only thanking each other. You hear that,
+and the last reply still waits for <strong>Ctrl+Shift+E</strong>, because a reviewer's DONE usually comes
+with its findings, which the other agent needs. The row doesn't say it needs you for it.
+Anything you write to the agent it waits for takes it along.</p>
 <p>An agent that answers and leaves work running in the background, such as a build, is handed on
 when it answers, not when the work finishes.</p>
-<p><strong>Stopping:</strong> <strong>Ctrl+Period</strong> stops both agents and the relay. A reply that was waiting to be
+<p><strong>Stopping:</strong> <strong>Ctrl+Period</strong> stops every agent and the relay. A reply that was waiting to be
 handed on isn't passed on, and a message that hadn't gone yet comes back to the reply box.
 <strong>Ctrl+Shift+T</strong> says what each agent is doing, how far the count has got, and who your next
 message goes to. <strong>Ctrl+Shift+U</strong> lists each agent's context and each provider's limits.</p>

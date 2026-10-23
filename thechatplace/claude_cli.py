@@ -289,6 +289,11 @@ def _common_flags(permission_mode: str, model: str = "",
     return flags
 
 
+#: Tools that change a file, whose path an agent conversation lists with the
+#: reply (phase 3 of #248).
+FILE_EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
+
+
 def new_session_id() -> str:
     return str(uuid.uuid4())
 
@@ -820,8 +825,14 @@ class StreamParser:
                         target = _tool_target(tool_input)
                         # detail is what it acts on, as the messages list shows
                         # it ("Bash: git status"), for announcing it (#12).
+                        # The file an edit tool works on, for an agent
+                        # conversation's list of what a turn changed.
+                        path = (tool_input.get("file_path") or tool_input.get("notebook_path")
+                                if name in FILE_EDIT_TOOLS else None)
                         events.append(TurnEvent("tool", text=name,
-                                                detail=f"{name}: {target}" if target else name))
+                                                detail=f"{name}: {target}" if target else name,
+                                                data={"file_path": path}
+                                                if isinstance(path, str) and path else None))
             return events
         if etype == "result":
             self.finished = True

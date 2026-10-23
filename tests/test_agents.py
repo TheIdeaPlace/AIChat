@@ -489,3 +489,100 @@ def test_your_words_carried_with_a_waiting_reply_are_their_own_message():
                                                                              "Built it.")
     assert yours.kind == USER and yours.text == "Check the lock too."
     assert yours.label == "You, to Codex"
+
+
+# -- phase 3: templates, a third agent, changed files ------------------------------------------
+
+
+def test_templates_are_complete_and_use_real_permissions():
+    from thechatplace.claude_cli import PERMISSION_MODE_VALUES
+    from thechatplace.ui.permission_hosts import CODEX_MODES
+    sandboxes = {value[0] for value, _label in CODEX_MODES}
+    keys = [t.key for t in agents.TEMPLATES]
+    assert len(keys) == len(set(keys)) == 4
+    for template in agents.TEMPLATES:
+        assert len(template.roles) == len(template.permissions) == 2
+        assert all(role.strip() for role in template.roles)
+        for claude_mode, codex_sandbox in template.permissions:
+            assert claude_mode in PERMISSION_MODE_VALUES and codex_sandbox in sandboxes
+        assert 0 <= template.first < 2
+
+
+def test_a_reviewer_never_gets_edits_from_its_template():
+    review = {t.key: t for t in agents.TEMPLATES}["build-review"]
+    assert review.permissions[1] == ("plan", "read-only")
+
+
+def test_join_names():
+    assert agents.join_names(["Claude"]) == "Claude"
+    assert agents.join_names(["Claude", "Codex"]) == "Claude and Codex"
+    assert agents.join_names(["Claude 1", "Codex", "Claude 2"]) == "Claude 1, Codex and Claude 2"
+
+
+def test_at_most_three_agents():
+    with pytest.raises(ValueError):
+        agents.new_conversation("Too many", _members("claude", "codex", "claude", "codex"))
+    assert len(agents.new_conversation("Three", _members("claude", "codex", "claude")).members) == 3
+
+
+def test_three_agents_setup_names_both_others_and_the_turn_order():
+    conversation = _conversation("claude", "codex", "claude")
+    text = agents.setup_text(conversation, 0)
+    assert "The other participants are Codex and Claude 2: other AI agents" in text
+    assert "Replies go round in turn: yours goes to Codex" in text
+    two = agents.setup_text(_conversation(), 0)
+    assert "The other participant is Codex: another AI agent" in two
+    assert "Replies go round" not in two
+
+
+def test_three_agents_go_round_in_turn():
+    conversation = _conversation("claude", "codex", "claude")
+    assert [conversation.next_after(i) for i in range(3)] == [1, 2, 0]
+
+
+def test_three_agents_setup_line_and_your_words_to_all():
+    conversation = _conversation("claude", "codex", "claude")
+    shown = agents.combine(conversation, [
+        [_m(USER, agents.outgoing(conversation, 0, "Plan it."), 0, "u")],
+        [_m(USER, agents.outgoing(conversation, 1, "Plan it."), 0, "u")],
+        [_m(USER, agents.outgoing(conversation, 2, "Plan it."), 1, "u")]])
+    assert shown[0].text.startswith("Setup sent to Claude 1: who the other agents are,")
+    yours = [m for m in shown if m.kind == USER]
+    assert len(yours) == 1 and yours[0].label == "You, to Claude 1, Codex and Claude 2"
+
+
+def test_a_reply_passed_on_lists_the_files_its_turn_changed():
+    conversation = _conversation()
+    text = agents.relay_text(conversation, 0, "Built it.", ["app/a.py", "app/b.py", "app/a.py"])
+    assert text.endswith("Built it.\n\nFiles Claude changed in that turn:\n- app/a.py\n- app/b.py")
+    assert agents.relay_text(conversation, 0, "Built it.") == agents.relay_text(conversation, 0,
+                                                                                "Built it.", [])
+    many = agents.relay_text(conversation, 0, "x", [f"f{i}" for i in range(agents.MAX_FILES + 3)])
+    assert many.endswith("- and 3 more")
+
+
+def test_a_relay_with_files_still_reads_as_unchanged():
+    """The list of files is the relay's, not your change to the reply."""
+    conversation = _conversation()
+    sent = agents.relay_text(conversation, 0, "Built it.", ["a.py"])
+    shown = agents.combine(conversation, [[_m(ASSISTANT, "Built it.", 3, "a")],
+                                          [_m(USER, sent, 5, "r")]])
+    assert shown[-1].text == "Claude's reply passed to Codex."
+
+
+def test_codex_changed_files():
+    changes = [("item1", "Update: src/app.py\n@@ -1 +1 @@\n-a\n+b"),
+               ("item2", "Add: docs/new.md\nDelete: old.txt"),
+               ("item3", "Update: src/app.py\n+again"),
+               ("item4", None)]
+    assert agents.codex_changed_files(changes) == ["src/app.py", "docs/new.md", "old.txt"]
+    assert agents.codex_changed_files(None) == []
+
+
+def test_pending_files_round_trip(tmp_path):
+    conversation = _conversation()
+    conversation.pending = Pending(0, 1, "Built.", files=("a.py", "b.py"))
+    store = AgentConversationStore(tmp_path / "a.json")
+    store.add(conversation)
+    loaded = AgentConversationStore(tmp_path / "a.json").get(conversation.conversation_id)
+    assert loaded.pending.files == ("a.py", "b.py")

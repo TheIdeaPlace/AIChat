@@ -1843,3 +1843,20 @@ def test_kellys_mkdir_request_names_its_folder_in_windows_form(tmp_path):
     folder = str(tmp_path / ".worktrees")
     request = _captured_mkdir(folder)
     assert request.session_dirs() == [folder]
+
+
+
+def test_an_edit_tool_reports_its_file():
+    """An agent conversation lists the files a Claude turn edited (#248)."""
+    parser = StreamParser()
+    events = []
+    for name, tool_input in [("Edit", {"file_path": "C:/w/a.py", "old_string": "x"}),
+                             ("NotebookEdit", {"notebook_path": "C:/w/n.ipynb"}),
+                             ("Bash", {"command": "ls", "file_path": "C:/w/not-an-edit"}),
+                             ("Write", {"file_path": 7})]:
+        events.extend(parser.feed(ev(type="assistant", session_id="s1", parent_tool_use_id=None,
+                                     message={"content": [{"type": "tool_use", "name": name,
+                                                           "input": tool_input}]})))
+    assert [(e.text, e.data) for e in events] == [
+        ("Edit", {"file_path": "C:/w/a.py"}), ("NotebookEdit", {"file_path": "C:/w/n.ipynb"}),
+        ("Bash", None), ("Write", None)]
