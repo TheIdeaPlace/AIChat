@@ -566,6 +566,13 @@ def _sort_time(stamp: str) -> Optional[float]:
 
 
 _RELAY_LABEL = re.compile(r'^From (.+?) \(agent conversation "')
+#: Between replies passed on together (a catch-up, then the one in turn).
+_RELAY_SPLIT = re.compile(r'\n\n(?=From [^\n]{1,200}? \(agent conversation ")')
+
+
+def is_relay(text: str) -> bool:
+    """``text`` is a reply passed on (it starts with the relay's label)."""
+    return bool(_RELAY_LABEL.match((text or "").lstrip()))
 
 
 def _classify(conversation: AgentConversation, index: int, message: ChatMessage,
@@ -599,10 +606,13 @@ def _classify(conversation: AgentConversation, index: int, message: ChatMessage,
         # The reply itself is in the list already, as its agent's message:
         # one line here, and Enter reads exactly what went (``detail``).
         relay, adds, yours = text.strip().partition(USER_ADDS)
-        shown.append(ChatMessage(RELAY, f"{match.group(1)}'s reply passed to {name}.",
-                                 message.timestamp, key, sender=match.group(1),
-                                 turn=message.turn,
-                                 detail=f"Exactly what was sent:\n\n{relay}"))
+        # Replies it hadn't heard come first, each its own row (catch-up).
+        for number, block in enumerate(_RELAY_SPLIT.split(relay)):
+            sender = _RELAY_LABEL.match(block)
+            shown.append(ChatMessage(RELAY, f"{sender.group(1)}'s reply passed to {name}.",
+                                     message.timestamp, key if not number else f"{key}:{number}",
+                                     sender=sender.group(1), turn=message.turn,
+                                     detail=f"Exactly what was sent:\n\n{block}"))
         if adds and yours.strip():
             # Typed with a reply waiting: your words are your own message,
             # read on arrowing like any other.

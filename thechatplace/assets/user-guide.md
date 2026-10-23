@@ -635,7 +635,8 @@ other agent: those still come to you, in each chat, as they always do.
 An agent conversation puts two chats, Claude and Codex or two of either, in one conversation
 with you, and passes each one's replies to the other. A third chat can join, and then replies
 go round in turn: the first agent's to the second, the second's to the third, the third's back
-to the first. It's Send Reply to Another Chat done for you, turn after turn.
+to the first, and each agent is sent the replies it missed along with the one passed to it.
+It's Send Reply to Another Chat done for you, turn after turn.
 
 **Starting one:** press **Ctrl+Shift+G** (File, New Agent Conversation).
 
@@ -715,7 +716,8 @@ An agent that answers and leaves work running in the background, such as a build
 when it answers, not when the work finishes.
 
 **Stopping:** **Ctrl+Period** stops every agent and the relay. A reply that was waiting to be
-handed on isn't passed on, and a message that hadn't gone yet comes back to the reply box.
+handed on isn't passed on, a message that hadn't gone yet comes back to the reply box, and your
+next message goes to the agent you stopped.
 **Ctrl+Shift+T** says what each agent is doing, how far the count has got, and who your next
 message goes to. **Ctrl+Shift+U** lists each agent's context and each provider's limits.
 

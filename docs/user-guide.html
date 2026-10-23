@@ -595,7 +595,8 @@ other agent: those still come to you, in each chat, as they always do.</p>
 <p>An agent conversation puts two chats, Claude and Codex or two of either, in one conversation
 with you, and passes each one's replies to the other. A third chat can join, and then replies
 go round in turn: the first agent's to the second, the second's to the third, the third's back
-to the first. It's Send Reply to Another Chat done for you, turn after turn.</p>
+to the first, and each agent is sent the replies it missed along with the one passed to it.
+It's Send Reply to Another Chat done for you, turn after turn.</p>
 <p><strong>Starting one:</strong> press <strong>Ctrl+Shift+G</strong> (File, New Agent Conversation).</p>
 <ul>
 <li><strong>Kind of conversation:</strong> "Your own roles", or a ready-made kind that fills in the roles,
@@ -668,7 +669,8 @@ Anything you write to the agent it waits for takes it along.</p>
 <p>An agent that answers and leaves work running in the background, such as a build, is handed on
 when it answers, not when the work finishes.</p>
 <p><strong>Stopping:</strong> <strong>Ctrl+Period</strong> stops every agent and the relay. A reply that was waiting to be
-handed on isn't passed on, and a message that hadn't gone yet comes back to the reply box.
+handed on isn't passed on, a message that hadn't gone yet comes back to the reply box, and your
+next message goes to the agent you stopped.
 <strong>Ctrl+Shift+T</strong> says what each agent is doing, how far the count has got, and who your next
 message goes to. <strong>Ctrl+Shift+U</strong> lists each agent's context and each provider's limits.</p>
 <p><strong>Safety:</strong> each agent asks you for permissions and answers as it always does, through

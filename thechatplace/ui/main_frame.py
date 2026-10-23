@@ -251,6 +251,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         #: replied since your last message (DONE waits for them all).
         self._agent_refused: set = set()
         self._agent_spoke: Dict[str, set] = {}
+        #: With three, the replies each member hasn't heard yet, which go with
+        #: the next message it's sent; and what the last one carried.
+        self._agent_unseen: Dict[tuple, list] = {}
+        self._agent_catchup: Dict[tuple, str] = {}
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -3685,7 +3689,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("That isn't waiting any more: the turn has ended.")
             self._update_send_state()
             return
-        self._agent_member_answered("claude", session_id, response.get("behavior") == "allow")
+        if request.is_plan or response.get("behavior") == "allow":
+            # Choosing to keep planning isn't a refusal; an approval with
+            # more still waiting doesn't count until they're answered too.
+            if not queue:
+                self._agent_member_answered("claude", session_id, True)
+        else:
+            self._agent_member_answered("claude", session_id, False)
         if changes:
             self._store_write(self.store.update, session_id, **changes)
             self._update_heading()

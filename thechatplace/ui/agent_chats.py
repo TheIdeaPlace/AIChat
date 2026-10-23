@@ -60,7 +60,7 @@ class AgentChats:
         for table in (self._agent_awaiting, self._agent_last_reply, self._agent_last_sent):
             if (provider, old_id) in table:
                 table[(provider, new_id)] = table.pop((provider, old_id))
-        for found in (self._agent_asked, self._agent_unconfirmed):
+        for found in (self._agent_asked, self._agent_unconfirmed, self._agent_refused):
             if (provider, old_id) in found:
                 found.discard((provider, old_id))
                 found.add((provider, new_id))
@@ -385,8 +385,17 @@ class AgentChats:
                                            "to it.")
             self._feedback(f"{member.name}'s chat is gone. Nothing was sent to it.")
             return False
-        message = agents.outgoing(conversation, index, text)
         identity = member.identity
+        unseen = self._agent_unseen.pop((conversation.conversation_id, index), [])
+        catchup = "\n\n".join(unseen)
+        if catchup:
+            # With three, an agent hears only the one before it: the builder's
+            # message never reached the third agent, which went looking
+            # through the folder (bug bash). The replies it missed go first.
+            joined = "\n\n" if agents.is_relay(text) else agents.USER_ADDS
+            text = catchup + joined + text
+        self._agent_catchup[identity] = catchup
+        message = agents.outgoing(conversation, index, text)
         if identity not in self._agent_awaiting:
             # A new turn: its own files. Written to mid-turn, it's the same
             # turn going on, and keeps what it has edited so far.
@@ -400,6 +409,7 @@ class AgentChats:
         if member.provider == "claude":
             if not self._send_claude(info, message, [], announce_send=False):
                 self._agent_awaiting.pop(identity, None)
+                self._agent_keep_unseen(conversation.conversation_id, index, identity)
                 self._agent_note(conversation, f"Couldn't send to {member.name}.")
                 return False
         elif member.provider == "codex":
@@ -411,6 +421,21 @@ class AgentChats:
         if index not in conversation.briefed:
             conversation.briefed.append(index)
         return True
+
+    def _agent_keep_unseen(self, conversation_id, index, identity, body=None):
+        """A message didn't go: the replies it carried for catching up are
+        still unseen, and ``body`` (what goes back to you) loses them."""
+        catchup = self._agent_catchup.pop(identity, "")
+        if catchup:
+            parts = [p for p in catchup.split("\n\nFrom ")]
+            unseen = [parts[0]] + ["From " + p for p in parts[1:]]
+            self._agent_unseen[(conversation_id, index)] = (
+                unseen + self._agent_unseen.get((conversation_id, index), []))
+            if body is not None and body.startswith(catchup):
+                body = body[len(catchup):].lstrip()
+                if body.startswith(agents.USER_ADDS.strip()):
+                    body = body[len(agents.USER_ADDS.strip()):].lstrip()
+        return body
 
     def _agent_send_codex(self, conversation_id, index, record, message):
         """A Codex member must be ready (its thread resumed here) before it
@@ -474,9 +499,11 @@ class AgentChats:
         self._agent_unbrief(conversation, index)
         reason = problem if isinstance(problem, str) and problem else "it couldn't be sent"
         conversation.paused, conversation.stop_reason = True, f"Couldn't send to {member.name}."
+        conversation.next_index = index  # the text comes back without its @name
         self._agent_note(conversation, f"Couldn't send to {member.name}: {reason}")
         self._agent_after_change(conversation)
         body = text.partition(agents.SETUP_END)[2].strip() or text
+        body = self._agent_keep_unseen(conversation_id, index, member.identity, body)
         if self._agent_is_open(conversation):
             current = self.reply_text.GetValue()
             self.reply_text.SetValue(body + ("\n\n" + current if current.strip() else ""))
@@ -555,6 +582,12 @@ class AgentChats:
         if conversation is None:
             return False
         body = text.partition(agents.SETUP_END)[2].strip() if agents.SETUP_END in text else text
+        index = conversation.member_index(provider, native_id)
+        if index is not None:
+            body = self._agent_keep_unseen(conversation.conversation_id, index,
+                                           (provider, native_id), body)
+            conversation.next_index = index  # it comes back without its @name
+            self._agent_save(conversation, touch=False)
         if self._agent_is_open(conversation):
             current = self.reply_text.GetValue()
             self.reply_text.SetValue(body + ("\n\n" + current if current.strip() else ""))
@@ -613,8 +646,17 @@ class AgentChats:
         if more_queued:
             # Another of the conversation's messages goes in first; what this
             # turn asked you doesn't carry over to that one. Its files go on
-            # with the reply that's passed on in the end.
+            # with the reply that's passed on in the end, and the reply itself
+            # goes with the next message each of the others is sent.
             self._agent_asked.discard(identity)
+            self._agent_refused.discard(identity)
+            awaited = self._agent_awaiting.get(identity)
+            index = conversation.member_index(provider, native_id)
+            if (awaited is not None and awaited[1] and index is not None
+                    and not failed and (reply or "").strip()):
+                for other in conversation.others(index):
+                    self._agent_unseen.setdefault((conversation.conversation_id, other), []).append(
+                        agents.relay_text(conversation, index, reply))
             if files:
                 gathered = self._agent_turn_files.setdefault(identity, [])
                 gathered += [f for f in files if f not in gathered]
@@ -663,6 +705,10 @@ class AgentChats:
         to = conversation.next_after(index)
         conversation.next_index = to
         target = conversation.members[to].name
+        for other in conversation.others(index):
+            if other != to:  # with three: the reply waits for the others' next turn
+                self._agent_unseen.setdefault((conversation.conversation_id, other), []).append(
+                    agents.relay_text(conversation, index, reply, files))
         stop = ""
         if agents.said_done(reply) and set(conversation.others(index)) <= spoke:
             # Only once the others have had their say since your message:
@@ -769,6 +815,8 @@ class AgentChats:
         conversation.pending = None
         conversation.paused, conversation.stop_reason, conversation.exchanges = False, "", 1
         if self._agent_deliver(conversation, pending.to_index, edited, relay=True):
+            self._agent_spoke.setdefault(conversation.conversation_id, set()).add(
+                pending.from_index)
             conversation.next_index = conversation.next_after(pending.to_index)
             self._feedback(f"Passed {frm.name}'s reply to {to.name}.")
         else:
@@ -1119,8 +1167,13 @@ class AgentChats:
                 table.pop(member.identity, None)
             self._agent_asked.discard(member.identity)
             self._agent_unconfirmed.discard(member.identity)
+            self._agent_refused.discard(member.identity)
+            self._agent_catchup.pop(member.identity, None)
         self._agent_forget_waiting(conversation.conversation_id)
         self._agent_last_heard.pop(conversation.conversation_id, None)
+        self._agent_spoke.pop(conversation.conversation_id, None)
+        for index in range(len(conversation.members)):
+            self._agent_unseen.pop((conversation.conversation_id, index), None)
         try:
             self.agents.remove(conversation.conversation_id)
         except Exception as exc:  # noqa: BLE001

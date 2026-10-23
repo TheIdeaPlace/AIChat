@@ -461,8 +461,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   a role if you like ("Build the fix", "Review each change; don't edit files"). Kind of
   conversation fills in the roles, new chats' permissions and who goes first for a builder
   and reviewer, a second opinion, a debate, or plan and do. An optional third agent joins
-  in turn: replies go from the first to the second, the second to the third, and back.
-  Choose how replies go across, who answers first, and write the opening message. The conversation is
+  in turn: replies go from the first to the second, the second to the third, and back, and
+  each agent is sent the replies it missed along with the one passed to it. Choose how
+  replies go across, who answers first, and write the opening message. The conversation is
   one row in the session list (Provider "Claude + Codex", Kind "agent conversation"); its
   member chats leave the list, and File, Agent Conversation Members goes to any of them.
   Loaded, its messages list has every agent's messages in order, each starting with who said
@@ -472,7 +473,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   name ("@Codex check the tests"), or the name and a comma ("Codex, what's broken?"), to
   choose, or "@all" for every agent. Each agent is told once, at
   the start, who else is in it, that their messages aren't yours, and to end its reply
-  with DONE when the work is finished.
+  with DONE when they all agree the work is finished.
   - **Approve each hand-off** (the default): when an agent answers, you hear its reply, and
     it waits to go to the other agent. Usually you just type your next message: it goes to
     that agent with the waiting reply ahead of it. Ctrl+Shift+E is for passing the reply on
@@ -482,17 +483,19 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     limit (6 exchanges unless you choose another, here or with File, Agent Conversation
     Hand-offs). Approving what an agent asks doesn't stop it; it pauses, with the last reply
     waiting for Ctrl+Shift+E, when you refused something or a request went unanswered. It
-    stops when a turn fails, and you hear why. Sending a message, or handing a reply on,
-    starts it again with a fresh count.
+    stops when a turn fails, and you hear why; your next message goes back to that agent.
+    Sending a message, or handing a reply on, starts it again with a fresh count.
   - In either mode, the relay finishes when an agent says DONE after the others have replied
-    since your last message, or the replies start repeating. The last reply still waits for Ctrl+Shift+E (a reviewer's DONE comes with its
-    findings), but the row doesn't need you for it.
+    since your last message, or the replies start repeating. The last reply still waits for
+    Ctrl+Shift+E (a reviewer's DONE comes with its findings), but the row doesn't need you
+    for it.
   - A reply given before background work (a build, say) is handed on when it's given.
   - Writing to the agent a reply is waiting for sends that reply too, ahead of your words,
     and so does "@all". Writing only to the agent that sent it sets it aside (you hear so):
     you've carried on with that agent instead.
   - **Stop** (Ctrl+Period) stops every agent and the relay; a waiting reply isn't passed on,
-    and a message that hadn't gone comes back to the reply box. **Turn Status**
+    a message that hadn't gone comes back to the reply box, and your next message goes to
+    the agent you stopped. **Turn Status**
     (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
     to. **Usage and Context** (Ctrl+Shift+U) lists each agent's context and each provider's
     limits.

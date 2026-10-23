@@ -449,7 +449,10 @@ class CodexChats:
                 # automatic hand-offs go on; a refusal pauses them (#248).
                 allowed = keep or request.method == QUESTIONS or (
                     (result or {}).get('decision') not in ('decline', 'cancel'))
-                agent_answered('codex', info.cli_session_id, allowed)
+                # An approval with another request still waiting counts once
+                # that one is answered too.
+                if not allowed or len(state.requests or ()) <= 1:
+                    agent_answered('codex', info.cli_session_id, allowed)
         action = (lambda: self.sessions.owned_action('allow_for_chat', record, request)) if keep else (
             lambda: self.sessions.owned_action('answer', record, request, result))
         self._codex_work(action, done)
