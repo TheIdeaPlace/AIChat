@@ -830,3 +830,26 @@ def test_stop_drops_a_finished_reply_and_says_so(tmp_path):
     w._agent_stop(w._open)
     assert w.saved.pending is None
     assert w.feedback[-1].endswith("The waiting reply wasn't passed on.")
+
+
+def test_at_all_takes_a_waiting_reply_along(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built it.', False)
+    w.send('@all status?')
+    assert 'Built it.' in w.codex_sent[-1][1] and w.codex_sent[-1][1].endswith('status?')
+    assert w.saved.pending is None
+    assert not any('set aside' in n.text for n in w.saved.notes)
+
+
+def test_a_failed_send_to_the_sender_keeps_the_waiting_reply(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built it.', False)
+    w.claude_accepts = False
+    w.send('@Claude also add tests')
+    assert w.saved.pending.text == 'Built it.'
+    w.claude_accepts = True
+    w.send('@Claude also add tests')
+    assert w.saved.pending is None
+    assert w.feedback[-1] == "Sent to Claude. Claude's waiting reply was set aside."

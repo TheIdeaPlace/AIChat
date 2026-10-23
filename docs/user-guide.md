@@ -664,7 +664,9 @@ the start is one line here; its own chat has it word for word.
 Start with @ and a name to choose: "@Codex check the tests", or with the name and a comma, as
 you'd write to someone: "Codex, what's broken?". "@all" goes to both (their replies
 are then shown but not passed on). If a reply is waiting to go to the agent you write to, it goes
-along with your words, ahead of them, instead of being dropped.
+along with your words, ahead of them, instead of being dropped; "@all" takes it along too. If you
+write only to the agent that sent it, you've carried on with that agent instead, so the waiting
+reply is set aside, and you hear so.
 
 **Hand-offs:**
 
@@ -682,8 +684,7 @@ along with your words, ahead of them, instead of being dropped.
 In either mode, the relay finishes when an agent ends its reply with DONE, or when the replies
 start repeating each other. You hear that, and the last reply still waits for **Ctrl+Shift+E**,
 because a reviewer's DONE usually comes with its findings, which the other agent needs. The row
-doesn't say it needs you for it. Anything you write to the other agent takes it along; if you
-write to the agent that sent it instead, it's set aside.
+doesn't say it needs you for it. Anything you write to the other agent takes it along.
 
 An agent that answers and leaves work running in the background, such as a build, is handed on
 when it answers, not when the work finishes.

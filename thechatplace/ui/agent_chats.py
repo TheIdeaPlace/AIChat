@@ -311,14 +311,13 @@ class AgentChats:
         # Your message starts the relay again, with a fresh count.
         conversation.paused, conversation.stop_reason, conversation.exchanges = False, "", 0
         pending = conversation.pending
-        if pending is not None and pending.from_index in targets:
-            # You carried on with the agent that sent it: that reply is past.
-            sender = conversation.members[pending.from_index].name
-            self._agent_note(conversation, f"{sender}'s waiting reply was set aside: you wrote "
-                                           f"to {sender}.")
-            conversation.pending = pending = None
+        # Writing to the agent that sent a waiting reply, and not to the one
+        # it waits for, carries on past it: it's set aside once your words
+        # have gone. With @all, it goes along to the agent it waits for.
+        set_aside = (pending is not None and pending.from_index in targets
+                     and pending.to_index not in targets)
         relay = len(targets) == 1
-        sent, carried = [], ""
+        sent, carried, dropped = [], "", ""
         for index in targets:
             message = text
             if pending is not None and pending.to_index == index:
@@ -332,13 +331,21 @@ class AgentChats:
                     # The receiving chat's history shows it went; no note too.
                     carried = conversation.members[pending.from_index].name
                     conversation.pending = None
+                elif set_aside and index == pending.from_index:
+                    dropped = conversation.members[index].name
+                    conversation.pending = None
+                    self._agent_note(conversation, f"{dropped}'s waiting reply was set aside: "
+                                                   f"you wrote to {dropped}.")
         if len(targets) == 1 and sent:
             conversation.next_index = conversation.next_after(targets[0])
         self._agent_after_change(conversation)
         if sent:
             names = " and ".join(sent)
-            self._feedback(f"Sent {carried}'s reply and your message to {names}." if carried
-                           else f"Sent to {names}.")
+            said = (f"Sent {carried}'s reply and your message to {names}." if carried
+                    else f"Sent to {names}.")
+            if dropped:
+                said += f" {dropped}'s waiting reply was set aside."
+            self._feedback(said)
         return bool(sent)
 
     def _agent_deliver(self, conversation, index, text, *, relay=True) -> bool:
@@ -772,13 +779,14 @@ class AgentChats:
         if conversation.pending is not None:
             frm = conversation.members[conversation.pending.from_index].name
             to = conversation.members[conversation.pending.to_index].name
-            if conversation.pending.finished:
-                parts.append(f"{key_name('Ctrl+Shift+E')} hands {frm}'s last reply to {to}.")
-            else:
+            if not conversation.pending.finished:
                 parts.append(f"{frm}'s reply is waiting to go to {to}; "
                              f"{key_name('Ctrl+Shift+E')} hands it on.")
         if conversation.paused and conversation.stop_reason:
             parts.append(conversation.stop_reason)
+        if conversation.pending is not None and conversation.pending.finished:
+            # After the reason: "Codex said the work is done. Ctrl+Shift+E ..."
+            parts.append(f"{key_name('Ctrl+Shift+E')} hands {frm}'s last reply to {to}.")
         nxt = conversation.members[conversation.next_index].name
         return f"{conversation.title}: {' '.join(parts)} {relay} What you type goes to {nxt}."
 

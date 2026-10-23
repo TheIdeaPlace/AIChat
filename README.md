@@ -481,10 +481,11 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     count.
   - In either mode, the relay finishes when an agent says DONE or the replies start
     repeating. The last reply still waits for Ctrl+Shift+E (a reviewer's DONE comes with its
-    findings), but the row doesn't need you for it. Writing to the other agent takes it
-    along; writing to the agent that sent it sets it aside. A reply given before
-    background work (a build, say) is handed on when it's given.
-  - Writing to the agent a reply is waiting for sends that reply too, ahead of your words.
+    findings), but the row doesn't need you for it.
+  - A reply given before background work (a build, say) is handed on when it's given.
+  - Writing to the agent a reply is waiting for sends that reply too, ahead of your words,
+    and so does "@all". Writing only to the agent that sent it sets it aside (you hear so):
+    you've carried on with that agent instead.
   - **Stop** (Ctrl+Period) stops both agents and the relay; a waiting reply isn't passed on,
     and a message that hadn't gone comes back to the reply box. **Turn Status**
     (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
