@@ -52,7 +52,7 @@ class Window(AgentChats):
         self._agent_codex_preparing, self._agent_answered_early = set(), set()
         self._agent_turn_files = {}
         self._agent_refused, self._agent_spoke = set(), {}
-        self._agent_unseen, self._agent_catchup = {}, {}
+        self._agent_unseen, self._agent_planning = {}, set()
         self._codex_send_pending, self._queued = {}, {}
         self._open = agents.rows([], [self.conversation])[-1]
         self.reply_text = Text()
@@ -1140,8 +1140,10 @@ def test_writing_to_the_third_agent_sets_a_waiting_reply_aside_and_says_so(tmp_p
     assert (w.saved.pending.from_index, w.saved.pending.to_index) == (0, 1)
     w.send('@Claude 2 check the facts')
     assert w.saved.pending is None
-    assert w.feedback[-1] == "Sent to Claude 2. Claude's waiting reply was set aside."
-    assert w.saved.notes[-1].text == "Claude's waiting reply was set aside: you wrote to Claude 2."
+    # Claude 2 missed it, so it went along ahead of your words.
+    assert w.feedback[-1] == "Sent to Claude 2, with Claude's reply; it no longer waits for Codex."
+    assert w.saved.notes[-1].text == ("Claude's reply went to Claude 2 with your message, "
+                                      "not on to Codex.")
 
 
 def test_codex_files_from_a_turn_with_more_queued_go_with_the_final_reply(tmp_path):
@@ -1313,7 +1315,7 @@ def test_three_agents_catch_up_on_what_they_missed(tmp_path):
         [ChatMessage(USER, to_claude2.partition(
         agents.SETUP_END)[2].strip(), '2026-10-22T10:00:05Z', 'u')]])
     assert [m.text for m in shown if m.kind == 'relay'] == [
-        "Claude's reply passed to Claude 2.", "Codex's reply passed to Claude 2."]
+        "Claude's earlier reply passed to Claude 2.", "Codex's reply passed to Claude 2."]
 
 
 def test_two_agents_catch_up_on_a_queued_turns_first_reply(tmp_path):
@@ -1328,10 +1330,76 @@ def test_two_agents_catch_up_on_a_queued_turns_first_reply(tmp_path):
 def test_a_catch_up_that_didnt_go_is_kept(tmp_path):
     w = Window(tmp_path)
     _three(w)
-    w._agent_unseen[(w.cid, 2)] = [agents.relay_text(w.saved, 0, 'Built it.')]
+    w._agent_unseen[(w.cid, 2)] = [agents.relay_text(w.saved, 0, 'Built it.', missed=True)]
     w.send('@Claude 2 check it')
     sent = w.claude_sent[-1][1].partition(agents.SETUP_END)[2].strip()
     assert sent.endswith(agents.USER_ADDS + 'check it')
     w._agent_send_failed(w.cid, 2, w.claude_sent[-1][1], 'failed')
     assert w.reply_text.GetValue() == 'check it'
-    assert w._agent_unseen[(w.cid, 2)] == [agents.relay_text(w.saved, 0, 'Built it.')]
+    assert w._agent_unseen[(w.cid, 2)] == [agents.relay_text(w.saved, 0, 'Built it.',
+                                                              missed=True)]
+
+
+
+def test_a_reply_quoting_another_agents_message_stays_one_row():
+    """Splitting at any "From X (agent conversation" line broke a reply that
+    quoted one (second review): only the app's own missed-reply labels split."""
+    conversation = agents.new_conversation('Fix 247', [Member('claude', 'c1', 'Claude', ''),
+                                                       Member('codex', 'x1', 'Codex', '')])
+    reply = ('You said earlier:\n\nFrom Codex (agent conversation "Fix 247"):\n\n'
+             'rename x\n\nDone that.')
+    from thechatplace.transcript import ASSISTANT
+    shown = agents.combine(conversation, [
+        [ChatMessage(ASSISTANT, reply, '2026-10-22T10:00:01Z', 'a')],
+        [ChatMessage(USER, agents.relay_text(conversation, 0, reply), '2026-10-22T10:00:02Z', 'u')]])
+    assert [m.text for m in shown if m.kind == 'relay'] == ["Claude's reply passed to Codex."]
+
+
+def test_a_queued_turns_first_reply_reads_unchanged(tmp_path):
+    from thechatplace.transcript import ASSISTANT
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'First part.', False, more_queued=True)
+    w._agent_turn_ended('claude', 'c1', 'Second part.', False)
+    sent = w.codex_sent[-1][1].partition(agents.SETUP_END)[2].strip()
+    shown = agents.combine(w.saved, [
+        [ChatMessage(ASSISTANT, 'First part.', '2026-10-22T10:00:01Z', 'a'),
+         ChatMessage(USER, 'and more', '2026-10-22T10:00:02Z', 'q'),
+         ChatMessage(ASSISTANT, 'Second part.', '2026-10-22T10:00:03Z', 'b')],
+        [ChatMessage(USER, sent, '2026-10-22T10:00:04Z', 'u')]])
+    assert [m.text for m in shown if m.kind == 'relay'][-2:] == [
+        "Claude's earlier reply passed to Codex.", "Claude's reply passed to Codex."]
+
+
+def test_stop_gives_back_your_words_and_keeps_the_missed_replies(tmp_path):
+    w = Window(tmp_path)
+    _three(w)
+    missed = agents.relay_text(w.saved, 0, 'Built it.', missed=True)
+    w._agent_unseen[(w.cid, 2)] = [missed]
+    w._runners['c2'] = SimpleNamespace(cancel=lambda: None, cancelled=False)
+    w.send('@Claude 2 check it')  # queued behind Claude 2's running turn
+    queued = w.claude_sent[-1][1]
+    w._take_queued = lambda native: queued if native == 'c2' else ''
+    w._open = agents.rows([], [w.saved])[-1]
+    w._agent_stop(w._open)
+    assert 'check it' in w.reply_text.GetValue() and 'Built it.' not in w.reply_text.GetValue()
+    assert w._agent_unseen[(w.cid, 2)] == [missed]
+
+
+def test_writing_to_the_third_agent_who_missed_the_waiting_reply_says_it_went(tmp_path):
+    w = Window(tmp_path)
+    _three(w)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)  # waits for Codex; Claude 2 missed it
+    w.send('@Claude 2 go')
+    assert 'Built v1.' in w.claude_sent[-1][1]
+    assert w.feedback[-1] == "Sent to Claude 2, with Claude's reply; it no longer waits for Codex."
+
+
+def test_keep_planning_pauses_with_its_own_reason(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Plan it.')
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', False, planning=True)
+    w._agent_turn_ended('claude', 'c1', 'Revised plan.', False)
+    assert w.saved.stop_reason == "Paused: Claude's plan isn't approved yet."

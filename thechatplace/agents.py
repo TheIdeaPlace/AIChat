@@ -277,9 +277,15 @@ def setup_text(conversation: AgentConversation, index: int) -> str:
     return "\n".join(lines)
 
 
-def relay_label(conversation: AgentConversation, from_index: int) -> str:
+#: In a reply's label when it's one the receiving agent missed (three
+#: agents): it goes ahead of the one passed in turn.
+MISSED = ", a reply you missed"
+
+
+def relay_label(conversation: AgentConversation, from_index: int, missed: bool = False) -> str:
     name = conversation.members[from_index].name
-    return f'From {name} (agent conversation "{conversation.title}"):'
+    return (f'From {name} (agent conversation "{conversation.title}"'
+            f'{MISSED if missed else ""}):')
 
 
 #: Between a carried reply and your words, when you type with a reply
@@ -292,10 +298,11 @@ MAX_FILES = 50
 
 
 def relay_text(conversation: AgentConversation, from_index: int, reply: str,
-               files: Sequence[str] = ()) -> str:
+               files: Sequence[str] = (), missed: bool = False) -> str:
     """A reply as passed on: who wrote it, the reply, and the files its
-    turn changed, so a reviewer knows what to look at (phase 3)."""
-    text = f"{relay_label(conversation, from_index)}\n\n{reply.strip()}"
+    turn changed, so a reviewer knows what to look at (phase 3).
+    ``missed``: one the receiving agent missed, which goes first."""
+    text = f"{relay_label(conversation, from_index, missed)}\n\n{reply.strip()}"
     files = list(dict.fromkeys(f for f in files if f))
     if files:
         name = conversation.members[from_index].name
@@ -566,8 +573,27 @@ def _sort_time(stamp: str) -> Optional[float]:
 
 
 _RELAY_LABEL = re.compile(r'^From (.+?) \(agent conversation "')
-#: Between replies passed on together (a catch-up, then the one in turn).
-_RELAY_SPLIT = re.compile(r'\n\n(?=From [^\n]{1,200}? \(agent conversation ")')
+def split_missed(conversation: AgentConversation, text: str) -> Tuple[List[str], str]:
+    """The replies an agent missed at the start of ``text`` (each with its
+    own label, which only the app writes), and the rest: the reply passed in
+    turn, or your words. Only those exact labels split it, so a reply that
+    quotes another agent's message stays whole."""
+    missed = [relay_label(conversation, i, True) for i in range(len(conversation.members))]
+    passed = [relay_label(conversation, i) for i in range(len(conversation.members))]
+    blocks: List[str] = []
+    while any(text.startswith(label) for label in missed):
+        ends = [text.find("\n\n" + label, 1) for label in missed + passed]
+        ends.append(text.find(USER_ADDS, 1))
+        ends = [end for end in ends if end > 0]
+        if not ends:
+            blocks.append(text)
+            return blocks, ""
+        end = min(ends)
+        blocks.append(text[:end])
+        text = text[end:]
+        if not text.startswith(USER_ADDS):
+            text = text[2:]
+    return blocks, text
 
 
 def is_relay(text: str) -> bool:
@@ -606,10 +632,15 @@ def _classify(conversation: AgentConversation, index: int, message: ChatMessage,
         # The reply itself is in the list already, as its agent's message:
         # one line here, and Enter reads exactly what went (``detail``).
         relay, adds, yours = text.strip().partition(USER_ADDS)
-        # Replies it hadn't heard come first, each its own row (catch-up).
-        for number, block in enumerate(_RELAY_SPLIT.split(relay)):
+        # Replies it missed come first, each its own row, then the one in turn.
+        missed, relay = split_missed(conversation, relay)
+        for number, block in enumerate(missed + ([relay] if relay.strip() else [])):
             sender = _RELAY_LABEL.match(block)
-            shown.append(ChatMessage(RELAY, f"{sender.group(1)}'s reply passed to {name}.",
+            if sender is None:
+                continue
+            earlier = "earlier " if number < len(missed) else ""
+            shown.append(ChatMessage(RELAY, f"{sender.group(1)}'s {earlier}reply passed to "
+                                            f"{name}.",
                                      message.timestamp, key if not number else f"{key}:{number}",
                                      sender=sender.group(1), turn=message.turn,
                                      detail=f"Exactly what was sent:\n\n{block}"))
@@ -662,15 +693,18 @@ def _sent_forms(shown: List[ChatMessage], name: str) -> set:
     """What a member's latest reply, passed on unchanged, can look like: its
     last message (Claude's result), or all of its turn's messages joined, as
     Codex's are."""
+    forms: set = set()
     turn: List[str] = []
-    for message in reversed(shown):
-        if message.kind in (ASSISTANT, PLAN) and message.assistant_name == name:
+    for message in list(reversed(shown)) + [None]:
+        if (message is not None and message.kind in (ASSISTANT, PLAN)
+                and message.assistant_name == name):
             turn.append(message.text.strip())
-        elif turn and message.kind in (USER, RELAY):
-            break
-    if not turn:
-        return set()
-    return {turn[0], "\n\n".join(reversed(turn))}
+        elif turn and (message is None or message.kind in (USER, RELAY)):
+            # Any of its turns: a reply it missed can be older than its
+            # latest (bug bash), and still went unchanged.
+            forms |= {turn[0], "\n\n".join(reversed(turn))}
+            turn = []
+    return forms
 
 
 def _trim_relays(messages: List[ChatMessage]) -> List[ChatMessage]:

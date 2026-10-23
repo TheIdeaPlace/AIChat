@@ -254,7 +254,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         #: With three, the replies each member hasn't heard yet, which go with
         #: the next message it's sent; and what the last one carried.
         self._agent_unseen: Dict[tuple, list] = {}
-        self._agent_catchup: Dict[tuple, str] = {}
+        self._agent_planning: set = set()
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -3689,13 +3689,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("That isn't waiting any more: the turn has ended.")
             self._update_send_state()
             return
-        if request.is_plan or response.get("behavior") == "allow":
-            # Choosing to keep planning isn't a refusal; an approval with
-            # more still waiting doesn't count until they're answered too.
+        if response.get("behavior") == "allow":
+            # An approval with more still waiting doesn't count until
+            # they're answered too.
             if not queue:
                 self._agent_member_answered("claude", session_id, True)
         else:
-            self._agent_member_answered("claude", session_id, False)
+            # Keeping a plan going isn't a refusal, but it isn't approved.
+            self._agent_member_answered("claude", session_id, False,
+                                        planning=request.is_plan)
         if changes:
             self._store_write(self.store.update, session_id, **changes)
             self._update_heading()

@@ -338,6 +338,12 @@ class AgentChats:
         set_aside = pending is not None and pending.to_index not in targets
         relay = len(targets) == 1
         sent, carried, dropped, carried_to = [], "", "", ""
+        # Who among those you wrote to has the waiting reply among the ones
+        # it missed (three agents), so it goes to them anyway.
+        missed_by = [conversation.members[t].name for t in targets
+                     if pending is not None and t != pending.to_index and any(
+                         pending.text.strip() in entry
+                         for entry in self._agent_unseen.get((conversation_id, t), ()))]
         for index in targets:
             message = text
             if pending is not None and pending.to_index == index:
@@ -356,8 +362,16 @@ class AgentChats:
         if set_aside and sent and conversation.pending is pending:
             dropped = conversation.members[pending.from_index].name
             conversation.pending = None
-            self._agent_note(conversation, f"{dropped}'s waiting reply was set aside: "
-                                           f"you wrote to {agents.join_names(sent)}.")
+            if missed_by:
+                # A third agent was sent it ahead of your words, as a reply
+                # it missed; it no longer waits for the one it was going to.
+                waiting_for = conversation.members[pending.to_index].name
+                self._agent_note(conversation, f"{dropped}'s reply went to "
+                                               f"{agents.join_names(missed_by)} with your "
+                                               f"message, not on to {waiting_for}.")
+            else:
+                self._agent_note(conversation, f"{dropped}'s waiting reply was set aside: "
+                                               f"you wrote to {agents.join_names(sent)}.")
         if len(targets) == 1 and sent:
             conversation.next_index = conversation.next_after(targets[0])
         self._agent_after_change(conversation)
@@ -369,7 +383,10 @@ class AgentChats:
                 said = f"Sent {carried}'s reply and your message to {names}."
             else:
                 said = f"Sent to {names}."
-            if dropped:
+            if dropped and missed_by:
+                said = (f"Sent to {names}, with {dropped}'s reply; it no longer waits for "
+                        f"{conversation.members[pending.to_index].name}.")
+            elif dropped:
                 said += f" {dropped}'s waiting reply was set aside."
             self._feedback(said)
         return bool(sent)
@@ -394,7 +411,6 @@ class AgentChats:
             # through the folder (bug bash). The replies it missed go first.
             joined = "\n\n" if agents.is_relay(text) else agents.USER_ADDS
             text = catchup + joined + text
-        self._agent_catchup[identity] = catchup
         message = agents.outgoing(conversation, index, text)
         if identity not in self._agent_awaiting:
             # A new turn: its own files. Written to mid-turn, it's the same
@@ -409,7 +425,7 @@ class AgentChats:
         if member.provider == "claude":
             if not self._send_claude(info, message, [], announce_send=False):
                 self._agent_awaiting.pop(identity, None)
-                self._agent_keep_unseen(conversation.conversation_id, index, identity)
+                self._agent_keep_unseen(conversation.conversation_id, index, text)
                 self._agent_note(conversation, f"Couldn't send to {member.name}.")
                 return False
         elif member.provider == "codex":
@@ -422,19 +438,19 @@ class AgentChats:
             conversation.briefed.append(index)
         return True
 
-    def _agent_keep_unseen(self, conversation_id, index, identity, body=None):
-        """A message didn't go: the replies it carried for catching up are
-        still unseen, and ``body`` (what goes back to you) loses them."""
-        catchup = self._agent_catchup.pop(identity, "")
-        if catchup:
-            parts = [p for p in catchup.split("\n\nFrom ")]
-            unseen = [parts[0]] + ["From " + p for p in parts[1:]]
+    def _agent_keep_unseen(self, conversation_id, index, body):
+        """A message didn't go: the replies it carried that the agent missed
+        are still unseen, and what comes back to you is the rest."""
+        conversation = self.agents.get(conversation_id)
+        if conversation is None or not body:
+            return body
+        missed, rest = agents.split_missed(conversation, body)
+        if missed:
             self._agent_unseen[(conversation_id, index)] = (
-                unseen + self._agent_unseen.get((conversation_id, index), []))
-            if body is not None and body.startswith(catchup):
-                body = body[len(catchup):].lstrip()
-                if body.startswith(agents.USER_ADDS.strip()):
-                    body = body[len(agents.USER_ADDS.strip()):].lstrip()
+                missed + self._agent_unseen.get((conversation_id, index), []))
+            if rest.startswith(agents.USER_ADDS):
+                rest = rest[len(agents.USER_ADDS):]
+            body = rest.strip()
         return body
 
     def _agent_send_codex(self, conversation_id, index, record, message):
@@ -503,7 +519,7 @@ class AgentChats:
         self._agent_note(conversation, f"Couldn't send to {member.name}: {reason}")
         self._agent_after_change(conversation)
         body = text.partition(agents.SETUP_END)[2].strip() or text
-        body = self._agent_keep_unseen(conversation_id, index, member.identity, body)
+        body = self._agent_keep_unseen(conversation_id, index, body)
         if self._agent_is_open(conversation):
             current = self.reply_text.GetValue()
             self.reply_text.SetValue(body + ("\n\n" + current if current.strip() else ""))
@@ -530,7 +546,7 @@ class AgentChats:
         if (provider, native_id) in self._agent_awaiting:
             self._agent_asked.add((provider, native_id))
 
-    def _agent_member_answered(self, provider, native_id, allowed):
+    def _agent_member_answered(self, provider, native_id, allowed, planning=False):
         """You answered a member's request mid-turn. An approval or an
         answered question lets automatic hand-offs go on after the turn: a
         builder that runs its tests asks every turn, and each approval
@@ -538,10 +554,16 @@ class AgentChats:
         identity = (provider, native_id)
         if identity not in self._agent_awaiting:
             return
-        if not allowed:
+        if planning:
+            # You chose to keep planning: not a refusal, but the plan isn't
+            # approved, so the relay waits for you.
+            self._agent_planning.add(identity)
+            self._agent_asked.add(identity)
+        elif not allowed:
             self._agent_refused.add(identity)
             self._agent_asked.add(identity)
         elif identity not in self._agent_refused:
+            self._agent_planning.discard(identity)
             self._agent_asked.discard(identity)
 
     def _agent_tool_used(self, provider, native_id, path):
@@ -584,8 +606,7 @@ class AgentChats:
         body = text.partition(agents.SETUP_END)[2].strip() if agents.SETUP_END in text else text
         index = conversation.member_index(provider, native_id)
         if index is not None:
-            body = self._agent_keep_unseen(conversation.conversation_id, index,
-                                           (provider, native_id), body)
+            body = self._agent_keep_unseen(conversation.conversation_id, index, body)
             conversation.next_index = index  # it comes back without its @name
             self._agent_save(conversation, touch=False)
         if self._agent_is_open(conversation):
@@ -650,13 +671,14 @@ class AgentChats:
             # goes with the next message each of the others is sent.
             self._agent_asked.discard(identity)
             self._agent_refused.discard(identity)
+            self._agent_planning.discard(identity)
             awaited = self._agent_awaiting.get(identity)
             index = conversation.member_index(provider, native_id)
             if (awaited is not None and awaited[1] and index is not None
                     and not failed and (reply or "").strip()):
                 for other in conversation.others(index):
                     self._agent_unseen.setdefault((conversation.conversation_id, other), []).append(
-                        agents.relay_text(conversation, index, reply))
+                        agents.relay_text(conversation, index, reply, missed=True))
             if files:
                 gathered = self._agent_turn_files.setdefault(identity, [])
                 gathered += [f for f in files if f not in gathered]
@@ -665,8 +687,10 @@ class AgentChats:
         files = tuple(dict.fromkeys(list(self._agent_turn_files.pop(identity, ())) + list(files)))
         asked = identity in self._agent_asked
         was_refused = identity in self._agent_refused
+        was_planning = identity in self._agent_planning
         self._agent_asked.discard(identity)
         self._agent_refused.discard(identity)
+        self._agent_planning.discard(identity)
         index = conversation.member_index(provider, native_id)
         member = conversation.members[index]
         conversation.unread = not self._agent_is_open(conversation)
@@ -708,7 +732,7 @@ class AgentChats:
         for other in conversation.others(index):
             if other != to:  # with three: the reply waits for the others' next turn
                 self._agent_unseen.setdefault((conversation.conversation_id, other), []).append(
-                    agents.relay_text(conversation, index, reply, files))
+                    agents.relay_text(conversation, index, reply, files, missed=True))
         stop = ""
         if agents.said_done(reply) and set(conversation.others(index)) <= spoke:
             # Only once the others have had their say since your message:
@@ -743,6 +767,8 @@ class AgentChats:
             stop = (f"Paused: {refused.strip()}" if refused
                     else f"Paused: something was refused during {member.name}'s turn."
                     if was_refused
+                    else f"Paused: {member.name}'s plan isn't approved yet."
+                    if was_planning
                     else f"Paused: {member.name} asked you something that wasn't answered.")
         if auto and not stop:
             text = agents.relay_text(conversation, index, reply, files)
@@ -793,6 +819,12 @@ class AgentChats:
             return
         to = conversation.members[pending.to_index]
         text = agents.relay_text(conversation, pending.from_index, pending.text, pending.files)
+        # Replies it missed (three agents) go first: shown here, to read and
+        # change with the rest, and not added again when it goes.
+        unseen_key = (conversation.conversation_id, pending.to_index)
+        missed = self._agent_unseen.pop(unseen_key, [])
+        if missed:
+            text = "\n\n".join(missed + [text])
         target = self._agent_member_info(to)
         label = f"{to.name}, {target.title}" if target is not None else to.name
         dialog = RelayDialog(self, conversation.title, [label], text,
@@ -800,6 +832,8 @@ class AgentChats:
                              title=f"Hand Off: {conversation.title}")
         try:
             if dialog.ShowModal() != wx.ID_OK or dialog.chosen is None:
+                if missed:
+                    self._agent_unseen[unseen_key] = missed + self._agent_unseen.get(unseen_key, [])
                 return
             _index, edited = dialog.chosen
         finally:
@@ -844,7 +878,9 @@ class AgentChats:
                     stopped_at.append(index)
                     queued = self._take_queued(member.native_id)
                     if queued:
-                        taken_back.append(queued.partition(agents.SETUP_END)[2].strip() or queued)
+                        body = queued.partition(agents.SETUP_END)[2].strip() or queued
+                        taken_back.append(self._agent_keep_unseen(
+                            conversation.conversation_id, index, body))
             elif member.provider == "codex":
                 state = self._codex_states.get(member_info.key)
                 if (member_info.key in self._codex_send_pending
@@ -1168,7 +1204,7 @@ class AgentChats:
             self._agent_asked.discard(member.identity)
             self._agent_unconfirmed.discard(member.identity)
             self._agent_refused.discard(member.identity)
-            self._agent_catchup.pop(member.identity, None)
+            self._agent_planning.discard(member.identity)
         self._agent_forget_waiting(conversation.conversation_id)
         self._agent_last_heard.pop(conversation.conversation_id, None)
         self._agent_spoke.pop(conversation.conversation_id, None)

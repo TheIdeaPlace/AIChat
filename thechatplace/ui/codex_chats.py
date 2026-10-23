@@ -451,7 +451,10 @@ class CodexChats:
                     (result or {}).get('decision') not in ('decline', 'cancel'))
                 # An approval with another request still waiting counts once
                 # that one is answered too.
-                if not allowed or len(state.requests or ()) <= 1:
+                # The state now, not when the dialog opened: another may
+                # have come in meanwhile.
+                current = self._codex_states.get(info.key, state)
+                if not allowed or len(current.requests or ()) <= 1:
                     agent_answered('codex', info.cli_session_id, allowed)
         action = (lambda: self.sessions.owned_action('allow_for_chat', record, request)) if keep else (
             lambda: self.sessions.owned_action('answer', record, request, result))
