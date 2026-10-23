@@ -443,6 +443,21 @@ class CodexChats:
         def done(_result, error):
             self._feedback((_result or 'This Codex request could not be answered. It may no longer be waiting.')
                            if error else 'Approval kept for this chat and answer sent to Codex.' if keep else 'Answer sent to Codex.')
+            agent_answered = getattr(self, '_agent_member_answered', None)
+            if not error and agent_answered is not None:
+                # An approval or an answer lets an agent conversation's
+                # automatic hand-offs go on; a refusal pauses them (#248).
+                allowed = keep or request.method == QUESTIONS or (
+                    (result or {}).get('decision') not in ('decline', 'cancel'))
+                # An approval with another request still waiting counts once
+                # that one is answered too.
+                # Any other request waiting now (not when the dialog opened;
+                # and the one answered may or may not have left the state yet).
+                current = self._codex_states.get(info.key, state)
+                others = any(r.request_id != request.request_id
+                             for r in (current.requests or ()))
+                if not allowed or not others:
+                    agent_answered('codex', info.cli_session_id, allowed)
         action = (lambda: self.sessions.owned_action('allow_for_chat', record, request)) if keep else (
             lambda: self.sessions.owned_action('answer', record, request, result))
         self._codex_work(action, done)

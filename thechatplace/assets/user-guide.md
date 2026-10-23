@@ -635,7 +635,8 @@ other agent: those still come to you, in each chat, as they always do.
 An agent conversation puts two chats, Claude and Codex or two of either, in one conversation
 with you, and passes each one's replies to the other. A third chat can join, and then replies
 go round in turn: the first agent's to the second, the second's to the third, the third's back
-to the first. It's Send Reply to Another Chat done for you, turn after turn.
+to the first, and each agent is sent the replies it missed along with the one passed to it.
+It's Send Reply to Another Chat done for you, turn after turn.
 
 **Starting one:** press **Ctrl+Shift+G** (File, New Agent Conversation).
 
@@ -697,13 +698,16 @@ reply is set aside, and you hear so.
   **File, Agent Conversation Hand-offs**, which can also make it say only when it stops or needs
   you. If either provider is near a usage limit, you're asked first: every exchange uses both
   subscriptions. Replies go across by themselves until the turn limit (6 exchanges unless you
-  choose another). It pauses when an agent asked you something during
-  its turn, or a tool was refused: you hear why, and the last reply waits for Ctrl+Shift+E. It
-  stops when a turn fails, and you hear why. A message from you, or a reply you hand on,
+  choose another). Approving what an agent asks, such as running its tests, doesn't stop it.
+  It pauses when you refused something during a turn, or a request went unanswered: you hear
+  why, and the last reply waits for Ctrl+Shift+E. It stops when a turn fails, and you hear
+  why; your next message goes back to that agent. A message from you, or a reply you hand on,
   starts it again with a fresh count.
 
-In either mode, the relay finishes when an agent ends its reply with DONE, when the replies
-start repeating each other, or when the agents are only thanking each other. You hear that,
+In either mode, the relay finishes when an agent ends its reply with DONE once the others have
+replied since your last message, when the replies start repeating each other, or when the
+agents are only thanking each other. A DONE before the others have had their say goes on to
+them like any reply. You hear that,
 and the last reply still waits for **Ctrl+Shift+E**, because a reviewer's DONE usually comes
 with its findings, which the other agent needs. The row doesn't say it needs you for it.
 Anything you write to the agent it waits for takes it along.
@@ -712,7 +716,8 @@ An agent that answers and leaves work running in the background, such as a build
 when it answers, not when the work finishes.
 
 **Stopping:** **Ctrl+Period** stops every agent and the relay. A reply that was waiting to be
-handed on isn't passed on, and a message that hadn't gone yet comes back to the reply box.
+handed on isn't passed on, a message that hadn't gone yet comes back to the reply box, and your
+next message goes to the agent you stopped.
 **Ctrl+Shift+T** says what each agent is doing, how far the count has got, and who your next
 message goes to. **Ctrl+Shift+U** lists each agent's context and each provider's limits.
 

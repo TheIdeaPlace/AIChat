@@ -10,6 +10,7 @@ from thechatplace.agents import (MODE_AUTO, AgentConversationStore, Member, Pend
 from thechatplace.own_store import OwnSession
 from thechatplace.sessions import NEEDS_YOU, WORKING
 from thechatplace.ui.agent_chats import AgentChats
+from thechatplace.transcript import USER, ChatMessage
 from thechatplace.ui_text import key_name
 
 
@@ -50,6 +51,8 @@ class Window(AgentChats):
         self._agent_unconfirmed, self._agent_last_sent = set(), {}
         self._agent_codex_preparing, self._agent_answered_early = set(), set()
         self._agent_turn_files = {}
+        self._agent_refused, self._agent_spoke = set(), {}
+        self._agent_unseen, self._agent_planning = {}, set()
         self._codex_send_pending, self._queued = {}, {}
         self._open = agents.rows([], [self.conversation])[-1]
         self.reply_text = Text()
@@ -234,8 +237,11 @@ def test_automatic_mode_passes_replies_up_to_the_limit(tmp_path):
 def test_the_done_marker_stops_the_relay(tmp_path):
     w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
     w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)
+    w._agent_turn_ended('codex', 'x1', 'One nit: rename x.', False)
+    sent = len(w.codex_sent)
     w._agent_turn_ended('claude', 'c1', 'All fixed and tested.\n\nDONE', False)
-    assert not w.codex_sent
+    assert len(w.codex_sent) == sent
     saved = w.saved
     assert saved.paused and saved.stop_reason == 'Claude said the work is done.'
     assert w.said[-1].endswith('Claude said the work is done. ' + key_name('Ctrl+Shift+E')
@@ -251,13 +257,13 @@ def test_repeating_replies_stop_the_relay(tmp_path):
     assert len(w.codex_sent) == 1 and not w.claude_sent[1:]
 
 
-def test_a_question_mid_turn_pauses_automatic_mode(tmp_path):
+def test_a_question_left_unanswered_mid_turn_pauses_automatic_mode(tmp_path):
     w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
     w.send('Build it.')
     w._agent_member_asked('claude', 'c1')
-    w._agent_turn_ended('claude', 'c1', 'Built it after you allowed the push.', False)
+    w._agent_turn_ended('claude', 'c1', 'Built it; the question was answered elsewhere.', False)
     assert not w.codex_sent
-    assert w.saved.stop_reason == 'Paused: Claude asked you something during its turn.'
+    assert w.saved.stop_reason == "Paused: Claude asked you something that wasn't answered."
 
 
 def test_a_failed_turn_or_empty_reply_stops_the_relay(tmp_path):
@@ -266,9 +272,10 @@ def test_a_failed_turn_or_empty_reply_stops_the_relay(tmp_path):
     w._agent_turn_ended('claude', 'c1', 'usage limit', True)
     assert w.saved.stop_reason == "Claude's turn failed."
     assert w.said[-1] == "Fix 247: Claude's turn failed. The relay stopped."
-    w.send('Try again.')
-    w._agent_turn_ended('codex', 'x1', '   ', False)
-    assert w.saved.stop_reason == "Codex's turn ended without a reply."
+    w.send('Try again.')  # to Claude again, whose turn failed, not on to Codex
+    assert len(w.claude_sent) == 2 and not w.codex_sent
+    w._agent_turn_ended('claude', 'c1', '   ', False)
+    assert w.saved.stop_reason == "Claude's turn ended without a reply."
 
 
 def test_a_turn_you_started_in_the_member_chat_is_not_relayed(tmp_path):
@@ -537,6 +544,7 @@ def test_refused_tools_are_said_and_pause_automatic_mode(tmp_path):
 def test_done_finishes_without_leaving_the_row_needing_you(tmp_path):
     w = Window(tmp_path)
     w.send('Build it.')
+    w._agent_spoke[w.cid] = {1}  # Codex has had its say since
     w._agent_turn_ended('claude', 'c1', 'Finished.\nDONE', False)
     saved = w.saved
     # The last reply can still go on, but the row doesn't need you for it.
@@ -752,7 +760,9 @@ def test_a_reviewers_findings_with_done_still_reach_the_builder(tmp_path):
     w.send('@Codex review the page')
     review = '1. Minor: make the transcript link self-contained.\n\nDONE'
     w._agent_turn_ended('codex', 'x1', review, False)
-    assert w.saved.stop_reason == 'Codex said the work is done.'
+    # Claude hasn't spoken since you wrote, so the DONE doesn't end it: the
+    # findings wait for Claude as any reply does.
+    assert w.saved.pending.to_index == 0 and not w.saved.pending.finished
     w.send('@Claude see if codex replies')
     sent = w.claude_sent[-1][1]
     assert 'From Codex (agent conversation "Fix 247"):' in sent
@@ -779,6 +789,7 @@ def test_writing_to_the_agent_that_said_done_sets_its_reply_aside(tmp_path):
     later ride along to Codex, or be offered by Ctrl+Shift+E."""
     w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
     w.send('Build it.')
+    w._agent_spoke[w.cid] = {1}  # Codex has had its say since
     w._agent_turn_ended('claude', 'c1', 'Finished v1.\nDONE', False)
     w.send('@Claude also add X')
     saved = w.saved
@@ -805,6 +816,7 @@ def test_a_newer_reply_passed_on_clears_an_older_waiting_one(tmp_path):
 def test_the_status_line_after_the_relay_restarts(tmp_path):
     w = Window(tmp_path)
     w.send('@Codex review')
+    w._agent_spoke[w.cid] = {0}  # Claude has had its say since
     w._agent_turn_ended('codex', 'x1', 'Fine.\nDONE', False)
     w._runners['c1'] = SimpleNamespace(elapsed=lambda: 1.0)  # Claude busy on something else
     assert w._agent_send_state(w._open) == 'Claude is working.'
@@ -1128,8 +1140,10 @@ def test_writing_to_the_third_agent_sets_a_waiting_reply_aside_and_says_so(tmp_p
     assert (w.saved.pending.from_index, w.saved.pending.to_index) == (0, 1)
     w.send('@Claude 2 check the facts')
     assert w.saved.pending is None
-    assert w.feedback[-1] == "Sent to Claude 2. Claude's waiting reply was set aside."
-    assert w.saved.notes[-1].text == "Claude's waiting reply was set aside: you wrote to Claude 2."
+    # Claude 2 missed it, so it went along ahead of your words.
+    assert w.feedback[-1] == "Sent to Claude 2, with Claude's reply; it no longer waits for Codex."
+    assert w.saved.notes[-1].text == ("Claude's reply went to Claude 2 with your message, "
+                                      "not on to Codex.")
 
 
 def test_codex_files_from_a_turn_with_more_queued_go_with_the_final_reply(tmp_path):
@@ -1156,3 +1170,289 @@ def test_claudes_own_plan_file_isnt_listed(tmp_path):
     w._agent_tool_used('claude', 'c1', 'C:\\Users\\k\\.claude\\plans\\plan.md')
     w._agent_turn_ended('claude', 'c1', 'Here is the plan.', False)
     assert 'Files' not in w.codex_sent[-1][1]
+
+
+
+# -- found in the bug bash with real models ---------------------------------------------------
+
+
+def test_done_before_the_other_agent_has_spoken_goes_on(tmp_path):
+    """Agents ended their first answer with DONE, and the relay stopped
+    before the reviewer saw anything. DONE ends it only once the others have
+    had their say since your message."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built and tested.\n\nDONE', False)
+    assert w.codex_sent and w.codex_sent[-1][1].endswith('Built and tested.\n\nDONE')
+    assert not w.saved.paused
+    w._agent_turn_ended('codex', 'x1', 'Looks right.\n\nDONE', False)
+    assert w.saved.stop_reason == 'Codex said the work is done.'
+    # Your next message: everyone has their say again first.
+    w.send('@Codex one more look at the tests')
+    w._agent_turn_ended('codex', 'x1', 'Tests are fine.\n\nDONE', False)
+    assert not w.saved.paused and w.claude_sent[-1][1].endswith('Tests are fine.\n\nDONE')
+
+
+def test_an_approved_request_doesnt_pause_automatic_hand_offs(tmp_path):
+    """A builder that runs its tests asks every turn; each approval paused
+    the relay. An approval or an answered question lets it go on; a refusal
+    pauses it."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', True)
+    w._agent_turn_ended('claude', 'c1', 'Built; tests pass.', False)
+    assert w.codex_sent and not w.saved.paused
+    w._agent_member_asked('codex', 'x1')
+    w._agent_member_answered('codex', 'x1', False)
+    w._agent_member_asked('codex', 'x1')
+    w._agent_member_answered('codex', 'x1', True)  # one refusal is enough to pause
+    w._agent_turn_ended('codex', 'x1', 'Reviewed.', False)
+    assert w.saved.paused and w.saved.stop_reason == "Paused: something was refused during Codex's turn."
+    # The next turn starts clean.
+    w.send('@Claude carry on')
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', True)
+    w._agent_turn_ended('claude', 'c1', 'Carried on.', False)
+    assert not w.saved.paused
+
+
+def test_an_unanswered_request_still_pauses(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_member_asked('claude', 'c1')  # cancelled, or answered elsewhere
+    w._agent_turn_ended('claude', 'c1', 'Built.', False)
+    assert w.saved.paused and not w.codex_sent
+
+
+def test_after_stop_your_next_message_goes_to_the_agent_you_stopped(tmp_path):
+    w = Window(tmp_path)
+    w._runners['c1'] = SimpleNamespace(cancel=lambda: None, cancelled=False)
+    w.send('Write a long story.')
+    w._take_queued = lambda native: ''
+    w._agent_stop(w._open)
+    assert w.saved.next_index == 0
+    w._runners.clear()
+    w.send('Shorter, please.')
+    assert len(w.claude_sent) == 2 and not w.codex_sent
+
+
+def test_at_all_with_a_carried_reply_says_where_it_went(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)
+    w.send('@all say hello')
+    assert w.feedback[-1] == "Sent to Claude and Codex, with Claude's reply to Codex."
+
+
+
+# -- the review of the bug-bash fixes ---------------------------------------------------------
+
+
+def test_a_refusal_doesnt_carry_into_the_next_queued_turn(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', False)
+    w._agent_turn_ended('claude', 'c1', 'Part one.', False, more_queued=True)
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', True)
+    w._agent_turn_ended('claude', 'c1', 'Part two.', False)
+    assert not w.saved.paused and w.codex_sent
+
+
+def test_a_failed_send_leaves_your_next_message_for_that_agent(tmp_path):
+    w = Window(tmp_path)
+    w.send('@Codex check the tests')
+    w._agent_send_failed(w.cid, 1, 'check the tests', 'Codex is not signed in.')
+    assert w.saved.next_index == 1
+
+
+def test_a_handed_on_reply_counts_as_its_senders_say(tmp_path, monkeypatch):
+    from thechatplace.ui import agent_chats
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_spoke[w.cid] = {1}
+    w._agent_turn_ended('claude', 'c1', 'Built.\nDONE', False)  # finished, waits for Codex
+    w._agent_spoke.clear()  # as after a restart
+
+    class Dialog:
+        def __init__(self, *a, **k):
+            self.chosen = None
+
+        def ShowModal(self):
+            self.chosen = (0, 'From Claude: Built.')
+            return agent_chats.wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(agent_chats, 'RelayDialog', Dialog)
+    w.on_agent_hand_off()
+    w._agent_turn_ended('codex', 'x1', 'Agreed.\nDONE', False)
+    assert w.saved.stop_reason == 'Codex said the work is done.'
+
+
+def test_three_agents_catch_up_on_what_they_missed(tmp_path):
+    """Claude 2 got Codex's review but never Claude 1's message saying what
+    was built (bug bash). The reply it missed goes first, each its own row."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    _three(w)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built roman.py.', False)       # to Codex
+    w._agent_turn_ended('codex', 'x1', 'No findings.', False)            # to Claude 2
+    to_claude2 = w.claude_sent[-1][1]
+    assert to_claude2.index('From Claude (agent conversation') < to_claude2.index(
+        'From Codex (agent conversation')
+    assert 'Built roman.py.' in to_claude2 and to_claude2.endswith('No findings.')
+    w._agent_turn_ended('claude', 'c2', 'Tests pass.', False)            # to Claude 1
+    to_claude1 = w.claude_sent[-1][1]
+    assert 'No findings.' in to_claude1 and to_claude1.endswith('Tests pass.')
+    assert 'Built roman.py.' not in to_claude1  # its own reply isn't sent back
+    from thechatplace.transcript import ASSISTANT
+    shown = agents.combine(w.saved, [
+        [ChatMessage(ASSISTANT, 'Built roman.py.', '2026-10-22T10:00:01Z', 'a')],
+        [ChatMessage(ASSISTANT, 'No findings.', '2026-10-22T10:00:03Z', 'b')],
+        [ChatMessage(USER, to_claude2.partition(
+        agents.SETUP_END)[2].strip(), '2026-10-22T10:00:05Z', 'u')]])
+    assert [m.text for m in shown if m.kind == 'relay'] == [
+        "Claude's earlier reply passed to Claude 2.", "Codex's reply passed to Claude 2."]
+
+
+def test_two_agents_catch_up_on_a_queued_turns_first_reply(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'First part done.', False, more_queued=True)
+    w._agent_turn_ended('claude', 'c1', 'Second part done.', False)
+    sent = w.codex_sent[-1][1]
+    assert 'First part done.' in sent and sent.endswith('Second part done.')
+
+
+def test_a_catch_up_that_didnt_go_is_kept(tmp_path):
+    w = Window(tmp_path)
+    _three(w)
+    w._agent_unseen[(w.cid, 2)] = [agents.relay_text(w.saved, 0, 'Built it.', missed=True)]
+    w.send('@Claude 2 check it')
+    sent = w.claude_sent[-1][1].partition(agents.SETUP_END)[2].strip()
+    assert sent.endswith(agents.USER_ADDS + 'check it')
+    w._agent_send_failed(w.cid, 2, w.claude_sent[-1][1], 'failed')
+    assert w.reply_text.GetValue() == 'check it'
+    assert w._agent_unseen[(w.cid, 2)] == [agents.relay_text(w.saved, 0, 'Built it.',
+                                                              missed=True)]
+
+
+
+def test_a_reply_quoting_another_agents_message_stays_one_row():
+    """Splitting at any "From X (agent conversation" line broke a reply that
+    quoted one (second review): only the app's own missed-reply labels split."""
+    conversation = agents.new_conversation('Fix 247', [Member('claude', 'c1', 'Claude', ''),
+                                                       Member('codex', 'x1', 'Codex', '')])
+    reply = ('You said earlier:\n\nFrom Codex (agent conversation "Fix 247"):\n\n'
+             'rename x\n\nDone that.')
+    from thechatplace.transcript import ASSISTANT
+    shown = agents.combine(conversation, [
+        [ChatMessage(ASSISTANT, reply, '2026-10-22T10:00:01Z', 'a')],
+        [ChatMessage(USER, agents.relay_text(conversation, 0, reply), '2026-10-22T10:00:02Z', 'u')]])
+    assert [m.text for m in shown if m.kind == 'relay'] == ["Claude's reply passed to Codex."]
+
+
+def test_a_queued_turns_first_reply_reads_unchanged(tmp_path):
+    from thechatplace.transcript import ASSISTANT
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'First part.', False, more_queued=True)
+    w._agent_turn_ended('claude', 'c1', 'Second part.', False)
+    sent = w.codex_sent[-1][1].partition(agents.SETUP_END)[2].strip()
+    shown = agents.combine(w.saved, [
+        [ChatMessage(ASSISTANT, 'First part.', '2026-10-22T10:00:01Z', 'a'),
+         ChatMessage(USER, 'and more', '2026-10-22T10:00:02Z', 'q'),
+         ChatMessage(ASSISTANT, 'Second part.', '2026-10-22T10:00:03Z', 'b')],
+        [ChatMessage(USER, sent, '2026-10-22T10:00:04Z', 'u')]])
+    assert [m.text for m in shown if m.kind == 'relay'][-2:] == [
+        "Claude's earlier reply passed to Codex.", "Claude's reply passed to Codex."]
+
+
+def test_stop_gives_back_your_words_and_keeps_the_missed_replies(tmp_path):
+    w = Window(tmp_path)
+    _three(w)
+    missed = agents.relay_text(w.saved, 0, 'Built it.', missed=True)
+    w._agent_unseen[(w.cid, 2)] = [missed]
+    w._runners['c2'] = SimpleNamespace(cancel=lambda: None, cancelled=False)
+    w.send('@Claude 2 check it')  # queued behind Claude 2's running turn
+    queued = w.claude_sent[-1][1]
+    w._take_queued = lambda native: queued if native == 'c2' else ''
+    w._open = agents.rows([], [w.saved])[-1]
+    w._agent_stop(w._open)
+    assert 'check it' in w.reply_text.GetValue() and 'Built it.' not in w.reply_text.GetValue()
+    assert w._agent_unseen[(w.cid, 2)] == [missed]
+
+
+def test_writing_to_the_third_agent_who_missed_the_waiting_reply_says_it_went(tmp_path):
+    w = Window(tmp_path)
+    _three(w)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)  # waits for Codex; Claude 2 missed it
+    w.send('@Claude 2 go')
+    assert 'Built v1.' in w.claude_sent[-1][1]
+    assert w.feedback[-1] == "Sent to Claude 2, with Claude's reply; it no longer waits for Codex."
+
+
+def test_keep_planning_pauses_with_its_own_reason(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Plan it.')
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', False, planning=True)
+    w._agent_turn_ended('claude', 'c1', 'Revised plan.', False)
+    assert w.saved.stop_reason == "Paused: Claude's plan isn't approved yet."
+
+
+
+def test_a_missed_reply_quoting_another_agents_message_stays_whole(tmp_path):
+    """Third review: a missed reply quoting a relay label was cut in two.
+    Missed replies end with a line only the app writes."""
+    from thechatplace.transcript import ASSISTANT
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    _three(w)
+    quoting = ('I read your note:\n\nFrom Codex (agent conversation "Fix 247"):\n\n'
+               'rename x\n\nRenamed.')
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', quoting, False)      # to Codex; Claude 2 misses it
+    w._agent_turn_ended('codex', 'x1', 'Reviewed.', False)   # to Claude 2, missed reply first
+    sent = w.claude_sent[-1][1].partition(agents.SETUP_END)[2].strip()
+    missed, rest = agents.split_missed(w.saved, sent)
+    assert len(missed) == 1 and 'Renamed.' in missed[0]
+    assert rest.startswith('From Codex (agent conversation "Fix 247"):') and rest.endswith('Reviewed.')
+    shown = agents.combine(w.saved, [
+        [ChatMessage(ASSISTANT, quoting, '2026-10-22T10:00:01Z', 'a')],
+        [ChatMessage(ASSISTANT, 'Reviewed.', '2026-10-22T10:00:03Z', 'b')],
+        [ChatMessage(USER, sent, '2026-10-22T10:00:05Z', 'u')]])
+    relays = [m.text for m in shown if m.kind == 'relay' and 'Claude 2' in m.text]
+    assert relays == ["Claude's earlier reply passed to Claude 2.",
+                      "Codex's reply passed to Claude 2."]
+
+
+def test_a_hand_off_that_doesnt_go_keeps_the_missed_replies(tmp_path, monkeypatch):
+    from thechatplace.ui import agent_chats
+    w = Window(tmp_path)
+    _three(w)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built.', False)      # waits for Codex
+    missed = agents.relay_text(w.saved, 2, 'Facts fine.', missed=True)
+    w._agent_unseen[(w.cid, 1)] = [missed]
+
+    class Dialog:
+        def __init__(self, parent, source_title, labels, text, check, **k):
+            assert text.startswith(missed)  # shown to read and change
+            self.chosen = None
+
+        def ShowModal(self):
+            conversation = w.agents.get(w.cid)
+            conversation.pending = None    # it went meanwhile
+            w.agents.put(conversation)
+            self.chosen = (0, 'edited')
+            return agent_chats.wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(agent_chats, 'RelayDialog', Dialog)
+    w.on_agent_hand_off()
+    assert w._agent_unseen[(w.cid, 1)] == [missed]

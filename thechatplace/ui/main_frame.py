@@ -246,6 +246,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._agent_answered_early: set = set()
         #: The files each member's running turn has edited (phase 3).
         self._agent_turn_files: Dict[tuple, list] = {}
+        #: Members that refused you mid-turn (an approval doesn't pause
+        #: automatic hand-offs; a refusal does), and which members have
+        #: replied since your last message (DONE waits for them all).
+        self._agent_refused: set = set()
+        self._agent_spoke: Dict[str, set] = {}
+        #: With three, the replies each member hasn't heard yet, which go with
+        #: the next message it's sent; and what the last one carried.
+        self._agent_unseen: Dict[tuple, list] = {}
+        self._agent_planning: set = set()
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -3680,6 +3689,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("That isn't waiting any more: the turn has ended.")
             self._update_send_state()
             return
+        if response.get("behavior") == "allow":
+            # An approval with more still waiting doesn't count until
+            # they're answered too.
+            if not queue:
+                self._agent_member_answered("claude", session_id, True)
+        else:
+            # Keeping a plan going isn't a refusal, but it isn't approved.
+            self._agent_member_answered("claude", session_id, False,
+                                        planning=request.is_plan)
         if changes:
             self._store_write(self.store.update, session_id, **changes)
             self._update_heading()
