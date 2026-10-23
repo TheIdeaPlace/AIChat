@@ -119,6 +119,15 @@ class ChatMessage:
     #: dialog's "This message" scope uses it for files, commands and
     #: decisions (#279).
     turn: int = 0
+    #: More to read with Read Full Message, Copy, Find and Export, but not in
+    #: the messages list's row: an agent conversation's exact setup, or the
+    #: exact text a reply was passed on with (#248).
+    detail: str = ""
+
+    @property
+    def whole(self) -> str:
+        """The text with its detail: what Enter shows and Copy copies."""
+        return f"{self.text}\n\n{self.detail}" if self.detail else self.text
 
     @property
     def label(self) -> str:
@@ -147,7 +156,7 @@ class ChatMessage:
         return f"{self.label}: {self.first_line()}"
 
     def full_text(self) -> str:
-        return f"{self.label}:\n{self.text}"
+        return f"{self.label}:\n{self.whole}"
 
 
 #: The tools whose calls are listed as commands (#279): Claude Code's shell.

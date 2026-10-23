@@ -181,7 +181,7 @@ def search_sessions(targets: Iterable[Target], text: str,
             message = messages[index]
             if message.is_activity and not target.with_activity:
                 continue
-            body = message.text or ""
+            body = message.whole or ""
             # Offsets in the text itself: casefolding can change its length.
             found = pattern.search(body)
             if found is None:

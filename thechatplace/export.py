@@ -109,7 +109,7 @@ def to_markdown(title: str, messages: Iterable, folder: str = "",
     messages = list(messages)
     parts = [f"# {title}", "", *[line + "  " for line in _intro(title, folder, when)], ""]
     for message, heading in zip(messages, _headings(messages)):
-        parts += [f"## {heading}", "", shift_headings(message.text).rstrip(), ""]
+        parts += [f"## {heading}", "", shift_headings(message.whole).rstrip(), ""]
     return "\n".join(parts).rstrip() + "\n"
 
 
@@ -119,7 +119,7 @@ def to_text(title: str, messages: Iterable, folder: str = "",
     messages = list(messages)
     parts = [title, "=" * min(len(title), 70), *_intro(title, folder, when), ""]
     for message, heading in zip(messages, _headings(messages)):
-        parts += [heading, "-" * min(len(heading), 70), (message.text or "").rstrip(), ""]
+        parts += [heading, "-" * min(len(heading), 70), (message.whole or "").rstrip(), ""]
     return "\n".join(parts).rstrip() + "\n"
 
 
@@ -132,7 +132,7 @@ def to_html(title: str, messages: Iterable, folder: str = "",
     for number, (message, heading) in enumerate(zip(messages, _headings(messages)), start=1):
         body.append(f'<section aria-labelledby="m{number}">'
                     f'<h2 id="m{number}">{html.escape(heading)}</h2>'
-                    f"{markdown_to_html(shift_headings(message.text))}</section>")
+                    f"{markdown_to_html(shift_headings(message.whole))}</section>")
     # A saved file is opened in a browser, like the published pages (#341).
     return html_page(title, "\n".join(body), landmark=True)
 

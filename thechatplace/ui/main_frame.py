@@ -2065,7 +2065,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if self.speech.formatted_messages and self._show_formatted(message):
             self.chat_list.SetFocus()
             return
-        dialog = MessageDialog(self, message.label, message.text)
+        dialog = MessageDialog(self, message.label, message.whole)
         try:
             dialog.ShowModal()
         finally:
@@ -2077,7 +2077,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         shown, or Kelly chose Read as Plain Text: the caller opens the text
         box instead."""
         title = f"Message: {message.label}"
-        return self._show_page(title, message_page(title, message.text, heading=message.label))
+        return self._show_page(title, message_page(title, message.whole, heading=message.label))
 
     def on_user_guide(self, _event=None):
         """Help, User Guide (#104): the guide as a page, read by heading like
@@ -2798,6 +2798,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         left someone who can't follow the system voice (#98) nothing to
         read. The dialog's title and the focused line are what a screen
         reader says, so nothing is spoken on top."""
+        if self._open is not None and self._open.provider == AGENTS:
+            self.on_agent_usage()  # both members (#248)
+            return
         if not self._require_capability("usage", self._open):
             return
         if self._open is not None and self._open.provider == 'codex':

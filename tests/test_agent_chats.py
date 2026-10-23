@@ -853,3 +853,82 @@ def test_a_failed_send_to_the_sender_keeps_the_waiting_reply(tmp_path):
     w.send('@Claude also add tests')
     assert w.saved.pending is None
     assert w.feedback[-1] == "Sent to Claude. Claude's waiting reply was set aside."
+
+
+
+# -- phase 2's last pieces ------------------------------------------------------------------
+
+
+def test_the_agents_only_thanking_each_other_stops_the_relay(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Thanks for the review, that all sounds good.', False)
+    w._agent_turn_ended('codex', 'x1', 'Glad to help, nothing more from me.', False)
+    assert w.saved.stop_reason == 'The agents were only thanking each other, so the relay stopped.'
+    assert len(w.codex_sent) == 1 and len(w.claude_sent) == 1
+
+
+def test_automatic_can_say_only_stops(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    conversation = w.agents.get(w.cid)
+    conversation.announce_each = False
+    w.agents.put(conversation)
+    w._status = lambda text: w.said.append('status: ' + text)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)
+    assert w.said[-1].startswith('status: Claude in Fix 247 replied.')
+    w._agent_turn_ended('codex', 'x1', 'All fine.\nDONE', False)
+    assert not w.said[-1].startswith('status:')  # a stop is always said
+
+
+def test_hand_offs_offers_automatic_saying_only_stops(tmp_path, monkeypatch):
+    w = Window(tmp_path, auto_setting=True)
+    w._selected_session = lambda: None
+    picks = iter([2, 2])  # automatic, only stops; then a limit of 3
+    w._choose = lambda title, prompt, choices, selection=None: next(picks)
+    w._agent_check_usage = lambda members, then: then()
+    w.on_agent_mode()
+    saved = w.saved
+    assert saved.mode == MODE_AUTO and saved.turn_limit == 3 and saved.announce_each is False
+    assert w.feedback[-1].endswith("you'll hear when it stops or needs you.")
+
+
+def test_automatic_asks_first_near_a_limit(tmp_path, monkeypatch):
+    from thechatplace.ui import agent_chats
+    w = Window(tmp_path, auto_setting=True)
+    w._limits = {"status": "allowed_warning",
+                 "rateLimits": [{"type": "five_hour", "utilization": 0.95}]}
+    asked = []
+    monkeypatch.setattr(agent_chats.wx, 'MessageBox',
+                        lambda text, *a, **k: asked.append(text) or agent_chats.wx.NO)
+    monkeypatch.setattr('thechatplace.usage.limit_warning', lambda limits: "You've used 95% of your 5-hour limit.")
+    w.sessions.usage_warnings = lambda info: ["Weekly limit 91% used."]
+    ran = []
+    w._agent_check_usage(w.saved.members, lambda: ran.append(True))
+    action, done = w.work.pop()
+    done(action(), False)
+    assert asked and "Claude: You've used 95% of your 5-hour limit." in asked[0]
+    assert "Codex: Weekly limit 91% used." in asked[0]
+    assert not ran and w.feedback[-1] == "Automatic hand-offs weren't turned on."
+
+
+def test_conversation_usage_lists_each_member(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from thechatplace.ui import dialogs
+    w = Window(tmp_path)
+    w._limits, w._windows, w._model_windows = None, {}, {}
+    w._copy_usage = lambda text, one: None
+    transcript = NS(context_tokens=50000, model="claude-opus-5-5")
+    w.sessions.open_reader = lambda info: NS(refresh=lambda: True, transcript=transcript)
+    w.sessions.usage_lines = lambda info: ["Context 10% full.", "Weekly limit 20% used."]
+    shown = []
+    w._modal = lambda dialog: shown.append(dialog)
+    monkeypatch.setattr(dialogs, 'UsageDialog', lambda parent, lines, copy: lines)
+    w.on_agent_usage()
+    action, done = w.work.pop()
+    done(action(), False)
+    lines = shown[-1]
+    assert lines[0].startswith('Claude (Builder chat): Context')
+    assert lines[1:3] == ['Codex (Reviewer chat): Context 10% full.',
+                          'Codex (Reviewer chat): Weekly limit 20% used.']
+    assert lines[-1].startswith('Claude plan: Usage limits: not known')
