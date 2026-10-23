@@ -1,0 +1,4 @@
+# Changes to the workflows (which define the required checks, signing and releasing), the build
+# scripts and this file need Kelly's approval before they reach main.
+/.github/ @kellylford
+/BuildAndRelease/ @kellylford

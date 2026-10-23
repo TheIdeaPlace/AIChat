@@ -58,6 +58,11 @@ add `release-notes/v<version>.md` in the same commit, then push the tag `v<versi
 workflow fails if the tag and `__version__` disagree, or if the notes file is missing. It builds
 Windows and macOS in parallel jobs, and a `publish` job makes the release only if both succeed
 (the Windows installer, portable zip and `windows` feed; the notarized `.dmg` and `osx` feed).
+Only Kelly can release or sign: tags are admin-only by ruleset, releases are immutable, and every
+signing run (a tag, a hand run with "sign", a `sign-build` pull request) waits for his approval of
+the `azure-signing` environment, where the signing secrets belong. After his "go", approve the
+waiting tag run (`gh api -X POST repos/TheIdeaPlace/AIChat/actions/runs/<id>/pending_deployments
+-F "environment_ids[]=23643397700" -f state=approved -f comment=release`), then watch it.
 Versions below 1.0 publish as pre-releases. Both platforms update through Velopack
 (`updater.CHANNEL`). Velopack calls every Mac app portable, so the portable check is Windows-only
 (`updater.PORTABLE_COPIES_EXIST`); applying it on a Mac silently stops all Mac updates.
