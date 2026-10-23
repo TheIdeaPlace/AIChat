@@ -661,9 +661,12 @@ goes on to say what went. Enter reads any of them in full. The setup each agent 
 the start is one line here; its own chat has it word for word.
 
 **Writing in it:** what you type goes to the agent whose turn it is (Turn Status says which).
-Start with @ and a name to choose: "@Codex check the tests", or "@all" for both (their replies
+Start with @ and a name to choose: "@Codex check the tests", or with the name and a comma, as
+you'd write to someone: "Codex, what's broken?". "@all" goes to both (their replies
 are then shown but not passed on). If a reply is waiting to go to the agent you write to, it goes
-along with your words, ahead of them, instead of being dropped.
+along with your words, ahead of them, instead of being dropped; "@all" takes it along too. If you
+write only to the agent that sent it, you've carried on with that agent instead, so the waiting
+reply is set aside, and you hear so.
 
 **Hand-offs:**
 
@@ -675,9 +678,13 @@ along with your words, ahead of them, instead of being dropped.
   **File, Agent Conversation Hand-offs**. Replies go across by themselves until the turn limit (6
   exchanges unless you choose another). It pauses when an agent asked you something during
   its turn, or a tool was refused: you hear why, and the last reply waits for Ctrl+Shift+E. It
-  stops when a turn fails, and you hear why. It finishes when an agent ends its reply with DONE, or when the replies start
-  repeating each other: you hear that, and nothing waits. A message from you, or a reply you
-  hand on, starts it again with a fresh count.
+  stops when a turn fails, and you hear why. A message from you, or a reply you hand on,
+  starts it again with a fresh count.
+
+In either mode, the relay finishes when an agent ends its reply with DONE, or when the replies
+start repeating each other. You hear that, and the last reply still waits for **Ctrl+Shift+E**,
+because a reviewer's DONE usually comes with its findings, which the other agent needs. The row
+doesn't say it needs you for it. Anything you write to the other agent takes it along.
 
 An agent that answers and leaves work running in the background, such as a build, is handed on
 when it answers, not when the work finishes.
