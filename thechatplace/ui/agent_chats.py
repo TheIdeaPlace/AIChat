@@ -92,7 +92,7 @@ class AgentChats:
                                                or state.state == WORKING)):
                     working.append(member.name)
         if working:
-            return f"{' and '.join(working)} {'is' if len(working) == 1 else 'are'} working."
+            return f"{agents.join_names(working)} {'is' if len(working) == 1 else 'are'} working."
         if pending is not None:
             # Finished: the last reply can still go on (a reviewer's DONE
             # comes with its findings).
@@ -219,12 +219,14 @@ class AgentChats:
         makes one; nothing is saved until every member exists."""
         members, records = [], []
         pending_codex = []
+        names = agents.member_names([Member(c.provider, str(slot), "")
+                                     for slot, c in enumerate(plan.members)])
         for slot, choice in enumerate(plan.members):
             if choice.info is not None:
                 members.append(Member(choice.info.provider, choice.info.cli_session_id, "",
                                       choice.role))
                 continue
-            title = f"{plan.title}: {agents.provider_name(choice.provider)}"
+            title = f"{plan.title}: {names[slot]}"
             if choice.provider == "claude":
                 record = OwnSession(cli_session_id=new_session_id(), title=title,
                                     cwd=plan.folder, permission_mode=choice.permission,
@@ -275,7 +277,7 @@ class AgentChats:
                     kept = ""
                     if plan.message.strip() and self._copy_text(plan.message):
                         kept = " Your opening message is copied to the clipboard."
-                    left = (f" {' and '.join(made_codex)} "
+                    left = (f" {agents.join_names(made_codex)} "
                             f"{'was' if len(made_codex) == 1 else 'were'} made and "
                             f"{'stays' if len(made_codex) == 1 else 'stay'} in the list."
                             if made_codex else "")
@@ -328,11 +330,11 @@ class AgentChats:
         conversation.paused, conversation.stop_reason, conversation.exchanges = False, "", 0
         self._agent_last_heard.pop(conversation.conversation_id, None)
         pending = conversation.pending
-        # Writing to the agent that sent a waiting reply, and not to the one
-        # it waits for, carries on past it: it's set aside once your words
-        # have gone. With @all, it goes along to the agent it waits for.
-        set_aside = (pending is not None and pending.from_index in targets
-                     and pending.to_index not in targets)
+        # Writing to the agent that sent a waiting reply, or (with three) to
+        # neither, and not to the one it waits for, carries on past it: it's
+        # set aside once your words have gone, and you hear so. With @all,
+        # it goes along to the agent it waits for.
+        set_aside = pending is not None and pending.to_index not in targets
         relay = len(targets) == 1
         sent, carried, dropped = [], "", ""
         for index in targets:
@@ -340,24 +342,25 @@ class AgentChats:
             if pending is not None and pending.to_index == index:
                 # A reply was waiting to go to this agent: it goes with your
                 # words, ahead of them, rather than being dropped.
-                message = (f"{agents.relay_text(conversation, pending.from_index, pending.text)}"
-                           f"{agents.USER_ADDS}{text}")
+                relayed = agents.relay_text(conversation, pending.from_index, pending.text,
+                                            pending.files)
+                message = f"{relayed}{agents.USER_ADDS}{text}"
             if self._agent_deliver(conversation, index, message, relay=relay):
                 sent.append(conversation.members[index].name)
                 if message is not text:
                     # The receiving chat's history shows it went; no note too.
                     carried = conversation.members[pending.from_index].name
                     conversation.pending = None
-                elif set_aside and index == pending.from_index:
-                    dropped = conversation.members[index].name
-                    conversation.pending = None
-                    self._agent_note(conversation, f"{dropped}'s waiting reply was set aside: "
-                                                   f"you wrote to {dropped}.")
+        if set_aside and sent and conversation.pending is pending:
+            dropped = conversation.members[pending.from_index].name
+            conversation.pending = None
+            self._agent_note(conversation, f"{dropped}'s waiting reply was set aside: "
+                                           f"you wrote to {agents.join_names(sent)}.")
         if len(targets) == 1 and sent:
             conversation.next_index = conversation.next_after(targets[0])
         self._agent_after_change(conversation)
         if sent:
-            names = " and ".join(sent)
+            names = agents.join_names(sent)
             said = (f"Sent {carried}'s reply and your message to {names}." if carried
                     else f"Sent to {names}.")
             if dropped:
@@ -378,6 +381,10 @@ class AgentChats:
             return False
         message = agents.outgoing(conversation, index, text)
         identity = member.identity
+        if identity not in self._agent_awaiting:
+            # A new turn: its own files. Written to mid-turn, it's the same
+            # turn going on, and keeps what it has edited so far.
+            self._agent_turn_files.pop(identity, None)
         self._agent_awaiting[identity] = (conversation.conversation_id, relay)
         self._agent_last_sent[identity] = message
         if index not in conversation.briefed:
@@ -490,6 +497,18 @@ class AgentChats:
         if (provider, native_id) in self._agent_awaiting:
             self._agent_asked.add((provider, native_id))
 
+    def _agent_tool_used(self, provider, native_id, path):
+        """A member's turn edited ``path`` (Claude reports each edit that
+        worked): listed with its reply when it's passed on, for a reviewer.
+        Claude's own plan file, which Plan mode writes, isn't the work."""
+        identity = (provider, native_id)
+        if "/.claude/plans/" in (path or "").replace("\\", "/"):
+            return
+        if identity in self._agent_awaiting and path:
+            files = self._agent_turn_files.setdefault(identity, [])
+            if path not in files:
+                files.append(path)
+
     def _agent_answered(self, provider, native_id, reply, failed=False, detail="",
                         more_queued=False):
         """A member answered and left work running in the background (#161),
@@ -557,7 +576,7 @@ class AgentChats:
         return tuple(t for t in texts if t != sent) if kept else texts
 
     def _agent_turn_ended(self, provider, native_id, reply, failed, *, more_queued=False,
-                          detail=""):
+                          detail="", files=()):
         """A member's turn ended. If the conversation started it, hand the
         reply on (or wait for you to), or stop, and say so. ``detail``: why it
         failed, or what was refused, which the member chat would have said."""
@@ -573,10 +592,15 @@ class AgentChats:
             self._refresh_chat()
         if more_queued:
             # Another of the conversation's messages goes in first; what this
-            # turn asked you doesn't carry over to that one.
+            # turn asked you doesn't carry over to that one. Its files go on
+            # with the reply that's passed on in the end.
             self._agent_asked.discard(identity)
+            if files:
+                gathered = self._agent_turn_files.setdefault(identity, [])
+                gathered += [f for f in files if f not in gathered]
             return
         awaited = self._agent_awaiting.pop(identity, None)
+        files = tuple(dict.fromkeys(list(self._agent_turn_files.pop(identity, ())) + list(files)))
         asked = identity in self._agent_asked
         self._agent_asked.discard(identity)
         index = conversation.member_index(provider, native_id)
@@ -630,7 +654,7 @@ class AgentChats:
             # them: in a real conversation they were never passed on, and
             # Claude read Codex's session file to find them.
             conversation.paused, conversation.stop_reason = True, stop
-            conversation.pending = Pending(index, to, reply, finished=True)
+            conversation.pending = Pending(index, to, reply, finished=True, files=files)
             self._agent_note(conversation, stop)
             self._agent_after_change(conversation)
             hint = f"{key_name('Ctrl+Shift+E')} hands {member.name}'s last reply to {target}."
@@ -645,7 +669,7 @@ class AgentChats:
             stop = (f"Paused: {member.name} asked you something during its turn." if asked
                     else f"Paused: {refused.strip()}")
         if auto and not stop:
-            text = agents.relay_text(conversation, index, reply)
+            text = agents.relay_text(conversation, index, reply, files)
             conversation.exchanges += 1
             if self._agent_deliver(conversation, to, text, relay=True):
                 # Shown by the receiving chat's history; Turn Status has the count.
@@ -655,7 +679,7 @@ class AgentChats:
                 self._agent_say(conversation, said)
                 return
             stop = f"Couldn't pass {member.name}'s reply to {target}."
-        conversation.pending = Pending(index, to, reply)
+        conversation.pending = Pending(index, to, reply, files=files)
         if stop:
             conversation.paused, conversation.stop_reason = True, stop
             self._agent_note(conversation, stop)
@@ -692,7 +716,7 @@ class AgentChats:
                            "or @ and a name to choose who it goes to.")
             return
         to = conversation.members[pending.to_index]
-        text = agents.relay_text(conversation, pending.from_index, pending.text)
+        text = agents.relay_text(conversation, pending.from_index, pending.text, pending.files)
         target = self._agent_member_info(to)
         label = f"{to.name}, {target.title}" if target is not None else to.name
         dialog = RelayDialog(self, conversation.title, [label], text,
@@ -750,13 +774,16 @@ class AgentChats:
                     self._stop_codex_owned(member_info)
                     stopped.append(member.name)
         self._agent_forget_waiting(conversation.conversation_id)
+        for member in conversation.members:
+            # What a stopped turn edited isn't passed on with a later reply.
+            self._agent_turn_files.pop(member.identity, None)
         conversation.paused, conversation.stop_reason = True, "Stopped."
         dropped = conversation.pending is not None
         conversation.pending = None
         self._agent_note(conversation, "Stopped." if not stopped
-                         else f"Stopped {' and '.join(stopped)}.")
+                         else f"Stopped {agents.join_names(stopped)}.")
         self._agent_after_change(conversation, touch=False)
-        said = (f"Stopping {' and '.join(stopped)}. The relay is stopped." if stopped
+        said = (f"Stopping {agents.join_names(stopped)}. The relay is stopped." if stopped
                 else "The relay is stopped. Nothing was running.")
         if dropped:
             said += " The waiting reply wasn't passed on."
@@ -874,8 +901,8 @@ class AgentChats:
         if mode == MODE_AUTO:
             limits = [str(n) for n in range(1, agents.MAX_TURN_LIMIT + 1)]
             chosen = self._choose(f"Turn limit: {conversation.title}",
-                                  "Stop after how many exchanges? (A reply passed from one agent "
-                                  "to the other is one exchange.)", limits,
+                                  "Stop after how many exchanges? (Each reply passed from one "
+                                  "agent to the next is one exchange.)", limits,
                                   selection=conversation.turn_limit - 1)
             if chosen is None:
                 return
@@ -973,7 +1000,7 @@ class AgentChats:
 
     def _agent_check_usage(self, members, then, declined=None):
         """Before automatic hand-offs: if either provider is near a limit,
-        say so and ask, since every exchange uses both subscriptions. No
+        say so and ask, since every exchange uses each agent's subscription. No
         runs ``declined`` (a new conversation starts approving each
         hand-off instead) or says they weren't turned on."""
         from .. import usage
@@ -1018,7 +1045,7 @@ class AgentChats:
                                    "usage limit. Choose them again to be asked.")
                     return
                 answer = wx.MessageBox(
-                    "\n".join(warnings) + "\n\nAutomatic hand-offs use both subscriptions "
+                    "\n".join(warnings) + "\n\nAutomatic hand-offs use each agent's subscription "
                     "for every exchange. Turn them on anyway?", "Automatic Hand-offs",
                     wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
                 if answer != wx.YES:
@@ -1044,7 +1071,7 @@ class AgentChats:
         conversation = self._agent_conversation(info)
         if conversation is None:
             return
-        names = " and ".join(m.name for m in conversation.members)
+        names = agents.join_names(m.name for m in conversation.members)
         answer = wx.MessageBox(
             f"Delete the agent conversation {conversation.title}? Its member chats ({names}) "
             "stay, with everything said in them, and come back to the session list.",

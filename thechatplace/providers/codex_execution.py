@@ -23,6 +23,7 @@ class CodexTurnState:
     context_epoch: int = 0
     tasks: tuple = field(default=(), repr=False)
     plan_received: bool = False
+    changed_paths: tuple = field(default=(), repr=False)
 
 
 class CodexExecutionConnection(CodexLifecycleConnection):
@@ -231,7 +232,8 @@ class CodexTurnExecutor:
             return CodexTurnState(buffer.turn_id, buffer.status, buffer.replies, requests, buffer.file_changes,
                                   buffer.started_at, buffer.activity, self._notices.get(proof.native_id, ''),
                                   self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0),
-                                  tuple(replace(t) for t in buffer.tasks), buffer.plan_received)
+                                  tuple(replace(t) for t in buffer.tasks), buffer.plan_received,
+                                  buffer.changed_paths)
 
     def answer(self, proof, request, result, *, dispatch_guard=None):
         if not self.connection.owns_runtime(proof):

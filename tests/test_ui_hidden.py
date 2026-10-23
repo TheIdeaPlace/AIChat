@@ -11247,7 +11247,7 @@ def test_new_agent_conversation_with_a_new_claude_chat(frame, env, fake_runner, 
     [conversation] = frame.agents.all()
     new = conversation.members[1]
     record = frame.store.get(new.native_id)
-    assert record.title == "Fresh pair: Claude" and record.cwd == str(tmp_path)
+    assert record.title == "Fresh pair: Claude 2" and record.cwd == str(tmp_path)
     assert record.permission_mode == "plan" and record.started is False
     assert new.role == "Critic"
     runner = fake_runner.instances[-1]
@@ -11280,7 +11280,7 @@ def test_agent_conversation_dialog_checks_and_result(app, monkeypatch, tmp_path)
         dialog.chats[1].SetSelection(2)
         dialog._sync()
         dialog._start()
-        assert boxes[-1] == "The two agents need different chats." and not ended
+        assert boxes[-1] == "Each agent needs a different chat." and not ended
         assert not dialog.permissions[0].IsShown() and not dialog.folder.IsShown()
         dialog.chats[1].SetSelection(1)  # a new Codex chat needs a folder that exists
         dialog._sync()
@@ -11300,6 +11300,99 @@ def test_agent_conversation_dialog_checks_and_result(app, monkeypatch, tmp_path)
                 result.members[1].role, result.members[1].permission) == (
             None, "codex", "Review each change", "workspace-write")
         assert result.mode == "auto" and result.first == 0 and not result.to_all
+        assert len(result.members) == 2  # no third agent unless you choose one
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
+def test_agent_conversation_dialog_template_and_third_agent(app, monkeypatch, tmp_path):
+    """Phase 3: a template fills in roles, new chats' permissions and who
+    goes first; a third agent is optional, and brings its role and
+    permission, and "Everyone" to who goes first."""
+    from thechatplace.agents import TEMPLATES
+    from thechatplace.sessions import SessionInfo, OWN
+    from thechatplace.ui import dialogs
+    existing = [SessionInfo(OWN, "own:a", "Builder", str(tmp_path), "a")]
+    parent = wx.Frame(None)
+    try:
+        dialog = dialogs.AgentConversationDialog(parent, existing, ["claude", "codex"],
+                                                 folders=[str(tmp_path)])
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        assert dialog.template.GetStringSelection() == "Your own roles"
+        assert not dialog.roles[2].IsShown() and not dialog.permissions[2].IsShown()
+        assert list(dialog.first.GetStrings()) == [
+            "First agent", "Second agent", "Both (their replies aren't passed on)"]
+        review = [t.key for t in TEMPLATES].index("build-review")
+        dialog.template.SetSelection(review + 1)
+        dialog._apply_template()
+        assert dialog.roles[0].GetValue() == TEMPLATES[review].roles[0]
+        assert dialog.roles[1].GetValue() == TEMPLATES[review].roles[1]
+        # A new Claude builder may edit; a new Codex reviewer is read-only.
+        assert dialog.permissions[0].GetStringSelection().startswith("Accept edits")
+        assert dialog.permissions[1].GetStringSelection().startswith("Read-only")
+        dialog.chats[2].SetSelection(1)  # a third agent: a new Claude chat
+        dialog._sync()
+        assert dialog.roles[2].IsShown() and dialog.permissions[2].IsShown()
+        assert list(dialog.first.GetStrings())[2:] == [
+            "Third agent", "Everyone (their replies aren't passed on)"]
+        dialog.roles[2].SetValue("Check the facts")
+        dialog.first.SetSelection(3)
+        dialog._start()
+        result = dialog.result
+        assert [m.provider for m in result.members] == ["claude", "codex", "claude"]
+        assert result.members[2].role == "Check the facts"
+        assert result.to_all and result.first == 0
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
+def test_agent_conversation_dialog_keeps_choices_as_chats_change(app, monkeypatch, tmp_path):
+    """The review's cases: a template's read-only reviewer stays read-only
+    when its chat becomes a new Claude chat; a third agent under a template
+    starts read-only; Both becomes Everyone and back; the duplicate check
+    goes to the later of the two chats."""
+    from thechatplace.agents import TEMPLATES
+    from thechatplace.sessions import SessionInfo, OWN
+    from thechatplace.ui import dialogs
+    boxes = []
+    monkeypatch.setattr(dialogs.wx, "MessageBox", lambda text, *a, **k: boxes.append(text))
+    existing = [SessionInfo(OWN, "own:a", "Builder", str(tmp_path), "a")]
+    parent = wx.Frame(None)
+    try:
+        dialog = dialogs.AgentConversationDialog(parent, existing, ["claude", "codex"],
+                                                 folders=[str(tmp_path)])
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        dialog.template.SetSelection([t.key for t in TEMPLATES].index("build-review") + 1)
+        dialog._apply_template()
+        dialog.chats[1].SetSelection(0)  # the reviewer: a new Claude chat now
+        dialog._sync()
+        assert dialog.permissions[1].GetStringSelection().startswith("Plan")
+        dialog.chats[2].SetSelection(1)  # a new Claude third agent
+        dialog._sync()
+        assert dialog.permissions[2].GetStringSelection().startswith("Plan")
+        dialog.chats[2].SetSelection(0)
+        dialog._sync()
+        dialog.first.SetSelection(2)  # Both
+        dialog.chats[2].SetSelection(1)
+        dialog._sync()
+        assert dialog.first.GetStringSelection().startswith("Everyone")
+        dialog.chats[2].SetSelection(0)
+        dialog._sync()
+        assert dialog.first.GetStringSelection().startswith("Both")
+        dialog.first.SetSelection(1)
+        dialog.chats[2].SetSelection(1)
+        dialog._sync()
+        assert dialog.first.GetStringSelection() == "Second agent"
+        # First and third the same existing chat: focus goes to the third.
+        dialog.chats[0].SetSelection(2)
+        dialog.chats[2].SetSelection(3)
+        dialog._sync()
+        focused = []
+        monkeypatch.setattr(dialog.chats[2], "SetFocus", lambda: focused.append(2))
+        dialog._start()
+        assert boxes[-1] == "Each agent needs a different chat." and focused == [2]
         dialog.Destroy()
     finally:
         parent.Destroy()

@@ -194,3 +194,27 @@ def test_future_step_status_keeps_the_snapshot_and_uses_to_do():
     event = decode_event('turn/plan/updated', {'threadId': 'one', 'turnId': 'turn', 'plan': [
         {'step': 'Known step', 'status': 'completed'}, {'step': 'Future step', 'status': 'skipped'}]})
     assert event.plan == (('Known step', 'completed'), ('Future step', 'pending'))
+
+
+
+def _file_change(method, status, item_id='files', path='src/app.py', diff='Update: not a path'):
+    item = {'type': 'fileChange', 'id': item_id, 'changes': [
+        {'path': path, 'kind': {'type': 'add'}, 'diff': diff},
+        {'path': 'old.py', 'kind': {'type': 'update', 'move_path': 'new.py'}, 'diff': '+x'}]}
+    if status is not None:
+        item['status'] = status
+    return decode_event(method, {'threadId': 'chat', 'turnId': 'turn', 'item': item})
+
+
+def test_changed_paths_are_only_changes_codex_made():
+    """An agent conversation passes on the files a Codex turn changed: the
+    paths themselves, never words in a diff, and only once made (#248)."""
+    buffer = CodexTurnBuffer('chat', 'turn')
+    buffer.apply(_file_change('item/started', 'inProgress'))
+    assert buffer.changed_paths == ()
+    buffer.apply(_file_change('item/completed', 'completed'))
+    assert buffer.changed_paths == ('src/app.py', 'old.py', 'new.py')
+    buffer.apply(_file_change('item/completed', 'declined', item_id='two', path='no.py'))
+    buffer.apply(_file_change('item/completed', 'failed', item_id='three', path='bad.py'))
+    buffer.apply(_file_change('item/completed', None, item_id='four', path='src/app.py'))
+    assert buffer.changed_paths == ('src/app.py', 'old.py', 'new.py')

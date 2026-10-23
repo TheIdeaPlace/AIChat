@@ -22,6 +22,9 @@ class CodexEvent:
     text: str = ""
     status: str = ""
     plan: tuple = ()
+    #: A file change's paths, once Codex says it was made (agent
+    #: conversations pass them on with the reply).
+    paths: tuple = ()
 
 
 def _id(value):
@@ -110,7 +113,7 @@ def decode_event(method, params):
             changes = item.get("changes")
             if not isinstance(changes, list):
                 raise ValueError("Invalid Codex file changes")
-            pieces = []
+            pieces, paths = [], []
             for change in changes[:128]:
                 if not isinstance(change, dict):
                     raise ValueError("Invalid Codex file change")
@@ -121,13 +124,19 @@ def decode_event(method, params):
                 if not path.strip():
                     raise ValueError("Invalid Codex file change path")
                 heading = f"{kind['type'].capitalize()}: {path}"
+                paths.append(path)
                 if kind.get("move_path") is not None:
                     heading += "\nMove to: " + _text(kind["move_path"])
+                    paths.append(_text(kind["move_path"]))
                 pieces.append(heading + "\n" + _text(change.get("diff")))
             if len(changes) > 128:
                 pieces.append(DISPLAY_NOTE)
+            # Only a change that was made counts as changed: not one still
+            # starting, nor one you declined or that failed.
+            made = method == "item/completed" and item.get("status") in (None, "completed")
             return CodexEvent("file_changes", thread_id, _id(params.get("turnId")),
-                              _id(item.get("id")), _text("\n\n".join(pieces)))
+                              _id(item.get("id")), _text("\n\n".join(pieces)),
+                              paths=tuple(p for p in paths if p.strip()) if made else ())
         if item.get("type") != "agentMessage" or method == "item/started":
             return None  # tool/question conversion is a separate checkpoint
         return CodexEvent("text_completed", thread_id, _id(params.get("turnId")),
@@ -161,6 +170,7 @@ class CodexTurnBuffer:
         self._final = set()
         self._characters = 0
         self._file_changes = {}
+        self._file_paths = {}
         self._file_characters = 0
         self.truncated = False
         self.started_at = time.monotonic()
@@ -175,6 +185,11 @@ class CodexTurnBuffer:
     @property
     def file_changes(self):
         return tuple(self._file_changes.items())
+
+    @property
+    def changed_paths(self):
+        """Each file a change that was made touched, once, in order."""
+        return tuple(dict.fromkeys(p for paths in self._file_paths.values() for p in paths))
 
     def disconnect(self):
         if self.status == "inProgress":
@@ -222,6 +237,7 @@ class CodexTurnBuffer:
                     text = text[:remaining]
                 self._file_characters += len(text) - len(self._file_changes.get(item_id, ""))
                 self._file_changes[item_id] = text
+                self._file_paths[item_id] = tuple(event.paths)
                 self.activity = "Reviewing file changes."
                 return True
             except ValueError:

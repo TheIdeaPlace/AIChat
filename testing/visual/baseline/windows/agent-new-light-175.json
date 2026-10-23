@@ -26,7 +26,7 @@
     834
    ],
    "best": [
-    952,
+    1210,
     29
    ],
    "depth": 0,
@@ -37,10 +37,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Title:",
+   "label": "&Kind of conversation:",
    "rect": [
     8,
     8,
+    196,
+    31
+   ],
+   "best": [
+    196,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Kind of conversation",
+   "label": "",
+   "rect": [
+    8,
+    39,
+    1190,
+    38
+   ],
+   "best": [
+    1164,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Your own roles"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Title:",
+   "rect": [
+    8,
+    85,
     45,
     31
    ],
@@ -59,7 +98,7 @@
    "label": "",
    "rect": [
     10,
-    41,
+    118,
     1190,
     38
    ],
@@ -79,7 +118,7 @@
    "label": "First &agent's chat:",
    "rect": [
     8,
-    85,
+    162,
     163,
     31
    ],
@@ -98,7 +137,7 @@
    "label": "",
    "rect": [
     8,
-    116,
+    193,
     1190,
     38
    ],
@@ -118,7 +157,7 @@
    "label": "First agent's &role (optional), such as Build the fix:",
    "rect": [
     8,
-    162,
+    239,
     448,
     31
    ],
@@ -137,7 +176,7 @@
    "label": "",
    "rect": [
     10,
-    195,
+    272,
     1190,
     38
    ],
@@ -157,7 +196,7 @@
    "label": "First agent's new chat &permission:",
    "rect": [
     8,
-    239,
+    316,
     313,
     31
    ],
@@ -176,7 +215,7 @@
    "label": "",
    "rect": [
     8,
-    270,
+    347,
     1190,
     38
    ],
@@ -196,7 +235,7 @@
    "label": "S&econd agent's chat:",
    "rect": [
     8,
-    316,
+    393,
     193,
     31
    ],
@@ -215,7 +254,7 @@
    "label": "",
    "rect": [
     8,
-    347,
+    424,
     1190,
     38
    ],
@@ -235,7 +274,7 @@
    "label": "Second agent's r&ole (optional), such as Review each change:",
    "rect": [
     8,
-    393,
+    470,
     557,
     31
    ],
@@ -254,7 +293,7 @@
    "label": "",
    "rect": [
     10,
-    426,
+    503,
     1190,
     38
    ],
@@ -274,7 +313,7 @@
    "label": "Second agent's new chat permissio&n:",
    "rect": [
     8,
-    470,
+    547,
     343,
     31
    ],
@@ -293,7 +332,7 @@
    "label": "",
    "rect": [
     8,
-    501,
+    578,
     1190,
     38
    ],
@@ -310,10 +349,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
+   "label": "Thir&d agent's chat (optional):",
+   "rect": [
+    8,
+    624,
+    266,
+    31
+   ],
+   "best": [
+    266,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Third agent's chat (optional)",
+   "label": "",
+   "rect": [
+    8,
+    655,
+    1190,
+    38
+   ],
+   "best": [
+    312,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "No third agent"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
    "label": "&Folder for new chats:",
    "rect": [
     8,
-    547,
+    701,
     194,
     31
    ],
@@ -332,7 +410,7 @@
    "label": "",
    "rect": [
     8,
-    578,
+    732,
     1051,
     38
    ],
@@ -351,7 +429,7 @@
    "label": "&Browse...",
    "rect": [
     1065,
-    578,
+    732,
     133,
     42
    ],
@@ -370,7 +448,7 @@
    "label": "&Hand-offs:",
    "rect": [
     8,
-    628,
+    782,
     99,
     31
    ],
@@ -389,19 +467,19 @@
    "label": "",
    "rect": [
     8,
-    659,
+    813,
     1190,
     38
    ],
    "best": [
-    610,
+    686,
     38
    ],
    "depth": 1,
    "parent": 0,
    "enabled": true,
    "problems": [],
-   "value": "Approve each hand-off: you pass each reply on (Ctrl+Shift+E)"
+   "value": "Approve each hand-off: you pass each reply on (type, or Ctrl+Shift+E)"
   },
   {
    "class": "StaticText",
@@ -409,7 +487,7 @@
    "label": "Who goes f&irst:",
    "rect": [
     8,
-    705,
+    859,
     141,
     31
    ],
@@ -428,7 +506,7 @@
    "label": "",
    "rect": [
     8,
-    736,
+    890,
     1190,
     38
    ],
@@ -448,7 +526,7 @@
    "label": "Opening &message (Enter starts a new line; Ctrl+Enter starts the conversation):",
    "rect": [
     8,
-    782,
+    936,
     716,
     31
    ],
@@ -467,7 +545,7 @@
    "label": "",
    "rect": [
     10,
-    815,
+    969,
     1190,
     210
    ],

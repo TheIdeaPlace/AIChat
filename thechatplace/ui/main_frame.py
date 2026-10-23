@@ -244,6 +244,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._agent_last_sent: Dict[tuple, str] = {}
         self._agent_codex_preparing: set = set()
         self._agent_answered_early: set = set()
+        #: The files each member's running turn has edited (phase 3).
+        self._agent_turn_files: Dict[tuple, list] = {}
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -4194,6 +4196,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         is_open_now = (self._open is not None and self._open.provider == "claude"
                        and self._open.cli_session_id == session_id)
+        if event.kind == "edited":
+            # An agent conversation passes the files it edited on (phase 3).
+            self._agent_tool_used("claude", session_id, (event.data or {}).get("file_path", ""))
+            return
         if event.kind == "tool":
             self._status(f"{title}: Claude is using {event.text}.")
             if is_open_now and self._show_activity:
