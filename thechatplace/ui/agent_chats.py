@@ -60,7 +60,8 @@ class AgentChats:
         for table in (self._agent_awaiting, self._agent_last_reply, self._agent_last_sent):
             if (provider, old_id) in table:
                 table[(provider, new_id)] = table.pop((provider, old_id))
-        for found in (self._agent_asked, self._agent_unconfirmed, self._agent_refused):
+        for found in (self._agent_asked, self._agent_unconfirmed, self._agent_refused,
+                      self._agent_planning):
             if (provider, old_id) in found:
                 found.discard((provider, old_id))
                 found.add((provider, new_id))
@@ -341,9 +342,10 @@ class AgentChats:
         # Who among those you wrote to has the waiting reply among the ones
         # it missed (three agents), so it goes to them anyway.
         missed_by = [conversation.members[t].name for t in targets
-                     if pending is not None and t != pending.to_index and any(
-                         pending.text.strip() in entry
-                         for entry in self._agent_unseen.get((conversation_id, t), ()))]
+                     if pending is not None and t != pending.to_index
+                     and agents.relay_text(conversation, pending.from_index, pending.text,
+                                           pending.files, missed=True)
+                     in self._agent_unseen.get((conversation_id, t), ())]
         for index in targets:
             message = text
             if pending is not None and pending.to_index == index:
@@ -840,6 +842,8 @@ class AgentChats:
             dialog.Destroy()
         conversation = self.agents.get(conversation.conversation_id)
         if conversation is None or conversation.pending != pending:
+            if missed:  # not sent, so still missed
+                self._agent_unseen[unseen_key] = missed + self._agent_unseen.get(unseen_key, [])
             self._feedback("The waiting reply changed while the dialog was open. Nothing was "
                            f"sent; press {key_name('Ctrl+Shift+E')} again for the new one."
                            if conversation is not None and conversation.pending is not None

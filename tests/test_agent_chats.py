@@ -1403,3 +1403,56 @@ def test_keep_planning_pauses_with_its_own_reason(tmp_path):
     w._agent_member_answered('claude', 'c1', False, planning=True)
     w._agent_turn_ended('claude', 'c1', 'Revised plan.', False)
     assert w.saved.stop_reason == "Paused: Claude's plan isn't approved yet."
+
+
+
+def test_a_missed_reply_quoting_another_agents_message_stays_whole(tmp_path):
+    """Third review: a missed reply quoting a relay label was cut in two.
+    Missed replies end with a line only the app writes."""
+    from thechatplace.transcript import ASSISTANT
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    _three(w)
+    quoting = ('I read your note:\n\nFrom Codex (agent conversation "Fix 247"):\n\n'
+               'rename x\n\nRenamed.')
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', quoting, False)      # to Codex; Claude 2 misses it
+    w._agent_turn_ended('codex', 'x1', 'Reviewed.', False)   # to Claude 2, missed reply first
+    sent = w.claude_sent[-1][1].partition(agents.SETUP_END)[2].strip()
+    missed, rest = agents.split_missed(w.saved, sent)
+    assert len(missed) == 1 and 'Renamed.' in missed[0]
+    assert rest.startswith('From Codex (agent conversation "Fix 247"):') and rest.endswith('Reviewed.')
+    shown = agents.combine(w.saved, [
+        [ChatMessage(ASSISTANT, quoting, '2026-10-22T10:00:01Z', 'a')],
+        [ChatMessage(ASSISTANT, 'Reviewed.', '2026-10-22T10:00:03Z', 'b')],
+        [ChatMessage(USER, sent, '2026-10-22T10:00:05Z', 'u')]])
+    relays = [m.text for m in shown if m.kind == 'relay' and 'Claude 2' in m.text]
+    assert relays == ["Claude's earlier reply passed to Claude 2.",
+                      "Codex's reply passed to Claude 2."]
+
+
+def test_a_hand_off_that_doesnt_go_keeps_the_missed_replies(tmp_path, monkeypatch):
+    from thechatplace.ui import agent_chats
+    w = Window(tmp_path)
+    _three(w)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built.', False)      # waits for Codex
+    missed = agents.relay_text(w.saved, 2, 'Facts fine.', missed=True)
+    w._agent_unseen[(w.cid, 1)] = [missed]
+
+    class Dialog:
+        def __init__(self, parent, source_title, labels, text, check, **k):
+            assert text.startswith(missed)  # shown to read and change
+            self.chosen = None
+
+        def ShowModal(self):
+            conversation = w.agents.get(w.cid)
+            conversation.pending = None    # it went meanwhile
+            w.agents.put(conversation)
+            self.chosen = (0, 'edited')
+            return agent_chats.wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(agent_chats, 'RelayDialog', Dialog)
+    w.on_agent_hand_off()
+    assert w._agent_unseen[(w.cid, 1)] == [missed]

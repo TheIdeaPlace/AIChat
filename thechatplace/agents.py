@@ -280,6 +280,9 @@ def setup_text(conversation: AgentConversation, index: int) -> str:
 #: In a reply's label when it's one the receiving agent missed (three
 #: agents): it goes ahead of the one passed in turn.
 MISSED = ", a reply you missed"
+#: The line that ends a missed reply: only the app writes it, so a reply
+#: that quotes another agent's message is never cut short.
+MISSED_END = "[End of a reply you missed]"
 
 
 def relay_label(conversation: AgentConversation, from_index: int, missed: bool = False) -> str:
@@ -309,6 +312,8 @@ def relay_text(conversation: AgentConversation, from_index: int, reply: str,
         shown = "\n".join(f"- {f}" for f in files[:MAX_FILES])
         more = (f"\n- and {len(files) - MAX_FILES} more" if len(files) > MAX_FILES else "")
         text += f"\n\nFiles {name} changed in that turn:\n{shown}{more}"
+    if missed:
+        text += f"\n\n{MISSED_END}"
     return text
 
 
@@ -579,19 +584,17 @@ def split_missed(conversation: AgentConversation, text: str) -> Tuple[List[str],
     turn, or your words. Only those exact labels split it, so a reply that
     quotes another agent's message stays whole."""
     missed = [relay_label(conversation, i, True) for i in range(len(conversation.members))]
-    passed = [relay_label(conversation, i) for i in range(len(conversation.members))]
+    closing = "\n\n" + MISSED_END
     blocks: List[str] = []
     while any(text.startswith(label) for label in missed):
-        ends = [text.find("\n\n" + label, 1) for label in missed + passed]
-        ends.append(text.find(USER_ADDS, 1))
-        ends = [end for end in ends if end > 0]
-        if not ends:
+        end = text.find(closing)
+        if end < 0:
             blocks.append(text)
             return blocks, ""
-        end = min(ends)
+        end += len(closing)
         blocks.append(text[:end])
         text = text[end:]
-        if not text.startswith(USER_ADDS):
+        if text.startswith("\n\n") and not text.startswith(USER_ADDS):
             text = text[2:]
     return blocks, text
 
@@ -715,7 +718,10 @@ def _trim_relays(messages: List[ChatMessage]) -> List[ChatMessage]:
     for message in messages:
         if message.kind == RELAY and message.sender:
             sent = message.detail.split("\n\n", 1)[-1]
-            # The list of files the turn changed is the relay's, not yours.
+            # The missed-reply closing line and the list of files the turn
+            # changed are the relay's, not yours.
+            if sent.endswith("\n\n" + MISSED_END):
+                sent = sent[:-len("\n\n" + MISSED_END)]
             sent = _without_files(sent)
             body = sent.split("\n", 1)[1].strip() if "\n" in sent else ""
             if body and body not in _sent_forms(result, message.sender):
