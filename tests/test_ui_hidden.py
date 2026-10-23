@@ -11247,7 +11247,7 @@ def test_new_agent_conversation_with_a_new_claude_chat(frame, env, fake_runner, 
     [conversation] = frame.agents.all()
     new = conversation.members[1]
     record = frame.store.get(new.native_id)
-    assert record.title == "Fresh pair: Claude" and record.cwd == str(tmp_path)
+    assert record.title == "Fresh pair: Claude 2" and record.cwd == str(tmp_path)
     assert record.permission_mode == "plan" and record.started is False
     assert new.role == "Critic"
     runner = fake_runner.instances[-1]

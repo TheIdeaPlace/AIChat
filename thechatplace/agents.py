@@ -305,8 +305,21 @@ def relay_text(conversation: AgentConversation, from_index: int, reply: str,
     return text
 
 
-#: The list relay_text adds, at the end of what was sent.
-_FILES_LIST = re.compile(r"\n\nFiles [^\n]+ changed in that turn:\n(?:- [^\n]*\n?)+\Z")
+def _without_files(sent: str) -> str:
+    """What was sent, less the list of changed files relay_text adds at the
+    end. Plain string checks: a regex for it can backtrack badly on a long
+    list (CodeQL py/redos)."""
+    start = sent.rfind("\n\nFiles ")
+    if start < 0:
+        return sent
+    heading, _sep, rest = sent[start + 2:].partition("\n")
+    lines = rest.split("\n")
+    if (heading.endswith(" changed in that turn:") and rest
+            and all(line.startswith("- ") for line in lines)):
+        return sent[:start]
+    return sent
+
+
 _CODEX_CHANGE = re.compile(r"^(?:Add|Delete|Update): (.+)$", re.MULTILINE)
 
 
@@ -657,7 +670,7 @@ def _trim_relays(messages: List[ChatMessage]) -> List[ChatMessage]:
         if message.kind == RELAY and message.sender:
             sent = message.detail.split("\n\n", 1)[-1]
             # The list of files the turn changed is the relay's, not yours.
-            sent = _FILES_LIST.sub("", sent)
+            sent = _without_files(sent)
             body = sent.split("\n", 1)[1].strip() if "\n" in sent else ""
             if body and body not in _sent_forms(result, message.sender):
                 message = replace(message, text=message.text[:-1] + ", with your changes. "
