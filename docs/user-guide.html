@@ -652,13 +652,16 @@ reply is set aside, and you hear so.</p>
   <strong>File, Agent Conversation Hand-offs</strong>, which can also make it say only when it stops or needs
   you. If either provider is near a usage limit, you're asked first: every exchange uses both
   subscriptions. Replies go across by themselves until the turn limit (6 exchanges unless you
-  choose another). It pauses when an agent asked you something during
-  its turn, or a tool was refused: you hear why, and the last reply waits for Ctrl+Shift+E. It
-  stops when a turn fails, and you hear why. A message from you, or a reply you hand on,
+  choose another). Approving what an agent asks, such as running its tests, doesn't stop it.
+  It pauses when you refused something during a turn, or a request went unanswered: you hear
+  why, and the last reply waits for Ctrl+Shift+E. It stops when a turn fails, and you hear
+  why; your next message goes back to that agent. A message from you, or a reply you hand on,
   starts it again with a fresh count.</li>
 </ul>
-<p>In either mode, the relay finishes when an agent ends its reply with DONE, when the replies
-start repeating each other, or when the agents are only thanking each other. You hear that,
+<p>In either mode, the relay finishes when an agent ends its reply with DONE once the others have
+replied since your last message, when the replies start repeating each other, or when the
+agents are only thanking each other. A DONE before the others have had their say goes on to
+them like any reply. You hear that,
 and the last reply still waits for <strong>Ctrl+Shift+E</strong>, because a reviewer's DONE usually comes
 with its findings, which the other agent needs. The row doesn't say it needs you for it.
 Anything you write to the agent it waits for takes it along.</p>

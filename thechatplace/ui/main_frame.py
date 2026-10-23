@@ -246,6 +246,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._agent_answered_early: set = set()
         #: The files each member's running turn has edited (phase 3).
         self._agent_turn_files: Dict[tuple, list] = {}
+        #: Members that refused you mid-turn (an approval doesn't pause
+        #: automatic hand-offs; a refusal does), and which members have
+        #: replied since your last message (DONE waits for them all).
+        self._agent_refused: set = set()
+        self._agent_spoke: Dict[str, set] = {}
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -3680,6 +3685,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("That isn't waiting any more: the turn has ended.")
             self._update_send_state()
             return
+        self._agent_member_answered("claude", session_id, response.get("behavior") == "allow")
         if changes:
             self._store_write(self.store.update, session_id, **changes)
             self._update_heading()

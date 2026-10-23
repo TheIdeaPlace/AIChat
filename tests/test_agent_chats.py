@@ -50,6 +50,7 @@ class Window(AgentChats):
         self._agent_unconfirmed, self._agent_last_sent = set(), {}
         self._agent_codex_preparing, self._agent_answered_early = set(), set()
         self._agent_turn_files = {}
+        self._agent_refused, self._agent_spoke = set(), {}
         self._codex_send_pending, self._queued = {}, {}
         self._open = agents.rows([], [self.conversation])[-1]
         self.reply_text = Text()
@@ -234,8 +235,11 @@ def test_automatic_mode_passes_replies_up_to_the_limit(tmp_path):
 def test_the_done_marker_stops_the_relay(tmp_path):
     w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
     w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)
+    w._agent_turn_ended('codex', 'x1', 'One nit: rename x.', False)
+    sent = len(w.codex_sent)
     w._agent_turn_ended('claude', 'c1', 'All fixed and tested.\n\nDONE', False)
-    assert not w.codex_sent
+    assert len(w.codex_sent) == sent
     saved = w.saved
     assert saved.paused and saved.stop_reason == 'Claude said the work is done.'
     assert w.said[-1].endswith('Claude said the work is done. ' + key_name('Ctrl+Shift+E')
@@ -251,13 +255,13 @@ def test_repeating_replies_stop_the_relay(tmp_path):
     assert len(w.codex_sent) == 1 and not w.claude_sent[1:]
 
 
-def test_a_question_mid_turn_pauses_automatic_mode(tmp_path):
+def test_a_question_left_unanswered_mid_turn_pauses_automatic_mode(tmp_path):
     w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
     w.send('Build it.')
     w._agent_member_asked('claude', 'c1')
-    w._agent_turn_ended('claude', 'c1', 'Built it after you allowed the push.', False)
+    w._agent_turn_ended('claude', 'c1', 'Built it; the question was answered elsewhere.', False)
     assert not w.codex_sent
-    assert w.saved.stop_reason == 'Paused: Claude asked you something during its turn.'
+    assert w.saved.stop_reason == "Paused: Claude asked you something that wasn't answered."
 
 
 def test_a_failed_turn_or_empty_reply_stops_the_relay(tmp_path):
@@ -266,9 +270,10 @@ def test_a_failed_turn_or_empty_reply_stops_the_relay(tmp_path):
     w._agent_turn_ended('claude', 'c1', 'usage limit', True)
     assert w.saved.stop_reason == "Claude's turn failed."
     assert w.said[-1] == "Fix 247: Claude's turn failed. The relay stopped."
-    w.send('Try again.')
-    w._agent_turn_ended('codex', 'x1', '   ', False)
-    assert w.saved.stop_reason == "Codex's turn ended without a reply."
+    w.send('Try again.')  # to Claude again, whose turn failed, not on to Codex
+    assert len(w.claude_sent) == 2 and not w.codex_sent
+    w._agent_turn_ended('claude', 'c1', '   ', False)
+    assert w.saved.stop_reason == "Claude's turn ended without a reply."
 
 
 def test_a_turn_you_started_in_the_member_chat_is_not_relayed(tmp_path):
@@ -537,6 +542,7 @@ def test_refused_tools_are_said_and_pause_automatic_mode(tmp_path):
 def test_done_finishes_without_leaving_the_row_needing_you(tmp_path):
     w = Window(tmp_path)
     w.send('Build it.')
+    w._agent_spoke[w.cid] = {1}  # Codex has had its say since
     w._agent_turn_ended('claude', 'c1', 'Finished.\nDONE', False)
     saved = w.saved
     # The last reply can still go on, but the row doesn't need you for it.
@@ -752,7 +758,9 @@ def test_a_reviewers_findings_with_done_still_reach_the_builder(tmp_path):
     w.send('@Codex review the page')
     review = '1. Minor: make the transcript link self-contained.\n\nDONE'
     w._agent_turn_ended('codex', 'x1', review, False)
-    assert w.saved.stop_reason == 'Codex said the work is done.'
+    # Claude hasn't spoken since you wrote, so the DONE doesn't end it: the
+    # findings wait for Claude as any reply does.
+    assert w.saved.pending.to_index == 0 and not w.saved.pending.finished
     w.send('@Claude see if codex replies')
     sent = w.claude_sent[-1][1]
     assert 'From Codex (agent conversation "Fix 247"):' in sent
@@ -779,6 +787,7 @@ def test_writing_to_the_agent_that_said_done_sets_its_reply_aside(tmp_path):
     later ride along to Codex, or be offered by Ctrl+Shift+E."""
     w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
     w.send('Build it.')
+    w._agent_spoke[w.cid] = {1}  # Codex has had its say since
     w._agent_turn_ended('claude', 'c1', 'Finished v1.\nDONE', False)
     w.send('@Claude also add X')
     saved = w.saved
@@ -805,6 +814,7 @@ def test_a_newer_reply_passed_on_clears_an_older_waiting_one(tmp_path):
 def test_the_status_line_after_the_relay_restarts(tmp_path):
     w = Window(tmp_path)
     w.send('@Codex review')
+    w._agent_spoke[w.cid] = {0}  # Claude has had its say since
     w._agent_turn_ended('codex', 'x1', 'Fine.\nDONE', False)
     w._runners['c1'] = SimpleNamespace(elapsed=lambda: 1.0)  # Claude busy on something else
     assert w._agent_send_state(w._open) == 'Claude is working.'
@@ -1156,3 +1166,76 @@ def test_claudes_own_plan_file_isnt_listed(tmp_path):
     w._agent_tool_used('claude', 'c1', 'C:\\Users\\k\\.claude\\plans\\plan.md')
     w._agent_turn_ended('claude', 'c1', 'Here is the plan.', False)
     assert 'Files' not in w.codex_sent[-1][1]
+
+
+
+# -- found in the bug bash with real models ---------------------------------------------------
+
+
+def test_done_before_the_other_agent_has_spoken_goes_on(tmp_path):
+    """Agents ended their first answer with DONE, and the relay stopped
+    before the reviewer saw anything. DONE ends it only once the others have
+    had their say since your message."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built and tested.\n\nDONE', False)
+    assert w.codex_sent and w.codex_sent[-1][1].endswith('Built and tested.\n\nDONE')
+    assert not w.saved.paused
+    w._agent_turn_ended('codex', 'x1', 'Looks right.\n\nDONE', False)
+    assert w.saved.stop_reason == 'Codex said the work is done.'
+    # Your next message: everyone has their say again first.
+    w.send('@Codex one more look at the tests')
+    w._agent_turn_ended('codex', 'x1', 'Tests are fine.\n\nDONE', False)
+    assert not w.saved.paused and w.claude_sent[-1][1].endswith('Tests are fine.\n\nDONE')
+
+
+def test_an_approved_request_doesnt_pause_automatic_hand_offs(tmp_path):
+    """A builder that runs its tests asks every turn; each approval paused
+    the relay. An approval or an answered question lets it go on; a refusal
+    pauses it."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', True)
+    w._agent_turn_ended('claude', 'c1', 'Built; tests pass.', False)
+    assert w.codex_sent and not w.saved.paused
+    w._agent_member_asked('codex', 'x1')
+    w._agent_member_answered('codex', 'x1', False)
+    w._agent_member_asked('codex', 'x1')
+    w._agent_member_answered('codex', 'x1', True)  # one refusal is enough to pause
+    w._agent_turn_ended('codex', 'x1', 'Reviewed.', False)
+    assert w.saved.paused and w.saved.stop_reason == "Paused: something was refused during Codex's turn."
+    # The next turn starts clean.
+    w.send('@Claude carry on')
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', True)
+    w._agent_turn_ended('claude', 'c1', 'Carried on.', False)
+    assert not w.saved.paused
+
+
+def test_an_unanswered_request_still_pauses(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_member_asked('claude', 'c1')  # cancelled, or answered elsewhere
+    w._agent_turn_ended('claude', 'c1', 'Built.', False)
+    assert w.saved.paused and not w.codex_sent
+
+
+def test_after_stop_your_next_message_goes_to_the_agent_you_stopped(tmp_path):
+    w = Window(tmp_path)
+    w._runners['c1'] = SimpleNamespace(cancel=lambda: None, cancelled=False)
+    w.send('Write a long story.')
+    w._take_queued = lambda native: ''
+    w._agent_stop(w._open)
+    assert w.saved.next_index == 0
+    w._runners.clear()
+    w.send('Shorter, please.')
+    assert len(w.claude_sent) == 2 and not w.codex_sent
+
+
+def test_at_all_with_a_carried_reply_says_where_it_went(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)
+    w.send('@all say hello')
+    assert w.feedback[-1] == "Sent to Claude and Codex, with Claude's reply to Codex."
