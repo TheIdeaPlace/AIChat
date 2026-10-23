@@ -112,6 +112,16 @@ def copilot_sessions_dir() -> Path:
     return copilot_home() / "session-state"
 
 
+def copilot_has_sessions() -> bool:
+    """Whether Copilot CLI has saved a session here: until it has, there is
+    nothing for the read-only preview to list (#352)."""
+    try:
+        return any(entry.is_dir() and not entry.name.startswith(".")
+                   for entry in os.scandir(copilot_sessions_dir()))
+    except OSError:
+        return False
+
+
 def live_sessions_dir() -> Path:
     return claude_home() / "sessions"
 

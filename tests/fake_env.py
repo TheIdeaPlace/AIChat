@@ -36,6 +36,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     (the probe photographs it); the tests keep it out, because it opens
     modal and waits."""
     patch(platform_paths, "find_codex", lambda: None)
+    # Never this computer's own Copilot CLI sessions (#352).
+    patch(platform_paths, "copilot_sessions_dir", lambda: root / "copilot" / "session-state")
     desktop = root / "desktop"
     live = root / "live"
     projects = root / "projects"

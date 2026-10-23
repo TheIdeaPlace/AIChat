@@ -785,7 +785,7 @@ on the clipboard.
 
 **Settings: local GitHub Copilot CLI history (#352).** Enable **Include GitHub Copilot CLI
 chats (read-only; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
-sessions alongside Claude. The Chat Place reads the session folders Copilot CLI keeps in
+sessions alongside Claude. The option appears once Copilot CLI has saved a session on this computer. The Chat Place reads the session folders Copilot CLI keeps in
 `%USERPROFILE%\.copilot\session-state` (or under `COPILOT_HOME`); it never starts Copilot, so
 reading uses none of your Copilot requests. Selecting a Copilot chat opens its messages;
 formatted reading, Find and export work too, and Show Tool Activity shows the commands and file

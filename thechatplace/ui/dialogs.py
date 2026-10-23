@@ -960,11 +960,17 @@ class SettingsDialog(wx.Dialog):
         self.codex_enabled.Bind(wx.EVT_CHECKBOX, self._on_codex_choice)
         outer.Add(self.codex_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        self.copilot_enabled = wx.CheckBox(body, label=_wrapped(
-            self, "Include GitHub C&opilot CLI chats (read-only; restart required)",
-            self.GetClientSize().width - 20 - _check_box_glyph(self)))
-        self.copilot_enabled.SetValue(speech.copilot_enabled)
-        outer.Add(self.copilot_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        # Only where Copilot CLI has saved a session (or the preview is
+        # already on, so it can be turned off): elsewhere there is nothing to
+        # read, and Settings keeps fitting a 768-high screen unscrolled (#352).
+        self._copilot_choice = speech.copilot_enabled
+        self.copilot_enabled = None
+        if speech.copilot_enabled or platform_paths.copilot_has_sessions():
+            self.copilot_enabled = wx.CheckBox(body, label=_wrapped(
+                self, "Include GitHub C&opilot CLI chats (read-only; restart required)",
+                self.GetClientSize().width - 20 - _check_box_glyph(self)))
+            self.copilot_enabled.SetValue(speech.copilot_enabled)
+            outer.Add(self.copilot_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Agent conversations (#248): automatic hand-offs are off until
         # turned on here; each conversation then chooses it, and its limit.
@@ -1045,6 +1051,8 @@ class SettingsDialog(wx.Dialog):
                         - wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self))
             for box in (self.remote_control, self.task_list, self.codex_enabled,
                         self.copilot_enabled, self.agent_auto):
+                if box is None:
+                    continue
                 box.SetLabel(_wrapped(self, box.GetLabel().replace("\n", " "), narrower))
         body.SetMinSize((-1, content.GetMinSize().height))
         _fit_height(self)
@@ -1077,7 +1085,9 @@ class SettingsDialog(wx.Dialog):
                                    codex_enabled=(self.codex_enabled.GetValue() if self._codex_changed
                                        or self.codex_enabled.GetValue() != self._initial_codex_effective
                                        else self._codex_choice),
-                                   copilot_enabled=self.copilot_enabled.GetValue(),
+                                   copilot_enabled=(self.copilot_enabled.GetValue()
+                                                    if self.copilot_enabled is not None
+                                                    else self._copilot_choice),
                                    update_installed_notice=self.update_notice.GetValue(),
                                    agent_auto_mode=self.agent_auto.GetValue(),
                                    recent_folder_limit=self.recent_limit.GetValue())

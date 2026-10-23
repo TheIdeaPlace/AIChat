@@ -983,7 +983,8 @@ notification is shown.
 ### Local GitHub Copilot CLI history in Settings
 
 Enable **Include GitHub Copilot CLI chats (read-only; restart required)** in Settings
-(Alt+O), save and restart. Your GitHub Copilot CLI sessions are then listed with your Claude
+(Alt+O), save and restart. The option appears once Copilot CLI has saved a session on this
+computer. Your GitHub Copilot CLI sessions are then listed with your Claude
 chats, and View, Show Sessions, GitHub Copilot Chats lists only them. The Chat Place reads the
 sessions Copilot CLI keeps on this computer; it never starts Copilot, so reading uses none of
 your Copilot requests. Selecting a Copilot chat opens its messages, and formatted reading, Find

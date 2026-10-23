@@ -11427,3 +11427,23 @@ def test_copilot_history_opens_read_only_from_its_session_folder(frame, tmp_path
     assert not frame.send_btn.IsEnabled()
     assert "read-only" in frame.messages_label.GetLabelText()
     assert "Reply in Copilot" in frame._prompt_refused()
+
+
+@pytest.mark.parametrize("sessions, enabled, shown", [
+    (False, False, False), (True, False, True), (False, True, True)])
+def test_copilot_setting_shows_once_copilot_has_sessions(frame, env, sessions, enabled, shown):
+    from thechatplace.ui.dialogs import SettingsDialog
+    if sessions:
+        (env["tmp"] / "copilot" / "session-state" / "synthetic").mkdir(parents=True)
+    settings = speech.SpeechSettings()
+    settings.copilot_enabled = enabled
+    dialog = SettingsDialog(frame, settings, speech.default_options())
+    try:
+        assert (dialog.copilot_enabled is not None) == shown
+        # Hidden keeps the saved choice; shown saves what the box says.
+        assert dialog.get_settings().copilot_enabled == enabled
+        if shown:
+            dialog.copilot_enabled.SetValue(not enabled)
+            assert dialog.get_settings().copilot_enabled == (not enabled)
+    finally:
+        dialog.Destroy()
