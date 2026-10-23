@@ -1,4 +1,15 @@
-# Changes to the workflows (which define the required checks, signing and releasing), the build
-# scripts and this file need Kelly's approval before they reach main.
+# These need Kelly's approval before they reach main. The workflows define the required checks,
+# signing and releasing. The tests, their config and the build tools and requirements run inside an
+# approved signing run, so changing them could weaken the tests or reach the signing secrets.
+# docs/ is published straight to the public GitHub Pages site.
 /.github/ @kellylford
 /BuildAndRelease/ @kellylford
+/tests/ @kellylford
+/tools/ @kellylford
+/requirements*.txt @kellylford
+/conftest.py @kellylford
+/pytest.ini @kellylford
+/pyproject.toml @kellylford
+/setup.cfg @kellylford
+/TheChatPlace.pyw @kellylford
+/docs/ @kellylford

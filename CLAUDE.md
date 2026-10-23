@@ -60,9 +60,18 @@ Windows and macOS in parallel jobs, and a `publish` job makes the release only i
 (the Windows installer, portable zip and `windows` feed; the notarized `.dmg` and `osx` feed).
 Only Kelly can release or sign: tags are admin-only by ruleset, releases are immutable, and every
 signing run (a tag, a hand run with "sign", a `sign-build` pull request) waits for his approval of
-the `azure-signing` environment, where the signing secrets belong. After his "go", approve the
-waiting tag run (`gh api -X POST repos/TheIdeaPlace/AIChat/actions/runs/<id>/pending_deployments
--F "environment_ids[]=23643397700" -f state=approved -f comment=release`), then watch it.
+the `azure-signing` environment, where the signing secrets belong. After his "go", approve only the
+tag run he pushed, never a run on someone else's branch (it runs that branch's workflow with the
+secrets), then watch it:
+
+```
+id=$(gh run list -R TheIdeaPlace/AIChat -w "Release The Chat Place" -b v<version> --json databaseId -q '.[0].databaseId')
+gh api -X POST repos/TheIdeaPlace/AIChat/actions/runs/$id/pending_deployments -F "environment_ids[]=23643397700" -f state=approved -f comment=release
+```
+
+Code-owner review covers workflows, build scripts, tests, tools, requirements and `docs/`
+(`.github/CODEOWNERS`); Kelly can't approve his own PRs, so his PRs touching those merge with an
+admin bypass.
 Versions below 1.0 publish as pre-releases. Both platforms update through Velopack
 (`updater.CHANNEL`). Velopack calls every Mac app portable, so the portable check is Windows-only
 (`updater.PORTABLE_COPIES_EXIST`); applying it on a Mac silently stops all Mac updates.
