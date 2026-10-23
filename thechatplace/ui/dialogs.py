@@ -3114,8 +3114,11 @@ class AgentConversationDialog(wx.Dialog):
             if new:
                 labels = [label for _value, label in self._modes(provider)]
                 if list(permission.GetStrings()) != labels:
+                    # A new list: the template's choice for this agent, so
+                    # a reviewer made a Claude chat after choosing the
+                    # template still can't edit.
                     permission.Set(labels)
-                    permission.SetSelection(0)
+                    permission.SetSelection(self._template_permission(slot, provider))
             permission.Show(new)
             self._permission_labels[slot].Show(new)
             if slot == 2:
@@ -3129,31 +3132,53 @@ class AgentConversationDialog(wx.Dialog):
         firsts = list(self.SLOT_NAMES[:slots]) + [
             "Everyone (their replies aren't passed on)" if slots > 2
             else "Both (their replies aren't passed on)"]
-        if list(self.first.GetStrings()) != firsts:
+        old = list(self.first.GetStrings())
+        if old != firsts:
             chosen = self.first.GetSelection()
             self.first.Set(firsts)
-            self.first.SetSelection(chosen if 0 <= chosen < slots else 0)
+            # "Both" becomes "Everyone" and back; an agent stays chosen
+            # while it's still there.
+            if old and chosen == len(old) - 1:
+                chosen = slots
+            elif not 0 <= chosen < slots:
+                chosen = 0
+            self.first.SetSelection(chosen)
         self._body.Layout()
         self._body.FitInside()
+
+    def _template(self):
+        index = self.template.GetSelection() - 1
+        return self._templates[index] if 0 <= index < len(self._templates) else None
+
+    def _template_permission(self, slot, provider) -> int:
+        """Where a new chat's permission starts: the template's choice for
+        that agent; a third agent with a template is read-only, being given
+        no part in it; otherwise the first choice, as in New Session."""
+        template = self._template()
+        if template is None:
+            return 0
+        claude_mode, codex_sandbox = (template.permissions[slot]
+                                      if slot < len(template.permissions)
+                                      else ("plan", "read-only"))
+        wanted = claude_mode if provider == "claude" else codex_sandbox
+        for position, (value, _label) in enumerate(self._modes(provider)):
+            if (value if provider == "claude" else value[0]) == wanted:
+                return position
+        return 0
 
     def _apply_template(self):
         """A template fills in each agent's role, a new chat's permission and
         who goes first; you can change any of them after."""
-        index = self.template.GetSelection() - 1
-        if not (0 <= index < len(self._templates)):
+        template = self._template()
+        if template is None:
             return
-        template = self._templates[index]
         for slot, role in enumerate(template.roles):
             self.roles[slot].SetValue(role)
         self._sync()
-        for slot, (claude_mode, codex_sandbox) in enumerate(template.permissions):
+        for slot in range(3):
             info, provider = self._pick(slot)
-            if info is not None or provider is None:
-                continue
-            wanted = claude_mode if provider == "claude" else codex_sandbox
-            for position, (value, _label) in enumerate(self._modes(provider)):
-                if (value if provider == "claude" else value[0]) == wanted:
-                    self.permissions[slot].SetSelection(position)
+            if info is None and provider is not None:
+                self.permissions[slot].SetSelection(self._template_permission(slot, provider))
         self.first.SetSelection(template.first)
 
     def _on_browse(self, _event):
@@ -3177,9 +3202,13 @@ class AgentConversationDialog(wx.Dialog):
         picks = [self._pick(slot) for slot in range(slots)]
         if any(provider is None for _info, provider in picks):
             return "Choose a chat for each agent.", self.chats[0]
-        keys = [info.key for info, _provider in picks if info is not None]
-        if len(keys) != len(set(keys)):
-            return "Each agent needs a different chat.", self.chats[1]
+        seen = set()
+        for slot, (info, _provider) in enumerate(picks):
+            if info is not None:
+                if info.key in seen:
+                    # The later of the two: the one to change.
+                    return "Each agent needs a different chat.", self.chats[slot]
+                seen.add(info.key)
         if any(info is None for info, _provider in picks):
             folder = self.folder.GetValue().strip()
             if not folder or not os.path.isdir(folder):

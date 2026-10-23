@@ -570,15 +570,6 @@ def test_a_relay_with_files_still_reads_as_unchanged():
     assert shown[-1].text == "Claude's reply passed to Codex."
 
 
-def test_codex_changed_files():
-    changes = [("item1", "Update: src/app.py\n@@ -1 +1 @@\n-a\n+b"),
-               ("item2", "Add: docs/new.md\nDelete: old.txt"),
-               ("item3", "Update: src/app.py\n+again"),
-               ("item4", None)]
-    assert agents.codex_changed_files(changes) == ["src/app.py", "docs/new.md", "old.txt"]
-    assert agents.codex_changed_files(None) == []
-
-
 def test_pending_files_round_trip(tmp_path):
     conversation = _conversation()
     conversation.pending = Pending(0, 1, "Built.", files=("a.py", "b.py"))
@@ -586,3 +577,38 @@ def test_pending_files_round_trip(tmp_path):
     store.add(conversation)
     loaded = AgentConversationStore(tmp_path / "a.json").get(conversation.conversation_id)
     assert loaded.pending.files == ("a.py", "b.py")
+
+
+
+def test_a_files_list_with_dashes_in_paths_is_quick_and_still_spotted():
+    """Business OneDrive paths have " - " in them; a list of them with your
+    words after it took minutes to check with the first regex (review)."""
+    import time
+    conversation = _conversation()
+    files = [f"C:/Users/k/OneDrive - Company/proj - {i}/a - b.py" for i in range(60)]
+    sent = agents.relay_text(conversation, 0, "Built it.", files)
+    started = time.monotonic()
+    plain = agents.combine(conversation, [[_m(ASSISTANT, "Built it.", 3, "a")],
+                                          [_m(USER, sent, 5, "r")]])
+    changed = agents.combine(conversation, [[_m(ASSISTANT, "Built it.", 3, "a")],
+                                            [_m(USER, sent + "\nAlso check - this.", 5, "r")]])
+    assert time.monotonic() - started < 1
+    assert plain[-1].text == "Claude's reply passed to Codex."
+    assert changed[-1].text.endswith("with your changes. Enter reads what went.")
+
+
+def test_the_store_refuses_more_than_three_and_odd_files(tmp_path):
+    import json
+    conversation = _conversation("claude", "codex", "claude")
+    conversation.pending = Pending(0, 1, "Built.", files=("a.py",))
+    store = AgentConversationStore(tmp_path / "a.json")
+    store.add(conversation)
+    raw = json.loads((tmp_path / "a.json").read_text(encoding="utf-8"))
+    record = raw["conversations"][0]
+    record["pending"]["files"] = "abc"
+    (tmp_path / "a.json").write_text(json.dumps(raw), encoding="utf-8")
+    assert AgentConversationStore(tmp_path / "a.json").get(
+        conversation.conversation_id).pending.files == ()
+    record["members"].append(dict(record["members"][0], native_id="claude-9"))
+    (tmp_path / "a.json").write_text(json.dumps(raw), encoding="utf-8")
+    assert AgentConversationStore(tmp_path / "a.json").get(conversation.conversation_id) is None

@@ -471,7 +471,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   stopped). What you type goes to the agent whose turn it is; start it with @ and a
   name ("@Codex check the tests"), or the name and a comma ("Codex, what's broken?"), to
   choose, or "@all" for every agent. Each agent is told once, at
-  the start, who the other agent is, that its messages aren't yours, and to end its reply
+  the start, who else is in it, that their messages aren't yours, and to end its reply
   with DONE when the work is finished.
   - **Approve each hand-off** (the default): when an agent answers, you hear its reply, and
     it waits to go to the other agent. Usually you just type your next message: it goes to

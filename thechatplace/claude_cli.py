@@ -692,6 +692,8 @@ class StreamParser:
         self.unsupported_requests: List[str] = []
         #: The model's context window, from the result's modelUsage (#19).
         self.context_window = 0
+        #: Edit tool uses waiting for their results: tool_use id -> file.
+        self._edits: Dict[str, str] = {}
 
     def feed(self, line: str) -> List[TurnEvent]:
         line = line.strip()
@@ -826,13 +828,26 @@ class StreamParser:
                         # detail is what it acts on, as the messages list shows
                         # it ("Bash: git status"), for announcing it (#12).
                         # The file an edit tool works on, for an agent
-                        # conversation's list of what a turn changed.
+                        # conversation's list of what a turn changed: kept
+                        # until its result says the edit worked.
                         path = (tool_input.get("file_path") or tool_input.get("notebook_path")
                                 if name in FILE_EDIT_TOOLS else None)
+                        use_id = block.get("id")
+                        if (isinstance(path, str) and path and isinstance(use_id, str)
+                                and len(self._edits) < 500):
+                            self._edits[use_id] = path
                         events.append(TurnEvent("tool", text=name,
-                                                detail=f"{name}: {target}" if target else name,
-                                                data={"file_path": path}
-                                                if isinstance(path, str) and path else None))
+                                                detail=f"{name}: {target}" if target else name))
+            return events
+        if etype == "user" and not event.get("parent_tool_use_id") and self._edits:
+            message = event.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
+            events = []
+            for block in content if isinstance(content, list) else ():
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    path = self._edits.pop(str(block.get("tool_use_id")), None)
+                    if path and not block.get("is_error"):
+                        events.append(TurnEvent("edited", data={"file_path": path}))
             return events
         if etype == "result":
             self.finished = True

@@ -35,6 +35,7 @@ class CodexChatState:
     tasks: tuple = field(default=(), repr=False)
     plan_received: bool = False
     permission_notices: tuple = field(default=(), repr=False)
+    changed_paths: tuple = field(default=(), repr=False)
 
 
 @dataclass(frozen=True)
@@ -626,7 +627,7 @@ class CodexChatRuntime:
         return CodexChatState(native_id, status, state.turn_id, state.status,
                               state.replies, requests, queued, tuple(unsent), problem, state.file_changes,
                               state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received,
-                              permission_notices)
+                              permission_notices, getattr(state, 'changed_paths', ()))
 
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():

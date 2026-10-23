@@ -373,11 +373,10 @@ class CodexChats:
         if fresh_terminal:
             agent_ended = getattr(self, '_agent_turn_ended', None)
             if agent_ended is not None:
-                from ..agents import codex_changed_files
                 agent_ended('codex', state.native_id, reply, state.outcome != 'completed',
                             more_queued=bool(state.queued),
                             detail=state.problem or '',
-                            files=codex_changed_files(state.file_changes))
+                            files=tuple(getattr(state, 'changed_paths', ())))
         if loaded:
             if fresh_terminal:
                 # A verified turn ended even if second-resolution catalog

@@ -11346,3 +11346,53 @@ def test_agent_conversation_dialog_template_and_third_agent(app, monkeypatch, tm
         dialog.Destroy()
     finally:
         parent.Destroy()
+
+
+def test_agent_conversation_dialog_keeps_choices_as_chats_change(app, monkeypatch, tmp_path):
+    """The review's cases: a template's read-only reviewer stays read-only
+    when its chat becomes a new Claude chat; a third agent under a template
+    starts read-only; Both becomes Everyone and back; the duplicate check
+    goes to the later of the two chats."""
+    from thechatplace.agents import TEMPLATES
+    from thechatplace.sessions import SessionInfo, OWN
+    from thechatplace.ui import dialogs
+    boxes = []
+    monkeypatch.setattr(dialogs.wx, "MessageBox", lambda text, *a, **k: boxes.append(text))
+    existing = [SessionInfo(OWN, "own:a", "Builder", str(tmp_path), "a")]
+    parent = wx.Frame(None)
+    try:
+        dialog = dialogs.AgentConversationDialog(parent, existing, ["claude", "codex"],
+                                                 folders=[str(tmp_path)])
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        dialog.template.SetSelection([t.key for t in TEMPLATES].index("build-review") + 1)
+        dialog._apply_template()
+        dialog.chats[1].SetSelection(0)  # the reviewer: a new Claude chat now
+        dialog._sync()
+        assert dialog.permissions[1].GetStringSelection().startswith("Plan")
+        dialog.chats[2].SetSelection(1)  # a new Claude third agent
+        dialog._sync()
+        assert dialog.permissions[2].GetStringSelection().startswith("Plan")
+        dialog.chats[2].SetSelection(0)
+        dialog._sync()
+        dialog.first.SetSelection(2)  # Both
+        dialog.chats[2].SetSelection(1)
+        dialog._sync()
+        assert dialog.first.GetStringSelection().startswith("Everyone")
+        dialog.chats[2].SetSelection(0)
+        dialog._sync()
+        assert dialog.first.GetStringSelection().startswith("Both")
+        dialog.first.SetSelection(1)
+        dialog.chats[2].SetSelection(1)
+        dialog._sync()
+        assert dialog.first.GetStringSelection() == "Second agent"
+        # First and third the same existing chat: focus goes to the third.
+        dialog.chats[0].SetSelection(2)
+        dialog.chats[2].SetSelection(3)
+        dialog._sync()
+        focused = []
+        monkeypatch.setattr(dialog.chats[2], "SetFocus", lambda: focused.append(2))
+        dialog._start()
+        assert boxes[-1] == "Each agent needs a different chat." and focused == [2]
+        dialog.Destroy()
+    finally:
+        parent.Destroy()

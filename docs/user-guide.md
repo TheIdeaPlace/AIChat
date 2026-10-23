@@ -642,9 +642,10 @@ to the first. It's Send Reply to Another Chat done for you, turn after turn.
 - **Kind of conversation:** "Your own roles", or a ready-made kind that fills in the roles,
   new chats' permissions and who goes first, which you can still change:
   - **Builder and reviewer:** one builds; the other reviews each change without editing, and
-    the builder fixes what it finds. A new reviewer chat can't edit files.
+    the builder fixes what it finds. A new reviewer chat starts read-only: Claude in Plan
+    mode, Codex asking before any change.
   - **Second opinion:** one answers; the other gives its own answer and says where it agrees
-    or differs. Neither changes files.
+    or differs. Both start read-only.
   - **Debate:** each argues for a different approach and answers the other's points; you
     decide.
   - **Plan and do:** one makes a plan without changing anything; the other carries it out.

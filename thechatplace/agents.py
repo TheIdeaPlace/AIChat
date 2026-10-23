@@ -320,21 +320,6 @@ def _without_files(sent: str) -> str:
     return sent
 
 
-_CODEX_CHANGE = re.compile(r"^(?:Add|Delete|Update): (.+)$", re.MULTILINE)
-
-
-def codex_changed_files(file_changes) -> List[str]:
-    """The paths in a Codex turn's file changes (codex_events: "Update:
-    path" and its diff, per change)."""
-    paths: List[str] = []
-    for _item, text in file_changes or ():
-        for match in _CODEX_CHANGE.finditer(text or ""):
-            path = match.group(1).strip()
-            if path and path not in paths:
-                paths.append(path)
-    return paths
-
-
 @dataclass(frozen=True)
 class Template:
     """A ready-made kind of conversation (phase 3): roles for its agents,
@@ -733,7 +718,8 @@ def _conversation_from(raw) -> Optional[AgentConversation]:
     cid, title = raw.get("conversation_id"), raw.get("title")
     members = [_member_from(m) for m in raw.get("members") or []]
     if (not isinstance(cid, str) or not re.fullmatch(r"[0-9a-f]{32}", cid)
-            or not isinstance(title, str) or len(members) < 2 or None in members
+            or not isinstance(title, str) or not 2 <= len(members) <= MAX_MEMBERS
+            or None in members
             or len({m.identity for m in members}) != len(members)):
         return None
     mode = raw.get("mode") if raw.get("mode") in MODES else MODE_APPROVE
@@ -749,7 +735,9 @@ def _conversation_from(raw) -> Optional[AgentConversation]:
                          raw_pending.get("text"))
         if (isinstance(frm, int) and isinstance(to, int) and isinstance(text, str)
                 and 0 <= frm < len(members) and 0 <= to < len(members) and frm != to):
-            files = tuple(f for f in raw_pending.get("files") or [] if isinstance(f, str))[:200]
+            raw_files = raw_pending.get("files")
+            files = tuple(f for f in (raw_files if isinstance(raw_files, list) else [])
+                          if isinstance(f, str))[:200]
             pending = Pending(frm, to, text[:200000], raw_pending.get("finished") is True, files)
     notes = []
     for item in raw.get("notes") or []:

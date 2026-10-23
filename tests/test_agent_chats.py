@@ -1115,3 +1115,44 @@ def test_three_new_chats_are_named_apart(tmp_path):
     made = [c for c in w.agents.all() if c.title == 'Pair'][0]
     assert [m.name for m in made.members] == ['Claude 1', 'Codex', 'Claude 2']
     assert [m.role for m in made.members] == ['Build', 'Review', 'Facts']
+
+
+
+def test_writing_to_the_third_agent_sets_a_waiting_reply_aside_and_says_so(tmp_path):
+    """Claude's reply waits for Codex; you write to Claude 2 instead. It's
+    set aside, with a note and said, not lost silently (review)."""
+    w = Window(tmp_path)
+    _three(w)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)
+    assert (w.saved.pending.from_index, w.saved.pending.to_index) == (0, 1)
+    w.send('@Claude 2 check the facts')
+    assert w.saved.pending is None
+    assert w.feedback[-1] == "Sent to Claude 2. Claude's waiting reply was set aside."
+    assert w.saved.notes[-1].text == "Claude's waiting reply was set aside: you wrote to Claude 2."
+
+
+def test_codex_files_from_a_turn_with_more_queued_go_with_the_final_reply(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('@Codex fix it.')
+    w._agent_turn_ended('codex', 'x1', 'First part.', False, more_queued=True, files=['a.py'])
+    w._agent_turn_ended('codex', 'x1', 'Fixed.', False, files=['b.py'])
+    assert w.claude_sent[-1][1].endswith('- a.py\n- b.py')
+
+
+def test_writing_mid_turn_keeps_what_the_turn_edited(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_tool_used('claude', 'c1', 'early.py')
+    w.send('@Claude also the docs')  # Claude is still working
+    w._agent_tool_used('claude', 'c1', 'docs.md')
+    w._agent_turn_ended('claude', 'c1', 'Built.', False)
+    assert w.codex_sent[-1][1].endswith('- early.py\n- docs.md')
+
+
+def test_claudes_own_plan_file_isnt_listed(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Plan it.')
+    w._agent_tool_used('claude', 'c1', 'C:\\Users\\k\\.claude\\plans\\plan.md')
+    w._agent_turn_ended('claude', 'c1', 'Here is the plan.', False)
+    assert 'Files' not in w.codex_sent[-1][1]
