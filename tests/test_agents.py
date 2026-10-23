@@ -369,3 +369,31 @@ def test_the_setup_line_mentions_roles_only_when_there_are_some():
     shown = agents.combine(conversation, [[_m(USER, agents.outgoing(conversation, 0, "Go"), 0, "u")], []])
     assert shown[0].text == ("Setup sent to Claude: who the other agent is, the roles, and to end "
                              "with DONE when the work is finished.")
+
+
+
+@pytest.mark.parametrize("text, targets", [
+    ("Codex, what is broken about your tools", [1]),
+    ("codex: check it", [1]),
+    ("Claude , fix it", [0]),
+    ("Reviewer, look", [1]),
+    ("Claude I want you to make a page. Codex, you review it", None),
+    ("All, ready?", None),
+    ("Codexes are great", None),
+    ("Thanks, Codex", None),
+])
+def test_addressing_by_name_and_a_comma(text, targets):
+    members = _members("claude", "codex")
+    members[1].role = "Reviewer"
+    assert agents.address(text, members) == (targets, text)
+
+
+def test_a_finished_reply_round_trips_and_doesnt_need_you(tmp_path):
+    conversation = _conversation(pending=Pending(1, 0, "Looks good.\nDONE", finished=True))
+    store = AgentConversationStore(tmp_path / "a.json")
+    store.add(conversation)
+    loaded = AgentConversationStore(tmp_path / "a.json").get(conversation.conversation_id)
+    assert loaded.pending.finished is True
+    idle = [_row("own:claude-0", "claude", "claude-0"), _row("codex:codex-1", "codex", "codex-1")]
+    row = agents.rows(idle, [loaded])[-1]
+    assert row.state == IDLE and row.detail == "finished; Codex's last reply can go to Claude"

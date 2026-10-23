@@ -115,6 +115,10 @@ class Pending:
     from_index: int
     to_index: int
     text: str
+    #: The relay finished (DONE, or repeating replies) with this reply. It
+    #: still waits to be handed on, since a reviewer's findings come with its
+    #: DONE, but the conversation doesn't need you for it.
+    finished: bool = False
 
 
 @dataclass
@@ -267,12 +271,28 @@ def outgoing(conversation: AgentConversation, index: int, text: str) -> str:
 def address(text: str, members: Sequence[Member]) -> Tuple[Optional[List[int]], str]:
     """Who a message you write is for. "@Codex check this" is for Codex,
     "@all ..." (or @both, @everyone) for every member; the name and anything
-    after it up to a space, colon or comma go. Nothing addressed gives None,
-    and the text unchanged."""
+    after it up to a space, colon or comma go. Starting with a member's name
+    and a comma or colon, as you'd write to someone ("Codex, what's broken?"),
+    is for that member too, and the words go unchanged. Nothing addressed
+    gives None, and the text unchanged."""
     stripped = text.lstrip()
     if not stripped.startswith("@"):
-        return None, text
+        return _named(stripped, members), text
     lowered = stripped[1:].lower()
+    candidates = _address_names(members)
+    for name, indexes in candidates:
+        if lowered.startswith(name):
+            rest = stripped[1 + len(name):]
+            if rest and not re.match(r"[\s:,]", rest):
+                continue
+            return indexes, rest.lstrip(" \t:,").lstrip()
+    return None, text
+
+
+def _address_names(members: Sequence[Member]) -> List[Tuple[str, List[int]]]:
+    """Every name a member answers to, longest first: its own name, its
+    provider's when no other member shares it, a short role, and the words
+    for everyone."""
     candidates: List[Tuple[str, List[int]]] = [(name, list(range(len(members))))
                                                for name in ALL_NAMES]
     for index, member in enumerate(members):
@@ -281,13 +301,19 @@ def address(text: str, members: Sequence[Member]) -> Tuple[Optional[List[int]], 
             candidates.append((provider_name(member.provider).lower(), [index]))
         if member.role and len(member.role) <= 40:
             candidates.append((member.role.lower(), [index]))
-    for name, indexes in sorted(candidates, key=lambda c: -len(c[0])):
-        if lowered.startswith(name):
-            rest = stripped[1 + len(name):]
-            if rest and not re.match(r"[\s:,]", rest):
-                continue
-            return indexes, rest.lstrip(" \t:,").lstrip()
-    return None, text
+    return sorted(candidates, key=lambda c: -len(c[0]))
+
+
+def _named(text: str, members: Sequence[Member]) -> Optional[List[int]]:
+    """"Codex, ..." or "Claude 2: ...": a member's name, then a comma or a
+    colon. Only one member, never everyone: "All, ..." is just a word."""
+    lowered = text.lower()
+    for name, indexes in _address_names(members):
+        if name in ALL_NAMES:
+            continue
+        if lowered.startswith(name) and re.match(r"\s*[,:]", text[len(name):]):
+            return indexes
+    return None
 
 
 # -- when the relay stops by itself ---------------------------------------------------
@@ -336,7 +362,13 @@ def rows(sessions: Sequence[SessionInfo], conversations: Sequence[AgentConversat
     for conversation in conversations:
         found = [by_identity.get(m.identity) for m in conversation.members]
         state, detail = IDLE, ""
-        if conversation.pending is not None:
+        if conversation.pending is not None and conversation.pending.finished:
+            to = conversation.members[conversation.pending.to_index].name
+            frm = conversation.members[conversation.pending.from_index].name
+            detail = f"finished; {frm}'s last reply can go to {to}"
+            if any(s is not None and s.state == WORKING for s in found):
+                state = WORKING
+        elif conversation.pending is not None:
             to = conversation.members[conversation.pending.to_index].name
             frm = conversation.members[conversation.pending.from_index].name
             state, detail = NEEDS_YOU, f"{frm}'s reply waiting to go to {to}"
@@ -548,7 +580,7 @@ def _conversation_from(raw) -> Optional[AgentConversation]:
                          raw_pending.get("text"))
         if (isinstance(frm, int) and isinstance(to, int) and isinstance(text, str)
                 and 0 <= frm < len(members) and 0 <= to < len(members) and frm != to):
-            pending = Pending(frm, to, text[:200000])
+            pending = Pending(frm, to, text[:200000], raw_pending.get("finished") is True)
     notes = []
     for item in raw.get("notes") or []:
         if (isinstance(item, dict) and isinstance(item.get("at_ms"), int)
@@ -577,7 +609,8 @@ def _to_dict(conversation: AgentConversation) -> dict:
         "briefed": list(conversation.briefed),
         "pending": (None if conversation.pending is None else {
             "from_index": conversation.pending.from_index,
-            "to_index": conversation.pending.to_index, "text": conversation.pending.text}),
+            "to_index": conversation.pending.to_index, "text": conversation.pending.text,
+            "finished": conversation.pending.finished}),
         "paused": conversation.paused, "stop_reason": conversation.stop_reason,
         "notes": [{"at_ms": n.at_ms, "text": n.text} for n in conversation.notes],
         "created_ms": conversation.created_ms, "last_activity_ms": conversation.last_activity_ms,

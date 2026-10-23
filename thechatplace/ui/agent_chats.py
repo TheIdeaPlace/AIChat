@@ -69,6 +69,9 @@ class AgentChats:
         if conversation.pending is not None:
             frm = conversation.members[conversation.pending.from_index].name
             to = conversation.members[conversation.pending.to_index].name
+            if conversation.pending.finished:
+                return (f"{conversation.stop_reason} {key_name('Ctrl+Shift+E')} hands "
+                        f"{frm}'s last reply to {to}.")
             return f"{frm}'s reply is waiting to go to {to}. {key_name('Ctrl+Shift+E')} hands it on."
         for member in conversation.members:
             state = self._codex_states.get(member.key) if member.provider == "codex" else None
@@ -584,15 +587,19 @@ class AgentChats:
         auto = (conversation.mode == MODE_AUTO and self.speech.agent_auto_mode
                 and not conversation.paused)
         if stop:
-            # Finished (or going round): nothing waits, so the row doesn't
-            # keep needing you. A message from you starts it again.
+            # Finished (or going round): the relay stops, but the last reply
+            # still waits to be handed on, without the row needing you. A
+            # reviewer's findings come with its DONE, and the builder needs
+            # them: in a real conversation they were never passed on, and
+            # Claude read Codex's session file to find them.
             conversation.paused, conversation.stop_reason = True, stop
-            conversation.pending = None
+            conversation.pending = Pending(index, to, reply, finished=True)
             self._agent_note(conversation, stop)
             self._agent_after_change(conversation)
-            self._agent_say(conversation, " ".join(p for p in (said, refused.strip(), stop) if p),
-                            always=True)
-            self._notify(conversation.key, f"{title}: the relay stopped", stop)
+            hint = f"{key_name('Ctrl+Shift+E')} hands its last reply to {target}."
+            self._agent_say(conversation, " ".join(p for p in (said, refused.strip(), stop, hint)
+                                                   if p), always=True)
+            self._notify(conversation.key, f"{title}: the relay stopped", f"{stop} {hint}")
             return
         if auto and conversation.exchanges >= conversation.turn_limit:
             stop = (f"Stopped after {conversation.exchanges} exchange"
