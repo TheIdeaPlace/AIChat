@@ -910,9 +910,11 @@ your Copilot requests. Selecting a Copilot chat opens its messages, and formatte
 and export work too. Show Tool Activity also shows the commands and file changes Copilot ran,
 and a change you refused shows as Permission denied, with what was refused.</p>
 <p>Reply in Copilot CLI: sending, approvals and Continue Here aren't available in this preview.
-A Copilot chat that's answering says working, and you hear when it finishes. If Copilot stopped
-partway through a turn and hasn't written anything for ten minutes, its status is left out
-rather than saying working forever. Turn the option off and restart to hide Copilot chats again.</p>
+A Copilot chat that's answering says working, even while Copilot runs a command between steps,
+and you hear it once when its answer is finished. If Copilot hasn't written anything for ten
+minutes (a long command, or Copilot closed partway through), it still says working and adds "no
+activity from Copilot for 10 minutes". Sessions started in Copilot CLI in a terminal are listed as terminal sessions, so
+View, Show Sessions, Terminal Sessions includes them; ones started from another app aren't. Turn the option off and restart to hide Copilot chats again.</p>
 <h2 id="more-things-you-can-do">More things you can do</h2>
 <ul>
 <li><strong>Changed Files</strong> (Ctrl+Shift+D) opens Lists on Changed Files: the files Claude changed

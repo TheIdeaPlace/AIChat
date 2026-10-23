@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Protocol, Set
 
 from ..desktop_groups import DesktopGroups
-from ..sessions import IDLE, NEEDS_YOU, WORKING, LiveStatus, SessionInfo
+from ..sessions import IDLE, LISTED_PROVIDERS, NEEDS_YOU, WORKING, LiveStatus, SessionInfo
 from ..transcript import Transcript
 
 
@@ -35,7 +35,7 @@ class Snapshot:
         """
         states = {session.key: session.state for session in self.sessions
                 if session.provider not in self.stale_providers
-                and (session.provider not in ("codex", "copilot")
+                and (session.provider not in LISTED_PROVIDERS
                      or session.state in (IDLE, WORKING, NEEDS_YOU))}
         # A normal background refresh must not erase working->idle comparison.
         # Cached rows themselves never become fresh evidence of completion.

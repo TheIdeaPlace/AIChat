@@ -183,9 +183,62 @@ def test_states_from_the_end_of_the_log():
     assert state_from_events(answered, now, now) == (WORKING, "")
     assert state_from_events(ended, now, now) == (IDLE, "")
     assert state_from_events([], now, now)[0] == "status unavailable"
-    # A Copilot closed mid-turn never writes the end: don't say working forever.
+    # Quiet for ten minutes (a long command, or a Copilot closed mid-reply):
+    # still working, so a real finish is announced, but it says so.
     old = now - STALE_TURN_SECONDS * 1000 - 1
-    assert state_from_events(start, old, now)[0] == "status unavailable"
+    assert state_from_events(start, old, now) == (
+        WORKING, "no activity from Copilot for 10 minutes")
+    assert state_from_events(asked, old, now)[0] == NEEDS_YOU
+
+
+def test_a_reply_of_several_steps_ends_only_when_copilot_answers():
+    """As Copilot 1.0.103 wrote a real reply: a step per tool, each with its
+    own turn_start/turn_end, then a step that answers (#352)."""
+    now = 10_000_000
+    steps = [event("user.message", 1, content="List and write"),
+             event("assistant.turn_start", 2, turnId="0"),
+             event("assistant.message", 3, content="", toolRequests=[{"name": "powershell"}]),
+             event("tool.execution_start", 4, toolCallId="a", toolName="powershell"),
+             event("tool.execution_complete", 5, toolCallId="a", result={"content": "x"}),
+             event("assistant.turn_end", 6, turnId="0"),
+             event("assistant.turn_start", 7, turnId="1"),
+             event("assistant.message", 8, content="Done.", toolRequests=[]),
+             event("assistant.turn_end", 9, turnId="1")]
+    lines = [json.dumps(e) for e in steps]
+    for cut in range(1, len(lines)):
+        assert state_from_events(lines[:cut], now, now)[0] == WORKING, steps[cut - 1]["type"]
+    assert state_from_events(lines, now, now)[0] == IDLE
+    # A tool step that ends with the reply stopped is idle too.
+    stopped = lines[:6] + [json.dumps(event("abort", 10, reason="user_initiated"))]
+    assert state_from_events(stopped, now, now)[0] == IDLE
+
+
+def test_terminal_kind_and_a_title_past_the_head(tmp_path, monkeypatch):
+    from thechatplace.providers import copilot
+    from thechatplace.sessions import TERMINAL
+    write_session(tmp_path, ONE, answered_turn())
+    raw = f"id: {TWO}\ncwd: C:\\x\nclient_name: github/acp\n"
+    big = [event("session.start", 0, filler="x" * 2000)] + answered_turn(10)[2:]
+    write_session(tmp_path, TWO, big, raw_yaml=raw)
+    monkeypatch.setattr(copilot, "HEAD_BYTES", 1000)
+    sessions = {s.cli_session_id: s for s in CopilotProvider(tmp_path).collect().sessions}
+    assert sessions[ONE].source == TERMINAL  # Copilot CLI in a terminal
+    assert sessions[TWO].source == "external"
+    # The first prompt is past the part read for a title: kept, untitled.
+    assert sessions[TWO].title == "Untitled session"
+
+
+def test_unchanged_sessions_are_not_read_again(tmp_path, monkeypatch):
+    from thechatplace.providers import copilot
+    write_session(tmp_path, ONE, answered_turn())
+    provider = CopilotProvider(tmp_path)
+    first = provider.collect().sessions
+    reads = []
+    monkeypatch.setattr(copilot, "_read_entry", lambda *a: reads.append(a) or None)
+    second = provider.collect().sessions
+    assert reads == [] and [s.key for s in second] == [s.key for s in first]
+    provider.fill_last_messages(second)
+    assert second[0].last_message == "Copilot: Ready"
 
 
 def test_finished_turn_needs_an_explicit_idle():
@@ -241,3 +294,56 @@ def test_refuses_ids_that_are_not_copilot_sessions(tmp_path, bad):
 def test_copilot_home_override(monkeypatch, tmp_path):
     monkeypatch.setenv("COPILOT_HOME", str(tmp_path))
     assert platform_paths.copilot_sessions_dir() == tmp_path / "session-state"
+
+
+def test_a_tool_step_cut_off_by_the_tail_is_not_the_answer():
+    """The tail can begin after the message that asked for a tool (a large
+    tool output): the step's end still isn't the reply's end."""
+    now = 10_000_000
+    tail = [event("tool.execution_complete", 1, toolCallId="a", result={"content": "big"}),
+            event("assistant.turn_end", 2, turnId="0")]
+    assert state_from_events([json.dumps(e) for e in tail], now, now)[0] == WORKING
+
+
+def test_quiet_waits_and_left_behind_replies():
+    from thechatplace.providers.copilot import ABANDONED_TURN_SECONDS
+    now = 100_000_000
+    start = [json.dumps(event("assistant.turn_start", 1, turnId="0"))]
+    asked = start + [json.dumps(event("permission.requested", 2, requestId="r"))]
+    quiet = now - STALE_TURN_SECONDS * 1000 - 1
+    # Waiting on you is why it's quiet: still says to answer in Copilot.
+    assert state_from_events(asked, quiet, now) == (NEEDS_YOU, "waiting in Copilot")
+    gone = now - ABANDONED_TURN_SECONDS * 1000 - 1
+    assert state_from_events(start, gone, now) == (
+        "status unavailable", "no activity from Copilot for over 2 hours")
+    assert state_from_events(asked, gone, now)[0] == "status unavailable"
+
+
+def test_title_from_the_first_prompt_is_read_once(tmp_path, monkeypatch):
+    from thechatplace.providers import copilot
+    raw = f"id: {ONE}\ncwd: C:/x\nclient_name: github/cli\n"
+    write_session(tmp_path, ONE, answered_turn(question="Plan the work"), raw_yaml=raw)
+    provider = CopilotProvider(tmp_path)
+    assert provider.collect().sessions[0].title == "Plan the work"
+    heads = []
+    real = copilot._read_head
+    monkeypatch.setattr(copilot, "_read_head", lambda *a: heads.append(a) or real(*a))
+    with open(tmp_path / ONE / "events.jsonl", "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event("assistant.turn_start", 50, turnId="1")) + "\n")
+    session = provider.collect().sessions[0]
+    assert session.title == "Plan the work" and session.state == WORKING
+    assert heads == []
+
+
+def test_last_message_only_for_the_rows_own_activity(tmp_path):
+    write_session(tmp_path, ONE, answered_turn())
+    provider = CopilotProvider(tmp_path)
+    old = provider.collect().sessions
+    with open(tmp_path / ONE / "events.jsonl", "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event("user.message", 60, content="Newer")) + "\n")
+    import os, time
+    stamp = time.time() + 5
+    os.utime(tmp_path / ONE / "events.jsonl", (stamp, stamp))
+    provider.collect()
+    provider.fill_last_messages(old)  # a row from before the newer read
+    assert old[0].last_message == ""

@@ -790,8 +790,9 @@ sessions alongside Claude. The option appears once Copilot CLI has saved a sessi
 reading uses none of your Copilot requests. Selecting a Copilot chat opens its messages;
 formatted reading, Find and export work too, and Show Tool Activity shows the commands and file
 changes Copilot ran. Reply in Copilot CLI: sending, approvals and Continue Here are unavailable
-in this preview. A chat that's answering says working and is announced when it finishes; one
-with a turn that hasn't ended and no activity for ten minutes leaves its status out.
+in this preview. A chat that's answering says working, even while Copilot runs a command, and is
+announced once when its answer is finished; after ten minutes with no activity it adds "no
+activity from Copilot for 10 minutes". Sessions started in Copilot CLI in a terminal are listed as terminal sessions.
 
 ## Install
 

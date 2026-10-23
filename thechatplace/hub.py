@@ -14,7 +14,7 @@ from . import platform_paths
 from .providers.base import Snapshot
 from .providers.claude import ClaudeProvider, last_reply_from_tail
 from .own_store import OwnSession
-from .sessions import (IDLE, SORT_STATUS, WORKING, SessionInfo, load_live_status,
+from .sessions import (IDLE, LISTED_PROVIDERS, SORT_STATUS, WORKING, SessionInfo, load_live_status,
                        sort_sessions)
 from .transcript import LastMessages, SessionFactsCache
 # The row's words for it: plain text, no wx, so this stays plain data.
@@ -127,7 +127,7 @@ def finished_turns(previous: Dict[str, str], current: Iterable[SessionInfo],
     for info in current:
         if info.archived or info.provider in (stale_providers or ()):
             continue
-        if info.provider in ("codex", "copilot") and info.state != IDLE:
+        if info.provider in LISTED_PROVIDERS and info.state != IDLE:
             continue
         if previous.get(info.key) == WORKING and info.state != WORKING:
             ended.append(info)

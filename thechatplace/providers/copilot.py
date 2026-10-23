@@ -24,7 +24,7 @@ import time
 from typing import Iterable, List, Optional, Tuple
 
 from .. import platform_paths
-from ..sessions import IDLE, NEEDS_YOU, WORKING, SessionInfo
+from ..sessions import IDLE, NEEDS_YOU, TERMINAL, WORKING, SessionInfo
 from ..transcript import (ASSISTANT, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT, USER,
                           ChatMessage, Transcript, split_jsonl)
 from ..ui_text import last_message_line
@@ -35,17 +35,27 @@ ASSISTANT_NAME = "Copilot"
 WORKSPACE_FILE = "workspace.yaml"
 EVENTS_FILE = "events.jsonl"
 
-#: A turn that has written nothing for this long is not shown as working: a
-#: Copilot that was closed or crashed mid-turn never writes its turn's end,
-#: and the row must not say "working" forever.
+#: A reply that has written nothing for this long says so: a Copilot that was
+#: closed or crashed mid-reply never writes its end, and a long command writes
+#: nothing while it runs. It stays working, so a real finish is still
+#: announced; only the detail changes.
 STALE_TURN_SECONDS = 10 * 60
+#: After this long with nothing written, a reply is taken to have been left
+#: behind (Copilot closed mid-reply never writes its end): its status is
+#: unknown rather than working for ever.
+ABANDONED_TURN_SECONDS = 2 * 60 * 60
 #: How much of the end of a log is read to find a session's state and its
 #: last message. The state is in the last few events.
 TAIL_BYTES = 256 * 1024
+#: How much of the start of a log is read for a title from the first prompt.
+HEAD_BYTES = 1024 * 1024
 
-# Events that start, end or pause a turn, used for the row's state.
+# Events that start, end or pause a reply, used for the row's state. One
+# reply is several model steps, each its own turn_start/turn_end: a step that
+# asks for tools, then the next, until one answers without asking (#352).
 _TURN_START = "assistant.turn_start"
-_TURN_ENDS = frozenset({"assistant.turn_end", "session.shutdown", "abort", "session.error"})
+_STEP_END = "assistant.turn_end"
+_REPLY_ENDS = frozenset({"session.shutdown", "abort", "session.error"})
 _PERMISSION_ASKED = "permission.requested"
 _PERMISSION_DONE = "permission.completed"
 
@@ -278,17 +288,15 @@ def _read_tail(path: Path, max_bytes: int = TAIL_BYTES) -> List[str]:
     return lines[1:] if start > 0 and lines else lines
 
 
-def state_from_events(lines: Iterable[str], written_ms: int,
-                      now_ms: Optional[int] = None) -> Tuple[str, str]:
-    """(state, detail) from the end of a session's log.
+def _log_state(lines: Iterable[str]) -> str:
+    """WORKING, NEEDS_YOU, IDLE or "status unavailable", from the log alone.
 
-    Only an explicit end of turn makes a session idle, as with Codex
-    (#184): idle is what announces a finished reply. A turn that started and
-    hasn't ended is working, or needs you while a permission is being asked;
-    unless nothing has been written for STALE_TURN_SECONDS, when this can't
-    tell whether Copilot is still running, and says so.
+    Only an explicit end makes a session idle, as with Codex (#184): idle is
+    what announces a finished reply. A step's end counts only when that step
+    answered without asking for tools; otherwise Copilot is about to run them
+    and take the next step.
     """
-    state, asking = "status unavailable", set()
+    state, asking, tools_asked = "status unavailable", set(), False
     for line in lines:
         try:
             event = json.loads(line)
@@ -298,22 +306,51 @@ def state_from_events(lines: Iterable[str], written_ms: int,
             continue
         kind = event.get("type")
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
-        if kind == _TURN_START:
-            state, asking = WORKING, set()
-        elif kind in _TURN_ENDS:
+        if kind in ("user.message", _TURN_START):
+            state, tools_asked = WORKING, False
+            if kind == "user.message":
+                asking = set()
+        elif kind == "assistant.message":
+            tools_asked = bool(data.get("toolRequests"))
+        elif kind in ("tool.execution_start", "tool.execution_complete"):
+            # A step that ran a tool isn't the answer, even when the tail
+            # starts after the message that asked for it (a large output).
+            state, tools_asked = WORKING, True
+        elif kind == _STEP_END:
+            if not tools_asked:
+                state, asking = IDLE, set()
+        elif kind in _REPLY_ENDS:
             state, asking = IDLE, set()
         elif kind == _PERMISSION_ASKED:
             asking.add(_text(data.get("requestId")))
         elif kind == _PERMISSION_DONE:
             asking.discard(_text(data.get("requestId")))
-    if state != WORKING:
+    if state == WORKING and asking:
+        return NEEDS_YOU
+    return state
+
+
+def _with_detail(state: str, written_ms: int, now_ms: Optional[int] = None) -> Tuple[str, str]:
+    """The row's (state, detail): the log's state, saying so when a reply
+    has been quiet for STALE_TURN_SECONDS, and unknown once it has been
+    quiet for ABANDONED_TURN_SECONDS."""
+    if state not in (WORKING, NEEDS_YOU):
         return state, ""
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
-    if written_ms and now_ms - written_ms > STALE_TURN_SECONDS * 1000:
-        return "status unavailable", "no recent activity from Copilot"
-    if asking:
-        return NEEDS_YOU, "waiting in Copilot"
-    return WORKING, ""
+    quiet_ms = now_ms - written_ms if written_ms else 0
+    if quiet_ms > ABANDONED_TURN_SECONDS * 1000:
+        return "status unavailable", "no activity from Copilot for over 2 hours"
+    if state == NEEDS_YOU:
+        return state, "waiting in Copilot"  # quiet because it's waiting for you
+    if quiet_ms > STALE_TURN_SECONDS * 1000:
+        return state, "no activity from Copilot for 10 minutes"
+    return state, ""
+
+
+def state_from_events(lines: Iterable[str], written_ms: int,
+                      now_ms: Optional[int] = None) -> Tuple[str, str]:
+    """(state, detail) from the end of a session's log."""
+    return _with_detail(_log_state(lines), written_ms, now_ms)
 
 
 class CopilotReader:
@@ -365,9 +402,10 @@ class CopilotProvider:
 
     def __init__(self, sessions_dir: Optional[Path] = None):
         self._sessions_dir = sessions_dir
-        # (log size, log mtime) -> state, kept per session so an unchanged log
-        # isn't re-read on every refresh of the list.
-        self._states: dict = {}
+        # native id -> _Entry, so an unchanged session isn't re-read on every
+        # refresh of the list, and a changed log is read once for its state,
+        # title and last message together.
+        self._entries: dict = {}
         self._last_messages: "OrderedDict[tuple, tuple]" = OrderedDict()
         self._lock = threading.Lock()
 
@@ -395,55 +433,44 @@ class CopilotProvider:
             folders = sorted(os.scandir(root), key=lambda entry: entry.name)
         except FileNotFoundError:
             return snapshot  # Copilot CLI hasn't been used here
-        states = {}
+        entries = {}
         for entry in folders:
             if entry.name.startswith(".") or not entry.is_dir():
                 continue
             if not platform_paths.is_safe_id(entry.name):
                 continue
             try:
-                info = self._session(Path(entry.path), entry.name, states)
+                info = self._session(Path(entry.path), entry.name, entries)
             except (OSError, UnicodeDecodeError, ValueError):
                 snapshot.unreadable_files += 1
                 continue
             if info is not None:
                 snapshot.sessions.append(info)
         with self._lock:
-            self._states = states
+            self._entries = entries
         return snapshot
 
-    def _session(self, folder: Path, native_id: str, states: dict) -> Optional[SessionInfo]:
+    def _session(self, folder: Path, native_id: str, entries: dict) -> Optional[SessionInfo]:
         events = folder / EVENTS_FILE
         try:
             stat = os.stat(events)
         except FileNotFoundError:
             return None  # stopped before its first prompt: nothing to read
-        workspace = parse_workspace((folder / WORKSPACE_FILE).read_text(encoding="utf-8"))
-        if workspace.get("id", native_id) != native_id:
-            raise ValueError("Copilot session folder and id disagree")
-        written_ms = stat.st_mtime_ns // 1_000_000
-        stamp = (stat.st_size, stat.st_mtime_ns)
+        workspace_path = folder / WORKSPACE_FILE
+        stamp = (stat.st_size, stat.st_mtime_ns, os.stat(workspace_path).st_mtime_ns)
         with self._lock:
-            cached = self._states.get(native_id)
-        if cached and cached[0] == stamp and cached[1][0] != WORKING:
-            state, detail = cached[1]
-        else:
-            state, detail = state_from_events(_read_tail(events), written_ms)
-        states[native_id] = (stamp, (state, detail))
-        title = workspace.get("name", "").strip()
-        if not title:
-            first = next((m for m in parse_events(_read_head(events)).messages
-                          if m.kind == USER), None)
-            if first is None:
-                return None  # no prompt was ever sent (refused at sign-in, say)
-            title = first.text.strip()
-        title = title.split("\n", 1)[0].strip() or "Untitled session"
-        created = _ms(workspace.get("created_at"))
-        updated = max(_ms(workspace.get("updated_at")), written_ms)
-        return SessionInfo("external", f"{PROVIDER_ID}:{native_id}", title,
-                           workspace.get("cwd", ""), native_id, provider=PROVIDER_ID,
-                           state=state, detail=detail, created_ms=created,
-                           last_activity_ms=updated or created)
+            entry = self._entries.get(native_id)
+        if entry is None or entry.stamp != stamp:
+            entry = _read_entry(native_id, events, workspace_path, stat, stamp, entry)
+        entries[native_id] = entry
+        if entry.title is None:
+            return None  # no prompt was ever sent (refused at sign-in, say)
+        # The detail depends on the clock, so it's worked out every time.
+        state, detail = _with_detail(entry.state, entry.written_ms)
+        return SessionInfo(entry.source, f"{PROVIDER_ID}:{native_id}", entry.title,
+                           entry.cwd, native_id, provider=PROVIDER_ID,
+                           state=state, detail=detail, created_ms=entry.created_ms,
+                           last_activity_ms=entry.updated_ms)
 
     # -- the optional Last message column -----------------------------------
 
@@ -459,21 +486,26 @@ class CopilotProvider:
             info.last_message = cached[1] if cached and cached[0] == info.last_activity_ms else ""
 
     def fill_last_messages(self, sessions: Iterable[SessionInfo]) -> None:
-        """Local files are cheap to read, but only changed ones are re-read."""
+        """Only while the column is shown, and only once per change: the line
+        is kept on the session's entry until its log changes."""
         for info in sessions:
             with self._lock:
-                cached = self._last_messages.get(info.identity)
-            if cached and cached[0] == info.last_activity_ms:
-                info.last_message = cached[1]
-                continue
-            try:
-                transcript = parse_events(_read_tail(self._events_path(info.cli_session_id)))
-            except OSError:
+                entry = self._entries.get(info.cli_session_id)
+            if entry is None or entry.updated_ms != info.last_activity_ms:
+                # A newer collect() has replaced this row's entry: its line
+                # would be for later activity than the row says.
                 info.last_message = ""
                 continue
-            message = next((m for m in reversed(transcript.messages)
-                            if m.kind in (USER, ASSISTANT) and m.text.strip()), None)
-            info.last_message = last_message_line(message.label, message.text) if message else ""
+            if entry.last_line is None:
+                try:
+                    transcript = parse_events(_read_tail(self._events_path(info.cli_session_id)))
+                except OSError:
+                    info.last_message = ""
+                    continue
+                last = next((m for m in reversed(transcript.messages)
+                             if m.kind in (USER, ASSISTANT) and m.text.strip()), None)
+                entry.last_line = last_message_line(last.label, last.text) if last else ""
+            info.last_message = entry.last_line
             with self._lock:
                 self._last_messages[info.identity] = (info.last_activity_ms, info.last_message)
                 self._last_messages.move_to_end(info.identity)
@@ -507,9 +539,56 @@ class CopilotProvider:
         return reply.text if reply else ""
 
 
-def _read_head(path: Path, max_bytes: int = 64 * 1024) -> List[str]:
-    """Whole lines from the start of a log, for a title from the first prompt."""
+def _read_head(path: Path, max_bytes: Optional[int] = None) -> Tuple[List[str], bool]:
+    """Whole lines from the start of a log, and whether that was all of it."""
+    max_bytes = HEAD_BYTES if max_bytes is None else max_bytes
     with open(path, "rb") as handle:
-        data = handle.read(max_bytes)
-    lines = split_jsonl(data)
-    return lines[:-1] if len(data) == max_bytes and lines else lines
+        data = handle.read(max_bytes + 1)
+    whole = len(data) <= max_bytes
+    lines = split_jsonl(data[:max_bytes])
+    return (lines if whole or not lines else lines[:-1]), whole
+
+
+class _Entry:
+    """What one session's files said, and the stamp they said it at."""
+
+    __slots__ = ("stamp", "source", "title", "title_from_prompt", "cwd", "created_ms",
+                 "updated_ms", "written_ms", "state", "last_line")
+
+    def __init__(self, **values):
+        for name in self.__slots__:
+            setattr(self, name, values[name])
+
+
+def _read_entry(native_id: str, events: Path, workspace_path: Path, stat,
+                stamp: tuple, previous: Optional[_Entry] = None) -> _Entry:
+    workspace = parse_workspace(workspace_path.read_text(encoding="utf-8"))
+    if workspace.get("id", native_id) != native_id:
+        raise ValueError("Copilot session folder and id disagree")
+    tail = _read_tail(events)
+    title = workspace.get("name", "").strip()
+    from_prompt = False
+    if not title and previous is not None and previous.title_from_prompt:
+        # The first prompt never changes: don't read the head again.
+        title, from_prompt = previous.title, True
+    elif not title:
+        from_prompt = True
+        head, whole = _read_head(events)
+        first = next((m for m in parse_events(head).messages if m.kind == USER), None)
+        if first is not None:
+            title = first.text.strip()
+        elif whole:
+            title = None  # no prompt was ever sent
+    if title is not None:
+        title = title.split("\n", 1)[0].strip() or "Untitled session"
+    written_ms = stat.st_mtime_ns // 1_000_000
+    created = _ms(workspace.get("created_at"))
+    updated = max(_ms(workspace.get("updated_at")), written_ms) or created
+    # Kind is where the session started (CLAUDE.md): Copilot CLI in a
+    # terminal, as the Codex adapter files its "cli" chats.
+    source = TERMINAL if workspace.get("client_name") == "github/cli" else "external"
+    return _Entry(stamp=stamp, source=source, title=title,
+                  title_from_prompt=from_prompt and title not in (None, "Untitled session"),
+                  cwd=workspace.get("cwd", ""), created_ms=created, updated_ms=updated,
+                  written_ms=written_ms, state=_log_state(tail),
+                  last_line=None)  # worked out only if the column is shown

@@ -80,7 +80,7 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         DESKTOP, NEEDS_YOU, OWN, SORT_ORDERS,
                         SORT_SPOKEN, VIEW_ALL, VIEW_ARCHIVED, VIEW_HIDDEN, VIEW_NEEDS_YOU, VIEWS,
                         WORKING, STATUS_UNAVAILABLE,
-                        SessionInfo, field_short_name, group_view, in_view, end_sentence, provider_name,
+                        SessionInfo, field_short_name, group_view, in_view, end_sentence, LISTED_PROVIDERS, home_app,
                         state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
@@ -96,7 +96,7 @@ from .statusbar import StatusParts
 from .codex_chats import CodexChats
 from .relay_chats import RelayChats
 from .agent_chats import AgentChats
-from ..agents import AGENTS, AgentConversationStore
+from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions
 from ..rendering import html_page, message_page
@@ -1540,8 +1540,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if not editable:
             self.desktop_note.SetValue(
                 f"This is a {provider_name(info.provider)} chat. The Chat Place currently "
-                f"reads its local history. Reply in {provider_name(info.provider)}."
-                if info.provider in ("codex", "copilot") else
+                f"reads its local history. Reply in {home_app(info.provider)}."
+                if info.provider in LISTED_PROVIDERS else
                 _COWORK_NOTE if info.cowork else
                                        _TERMINAL_NOTE if info.is_terminal else _DESKTOP_NOTE)
             self.continue_btn.Show(self.sessions.capabilities(info).fork)
@@ -1680,7 +1680,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             kind = ", on Codex"
         elif info.provider == AGENTS:
             kind = ", agent conversation"
-        if info.provider in ("codex", "copilot") and info.state == STATUS_UNAVAILABLE:
+        if info.provider in LISTED_PROVIDERS and info.state == STATUS_UNAVAILABLE:
             state = ""
         description = state + kind if state else kind.lstrip(", ")
         label = f"Messages in {info.title} ({description})"
@@ -1839,8 +1839,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._select_on_load = None
             if not self._chat_loaded:
                 name = provider_name(self._open.provider)
-                line = (f"Couldn't load this {name} chat. Try again, or open it in {name} to read it."
-                        if self._open.provider in ("codex", "copilot")
+                line = (f"Couldn't load this {name} chat. Try again, or open it in "
+                        f"{home_app(self._open.provider)} to read it."
+                        if self._open.provider in LISTED_PROVIDERS
                         else f"Couldn't read this transcript: {error}")
                 self.chat_list.Set([line])
                 self._chat_keys = []
@@ -2646,7 +2647,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         messages, transcript = self._export_source(info)
         if not messages and transcript is None:
             note = (f"{info.title} has no messages to export. Try loading the chat again."
-                    if info.provider in ("codex", "copilot") else
+                    if info.provider in LISTED_PROVIDERS else
                     f"{info.title} has no messages to export (its transcript isn't on disk).")
             wx.MessageBox(note, APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
             return
@@ -2691,7 +2692,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     items = [m for m in history.messages
                              if show_activity or not m.is_activity] if history else []
                 if not items:
-                    raise OSError("the chat has no messages" if info.provider in ("codex", "copilot")
+                    raise OSError("the chat has no messages" if info.provider in LISTED_PROVIDERS
                                   else "the transcript has no messages")
                 text = export.render(fmt, title, items, folder=folder)
                 with open(path, "w", encoding="utf-8", newline="\n") as handle:

@@ -32,6 +32,16 @@ WORKING = "working"
 NEEDS_YOU = "needs you"
 IDLE = "idle"
 STATUS_UNAVAILABLE = "status unavailable"
+#: Backends whose chats come from the other app's own list (#184, #352): only
+#: an explicit idle finishes a turn there, and their history is read in that
+#: app's terms ("Reply in Copilot CLI"), never as a Claude transcript.
+LISTED_PROVIDERS = ("codex", "copilot")
+#: The app to go to for a listed provider's chat ("Reply in Copilot CLI").
+HOME_APPS = {"codex": "Codex", "copilot": "Copilot CLI"}
+
+
+def home_app(provider: str) -> str:
+    return HOME_APPS.get(provider, provider.capitalize())
 
 _STATE_ORDER = {NEEDS_YOU: 0, WORKING: 1, IDLE: 2, STATUS_UNAVAILABLE: 3}
 
@@ -195,7 +205,7 @@ class SessionInfo:
         in any shown column, it reads the title."""
         values = self.field_values(now_ms)
         order = DEFAULT_FIELDS if fields is None else list(fields)
-        if (self.provider in ("codex", "copilot") and self.state == STATUS_UNAVAILABLE
+        if (self.provider in LISTED_PROVIDERS and self.state == STATUS_UNAVAILABLE
                 and not self.detail and order == DEFAULT_FIELDS):
             values[FIELD_STATUS] = ""
         parts = [values[f] for f in order if values.get(f)]
@@ -361,14 +371,6 @@ VIEW_UNGROUPED = "ungrouped"
 VIEW_ARCHIVED = "archived"
 VIEW_HIDDEN = "hidden"
 VIEW_CLAUDE = "provider:claude"
-#: How each agent backend is named in what the window says.
-PROVIDER_NAMES = {"claude": "Claude", "codex": "Codex", "copilot": "Copilot"}
-
-
-def provider_name(provider: str) -> str:
-    return PROVIDER_NAMES.get(provider, provider.capitalize())
-
-
 VIEW_CODEX = "provider:codex"
 VIEW_COPILOT = "provider:copilot"
 GROUP_VIEW_PREFIX = "group:"

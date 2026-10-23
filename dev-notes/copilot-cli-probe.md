@@ -90,12 +90,17 @@ capabilities grant nothing but reading.
   stopped before a prompt (a refused sign-in, say) are left out. The title is `workspace.yaml`'s
   `name`, or the first prompt when that can't be read. Only flat one-line scalars are parsed;
   nothing is guessed.
-- **State:** from the last 256 KB of the log. `assistant.turn_start` means working, and an
-  outstanding `permission.requested` means needs you. Only `assistant.turn_end`,
-  `session.shutdown`, `abort` or `session.error` mean idle, so only an explicit end announces a
-  finished reply (the Codex rule, widened to every non-Claude provider in `hub.finished_turns`
-  and `Snapshot.fresh_states`). A turn with no writes for ten minutes becomes "status
-  unavailable" rather than working forever.
+- **State:** from the last 256 KB of the log. One reply is several model steps, each with its
+  own `assistant.turn_start` / `assistant.turn_end` (turnId 0, 1, 2…): a step that asks for
+  tools, then the next, until one answers without `toolRequests`. So `user.message` or
+  `turn_start` means working, and an outstanding `permission.requested` means needs you. Idle
+  means a `turn_end` after an `assistant.message` with no `toolRequests`, or `session.shutdown`,
+  `abort` or `session.error`. The reply's real end, `assistant.idle`, is ephemeral and never
+  saved. Only an explicit end announces a finished reply: the Codex rule, extended to
+  `sessions.LISTED_PROVIDERS` in `hub.finished_turns` and `Snapshot.fresh_states`. A reply with
+  no writes for ten minutes stays working, with a detail saying so, so its finish is still
+  announced. Each session's files are re-read only when their size or time changes, and the
+  state, title and last message come from one read.
 - **Messages:** `user.message` (its `content`, not `transformedContent`), `assistant.message`,
   `tool.execution_start` and `tool.execution_complete` (as activity), a refused
   `permission.completed` (Permission denied, naming what was asked), `session.error` and `abort`.
