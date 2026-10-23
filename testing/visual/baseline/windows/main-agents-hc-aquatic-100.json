@@ -139,7 +139,7 @@
     "You, to Claude 1: Make the uploader flush before it signals.",
     "Claude 1: ## What changed",
     "Relay: Setup sent to Claude 2: who the other agent is, the roles, and to end with DONE when the work is finished.",
-    "Relay: Claude 1's reply passed to Claude 2. What went, with your changes:",
+    "Relay: Claude 1's reply passed to Claude 2, with your changes. Enter reads what went.",
     "Claude 2: One problem: close() can run twice when the upload is cancelled. Guard it with a flag."
    ],
    "selection": 4

@@ -1023,7 +1023,7 @@
    "class": "AgentConversationDialog",
    "size": [
     720,
-    720
+    760
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1042,6 +1042,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "An agent conversation's hand-off (Ctrl+Shift+E): a reply going to the other agent"
+  },
+  "agent-new-three": {
+   "kind": "dialog",
+   "png": "agent-new-three-light-100.png",
+   "json": "agent-new-three-light-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Agent Conversation with the Builder and reviewer template and a third agent"
   }
  },
  "seconds": 94.1
