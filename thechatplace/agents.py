@@ -259,6 +259,11 @@ def relay_label(conversation: AgentConversation, from_index: int) -> str:
     return f'From {name} (agent conversation "{conversation.title}"):'
 
 
+#: Between a carried reply and your words, when you type with a reply
+#: waiting.
+USER_ADDS = "\n\nThe user adds:\n\n"
+
+
 def relay_text(conversation: AgentConversation, from_index: int, reply: str) -> str:
     return f"{relay_label(conversation, from_index)}\n\n{reply.strip()}"
 
@@ -341,8 +346,15 @@ def said_done(reply: str) -> bool:
 #: agent, and the relay stops: they're being polite, not working.
 _COURTESY = re.compile(r"\b(thank|thanks|you're welcome|you are welcome|glad|happy to|"
                        r"sounds good|agreed|looks good|perfect|appreciate|great work|"
-                       r"nothing (more|further)|all set|no further)\b", re.IGNORECASE)
-COURTESY_MAX = 240
+                       r"no problem|cheers|that's everything|that's all|"
+                       r"nothing (more|further|else)|all set|no further)\b", re.IGNORECASE)
+#: Words that mean a short reply is still doing or asking for work.
+_WORK = re.compile(r"\b(but|however|though|except|otherwise|fix|fixed|bug|bugs|error|fail|"
+                   r"fails|failed|broken|issue|issues|problem|problems|i'll|i will|we'll|next|now|"
+                   r"will|then|implement|implementing|add|added|write|wrote|change|changed|"
+                   r"line|file|test|tests|todo|still|should|must|need|needs)\b", re.IGNORECASE)
+_NO_WORK = re.compile(r"\bno problem\b", re.IGNORECASE)
+COURTESY_MAX = 160
 
 
 def courtesy(reply: str) -> bool:
@@ -351,7 +363,9 @@ def courtesy(reply: str) -> bool:
     text = (reply or "").strip()
     if not text or len(text) > COURTESY_MAX or "```" in text or "?" in text:
         return False
-    return bool(_COURTESY.search(text))
+    if len([s for s in re.split(r"[.!;]+", text) if s.strip()]) > 2:
+        return False
+    return bool(_COURTESY.search(text)) and not _WORK.search(_NO_WORK.sub("", text))
 
 
 def _normal(text: str) -> str:
@@ -466,10 +480,15 @@ def _classify(conversation: AgentConversation, index: int, message: ChatMessage,
     if match:
         # The reply itself is in the list already, as its agent's message:
         # one line here, and Enter reads exactly what went (``detail``).
+        relay, adds, yours = text.strip().partition(USER_ADDS)
         shown.append(ChatMessage(RELAY, f"{match.group(1)}'s reply passed to {name}.",
                                  message.timestamp, key, sender=match.group(1),
                                  turn=message.turn,
-                                 detail=f"Exactly what was sent:\n\n{text.strip()}"))
+                                 detail=f"Exactly what was sent:\n\n{relay}"))
+        if adds and yours.strip():
+            # Typed with a reply waiting: your words are your own message,
+            # read on arrowing like any other.
+            shown.append(replace(message, text=yours.strip(), key=key + ":you", sender=name))
     else:
         shown.append(replace(message, text=text, key=key, sender=name))
     return shown

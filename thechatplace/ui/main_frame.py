@@ -2077,7 +2077,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         shown, or Kelly chose Read as Plain Text: the caller opens the text
         box instead."""
         title = f"Message: {message.label}"
-        return self._show_page(title, message_page(title, message.whole, heading=message.label))
+        text = message.whole
+        if message.detail:
+            # Exactly what was sent reads line for line, not run together
+            # as soft breaks.
+            text = "\n".join(line + "  " if line.strip() else line
+                               for line in text.split("\n"))
+        return self._show_page(title, message_page(title, text, heading=message.label))
 
     def on_user_guide(self, _event=None):
         """Help, User Guide (#104): the guide as a page, read by heading like

@@ -26,6 +26,10 @@ from ..ui_text import key_name
 from .dialogs import AgentConversationDialog, RelayDialog
 
 
+#: The first of Codex's account usage lines (codex_usage.usage_lines).
+CODEX_ACCOUNT_LINE = "Codex account usage is shared"
+
+
 class AgentChats:
     # -- finding things -----------------------------------------------------------------
 
@@ -193,10 +197,15 @@ class AgentChats:
             plan = dialog.result
         finally:
             dialog.Destroy()
-        existing = [Member(c.info.provider, c.info.cli_session_id, "") for c in plan.members
-                    if c.info is not None]
-        if plan.mode == MODE_AUTO and existing:
-            self._agent_check_usage(existing, lambda: self._agent_create(plan))
+        if plan.mode == MODE_AUTO:
+            members = [Member(c.provider, c.info.cli_session_id if c.info else "", "")
+                       for c in plan.members]
+
+            def approve():
+                plan.mode = MODE_APPROVE
+                self._feedback("Starting it with you approving each hand-off.")
+                self._agent_create(plan)
+            self._agent_check_usage(members, lambda: self._agent_create(plan), declined=approve)
         else:
             self._agent_create(plan)
 
@@ -313,8 +322,11 @@ class AgentChats:
         conversation = self.agents.get(conversation_id)
         if conversation is None:
             return False
-        # Your message starts the relay again, with a fresh count.
+        # Your message starts the relay again, with a fresh count, and the
+        # replies before it aren't compared with the ones after (repeat and
+        # thanks checks).
         conversation.paused, conversation.stop_reason, conversation.exchanges = False, "", 0
+        self._agent_last_heard.pop(conversation.conversation_id, None)
         pending = conversation.pending
         # Writing to the agent that sent a waiting reply, and not to the one
         # it waits for, carries on past it: it's set aside once your words
@@ -329,7 +341,7 @@ class AgentChats:
                 # A reply was waiting to go to this agent: it goes with your
                 # words, ahead of them, rather than being dropped.
                 message = (f"{agents.relay_text(conversation, pending.from_index, pending.text)}"
-                           f"\n\nThe user adds:\n\n{text}")
+                           f"{agents.USER_ADDS}{text}")
             if self._agent_deliver(conversation, index, message, relay=relay):
                 sent.append(conversation.members[index].name)
                 if message is not text:
@@ -905,10 +917,11 @@ class AgentChats:
         members = [(m, self._agent_member_info(m)) for m in conversation.members]
         limits = self._limits
         windows, model_windows = dict(self._windows), dict(self._model_windows)
+        compacted = dict(getattr(self, "_compaction_tokens", {}))
 
         def read():
             from .. import usage
-            lines = []
+            lines, account = [], []
             for member, info in members:
                 if info is None:
                     lines.append(f"{member.name}: its chat is gone.")
@@ -920,7 +933,9 @@ class AgentChats:
                         reader = self.sessions.open_reader(info)
                         if reader is not None:
                             reader.refresh()
-                            tokens = reader.transcript.context_tokens
+                            # Right after compacting, the size it reported.
+                            tokens = compacted.get(info.cli_session_id,
+                                                   reader.transcript.context_tokens)
                             model = reader.transcript.model
                             window = usage.context_window(
                                 model, tokens,
@@ -933,13 +948,22 @@ class AgentChats:
                         found = list(self.sessions.usage_lines(info))
                     except Exception:  # noqa: BLE001
                         found = ["Codex usage couldn't be read. Check Codex sign-in."]
-                    lines += [f"{prefix}: {line}" for line in found]
+                    # The account's limits come after the chat's context,
+                    # and are shared: listed once, not under each member.
+                    shared = next((i for i, line in enumerate(found)
+                                   if line.startswith(CODEX_ACCOUNT_LINE)), len(found))
+                    lines += [f"{prefix}: {line}" for line in found[:shared]]
+                    if not account:
+                        account = found[shared:]
+            lines += [f"Codex account: {line}" for line in account]
             if any(m.provider == "claude" for m, _i in members):
                 lines += [f"Claude plan: {line}" for line in usage.limit_lines(limits)]
             return lines
 
         def done(lines, error):
             self._agent_usage_busy = False
+            if not self._agent_is_open(conversation):
+                return  # you've moved on; it's not this chat's usage
             if error or not lines:
                 self._feedback("Couldn't read the conversation's usage.")
                 return
@@ -947,36 +971,61 @@ class AgentChats:
             self._modal(UsageDialog(self, lines, self._copy_usage))
         self._codex_work(read, done)
 
-    def _agent_check_usage(self, members, then):
+    def _agent_check_usage(self, members, then, declined=None):
         """Before automatic hand-offs: if either provider is near a limit,
-        say so and ask, since every exchange uses both subscriptions."""
+        say so and ask, since every exchange uses both subscriptions. No
+        runs ``declined`` (a new conversation starts approving each
+        hand-off instead) or says they weren't turned on."""
         from .. import usage
+        if getattr(self, "_agent_usage_busy", False):
+            self._feedback("Still checking usage.")
+            return
         limits = self._limits
+        claude = any(m.provider == "claude" for m in members)
+        # Codex's limits are the account's, so any of its chats can say;
+        # looked up here, on the UI thread.
+        codex = None
+        if any(m.provider == "codex" for m in members):
+            codex = next((info for info in (self._agent_member_info(m) for m in members
+                                            if m.provider == "codex" and m.native_id)
+                          if info is not None), None)
+            if codex is None:
+                codex = next((s for s in self._snapshot.sessions
+                              if s.provider == "codex" and s.is_own), None)
+        self._agent_usage_busy = True
+        self._status("Checking usage before automatic hand-offs.")
 
         def read():
             warnings = []
-            if any(m.provider == "claude" for m in members):
+            if claude:
                 warning = usage.limit_warning(limits)
                 if warning:
                     warnings.append(f"Claude: {warning}")
-            for member in members:
-                info = self._agent_member_info(member)
-                if member.provider == "codex" and info is not None:
-                    try:
-                        warnings += [f"Codex: {w}" for w in self.sessions.usage_warnings(info)]
-                    except Exception:  # noqa: BLE001 - no report, no warning
-                        pass
-                    break
+            if codex is not None:
+                try:
+                    warnings += [f"Codex: {getattr(w, 'text', w)}"
+                                 for w in self.sessions.usage_warnings(codex)]
+                except Exception:  # noqa: BLE001 - no report, no warning
+                    pass
             return warnings
 
         def done(warnings, error):
+            self._agent_usage_busy = False
             if not error and warnings:
+                if self._modal_open():
+                    # Not over another dialog, nor turned on unasked.
+                    self._feedback("Automatic hand-offs weren't turned on: a provider is near a "
+                                   "usage limit. Choose them again to be asked.")
+                    return
                 answer = wx.MessageBox(
                     "\n".join(warnings) + "\n\nAutomatic hand-offs use both subscriptions "
                     "for every exchange. Turn them on anyway?", "Automatic Hand-offs",
                     wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
                 if answer != wx.YES:
-                    self._feedback("Automatic hand-offs weren't turned on.")
+                    if declined is not None:
+                        declined()
+                    else:
+                        self._feedback("Automatic hand-offs weren't turned on.")
                     return
             then()
         self._codex_work(read, done)

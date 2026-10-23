@@ -493,9 +493,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
     to. **Usage and Context** (Ctrl+Shift+U) lists each agent's context and each provider's
     limits.
-  - Automatic mode also stops when the agents are only thanking each other. File, Agent
-    Conversation Hand-offs can make it say only when it stops or needs you, and asks first
-    if either provider is near a usage limit.
+  - The relay also stops when the agents are only thanking each other. File, Agent
+    Conversation Hand-offs can make automatic mode say only when it stops or needs you, and
+    asks first if either provider is near a usage limit.
   - The relay's own lines are one line each in the list; Enter reads exactly what was sent
     (the setup each agent got, or the reply as it went).
   - Permissions and questions still come to you, from each agent, through Answer

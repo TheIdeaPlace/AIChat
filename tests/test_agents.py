@@ -452,6 +452,14 @@ def test_enter_reads_exactly_what_was_sent():
     ("Thanks. Here's the fix:\n```python\nx = 1\n```", False),
     ("Found a bug in the lock handling; it isn't released on cancel.", False),
     ("Thank you. " * 40, False),
+    ("No problem. Nothing else from me.", True),
+    ("Cheers, that's everything.", True),
+    # Short, polite, and still working (the review's cases).
+    ("Looks good overall, but the lock isn't released on cancel. Fix it in agents.py line 40.",
+     False),
+    ("Agreed. I'll now write the tests for the parser and push them.", False),
+    ("Perfect, implementing that now.", False),
+    ("Found one bug: the lock isn't released on cancel. Otherwise looks good.", False),
 ])
 def test_courtesy(reply, polite):
     assert agents.courtesy(reply) is polite
@@ -463,3 +471,21 @@ def test_announce_each_round_trips(tmp_path):
     store.add(conversation)
     assert AgentConversationStore(tmp_path / "a.json").get(
         conversation.conversation_id).announce_each is False
+
+
+
+def test_your_words_carried_with_a_waiting_reply_are_their_own_message():
+    """Typing with a reply waiting sends the reply and your words together;
+    the list reads the relay line, then your words, and doesn't say you
+    changed the reply."""
+    conversation = _conversation()
+    carried = (agents.relay_text(conversation, 0, "Built it.") + agents.USER_ADDS
+               + "Check the lock too.")
+    shown = agents.combine(conversation, [[_m(ASSISTANT, "Built it.", 3, "a")],
+                                          [_m(USER, carried, 5, "r")]])
+    relay, yours = shown[-2], shown[-1]
+    assert relay.text == "Claude's reply passed to Codex."
+    assert relay.detail == "Exactly what was sent:\n\n" + agents.relay_text(conversation, 0,
+                                                                             "Built it.")
+    assert yours.kind == USER and yours.text == "Check the lock too."
+    assert yours.label == "You, to Codex"

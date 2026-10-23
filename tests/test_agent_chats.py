@@ -61,6 +61,9 @@ class Window(AgentChats):
         self.claude_accepts = True
         self.refreshes = 0
 
+    def _modal_open(self):
+        return False
+
     def _owned_action(self, action, record, *args):
         self.actions.append(action)
         return self.codex_ready if action == 'ready' else None
@@ -902,7 +905,10 @@ def test_automatic_asks_first_near_a_limit(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_chats.wx, 'MessageBox',
                         lambda text, *a, **k: asked.append(text) or agent_chats.wx.NO)
     monkeypatch.setattr('thechatplace.usage.limit_warning', lambda limits: "You've used 95% of your 5-hour limit.")
-    w.sessions.usage_warnings = lambda info: ["Weekly limit 91% used."]
+    from thechatplace.providers.codex_usage import CodexUsageWarning
+    # The shape they really come in: the text is said, not the object.
+    w.sessions.usage_warnings = lambda info: [CodexUsageWarning(("codex", 1),
+                                                                "Weekly limit 91% used.")]
     ran = []
     w._agent_check_usage(w.saved.members, lambda: ran.append(True))
     action, done = w.work.pop()
@@ -932,3 +938,90 @@ def test_conversation_usage_lists_each_member(tmp_path, monkeypatch):
     assert lines[1:3] == ['Codex (Reviewer chat): Context 10% full.',
                           'Codex (Reviewer chat): Weekly limit 20% used.']
     assert lines[-1].startswith('Claude plan: Usage limits: not known')
+
+
+
+def test_a_new_conversation_answered_no_starts_approving_each(tmp_path, monkeypatch):
+    """Both chats new: Claude's known limits are still checked, and No
+    starts the conversation approving each hand-off rather than losing it."""
+    from thechatplace.ui import agent_chats
+    w = Window(tmp_path, auto_setting=True)
+    w._limits = {}
+    monkeypatch.setattr(agent_chats.wx, 'MessageBox', lambda *a, **k: agent_chats.wx.NO)
+    monkeypatch.setattr('thechatplace.usage.limit_warning', lambda limits: "95% used.")
+    declined, ran = [], []
+    members = [Member('claude', '', ''), Member('codex', '', '')]
+    w._agent_check_usage(members, lambda: ran.append(True), declined=lambda: declined.append(1))
+    assert w.said[-1] == 'status: Checking usage before automatic hand-offs.'
+    w._agent_check_usage(members, lambda: ran.append(True))  # one check at a time
+    assert w.feedback[-1] == "Still checking usage."
+    action, done = w.work.pop()
+    done(action(), False)
+    assert declined == [1] and not ran
+
+
+def test_the_usage_question_never_opens_over_a_dialog(tmp_path, monkeypatch):
+    from thechatplace.ui import agent_chats
+    w = Window(tmp_path, auto_setting=True)
+    w._limits = {}
+    monkeypatch.setattr(agent_chats.wx, 'MessageBox', lambda *a, **k: pytest.fail("asked"))
+    monkeypatch.setattr('thechatplace.usage.limit_warning', lambda limits: "95% used.")
+    w._modal_open = lambda: True
+    ran = []
+    w._agent_check_usage(w.saved.members, lambda: ran.append(True))
+    action, done = w.work.pop()
+    done(action(), False)
+    assert not ran and w.feedback[-1].startswith("Automatic hand-offs weren't turned on")
+
+
+def test_your_message_starts_the_thanks_check_afresh(tmp_path):
+    """Thanks, then your new request, then a short polite reply to it: the
+    relay carries on (the review's case)."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Built v1.', False)
+    w._agent_turn_ended('codex', 'x1', 'Thanks, looks good.', False)
+    w.send('@Claude Now add docs')
+    w._agent_turn_ended('claude', 'c1', 'Glad to help.', False)
+    assert not w.saved.paused
+
+
+def test_conversation_usage_lists_the_codex_account_once(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from thechatplace.ui import dialogs
+    w = Window(tmp_path)
+    second = Member('codex', 'x2', 'Codex 2', '')
+    w.records[('codex', 'x2')] = OwnSession('x2', 'Second chat', '/work', provider='codex')
+    conversation = w.agents.get(w.cid)
+    conversation.members[0] = second
+    w.agents.put(conversation)
+    w._limits, w._windows, w._model_windows = None, {}, {}
+    w._copy_usage = lambda text, one: None
+    w.sessions.usage_lines = lambda info: ["Context 10% full.",
+                                           "Codex account usage is shared across your chats.",
+                                           "Weekly limit 20% used."]
+    shown = []
+    w._modal = lambda dialog: shown.append(dialog)
+    monkeypatch.setattr(dialogs, 'UsageDialog', lambda parent, lines, copy: lines)
+    w.on_agent_usage()
+    action, done = w.work.pop()
+    done(action(), False)
+    assert shown[-1] == ['Codex 2 (Second chat): Context 10% full.',
+                         'Codex (Reviewer chat): Context 10% full.',
+                         'Codex account: Codex account usage is shared across your chats.',
+                         'Codex account: Weekly limit 20% used.']
+
+
+def test_conversation_usage_isnt_shown_once_you_move_on(tmp_path, monkeypatch):
+    from thechatplace.ui import dialogs
+    w = Window(tmp_path)
+    w._limits, w._windows, w._model_windows = None, {}, {}
+    w.sessions.usage_lines = lambda info: ["Context 10% full."]
+    w.sessions.open_reader = lambda info: None
+    w._modal = lambda dialog: pytest.fail("shown")
+    monkeypatch.setattr(dialogs, 'UsageDialog', lambda parent, lines, copy: lines)
+    w.on_agent_usage()
+    action, done = w.work.pop()
+    w._open = None
+    done(action(), False)
+    assert not w._agent_usage_busy
