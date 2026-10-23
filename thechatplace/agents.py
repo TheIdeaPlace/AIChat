@@ -144,6 +144,8 @@ class AgentConversation:
     created_ms: int = 0
     last_activity_ms: int = 0
     unread: bool = False
+    #: Automatic mode: hear every reply, or only a stop or what needs you.
+    announce_each: bool = True
 
     @property
     def key(self) -> str:
@@ -257,6 +259,11 @@ def relay_label(conversation: AgentConversation, from_index: int) -> str:
     return f'From {name} (agent conversation "{conversation.title}"):'
 
 
+#: Between a carried reply and your words, when you type with a reply
+#: waiting.
+USER_ADDS = "\n\nThe user adds:\n\n"
+
+
 def relay_text(conversation: AgentConversation, from_index: int, reply: str) -> str:
     return f"{relay_label(conversation, from_index)}\n\n{reply.strip()}"
 
@@ -333,6 +340,32 @@ def said_done(reply: str) -> bool:
             word = re.sub(r"[\s*_`.!:>#-]+", "", line)
             return word.upper() == DONE_MARKER
     return False
+
+
+#: Replies that only thank, agree or sign off. Two in a row, one from each
+#: agent, and the relay stops: they're being polite, not working.
+_COURTESY = re.compile(r"\b(thank|thanks|you're welcome|you are welcome|glad|happy to|"
+                       r"sounds good|agreed|looks good|perfect|appreciate|great work|"
+                       r"no problem|cheers|that's everything|that's all|"
+                       r"nothing (more|further|else)|all set|no further)\b", re.IGNORECASE)
+#: Words that mean a short reply is still doing or asking for work.
+_WORK = re.compile(r"\b(but|however|though|except|otherwise|fix|fixed|bug|bugs|error|fail|"
+                   r"fails|failed|broken|issue|issues|problem|problems|i'll|i will|we'll|next|now|"
+                   r"will|then|implement|implementing|add|added|write|wrote|change|changed|"
+                   r"line|file|test|tests|todo|still|should|must|need|needs)\b", re.IGNORECASE)
+_NO_WORK = re.compile(r"\bno problem\b", re.IGNORECASE)
+COURTESY_MAX = 160
+
+
+def courtesy(reply: str) -> bool:
+    """A short reply that only thanks, agrees or signs off: no code, no
+    question, and words like "thanks" or "sounds good"."""
+    text = (reply or "").strip()
+    if not text or len(text) > COURTESY_MAX or "```" in text or "?" in text:
+        return False
+    if len([s for s in re.split(r"[.!;]+", text) if s.strip()]) > 2:
+        return False
+    return bool(_COURTESY.search(text)) and not _WORK.search(_NO_WORK.sub("", text))
 
 
 def _normal(text: str) -> str:
@@ -434,21 +467,28 @@ def _classify(conversation: AgentConversation, index: int, message: ChatMessage,
         # One line: the whole setup read on every arrow (the list reads each
         # message in full) was 90 words of noise, heard in the NVDA run.
         # The member chat itself has it word for word.
+        # Enter reads exactly what was sent (``detail``).
         roles = "the roles, " if any(m.role for m in conversation.members) else ""
         shown.append(ChatMessage(RELAY, f"Setup sent to {name}: who the other agent is, {roles}"
                                         "and to end with DONE when the work is finished.",
-                                 message.timestamp, key + ":setup", turn=message.turn))
+                                 message.timestamp, key + ":setup", turn=message.turn,
+                                 detail=f"Exactly what was sent:\n\n{setup}{SETUP_END}"))
         text = rest.strip()
         if not text:
             return shown
     match = _RELAY_LABEL.match(text.lstrip())
     if match:
-        # The reply itself is in the list already, as its agent's message;
-        # only what you added or changed is shown here (``_trim_relays``).
-        body = text.lstrip().split("\n", 1)[1].strip() if "\n" in text.lstrip() else ""
+        # The reply itself is in the list already, as its agent's message:
+        # one line here, and Enter reads exactly what went (``detail``).
+        relay, adds, yours = text.strip().partition(USER_ADDS)
         shown.append(ChatMessage(RELAY, f"{match.group(1)}'s reply passed to {name}.",
                                  message.timestamp, key, sender=match.group(1),
-                                 turn=message.turn, assistant_name=body))
+                                 turn=message.turn,
+                                 detail=f"Exactly what was sent:\n\n{relay}"))
+        if adds and yours.strip():
+            # Typed with a reply waiting: your words are your own message,
+            # read on arrowing like any other.
+            shown.append(replace(message, text=yours.strip(), key=key + ":you", sender=name))
     else:
         shown.append(replace(message, text=text, key=key, sender=name))
     return shown
@@ -506,17 +546,18 @@ def _sent_forms(shown: List[ChatMessage], name: str) -> set:
 
 
 def _trim_relays(messages: List[ChatMessage]) -> List[ChatMessage]:
-    """A passed-on reply reads as one line, unless it was changed on the
-    way: then what went is there to read in full. The relayed body rides in
-    ``assistant_name`` until here, and never leaves this module."""
+    """A passed-on reply reads as one line, which says when you changed it
+    on the way; Enter reads exactly what went either way. Who it came from
+    rides in ``sender`` until here, and never leaves this module."""
     result: List[ChatMessage] = []
     for message in messages:
-        if message.kind == RELAY and message.sender and message.assistant_name:
-            body = message.assistant_name
-            if body.strip() not in _sent_forms(result, message.sender):
-                message = replace(message, text=f"{message.text} What went, with your "
-                                                f"changes:\n\n{body}")
-            message = replace(message, sender="", assistant_name="Claude")
+        if message.kind == RELAY and message.sender:
+            sent = message.detail.split("\n\n", 1)[-1]
+            body = sent.split("\n", 1)[1].strip() if "\n" in sent else ""
+            if body and body not in _sent_forms(result, message.sender):
+                message = replace(message, text=message.text[:-1] + ", with your changes. "
+                                  "Enter reads what went.")
+            message = replace(message, sender="")
         result.append(message)
     return result
 
@@ -602,7 +643,7 @@ def _conversation_from(raw) -> Optional[AgentConversation]:
         briefed=sorted(set(briefed)), pending=pending, paused=raw.get("paused") is True,
         stop_reason=stop if isinstance(stop, str) else "", notes=notes[-MAX_NOTES:],
         created_ms=number("created_ms"), last_activity_ms=number("last_activity_ms"),
-        unread=raw.get("unread") is True)
+        unread=raw.get("unread") is True, announce_each=raw.get("announce_each") is not False)
 
 
 def _to_dict(conversation: AgentConversation) -> dict:
@@ -621,7 +662,7 @@ def _to_dict(conversation: AgentConversation) -> dict:
         "paused": conversation.paused, "stop_reason": conversation.stop_reason,
         "notes": [{"at_ms": n.at_ms, "text": n.text} for n in conversation.notes],
         "created_ms": conversation.created_ms, "last_activity_ms": conversation.last_activity_ms,
-        "unread": conversation.unread,
+        "unread": conversation.unread, "announce_each": conversation.announce_each,
     }
 
 

@@ -345,8 +345,9 @@ def test_a_passed_on_reply_reads_once_unless_you_changed_it():
     assert [(m.label, m.text) for m in shown] == [
         ("Claude", "Built it."), ("Relay", "Claude's reply passed to Codex.")]
     shown = agents.combine(conversation, [claude, changed])
-    assert shown[-1].text == ("Claude's reply passed to Codex. What went, with your changes:\n\n"
-                              "Built it.\n\nCheck the lock.")
+    assert shown[-1].text == ("Claude's reply passed to Codex, with your changes. Enter reads "
+                              "what went.")
+    assert shown[-1].detail.endswith('"):\n\nBuilt it.\n\nCheck the lock.')
     assert all(m.assistant_name in ("Claude", "Codex") for m in shown)
 
 
@@ -420,3 +421,71 @@ def test_a_finished_reply_never_hides_needs_you_or_working():
     assert (row.state, row.detail) == (NEEDS_YOU, "Claude: Run git push?")
     idle = [_row("own:claude-0", "claude", "claude-0"), _row("codex:codex-1", "codex", "codex-1")]
     assert agents.rows(idle, [conversation], waiting_keys=[conversation.key])[-1].state == WORKING
+
+
+
+def test_enter_reads_exactly_what_was_sent():
+    """The list reads one line; Read Full Message, Copy and Export read the
+    exact setup and the exact passed-on text (Kelly: "doesn't show exactly
+    what was sent")."""
+    conversation = _conversation()
+    sent_setup = agents.outgoing(conversation, 0, "Build it.")
+    relay = agents.relay_text(conversation, 1, "One bug.")
+    shown = agents.combine(conversation, [[_m(USER, sent_setup, 0, "u"),
+                                           _m(USER, relay, 5, "r")],
+                                          [_m(ASSISTANT, "One bug.", 3, "a", assistant_name="Codex")]])
+    setup = shown[0]
+    assert agents.SETUP_START not in setup.text
+    assert setup.detail == ("Exactly what was sent:\n\n" + agents.setup_text(conversation, 0))
+    assert agents.setup_text(conversation, 0) in setup.whole
+    assert agents.setup_text(conversation, 0) in setup.full_text()
+    passed = shown[-1]
+    assert passed.text == "Codex's reply passed to Claude."
+    assert passed.detail == "Exactly what was sent:\n\n" + relay
+
+
+@pytest.mark.parametrize("reply, polite", [
+    ("Thanks, that's all I needed.", True),
+    ("Sounds good. Nothing more from me.", True),
+    ("Glad to help!", True),
+    ("Thanks! One more thing: is the lock released?", False),
+    ("Thanks. Here's the fix:\n```python\nx = 1\n```", False),
+    ("Found a bug in the lock handling; it isn't released on cancel.", False),
+    ("Thank you. " * 40, False),
+    ("No problem. Nothing else from me.", True),
+    ("Cheers, that's everything.", True),
+    # Short, polite, and still working (the review's cases).
+    ("Looks good overall, but the lock isn't released on cancel. Fix it in agents.py line 40.",
+     False),
+    ("Agreed. I'll now write the tests for the parser and push them.", False),
+    ("Perfect, implementing that now.", False),
+    ("Found one bug: the lock isn't released on cancel. Otherwise looks good.", False),
+])
+def test_courtesy(reply, polite):
+    assert agents.courtesy(reply) is polite
+
+
+def test_announce_each_round_trips(tmp_path):
+    conversation = _conversation(announce_each=False)
+    store = AgentConversationStore(tmp_path / "a.json")
+    store.add(conversation)
+    assert AgentConversationStore(tmp_path / "a.json").get(
+        conversation.conversation_id).announce_each is False
+
+
+
+def test_your_words_carried_with_a_waiting_reply_are_their_own_message():
+    """Typing with a reply waiting sends the reply and your words together;
+    the list reads the relay line, then your words, and doesn't say you
+    changed the reply."""
+    conversation = _conversation()
+    carried = (agents.relay_text(conversation, 0, "Built it.") + agents.USER_ADDS
+               + "Check the lock too.")
+    shown = agents.combine(conversation, [[_m(ASSISTANT, "Built it.", 3, "a")],
+                                          [_m(USER, carried, 5, "r")]])
+    relay, yours = shown[-2], shown[-1]
+    assert relay.text == "Claude's reply passed to Codex."
+    assert relay.detail == "Exactly what was sent:\n\n" + agents.relay_text(conversation, 0,
+                                                                             "Built it.")
+    assert yours.kind == USER and yours.text == "Check the lock too."
+    assert yours.label == "You, to Codex"

@@ -470,9 +470,11 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   choose, or "@all" for both. Each agent is told once, at
   the start, who the other agent is, that its messages aren't yours, and to end its reply
   with DONE when the work is finished.
-  - **Approve each hand-off** (the default): when an agent answers, you hear its reply and
-    "Ctrl+Shift+E hands it to Codex"; Ctrl+Shift+E shows the reply, labelled with who wrote
-    it, to read and change before it goes. The conversation's row says a reply is waiting.
+  - **Approve each hand-off** (the default): when an agent answers, you hear its reply, and
+    it waits to go to the other agent. Usually you just type your next message: it goes to
+    that agent with the waiting reply ahead of it. Ctrl+Shift+E is for passing the reply on
+    without adding anything, or reading and changing it first. The row says a reply is
+    waiting.
   - **Automatic**, once turned on in Settings: replies go across by themselves, up to a turn
     limit (6 exchanges unless you choose another, here or with File, Agent Conversation
     Hand-offs). It pauses, with the last reply waiting for Ctrl+Shift+E, when an agent asked
@@ -489,7 +491,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   - **Stop** (Ctrl+Period) stops both agents and the relay; a waiting reply isn't passed on,
     and a message that hadn't gone comes back to the reply box. **Turn Status**
     (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
-    to.
+    to. **Usage and Context** (Ctrl+Shift+U) lists each agent's context and each provider's
+    limits.
+  - The relay also stops when the agents are only thanking each other. File, Agent
+    Conversation Hand-offs can make automatic mode say only when it stops or needs you, and
+    asks first if either provider is near a usage limit.
+  - The relay's own lines are one line each in the list; Enter reads exactly what was sent
+    (the setup each agent got, or the reply as it went).
   - Permissions and questions still come to you, from each agent, through Answer
     (Ctrl+Shift+A): a message from one agent can never answer or approve anything for the
     other. Rename (F2), Properties (Alt+Enter) and Delete (Shift+Delete) work on the row;

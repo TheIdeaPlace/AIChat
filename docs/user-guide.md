@@ -657,8 +657,9 @@ conversation". Its two chats leave the list while they're in it;
 **Reading it:** the messages list has both agents' messages in order. Each starts with who said
 it: "Claude: …", "Codex: …", "You, to Codex: …". The relay's own lines start with "Relay", such as
 "Relay: Claude's reply passed to Codex." If you changed a reply before handing it on, that line
-goes on to say what went. Enter reads any of them in full. The setup each agent was sent at
-the start is one line here; its own chat has it word for word.
+adds "with your changes". Each is one line in the list, and Enter reads exactly what was sent:
+the setup each agent got, word for word, or the reply as it went. When you type with a reply
+waiting, your words follow that line as your own message.
 
 **Writing in it:** what you type goes to the agent whose turn it is (Turn Status says which).
 Start with @ and a name to choose: "@Codex check the tests", or with the name and a comma, as
@@ -670,19 +671,23 @@ reply is set aside, and you hear so.
 
 **Hand-offs:**
 
-- **Approve each** (the default): when an agent answers, you hear its reply, then "Ctrl+Shift+E
-  hands it to Codex". The row says a reply is waiting. **Ctrl+Shift+E** shows the reply,
-  labelled with who wrote it; change or add to it, then Ctrl+Enter sends it on.
+- **Approve each** (the default): when an agent answers, you hear its reply, and it waits to go
+  to the other agent; the row says so. Most of the time you just type your next message, as in
+  any chat: it goes to the other agent, with the waiting reply ahead of your words.
+  **Ctrl+Shift+E** is there when you want to pass the reply on without adding anything, or read
+  and change it first: it shows the reply, labelled with who wrote it, and Ctrl+Enter sends it.
 - **Automatic:** turn on "Let agent conversations hand replies across automatically" in
   Settings, then choose Automatic in New Agent Conversation, or for a conversation with
-  **File, Agent Conversation Hand-offs**. Replies go across by themselves until the turn limit (6
-  exchanges unless you choose another). It pauses when an agent asked you something during
+  **File, Agent Conversation Hand-offs**, which can also make it say only when it stops or needs
+  you. If either provider is near a usage limit, you're asked first: every exchange uses both
+  subscriptions. Replies go across by themselves until the turn limit (6 exchanges unless you
+  choose another). It pauses when an agent asked you something during
   its turn, or a tool was refused: you hear why, and the last reply waits for Ctrl+Shift+E. It
   stops when a turn fails, and you hear why. A message from you, or a reply you hand on,
   starts it again with a fresh count.
 
-In either mode, the relay finishes when an agent ends its reply with DONE, or when the replies
-start repeating each other. You hear that, and the last reply still waits for **Ctrl+Shift+E**,
+In either mode, the relay finishes when an agent ends its reply with DONE, when the replies
+start repeating each other, or when the agents are only thanking each other. You hear that, and the last reply still waits for **Ctrl+Shift+E**,
 because a reviewer's DONE usually comes with its findings, which the other agent needs. The row
 doesn't say it needs you for it. Anything you write to the other agent takes it along.
 
@@ -692,7 +697,7 @@ when it answers, not when the work finishes.
 **Stopping:** **Ctrl+Period** stops both agents and the relay. A reply that was waiting to be
 handed on isn't passed on, and a message that hadn't gone yet comes back to the reply box.
 **Ctrl+Shift+T** says what each agent is doing, how far the count has got, and who your next
-message goes to.
+message goes to. **Ctrl+Shift+U** lists each agent's context and each provider's limits.
 
 **Safety:** each agent asks you for permissions and answers as it always does, through
 **Ctrl+Shift+A**. A message from one agent goes to the other only as a message, labelled as
