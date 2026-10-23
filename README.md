@@ -477,10 +477,12 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     limit (6 exchanges unless you choose another, here or with File, Agent Conversation
     Hand-offs). It pauses, with the last reply waiting for Ctrl+Shift+E, when an agent asked
     you something during its turn or a tool was refused. It stops when a turn fails, and
-    you hear why. It finishes when an agent says DONE or the replies start repeating; the
-    last reply still waits for Ctrl+Shift+E (a reviewer's DONE comes with its findings), but
-    the row doesn't need you for it. Sending a message, or handing a reply on, starts it
-    again with a fresh count. A reply given before
+    you hear why. Sending a message, or handing a reply on, starts it again with a fresh
+    count.
+  - In either mode, the relay finishes when an agent says DONE or the replies start
+    repeating. The last reply still waits for Ctrl+Shift+E (a reviewer's DONE comes with its
+    findings), but the row doesn't need you for it. Writing to the other agent takes it
+    along; writing to the agent that sent it sets it aside. A reply given before
     background work (a build, say) is handed on when it's given.
   - Writing to the agent a reply is waiting for sends that reply too, ahead of your words.
   - **Stop** (Ctrl+Period) stops both agents and the relay; a waiting reply isn't passed on,

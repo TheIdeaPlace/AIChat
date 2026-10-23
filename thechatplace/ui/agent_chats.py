@@ -66,12 +66,10 @@ class AgentChats:
         conversation = self._agent_conversation(info)
         if conversation is None:
             return "This agent conversation is gone."
-        if conversation.pending is not None:
-            frm = conversation.members[conversation.pending.from_index].name
-            to = conversation.members[conversation.pending.to_index].name
-            if conversation.pending.finished:
-                return (f"{conversation.stop_reason} {key_name('Ctrl+Shift+E')} hands "
-                        f"{frm}'s last reply to {to}.")
+        pending = conversation.pending
+        if pending is not None and not pending.finished:
+            frm = conversation.members[pending.from_index].name
+            to = conversation.members[pending.to_index].name
             return f"{frm}'s reply is waiting to go to {to}. {key_name('Ctrl+Shift+E')} hands it on."
         for member in conversation.members:
             state = self._codex_states.get(member.key) if member.provider == "codex" else None
@@ -91,6 +89,13 @@ class AgentChats:
                     working.append(member.name)
         if working:
             return f"{' and '.join(working)} {'is' if len(working) == 1 else 'are'} working."
+        if pending is not None:
+            # Finished: the last reply can still go on (a reviewer's DONE
+            # comes with its findings).
+            frm = conversation.members[pending.from_index].name
+            to = conversation.members[pending.to_index].name
+            reason = f"{conversation.stop_reason} " if conversation.stop_reason else ""
+            return f"{reason}{key_name('Ctrl+Shift+E')} hands {frm}'s last reply to {to}."
         if conversation.paused and conversation.stop_reason:
             return conversation.stop_reason
         return f"Ready. What you type goes to {conversation.members[conversation.next_index].name}."
@@ -306,6 +311,12 @@ class AgentChats:
         # Your message starts the relay again, with a fresh count.
         conversation.paused, conversation.stop_reason, conversation.exchanges = False, "", 0
         pending = conversation.pending
+        if pending is not None and pending.from_index in targets:
+            # You carried on with the agent that sent it: that reply is past.
+            sender = conversation.members[pending.from_index].name
+            self._agent_note(conversation, f"{sender}'s waiting reply was set aside: you wrote "
+                                           f"to {sender}.")
+            conversation.pending = pending = None
         relay = len(targets) == 1
         sent, carried = [], ""
         for index in targets:
@@ -596,7 +607,7 @@ class AgentChats:
             conversation.pending = Pending(index, to, reply, finished=True)
             self._agent_note(conversation, stop)
             self._agent_after_change(conversation)
-            hint = f"{key_name('Ctrl+Shift+E')} hands its last reply to {target}."
+            hint = f"{key_name('Ctrl+Shift+E')} hands {member.name}'s last reply to {target}."
             self._agent_say(conversation, " ".join(p for p in (said, refused.strip(), stop, hint)
                                                    if p), always=True)
             self._notify(conversation.key, f"{title}: the relay stopped", f"{stop} {hint}")
@@ -612,6 +623,8 @@ class AgentChats:
             conversation.exchanges += 1
             if self._agent_deliver(conversation, to, text, relay=True):
                 # Shown by the receiving chat's history; Turn Status has the count.
+                # A newer reply went across, so nothing older still waits.
+                conversation.pending = None
                 self._agent_after_change(conversation)
                 self._agent_say(conversation, said)
                 return
@@ -759,8 +772,11 @@ class AgentChats:
         if conversation.pending is not None:
             frm = conversation.members[conversation.pending.from_index].name
             to = conversation.members[conversation.pending.to_index].name
-            parts.append(f"{frm}'s reply is waiting to go to {to}; "
-                         f"{key_name('Ctrl+Shift+E')} hands it on.")
+            if conversation.pending.finished:
+                parts.append(f"{key_name('Ctrl+Shift+E')} hands {frm}'s last reply to {to}.")
+            else:
+                parts.append(f"{frm}'s reply is waiting to go to {to}; "
+                             f"{key_name('Ctrl+Shift+E')} hands it on.")
         if conversation.paused and conversation.stop_reason:
             parts.append(conversation.stop_reason)
         nxt = conversation.members[conversation.next_index].name

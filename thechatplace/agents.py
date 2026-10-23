@@ -272,8 +272,8 @@ def address(text: str, members: Sequence[Member]) -> Tuple[Optional[List[int]], 
     """Who a message you write is for. "@Codex check this" is for Codex,
     "@all ..." (or @both, @everyone) for every member; the name and anything
     after it up to a space, colon or comma go. Starting with a member's name
-    and a comma or colon, as you'd write to someone ("Codex, what's broken?"),
-    is for that member too, and the words go unchanged. Nothing addressed
+    and a comma, as you'd write to someone ("Codex, what's broken?"), is for
+    that member too, and the words go unchanged. Nothing addressed
     gives None, and the text unchanged."""
     stripped = text.lstrip()
     if not stripped.startswith("@"):
@@ -305,13 +305,19 @@ def _address_names(members: Sequence[Member]) -> List[Tuple[str, List[int]]]:
 
 
 def _named(text: str, members: Sequence[Member]) -> Optional[List[int]]:
-    """"Codex, ..." or "Claude 2: ...": a member's name, then a comma or a
-    colon. Only one member, never everyone: "All, ..." is just a word."""
+    """"Codex, ..." or "Claude 2, ...": a member's name (or its provider's,
+    when it's the only one), then a comma. Not a role ("Review, then fix it"
+    is a sentence), not everyone ("All, ..."), and not a colon: a line copied
+    from the messages list starts "Codex: ...", and pasting it for Claude
+    mustn't send it to Codex."""
     lowered = text.lower()
-    for name, indexes in _address_names(members):
-        if name in ALL_NAMES:
-            continue
-        if lowered.startswith(name) and re.match(r"\s*[,:]", text[len(name):]):
+    names = []
+    for index, member in enumerate(members):
+        names.append((member.name.lower(), [index]))
+        if sum(1 for m in members if m.provider == member.provider) == 1:
+            names.append((provider_name(member.provider).lower(), [index]))
+    for name, indexes in sorted(names, key=lambda c: -len(c[0])):
+        if lowered.startswith(name) and re.match(r"\s*,", text[len(name):]):
             return indexes
     return None
 
@@ -362,13 +368,8 @@ def rows(sessions: Sequence[SessionInfo], conversations: Sequence[AgentConversat
     for conversation in conversations:
         found = [by_identity.get(m.identity) for m in conversation.members]
         state, detail = IDLE, ""
-        if conversation.pending is not None and conversation.pending.finished:
-            to = conversation.members[conversation.pending.to_index].name
-            frm = conversation.members[conversation.pending.from_index].name
-            detail = f"finished; {frm}'s last reply can go to {to}"
-            if any(s is not None and s.state == WORKING for s in found):
-                state = WORKING
-        elif conversation.pending is not None:
+        finished = conversation.pending is not None and conversation.pending.finished
+        if conversation.pending is not None and not finished:
             to = conversation.members[conversation.pending.to_index].name
             frm = conversation.members[conversation.pending.from_index].name
             state, detail = NEEDS_YOU, f"{frm}'s reply waiting to go to {to}"
@@ -381,6 +382,12 @@ def rows(sessions: Sequence[SessionInfo], conversations: Sequence[AgentConversat
                 detail = f"{member.name}: {session.detail}" if session.detail else member.name
             elif any(s is not None and s.state == WORKING for s in found) or conversation.key in waiting:
                 state = WORKING
+            elif finished:
+                # Only once nothing needs you or is working: a waiting
+                # finished reply mustn't hide either.
+                to = conversation.members[conversation.pending.to_index].name
+                frm = conversation.members[conversation.pending.from_index].name
+                detail = f"finished; {frm}'s last reply can go to {to}"
         if not any(s is not None for s in found) and state == IDLE:
             state = STATUS_UNAVAILABLE
         activity = max([conversation.last_activity_ms or conversation.created_ms]

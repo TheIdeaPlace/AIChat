@@ -235,7 +235,7 @@ def test_the_done_marker_stops_the_relay(tmp_path):
     saved = w.saved
     assert saved.paused and saved.stop_reason == 'Claude said the work is done.'
     assert w.said[-1].endswith('Claude said the work is done. ' + key_name('Ctrl+Shift+E')
-                               + ' hands its last reply to Codex.')
+                               + " hands Claude's last reply to Codex.")
 
 
 def test_repeating_replies_stop_the_relay(tmp_path):
@@ -764,3 +764,69 @@ def test_addressing_by_name_and_a_comma(tmp_path):
     w.send('Codex, what is broken about your tools')
     assert w.codex_sent and not w.claude_sent
     assert w.codex_sent[-1][1].endswith('Codex, what is broken about your tools')
+
+
+
+# -- found reviewing the DONE fix ---------------------------------------------------------------
+
+
+def test_writing_to_the_agent_that_said_done_sets_its_reply_aside(tmp_path):
+    """Claude said DONE; you carry on with Claude. Its old reply mustn't
+    later ride along to Codex, or be offered by Ctrl+Shift+E."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Finished v1.\nDONE', False)
+    w.send('@Claude also add X')
+    saved = w.saved
+    assert saved.pending is None
+    assert saved.notes[-1].text == "Claude's waiting reply was set aside: you wrote to Claude."
+    w._agent_turn_ended('claude', 'c1', 'Added X.', False)  # goes across automatically
+    assert w.codex_sent[-1][1].endswith('Added X.')
+    w._agent_turn_ended('codex', 'x1', 'oops', True)
+    w.send('@Codex try again')
+    assert 'Finished v1.' not in w.codex_sent[-1][1]
+
+
+def test_a_newer_reply_passed_on_clears_an_older_waiting_one(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    conversation = w.agents.get(w.cid)
+    conversation.pending = Pending(1, 0, 'old', finished=True)
+    w.agents.put(conversation)
+    w._agent_turn_ended('claude', 'c1', 'Newer reply.', False)
+    assert w.codex_sent[-1][1].endswith('Newer reply.')
+    assert w.saved.pending is None
+
+
+def test_the_status_line_after_the_relay_restarts(tmp_path):
+    w = Window(tmp_path)
+    w.send('@Codex review')
+    w._agent_turn_ended('codex', 'x1', 'Fine.\nDONE', False)
+    w._runners['c1'] = SimpleNamespace(elapsed=lambda: 1.0)  # Claude busy on something else
+    assert w._agent_send_state(w._open) == 'Claude is working.'
+    w._runners.clear()
+    w._pending['c1'] = [object()]
+    assert w._agent_send_state(w._open).startswith('Claude is waiting for you.')
+    w._pending.clear()
+    conversation = w.agents.get(w.cid)
+    conversation.stop_reason = ''
+    w.agents.put(conversation)
+    assert w._agent_send_state(w._open) == (key_name('Ctrl+Shift+E')
+                                            + " hands Codex's last reply to Claude.")
+
+
+def test_repeating_keeps_the_last_reply_as_finished(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'All good to me, thanks.', False)
+    w._agent_turn_ended('codex', 'x1', 'All good to me, thanks!', False)
+    assert w.saved.pending == Pending(1, 0, 'All good to me, thanks!', finished=True)
+
+
+def test_stop_drops_a_finished_reply_and_says_so(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Done here.\nDONE', False)
+    w._agent_stop(w._open)
+    assert w.saved.pending is None
+    assert w.feedback[-1].endswith("The waiting reply wasn't passed on.")
