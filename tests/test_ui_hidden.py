@@ -5998,7 +5998,7 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
 def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
     dialog, said, focused = _columns_dialog(frame, ["title", "status"])
     try:
-        assert dialog.available.GetString(0) == "Provider (Claude or Codex)"
+        assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
         dialog.shown.SetSelection(0)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DELETE)
         assert said[-1] == "Title removed. 1 column shown."
@@ -6013,7 +6013,7 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.fields() == ["status", "title"]
         assert focused[-1] == "available"  # stays, to add more
         assert dialog.shown.GetSelection() == 1  # on what it added
-        assert dialog.available.GetString(0) == "Provider (Claude or Codex)"
+        assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
         dialog.reset()
         assert said[-1] == "Columns reset to the default: 11 shown, title first."
         assert dialog.fields()[0] == "title" and len(dialog.fields()) == 11
@@ -11396,3 +11396,34 @@ def test_agent_conversation_dialog_keeps_choices_as_chats_change(app, monkeypatc
         dialog.Destroy()
     finally:
         parent.Destroy()
+def test_copilot_history_opens_read_only_from_its_session_folder(frame, tmp_path):
+    import json
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.providers.copilot import CopilotProvider
+    from thechatplace.session_controller import SessionController
+
+    settle(frame)
+    folder = tmp_path / "copilot-synthetic"
+    folder.mkdir()
+    (folder / "workspace.yaml").write_text(
+        "id: copilot-synthetic\ncwd: C:/work/example\nname: Copilot history\n", encoding="utf-8")
+    events = [("user.message", {"content": "Synthetic question"}),
+              ("assistant.turn_start", {"turnId": "0"}),
+              ("assistant.message", {"content": "Synthetic Copilot answer"}),
+              ("assistant.turn_end", {"turnId": "0"})]
+    (folder / "events.jsonl").write_text("".join(
+        json.dumps({"type": kind, "data": data, "id": f"e{n}"}) + "\n"
+        for n, (kind, data) in enumerate(events)), encoding="utf-8")
+    provider = CopilotProvider(tmp_path)
+    frame.sessions = SessionController([ClaudeConversations(), provider])
+    info = provider.collect().sessions[0]
+    frame.open_session(info)
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+    rows = [frame.chat_list.GetString(i) for i in range(frame.chat_list.GetCount())]
+    assert rows == ["You: Synthetic question", "Copilot: Synthetic Copilot answer"]
+    assert not frame.own_reply.IsShown() and frame.desktop_reply.IsShown()
+    assert "Reply in Copilot" in frame.desktop_note.GetValue()
+    assert not frame.continue_btn.IsShown() and not frame.reply_claude_btn.IsShown()
+    assert not frame.send_btn.IsEnabled()
+    assert "read-only" in frame.messages_label.GetLabelText()
+    assert "Reply in Copilot" in frame._prompt_refused()

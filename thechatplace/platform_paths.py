@@ -99,6 +99,19 @@ def projects_dir() -> Path:
     return claude_home() / "projects"
 
 
+def copilot_home() -> Path:
+    """``~/.copilot`` (honours COPILOT_HOME, as GitHub Copilot CLI does)."""
+    override = os.environ.get("COPILOT_HOME")
+    if override:
+        return Path(override)
+    return Path.home() / ".copilot"
+
+
+def copilot_sessions_dir() -> Path:
+    """One folder per Copilot CLI session, each named for its id."""
+    return copilot_home() / "session-state"
+
+
 def live_sessions_dir() -> Path:
     return claude_home() / "sessions"
 

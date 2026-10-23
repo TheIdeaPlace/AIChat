@@ -27,3 +27,5 @@ shipped.
 - [Codex live task lists](codex-live-tasks.md): installed history checks, event routing, saved snapshots and visual review (#318).
 
 - [TCP-owned remembered approvals](codex-remembered-approvals.md): consent authority, matching and revocation for #307.
+
+- [GitHub Copilot CLI probe](copilot-cli-probe.md): what Copilot CLI's JSON output, saved sessions and ACP permission requests look like, and how the app could use them (#352).

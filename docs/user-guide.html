@@ -800,8 +800,8 @@ you haven't read yet; the idle ones; desktop app sessions (Code and Cowork); jus
 Cowork sessions; The Chat Place's own; terminal sessions; Remote Control sessions; Claude chats;
 Codex chats; ungrouped sessions; archived
 ones; hidden ones; or one of your groups.
-<strong>Claude Chats</strong> and <strong>Codex Chats</strong> filter by provider. They remain available
-when Codex is off; Codex Chats is empty until it is enabled.
+<strong>Claude Chats</strong>, <strong>Codex Chats</strong> and <strong>GitHub Copilot Chats</strong> filter by provider. They remain
+available when Codex or Copilot is off; each is empty until its provider is enabled.
 <strong>View, Sort Sessions</strong> (Alt+V, O) chooses the order: by status, newest first, oldest first, by
 title, or by folder. Both choices are remembered, and you stay on the same session when it's
 still listed.</p>
@@ -900,6 +900,18 @@ the notification brings The Chat Place forward with that session loaded. Setting
 notifications (on a Mac, Notifications) chooses every finished turn (the default), only when a
 session needs you, or off. While you're in The Chat Place, the announcement is enough and no
 notification is shown.</p>
+<h3>Local GitHub Copilot CLI history in Settings</h3>
+<p>Enable <strong>Include GitHub Copilot CLI chats (read-only; restart required)</strong> in Settings
+(Alt+O), save and restart. Your GitHub Copilot CLI sessions are then listed with your Claude
+chats, and View, Show Sessions, GitHub Copilot Chats lists only them. The Chat Place reads the
+sessions Copilot CLI keeps on this computer; it never starts Copilot, so reading uses none of
+your Copilot requests. Selecting a Copilot chat opens its messages, and formatted reading, Find
+and export work too. Show Tool Activity also shows the commands and file changes Copilot ran,
+and a change you refused shows as Permission denied, with what was refused.</p>
+<p>Reply in Copilot CLI: sending, approvals and Continue Here aren't available in this preview.
+A Copilot chat that's answering says working, and you hear when it finishes. If Copilot stopped
+partway through a turn and hasn't written anything for ten minutes, its status is left out
+rather than saying working forever. Turn the option off and restart to hide Copilot chats again.</p>
 <h2 id="more-things-you-can-do">More things you can do</h2>
 <ul>
 <li><strong>Changed Files</strong> (Ctrl+Shift+D) opens Lists on Changed Files: the files Claude changed
@@ -1082,6 +1094,9 @@ support@theideaplace.net.</p>
 <li>The Chat Place never writes to the desktop app's files or to any conversation. The only files it
   writes are its own: on Windows in <code>%APPDATA%\TheChatPlace</code>, on a Mac in
   <code>~/Library/Application Support/TheChatPlace</code>. Conversations belong to their provider; The Chat Place keeps its own settings separately.</li>
+<li>Copilot CLI keeps its sessions in <code>%USERPROFILE%\.copilot\session-state</code> (on a Mac,
+  <code>~/.copilot/session-state</code>), or under <code>COPILOT_HOME</code> if you've set it. The Chat Place only
+  reads them.</li>
 <li>With VoiceOver, each line of the messages list reads as it's shown, "You:" or the provider's name and
   the first line, not the whole message, because reading the whole message on each line uses a
   Windows feature. Enter opens the whole message.</li>

@@ -35,7 +35,7 @@ class Snapshot:
         """
         states = {session.key: session.state for session in self.sessions
                 if session.provider not in self.stale_providers
-                and (session.provider != "codex"
+                and (session.provider not in ("codex", "copilot")
                      or session.state in (IDLE, WORKING, NEEDS_YOU))}
         # A normal background refresh must not erase working->idle comparison.
         # Cached rows themselves never become fresh evidence of completion.

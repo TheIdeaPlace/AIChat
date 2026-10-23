@@ -198,6 +198,8 @@ class SpeechSettings:
     recent_folder_limit: int = 20
     #: None follows native CLI discovery; booleans preserve the user choice (#277).
     codex_enabled: Optional[bool] = None
+    #: Local GitHub Copilot CLI history (read-only), opt-in (#352).
+    copilot_enabled: bool = False
     new_session_provider: str = "claude"
     #: Agent conversations (#248): replies may go across by themselves only
     #: once this is on. Each conversation chooses its own turn limit.
@@ -254,6 +256,7 @@ class SpeechSettings:
         settings.task_list = raw.get("task_list") is not False
         choice = raw.get("codex_enabled")
         settings.codex_enabled = choice if type(choice) is bool else None
+        settings.copilot_enabled = raw.get("copilot_enabled") is True
         settings.new_session_provider = ("codex" if raw.get("new_session_provider") == "codex" else "claude")
         settings.agent_auto_mode = raw.get("agent_auto_mode") is True
         from .sessions import clean_fields, FIELD_PROVIDER, FIELD_TITLE

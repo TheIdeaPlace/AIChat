@@ -195,7 +195,7 @@ class SessionInfo:
         in any shown column, it reads the title."""
         values = self.field_values(now_ms)
         order = DEFAULT_FIELDS if fields is None else list(fields)
-        if (self.provider == "codex" and self.state == STATUS_UNAVAILABLE
+        if (self.provider in ("codex", "copilot") and self.state == STATUS_UNAVAILABLE
                 and not self.detail and order == DEFAULT_FIELDS):
             values[FIELD_STATUS] = ""
         parts = [values[f] for f in order if values.get(f)]
@@ -245,7 +245,7 @@ FIELD_GROUPS = "groups"
 FIELD_LAST_MESSAGE = "last_message"
 FIELDS = [
     (FIELD_TITLE, "Title"),
-    (FIELD_PROVIDER, "Provider (Claude or Codex)"),
+    (FIELD_PROVIDER, "Provider (Claude, Codex or Copilot)"),
     (FIELD_FOLDER, "Folder"),
     (FIELD_STATUS, "Status (needs you, working or idle)"),
     (FIELD_NEW_REPLY, "New reply"),
@@ -361,7 +361,16 @@ VIEW_UNGROUPED = "ungrouped"
 VIEW_ARCHIVED = "archived"
 VIEW_HIDDEN = "hidden"
 VIEW_CLAUDE = "provider:claude"
+#: How each agent backend is named in what the window says.
+PROVIDER_NAMES = {"claude": "Claude", "codex": "Codex", "copilot": "Copilot"}
+
+
+def provider_name(provider: str) -> str:
+    return PROVIDER_NAMES.get(provider, provider.capitalize())
+
+
 VIEW_CODEX = "provider:codex"
+VIEW_COPILOT = "provider:copilot"
 GROUP_VIEW_PREFIX = "group:"
 VIEWS = [
     (VIEW_ALL, "&All Sessions"),
@@ -378,11 +387,13 @@ VIEWS = [
     (VIEW_UNGROUPED, "&Ungrouped"),
     (VIEW_CLAUDE, "C&laude Chats"),
     (VIEW_CODEX, "Code&x Chats"),
+    (VIEW_COPILOT, "&GitHub Copilot Chats"),
     (VIEW_ARCHIVED, "Archi&ved"),
     (VIEW_HIDDEN, "&Hidden"),
 ]
 #: Said and shown in the list's name: "showing needs you or working".
 VIEW_SPOKEN = {VIEW_CLAUDE: "Claude chats", VIEW_CODEX: "Codex chats",
+               VIEW_COPILOT: "GitHub Copilot chats",
                VIEW_ALL: "all sessions", VIEW_ACTIVE: "needs you or working",
                VIEW_NEEDS_YOU: "needs you", VIEW_WORKING: "working sessions",
                VIEW_NEW_REPLY: "sessions with a new reply", VIEW_IDLE: "idle sessions",
@@ -418,7 +429,7 @@ def in_view(info: SessionInfo, view: str) -> bool:
         return info.archived
     if info.archived:
         return False
-    if view in (VIEW_CLAUDE, VIEW_CODEX):
+    if view in (VIEW_CLAUDE, VIEW_CODEX, VIEW_COPILOT):
         wanted = view.removeprefix("provider:")
         return info.provider == wanted or wanted in info.member_providers
     if view == VIEW_ACTIVE:

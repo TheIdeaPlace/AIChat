@@ -120,14 +120,14 @@ def finished_turns(previous: Dict[str, str], current: Iterable[SessionInfo],
 
     ``previous`` maps session key -> state from the last snapshot. A session
     that has vanished, been archived or comes from cached discovery is not
-    reported. Codex must explicitly become idle; unknown status and waiting
-    for an approval are not evidence that its turn finished (#184) (#171).
+    reported. Codex and Copilot must explicitly become idle; unknown status
+    and waiting for an approval are not evidence that a turn finished (#184) (#171).
     """
     ended = []
     for info in current:
         if info.archived or info.provider in (stale_providers or ()):
             continue
-        if info.provider == "codex" and info.state != IDLE:
+        if info.provider in ("codex", "copilot") and info.state != IDLE:
             continue
         if previous.get(info.key) == WORKING and info.state != WORKING:
             ended.append(info)

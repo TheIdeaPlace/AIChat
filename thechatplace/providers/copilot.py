@@ -1,0 +1,515 @@
+"""Read-only GitHub Copilot CLI history from its own session folders.
+
+Copilot CLI keeps each session in ``~/.copilot/session-state/<id>/``: a small
+``workspace.yaml`` (id, folder, name, when it was created and updated) and an
+``events.jsonl`` log, one JSON event per line, in the same envelope as
+``copilot -p --output-format json`` streams. Neither format is documented
+(dev-notes/copilot-cli-probe.md records what 1.0.103 writes), so this module
+is the one place that knows them, and it is written the way transcript.py is:
+unknown event types are skipped, a line that won't parse is counted, never
+raised, and a log is read incrementally as it grows.
+
+This adapter only reads files. It never starts ``copilot``, so it can't
+resume a session, send a prompt or spend a premium request.
+"""
+from __future__ import annotations
+
+from collections import OrderedDict
+from datetime import datetime
+import json
+import os
+from pathlib import Path
+import threading
+import time
+from typing import Iterable, List, Optional, Tuple
+
+from .. import platform_paths
+from ..sessions import IDLE, NEEDS_YOU, WORKING, SessionInfo
+from ..transcript import (ASSISTANT, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT, USER,
+                          ChatMessage, Transcript, split_jsonl)
+from ..ui_text import last_message_line
+from .base import SessionCapabilities, Snapshot
+
+PROVIDER_ID = "copilot"
+ASSISTANT_NAME = "Copilot"
+WORKSPACE_FILE = "workspace.yaml"
+EVENTS_FILE = "events.jsonl"
+
+#: A turn that has written nothing for this long is not shown as working: a
+#: Copilot that was closed or crashed mid-turn never writes its turn's end,
+#: and the row must not say "working" forever.
+STALE_TURN_SECONDS = 10 * 60
+#: How much of the end of a log is read to find a session's state and its
+#: last message. The state is in the last few events.
+TAIL_BYTES = 256 * 1024
+
+# Events that start, end or pause a turn, used for the row's state.
+_TURN_START = "assistant.turn_start"
+_TURN_ENDS = frozenset({"assistant.turn_end", "session.shutdown", "abort", "session.error"})
+_PERMISSION_ASKED = "permission.requested"
+_PERMISSION_DONE = "permission.completed"
+
+# Argument fields worth naming in a one-line tool summary, in order.
+_TOOL_FIELDS = ("description", "command", "fileName", "path", "file_path", "pattern",
+                "url", "query")
+
+
+def _text(value) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _ms(value) -> int:
+    """An ISO-8601 time ("2026-10-23T00:16:46.085Z") in ms, or 0."""
+    if not isinstance(value, str) or not value:
+        return 0
+    try:
+        stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return 0
+    if stamp.tzinfo is None:
+        return 0
+    return max(0, int(stamp.timestamp() * 1000))
+
+
+# ---------------------------------------------------------------------------
+# workspace.yaml
+# ---------------------------------------------------------------------------
+
+
+def _scalar(raw: str) -> Optional[str]:
+    """One YAML scalar on one line, or None when it isn't one we can read.
+
+    Copilot writes flat ``key: value`` lines: plain, 'single-quoted' (a quote
+    inside is doubled) or "double-quoted" (JSON-style escapes). Anything else,
+    such as a block scalar or a value continued on the next line, is not
+    guessed at: the caller falls back to the session's first message.
+    """
+    raw = raw.strip()
+    if not raw:
+        return ""
+    if raw[0] == "'":
+        if len(raw) < 2 or raw[-1] != "'":
+            return None
+        inner = raw[1:-1]
+        if "'" in inner.replace("''", ""):
+            return None
+        return inner.replace("''", "'")
+    if raw[0] == '"':
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            return None
+        return value if isinstance(value, str) else None
+    if raw[0] in "|>&*!{[":
+        return None
+    # A plain scalar ends at a comment.
+    hash_at = raw.find(" #")
+    return raw[:hash_at].rstrip() if hash_at >= 0 else raw
+
+
+def parse_workspace(text: str) -> dict:
+    """The top-level ``key: value`` pairs of a workspace.yaml we can read.
+
+    A key whose value can't be read is left out rather than guessed.
+    """
+    values = {}
+    for line in text.splitlines():
+        if not line or line[0] in " \t#-":
+            continue
+        key, sep, rest = line.partition(":")
+        if not sep or not key.strip() or key != key.strip():
+            continue
+        value = _scalar(rest)
+        if value is not None:
+            values[key] = value
+    return values
+
+
+# ---------------------------------------------------------------------------
+# events.jsonl
+# ---------------------------------------------------------------------------
+
+
+def _tool_summary(name: str, title: str, arguments) -> str:
+    """A tool call: what it is, then what it's on, first line first.
+
+    The command itself leads, so the messages list says what actually ran;
+    Copilot's own description of it ("List files") follows on the next line.
+    """
+    detail = ""
+    if isinstance(arguments, dict):
+        for key in _TOOL_FIELDS:
+            if _text(arguments.get(key)).strip():
+                detail = arguments[key].strip()
+                break
+        description = _text(arguments.get("description")).strip()
+        command = _text(arguments.get("command")).strip()
+        if command:
+            detail = f"{command}\n{description}" if description else command
+    elif isinstance(arguments, str):
+        detail = arguments.strip()
+        if detail.startswith("*** Begin Patch"):
+            # apply_patch: say which files ("Add File: notes.txt"), not the
+            # patch's first line, which is the same for every change.
+            files = [line[4:].strip() for line in detail.splitlines()
+                     if line.startswith("*** ") and line[4:].strip()
+                     not in ("Begin Patch", "End Patch")]
+            detail = "\n".join(files) or detail
+    head = title or name or "Tool"
+    if name and title and name not in title:
+        head = f"{title} ({name})"
+    return f"{head}: {detail}" if detail else head
+
+
+def _tool_output(data: dict) -> str:
+    result = data.get("result")
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict):
+        for key in ("content", "detailedContent", "output", "text"):
+            if _text(result.get(key)):
+                return result[key]
+    return ""
+
+
+class CopilotParser:
+    """Incremental: ``feed`` lines as events.jsonl grows."""
+
+    def __init__(self) -> None:
+        self.transcript = Transcript()
+        self._seen: set = set()
+        # requestId -> what Copilot asked to do, for a refusal's message.
+        self._asked: dict = {}
+
+    def feed(self, lines: Iterable[str]) -> None:
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            self.transcript.lines_read += 1
+            try:
+                event = json.loads(line)
+            except ValueError:
+                self.transcript.unreadable_lines += 1
+                continue
+            if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+                self.transcript.unreadable_lines += 1
+                continue
+            data = event.get("data")
+            if not isinstance(data, dict):
+                data = {}
+            try:
+                self._event(event["type"], data, _text(event.get("id")),
+                            _text(event.get("timestamp")))
+            except (TypeError, AttributeError, KeyError):
+                # A known type in a shape we don't expect: counted, not raised.
+                self.transcript.unreadable_lines += 1
+
+    def _add(self, kind: str, text: str, timestamp: str, key: str) -> None:
+        if not text.strip():
+            return
+        if key:
+            if key in self._seen:
+                return
+            self._seen.add(key)
+        self.transcript.messages.append(ChatMessage(kind, text, timestamp, key,
+                                                    assistant_name=ASSISTANT_NAME))
+
+    def _event(self, kind: str, data: dict, event_id: str, timestamp: str) -> None:
+        if kind == "user.message":
+            # Not transformedContent: that has what Copilot added (the date).
+            self.transcript.turns += 1
+            self._add(USER, _text(data.get("content")), timestamp, event_id)
+        elif kind == "assistant.message":
+            if _text(data.get("model")):
+                self.transcript.model = data["model"]
+            self._add(ASSISTANT, _text(data.get("content")), timestamp, event_id)
+        elif kind == "session.model_change":
+            if _text(data.get("newModel")):
+                self.transcript.model = data["newModel"]
+        elif kind == "tool.execution_start":
+            call = _text(data.get("toolCallId"))
+            self._add(TOOL, _tool_summary(_text(data.get("toolName")),
+                                          _text(data.get("toolTitle")), data.get("arguments")),
+                      timestamp, f"{call}:call" if call else event_id)
+        elif kind == "tool.execution_complete":
+            call = _text(data.get("toolCallId"))
+            error = data.get("error")
+            output = _tool_output(data)
+            if not output and isinstance(error, dict) and _text(error.get("message")):
+                output = f"Failed: {error['message']}"
+            self._add(TOOL_RESULT, output, timestamp, f"{call}:result" if call else event_id)
+        elif kind == _PERMISSION_ASKED:
+            request = data.get("permissionRequest")
+            request = request if isinstance(request, dict) else {}
+            what = " ".join(part for part in (
+                _text(request.get("intention")).strip(),
+                _text(request.get("fileName")).strip()
+                or _text(request.get("fullCommandText")).strip()) if part)
+            self._asked[_text(data.get("requestId"))] = what
+        elif kind == _PERMISSION_DONE:
+            result = data.get("result")
+            verdict = _text(result.get("kind")) if isinstance(result, dict) else ""
+            what = self._asked.pop(_text(data.get("requestId")), "")
+            if verdict.startswith("denied"):
+                self._add(DENIED, f"Copilot wasn't allowed to: {what}" if what
+                          else "Copilot wasn't allowed to go ahead.", timestamp, event_id)
+        elif kind == "session.error":
+            self._add(ERROR, _text(data.get("message")) or "Copilot reported an error.",
+                      timestamp, event_id)
+        elif kind == "abort":
+            self._add(INTERRUPTED, "Stopped before the turn finished.", timestamp, event_id)
+
+
+def parse_events(lines: Iterable[str]) -> Transcript:
+    parser = CopilotParser()
+    parser.feed(lines)
+    return parser.transcript
+
+
+def _read_tail(path: Path, max_bytes: int = TAIL_BYTES) -> List[str]:
+    """Whole lines from the end of a log; the first, likely cut, is dropped."""
+    size = os.path.getsize(path)
+    with open(path, "rb") as handle:
+        start = max(0, size - max_bytes)
+        handle.seek(start)
+        data = handle.read()
+    lines = split_jsonl(data)
+    return lines[1:] if start > 0 and lines else lines
+
+
+def state_from_events(lines: Iterable[str], written_ms: int,
+                      now_ms: Optional[int] = None) -> Tuple[str, str]:
+    """(state, detail) from the end of a session's log.
+
+    Only an explicit end of turn makes a session idle, as with Codex
+    (#184): idle is what announces a finished reply. A turn that started and
+    hasn't ended is working, or needs you while a permission is being asked;
+    unless nothing has been written for STALE_TURN_SECONDS, when this can't
+    tell whether Copilot is still running, and says so.
+    """
+    state, asking = "status unavailable", set()
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        kind = event.get("type")
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        if kind == _TURN_START:
+            state, asking = WORKING, set()
+        elif kind in _TURN_ENDS:
+            state, asking = IDLE, set()
+        elif kind == _PERMISSION_ASKED:
+            asking.add(_text(data.get("requestId")))
+        elif kind == _PERMISSION_DONE:
+            asking.discard(_text(data.get("requestId")))
+    if state != WORKING:
+        return state, ""
+    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    if written_ms and now_ms - written_ms > STALE_TURN_SECONDS * 1000:
+        return "status unavailable", "no recent activity from Copilot"
+    if asking:
+        return NEEDS_YOU, "waiting in Copilot"
+    return WORKING, ""
+
+
+class CopilotReader:
+    """One session's log, read incrementally as Copilot appends to it."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self._parser = CopilotParser()
+        self._offset = 0
+        self._identity = None
+
+    @property
+    def transcript(self) -> Transcript:
+        return self._parser.transcript
+
+    def refresh(self) -> bool:
+        """Read what's new since last time; True if the chat changed."""
+        stat = os.stat(self.path)
+        identity = getattr(stat, "st_ino", 0) or None
+        if stat.st_size < self._offset or (identity and self._identity
+                                           and identity != self._identity):
+            # Rewritten or replaced (rewind, say): start again.
+            self._parser, self._offset = CopilotParser(), 0
+        self._identity = identity
+        if stat.st_size == self._offset:
+            return False
+        with open(self.path, "rb") as handle:
+            handle.seek(self._offset)
+            data = handle.read()
+        end = data.rfind(b"\n")
+        if end < 0:
+            return False  # a line still being written
+        before = (len(self.transcript.messages), self.transcript.model,
+                  self.transcript.unreadable_lines)
+        self._parser.feed(split_jsonl(data[:end]))
+        self._offset += end + 1
+        return before != (len(self.transcript.messages), self.transcript.model,
+                          self.transcript.unreadable_lines)
+
+
+# ---------------------------------------------------------------------------
+# The provider
+# ---------------------------------------------------------------------------
+
+
+class CopilotProvider:
+    provider_id = PROVIDER_ID
+    MAX_LAST_MESSAGES = 512
+
+    def __init__(self, sessions_dir: Optional[Path] = None):
+        self._sessions_dir = sessions_dir
+        # (log size, log mtime) -> state, kept per session so an unchanged log
+        # isn't re-read on every refresh of the list.
+        self._states: dict = {}
+        self._last_messages: "OrderedDict[tuple, tuple]" = OrderedDict()
+        self._lock = threading.Lock()
+
+    @property
+    def sessions_dir(self) -> Path:
+        return self._sessions_dir or platform_paths.copilot_sessions_dir()
+
+    def close(self) -> None:
+        self.forget_last_messages()
+
+    def _check(self, session: SessionInfo) -> None:
+        if (session.provider != self.provider_id
+                or not platform_paths.is_safe_id(session.cli_session_id)):
+            raise ValueError("Not a Copilot session")
+
+    def _events_path(self, native_id: str) -> Path:
+        return self.sessions_dir / native_id / EVENTS_FILE
+
+    # -- discovery ----------------------------------------------------------
+
+    def collect(self) -> Snapshot:
+        snapshot = Snapshot()
+        root = self.sessions_dir
+        try:
+            folders = sorted(os.scandir(root), key=lambda entry: entry.name)
+        except FileNotFoundError:
+            return snapshot  # Copilot CLI hasn't been used here
+        states = {}
+        for entry in folders:
+            if entry.name.startswith(".") or not entry.is_dir():
+                continue
+            if not platform_paths.is_safe_id(entry.name):
+                continue
+            try:
+                info = self._session(Path(entry.path), entry.name, states)
+            except (OSError, UnicodeDecodeError, ValueError):
+                snapshot.unreadable_files += 1
+                continue
+            if info is not None:
+                snapshot.sessions.append(info)
+        with self._lock:
+            self._states = states
+        return snapshot
+
+    def _session(self, folder: Path, native_id: str, states: dict) -> Optional[SessionInfo]:
+        events = folder / EVENTS_FILE
+        try:
+            stat = os.stat(events)
+        except FileNotFoundError:
+            return None  # stopped before its first prompt: nothing to read
+        workspace = parse_workspace((folder / WORKSPACE_FILE).read_text(encoding="utf-8"))
+        if workspace.get("id", native_id) != native_id:
+            raise ValueError("Copilot session folder and id disagree")
+        written_ms = stat.st_mtime_ns // 1_000_000
+        stamp = (stat.st_size, stat.st_mtime_ns)
+        with self._lock:
+            cached = self._states.get(native_id)
+        if cached and cached[0] == stamp and cached[1][0] != WORKING:
+            state, detail = cached[1]
+        else:
+            state, detail = state_from_events(_read_tail(events), written_ms)
+        states[native_id] = (stamp, (state, detail))
+        title = workspace.get("name", "").strip()
+        if not title:
+            first = next((m for m in parse_events(_read_head(events)).messages
+                          if m.kind == USER), None)
+            if first is None:
+                return None  # no prompt was ever sent (refused at sign-in, say)
+            title = first.text.strip()
+        title = title.split("\n", 1)[0].strip() or "Untitled session"
+        created = _ms(workspace.get("created_at"))
+        updated = max(_ms(workspace.get("updated_at")), written_ms)
+        return SessionInfo("external", f"{PROVIDER_ID}:{native_id}", title,
+                           workspace.get("cwd", ""), native_id, provider=PROVIDER_ID,
+                           state=state, detail=detail, created_ms=created,
+                           last_activity_ms=updated or created)
+
+    # -- the optional Last message column -----------------------------------
+
+    def forget_last_messages(self) -> None:
+        with self._lock:
+            self._last_messages.clear()
+
+    def cached_last_messages(self, sessions: Iterable[SessionInfo]) -> None:
+        with self._lock:
+            cache = dict(self._last_messages)
+        for info in sessions:
+            cached = cache.get(info.identity)
+            info.last_message = cached[1] if cached and cached[0] == info.last_activity_ms else ""
+
+    def fill_last_messages(self, sessions: Iterable[SessionInfo]) -> None:
+        """Local files are cheap to read, but only changed ones are re-read."""
+        for info in sessions:
+            with self._lock:
+                cached = self._last_messages.get(info.identity)
+            if cached and cached[0] == info.last_activity_ms:
+                info.last_message = cached[1]
+                continue
+            try:
+                transcript = parse_events(_read_tail(self._events_path(info.cli_session_id)))
+            except OSError:
+                info.last_message = ""
+                continue
+            message = next((m for m in reversed(transcript.messages)
+                            if m.kind in (USER, ASSISTANT) and m.text.strip()), None)
+            info.last_message = last_message_line(message.label, message.text) if message else ""
+            with self._lock:
+                self._last_messages[info.identity] = (info.last_activity_ms, info.last_message)
+                self._last_messages.move_to_end(info.identity)
+                while len(self._last_messages) > self.MAX_LAST_MESSAGES:
+                    self._last_messages.popitem(last=False)
+
+    # -- reading ------------------------------------------------------------
+
+    def capabilities(self, session: SessionInfo) -> SessionCapabilities:
+        self._check(session)
+        # Reading only. Sending needs the ACP runner and its permission and
+        # billing checks (dev-notes/copilot-cli-probe.md), which don't exist yet.
+        return SessionCapabilities()
+
+    def has_history(self, session: SessionInfo) -> bool:
+        self._check(session)
+        return self._events_path(session.cli_session_id).is_file()
+
+    def open_reader(self, session: SessionInfo) -> Optional[CopilotReader]:
+        self._check(session)
+        path = self._events_path(session.cli_session_id)
+        return CopilotReader(path) if path.is_file() else None
+
+    def last_reply(self, session: SessionInfo) -> str:
+        self._check(session)
+        try:
+            transcript = parse_events(_read_tail(self._events_path(session.cli_session_id)))
+        except OSError:
+            return ""
+        reply = transcript.last_reply()
+        return reply.text if reply else ""
+
+
+def _read_head(path: Path, max_bytes: int = 64 * 1024) -> List[str]:
+    """Whole lines from the start of a log, for a title from the first prompt."""
+    with open(path, "rb") as handle:
+        data = handle.read(max_bytes)
+    lines = split_jsonl(data)
+    return lines[:-1] if len(data) == max_bytes and lines else lines

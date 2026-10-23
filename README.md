@@ -67,8 +67,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   hidden), hidden (the ones you've hidden), or one of your groups. The list's name says what it
   shows and how many ("Session list, needs you, 2 of 139"), and the choice is remembered.
   Choosing one keeps you on the same session when it's still listed.
-  **Claude Chats** and **Codex Chats** filter by provider. They remain available
-  with Codex turned off; Codex Chats is empty until it is enabled.
+  **Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
+  available with Codex or Copilot turned off; each is empty until its provider is enabled.
   **View, Session List Columns** (Alt+V, E) chooses what each line says and in what order, so
   it can start with the status rather than the title. The columns are Title, Provider (Claude or Codex), Folder,
   Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
@@ -783,6 +783,16 @@ such as requirements an administrator set. If a new Codex chat can't be started,
 first message is kept: in the open chat's message box if you can type there, otherwise
 on the clipboard.
 
+**Settings: local GitHub Copilot CLI history (#352).** Enable **Include GitHub Copilot CLI
+chats (read-only; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
+sessions alongside Claude. The Chat Place reads the session folders Copilot CLI keeps in
+`%USERPROFILE%\.copilot\session-state` (or under `COPILOT_HOME`); it never starts Copilot, so
+reading uses none of your Copilot requests. Selecting a Copilot chat opens its messages;
+formatted reading, Find and export work too, and Show Tool Activity shows the commands and file
+changes Copilot ran. Reply in Copilot CLI: sending, approvals and Continue Here are unavailable
+in this preview. A chat that's answering says working and is announced when it finishes; one
+with a turn that hasn't ended and no activity for ten minutes leaves its status out.
+
 ## Install
 
 You need Windows 10 or 11, or a Mac with Apple silicon. For Codex chats, the preview needs a
@@ -1028,6 +1038,10 @@ Everything it reads is on your own PC, so reading costs nothing.
 | The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (and `speech.json` for settings). If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json`. If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
 | Errors | `%APPDATA%\TheChatPlace\error.log`: anything that went wrong unexpectedly, with its traceback |
+
+Copilot CLI sessions are read from `%USERPROFILE%\.copilot\session-state\<id>\`
+(`workspace.yaml` and `events.jsonl`), and only `thechatplace/providers/copilot.py` knows
+their format.
 
 Claude sessions stay in `sessions.json`. Codex sessions and their settings use
 `provider-sessions.json`; their groups, hidden state, custom names and Show Tool
