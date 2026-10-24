@@ -75,7 +75,9 @@ id=$(gh run list -R TheIdeaPlace/AIChat -w "Release The Chat Place" -b v<version
 ```
 
 Code-owner review covers every file (`.github/CODEOWNERS`): for now Kelly reviews whatever ships,
-from anyone. He can't approve his own PRs, so his merge with an admin bypass.
+from anyone. He can't approve his own PRs, so his PRs merge with an admin bypass. That bypass
+skips the code-owner check, so before an admin merge confirm with `gh pr view N --json commits`
+that every commit is Kelly's or his agent's; a collaborator can push to his branches.
 
 **Release notes and the user guide, with every user-visible change** (the QuickMail process):
 - The **open** notes file is the highest `release-notes/vX.Y.Z.md` with no matching tag. Add an
