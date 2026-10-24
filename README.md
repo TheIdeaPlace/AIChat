@@ -786,8 +786,8 @@ on the clipboard.
 **Settings: local GitHub Copilot CLI history (#352).** Enable **Include GitHub Copilot CLI
 chats (read-only; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
 sessions alongside Claude. The option appears once Copilot CLI has saved a session on this
-computer: to decide that, Settings looks at the names of the folders in Copilot's session folder,
-never what's in them, even with the option off; with it off nothing else of Copilot's is read.
+computer: to decide that, Settings looks at the names of the folders in Copilot's session folder
+and whether each has a conversation log, never what's in them, even with the option off; with it off nothing else of Copilot's is read.
 The Chat Place reads the session folders Copilot CLI keeps in
 `%USERPROFILE%\.copilot\session-state` on Windows and `~/.copilot/session-state` on a Mac (or
 under `COPILOT_HOME`); it never starts Copilot, so reading uses none of your Copilot requests. Selecting a Copilot chat opens its messages;
@@ -796,7 +796,8 @@ changes Copilot ran. Reply in Copilot CLI: sending, approvals and Continue Here 
 in this preview. A chat that's answering says working, even while Copilot runs a command, and is
 announced once when its answer is finished. After 10 minutes with no activity it adds "no
 activity from Copilot for 10 minutes", and after 2 hours it's shown as status unavailable (Copilot
-may have been closed partway through); one waiting for your permission stays needs you. Sessions started in Copilot CLI in a terminal are listed as terminal sessions.
+may have been closed partway through); one waiting for your permission stays needs you for up to a day, then is shown as status
+unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot CLI in a terminal are listed as terminal sessions.
 
 ## Install
 

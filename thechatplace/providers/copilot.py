@@ -44,6 +44,11 @@ STALE_TURN_SECONDS = 10 * 60
 #: behind (Copilot closed mid-reply never writes its end): its status is
 #: unknown rather than working for ever.
 ABANDONED_TURN_SECONDS = 2 * 60 * 60
+#: A permission question waits for you, so it stays needs you far longer
+#: than a reply stays working; but a Copilot closed while asking never
+#: writes its end either, so after a day its status is unknown rather than
+#: needs you for ever (#355 review).
+ABANDONED_QUESTION_SECONDS = 24 * 60 * 60
 #: A session.error ends a reply only once nothing has followed it for this
 #: long. No real Copilot log has shown one yet (#355 review), so a Copilot
 #: that recovers and carries on mustn't be announced as finished twice.
@@ -338,6 +343,10 @@ def _log_state(lines: Iterable[str]) -> str:
             if state == WORKING and not asking:
                 state = _ERRORED
         elif kind == _PERMISSION_ASKED:
+            # Asking after an error means Copilot carried on: it's waiting
+            # for you, not finished (#355 review).
+            if state == _ERRORED:
+                state = WORKING
             asking.add(_text(data.get("requestId")))
         elif kind == _PERMISSION_DONE:
             asking.discard(_text(data.get("requestId")))
@@ -349,8 +358,9 @@ def _log_state(lines: Iterable[str]) -> str:
 def _with_detail(state: str, written_ms: int, now_ms: Optional[int] = None) -> Tuple[str, str]:
     """The row's (state, detail): the log's state, saying so when a reply
     has been quiet for STALE_TURN_SECONDS, and unknown once it has been
-    quiet for ABANDONED_TURN_SECONDS. Needs you stays needs you however
-    long it waits (#355 review): it's quiet because it's waiting for you."""
+    quiet for ABANDONED_TURN_SECONDS. Needs you is quiet because it's
+    waiting for you, so it lasts until ABANDONED_QUESTION_SECONDS (#355
+    review)."""
     if state not in (WORKING, NEEDS_YOU, _ERRORED):
         return state, ""
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
@@ -360,6 +370,8 @@ def _with_detail(state: str, written_ms: int, now_ms: Optional[int] = None) -> T
             return IDLE, ""
         state = WORKING
     if state == NEEDS_YOU:
+        if quiet_ms > ABANDONED_QUESTION_SECONDS * 1000:
+            return "status unavailable", "waiting in Copilot for over a day"
         return state, "waiting in Copilot"
     if quiet_ms > ABANDONED_TURN_SECONDS * 1000:
         return "status unavailable", "no activity from Copilot for over 2 hours"

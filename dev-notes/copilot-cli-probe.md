@@ -94,12 +94,17 @@ capabilities grant nothing but reading.
   own `assistant.turn_start` / `assistant.turn_end` (turnId 0, 1, 2…): a step that asks for
   tools, then the next, until one answers without `toolRequests`. So `user.message` or
   `turn_start` means working, and an outstanding `permission.requested` means needs you. Idle
-  means a `turn_end` after an `assistant.message` with no `toolRequests`, or `session.shutdown`,
-  `abort` or `session.error`. The reply's real end, `assistant.idle`, is ephemeral and never
+  means a `turn_end` after an `assistant.message` with no `toolRequests`, or `session.shutdown`
+  or `abort`. A `session.error` ends a reply only after `ERROR_SETTLE_SECONDS` (30) with nothing
+  after it; a later `turn_start` or `permission.requested` means Copilot carried on. No real log
+  has shown a `session.error` yet, so a Copilot that recovers more than 30 seconds after an error
+  would be announced as finished twice: worth checking when one is seen. The reply's real end, `assistant.idle`, is ephemeral and never
   saved. Only an explicit end announces a finished reply: the Codex rule, extended to
   `sessions.LISTED_PROVIDERS` in `hub.finished_turns` and `Snapshot.fresh_states`. A reply with
   no writes for ten minutes stays working, with a detail saying so, so its finish is still
-  announced. Each session's files are re-read only when their size or time changes, and the
+  announced; after two hours (`ABANDONED_TURN_SECONDS`) it's status unavailable. Needs you
+  lasts a day (`ABANDONED_QUESTION_SECONDS`), since a Copilot closed while asking never writes
+  its end either. Each session's files are re-read only when their size or time changes, and the
   state, title and last message come from one read.
 - **Messages:** `user.message` (its `content`, not `transformedContent`), `assistant.message`,
   `tool.execution_start` and `tool.execution_complete` (as activity), a refused

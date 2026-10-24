@@ -316,8 +316,13 @@ def test_quiet_waits_and_left_behind_replies():
     gone = now - ABANDONED_TURN_SECONDS * 1000 - 1
     assert state_from_events(start, gone, now) == (
         "status unavailable", "no activity from Copilot for over 2 hours")
-    # Waiting on you stays Needs You however long it waits (#355 review).
+    # Waiting on you stays Needs You far longer than a reply stays working...
     assert state_from_events(asked, gone, now) == (NEEDS_YOU, "waiting in Copilot")
+    # ...but not for ever: a Copilot closed while asking never says so (#355 review).
+    from thechatplace.providers.copilot import ABANDONED_QUESTION_SECONDS
+    left = now - ABANDONED_QUESTION_SECONDS * 1000 - 1
+    assert state_from_events(asked, left, now) == (
+        "status unavailable", "waiting in Copilot for over a day")
 
 
 def test_title_from_the_first_prompt_is_read_once(tmp_path, monkeypatch):
@@ -391,6 +396,20 @@ def test_an_error_while_permission_is_asked_still_needs_you():
              json.dumps(event("session.error", 3)), json.dumps(event("session.error", 4))]
     assert state_from_events(tools, now, now)[0] == WORKING
     assert state_from_events(tools, settled, now)[0] == IDLE
+
+
+def test_a_permission_question_after_an_error_needs_you():
+    """Asking after an error means Copilot carried on: never announced as
+    finished while a question is open (#355 review)."""
+    from thechatplace.providers.copilot import ERROR_SETTLE_SECONDS
+    now = 10_000_000
+    lines = [json.dumps(event("assistant.turn_start", 1, turnId="0")),
+             json.dumps(event("session.error", 2, message="transient")),
+             json.dumps(event("permission.requested", 3, requestId="r"))]
+    settled = now - ERROR_SETTLE_SECONDS * 1000 - 1
+    assert state_from_events(lines, settled, now)[0] == NEEDS_YOU
+    answered = lines + [json.dumps(event("permission.completed", 4, requestId="r"))]
+    assert state_from_events(answered, now, now)[0] == WORKING
 
 
 def test_a_folder_without_workspace_yaml_for_long_is_counted(tmp_path):

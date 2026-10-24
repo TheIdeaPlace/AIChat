@@ -903,8 +903,8 @@ notification is shown.</p>
 <h3>Local GitHub Copilot CLI history in Settings</h3>
 <p>Enable <strong>Include GitHub Copilot CLI chats (read-only; restart required)</strong> in Settings
 (Alt+O), save and restart. The option appears once Copilot CLI has saved a session on this
-computer: Settings checks the names of the folders in Copilot's session folder for that, never
-what's in them. With the option off, nothing else of Copilot's is read. Your GitHub Copilot CLI sessions are then listed with your Claude
+computer: Settings checks the names of the folders in Copilot's session folder, and whether each has a
+conversation log, never what's in them. With the option off, nothing else of Copilot's is read. Your GitHub Copilot CLI sessions are then listed with your Claude
 chats, and View, Show Sessions, GitHub Copilot Chats lists only them. The Chat Place reads the
 sessions Copilot CLI keeps on this computer; it never starts Copilot, so reading uses none of
 your Copilot requests. Selecting a Copilot chat opens its messages, and formatted reading, Find
@@ -915,7 +915,8 @@ A Copilot chat that's answering says working, even while Copilot runs a command 
 and you hear it once when its answer is finished. If Copilot hasn't written anything for 10
 minutes (a long command, or Copilot closed partway through), it still says working and adds "no
 activity from Copilot for 10 minutes"; after 2 hours it says status unavailable instead. A chat
-waiting for your permission stays needs you however long it waits. Sessions started in Copilot CLI in a terminal are listed as terminal sessions, so
+waiting for your permission stays needs you for up to a day; after that it says status
+unavailable, "waiting in Copilot for over a day", since Copilot may have been closed while asking. Sessions started in Copilot CLI in a terminal are listed as terminal sessions, so
 View, Show Sessions, Terminal Sessions includes them; ones started from another app aren't. Turn the option off and restart to hide Copilot chats again.</p>
 <h2 id="more-things-you-can-do">More things you can do</h2>
 <ul>
