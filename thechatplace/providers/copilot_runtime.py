@@ -24,11 +24,13 @@ Safety rules, each with a test:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import difflib
 import json
 import os
 from pathlib import Path
 import threading
 import time
+import unicodedata
 from typing import Callable, Dict, List, Optional
 
 from .. import platform_paths
@@ -37,9 +39,10 @@ from . import copilot_acp
 from .copilot import EVENTS_FILE, WORKSPACE_FILE, parse_workspace
 
 AGENT_MODE = "https://agentclientprotocol.com/protocol/session-modes#agent"
-#: What Copilot records as the client of a session started over ACP; one
-#: started in a terminal says "github/cli".
-ACP_CLIENT = "github/acp"
+#: What Copilot records as the client of the sessions this app starts: the
+#: name it gives in initialize's clientInfo (another ACP client's chats say
+#: "github/acp" or their own name, and a terminal chat says "github/cli").
+OWN_CLIENT = copilot_acp.CLIENT_NAME
 ALLOW_ONCE, REJECT = "allow_once", "reject_once"
 COMMAND, FILES, OTHER = "command", "files", "other"
 #: ACP tool kinds, as Copilot labels a permission request's tool call.
@@ -47,11 +50,37 @@ _FILE_KINDS = frozenset({"edit", "delete", "move"})
 #: As Codex's queue (codex_runtime): enough to keep working, never unbounded.
 MAX_QUEUED = 20
 MAX_QUEUED_CHARS = 128_000
+#: One message, at most (it reaches Copilot as one JSON line under
+#: copilot_acp.MAX_MESSAGE_BYTES). Longer is refused before anything is sent.
+MAX_MESSAGE_CHARS = 128_000
+#: A diff longer than this can't be shown in full, so it can't be allowed.
+MAX_DIFF_CHARS = 1_000_000
+#: Permission requests waiting in one chat, at most; more are cancelled.
+MAX_REQUESTS = 8
+#: How long Copilot gets to honour Stop before its process is closed.
+CANCEL_GRACE_SECONDS = 15.0
 #: Streamed text is shown at most this often, so a long answer in many tiny
 #: chunks can't flood the window or hold up the reader thread.
 CHUNK_NOTIFY_SECONDS = 0.05
 #: The session log is written a moment after the turn's answer arrives.
 BILLING_WAIT_SECONDS = 15.0
+
+
+def _content_diff(call: dict) -> str:
+    """A diff from ACP's standard place, ``toolCall.content`` items of type
+    "diff" (path, oldText, newText), as only the changed lines with one line
+    around each. Copilot 1.0.103 sends ``rawInput.diff`` instead; this keeps
+    edits reviewable if it moves. Never cut short: the caller checks length."""
+    parts = []
+    for item in call.get("content") or ():
+        if isinstance(item, dict) and item.get("type") == "diff":
+            path = _text(item.get("path"), 4096)
+            old = item.get("oldText") if isinstance(item.get("oldText"), str) else ""
+            new = item.get("newText") if isinstance(item.get("newText"), str) else ""
+            parts.append("".join(difflib.unified_diff(
+                old.splitlines(keepends=True), new.splitlines(keepends=True),
+                fromfile=path or "before", tofile=path or "after", n=1)))
+    return "".join(parts)
 
 
 class CopilotChatError(Exception):
@@ -100,6 +129,8 @@ class CopilotRequest:
     command: str = field(default="", repr=False)
     file_name: str = field(default="", repr=False)
     diff: str = field(default="", repr=False)
+    #: The change was too long to show in full: it can only be denied.
+    too_long: bool = False
     #: ACP kind -> Copilot's optionId, for the one-time choices it offered.
     choices: tuple = ()
     turn_id: str = ""
@@ -117,6 +148,8 @@ class CopilotRequest:
                     choices.append((option["kind"], option["optionId"]))
         if not any(k == REJECT for k, _ in choices):
             raise CopilotChatError("Copilot asked in a way The Chat Place can't answer safely.")
+        raw_diff = raw.get("diff") if isinstance(raw.get("diff"), str) else ""
+        diff = raw_diff or _content_diff(call)
         command = _text(raw.get("command"))
         if not command and isinstance(raw.get("commands"), list):
             command = "\n".join(_text(c) for c in raw["commands"] if isinstance(c, str))
@@ -124,11 +157,14 @@ class CopilotRequest:
                    method=COMMAND if kind == "execute" else FILES if kind in _FILE_KINDS else OTHER,
                    item_id=_text(call.get("toolCallId"), 200), title=_text(call.get("title"), 500),
                    command=command, file_name=_text(raw.get("fileName"), 4096),
-                   diff=_text(raw.get("diff"), 1_000_000), choices=tuple(choices), turn_id=turn_id)
+                   diff=diff[:MAX_DIFF_CHARS], too_long=len(diff) > MAX_DIFF_CHARS,
+                   choices=tuple(choices), turn_id=turn_id)
 
     def offered(self):
         """Allow Once (if Copilot offered it) then Deny; never "always"."""
         kinds = [k for k, _ in self.choices]
+        if self.too_long:
+            return (REJECT,) if REJECT in kinds else ()  # can't be seen, can't be allowed
         return tuple(k for k in (ALLOW_ONCE, REJECT) if k in kinds)
 
     def reviewable(self, file_detail: str = "") -> bool:
@@ -136,7 +172,7 @@ class CopilotRequest:
         if self.method == COMMAND:
             return bool(self.command.strip())
         if self.method == FILES:
-            return bool(self.diff.strip() or file_detail)
+            return not self.too_long and bool(self.diff.strip() or file_detail)
         return bool(self.title.strip())
 
     def choice_text(self, decision: str) -> str:
@@ -155,6 +191,9 @@ class CopilotRequest:
                 parts.append("File:\n" + self.file_name)
             parts.append("Changes:\n" + (self.diff or file_detail
                                         or "The changes aren't available to review. Deny it."))
+            if self.too_long:
+                parts.append("This change is too long to show in full, so it can only be "
+                             "denied. Ask Copilot to make it in smaller steps.")
         return "\n\n".join(parts) or "Copilot wants to use a tool. Deny it if you're not sure."
 
     def summary(self) -> str:
@@ -170,6 +209,24 @@ class CopilotRequest:
         if decision not in self.offered() or option is None:
             raise ValueError("Unsupported Copilot approval choice")
         return {"outcome": {"outcome": "selected", "optionId": option}}
+
+
+def _visible_start(text: str) -> str:
+    """The text from its first visible character: spaces, byte-order marks,
+    zero-width and other format characters dropped, as Copilot's own
+    trimming may drop them, so none of them can hide a leading "/"."""
+    index = 0
+    while index < len(text) and (text[index].isspace() or text[index] in _BLANKS
+                                 or unicodedata.category(text[index]) in _HIDDEN):
+        index += 1
+    return text[index:]
+
+
+#: Character kinds with nothing to see: controls, format characters,
+#: combining marks and separators.
+_HIDDEN = frozenset({"Cc", "Cf", "Mn", "Me", "Zs", "Zl", "Zp"})
+#: Letters that draw nothing (Hangul fillers, the blank Braille pattern).
+_BLANKS = frozenset("\u115f\u1160\u3164\uffa0\u2800")
 
 
 def _settings(options) -> dict:
@@ -211,6 +268,16 @@ def usage_kinds(events_path: Path, offset: int = 0) -> tuple:
         if isinstance(provider, dict):
             kinds.append(_text(provider.get("kind"), 100))
     return tuple(kinds)
+
+
+def _check_folder(cwd: str) -> None:
+    """Copilot works in one project folder: never a whole drive, a share's
+    root, / or a device path (platform_paths.is_specific_folder, as #334
+    refuses them for Codex)."""
+    if (not isinstance(cwd, str) or not platform_paths.is_specific_folder(cwd)
+            or not os.path.isdir(cwd)):
+        raise CopilotChatError("Choose a project folder for Copilot to work in, not a whole "
+                               "drive or the top of the computer.")
 
 
 def _client_of(folder: Path) -> str:
@@ -256,6 +323,7 @@ class _Chat:
         #: Waiting messages taken back by a stop the person didn't ask for.
         self.held: tuple = ()
         self.last_chunk_notice = 0.0
+        self.cancel_timer = None
 
     @property
     def safe(self) -> bool:
@@ -275,11 +343,13 @@ class CopilotChatRuntime:
 
     def __init__(self, on_update: Callable[[CopilotChatState], None], *,
                  start: Optional[Callable] = None, sessions_dir: Optional[Path] = None,
-                 billing_wait: float = BILLING_WAIT_SECONDS):
+                 billing_wait: float = BILLING_WAIT_SECONDS,
+                 cancel_grace: float = CANCEL_GRACE_SECONDS):
         self._on_update = on_update
         self._start = start or platform_paths.start_copilot_acp
         self._sessions_dir = sessions_dir
         self._billing_wait = billing_wait
+        self._cancel_grace = cancel_grace
         self._lock = threading.RLock()
         self._connect_lock = threading.Lock()
         self._connection: Optional[copilot_acp.AcpConnection] = None
@@ -287,8 +357,8 @@ class CopilotChatRuntime:
         #: Latched for every chat when billing can't be confirmed.
         self._halted = ""
         #: Chats this runtime may reopen: ones it created, and ones the
-        #: window says The Chat Place owns (adopt). Any ACP client's chat
-        #: says "github/acp", so that alone doesn't make a chat ours.
+        #: window says The Chat Place owns (adopt), and only if Copilot also
+        #: recorded this app as their client.
         self._owned: set = set()
         self._closed = False
 
@@ -314,7 +384,8 @@ class CopilotChatRuntime:
             connection = copilot_acp.connect(
                 self._start(),
                 lambda method, params: self._on_notification(holder[0], method, params),
-                lambda rid, method, params: self._on_request(holder[0], rid, method, params))
+                lambda rid, method, params: self._on_request(holder[0], rid, method, params),
+                lambda: self._on_closed(holder[0]) if holder else None)
             holder.append(connection)
             with self._lock:
                 if self._closed:
@@ -323,10 +394,26 @@ class CopilotChatRuntime:
                 self._connection = connection
             return connection
 
+    def _on_closed(self, connection) -> None:
+        """Copilot exited: every chat open on it says so (not ready any more).
+        Not when The Chat Place itself is closing it."""
+        with self._lock:
+            if self._closed:
+                return
+            chats = [c for c in self._chats.values() if c.connection is connection]
+            for chat in chats:
+                if not chat.busy and not chat.notice:
+                    chat.notice = "Copilot stopped; open this chat again to send to it."
+        for chat in chats:
+            self._notify(chat)
+
     def close(self) -> None:
         with self._lock:
             self._closed = True
             connection, self._connection = self._connection, None
+            for chat in self._chats.values():
+                if chat.cancel_timer is not None:
+                    chat.cancel_timer.cancel()
         if connection is not None:
             connection.close()
 
@@ -336,7 +423,10 @@ class CopilotChatRuntime:
     # -- opening chats -------------------------------------------------------
 
     def create(self, cwd: str) -> str:
-        """A new Copilot chat in ``cwd``; its native id. No prompt is sent."""
+        """A new Copilot chat in ``cwd``; its native id. No prompt is sent.
+        Starts Copilot if needed and waits up to a minute for it, so call it
+        off the UI thread."""
+        _check_folder(cwd)
         connection = self._connect()
         try:
             result = connection.request("session/new", {"cwd": cwd, "mcpServers": []})
@@ -378,14 +468,18 @@ class CopilotChatRuntime:
         made a session, and one made in a terminal or another app stays
         read-only here, as other apps' chats do (CLAUDE.md). The window
         also checks its own record of the chats it owns before calling this.
+
+        Waits for Copilot to start and replay the chat (up to five minutes),
+        so call it off the UI thread.
         """
         if not platform_paths.is_safe_id(native_id):
             raise CopilotChatError("That isn't a Copilot chat.")
+        _check_folder(cwd)
         if self.ready(native_id):
             return
         with self._lock:
             owned = native_id in self._owned
-        if not owned or _client_of(self._events(native_id).parent) != ACP_CLIENT:
+        if not owned or _client_of(self._events(native_id).parent) != OWN_CLIENT:
             raise CopilotChatError("This Copilot chat was started outside The Chat Place, "
                                    "so it can only be read here.")
         connection = self._connect()
@@ -410,6 +504,7 @@ class CopilotChatRuntime:
         kinds = usage_kinds(self._events(native_id), chat.log_offset)
         with self._lock:
             chat.loading = False
+            chat.notice = ""  # opened again: "open it again" no longer applies
             chat.apply(_settings(result.get("configOptions")))
             if chat.problem and not self._halted and kinds and all(k == "copilot" for k in kinds):
                 chat.problem = ""  # the late record has arrived, and it's Copilot's
@@ -439,7 +534,10 @@ class CopilotChatRuntime:
         """Send now, or queue behind the running turn; True if queued."""
         if not isinstance(text, str) or not text.strip():
             raise CopilotChatError("There's nothing to send.")
-        if text.lstrip().startswith("/"):
+        if len(text) > MAX_MESSAGE_CHARS:
+            raise CopilotChatError("That message is too long to send to Copilot; "
+                                   "shorten it or put the long part in a file.")
+        if _visible_start(text).startswith("/"):
             raise CopilotChatError("Copilot commands starting with / can't be sent from "
                                    "The Chat Place: some of them turn off its permission prompts.")
         with self._lock:
@@ -486,13 +584,18 @@ class CopilotChatRuntime:
                                    "limit). Messages waiting after it weren't sent.")
         except Exception:  # noqa: BLE001 - the reason shown is ours, not Copilot's
             with self._lock:
-                chat.notice = "Copilot stopped before finishing. Your message wasn't sent again."
+                # A more particular reason (Stop ignored, say) is kept.
+                chat.notice = chat.notice or ("Copilot stopped before finishing. Your message "
+                                              "wasn't sent again.")
         try:
             self._check_billing(chat, outcome)
         except Exception:  # noqa: BLE001 - an unreadable log is a failed check
             self._halt()
         with self._lock:
             chat.busy, chat.outcome, chat.activity = False, outcome, ""
+            if chat.cancel_timer is not None:
+                chat.cancel_timer.cancel()  # it stopped in time
+                chat.cancel_timer = None
             chat.requests.clear()
             held, chat.held = chat.held, ()
             chat.stopping = False
@@ -555,6 +658,7 @@ class CopilotChatRuntime:
             if chat is None or not chat.busy:
                 return ()
             chat.stopping = True
+            turn = chat.turns  # the turn being stopped, read under the lock
             waiting, chat.queue = tuple(chat.queue), []
             if hold:
                 chat.held += waiting
@@ -572,8 +676,32 @@ class CopilotChatRuntime:
                 connection.notify("session/cancel", {"sessionId": native_id})
             except copilot_acp.AcpError:
                 pass
+            timer = threading.Timer(self._cancel_grace, self._cancel_overdue,
+                                    args=(chat, connection, turn))
+            timer.daemon = True  # never keeps the app open after it quits
+            with self._lock:
+                if chat.cancel_timer is not None:
+                    chat.cancel_timer.cancel()
+                chat.cancel_timer = timer
+            timer.start()
         self._notify(chat)
         return waiting
+
+    def _cancel_overdue(self, chat: _Chat, connection, turn: int) -> None:
+        """Copilot didn't stop when asked. Ending the turn here alone would
+        leave it free to keep acting, so its process is closed: every turn on
+        it ends, and chats are opened again to carry on."""
+        with self._lock:
+            overdue = chat.busy and chat.turns == turn and chat.connection is connection
+            if overdue:
+                chat.notice = ("Copilot didn't stop when asked, so The Chat Place closed it. "
+                               "Open the chat again to carry on.")
+                for other in self._chats.values():
+                    if other is not chat and other.connection is connection and other.busy:
+                        other.notice = ("Copilot was closed because another chat didn't stop "
+                                        "when asked. Open this chat again to carry on.")
+        if overdue:
+            connection.close()
 
     def answer(self, native_id: str, request_id, decision: str) -> None:
         """Answer a waiting permission request once. A choice that wasn't
@@ -590,7 +718,10 @@ class CopilotChatRuntime:
             connection = chat.connection
         if connection is None or connection.closed:
             raise CopilotChatError("Copilot isn't running.")
-        connection.respond(request_id, reply)
+        try:
+            connection.respond(request_id, reply)
+        except copilot_acp.AcpError as exc:
+            raise CopilotChatError(str(exc)) from None
         self._notify(chat)
 
     # -- what Copilot sends ----------------------------------------------------
@@ -613,6 +744,8 @@ class CopilotChatRuntime:
             # and leave this request stored but never answered.
             watched = (chat is not None and not chat.loading and chat.busy
                        and not chat.stopping and not self._halted)
+            if watched and request is not None and len(chat.requests) >= MAX_REQUESTS:
+                request, problem = None, "Copilot asked too many things at once; some were declined."
             if watched and request is not None:
                 chat.requests[request_id] = request
             elif watched:

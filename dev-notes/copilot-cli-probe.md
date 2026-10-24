@@ -87,6 +87,24 @@ prompts to another service. Each model in `session/new` carries `_meta.copilotUs
 and the session's own `events.jsonl` gets a `session.usage_record` naming `provider.kind`
 (`copilot`) for every turn, ACP or not.
 
+**Copilot's own permission settings don't reach ACP** (checked for #364's review, each setting
+restored afterwards). With `copilot config defaultPermissionMode allow-all`, `… assisted` (an AI
+reviewer approving what it judges safe) or `defaultMode autopilot`, a new ACP session still
+reported agent mode with `allow_all` off. Under `assisted`, a shell command still came as
+`session/request_permission`, and refusing it left the file unwritten. A project's
+`.github/copilot/settings.json` with `defaultPermissionMode: allow-all` and
+`defaultMode: autopilot` was ignored the same way: agent mode, `allow_all` off, the shell
+command asked, nothing ran. (Copilot's help says permission modes are ignored outside
+interactive runs; ACP counts as outside.) Not tried: `hooks`, which run the user's own scripts.
+
+**The client's name is recorded.** Sending `clientInfo: {name: "thechatplace"}` in `initialize`
+makes Copilot write `client_name: thechatplace` in the session's `workspace.yaml`. Without it,
+any ACP client's sessions say `github/acp`, and a terminal session says `github/cli`.
+
+**A real file-edit request** (1.0.103) has `toolCall.kind` `edit`, `locations`, and
+`rawInput.fileName` and `rawInput.diff`; `toolCall.content` is null. ACP's standard place for a
+diff, `toolCall.content` items of type `diff`, is read too, in case that changes.
+
 Streamed text arrives as `agent_message_chunk` updates. The title arrives as
 `session_info_update`, and context use as `usage_update`.
 
@@ -171,8 +189,18 @@ Three modules, none of which the window uses yet, so nothing here can send on it
     `copilot`; another provider stops every chat until restart (Claude's API-key abort, in
     Copilot's terms), and a completed turn with no record stops its own chat until reopened;
   - only chats this runtime created, or that the window adopts from its own record of owned
-    chats, can be reopened, and only if Copilot recorded `client_name: github/acp` (a terminal
-    chat says `github/cli`); any ACP client's chat says `github/acp`, so that alone isn't enough;
+    chats, can be reopened, and only if Copilot recorded `client_name: thechatplace` (the name
+    sent in `clientInfo`); other ACP clients' chats say `github/acp` or their own name, and a
+    terminal chat says `github/cli`;
+  - Copilot works only in a project folder (`platform_paths.is_specific_folder`, as #334 does
+    for Codex), never a whole drive, a share's root or `/`;
+  - a `/` hidden behind spaces, a byte-order mark or zero-width characters is still refused;
+  - writes go through a writer thread with a bounded queue (256), a 1 MB message cap and at
+    most 32 waiting requests (as `codex_rpc`), so a Copilot that stops reading can't block the
+    reader or the window; a request that times out gives up alone;
+  - when Copilot exits, every chat on it is told and stops being ready; a Stop that Copilot
+    ignores for 15 seconds closes its process, ending the turn;
+  - at most 8 permission requests wait per chat; more are cancelled;
   - Stop answers waiting requests "cancelled", sends `session/cancel` and never resends; queued
     messages come back unsent, including after an automatic stop.
 
