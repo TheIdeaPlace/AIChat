@@ -205,9 +205,9 @@ def write_workspace(tmp_path, native_id, client):
 def test_reopening_a_chat_ignores_the_replayed_history(make, tmp_path):
     runtime, _ = make()
     native = "11111111-2222-3333-4444-555555555555"
-    write_workspace(tmp_path, native, "github/acp")
-    # Any ACP client's chat says github/acp; it must also be one the window
-    # says The Chat Place owns.
+    write_workspace(tmp_path, native, "thechatplace")
+    # Copilot recorded this app as its client, but it must also be one the
+    # window says The Chat Place owns.
     with pytest.raises(CopilotChatError, match="started outside The Chat Place"):
         runtime.prepare(native, str(tmp_path))
     runtime.adopt(native)
@@ -216,12 +216,13 @@ def test_reopening_a_chat_ignores_the_replayed_history(make, tmp_path):
     assert state.replies == () and runtime.ready(state.native_id)
 
 
-@pytest.mark.parametrize("client", ["github/cli", ""])
+@pytest.mark.parametrize("client", ["github/cli", "github/acp", "zed", ""])
 def test_a_chat_started_elsewhere_stays_read_only(make, tmp_path, client):
     runtime, _ = make()
     native = "66666666-7777-8888-9999-000000000000"
     if client:
         write_workspace(tmp_path, native, client)
+    runtime.adopt(native)  # even on the app's own list, Copilot must agree
     with pytest.raises(CopilotChatError, match="started outside The Chat Place"):
         runtime.prepare(native, str(tmp_path))
     assert not [m for m in received(tmp_path) if m.get("method") == "session/load"]
@@ -414,3 +415,216 @@ def test_probe_tool_says_each_reply_once_across_turns(tmp_path, monkeypatch, cap
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     assert probe_copilot.main(["--folder", str(tmp_path)]) == 0
     assert capsys.readouterr().out.count("Copilot: Hello there") == 2  # once per turn
+
+
+# -- from Kelly's review of #364 ---------------------------------------------
+
+
+def test_sessions_this_app_starts_are_recorded_as_its_own(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    init = next(m for m in received(tmp_path) if m.get("method") == "initialize")
+    assert init["params"]["clientInfo"]["name"] == "thechatplace"
+    workspace = (tmp_path / "sessions" / chat / "workspace.yaml").read_text(encoding="utf-8")
+    assert "client_name: thechatplace" in workspace
+
+
+@pytest.mark.parametrize("folder", ["C:\\", "/", r"\\server\share", "relative/path"])
+def test_copilot_never_works_in_a_whole_drive(make, tmp_path, folder):
+    runtime, _ = make()
+    with pytest.raises(CopilotChatError, match="project folder"):
+        runtime.create(folder)
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/new"]
+
+
+@pytest.mark.parametrize("text", ["\ufeff/allow-all on", "\u200b/allow-all on",
+                                  "\u2060 /yolo", "\u00a0/model x"])
+def test_invisible_characters_cant_hide_a_slash_command(make, tmp_path, text):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    with pytest.raises(CopilotChatError, match="starting with /"):
+        runtime.send(chat, text)
+
+
+@pytest.mark.parametrize("mode", ["edit", "editcontent"])
+def test_a_file_edit_request_shows_its_diff(make, tmp_path, mode):
+    runtime, _ = make(mode)
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Make a.txt")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    request = runtime.snapshot(chat).requests[0]
+    assert request.method == "files" and request.reviewable()
+    assert "hello" in request.detail() and "a.txt" in request.detail()
+    runtime.answer(chat, request.request_id, ALLOW_ONCE)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert runtime.snapshot(chat).replies[-1][1] == "Written"
+
+
+def test_copilot_asking_for_files_or_a_terminal_is_refused(make, tmp_path):
+    runtime, _ = make("clientreq")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    replies = {m["id"]: m for m in received(tmp_path) if m.get("id") in ("fs-1", "term-1")}
+    assert replies["fs-1"]["error"]["code"] == -32601
+    assert replies["term-1"]["error"]["code"] == -32601
+
+
+def test_a_permission_request_for_another_session_is_cancelled(make, tmp_path):
+    runtime, _ = make("strayperm")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    stray = next(m for m in received(tmp_path) if m.get("id") == "stray-1")
+    assert stray["result"] == {"outcome": {"outcome": "cancelled"}}
+    assert not runtime.snapshot(chat).requests
+
+
+def test_copilot_dying_mid_turn_ends_the_turn_and_tells_idle_chats(make, tmp_path):
+    runtime, updates = make("die")
+    chat = runtime.create(str(tmp_path))
+    idle = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "failed")
+    assert "wasn't sent again" in runtime.snapshot(chat).notice
+    assert wait(lambda: "Copilot stopped" in runtime.snapshot(idle).notice)
+    assert not runtime.ready(idle)
+
+
+def test_a_stop_copilot_ignores_ends_the_turn_by_closing_it(tmp_path):
+    env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"))
+    runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("deaf", env),
+                                 sessions_dir=tmp_path / "sessions", billing_wait=0.5,
+                                 cancel_grace=0.5)
+    try:
+        chat = runtime.create(str(tmp_path))
+        runtime.send(chat, "Long job")
+        assert wait(lambda: runtime.snapshot(chat).replies)
+        runtime.stop(chat)
+        assert wait(lambda: runtime.snapshot(chat).outcome not in ("", "inProgress"))
+        assert "didn't stop when asked" in runtime.snapshot(chat).notice
+        assert not runtime.ready(chat)
+    finally:
+        runtime.close()
+
+
+def test_bad_lines_from_copilot_are_skipped(make, tmp_path):
+    runtime, _ = make("garbage")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert runtime.snapshot(chat).replies[-1][1] == "Hello there"
+
+
+def test_an_over_long_line_ends_the_connection(tmp_path):
+    class Pipe:
+        def __init__(self, data):
+            import io
+            self.stdout, self.stdin = io.BytesIO(data), io.BytesIO()
+
+        def close(self):
+            pass
+
+    closed = []
+    data = b'{"jsonrpc":"2.0","method":"session/update","params":{}}' + b" " * (
+        copilot_acp.MAX_LINE_BYTES + 10) + b"\n"
+    connection = copilot_acp.AcpConnection(Pipe(data), lambda m, p: None,
+                                           lambda i, m, p: None, lambda: closed.append(1))
+    assert wait(lambda: connection.closed and closed)
+
+
+def test_a_request_with_no_answer_times_out_alone(make, tmp_path, monkeypatch):
+    runtime, _ = make("mute")
+    connection = runtime._connect()
+    with pytest.raises(copilot_acp.AcpError, match="in time"):
+        connection.request("session/new", {"cwd": str(tmp_path), "mcpServers": []}, timeout=0.5)
+    assert not connection.closed  # other chats' turns would carry on
+
+
+def test_a_message_too_long_is_refused_before_it_is_queued(make, tmp_path):
+    runtime, _ = make()
+    connection = runtime._connect()
+    with pytest.raises(copilot_acp.AcpError, match="too long"):
+        connection.notify("session/cancel", {"x": "y" * (copilot_acp.MAX_MESSAGE_BYTES + 1)})
+    assert not connection.closed
+
+
+def test_start_copilot_acp_uses_no_shell_the_job_and_a_clean_environment(monkeypatch):
+    calls = {}
+
+    class FakePopen:
+        def __init__(self, args, **kwargs):
+            calls["args"], calls["kwargs"] = args, kwargs
+            self.stdin = self.stdout = None
+            self.pid = 1
+
+    class FakeTree:
+        def popen_kwargs(self):
+            return {"start_new_session": True}
+
+        def attach(self, process):
+            calls["attached"] = process
+
+    monkeypatch.setattr(platform_paths, "_native_codex", lambda path: True)
+    monkeypatch.setattr(platform_paths, "ProcessTree", FakeTree)
+    monkeypatch.setattr("subprocess.Popen", FakePopen)
+    monkeypatch.setenv("COPILOT_ALLOW_ALL", "true")
+    monkeypatch.setenv("GH_TOKEN", "t")
+    platform_paths.start_copilot_acp("C:/x/copilot.exe", cwd=None)
+    assert calls["args"] == ["C:/x/copilot.exe", "--acp", "--disable-client-telemetry"]
+    assert "shell" not in calls["kwargs"] or calls["kwargs"]["shell"] is False
+    env = calls["kwargs"]["env"]
+    assert "COPILOT_ALLOW_ALL" not in env and "GH_TOKEN" not in env
+    assert calls["attached"] is not None
+
+
+def test_a_message_too_long_is_refused_up_front(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import MAX_MESSAGE_CHARS
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    with pytest.raises(CopilotChatError, match="too long"):
+        runtime.send(chat, "x" * (MAX_MESSAGE_CHARS + 1))
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/prompt"]
+
+
+def test_a_content_diff_shows_only_what_changed():
+    old = "".join(f"line {n}\n" for n in range(1, 500))
+    new = old.replace("line 250\n", "line two hundred and fifty\n")
+    request = CopilotRequest.decode(1, {"toolCall": {"kind": "edit", "rawInput": {},
+        "content": [{"type": "diff", "path": "a.txt", "oldText": old, "newText": new}]},
+        "options": [{"optionId": "a", "kind": "allow_once"}, {"optionId": "r", "kind": "reject_once"}]})
+    assert "-line 250" in request.diff and "+line two hundred and fifty" in request.diff
+    assert "line 100" not in request.diff  # not the whole file twice
+    assert request.offered() == (ALLOW_ONCE, REJECT)
+
+
+def test_a_change_too_long_to_show_can_only_be_denied():
+    from thechatplace.providers.copilot_runtime import MAX_DIFF_CHARS
+    request = CopilotRequest.decode(1, {"toolCall": {"kind": "edit", "rawInput": {
+        "fileName": "big.txt", "diff": "+" + "x" * MAX_DIFF_CHARS}},
+        "options": [{"optionId": "a", "kind": "allow_once"}, {"optionId": "r", "kind": "reject_once"}]})
+    assert request.offered() == (REJECT,) and not request.reviewable()
+    assert "too long to show in full" in request.detail()
+    with pytest.raises(ValueError):
+        request.approval_answer(ALLOW_ONCE)
+
+
+@pytest.mark.parametrize("text", ["\u034f/allow-all", "\u3164/yolo", "\x00/yolo", "\u2800/x"])
+def test_more_invisible_characters_cant_hide_a_slash(make, tmp_path, text):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    with pytest.raises(CopilotChatError, match="starting with /"):
+        runtime.send(chat, text)
+
+
+def test_a_stop_in_time_cancels_its_timer_and_closing_says_nothing(make, tmp_path):
+    runtime, updates = make("hang")
+    chat = runtime.create(str(tmp_path))
+    idle = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    runtime.stop(chat)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+    assert runtime._chats[chat].cancel_timer is None
+    runtime.close()
+    assert "Copilot stopped" not in (runtime.snapshot(idle).notice or "")
