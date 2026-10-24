@@ -628,3 +628,30 @@ def test_a_stop_in_time_cancels_its_timer_and_closing_says_nothing(make, tmp_pat
     assert runtime._chats[chat].cancel_timer is None
     runtime.close()
     assert "Copilot stopped" not in (runtime.snapshot(idle).notice or "")
+
+
+def test_a_permission_request_for_an_idle_chat_is_cancelled(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))  # open, but no turn running
+    connection = runtime._connection
+    sent = []
+    real = connection.respond
+    connection.respond = lambda rid, result: (sent.append((rid, result)), real(rid, result))
+    runtime._on_request(connection, "idle-1", "session/request_permission", {
+        "sessionId": chat, "toolCall": {"kind": "execute", "rawInput": {"command": "x"}},
+        "options": [{"optionId": "a", "kind": "allow_once"}, {"optionId": "r", "kind": "reject_once"}]})
+    assert sent == [("idle-1", {"outcome": {"outcome": "cancelled"}})]
+    assert not runtime.snapshot(chat).requests
+
+
+def test_a_billing_stop_gives_back_every_chats_waiting_messages(make, tmp_path):
+    """_halt stops other running chats too; their waiting messages come back."""
+    runtime, _ = make("byok")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    runtime.send(chat, "Waiting one")
+    assert wait(lambda: runtime.snapshot(chat).problem
+                and runtime.snapshot(chat).outcome not in ("", "inProgress"))
+    assert runtime.snapshot(chat).unsent == ("Waiting one",)
+    prompts = [m for m in received(tmp_path) if m.get("method") == "session/prompt"]
+    assert len(prompts) == 1
