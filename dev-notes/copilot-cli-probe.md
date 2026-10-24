@@ -1,0 +1,135 @@
+# GitHub Copilot CLI as a provider: first probe
+
+Written for #352, while checking whether The Chat Place can read and run GitHub Copilot CLI
+sessions the way it does Claude and Codex ones (#184 built the provider layer this would use).
+
+Probed on Windows 11 (arm64) with Copilot CLI 1.0.102, installed by `winget install GitHub.Copilot`
+(it updated itself to 1.0.103 on first run), signed in with `copilot login` on a Copilot Free
+account. Every prompt was a throwaway test in a scratch folder outside the repo. No conversation
+content is copied here beyond those test prompts.
+
+## Install and sign-in
+
+- winget puts `copilot.exe` in `%LOCALAPPDATA%\Microsoft\WinGet\Packages\GitHub.Copilot_…\` and adds
+  that folder to the user PATH. No Node is needed. Finding it would belong in `platform_paths.py`,
+  next to finding `claude.exe`; npm installs (`copilot.cmd`) should be refused for the same reason
+  as `claude.cmd`.
+- `copilot login` uses a browser flow and stores the token in the Windows credential store. The
+  CLI also accepts `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` from the environment, so a
+  runner should decide deliberately which of those it passes through.
+- A brand-new account with no Copilot plan fails every prompt with "Access denied by policy
+  settings" (exit 1, message on stderr). Turning on Copilot Free fixed it. The app should show
+  that message plainly rather than as a crash.
+- Free accounts get a policy warning that third-party MCP servers are disabled. It arrives as a
+  `session.warning` event and doesn't stop the turn.
+
+## Headless turns: `copilot -p … --output-format json`
+
+JSONL on stdout, one event per line: `{"type", "data", "id", "parentId", "timestamp"}`, plus
+`"ephemeral": true` on events that aren't saved. One turn produced, in order:
+
+`session.warning` ×2, `session.mcp_*`, `session.auto_mode_resolved` (model picked by "auto"),
+`user.message`, `assistant.turn_start`, `model.call_start`, `assistant.message_start`,
+`assistant.message_delta` (streamed text, `deltaContent`), `model.call_finished`,
+`assistant.message` (full text in `content`, plus `toolRequests`), `assistant.turn_end`,
+`session.usage_checkpoint` (`totalPremiumRequests`), `assistant.idle`, `result`.
+
+Billing shows in every turn (`totalPremiumRequests`, `totalNanoAiu`, and `isByok` on
+`model.call_final_result`), so a guard like the Claude one ("abort if billed off the
+subscription") can check `isByok` is false.
+
+## Saved sessions: `~/.copilot/session-state/<uuid>/`
+
+- `workspace.yaml`: `id`, `cwd`, `name` (the title; it's the first prompt until renamed),
+  `user_named`, `created_at`, `updated_at`. Plain data, cheap to read for the session list.
+- `events.jsonl`: the persistent events from the stream above (the ephemeral ones are left out),
+  plus `session.start` (with `copilotVersion`), `system.message`, `session.usage_record` and
+  `session.shutdown`. Same envelope as the live stream, so one parser can serve both. A session
+  that failed before its first prompt has no `events.jsonl` at all.
+- Also `checkpoints/`, `files/`, `research/`, `rewind-file-snapshots/`, and lock files in
+  `session-state/.session-operation-locks/`. `~/.copilot/session-store.db` is a SQLite index
+  (WAL mode) and isn't needed for reading.
+- `copilot sessions` only offers `import`. There's no listing command, so discovery means reading
+  these folders, read-only, as the app does for Claude.
+
+## ACP mode: `copilot --acp`
+
+NDJSON JSON-RPC over stdio (Agent Client Protocol). `initialize` reports `loadSession: true` and
+`sessionCapabilities` with `list` and `close`, so resuming and listing sessions over ACP should
+work too (not yet tested). `session/new` returns the available models and a `mode` option.
+
+**Permissions reach the client.** Asked to create a file, Copilot sent a `tool_call` update (kind
+`edit`, status `pending`), then a `session/request_permission` request with the file path, the
+full diff and the options `allow_once`, `allow_always` and `reject_once`. Answering
+`reject_once` produced a `tool_call_update` with status `failed` ("The user rejected this tool
+call."), the turn ended with `stopReason: end_turn`, and no file was written. So the problem
+reported in copilot-cli#845 (ACP approving tools without asking) doesn't happen in 1.0.103 for
+file edits. Shell commands still need checking.
+
+Streamed text arrives as `agent_message_chunk` updates. The title arrives as
+`session_info_update`, and context use as `usage_update`.
+
+## What this suggests
+
+1. **Reading:** a `providers/copilot.py` discovery and history adapter over `session-state/`,
+   in the shape of the Codex one, off by default behind a Settings preview.
+2. **Running:** drive `copilot --acp` (like Codex's app-server) so permission requests become the
+   app's own permission dialog. `-p` with `--allow-tool` lists is the simpler fallback, but it
+   can't ask before each change.
+3. **Still to check:** whether shell commands ask for permission in ACP, `session/load` of an
+   earlier session, cancellation, and how ACP reports the "access denied" policy error.
+
+## Reading slice (built)
+
+`thechatplace/providers/copilot.py` reads `session-state/` directly, the way the Claude adapter
+reads transcripts. Unlike Codex there's no server to ask, and ACP's `session/list` would mean
+starting `copilot` on every refresh. It's off by default (Settings, `copilot_enabled`), and its
+capabilities grant nothing but reading.
+
+- **Listing:** one row per folder with an `events.jsonl` and at least one prompt. Folders that
+  stopped before a prompt (a refused sign-in, say) are left out. The title is `workspace.yaml`'s
+  `name`, or the first prompt when that can't be read. Only flat one-line scalars are parsed;
+  nothing is guessed.
+- **State:** from the last 256 KB of the log. One reply is several model steps, each with its
+  own `assistant.turn_start` / `assistant.turn_end` (turnId 0, 1, 2…): a step that asks for
+  tools, then the next, until one answers without `toolRequests`. So `user.message` or
+  `turn_start` means working, and an outstanding `permission.requested` means needs you. Idle
+  means a `turn_end` after an `assistant.message` with no `toolRequests`, or `session.shutdown`
+  or `abort`. A `session.error` ends a reply only after `ERROR_SETTLE_SECONDS` (30) with nothing
+  after it; a later `turn_start`, `assistant.message`, tool event or `permission.requested` means Copilot
+  carried on. No real log
+  has shown a `session.error` yet, so a Copilot that recovers more than 30 seconds after an error
+  would be announced as finished twice: worth checking when one is seen. The reply's real end, `assistant.idle`, is ephemeral and never
+  saved. Only an explicit end announces a finished reply: the Codex rule, extended to
+  `sessions.LISTED_PROVIDERS` in `hub.finished_turns` and `Snapshot.fresh_states`. A reply with
+  no writes for ten minutes stays working, with a detail saying so, so its finish is still
+  announced; after two hours (`ABANDONED_TURN_SECONDS`) it's status unavailable. Needs you
+  lasts a day (`ABANDONED_QUESTION_SECONDS`), since a Copilot closed while asking never writes
+  its end either. Each session's files are re-read only when their size or time changes, and the
+  state, title and last message come from one read.
+- **Messages:** `user.message` (its `content`, not `transformedContent`), `assistant.message`,
+  `tool.execution_start` and `tool.execution_complete` (as activity), a refused
+  `permission.completed` (Permission denied, naming what was asked), `session.error` and `abort`.
+  Everything else is skipped; bad lines are counted. The reader is incremental and waits for a
+  whole line.
+- **Confirmed on a real two-turn session** (a `-p` run, then `--continue`): a successful
+  `tool.execution_complete` has `result.content` (the command's output, or "Added 1 file(s): …"),
+  plus `result.detailedContent` (a diff for file tools), `success`, and `fileEdits` or
+  `shellExecution` depending on the tool. `--continue` appends to the same `events.jsonl` after a
+  `session.resume` event, so one reader covers every turn. The model can change between turns
+  ("auto" picked two different ones). apply_patch arguments are summarised by the files they
+  touch. Still unseen: what `workspace.yaml` does with a renamed session or a very long name.
+- **Later:** `fileEdits` could feed Changed Files (Ctrl+Shift+D), as Claude's edits do.
+
+## Next, in rough order
+
+Ideas from the first listening test, kept here so they aren't lost:
+
+1. **Changed Files for Copilot chats** (Ctrl+Shift+D), from `tool.execution_complete`'s
+   `fileEdits` and `result.detailedContent` diffs, with Open File and Open Folder actions.
+2. **Owned Copilot chats:** start and continue a Copilot chat from The Chat Place over
+   `copilot --acp`, with `session/request_permission` shown as the app's permission dialog and
+   a billing guard (`isByok` false, premium requests reported). First check the items under
+   "Still to check" above.
+3. **Upstream:** an issue proposing Copilot support, then this reading slice as its first PR,
+   following the slice-by-slice pattern used for Codex (#184).

@@ -67,10 +67,10 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   hidden), hidden (the ones you've hidden), or one of your groups. The list's name says what it
   shows and how many ("Session list, needs you, 2 of 139"), and the choice is remembered.
   Choosing one keeps you on the same session when it's still listed.
-  **Claude Chats** and **Codex Chats** filter by provider. They remain available
-  with Codex turned off; Codex Chats is empty until it is enabled.
+  **Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
+  available with Codex or Copilot turned off; each is empty until its provider is enabled.
   **View, Session List Columns** (Alt+V, E) chooses what each line says and in what order, so
-  it can start with the status rather than the title. The columns are Title, Provider (Claude or Codex), Folder,
+  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex or Copilot), Folder,
   Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
   Remote Control, Archived, Hidden and Groups, all shown at first, and **Started** and **Last message**, which aren't shown
   until you add them. Provider says which AI; Kind says where the session started. Other
@@ -783,6 +783,22 @@ such as requirements an administrator set. If a new Codex chat can't be started,
 first message is kept: in the open chat's message box if you can type there, otherwise
 on the clipboard.
 
+**Settings: local GitHub Copilot CLI history (#352).** Enable **Include GitHub Copilot CLI
+chats (read-only; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
+sessions alongside Claude. The option appears once Copilot CLI has saved a session on this
+computer: to decide that, Settings looks at the names of the folders in Copilot's session folder
+and whether each has a conversation log, never what's in them, even with the option off; with it off nothing else of Copilot's is read.
+The Chat Place reads the session folders Copilot CLI keeps in
+`%USERPROFILE%\.copilot\session-state` on Windows and `~/.copilot/session-state` on a Mac (or
+under `COPILOT_HOME`); it never starts Copilot, so reading uses none of your Copilot requests. Selecting a Copilot chat opens its messages;
+formatted reading, Find and export work too, and Show Tool Activity shows the commands and file
+changes Copilot ran. Reply in Copilot CLI: sending, approvals and Continue Here are unavailable
+in this preview. A chat that's answering says working, even while Copilot runs a command, and is
+announced once when its answer is finished. After 10 minutes with no activity it adds "no
+activity from Copilot for 10 minutes", and after 2 hours it's shown as status unavailable (Copilot
+may have been closed partway through); one waiting for your permission stays needs you for up to a day, then is shown as status
+unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot CLI in a terminal are listed as terminal sessions.
+
 ## Install
 
 You need Windows 10 or 11, or a Mac with Apple silicon. For Codex chats, the preview needs a
@@ -1028,6 +1044,10 @@ Everything it reads is on your own PC, so reading costs nothing.
 | The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (and `speech.json` for settings). If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json`. If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
 | Errors | `%APPDATA%\TheChatPlace\error.log`: anything that went wrong unexpectedly, with its traceback |
+
+Copilot CLI sessions are read from `%USERPROFILE%\.copilot\session-state\<id>\` (`~/.copilot/session-state/<id>/` on a Mac)
+(`workspace.yaml` and `events.jsonl`), and only `thechatplace/providers/copilot.py` knows
+their format.
 
 Claude sessions stay in `sessions.json`. Codex sessions and their settings use
 `provider-sessions.json`; their groups, hidden state, custom names and Show Tool

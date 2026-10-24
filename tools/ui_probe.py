@@ -774,6 +774,50 @@ def s_main_codex_unavailable(frame, env):
     frame._apply_snapshot(snapshot, [], {}, False)
 
 
+def s_main_copilot(frame, env):
+    """Synthetic Copilot CLI session folder; never the real ~/.copilot."""
+    import dataclasses
+    import json
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.providers.copilot import CopilotProvider
+    from thechatplace.session_controller import SessionController
+
+    root = env["tmp"] / "copilot" / "session-state"
+    folder = root / "synthetic-copilot"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "workspace.yaml").write_text(
+        "id: synthetic-copilot\n"
+        f"cwd: {json.dumps(str(env['folders']['Scratch']))}\n"
+        "name: Copilot history preview\n"
+        "created_at: 2026-01-01T00:00:00.000Z\nupdated_at: 2026-01-01T00:01:00.000Z\n",
+        encoding="utf-8")
+    events = [("user.message", {"content": "Explain the upload test."}),
+              ("assistant.turn_start", {"turnId": "0"}),
+              ("assistant.message", {"content": LONG_MESSAGE, "model": "auto"}),
+              ("assistant.turn_end", {"turnId": "0"})]
+    (folder / "events.jsonl").write_text("".join(
+        json.dumps({"type": kind, "data": data, "id": f"e{n}",
+                    "timestamp": "2026-01-01T00:00:00.000Z"}) + "\n"
+        for n, (kind, data) in enumerate(events)), encoding="utf-8")
+
+    frame._list_timer.Stop()  # keep the injected fixture, never enable live discovery
+    provider = CopilotProvider(root)
+    frame.sessions = SessionController([ClaudeConversations(), provider])
+    snapshot = dataclasses.replace(frame._snapshot,
+                                   sessions=[*frame._snapshot.sessions,
+                                             *provider.collect().sessions])
+    frame._apply_snapshot(snapshot, [], {}, False)
+    _open(frame, "Copilot history preview")
+
+
+def s_main_copilot_filter(frame, env):
+    from thechatplace.sessions import FIELD_PROVIDER, VIEW_COPILOT
+
+    s_main_copilot(frame, env)
+    frame.speech.session_fields = ["title", FIELD_PROVIDER, "folder", "status"]
+    frame._apply_view(VIEW_COPILOT)
+
+
 def s_main_activity(frame, env):
     _open(frame, "Fix the flaky upload test")
     frame.activity_check.SetValue(True)
@@ -836,6 +880,14 @@ def d_settings(frame, env):
 def d_settings_codex(frame, env):
     from thechatplace import platform_paths
     platform_paths.find_codex = lambda: "synthetic-native-codex"
+    return frame.on_settings
+
+
+def d_settings_copilot(frame, env):
+    """Settings once Copilot CLI has saved a session (#352): its check box shows."""
+    folder = env["tmp"] / "copilot" / "session-state" / "synthetic-copilot"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "events.jsonl").touch()
     return frame.on_settings
 
 
@@ -1266,6 +1318,10 @@ SURFACES = {
                                 "Synthetic Codex last-message column populated through the adapter"),
     "main-codex-unavailable": ("window", s_main_codex_unavailable,
                                "Cached synthetic Codex history with a redacted discovery outage notice"),
+    "main-copilot": ("window", s_main_copilot,
+                     "Synthetic Copilot CLI history in the shared window: read-only controls"),
+    "main-copilot-filter": ("window", s_main_copilot_filter,
+                            "Synthetic Copilot-only list with explicit Provider column"),
     "main-activity": ("window", s_main_activity, "Show tool activity turned on"),
     "main-last-message": ("window", s_main_last_message,
                           "The session list with the Last message column (#146)"),
@@ -1280,6 +1336,8 @@ SURFACES = {
     "message-plain": ("dialog", d_message_plain, "The same message as plain text"),
     "settings": ("dialog", d_settings, "Settings with no Codex installation"),
     "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
+    "settings-copilot": ("dialog", d_settings_copilot,
+                         "Settings once Copilot CLI has a session: its check box shows"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
@@ -1355,6 +1413,7 @@ DIALOG_CLASSES = {
     "message-plain": "MessageDialog",
     "settings": "SettingsDialog",
     "settings-codex": "SettingsDialog",
+    "settings-copilot": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-models": "NewSessionDialog",

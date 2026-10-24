@@ -860,10 +860,10 @@ With many sessions, these keep the list manageable.
 you or are working; just the ones that need you; just the working ones; the ones with a new reply
 you haven't read yet; the idle ones; desktop app sessions (Code and Cowork); just
 Cowork sessions; The Chat Place's own; terminal sessions; Remote Control sessions; Claude chats;
-Codex chats; ungrouped sessions; archived
+Codex chats; GitHub Copilot chats; ungrouped sessions; archived
 ones; hidden ones; or one of your groups.
-**Claude Chats** and **Codex Chats** filter by provider. They remain available
-when Codex is off; Codex Chats is empty until it is enabled.
+**Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
+available when Codex or Copilot is off; each is empty until its provider is enabled.
 **View, Sort Sessions** (Alt+V, O) chooses the order: by status, newest first, oldest first, by
 title, or by folder. Both choices are remembered, and you stay on the same session when it's
 still listed.
@@ -874,7 +874,7 @@ still listed.
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.
 
-The parts are called columns: Title, Provider (Claude or Codex), Folder, Status, New reply, Last activity, Kind (desktop app,
+The parts are called columns: Title, Provider (Claude, Codex or Copilot), Folder, Status, New reply, Last activity, Kind (desktop app,
 Cowork, terminal or The Chat Place), Remote Control, Archived, Hidden and Groups, all read at first. Started and Last message are read only once you add them. Provider
 says which AI; Kind says where the session started. Older saved choices gain Provider once, immediately
 after Title (or first if Title is hidden), without changing their other columns. If you remove Provider afterward, it stays removed. A column with nothing to say for
@@ -979,6 +979,27 @@ the notification brings The Chat Place forward with that session loaded. Setting
 notifications (on a Mac, Notifications) chooses every finished turn (the default), only when a
 session needs you, or off. While you're in The Chat Place, the announcement is enough and no
 notification is shown.
+
+### Local GitHub Copilot CLI history in Settings
+
+Enable **Include GitHub Copilot CLI chats (read-only; restart required)** in Settings
+(Alt+O), save and restart. The option appears once Copilot CLI has saved a session on this
+computer: Settings checks the names of the folders in Copilot's session folder, and whether each has a
+conversation log, never what's in them. With the option off, nothing else of Copilot's is read. Your GitHub Copilot CLI sessions are then listed with your Claude
+chats, and View, Show Sessions, GitHub Copilot Chats lists only them. The Chat Place reads the
+sessions Copilot CLI keeps on this computer; it never starts Copilot, so reading uses none of
+your Copilot requests. Selecting a Copilot chat opens its messages, and formatted reading, Find
+and export work too. Show Tool Activity also shows the commands and file changes Copilot ran,
+and a change you refused shows as Permission denied, with what was refused.
+
+Reply in Copilot CLI: sending, approvals and Continue Here aren't available in this preview.
+A Copilot chat that's answering says working, even while Copilot runs a command between steps,
+and you hear it once when its answer is finished. If Copilot hasn't written anything for 10
+minutes (a long command, or Copilot closed partway through), it still says working and adds "no
+activity from Copilot for 10 minutes"; after 2 hours it says status unavailable instead. A chat
+waiting for your permission stays needs you for up to a day; after that it says status
+unavailable, "waiting in Copilot for over a day", since Copilot may have been closed while asking. Sessions started in Copilot CLI in a terminal are listed as terminal sessions, so
+View, Show Sessions, Terminal Sessions includes them; ones started from another app aren't. Turn the option off and restart to hide Copilot chats again.
 
 ## More things you can do
 
@@ -1190,6 +1211,9 @@ support@theideaplace.net.
 - The Chat Place never writes to the desktop app's files or to any conversation. The only files it
   writes are its own: on Windows in `%APPDATA%\TheChatPlace`, on a Mac in
   `~/Library/Application Support/TheChatPlace`. Conversations belong to their provider; The Chat Place keeps its own settings separately.
+- Copilot CLI keeps its sessions in `%USERPROFILE%\.copilot\session-state` (on a Mac,
+  `~/.copilot/session-state`), or under `COPILOT_HOME` if you've set it. The Chat Place only
+  reads them.
 - With VoiceOver, each line of the messages list reads as it's shown, "You:" or the provider's name and
   the first line, not the whole message, because reading the whole message on each line uses a
   Windows feature. Enter opens the whole message.

@@ -5998,7 +5998,7 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
 def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
     dialog, said, focused = _columns_dialog(frame, ["title", "status"])
     try:
-        assert dialog.available.GetString(0) == "Provider (Claude or Codex)"
+        assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
         dialog.shown.SetSelection(0)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DELETE)
         assert said[-1] == "Title removed. 1 column shown."
@@ -6013,7 +6013,7 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.fields() == ["status", "title"]
         assert focused[-1] == "available"  # stays, to add more
         assert dialog.shown.GetSelection() == 1  # on what it added
-        assert dialog.available.GetString(0) == "Provider (Claude or Codex)"
+        assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
         dialog.reset()
         assert said[-1] == "Columns reset to the default: 11 shown, title first."
         assert dialog.fields()[0] == "title" and len(dialog.fields()) == 11
@@ -11396,3 +11396,95 @@ def test_agent_conversation_dialog_keeps_choices_as_chats_change(app, monkeypatc
         dialog.Destroy()
     finally:
         parent.Destroy()
+def test_copilot_history_opens_read_only_from_its_session_folder(frame, tmp_path):
+    import json
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.providers.copilot import CopilotProvider
+    from thechatplace.session_controller import SessionController
+
+    settle(frame)
+    folder = tmp_path / "copilot-synthetic"
+    folder.mkdir()
+    (folder / "workspace.yaml").write_text(
+        "id: copilot-synthetic\ncwd: C:/work/example\nname: Copilot history\n", encoding="utf-8")
+    events = [("user.message", {"content": "Synthetic question"}),
+              ("assistant.turn_start", {"turnId": "0"}),
+              ("assistant.message", {"content": "Synthetic Copilot answer"}),
+              ("assistant.turn_end", {"turnId": "0"})]
+    (folder / "events.jsonl").write_text("".join(
+        json.dumps({"type": kind, "data": data, "id": f"e{n}"}) + "\n"
+        for n, (kind, data) in enumerate(events)), encoding="utf-8")
+    provider = CopilotProvider(tmp_path)
+    frame.sessions = SessionController([ClaudeConversations(), provider])
+    info = provider.collect().sessions[0]
+    frame.open_session(info)
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+    rows = [frame.chat_list.GetString(i) for i in range(frame.chat_list.GetCount())]
+    assert rows == ["You: Synthetic question", "Copilot: Synthetic Copilot answer"]
+    assert not frame.own_reply.IsShown() and frame.desktop_reply.IsShown()
+    assert "Reply in Copilot" in frame.desktop_note.GetValue()
+    assert not frame.continue_btn.IsShown() and not frame.reply_claude_btn.IsShown()
+    assert not frame.send_btn.IsEnabled()
+    assert "read-only" in frame.messages_label.GetLabelText()
+    assert "Reply in Copilot" in frame._prompt_refused()
+
+
+@pytest.mark.parametrize("sessions, enabled, shown", [
+    (False, False, False), (True, False, True), (False, True, True)])
+def test_copilot_setting_shows_once_copilot_has_sessions(frame, env, sessions, enabled, shown):
+    from thechatplace.ui.dialogs import SettingsDialog
+    if sessions:
+        folder = env["tmp"] / "copilot" / "session-state" / "synthetic"
+        folder.mkdir(parents=True)
+        (folder / "events.jsonl").touch()
+    settings = speech.SpeechSettings()
+    settings.copilot_enabled = enabled
+    dialog = SettingsDialog(frame, settings, speech.default_options())
+    try:
+        assert (dialog.copilot_enabled is not None) == shown
+        # Hidden keeps the saved choice; shown saves what the box says.
+        assert dialog.get_settings().copilot_enabled == enabled
+        if shown:
+            dialog.copilot_enabled.SetValue(not enabled)
+            assert dialog.get_settings().copilot_enabled == (not enabled)
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_copilot_off_means_no_provider_and_no_rows(env, enabled):
+    """With the preview off, Copilot isn't registered and its sessions aren't
+    listed, even with sessions on disk (#355 review); on, they are."""
+    import json
+    from thechatplace.ui.main_frame import MainFrame
+    folder = env["tmp"] / "copilot" / "session-state" / "copilot-off-test"
+    folder.mkdir(parents=True)
+    (folder / "workspace.yaml").write_text(
+        "id: copilot-off-test\ncwd: C:/work/example\nname: Copilot row\n", encoding="utf-8")
+    (folder / "events.jsonl").write_text(json.dumps(
+        {"type": "user.message", "data": {"content": "Synthetic"}, "id": "e1"}) + "\n",
+        encoding="utf-8")
+    (env["tmp"] / "speech.json").write_text(json.dumps({"copilot_enabled": enabled}),
+                                            encoding="utf-8")
+    # A Claude row too, so a finished refresh is visible either way.
+    add_desktop(env, "local_off", "cli-off", "Claude row")
+    store = OwnSessionStore(env["tmp"] / "own.json")
+    window = MainFrame(store=store, check_updates_at_start=False)
+    try:
+        assert ("copilot" in window.sessions._providers) is enabled
+        assert pump(lambda: not window._snapshot_busy and window._snapshot.sessions is not None)
+        found = lambda: any(s.provider == "copilot" for s in window._snapshot.sessions)
+        if enabled:
+            assert pump(found)
+        else:
+            # A whole fresh snapshot, not one already in flight.
+            assert pump(lambda: not window._snapshot_busy and window._pending_refresh is None)
+            window.refresh_sessions()
+            assert pump(lambda: not window._snapshot_busy and window._pending_refresh is None)
+            assert window._snapshot.sessions and not found()
+    finally:
+        window.stop_timers()
+        window._pool.shutdown(wait=True)
+        wx.GetApp().ProcessPendingEvents()
+        window.Destroy()
+        wx.GetApp().ProcessPendingEvents()

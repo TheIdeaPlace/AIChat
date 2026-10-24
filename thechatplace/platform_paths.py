@@ -99,6 +99,33 @@ def projects_dir() -> Path:
     return claude_home() / "projects"
 
 
+def copilot_home() -> Path:
+    """``~/.copilot`` (honours COPILOT_HOME, as GitHub Copilot CLI does)."""
+    override = os.environ.get("COPILOT_HOME")
+    if override:
+        return Path(override)
+    return Path.home() / ".copilot"
+
+
+def copilot_sessions_dir() -> Path:
+    """One folder per Copilot CLI session, each named for its id."""
+    return copilot_home() / "session-state"
+
+
+def copilot_has_sessions() -> bool:
+    """Whether Copilot CLI has saved a session here: a session folder with a
+    conversation log. Until it has, there is nothing for the read-only
+    preview to list (#352). Looks at folder names and one file's existence,
+    never at what's in them."""
+    try:
+        with os.scandir(copilot_sessions_dir()) as entries:
+            return any(entry.is_dir() and not entry.name.startswith(".")
+                       and os.path.isfile(os.path.join(entry.path, "events.jsonl"))
+                       for entry in entries)
+    except OSError:
+        return False
+
+
 def live_sessions_dir() -> Path:
     return claude_home() / "sessions"
 
