@@ -47,9 +47,11 @@ _FILE_KINDS = frozenset({"edit", "delete", "move"})
 #: As Codex's queue (codex_runtime): enough to keep working, never unbounded.
 MAX_QUEUED = 20
 MAX_QUEUED_CHARS = 128_000
+#: Streamed text is shown at most this often, so a long answer in many tiny
+#: chunks can't flood the window or hold up the reader thread.
+CHUNK_NOTIFY_SECONDS = 0.05
 #: The session log is written a moment after the turn's answer arrives.
 BILLING_WAIT_SECONDS = 15.0
-BILLING_TAIL_BYTES = 256 * 1024
 
 
 class CopilotChatError(Exception):
@@ -184,18 +186,19 @@ def usage_kinds(events_path: Path, offset: int = 0) -> tuple:
     """The ``provider.kind`` of each session.usage_record written to the
     session's log after byte ``offset``, oldest first: who answered."""
     try:
-        with open(events_path, "rb") as handle:
-            size = os.fstat(handle.fileno()).st_size
-            # Only the end: the record is written last, and a turn's tool
-            # output can be large.
-            handle.seek(max(offset, size - BILLING_TAIL_BYTES))
-            data = handle.read()
+        handle = open(events_path, "rb")
     except OSError:
         return ()
+    with handle:
+        # Everything this turn wrote, line by line: one turn can call the
+        # model several times, and an early call's record counts too.
+        try:
+            handle.seek(offset)
+            lines = [raw for raw in handle if b"session.usage_record" in raw]
+        except OSError:
+            return ()  # not readable this moment: no record yet, checked again
     kinds = []
-    for raw in data.split(b"\n"):
-        if b"session.usage_record" not in raw:
-            continue
+    for raw in lines:
         try:
             event = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
@@ -252,6 +255,7 @@ class _Chat:
         self.log_offset = 0
         #: Waiting messages taken back by a stop the person didn't ask for.
         self.held: tuple = ()
+        self.last_chunk_notice = 0.0
 
     @property
     def safe(self) -> bool:
@@ -282,11 +286,21 @@ class CopilotChatRuntime:
         self._chats: Dict[str, _Chat] = {}
         #: Latched for every chat when billing can't be confirmed.
         self._halted = ""
+        #: Chats this runtime may reopen: ones it created, and ones the
+        #: window says The Chat Place owns (adopt). Any ACP client's chat
+        #: says "github/acp", so that alone doesn't make a chat ours.
+        self._owned: set = set()
         self._closed = False
 
     # -- the connection ------------------------------------------------------
 
     def _connect(self) -> copilot_acp.AcpConnection:
+        try:
+            return self._connect_once()
+        except copilot_acp.AcpError as exc:
+            raise CopilotChatError(str(exc)) from None
+
+    def _connect_once(self) -> copilot_acp.AcpConnection:
         with self._connect_lock:
             with self._lock:
                 if self._closed:
@@ -324,7 +338,10 @@ class CopilotChatRuntime:
     def create(self, cwd: str) -> str:
         """A new Copilot chat in ``cwd``; its native id. No prompt is sent."""
         connection = self._connect()
-        result = connection.request("session/new", {"cwd": cwd, "mcpServers": []})
+        try:
+            result = connection.request("session/new", {"cwd": cwd, "mcpServers": []})
+        except copilot_acp.AcpError as exc:
+            raise CopilotChatError(str(exc)) from None
         native_id = result.get("sessionId")
         if not isinstance(native_id, str) or not platform_paths.is_safe_id(native_id):
             raise CopilotChatError("Copilot didn't start a chat.")
@@ -333,8 +350,16 @@ class CopilotChatRuntime:
         chat.connection = connection
         with self._lock:
             self._chats[native_id] = chat
+            self._owned.add(native_id)
         self._notify(chat)
         return native_id
+
+    def adopt(self, native_id: str) -> None:
+        """Let prepare() reopen a chat The Chat Place started in an earlier
+        run. The caller must have checked its own record of owned chats."""
+        if platform_paths.is_safe_id(native_id):
+            with self._lock:
+                self._owned.add(native_id)
 
     def ready(self, native_id: str) -> bool:
         """Open on the running Copilot and safe to send to; no I/O."""
@@ -358,7 +383,9 @@ class CopilotChatRuntime:
             raise CopilotChatError("That isn't a Copilot chat.")
         if self.ready(native_id):
             return
-        if _client_of(self._events(native_id).parent) != ACP_CLIENT:
+        with self._lock:
+            owned = native_id in self._owned
+        if not owned or _client_of(self._events(native_id).parent) != ACP_CLIENT:
             raise CopilotChatError("This Copilot chat was started outside The Chat Place, "
                                    "so it can only be read here.")
         connection = self._connect()
@@ -374,9 +401,11 @@ class CopilotChatRuntime:
             result = connection.request("session/load", {
                 "sessionId": native_id, "cwd": cwd, "mcpServers": []},
                 timeout=copilot_acp.LOAD_SECONDS)
-        except Exception:
+        except Exception as exc:
             with self._lock:
                 chat.loading, chat.connection = False, None
+            if isinstance(exc, copilot_acp.AcpError):
+                raise CopilotChatError(str(exc)) from None
             raise
         kinds = usage_kinds(self._events(native_id), chat.log_offset)
         with self._lock:
@@ -384,6 +413,9 @@ class CopilotChatRuntime:
             chat.apply(_settings(result.get("configOptions")))
             if chat.problem and not self._halted and kinds and all(k == "copilot" for k in kinds):
                 chat.problem = ""  # the late record has arrived, and it's Copilot's
+            late_elsewhere = any(k != "copilot" for k in kinds)
+        if late_elsewhere:
+            self._halt()
         self._notify(chat)
 
     # -- sending -------------------------------------------------------------
@@ -472,8 +504,10 @@ class CopilotChatRuntime:
                 chat.unsent, chat.queue = held + tuple(chat.queue), []
                 if refusal and chat.unsent and not chat.notice:
                     chat.notice = refusal
-            elif chat.queue:
-                self._begin(chat, chat.queue.pop(0))
+            else:
+                chat.unsent = held  # anything a stop held back, never dropped
+                if chat.queue:
+                    self._begin(chat, chat.queue.pop(0))
         self._notify(chat)
 
     def _check_billing(self, chat: _Chat, outcome: str) -> None:
@@ -506,22 +540,25 @@ class CopilotChatRuntime:
                 chat.problem = self._halted
         for chat in chats:
             if chat.busy:
-                waiting = self.stop(chat.native_id)
-                with self._lock:
-                    chat.held += waiting  # given back unsent when the turn ends
+                self.stop(chat.native_id, hold=True)
         for chat in chats:
             self._notify(chat)  # every chat shows it, running or not
 
-    def stop(self, native_id: str) -> tuple:
+    def stop(self, native_id: str, *, hold: bool = False) -> tuple:
         """Cancel the running turn; the messages still waiting come back.
         Waiting permission requests are answered "cancelled" first, as ACP
-        asks of a client that cancels."""
+        asks of a client that cancels. With ``hold`` (a stop the person
+        didn't ask for) the messages are kept and given back as unsent when
+        the turn ends, rather than returned."""
         with self._lock:
             chat = self._chats.get(native_id)
             if chat is None or not chat.busy:
                 return ()
             chat.stopping = True
             waiting, chat.queue = tuple(chat.queue), []
+            if hold:
+                chat.held += waiting
+                waiting = ()
             requests = list(chat.requests)
             chat.requests.clear()
             connection = chat.connection
@@ -566,22 +603,26 @@ class CopilotChatRuntime:
 
     def _on_request(self, connection, request_id, method: str, params: dict) -> None:
         chat = self._chat_on(connection, params.get("sessionId"))
+        try:
+            request = CopilotRequest.decode(request_id, params, str(chat.turns) if chat else "")
+            problem = ""
+        except CopilotChatError as exc:
+            request, problem = None, str(exc)
         with self._lock:
+            # Checked and stored in one go, so a Stop can't slip in between
+            # and leave this request stored but never answered.
             watched = (chat is not None and not chat.loading and chat.busy
                        and not chat.stopping and not self._halted)
-        if not watched:
-            # Not a running turn of ours: never allow something nobody is watching.
-            connection.respond(request_id, {"outcome": {"outcome": "cancelled"}})
-            return
-        try:
-            request = CopilotRequest.decode(request_id, params, str(chat.turns))
-        except CopilotChatError as exc:
-            connection.respond(request_id, {"outcome": {"outcome": "cancelled"}})
-            with self._lock:
-                chat.notice = str(exc)
-        else:
-            with self._lock:
+            if watched and request is not None:
                 chat.requests[request_id] = request
+            elif watched:
+                chat.notice = problem
+        if not watched or request is None:
+            # Not a running turn of ours, or not answerable safely: never
+            # allow something nobody is watching.
+            connection.respond(request_id, {"outcome": {"outcome": "cancelled"}})
+            if not watched:
+                return
         self._notify(chat)
 
     def _on_notification(self, connection, method: str, params: dict) -> None:
@@ -611,13 +652,17 @@ class CopilotChatRuntime:
                 if not piece:
                     return
                 if not chat.reply_open:
-                    chat.replies.append([f"{chat.turns}:{len(chat.replies)}", ""])
+                    chat.replies.append([f"{chat.turns}:{len(chat.replies)}", []])
                     chat.reply_open = True
-                chat.replies[-1][1] += piece
+                chat.replies[-1][1].append(piece)
+                now = time.monotonic()
+                if now - chat.last_chunk_notice < CHUNK_NOTIFY_SECONDS:
+                    return  # the turn's end, or the next update, shows it
+                chat.last_chunk_notice = now
             elif kind in ("tool_call", "tool_call_update"):
                 chat.reply_open = False  # text after a tool is a new reply
                 if _text(update.get("title"), 500):
-                    chat.activity = update["title"]
+                    chat.activity = _text(update.get("title"), 500)
             elif kind == "usage_update":
                 used, size = update.get("used"), update.get("size")
                 if isinstance(used, int) and isinstance(size, int):
@@ -625,9 +670,7 @@ class CopilotChatRuntime:
             else:
                 return
         if kind in ("config_option_update", "current_mode_update") and unsafe_turn:
-            waiting = self.stop(chat.native_id)
-            with self._lock:
-                chat.held += waiting
+            self.stop(chat.native_id, hold=True)
         self._notify(chat)
 
     # -- state -----------------------------------------------------------------
@@ -648,7 +691,7 @@ class CopilotChatRuntime:
             state = IDLE
         return CopilotChatState(
             native_id=chat.native_id, state=state, turn_id=str(chat.turns), outcome=chat.outcome,
-            replies=tuple((rid, text) for rid, text in chat.replies),
+            replies=tuple((rid, "".join(pieces)) for rid, pieces in chat.replies),
             requests=tuple(chat.requests.values()), queued=tuple(chat.queue), unsent=chat.unsent,
             problem=chat.problem, started_at=chat.started_at, activity=chat.activity,
             notice=chat.notice, context_used=chat.context[0], context_size=chat.context[1])

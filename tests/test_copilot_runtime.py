@@ -206,6 +206,11 @@ def test_reopening_a_chat_ignores_the_replayed_history(make, tmp_path):
     runtime, _ = make()
     native = "11111111-2222-3333-4444-555555555555"
     write_workspace(tmp_path, native, "github/acp")
+    # Any ACP client's chat says github/acp; it must also be one the window
+    # says The Chat Place owns.
+    with pytest.raises(CopilotChatError, match="started outside The Chat Place"):
+        runtime.prepare(native, str(tmp_path))
+    runtime.adopt(native)
     runtime.prepare(native, str(tmp_path))
     state = runtime.snapshot(native)
     assert state.replies == () and runtime.ready(state.native_id)
@@ -224,7 +229,8 @@ def test_a_chat_started_elsewhere_stays_read_only(make, tmp_path, client):
 
 def test_another_agent_is_refused(make, tmp_path):
     runtime, _ = make("oldagent")
-    with pytest.raises(copilot_acp.AcpError, match="isn't supported"):
+    # Callers only ever see CopilotChatError, with a message safe to show.
+    with pytest.raises(CopilotChatError, match="isn't supported"):
         runtime.create(str(tmp_path))
 
 
@@ -330,3 +336,81 @@ def test_after_copilot_exits_a_chat_must_be_opened_again(make, tmp_path):
     assert runtime.ready(chat)
     runtime.send(chat, "Hello")
     assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+
+
+def test_probe_tool_runs_a_chat_and_asks_about_permissions(tmp_path, monkeypatch, capsys):
+    """tools/probe_copilot.py drives the same runtime, in plain text."""
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parent.parent / "tools"))
+    import probe_copilot
+    env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"))
+    real = probe_copilot.CopilotChatRuntime
+    monkeypatch.setattr(probe_copilot, "CopilotChatRuntime", lambda on_update: real(
+        on_update, start=lambda: Process("ask", env), sessions_dir=tmp_path / "sessions",
+        billing_wait=1.0))
+    answers = iter(["Run it", "n", "/allow-all on", ""])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert probe_copilot.main(["--folder", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "Safe to send (agent mode, allow-all off): yes" in out
+    assert "Copilot asks permission." in out and "echo synthetic" in out
+    assert "Denied." in out and "Copilot: Denied" in out and "[turn completed]" in out
+    assert "Not sent: Copilot commands starting with /" in out
+
+
+def test_a_request_racing_a_stop_is_answered_not_left_waiting(make, tmp_path):
+    """A permission request that arrives after Stop is cancelled at once."""
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    runtime.stop(chat)
+    connection = runtime._connection
+    sent = []
+    real = connection.respond
+    connection.respond = lambda rid, result: (sent.append((rid, result)), real(rid, result))
+    runtime._on_request(connection, "late", "session/request_permission", {
+        "sessionId": chat, "toolCall": {"kind": "execute", "rawInput": {"command": "x"}},
+        "options": [{"optionId": "r", "kind": "reject_once"}]})
+    assert sent == [("late", {"outcome": {"outcome": "cancelled"}})]
+    assert not runtime.snapshot(chat).requests
+
+
+def test_messages_held_by_an_automatic_stop_always_come_back(make, tmp_path):
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    runtime.send(chat, "Waiting")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    assert runtime.stop(chat, hold=True) == ()  # kept, not returned
+    assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+    assert runtime.snapshot(chat).unsent == ("Waiting",)
+
+
+def test_a_late_record_from_elsewhere_stops_everything_on_reopening(make, tmp_path):
+    runtime, _ = make("nolog")
+    chat = runtime.create(str(tmp_path))
+    other = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).problem)
+    assert runtime.ready(other)
+    log = tmp_path / "sessions" / chat / "events.jsonl"
+    with open(log, "a", encoding="utf-8") as handle:  # the late record arrives
+        handle.write(json.dumps({"type": "session.usage_record", "data": {
+            "usage": {"provider": {"kind": "openai"}}}}) + "\n")
+    runtime._chats[chat].connection = None  # opened again
+    runtime.prepare(chat, str(tmp_path))
+    assert not runtime.ready(other) and runtime.snapshot(other).problem
+
+
+def test_probe_tool_says_each_reply_once_across_turns(tmp_path, monkeypatch, capsys):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parent.parent / "tools"))
+    import probe_copilot
+    env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"))
+    real = probe_copilot.CopilotChatRuntime
+    monkeypatch.setattr(probe_copilot, "CopilotChatRuntime", lambda on_update: real(
+        on_update, start=lambda: Process("answer", env), sessions_dir=tmp_path / "sessions",
+        billing_wait=1.0))
+    answers = iter(["One", "Two", ""])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert probe_copilot.main(["--folder", str(tmp_path)]) == 0
+    assert capsys.readouterr().out.count("Copilot: Hello there") == 2  # once per turn
