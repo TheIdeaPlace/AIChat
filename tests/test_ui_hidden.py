@@ -11488,3 +11488,90 @@ def test_copilot_off_means_no_provider_and_no_rows(env, enabled):
         wx.GetApp().ProcessPendingEvents()
         window.Destroy()
         wx.GetApp().ProcessPendingEvents()
+
+
+# -- the owned-chat path is shared by every runtime provider (#352) --------
+
+
+def _other_runtime_chat(frame, monkeypatch, calls):
+    """A made-up provider with a runtime, routed like Codex."""
+    from types import SimpleNamespace
+    from thechatplace.ui import main_frame
+    from thechatplace.sessions import OWN, SessionInfo
+    monkeypatch.setattr(main_frame, "RUNTIME_PROVIDERS", ("codex", "otherai"))
+    info = SessionInfo(OWN, "otherai:x1", "Other chat", "C:/work", "x1", provider="otherai")
+    record = SimpleNamespace(cli_session_id="x1", title="Other chat", provider="otherai",
+                             to_info=lambda: info)
+    monkeypatch.setattr(frame.store, "get", lambda native, provider=None, **kw:
+                        record if (native, provider) == ("x1", "otherai") else None)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: chat is not None and chat.key == info.key)
+    def owned_action(action, rec, *args):
+        calls.append((action, rec.provider, args))
+        return False if action == "send" else True
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    monkeypatch.setattr(frame, "_open", info)
+    return info, record
+
+
+def test_send_and_stop_route_any_runtime_providers_chat(frame, env, monkeypatch):
+    settle(frame)
+    calls = []
+    _other_runtime_chat(frame, monkeypatch, calls)
+    frame.reply_text.SetValue("Hello other")
+    frame.on_send()
+    assert pump(lambda: ("send", "otherai", ("Hello other",)) in calls)
+    frame.on_stop()
+    assert pump(lambda: any(c[0] == "stop" and c[1] == "otherai" for c in calls))
+    # Its queue rows come from its own runtime state, by its own key.
+    from thechatplace.providers.codex_runtime import CodexChatState
+    frame._codex_states["otherai:x1"] = CodexChatState("x1", "working", "t", "inProgress",
+                                                       queued=("Waiting text",))
+    assert [m.text for m in frame._queued_rows()] == ["Waiting text"]
+
+
+def test_a_runtime_providers_update_is_announced_by_its_own_name(frame, env, monkeypatch):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    settle(frame)
+    calls = []
+    info, _record = _other_runtime_chat(frame, monkeypatch, calls)
+    monkeypatch.setattr(frame, "_store_write", lambda *a, **kw: True)
+    spoken = []
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: spoken.append(text))
+    monkeypatch.setattr(frame, "_notify", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "_check_codex_usage", lambda chat: None)
+    frame._on_owned_update("otherai", CodexChatState(
+        "x1", "idle", "turn-1", "completed"))
+    assert "Other chat: Otherai answered." in spoken
+    assert frame._codex_states["otherai:x1"].outcome == "completed"
+
+
+def test_unlisted_providers_never_take_the_runtime_path(frame, env, monkeypatch):
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    calls = []
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a: calls.append(a))
+    monkeypatch.setattr(frame, "_codex_work", lambda action, done: calls.append(action))
+    other = SessionInfo(OWN, "notlisted:y", "Unlisted", "C:/w", "y", provider="notlisted")
+    monkeypatch.setattr(frame, "_open", other)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    frame.reply_text.SetValue("Hello")
+    frame.on_send()  # refused at once by the capability check, not routed
+    assert calls == []
+
+
+
+def test_each_runtime_providers_usage_check_keeps_its_own_slot(frame, monkeypatch):
+    from types import SimpleNamespace
+    settle(frame)
+    started = []
+    monkeypatch.setattr(frame.sessions, "usage_warnings", lambda info: (), raising=False)
+    monkeypatch.setattr(frame, "_codex_work", lambda action, done: started.append(done))
+    codex = SimpleNamespace(provider="codex", key="codex:a")
+    other = SimpleNamespace(provider="otherai", key="otherai:b")
+    frame._check_codex_usage(codex)
+    frame._check_codex_usage(other)  # not swallowed by Codex's pending check
+    assert len(started) == 2
+    frame._check_codex_usage(SimpleNamespace(provider="codex", key="codex:c"))
+    assert frame._codex_usage_check_again.key == "codex:c"
+    assert frame._runtime_usage_checks["otherai"]["again"] is None

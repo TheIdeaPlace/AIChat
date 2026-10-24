@@ -36,6 +36,13 @@ STATUS_UNAVAILABLE = "status unavailable"
 #: an explicit idle finishes a turn there, and their history is read in that
 #: app's terms ("Reply in Copilot CLI"), never as a Claude transcript.
 LISTED_PROVIDERS = ("codex", "copilot")
+#: Backends whose owned chats run through a provider runtime that the window
+#: drives with SessionController.owned_action (send, stop, answer, prepare,
+#: live state updates). Codex now; each provider is added when its runtime
+#: and window support land (#352). Adding one also means wiring its
+#: on_update to MainFrame._on_owned_update where providers are built, and
+#: Stop's recovery (codex_chats._stop_codex_owned) knowing its errors.
+RUNTIME_PROVIDERS = ("codex",)
 #: The app to go to for a listed provider's chat ("Reply in Copilot CLI").
 HOME_APPS = {"codex": "Codex", "copilot": "Copilot CLI"}
 
