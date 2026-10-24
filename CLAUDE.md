@@ -74,9 +74,8 @@ id=$(gh run list -R TheIdeaPlace/AIChat -w "Release The Chat Place" -b v<version
 [ -n "$id" ] && gh api -X POST repos/TheIdeaPlace/AIChat/actions/runs/$id/pending_deployments -F "environment_ids[]=23643397700" -f state=approved -f comment=release
 ```
 
-Code-owner review covers workflows, build scripts, tests, tools, requirements and `docs/`
-(`.github/CODEOWNERS`); Kelly can't approve his own PRs, so his PRs touching those merge with an
-admin bypass.
+Code-owner review covers every file (`.github/CODEOWNERS`): for now Kelly reviews whatever ships,
+from anyone. He can't approve his own PRs, so his merge with an admin bypass.
 
 **Release notes and the user guide, with every user-visible change** (the QuickMail process):
 - The **open** notes file is the highest `release-notes/vX.Y.Z.md` with no matching tag. Add an
