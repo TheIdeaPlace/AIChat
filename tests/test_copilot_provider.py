@@ -316,7 +316,8 @@ def test_quiet_waits_and_left_behind_replies():
     gone = now - ABANDONED_TURN_SECONDS * 1000 - 1
     assert state_from_events(start, gone, now) == (
         "status unavailable", "no activity from Copilot for over 2 hours")
-    assert state_from_events(asked, gone, now)[0] == "status unavailable"
+    # Waiting on you stays Needs You however long it waits (#355 review).
+    assert state_from_events(asked, gone, now) == (NEEDS_YOU, "waiting in Copilot")
 
 
 def test_title_from_the_first_prompt_is_read_once(tmp_path, monkeypatch):
@@ -347,3 +348,66 @@ def test_last_message_only_for_the_rows_own_activity(tmp_path):
     provider.collect()
     provider.fill_last_messages(old)  # a row from before the newer read
     assert old[0].last_message == ""
+
+
+def test_an_error_ends_a_reply_only_once_nothing_follows():
+    """No real Copilot log has shown a session.error yet (#355 review): it
+    counts as the end only after ERROR_SETTLE_SECONDS of quiet, so a Copilot
+    that recovers isn't announced as finished twice."""
+    from thechatplace.providers.copilot import ERROR_SETTLE_SECONDS
+    now = 10_000_000
+    errored = [json.dumps(event("assistant.turn_start", 1, turnId="0")),
+               json.dumps(event("session.error", 2, message="Rate limited"))]
+    assert state_from_events(errored, now, now)[0] == WORKING
+    settled = now - ERROR_SETTLE_SECONDS * 1000 - 1
+    assert state_from_events(errored, settled, now)[0] == IDLE
+    recovered = errored + [json.dumps(event("assistant.turn_start", 3, turnId="1"))]
+    assert state_from_events(recovered, settled, now)[0] == WORKING
+    # An error with no reply running doesn't start one.
+    assert state_from_events([json.dumps(event("session.error", 4))], now, now)[0] \
+        == "status unavailable"
+
+
+def test_a_session_without_workspace_yaml_yet_is_skipped_not_unreadable(tmp_path):
+    folder = tmp_path / ONE
+    folder.mkdir()
+    (folder / "events.jsonl").write_text(
+        "".join(json.dumps(e) + "\n" for e in answered_turn()), encoding="utf-8")
+    snapshot = CopilotProvider(tmp_path).collect()
+    assert snapshot.sessions == [] and snapshot.unreadable_files == 0
+
+
+def test_an_error_while_permission_is_asked_still_needs_you():
+    from thechatplace.providers.copilot import ERROR_SETTLE_SECONDS
+    now = 10_000_000
+    lines = [json.dumps(event("assistant.turn_start", 1, turnId="0")),
+             json.dumps(event("permission.requested", 2, requestId="r")),
+             json.dumps(event("session.error", 3, message="transient"))]
+    settled = now - ERROR_SETTLE_SECONDS * 1000 - 1
+    assert state_from_events(lines, settled, now)[0] == NEEDS_YOU
+    # Errors after tools, and twice over, settle the same way.
+    tools = [json.dumps(event("assistant.turn_start", 1, turnId="0")),
+             json.dumps(event("tool.execution_start", 2, toolCallId="a")),
+             json.dumps(event("session.error", 3)), json.dumps(event("session.error", 4))]
+    assert state_from_events(tools, now, now)[0] == WORKING
+    assert state_from_events(tools, settled, now)[0] == IDLE
+
+
+def test_a_folder_without_workspace_yaml_for_long_is_counted(tmp_path):
+    import os
+    folder = tmp_path / ONE
+    folder.mkdir()
+    log = folder / "events.jsonl"
+    log.write_text("".join(json.dumps(e) + "\n" for e in answered_turn()), encoding="utf-8")
+    old = log.stat().st_mtime - 3600
+    os.utime(log, (old, old))
+    snapshot = CopilotProvider(tmp_path).collect()
+    assert snapshot.sessions == [] and snapshot.unreadable_files == 1
+
+
+def test_settings_needs_a_real_session_log_not_just_a_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(platform_paths, "copilot_sessions_dir", lambda: tmp_path)
+    (tmp_path / "empty-folder").mkdir()
+    assert not platform_paths.copilot_has_sessions()
+    write_session(tmp_path, ONE, answered_turn())
+    assert platform_paths.copilot_has_sessions()

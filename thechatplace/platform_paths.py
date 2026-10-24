@@ -113,11 +113,15 @@ def copilot_sessions_dir() -> Path:
 
 
 def copilot_has_sessions() -> bool:
-    """Whether Copilot CLI has saved a session here: until it has, there is
-    nothing for the read-only preview to list (#352)."""
+    """Whether Copilot CLI has saved a session here: a session folder with a
+    conversation log. Until it has, there is nothing for the read-only
+    preview to list (#352). Looks at folder names and one file's existence,
+    never at what's in them."""
     try:
-        return any(entry.is_dir() and not entry.name.startswith(".")
-                   for entry in os.scandir(copilot_sessions_dir()))
+        with os.scandir(copilot_sessions_dir()) as entries:
+            return any(entry.is_dir() and not entry.name.startswith(".")
+                       and os.path.isfile(os.path.join(entry.path, "events.jsonl"))
+                       for entry in entries)
     except OSError:
         return False
 

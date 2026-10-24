@@ -860,7 +860,7 @@ With many sessions, these keep the list manageable.
 you or are working; just the ones that need you; just the working ones; the ones with a new reply
 you haven't read yet; the idle ones; desktop app sessions (Code and Cowork); just
 Cowork sessions; The Chat Place's own; terminal sessions; Remote Control sessions; Claude chats;
-Codex chats; ungrouped sessions; archived
+Codex chats; GitHub Copilot chats; ungrouped sessions; archived
 ones; hidden ones; or one of your groups.
 **Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
 available when Codex or Copilot is off; each is empty until its provider is enabled.
@@ -874,7 +874,7 @@ still listed.
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.
 
-The parts are called columns: Title, Provider (Claude or Codex), Folder, Status, New reply, Last activity, Kind (desktop app,
+The parts are called columns: Title, Provider (Claude, Codex or Copilot), Folder, Status, New reply, Last activity, Kind (desktop app,
 Cowork, terminal or The Chat Place), Remote Control, Archived, Hidden and Groups, all read at first. Started and Last message are read only once you add them. Provider
 says which AI; Kind says where the session started. Older saved choices gain Provider once, immediately
 after Title (or first if Title is hidden), without changing their other columns. If you remove Provider afterward, it stays removed. A column with nothing to say for
@@ -984,7 +984,8 @@ notification is shown.
 
 Enable **Include GitHub Copilot CLI chats (read-only; restart required)** in Settings
 (Alt+O), save and restart. The option appears once Copilot CLI has saved a session on this
-computer. Your GitHub Copilot CLI sessions are then listed with your Claude
+computer: Settings checks the names of the folders in Copilot's session folder for that, never
+what's in them. With the option off, nothing else of Copilot's is read. Your GitHub Copilot CLI sessions are then listed with your Claude
 chats, and View, Show Sessions, GitHub Copilot Chats lists only them. The Chat Place reads the
 sessions Copilot CLI keeps on this computer; it never starts Copilot, so reading uses none of
 your Copilot requests. Selecting a Copilot chat opens its messages, and formatted reading, Find
@@ -993,9 +994,10 @@ and a change you refused shows as Permission denied, with what was refused.
 
 Reply in Copilot CLI: sending, approvals and Continue Here aren't available in this preview.
 A Copilot chat that's answering says working, even while Copilot runs a command between steps,
-and you hear it once when its answer is finished. If Copilot hasn't written anything for ten
+and you hear it once when its answer is finished. If Copilot hasn't written anything for 10
 minutes (a long command, or Copilot closed partway through), it still says working and adds "no
-activity from Copilot for 10 minutes". Sessions started in Copilot CLI in a terminal are listed as terminal sessions, so
+activity from Copilot for 10 minutes"; after 2 hours it says status unavailable instead. A chat
+waiting for your permission stays needs you however long it waits. Sessions started in Copilot CLI in a terminal are listed as terminal sessions, so
 View, Show Sessions, Terminal Sessions includes them; ones started from another app aren't. Turn the option off and restart to hide Copilot chats again.
 
 ## More things you can do

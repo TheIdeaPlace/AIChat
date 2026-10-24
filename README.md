@@ -70,7 +70,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   **Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
   available with Codex or Copilot turned off; each is empty until its provider is enabled.
   **View, Session List Columns** (Alt+V, E) chooses what each line says and in what order, so
-  it can start with the status rather than the title. The columns are Title, Provider (Claude or Codex), Folder,
+  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex or Copilot), Folder,
   Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
   Remote Control, Archived, Hidden and Groups, all shown at first, and **Started** and **Last message**, which aren't shown
   until you add them. Provider says which AI; Kind says where the session started. Other
@@ -785,14 +785,18 @@ on the clipboard.
 
 **Settings: local GitHub Copilot CLI history (#352).** Enable **Include GitHub Copilot CLI
 chats (read-only; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
-sessions alongside Claude. The option appears once Copilot CLI has saved a session on this computer. The Chat Place reads the session folders Copilot CLI keeps in
-`%USERPROFILE%\.copilot\session-state` (or under `COPILOT_HOME`); it never starts Copilot, so
-reading uses none of your Copilot requests. Selecting a Copilot chat opens its messages;
+sessions alongside Claude. The option appears once Copilot CLI has saved a session on this
+computer: to decide that, Settings looks at the names of the folders in Copilot's session folder,
+never what's in them, even with the option off; with it off nothing else of Copilot's is read.
+The Chat Place reads the session folders Copilot CLI keeps in
+`%USERPROFILE%\.copilot\session-state` on Windows and `~/.copilot/session-state` on a Mac (or
+under `COPILOT_HOME`); it never starts Copilot, so reading uses none of your Copilot requests. Selecting a Copilot chat opens its messages;
 formatted reading, Find and export work too, and Show Tool Activity shows the commands and file
 changes Copilot ran. Reply in Copilot CLI: sending, approvals and Continue Here are unavailable
 in this preview. A chat that's answering says working, even while Copilot runs a command, and is
-announced once when its answer is finished; after ten minutes with no activity it adds "no
-activity from Copilot for 10 minutes". Sessions started in Copilot CLI in a terminal are listed as terminal sessions.
+announced once when its answer is finished. After 10 minutes with no activity it adds "no
+activity from Copilot for 10 minutes", and after 2 hours it's shown as status unavailable (Copilot
+may have been closed partway through); one waiting for your permission stays needs you. Sessions started in Copilot CLI in a terminal are listed as terminal sessions.
 
 ## Install
 
@@ -1040,7 +1044,7 @@ Everything it reads is on your own PC, so reading costs nothing.
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json`. If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
 | Errors | `%APPDATA%\TheChatPlace\error.log`: anything that went wrong unexpectedly, with its traceback |
 
-Copilot CLI sessions are read from `%USERPROFILE%\.copilot\session-state\<id>\`
+Copilot CLI sessions are read from `%USERPROFILE%\.copilot\session-state\<id>\` (`~/.copilot/session-state/<id>/` on a Mac)
 (`workspace.yaml` and `events.jsonl`), and only `thechatplace/providers/copilot.py` knows
 their format.
 

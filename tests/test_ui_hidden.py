@@ -11434,7 +11434,9 @@ def test_copilot_history_opens_read_only_from_its_session_folder(frame, tmp_path
 def test_copilot_setting_shows_once_copilot_has_sessions(frame, env, sessions, enabled, shown):
     from thechatplace.ui.dialogs import SettingsDialog
     if sessions:
-        (env["tmp"] / "copilot" / "session-state" / "synthetic").mkdir(parents=True)
+        folder = env["tmp"] / "copilot" / "session-state" / "synthetic"
+        folder.mkdir(parents=True)
+        (folder / "events.jsonl").touch()
     settings = speech.SpeechSettings()
     settings.copilot_enabled = enabled
     dialog = SettingsDialog(frame, settings, speech.default_options())
@@ -11447,3 +11449,42 @@ def test_copilot_setting_shows_once_copilot_has_sessions(frame, env, sessions, e
             assert dialog.get_settings().copilot_enabled == (not enabled)
     finally:
         dialog.Destroy()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_copilot_off_means_no_provider_and_no_rows(env, enabled):
+    """With the preview off, Copilot isn't registered and its sessions aren't
+    listed, even with sessions on disk (#355 review); on, they are."""
+    import json
+    from thechatplace.ui.main_frame import MainFrame
+    folder = env["tmp"] / "copilot" / "session-state" / "copilot-off-test"
+    folder.mkdir(parents=True)
+    (folder / "workspace.yaml").write_text(
+        "id: copilot-off-test\ncwd: C:/work/example\nname: Copilot row\n", encoding="utf-8")
+    (folder / "events.jsonl").write_text(json.dumps(
+        {"type": "user.message", "data": {"content": "Synthetic"}, "id": "e1"}) + "\n",
+        encoding="utf-8")
+    (env["tmp"] / "speech.json").write_text(json.dumps({"copilot_enabled": enabled}),
+                                            encoding="utf-8")
+    # A Claude row too, so a finished refresh is visible either way.
+    add_desktop(env, "local_off", "cli-off", "Claude row")
+    store = OwnSessionStore(env["tmp"] / "own.json")
+    window = MainFrame(store=store, check_updates_at_start=False)
+    try:
+        assert ("copilot" in window.sessions._providers) is enabled
+        assert pump(lambda: not window._snapshot_busy and window._snapshot.sessions is not None)
+        found = lambda: any(s.provider == "copilot" for s in window._snapshot.sessions)
+        if enabled:
+            assert pump(found)
+        else:
+            # A whole fresh snapshot, not one already in flight.
+            assert pump(lambda: not window._snapshot_busy and window._pending_refresh is None)
+            window.refresh_sessions()
+            assert pump(lambda: not window._snapshot_busy and window._pending_refresh is None)
+            assert window._snapshot.sessions and not found()
+    finally:
+        window.stop_timers()
+        window._pool.shutdown(wait=True)
+        wx.GetApp().ProcessPendingEvents()
+        window.Destroy()
+        wx.GetApp().ProcessPendingEvents()

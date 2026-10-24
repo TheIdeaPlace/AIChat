@@ -44,9 +44,16 @@ STALE_TURN_SECONDS = 10 * 60
 #: behind (Copilot closed mid-reply never writes its end): its status is
 #: unknown rather than working for ever.
 ABANDONED_TURN_SECONDS = 2 * 60 * 60
+#: A session.error ends a reply only once nothing has followed it for this
+#: long. No real Copilot log has shown one yet (#355 review), so a Copilot
+#: that recovers and carries on mustn't be announced as finished twice.
+ERROR_SETTLE_SECONDS = 30
 #: How much of the end of a log is read to find a session's state and its
 #: last message. The state is in the last few events.
 TAIL_BYTES = 256 * 1024
+#: A session folder with a log but no workspace.yaml is skipped this long
+#: (Copilot writing the one before the other), then counted as unreadable.
+WORKSPACE_GRACE_SECONDS = 60
 #: How much of the start of a log is read for a title from the first prompt.
 HEAD_BYTES = 1024 * 1024
 
@@ -55,7 +62,10 @@ HEAD_BYTES = 1024 * 1024
 # asks for tools, then the next, until one answers without asking (#352).
 _TURN_START = "assistant.turn_start"
 _STEP_END = "assistant.turn_end"
-_REPLY_ENDS = frozenset({"session.shutdown", "abort", "session.error"})
+_REPLY_ENDS = frozenset({"session.shutdown", "abort"})
+_ERROR = "session.error"
+#: _log_state's answer when the last word was an error: idle once it settles.
+_ERRORED = "errored"
 _PERMISSION_ASKED = "permission.requested"
 _PERMISSION_DONE = "permission.completed"
 
@@ -289,12 +299,14 @@ def _read_tail(path: Path, max_bytes: int = TAIL_BYTES) -> List[str]:
 
 
 def _log_state(lines: Iterable[str]) -> str:
-    """WORKING, NEEDS_YOU, IDLE or "status unavailable", from the log alone.
+    """WORKING, NEEDS_YOU, IDLE, _ERRORED or "status unavailable", from the
+    log alone.
 
     Only an explicit end makes a session idle, as with Codex (#184): idle is
     what announces a finished reply. A step's end counts only when that step
     answered without asking for tools; otherwise Copilot is about to run them
-    and take the next step.
+    and take the next step. An error mid-reply gives _ERRORED, which
+    _with_detail turns into idle only once nothing has followed it.
     """
     state, asking, tools_asked = "status unavailable", set(), False
     for line in lines:
@@ -321,6 +333,10 @@ def _log_state(lines: Iterable[str]) -> str:
                 state, asking = IDLE, set()
         elif kind in _REPLY_ENDS:
             state, asking = IDLE, set()
+        elif kind == _ERROR:
+            # An open permission question still needs you, error or not.
+            if state == WORKING and not asking:
+                state = _ERRORED
         elif kind == _PERMISSION_ASKED:
             asking.add(_text(data.get("requestId")))
         elif kind == _PERMISSION_DONE:
@@ -333,15 +349,20 @@ def _log_state(lines: Iterable[str]) -> str:
 def _with_detail(state: str, written_ms: int, now_ms: Optional[int] = None) -> Tuple[str, str]:
     """The row's (state, detail): the log's state, saying so when a reply
     has been quiet for STALE_TURN_SECONDS, and unknown once it has been
-    quiet for ABANDONED_TURN_SECONDS."""
-    if state not in (WORKING, NEEDS_YOU):
+    quiet for ABANDONED_TURN_SECONDS. Needs you stays needs you however
+    long it waits (#355 review): it's quiet because it's waiting for you."""
+    if state not in (WORKING, NEEDS_YOU, _ERRORED):
         return state, ""
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
     quiet_ms = now_ms - written_ms if written_ms else 0
+    if state == _ERRORED:
+        if quiet_ms > ERROR_SETTLE_SECONDS * 1000:
+            return IDLE, ""
+        state = WORKING
+    if state == NEEDS_YOU:
+        return state, "waiting in Copilot"
     if quiet_ms > ABANDONED_TURN_SECONDS * 1000:
         return "status unavailable", "no activity from Copilot for over 2 hours"
-    if state == NEEDS_YOU:
-        return state, "waiting in Copilot"  # quiet because it's waiting for you
     if quiet_ms > STALE_TURN_SECONDS * 1000:
         return state, "no activity from Copilot for 10 minutes"
     return state, ""
@@ -457,7 +478,13 @@ class CopilotProvider:
         except FileNotFoundError:
             return None  # stopped before its first prompt: nothing to read
         workspace_path = folder / WORKSPACE_FILE
-        stamp = (stat.st_size, stat.st_mtime_ns, os.stat(workspace_path).st_mtime_ns)
+        try:
+            workspace_stat = os.stat(workspace_path)
+        except FileNotFoundError:
+            if time.time() - stat.st_mtime < WORKSPACE_GRACE_SECONDS:
+                return None  # Copilot is still making it: listed once it has
+            raise  # gone for good: counted as unreadable, not silently dropped
+        stamp = (stat.st_size, stat.st_mtime_ns, workspace_stat.st_mtime_ns)
         with self._lock:
             entry = self._entries.get(native_id)
         if entry is None or entry.stamp != stamp:

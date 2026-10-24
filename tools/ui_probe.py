@@ -883,6 +883,14 @@ def d_settings_codex(frame, env):
     return frame.on_settings
 
 
+def d_settings_copilot(frame, env):
+    """Settings once Copilot CLI has saved a session (#352): its check box shows."""
+    folder = env["tmp"] / "copilot" / "session-state" / "synthetic-copilot"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "events.jsonl").touch()
+    return frame.on_settings
+
+
 def d_new_session(frame, env):
     return frame.on_new_session
 
@@ -1328,6 +1336,8 @@ SURFACES = {
     "message-plain": ("dialog", d_message_plain, "The same message as plain text"),
     "settings": ("dialog", d_settings, "Settings with no Codex installation"),
     "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
+    "settings-copilot": ("dialog", d_settings_copilot,
+                         "Settings once Copilot CLI has a session: its check box shows"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
@@ -1403,6 +1413,7 @@ DIALOG_CLASSES = {
     "message-plain": "MessageDialog",
     "settings": "SettingsDialog",
     "settings-codex": "SettingsDialog",
+    "settings-copilot": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-models": "NewSessionDialog",
