@@ -64,7 +64,28 @@ full diff and the options `allow_once`, `allow_always` and `reject_once`. Answer
 `reject_once` produced a `tool_call_update` with status `failed` ("The user rejected this tool
 call."), the turn ended with `stopReason: end_turn`, and no file was written. So the problem
 reported in copilot-cli#845 (ACP approving tools without asking) doesn't happen in 1.0.103 for
-file edits. Shell commands still need checking.
+file edits.
+
+**Shell commands ask too** (checked later): asked to run `echo shellprobe > probe_shell.txt`,
+Copilot sent `session/request_permission` with `toolCall.kind` `execute`, the title "Run the
+requested shell command" and `rawInput.command` / `rawInput.commands`. `reject_once` left the
+file unwritten.
+
+**Reopening:** `session/load` of an earlier session id returns its `configOptions` and replays the
+history first as `user_message_chunk`, `agent_message_chunk`, `tool_call` and `tool_call_update`
+updates. It sends no prompt and uses no premium request.
+
+**Stopping:** a `session/cancel` notification mid-reply ended the `session/prompt` request at once
+with `stopReason: cancelled`.
+
+**Settings that would stop it asking:** `configOptions` holds `mode` (`…/session-modes#agent`,
+`#plan` or `#autopilot`) and `allow_all` (`on` / `off`), and `config_option_update` reports
+changes. Copilot also advertises slash commands (`available_commands_update`), including
+`allow-all`, which a prompt starting with `/` would run. The environment can do the same:
+`COPILOT_ALLOW_ALL`, and `COPILOT_PROVIDER_*` (bring your own key) or `COPILOT_OFFLINE` send
+prompts to another service. Each model in `session/new` carries `_meta.copilotUsage` ("1x"),
+and the session's own `events.jsonl` gets a `session.usage_record` naming `provider.kind`
+(`copilot`) for every turn, ACP or not.
 
 Streamed text arrives as `agent_message_chunk` updates. The title arrives as
 `session_info_update`, and context use as `usage_update`.
@@ -76,8 +97,8 @@ Streamed text arrives as `agent_message_chunk` updates. The title arrives as
 2. **Running:** drive `copilot --acp` (like Codex's app-server) so permission requests become the
    app's own permission dialog. `-p` with `--allow-tool` lists is the simpler fallback, but it
    can't ask before each change.
-3. **Still to check:** whether shell commands ask for permission in ACP, `session/load` of an
-   earlier session, cancellation, and how ACP reports the "access denied" policy error.
+3. **Checked since:** shell commands ask, `session/load` reopens, `session/cancel` stops (above).
+   Still unseen: how ACP reports the "access denied" policy error.
 
 ## Reading slice (built)
 
@@ -120,6 +141,37 @@ capabilities grant nothing but reading.
   ("auto" picked two different ones). apply_patch arguments are summarised by the files they
   touch. Still unseen: what `workspace.yaml` does with a renamed session or a very long name.
 - **Later:** `fileEdits` could feed Changed Files (Ctrl+Shift+D), as Claude's edits do.
+
+## Execution slice: the ACP runtime (built, no window yet)
+
+Three modules, none of which the window uses yet, so nothing here can send on its own:
+
+- `platform_paths`: `find_copilot()` takes only a native executable (winget, Homebrew, GitHub's
+  install script), never npm's `copilot.cmd` or node script, for the reason `claude.cmd` is
+  refused. `copilot_child_environment()` drops `COPILOT_ALLOW_ALL`, the tokens (`GH_TOKEN`,
+  `GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`: another account), `COPILOT_PROVIDER_*` and
+  `COPILOT_OFFLINE` (another service), and `COPILOT_MODEL` / `COPILOT_AUTO_TIER`.
+  `start_copilot_acp()` runs `copilot --acp --disable-client-telemetry` without a shell, in
+  Codex's kill-on-close process wrapper.
+- `providers/copilot_acp.py` moves JSON-RPC messages. It offers Copilot no file or terminal
+  access through the client, refuses every server request except permission requests, refuses
+  lines over 32 MB, never shows Copilot's own error text, and checks `initialize` (protocol 1,
+  `loadSession`, agent "Copilot").
+- `providers/copilot_runtime.py` runs chats: create, prepare (`session/load`, replayed history
+  ignored), send or queue (20 messages / 128k characters, as Codex), stop, answer, and state
+  snapshots shaped like `CodexChatState`. Its rules, each tested against
+  `tests/fake_copilot_acp.py`:
+  - nothing is sent unless the chat is in agent mode with `allow_all` off, checked on open and
+    on every `config_option_update`;
+  - a message starting with `/` is refused (slash commands include `/allow-all`);
+  - permission requests offer Allow Once and Deny only, never `allow_always` (Codex's #284 rule);
+    requests with no deny option, or for a session or turn not running here, are cancelled;
+  - after each completed turn the session log must name `provider.kind` `copilot`; otherwise
+    every chat stops until restart (Claude's API-key abort, in Copilot's terms);
+  - Stop sends `session/cancel` and never resends; queued messages come back unsent.
+
+Checked against the real Copilot CLI 1.0.103 too: a chat opened in agent mode with allow_all off,
+streamed its reply, and passed the billing check.
 
 ## Next, in rough order
 
