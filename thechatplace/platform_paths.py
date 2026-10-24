@@ -1586,3 +1586,94 @@ def start_codex_server(executable: Optional[str] = None) -> CodexServerProcess:
         owned.close()
         raise
     return owned
+
+
+# ---------------------------------------------------------------------------
+# GitHub Copilot CLI (#352)
+# ---------------------------------------------------------------------------
+
+
+def copilot_native_candidates() -> List[Path]:
+    """Where the native Copilot CLI is installed: winget, Homebrew and
+    GitHub's install script. npm's copilot.cmd / node script is never used,
+    for the reason claude.cmd isn't: a command run through a shell could be
+    injected from a chat's text."""
+    home = Path.home()
+    if sys.platform == "darwin":
+        return [Path("/opt/homebrew/bin/copilot"), Path("/usr/local/bin/copilot"),
+                home / ".local/bin/copilot"]
+    if sys.platform == "win32":
+        local = Path(os.environ.get("LOCALAPPDATA") or home / "AppData/Local")
+        packages = local / "Microsoft/WinGet/Packages"
+        try:
+            installed = sorted(p / "copilot.exe" for p in packages.iterdir()
+                               if p.name.startswith("GitHub.Copilot_"))
+        except OSError:
+            installed = []
+        return [local / "Microsoft/WinGet/Links/copilot.exe", *installed,
+                home / ".local/bin/copilot.exe"]
+    return [home / ".local/bin/copilot", Path("/usr/local/bin/copilot")]
+
+
+def find_copilot(which=None, native_candidates=None) -> Optional[str]:
+    """The native Copilot CLI, or None. The same check as Codex's: a real
+    executable, never a script (#352)."""
+    import shutil
+
+    found = (which or shutil.which)("copilot")
+    if native_candidates is None:
+        native_candidates = copilot_native_candidates()
+    for candidate in ([found] if found else []) + list(native_candidates):
+        if _native_codex(str(candidate)):
+            return str(candidate)
+    return None
+
+
+#: Environment that would change who Copilot answers as, what pays for it, or
+#: whether it asks before acting (#352): ``COPILOT_ALLOW_ALL`` approves every
+#: tool without asking; a token picks an account other than the one signed
+#: in; ``COPILOT_OFFLINE`` and ``COPILOT_PROVIDER_*`` (bring your own key)
+#: send prompts to another model service; ``COPILOT_MODEL`` and
+#: ``COPILOT_AUTO_TIER`` would override the model The Chat Place shows.
+COPILOT_OVERRIDE_VARS = frozenset({
+    "COPILOT_ALLOW_ALL", "COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN",
+    "COPILOT_OFFLINE", "COPILOT_MODEL", "COPILOT_AUTO_TIER",
+})
+COPILOT_OVERRIDE_PREFIXES = ("COPILOT_PROVIDER_",)
+
+
+def copilot_child_environment(environ=None) -> dict:
+    """The environment for a Copilot CLI The Chat Place starts: everything
+    but the overrides above, matched case-insensitively for Windows. PATH,
+    HOME, COPILOT_HOME and GH_HOST stay, so Copilot finds its sign-in.
+    GH_HOST is kept on purpose: GitHub Enterprise Cloud with data residency
+    (a company's own ghe.com host) needs it to reach that company's Copilot,
+    whose answers are still GitHub Copilot's, as each turn's billing check
+    confirms."""
+    source = os.environ if environ is None else environ
+    return {key: value for key, value in source.items()
+            if key.upper() not in COPILOT_OVERRIDE_VARS
+            and not key.upper().startswith(COPILOT_OVERRIDE_PREFIXES)}
+
+
+def start_copilot_acp(executable: Optional[str] = None,
+                      cwd: Optional[str] = None) -> CodexServerProcess:
+    """``copilot --acp`` on stdio, without a shell, in a kill-on-close tree
+    (the same process wrapper as Codex's app-server)."""
+    import subprocess
+
+    executable = executable or find_copilot()
+    if not executable or not _native_codex(executable):
+        raise OSError("Install GitHub Copilot CLI, then restart.")
+    tree = ProcessTree()
+    process = subprocess.Popen([executable, "--acp", "--disable-client-telemetry"],
+                               env=copilot_child_environment(), cwd=cwd or None,
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+    owned = CodexServerProcess(process, tree)
+    try:
+        tree.attach(process)
+    except Exception:
+        owned.close()
+        raise
+    return owned

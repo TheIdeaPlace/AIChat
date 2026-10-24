@@ -79,7 +79,7 @@ REM --onedir because Velopack swaps an app folder in place; velopack is imported
 REM lazily, so it's named; --collect-binaries wx brings WebView2Loader.dll, which
 REM the formatted message view needs; the speech scripts and NVDA's controller
 REM client (thechatplace\nvda, #98) are data files.
-"%PY%" -m PyInstaller --noconfirm --clean --noconsole --onedir --name TheChatPlace --version-file build\version_info.txt --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.copilot --collect-binaries wx --icon thechatplace\assets\app.ico --add-data "thechatplace\assets;thechatplace\assets" --add-data "thechatplace\speech;thechatplace\speech" --add-data "thechatplace\nvda;thechatplace\nvda" TheChatPlace.pyw
+"%PY%" -m PyInstaller --noconfirm --clean --noconsole --onedir --name TheChatPlace --version-file build\version_info.txt --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime --collect-binaries wx --icon thechatplace\assets\app.ico --add-data "thechatplace\assets;thechatplace\assets" --add-data "thechatplace\speech;thechatplace\speech" --add-data "thechatplace\nvda;thechatplace\nvda" TheChatPlace.pyw
 if errorlevel 1 goto :failed
 if not exist "dist\TheChatPlace\TheChatPlace.exe" goto :failed
 
