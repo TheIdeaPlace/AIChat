@@ -162,16 +162,26 @@ Three modules, none of which the window uses yet, so nothing here can send on it
   snapshots shaped like `CodexChatState`. Its rules, each tested against
   `tests/fake_copilot_acp.py`:
   - nothing is sent unless the chat is in agent mode with `allow_all` off, checked on open and
-    on every `config_option_update`;
+    on every `config_option_update` or `current_mode_update`; a change mid-turn cancels the turn;
   - a message starting with `/` is refused (slash commands include `/allow-all`);
   - permission requests offer Allow Once and Deny only, never `allow_always` (Codex's #284 rule);
-    requests with no deny option, or for a session or turn not running here, are cancelled;
-  - after each completed turn the session log must name `provider.kind` `copilot`; otherwise
-    every chat stops until restart (Claude's API-key abort, in Copilot's terms);
-  - Stop sends `session/cancel` and never resends; queued messages come back unsent.
+    requests with no deny option, or for a session or turn not running and watched here, are
+    answered "cancelled" (checked and stored under one lock, so a Stop can't leave one waiting);
+  - every `session.usage_record` a turn appends to the session log must name `provider.kind`
+    `copilot`; another provider stops every chat until restart (Claude's API-key abort, in
+    Copilot's terms), and a completed turn with no record stops its own chat until reopened;
+  - only chats this runtime created, or that the window adopts from its own record of owned
+    chats, can be reopened, and only if Copilot recorded `client_name: github/acp` (a terminal
+    chat says `github/cli`); any ACP client's chat says `github/acp`, so that alone isn't enough;
+  - Stop answers waiting requests "cancelled", sends `session/cancel` and never resends; queued
+    messages come back unsent, including after an automatic stop.
 
 Checked against the real Copilot CLI 1.0.103 too: a chat opened in agent mode with allow_all off,
-streamed its reply, and passed the billing check.
+streamed its reply, and passed the billing check; reopened in a new Copilot process, it answered a
+second turn; a terminal chat was refused.
+
+`tools/probe_copilot.py` runs one chat through this runtime in plain text, asking "allow once or
+deny" at the keyboard; `testing/copilot.md` is the hand-testing guide for each Copilot PR.
 
 ## Next, in rough order
 
