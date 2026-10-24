@@ -96,7 +96,8 @@ capabilities grant nothing but reading.
   `turn_start` means working, and an outstanding `permission.requested` means needs you. Idle
   means a `turn_end` after an `assistant.message` with no `toolRequests`, or `session.shutdown`
   or `abort`. A `session.error` ends a reply only after `ERROR_SETTLE_SECONDS` (30) with nothing
-  after it; a later `turn_start` or `permission.requested` means Copilot carried on. No real log
+  after it; a later `turn_start`, `assistant.message`, tool event or `permission.requested` means Copilot
+  carried on. No real log
   has shown a `session.error` yet, so a Copilot that recovers more than 30 seconds after an error
   would be announced as finished twice: worth checking when one is seen. The reply's real end, `assistant.idle`, is ephemeral and never
   saved. Only an explicit end announces a finished reply: the Codex rule, extended to

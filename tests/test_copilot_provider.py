@@ -410,6 +410,10 @@ def test_a_permission_question_after_an_error_needs_you():
     assert state_from_events(lines, settled, now)[0] == NEEDS_YOU
     answered = lines + [json.dumps(event("permission.completed", 4, requestId="r"))]
     assert state_from_events(answered, now, now)[0] == WORKING
+    # An answer after an error is Copilot carrying on too, until its step ends.
+    carried = lines[:2] + [json.dumps(event("assistant.message", 3, content="Retrying",
+                                            toolRequests=[{"name": "shell"}]))]
+    assert state_from_events(carried, settled, now)[0] == WORKING
 
 
 def test_a_folder_without_workspace_yaml_for_long_is_counted(tmp_path):

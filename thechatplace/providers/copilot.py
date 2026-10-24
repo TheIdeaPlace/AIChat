@@ -24,7 +24,7 @@ import time
 from typing import Iterable, List, Optional, Tuple
 
 from .. import platform_paths
-from ..sessions import IDLE, NEEDS_YOU, TERMINAL, WORKING, SessionInfo
+from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, TERMINAL, WORKING, SessionInfo
 from ..transcript import (ASSISTANT, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT, USER,
                           ChatMessage, Transcript, split_jsonl)
 from ..ui_text import last_message_line
@@ -313,7 +313,7 @@ def _log_state(lines: Iterable[str]) -> str:
     and take the next step. An error mid-reply gives _ERRORED, which
     _with_detail turns into idle only once nothing has followed it.
     """
-    state, asking, tools_asked = "status unavailable", set(), False
+    state, asking, tools_asked = STATUS_UNAVAILABLE, set(), False
     for line in lines:
         try:
             event = json.loads(line)
@@ -328,6 +328,9 @@ def _log_state(lines: Iterable[str]) -> str:
             if kind == "user.message":
                 asking = set()
         elif kind == "assistant.message":
+            # Copilot answering after an error has carried on (#355 review).
+            if state == _ERRORED:
+                state = WORKING
             tools_asked = bool(data.get("toolRequests"))
         elif kind in ("tool.execution_start", "tool.execution_complete"):
             # A step that ran a tool isn't the answer, even when the tail
@@ -371,10 +374,10 @@ def _with_detail(state: str, written_ms: int, now_ms: Optional[int] = None) -> T
         state = WORKING
     if state == NEEDS_YOU:
         if quiet_ms > ABANDONED_QUESTION_SECONDS * 1000:
-            return "status unavailable", "waiting in Copilot for over a day"
+            return STATUS_UNAVAILABLE, "waiting in Copilot for over a day"
         return state, "waiting in Copilot"
     if quiet_ms > ABANDONED_TURN_SECONDS * 1000:
-        return "status unavailable", "no activity from Copilot for over 2 hours"
+        return STATUS_UNAVAILABLE, "no activity from Copilot for over 2 hours"
     if quiet_ms > STALE_TURN_SECONDS * 1000:
         return state, "no activity from Copilot for 10 minutes"
     return state, ""
