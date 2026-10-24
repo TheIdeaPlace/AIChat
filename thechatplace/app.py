@@ -80,6 +80,8 @@ def smoke_test(out_path: str) -> int:
         report["codex_permissions"] = True
         from .providers.copilot import CopilotProvider  # noqa: F401 - reads files only
         report["copilot_reader"] = True
+        from .providers.copilot_runtime import CopilotChatRuntime  # noqa: F401 - no process on import
+        report["copilot_execution"] = True
     except Exception as exc:  # noqa: BLE001
         problems.append(f"wx/ui: {exc}")
     try:
