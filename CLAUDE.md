@@ -62,6 +62,22 @@ Versions below 1.0 publish as pre-releases. Both platforms update through Velopa
 (`updater.CHANNEL`). Velopack calls every Mac app portable, so the portable check is Windows-only
 (`updater.PORTABLE_COPIES_EXIST`); applying it on a Mac silently stops all Mac updates.
 
+Only Kelly can release or sign: tags are admin-only by ruleset, releases are immutable, and every
+signing run (a tag, a hand run with "sign", a `sign-build` pull request) waits for his approval of
+the `azure-signing` environment, where the signing secrets belong. After his "go", approve only the
+tag run he pushed, never a run on someone else's branch (it runs that branch's workflow with the
+secrets), then watch it. The run takes a few seconds to appear after the push; wait until
+`gh run list` shows it waiting, or `id` comes back empty:
+
+```
+id=$(gh run list -R TheIdeaPlace/AIChat -w "Release The Chat Place" -b v<version> --json databaseId -q '.[0].databaseId')
+[ -n "$id" ] && gh api -X POST repos/TheIdeaPlace/AIChat/actions/runs/$id/pending_deployments -F "environment_ids[]=23643397700" -f state=approved -f comment=release
+```
+
+Code-owner review covers workflows, build scripts, tests, tools, requirements and `docs/`
+(`.github/CODEOWNERS`); Kelly can't approve his own PRs, so his PRs touching those merge with an
+admin bypass.
+
 **Release notes and the user guide, with every user-visible change** (the QuickMail process):
 - The **open** notes file is the highest `release-notes/vX.Y.Z.md` with no matching tag. Add an
   entry there with each PR, citing it (`(#90)`); if none is open, start the next patch version's

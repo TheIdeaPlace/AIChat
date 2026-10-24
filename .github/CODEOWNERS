@@ -1,0 +1,19 @@
+# These need Kelly's approval before they reach main. The workflows define the required checks,
+# signing and releasing. The tests, their config and the build tools and requirements run inside an
+# approved signing run, so changing them could weaken the tests or reach the signing secrets.
+# The app code in thechatplace/ runs there too (the tests import it) but isn't listed, so that
+# collaborators can work on the app: what a release contains is checked when Kelly tags it.
+# docs/ is published straight to the public GitHub Pages site.
+/.github/ @kellylford
+/BuildAndRelease/ @kellylford
+/tests/ @kellylford
+/tools/ @kellylford
+/requirements*.txt @kellylford
+/conftest.py @kellylford
+/pytest.ini @kellylford
+/pyproject.toml @kellylford
+/setup.cfg @kellylford
+/TheChatPlace.pyw @kellylford
+/macsetup.sh @kellylford
+/winsetup.bat @kellylford
+/docs/ @kellylford
