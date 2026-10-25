@@ -92,6 +92,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "open_url", lambda url: opened.append(url))
     # Nor real Claude Code files, an editor or Explorer (#92).
     patch(platform_paths, "claude_home", lambda: root / "claude")
+    patch(platform_paths, "codex_home", lambda: root / "codex")
+    patch(platform_paths, "agents_skills_dir", lambda: root / "agents-skills")
     patch(platform_paths, "edit_file", lambda path: opened.append(("edit", path)))
     patch(platform_paths, "show_in_folder", lambda path: opened.append(("show", path)))
     boxes = []
