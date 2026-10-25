@@ -1122,3 +1122,203 @@ def test_probe_tool_needs_a_folder(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         probe_copilot.main([])
     assert "--folder" in capsys.readouterr().err
+
+
+# -- Kelly's third review of #364 ------------------------------------------------
+
+
+def foreign_message_line():
+    return json.dumps({"type": "user.message", "data": {"content": "from a terminal"},
+                       "id": "terminal-1"}) + "\n"
+
+
+def test_a_half_written_line_is_read_whole_next_time(tmp_path):
+    from thechatplace.providers.copilot_runtime import _whole_lines_end, log_events
+    log = tmp_path / "events.jsonl"
+    first = json.dumps({"type": "assistant.message", "data": {}}) + "\n"
+    line = foreign_message_line()
+    log.write_bytes((first + line[:20]).encode())  # cut at byte 20, as in the review
+    end = _whole_lines_end(log)
+    assert end == len(first.encode())
+    assert log_events(log, 0, ("user.message",), end) == []
+    with open(log, "ab") as handle:
+        handle.write(line[20:].encode())
+    assert [kind for kind, _ in log_events(log, end, ("user.message",), _whole_lines_end(log))] \
+        == ["user.message"]
+
+
+def test_a_terminal_line_cut_at_a_turns_end_is_still_seen(make, tmp_path, monkeypatch):
+    """Another Copilot is partway through a line when a turn's end samples
+    the log: the next check reads the whole line, and the chat must be
+    opened again."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    log = tmp_path / "sessions" / chat / "events.jsonl"
+    line = foreign_message_line()
+    real = runtime._check_billing
+
+    def billing_then_half_a_line(state, outcome):
+        real(state, outcome)
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(line[:20])
+    monkeypatch.setattr(runtime, "_check_billing", billing_then_half_a_line)
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    monkeypatch.setattr(runtime, "_check_billing", real)
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write(line[20:])
+    with pytest.raises(CopilotChatError, match="used outside"):
+        runtime.send(chat, "Two")
+    assert prompts_sent(tmp_path) == ["One"]
+
+
+def test_what_a_terminal_writes_before_a_queued_turn_starts_is_seen(make, tmp_path, monkeypatch):
+    """The hook search at a turn's end takes a while; a terminal message
+    written meanwhile falls in the next (queued) turn's stretch, not between."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    log = tmp_path / "sessions" / chat / "events.jsonl"
+    real = runtime._hooks_refusal
+    written = []
+
+    def search_while_a_terminal_writes(cwd):
+        # Only the search at the first turn's end, after Copilot answered.
+        if runtime._chats[chat].turns == 1 and runtime._chats[chat].answered and not written:
+            written.append(1)
+            with open(log, "a", encoding="utf-8") as handle:
+                handle.write(foreign_message_line())
+        return real(cwd)
+    monkeypatch.setattr(runtime, "_hooks_refusal", search_while_a_terminal_writes)
+    runtime.send(chat, "One")
+    assert runtime.send(chat, "Two") is True
+    assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
+                and runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    assert written and not runtime.ready(chat)
+    with pytest.raises(CopilotChatError, match="used outside"):
+        runtime.send(chat, "Three")
+
+
+def test_a_terminal_message_counts_when_ours_never_reached_copilot(make, tmp_path, monkeypatch):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    log = tmp_path / "sessions" / chat / "events.jsonl"
+    connection = runtime._connection
+    with connection._lock:  # ours will never be written
+        for n in range(copilot_acp.MAX_PENDING):
+            connection._pending[f"busy-{n}"] = {"done": threading.Event(), "message": None}
+    real = runtime._check_billing
+
+    def a_terminal_writes_during_the_turn(state, outcome):
+        with open(log, "a", encoding="utf-8") as handle:  # inside this turn's stretch
+            handle.write(foreign_message_line())
+        real(state, outcome)
+    monkeypatch.setattr(runtime, "_check_billing", a_terminal_writes_during_the_turn)
+    try:
+        runtime.send(chat, "Hello")
+        assert wait(lambda: runtime.snapshot(chat).outcome == "failed"
+                    and not runtime._chats[chat].busy)
+    finally:
+        with connection._lock:
+            for n in range(copilot_acp.MAX_PENDING):
+                connection._pending.pop(f"busy-{n}")
+    assert runtime._chats[chat].elsewhere and runtime.snapshot(chat).unsent == ("Hello",)
+
+
+@pytest.fixture
+def live_other_pid():
+    """A process that's running and isn't this app's Copilot."""
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    yield process.pid
+    process.kill()
+    process.wait(5)
+
+
+def test_a_chat_another_copilot_has_open_isnt_sent_to(make, tmp_path, live_other_pid):
+    """Copilot holds inuse.<pid>.lock while it has a chat open (1.0.103)."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    folder = tmp_path / "sessions" / chat
+    (folder / f"inuse.{live_other_pid}.lock").write_text("", encoding="utf-8")
+    with pytest.raises(CopilotChatError, match="open in another Copilot"):
+        runtime.send(chat, "Hello")
+    assert not runtime.ready(chat) and prompts_sent(tmp_path) == []
+
+
+def test_locks_left_by_copilots_that_exited_or_by_this_apps_own_dont_count(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    folder = tmp_path / "sessions" / chat
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait(10)
+    (folder / f"inuse.{dead.pid}.lock").write_text("", encoding="utf-8")
+    own = runtime._own_pid(runtime._connection)
+    (folder / f"inuse.{own}.lock").write_text("", encoding="utf-8")
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+
+
+def test_a_chat_another_copilot_has_open_isnt_reopened(make, tmp_path, live_other_pid):
+    runtime, _ = make()
+    native = "11111111-2222-3333-4444-555555555555"
+    write_workspace(tmp_path, native, "thechatplace")
+    (tmp_path / "sessions" / native / f"inuse.{live_other_pid}.lock").write_text("", encoding="utf-8")
+    runtime.adopt(native)
+    with pytest.raises(CopilotChatError, match="open in another Copilot"):
+        runtime.prepare(native, str(tmp_path))
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/load"]
+
+
+def test_a_stale_lock_whose_number_a_newer_process_has_doesnt_count(make, tmp_path, live_other_pid):
+    """Copilot leaves its lock behind when it exits, and process ids are
+    handed out again: a lock older than the live process with its number was
+    left by another, finished one."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    lock = tmp_path / "sessions" / chat / f"inuse.{live_other_pid}.lock"
+    lock.write_text("", encoding="utf-8")
+    old = time.time() - 3600  # written an hour before that process started
+    os.utime(lock, (old, old))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+
+
+def test_a_queued_message_isnt_sent_once_another_copilot_has_the_chat(make, tmp_path,
+                                                                      live_other_pid, monkeypatch):
+    """A terminal opens the chat while a turn runs: Copilot logs nothing of
+    it until that terminal's first prompt, but its lock is there, so the
+    waiting message comes back rather than going."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    folder = tmp_path / "sessions" / chat
+    real = runtime._check_billing
+
+    def a_terminal_opens_it(state, outcome):
+        (folder / f"inuse.{live_other_pid}.lock").write_text("", encoding="utf-8")
+        real(state, outcome)
+    monkeypatch.setattr(runtime, "_check_billing", a_terminal_opens_it)
+    runtime.send(chat, "One")
+    assert runtime.send(chat, "Two") is True
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    assert runtime.snapshot(chat).unsent == ("Two",) and prompts_sent(tmp_path) == ["One"]
+
+
+def test_a_log_shorter_than_last_time_means_the_chat_is_opened_again(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    (tmp_path / "sessions" / chat / "events.jsonl").write_bytes(b"")  # replaced
+    with pytest.raises(CopilotChatError, match="used outside"):
+        runtime.send(chat, "Two")
+
+
+def test_process_start_times_are_known_for_running_processes_only():
+    started = platform_paths.process_started_at(os.getpid())
+    assert started is not None and started <= time.time()
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait(10)
+    assert platform_paths.process_started_at(dead.pid) is None

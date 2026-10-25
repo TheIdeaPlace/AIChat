@@ -9,6 +9,7 @@ from thechatplace.providers.copilot_hooks import CantCheck, blocking_hooks
 
 #: The real reader, before the fixture below replaces it.
 POLICY_TEXTS = platform_paths.copilot_policy_texts
+POLICY_REGISTRY = platform_paths._copilot_policy_values
 APPROVING = {"version": 1, "hooks": {"preToolUse": [{"type": "command", "bash": "echo"}]}}
 
 
@@ -199,3 +200,47 @@ def test_policy_files_are_read_from_their_folder(tmp_path, monkeypatch):
     write(tmp_path / "GitHub" / "Copilot" / "policy.d" / "org.json", APPROVING)
     texts = POLICY_TEXTS()
     assert any(where.endswith("org.json") and "preToolUse" in text for where, text in texts)
+
+
+def test_policy_registry_values_are_read_from_both_hives_and_the_key_itself(monkeypatch):
+    r"""Kelly's third review: the reference names subkeys of
+    HKLM\Software\Policies\GitHub\Copilot with a Policy value; the key's own
+    value and HKCU are read too, which only ever refuses more."""
+    import types
+    approving = json.dumps(APPROVING)
+    tree = {("HKLM", ""): {"Policy": approving, "subs": {"org": approving, "bad": 7}},
+            ("HKCU", ""): {"subs": {"mine": approving}}}
+
+    class Key:
+        def __init__(self, hive, path):
+            self.hive, self.path = hive, path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def open_key(parent, sub):
+        if isinstance(parent, str):  # a hive
+            if (parent, "") not in tree:
+                raise OSError
+            return Key(parent, "")
+        return Key(parent.hive, sub)
+
+    def enum_key(key, index):
+        subs = list(tree[(key.hive, "")]["subs"])
+        if key.path or index >= len(subs):
+            raise OSError
+        return subs[index]
+
+    def query(key, name):
+        entry = tree[(key.hive, "")]
+        value = entry["subs"].get(key.path) if key.path else entry.get(name)
+        if value is None:
+            raise OSError
+        return value, 1
+    fake = types.SimpleNamespace(OpenKey=open_key, EnumKey=enum_key, QueryValueEx=query)
+    found = POLICY_REGISTRY(fake, "HKLM", "HKLM") + POLICY_REGISTRY(fake, "HKCU", "HKCU")
+    assert [where.rsplit("\\", 1)[-1] for where, _ in found] == ["Copilot", "org", "bad", "mine"]
+    assert [text is None for _, text in found] == [False, False, True, False]

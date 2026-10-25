@@ -25,10 +25,17 @@ Safety rules, each with a test:
   project's hooks run without the folder being trusted, so nothing is opened
   or sent while copilot_hooks finds one; a turn whose log shows an approving
   hook ran stops the chat until the app restarts.
-* **One Copilot at a time.** Copilot still records this app as the client
-  when a terminal resumes one of its chats, so the session's log is checked
-  instead: a chat used elsewhere since must be opened again (closed in this
-  app's Copilot, then loaded) before anything more is sent.
+* **Not sent to while another Copilot has it open.** Copilot still records
+  this app as the client when a terminal resumes one of its chats, so two
+  other signs are checked. Before opening or sending: the session folder's
+  ``inuse.<pid>.lock``, which a running Copilot with the chat open holds (a
+  live process other than this app's Copilot means it's open elsewhere now).
+  After the fact: the session's log, where another Copilot's
+  ``session.resume`` or message shows the chat was used meanwhile; it must
+  then be opened again (closed in this app's Copilot, then loaded) before
+  anything more is sent. A terminal that opens the chat between the lock
+  check and the prompt is caught only by the log, after that turn; every
+  turn still asks before acting over ACP, so it's never a permission gap.
 """
 from __future__ import annotations
 
@@ -37,6 +44,7 @@ import difflib
 import json
 import os
 from pathlib import Path
+import re
 import threading
 import time
 import unicodedata
@@ -389,6 +397,8 @@ def _hook_ran(events) -> bool:
 
 #: A hook answered though none was found: wherever it is, it's still
 #: there, so this stays until The Chat Place restarts.
+IN_USE = ("This Copilot chat is open in another Copilot. Close it there, then open it here "
+          "again.")
 HOOK_ANSWERED = ("A Copilot hook answered a permission question for you in this turn, though "
                  "The Chat Place found no hook that could. It won't send to this chat again; "
                  "check Copilot's hooks and plugins.")
@@ -429,6 +439,56 @@ def _size(path: Path) -> int:
         return 0
 
 
+def _whole_lines_end(path: Path) -> int:
+    """Where the log's last complete line ends: just past its last newline.
+    A line another Copilot is still writing is after this, so the next check
+    reads it whole rather than both checks seeing half of it (Kelly, #364)."""
+    try:
+        handle = open(path, "rb")
+    except OSError:
+        return 0
+    with handle:
+        try:
+            end = handle.seek(0, os.SEEK_END)
+            position = end
+            while position > 0:
+                start = max(0, position - 65536)
+                handle.seek(start)
+                chunk = handle.read(position - start)
+                newline = chunk.rfind(b"\n")
+                if newline >= 0:
+                    return start + newline + 1
+                position = start
+        except OSError:
+            return 0
+    return 0
+
+
+_LOCK = re.compile(r"inuse\.(\d{1,10})\.lock")
+
+
+def locked_elsewhere(folder: Path, own_pid: Optional[int]) -> bool:
+    """Whether a running Copilot other than this app's has the chat open.
+    Copilot (1.0.103) holds ``inuse.<pid>.lock`` in the session folder while
+    it has a chat open, named for the process (checked: the one this app
+    starts), and leaves it behind when it exits. So a lock counts only if that
+    process is running now and was already running when the lock was written:
+    process ids are handed out again, and a later process with a stale lock's
+    id has nothing to do with the chat."""
+    try:
+        entries = [(entry.name, entry.stat().st_mtime) for entry in os.scandir(folder)]
+    except OSError:
+        return False
+    for name, written in entries:
+        match = _LOCK.fullmatch(name)
+        if not match or int(match.group(1)) == own_pid:
+            continue
+        started = platform_paths.process_started_at(int(match.group(1)))
+        if started is not None and started <= written + 2:  # filesystem times are coarse
+            return True
+    return False
+
+
 class _Chat:
     def __init__(self, native_id: str, cwd: str):
         self.native_id, self.cwd = native_id, cwd
@@ -456,6 +516,9 @@ class _Chat:
         self.stopping = False
         self.context = (0, 0)
         self.log_offset = 0
+        #: The log's size when the last turn began: billing is checked on
+        #: what was written after it.
+        self.billing_offset = 0
         #: Waiting messages taken back by a stop the person didn't ask for.
         self.held: tuple = ()
         #: The log's size when this app last finished with it (opened it, or
@@ -578,11 +641,20 @@ class CopilotChatRuntime:
         try:
             return hooks_refusal(self._find_hooks(cwd))
         except copilot_hooks.CantCheck as exc:
-            return (f"The Chat Place couldn't look at all of Copilot's hooks ({exc}), so it "
-                    "won't send to Copilot in this folder now.")
+            return (f"The Chat Place couldn't check all of Copilot's hooks ({exc}): a file there "
+                    "can't be read, or there are too many files to look through. Until that's "
+                    "sorted out, it won't send to Copilot in this folder; use Copilot CLI here "
+                    "instead.")
         except Exception:  # noqa: BLE001 - a check that fails refuses
             return ("The Chat Place couldn't check Copilot's hooks, so it won't send to "
                     "Copilot now.")
+
+    @staticmethod
+    def _own_pid(connection) -> Optional[int]:
+        """The process id of this app's Copilot on ``connection``, if known."""
+        process = getattr(getattr(connection, "_process", None), "process", None)
+        pid = getattr(process, "pid", None)
+        return pid if isinstance(pid, int) else None
 
     def _events(self, native_id: str) -> Path:
         return (self._sessions_dir or platform_paths.copilot_sessions_dir()) / native_id / EVENTS_FILE
@@ -608,7 +680,7 @@ class CopilotChatRuntime:
         chat = _Chat(native_id, cwd)
         chat.apply(_settings(result.get("configOptions")))
         chat.connection = chat.open_on = connection
-        chat.log_end = _size(self._events(native_id))
+        chat.log_end = _whole_lines_end(self._events(native_id))
         with self._lock:
             self._chats[native_id] = chat
             self._owned.add(native_id)
@@ -656,8 +728,10 @@ class CopilotChatRuntime:
         refusal = self._hooks_refusal(cwd)
         if refusal:
             raise CopilotChatError(refusal)
-        before = _size(self._events(native_id))
         connection = self._connect()
+        if locked_elsewhere(self._events(native_id).parent, self._own_pid(connection)):
+            raise CopilotChatError(IN_USE)
+        before = _whole_lines_end(self._events(native_id))
         with self._lock:
             chat = self._chats.get(native_id) or _Chat(native_id, cwd)
             if chat.busy:
@@ -686,8 +760,8 @@ class CopilotChatRuntime:
             if isinstance(exc, copilot_acp.AcpError):
                 raise CopilotChatError(str(exc)) from None
             raise
-        log_end = _size(self._events(native_id))  # first: nothing after it goes unread
-        kinds = usage_kinds(self._events(native_id), chat.log_offset)
+        log_end = _whole_lines_end(self._events(native_id))  # first: nothing after it goes unread
+        kinds = usage_kinds(self._events(native_id), chat.billing_offset)
         in_use = any(data_.get("alreadyInUse") is True for _kind, data_ in
                      log_events(self._events(native_id), before, ("session.resume",), log_end))
         with self._lock:
@@ -704,8 +778,7 @@ class CopilotChatRuntime:
         if late_elsewhere:
             self._halt()
         if in_use:
-            raise CopilotChatError("This Copilot chat is open in another Copilot. Close it "
-                                   "there, then open it here again.")
+            raise CopilotChatError(IN_USE)
         self._notify(chat)
 
     # -- sending -------------------------------------------------------------
@@ -747,14 +820,25 @@ class CopilotChatRuntime:
         # Files are read with no lock held. While a turn runs its own
         # messages are in the log, so the end of the turn checks instead.
         hooks = self._hooks_refusal(cwd) if chat else ""
-        events = log_events(self._events(native_id), log_end, _ELSEWHERE_EVENTS) \
-            if chat and not busy else []
-        elsewhere = any(kind == "session.resume" for kind, _ in events) or _prompts(events) > 0
+        events = log_events(self._events(native_id), log_end, _ELSEWHERE_EVENTS,
+                            _whole_lines_end(self._events(native_id))) if chat and not busy else []
+        elsewhere = (any(kind == "session.resume" for kind, _ in events) or _prompts(events) > 0
+                     or bool(chat and not busy
+                             and _whole_lines_end(self._events(native_id)) < log_end))
+        # Only for a chat open on this app's current Copilot: otherwise the
+        # refusal below says it isn't open here, which is the truer reason.
+        current = chat is not None and chat.connection is not None \
+            and chat.connection is self._connection
+        open_elsewhere = bool(current and not busy and locked_elsewhere(
+            self._events(native_id).parent, self._own_pid(chat.connection)))
         with self._lock:
             # Only if no turn of this app's began meanwhile (its own message
             # would be in the log too).
-            if elsewhere and not chat.busy and chat.turns == turns and chat.log_end == log_end:
+            if ((elsewhere or open_elsewhere) and not chat.busy and chat.turns == turns
+                    and chat.log_end == log_end):
                 chat.elsewhere = True
+            if open_elsewhere and chat.elsewhere:
+                raise CopilotChatError(IN_USE)
             refusal = self._refusal(chat) or hooks
             if refusal:
                 raise CopilotChatError(refusal)
@@ -780,7 +864,13 @@ class CopilotChatRuntime:
         chat.unsent = ()
         # Billing is checked on what this turn adds to the log, never on an
         # earlier turn's record.
-        chat.log_offset = _size(self._events(chat.native_id))
+        # From where the last check stopped, not the log's size now:
+        # whatever another Copilot wrote in between is in this turn's
+        # stretch, and seen when it ends (Kelly, #364).
+        chat.log_offset = chat.log_end
+        # Billing, though, only on what this turn adds: a record our own
+        # Copilot wrote after the last check mustn't vouch for this turn.
+        chat.billing_offset = _size(self._events(chat.native_id))
         threading.Thread(target=self._run_turn, args=(chat, chat.connection, text),
                          daemon=True, name="copilot-turn").start()
 
@@ -822,7 +912,7 @@ class CopilotChatRuntime:
         # What else this turn's stretch of the log shows: another Copilot
         # using the chat at the same time, or a hook answering for the person.
         events_path = self._events(chat.native_id)
-        log_end = _size(events_path)  # first: nothing after it goes unread
+        log_end = _whole_lines_end(events_path)  # first: nothing after it goes unread
         events = log_events(events_path, chat.log_offset, _ELSEWHERE_EVENTS + ("hook.start",),
                             log_end)
         # Copilot writes a reopened chat's session.resume when its first
@@ -831,9 +921,14 @@ class CopilotChatRuntime:
         # alreadyInUse (as Copilot 1.0.103 does).
         elsewhere = (any(kind == "session.resume" and data_.get("alreadyInUse") is True
                          for kind, data_ in events)
-                     or _prompts(events) > 1)
+                     # Ours is one of them, unless it never reached Copilot.
+                     or _prompts(events) > (0 if not_sent else 1))
         hook_ran = _hook_ran(events)
         hooks = self._hooks_refusal(chat.cwd)
+        # Before a queued message goes: is another Copilot holding the chat
+        # now? And a log shorter than the last check means it was replaced.
+        elsewhere = (elsewhere or log_end < chat.log_end
+                     or locked_elsewhere(events_path.parent, self._own_pid(connection)))
         with self._lock:
             chat.log_end = log_end
             if elsewhere:
@@ -866,10 +961,10 @@ class CopilotChatRuntime:
         record stops everything."""
         events = self._events(chat.native_id)
         deadline = time.monotonic() + self._billing_wait
-        kinds = usage_kinds(events, chat.log_offset)
+        kinds = usage_kinds(events, chat.billing_offset)
         while outcome == "completed" and not kinds and time.monotonic() < deadline:
             time.sleep(0.1)
-            kinds = usage_kinds(events, chat.log_offset)
+            kinds = usage_kinds(events, chat.billing_offset)
         if any(kind != "copilot" for kind in kinds):
             self._halt()
         elif outcome == "completed" and not kinds:

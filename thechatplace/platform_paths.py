@@ -108,9 +108,17 @@ def copilot_home() -> Path:
 
 
 def copilot_policy_texts() -> list:
-    """(where, text or None) for each of Copilot CLI's managed policy files and, on
+    r"""(where, text or None) for each of Copilot CLI's managed policy files and, on
     Windows, its policy registry values: an organisation's hooks live there,
-    and Copilot loads them whatever its own settings say (#352)."""
+    and Copilot loads them whatever its own settings say (#352).
+
+    Where, from GitHub's Copilot CLI hooks reference ("Hook sources",
+    https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference):
+    ``C:\ProgramData\GitHub\Copilot\policy.d\*.json`` on Windows,
+    ``/etc/github-copilot/policy.d/*.json`` on Linux and macOS, and on Windows
+    each subkey of ``HKLM\Software\Policies\GitHub\Copilot`` with a
+    ``Policy`` string value. Beyond the reference, and only ever stricter:
+    the key's own ``Policy`` value, and the same key under HKCU."""
     texts = []
     if sys.platform == "win32":
         root = Path(os.environ.get("ProgramData") or r"C:\ProgramData")
@@ -132,26 +140,42 @@ def copilot_policy_texts() -> list:
                       else data.decode("utf-8-sig", "replace")))
     if sys.platform == "win32":
         import winreg
-        try:
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"Software\Policies\GitHub\Copilot")
-        except OSError:
-            return texts
-        with key:
-            index = 0
-            while True:
-                try:
-                    name = winreg.EnumKey(key, index)
-                except OSError:
-                    break
-                index += 1
-                try:
-                    with winreg.OpenKey(key, name) as sub:
-                        value, _kind = winreg.QueryValueEx(sub, "Policy")
-                except OSError:
-                    continue
-                texts.append((rf"HKLM\Software\Policies\GitHub\Copilot\{name}",
-                              value if isinstance(value, str) else None))
+        for hive, hive_name in ((winreg.HKEY_LOCAL_MACHINE, "HKLM"),
+                                (winreg.HKEY_CURRENT_USER, "HKCU")):
+            texts += _copilot_policy_values(winreg, hive, hive_name)
     return texts
+
+
+def _copilot_policy_values(winreg, hive, hive_name) -> list:
+    r"""(where, text or None) for the ``Policy`` values under one hive's
+    ``Software\Policies\GitHub\Copilot``: the key's own, and each subkey's.
+    A value that isn't a string is None: it can't be ruled out."""
+    path = r"Software\Policies\GitHub\Copilot"
+    try:
+        key = winreg.OpenKey(hive, path)
+    except OSError:
+        return []
+    found = []
+    with key:
+        try:
+            value, _kind = winreg.QueryValueEx(key, "Policy")
+            found.append((rf"{hive_name}\{path}", value if isinstance(value, str) else None))
+        except OSError:
+            pass
+        index = 0
+        while True:
+            try:
+                name = winreg.EnumKey(key, index)
+            except OSError:
+                break
+            index += 1
+            try:
+                with winreg.OpenKey(key, name) as sub:
+                    value, _kind = winreg.QueryValueEx(sub, "Policy")
+            except OSError:
+                continue
+            found.append((rf"{hive_name}\{path}\{name}", value if isinstance(value, str) else None))
+    return found
 
 
 #: The most read of any one Copilot settings or hook file.
@@ -462,6 +486,55 @@ def process_start(pid: int) -> Optional[int]:
         return (created.dwHighDateTime << 32) | created.dwLowDateTime
     finally:
         kernel32.CloseHandle(handle)
+
+
+def process_started_at(pid: int) -> Optional[float]:
+    """When a running process started, as a Unix time, or None if that
+    can't be told (it isn't running, or isn't ours to ask about). Used to
+    tell a lock file a live process wrote from one left by a process whose id
+    was handed out again (#364)."""
+    if not isinstance(pid, int) or pid <= 0:
+        return None
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return None
+        try:
+            # An exited process still answers while anything holds a handle
+            # to it: only a running one counts.
+            code = wintypes.DWORD()
+            kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value != 259:
+                return None
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not kernel32.GetProcessTimes(handle, *[ctypes.byref(t) for t in times]):
+                return None
+            ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+            return ticks / 10_000_000 - 11_644_473_600  # 100 ns since 1601 -> Unix time
+        finally:
+            kernel32.CloseHandle(handle)
+    import subprocess
+    import time as time_module
+    try:
+        # Elapsed time, not the start date: its format doesn't depend on the locale.
+        out = subprocess.run(["ps", "-o", "etime=", "-p", str(pid)], capture_output=True,
+                             text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.fullmatch(r"(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)", out)
+    if not match:
+        return None
+    days, hours, minutes, seconds = (int(part or 0) for part in match.groups())
+    return time_module.time() - (((days * 24 + hours) * 60 + minutes) * 60 + seconds)
 
 
 def pid_alive(pid: int) -> bool:
