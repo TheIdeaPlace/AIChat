@@ -196,15 +196,19 @@ def test_long_turn_keeps_recent_decisions_including_later_denials(tmp_path):
     assert 'denied' in store.load('owned')[-1][2]
 
 
-def test_permission_history_host_shows_decisions_and_effective_boundaries(tmp_path):
+@pytest.mark.parametrize('server_failed', [False, True])
+def test_permission_history_host_shows_decisions_and_effective_boundaries(tmp_path, server_failed):
     from test_chat_permissions import Frame, _codex
     frame = Frame(tmp_path)
     host, record = _codex(tmp_path, frame)
     record.provider_options['approvals_reviewer'] = 'auto_review'
     frame.sessions.owned_action = lambda action, own: [('turn', 'review', 'Codex automatic review denied the request.')]
-    frame._load_codex_saved_rules = lambda folder, done: done(([], [], 0, ''), False)
+    frame._load_codex_saved_rules = lambda folder, done: done(
+        'Codex unavailable.' if server_failed else ([], [], 0, ''), server_failed)
     seen = []
     host.native(seen.append)
     assert 'denied the request' in seen[0]
+    if server_failed:
+        assert 'Codex unavailable.' in seen[0]
     assert 'automatic approval review' in host.mode_text()
     assert 'temporary folders' in host.note() and 'Network' in host.note()

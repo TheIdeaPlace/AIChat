@@ -26,7 +26,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Shift+L | Copy Session Link: Enter copies a Markdown link that opens the session in The Chat Place; the list also has the bare link, and where they apply its Open in Claude link and claude.ai address |
 | Ctrl+N | New Chat Place session |
 | Ctrl+Shift+N | Continue the selected desktop app or terminal session here, as a copy you can reply to (the original isn't changed) |
-| Ctrl+Shift+O | Change Permission Mode: Claude permission modes or Codex file access for the selected (or loaded) Chat Place session, from its next turn (File, Change Effort and Change Model are beside it) |
+| Ctrl+Shift+O | Change Permission Mode: Claude permission modes or Codex file access and approval reviewer for the selected (or loaded) Chat Place session, from its next turn (File, Change Effort and Change Model are beside it) |
 | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode, and, for a Claude chat, the commands and tools it may use without asking (Delete or Remove takes one back, and Remove All takes them all) and the rules from Claude Code's own settings for its folder |
 | F5 | Refresh the list now and put it back in order (it also refreshes itself every few seconds, without moving rows while you're in it) |
 | Alt+V, O | Sort Sessions: by status, newest first, oldest first, by title or by folder; the choice is remembered |
@@ -81,7 +81,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | --- | --- |
 | Ctrl+Shift+S | Find in All Sessions: search the messages of every session in the list; Enter on a result loads that session on that message. Pressed again while it searches, it stops |
 | Ctrl+Shift+A | Answer: approve or deny a tool, answer the provider's questions, or approve its plan (the loaded session first, then another chat waiting for an answer). Escape in the dialog answers later |
-| Ctrl+Shift+K | What Claude knows about you: your instructions, memories, skills, subagents, commands and settings, to read or open in your editor |
+| Ctrl+Shift+K | What AI knows about you: choose Claude or Codex, then read local instructions, memories, skills and settings, or open them in your editor |
 | Ctrl+Shift+P | Prompts: your saved prompts, to use (Enter puts one in the reply box), add, edit, reorder or delete |
 | Alt+Enter | Properties: what can be known about the selected session (or, in the messages, the selected message), one line each; Ctrl+C copies a line. Option+Return on a Mac |
 | F1 | This list of shortcuts |

@@ -1282,6 +1282,28 @@ def d_about_you(frame, env):
     return frame.on_about_you
 
 
+def d_about_you_codex(frame, env):
+    from thechatplace import about_you
+    from thechatplace.ui.dialogs import AboutYouDialog
+    home = env["tmp"] / "codex"
+    (home / "skills/review").mkdir(parents=True, exist_ok=True)
+    (home / "AGENTS.md").write_text("# How I like to work\n\nTest everything.\n", encoding="utf-8")
+    (home / "skills/review/SKILL.md").write_text(
+        "---\nname: review\ndescription: Review code changes\n---\nSteps.\n", encoding="utf-8")
+    def load(provider, done):
+        done(about_you.collect_codex(home=home, user_home=str(env["tmp"]))
+               if provider == "codex" else about_you.collect(
+                   home=env["tmp"] / "claude", user_home=str(env["tmp"])))
+    def show():
+        dialog = AboutYouDialog(frame, [], lambda done: load("codex", done),
+                                lambda path: None, lambda path: None, lambda path: None,
+                                provider_load=load)
+        dialog.provider.SetSelection(1)
+        dialog._change_provider(None)
+        frame._modal(dialog)
+    return show
+
+
 def d_session_columns(frame, env):
     return frame.on_session_columns
 
@@ -1404,7 +1426,8 @@ SURFACES = {
     "properties": ("dialog", d_properties, "View, Properties of a session"),
     "properties-codex": ("dialog", d_properties_codex,
                          "Properties of a synthetic Codex chat with provider-specific history labels"),
-    "about-you": ("dialog", d_about_you, "View, What Claude Knows About You"),
+    "about-you": ("dialog", d_about_you, "View, What AI Knows About You: Claude"),
+    "about-you-codex": ("dialog", d_about_you_codex, "What AI Knows About You: Codex"),
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
     "prompts": ("dialog", d_prompts, "File, Prompts"),
     "prompt-edit": ("dialog", d_prompt_edit, "Editing a saved prompt"),
@@ -1480,6 +1503,7 @@ DIALOG_CLASSES = {
     "properties": "PropertiesDialog",
     "properties-codex": "PropertiesDialog",
     "about-you": "AboutYouDialog",
+    "about-you-codex": "AboutYouDialog",
     "session-columns": "SessionColumnsDialog",
     "prompts": "PromptsDialog",
     "prompt-edit": "PromptEditDialog",

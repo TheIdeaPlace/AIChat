@@ -176,17 +176,19 @@ class CodexPermissions:
         without asking here says why (#307). Read on a worker."""
         def listed(result, error):
             if error:
-                done(codex_saved_rules.ERROR + (result or "Codex didn't say why."))
+                text = codex_saved_rules.ERROR + (result or "Codex didn't say why.")
             else:
                 never = self.record.provider_options.get('approval_policy') == 'never'
                 text = codex_saved_rules.describe(*result, never_asks=never)
-                def history_ready(reviews, failed):
-                    if failed:
-                        done(text + '\n\nAutomatic review history could not be read. Original records were preserved.')
-                    elif reviews:
-                        done(text + '\n\nRecent automatic review decisions (oldest first):\n\n'
-                             + '\n\n'.join(row[2] for row in reviews))
-                    else:
-                        done(text)
-                self.frame._codex_work(lambda: self.frame.sessions.owned_action('review_history', self.record), history_ready)
+            # Local decisions remain readable even when the app-server cannot
+            # list native rules. A server failure cannot hide the audit history.
+            def history_ready(reviews, failed):
+                if failed:
+                    done(text + '\n\nAutomatic review history could not be read. Original records were preserved.')
+                elif reviews:
+                    done(text + '\n\nRecent automatic review decisions (oldest first):\n\n'
+                         + '\n\n'.join(row[2] for row in reviews))
+                else:
+                    done(text)
+            self.frame._codex_work(lambda: self.frame.sessions.owned_action('review_history', self.record), history_ready)
         self.frame._load_codex_saved_rules(self.record.cwd, listed)
