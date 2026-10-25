@@ -22,7 +22,7 @@ from thechatplace.sessions import NEEDS_YOU  # noqa: E402
 
 from records import (assistant_block, lines, text_block, tool_result, tool_use_block,  # noqa: E402
                      user_text)
-from markers import msaa, voiceover, windows_paths  # noqa: E402
+from markers import msaa, voiceover, windows_layout, windows_paths  # noqa: E402
 import fake_env  # noqa: E402
 from fake_env import (FAKE_COMMANDS, FakeRunner, add_desktop, add_transcript,  # noqa: E402,F401
                       now_ms, pump)
@@ -5421,6 +5421,7 @@ def test_about_you_provider_switch_discards_stale_results_and_recovers(frame, en
         dialog.Destroy()
 
 
+@windows_layout  # 510 is Windows' own measurement
 def test_about_you_contents_keeps_room_on_a_short_screen(frame, env):
     """At 175% the dialog's inside is 510 high (892 pixels at 168 dpi), and
     Contents was left two lines tall there (#368)."""
