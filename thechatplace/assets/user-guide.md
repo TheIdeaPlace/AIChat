@@ -441,8 +441,8 @@ press Stop again to check Codex's saved turn status without resending anything.
 
 **Automatic approval review.** In New Session or Continue Here, Permission mode
 offers read-only or folder editing with **automatic approval review**. For an
-existing owned chat, finish or stop its turn and choose File, **Change Permission
-Mode** (Ctrl+Shift+O), or File, **Chat Permissions**, **Change**. Codex reviews
+existing owned chat, finish or stop its turn and choose File,
+**Change Permission Mode** (Ctrl+Shift+O), or File, **Chat Permissions**, **Change**. Codex reviews
 eligible permission requests for you and can allow or deny them. Human review
 remains the default; existing chats keep their selected mode. "Never ask" does
 not mean automatic approval.

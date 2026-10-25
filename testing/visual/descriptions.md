@@ -304,6 +304,12 @@ This is a 976 by 360 dialog titled "Properties of Visual probe", laid out like U
 
 ## codex-new: File, New Session with Codex chosen as Provider
 
+Update for #358, local 200% capture: the About permissions box now explains human
+and automatic approval review and the network/temporary-folder boundaries. It is
+taller and the first-message box remains below it, with Start and Cancel at the
+bottom right. Text is black on white (21:1). This local check does not update the
+light-100 or High Contrast baseline described below.
+
 The New Chat Place Session dialog, 680 by 620. Labels sit in a column on the left and their controls in a column from x=243 to the right edge: "Provider" (a dropdown showing "Codex", with the focus outline), "Folder" (a dropdown with the folder's path, cut at the right edge), "Browse..." and "From GitHub..." under it, "Work in" ("The folder as it is (not a git repository, so no worktree)"), "Branch" (greyed out and empty), "Title" (an empty box), "Model" and "Effort" (greyed out, "Configured Codex model" and "Configured Codex effort"), and "Permission mode" ("Can edit files in this folder; asks before anything else"). Below them "About permissions:" heads a read-only box the full width, 102 tall, with a paragraph about ChatGPT sign-in, the two permission choices, saved always-allow commands ("Saved user/system rule files in effect: 2", then that they "will run without asking and outside this folder's limits, including the network"), refused project rules and "Model choices load in the background." It takes five lines, leaving the bottom of the box empty, and the box has a scroll bar. "First message:" heads an empty box 87 tall, and "Start" (default) and "Cancel" are at the bottom right. The greyed text is #6D6D6D on #FAFAFA (5.0:1); in High Contrast Aquatic it is #A6A6A6 on #202020 (6.7:1).
 
 **What looks off:** The folder path is cut at the dropdown's edge, as long paths are in any dropdown. Nothing else.
@@ -516,6 +522,11 @@ The same dialog with one row in the list, "Nothing is allowed beyond the permiss
 
 ## chat-permissions-codex: File, Chat Permissions for a Codex chat (#332)
 
+Update for #358, local 200% capture: About these permissions starts with the
+selected reviewer and file scope, followed by the automatic-review explanation,
+then the existing remembered-approval and native-rule text. The text box scrolls;
+the list and buttons retain their positions. No layout flags were reported.
+
 The same 680 by 520 dialog, titled "Chat Permissions: Codex preview". The mode box reads "Can edit files in this folder; asks before anything else", with Change beside it. The selected list entry reads "No command approvals are remembered for this chat." Remove and Remove All now sit below the list on the left, with Close on the right. The About box explains when removal counts, that remembered commands may run outside the sandbox, and that only this chat in The Chat Place keeps the approval. The About box now shares the dialog's height with the list (list 186 tall, About box 169). A second paragraph reads "From Codex's own saved rules. These apply to every Codex chat, here, in the Codex app or a terminal. Each rule covers any command that starts with its words, ...", then "In <folder>/default.rules:" and "Allowed without asking: commands starting with git commit."; the remaining rules continue below the viewport (#307). High Contrast Aquatic uses white outlines and text on near-black, and an aqua selected row. Control sizes and positions match the earlier dialog; only the two buttons and the text changed.
 
 **What looks off:** Nothing in these pictures.
@@ -527,6 +538,9 @@ A 700 by 540 dialog. Request heads a 668 by 391 read-only box showing the comman
 **What looks off:** Nothing in these pictures.
 
 ## chat-permissions-codex-kept: Review remembered Codex commands (#307)
+
+Update for #358: the About box adds reviewer and boundary information ahead of
+the remembered-approval text. Local 200% capture only; High Contrast was not rerun.
 
 A 680 by 520 dialog. Permission mode and Change run across the top. A 648 by 186 list takes the middle, with git commit selected above git push. Long rows continue beyond the initial horizontal viewport; a horizontal scrollbar runs below them. Remove and Remove All sit below the list at the left, and Close at the right. A 648 by 169 About box explains removal, mode changes and command authority, followed by the Codex saved-rules paragraph and "Codex's own saved rules allow nothing extra.", all in view now the box shares the height (#307). High Contrast uses white outlines, near-black backgrounds and an aqua selected row. The selected light text measures 4.53:1 (#FFFFFF on #0078D4); High Contrast selected glyph cores measure 7.89:1 (#263B50 on #8EE3F0).
 

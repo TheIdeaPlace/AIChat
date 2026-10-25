@@ -922,7 +922,9 @@ def d_codex_review_history(frame, env):
     host.native = lambda done: done('Recent automatic review decisions (oldest first):\n\n'
         'Codex automatic review allowed the request.\nCommand: git status\nReason: Read the project status.\n\n'
         'Codex automatic review denied the request.\nReason: Access was outside the requested task.')
-    return lambda: frame._modal(ChatPermissionsDialog(frame, record.title, host))
+    dialog = ChatPermissionsDialog(frame, record.title, host)
+    wx.CallAfter(dialog.note.ShowPosition, dialog.note.GetValue().index('Recent automatic review decisions'))
+    return lambda: frame._modal(dialog)
 
 
 def d_codex_mode(frame, env):
