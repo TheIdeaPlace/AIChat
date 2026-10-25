@@ -107,6 +107,81 @@ def copilot_home() -> Path:
     return Path.home() / ".copilot"
 
 
+def copilot_policy_texts() -> list:
+    r"""(where, text or None) for each of Copilot CLI's managed policy files and, on
+    Windows, its policy registry values: an organisation's hooks live there,
+    and Copilot loads them whatever its own settings say (#352).
+
+    Where, from GitHub's Copilot CLI hooks reference ("Hook sources",
+    https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference):
+    ``C:\ProgramData\GitHub\Copilot\policy.d\*.json`` on Windows,
+    ``/etc/github-copilot/policy.d/*.json`` on Linux and macOS, and on Windows
+    each subkey of ``HKLM\Software\Policies\GitHub\Copilot`` with a
+    ``Policy`` string value. Beyond the reference, and only ever stricter:
+    the key's own ``Policy`` value, and the same key under HKCU."""
+    texts = []
+    if sys.platform == "win32":
+        root = Path(os.environ.get("ProgramData") or r"C:\ProgramData")
+        folder = root / "GitHub" / "Copilot" / "policy.d"
+    else:
+        folder = Path("/etc/github-copilot/policy.d")
+    try:
+        files = sorted(folder.glob("*.json"))
+    except OSError:
+        files = []
+    for path in files:
+        # A policy that can't be read in full is given as None: it can't be
+        # ruled out.
+        try:
+            data = path.read_bytes()
+        except OSError:
+            data = None
+        texts.append((str(path), None if data is None or len(data) > COPILOT_SETTINGS_BYTES
+                      else data.decode("utf-8-sig", "replace")))
+    if sys.platform == "win32":
+        import winreg
+        for hive, hive_name in ((winreg.HKEY_LOCAL_MACHINE, "HKLM"),
+                                (winreg.HKEY_CURRENT_USER, "HKCU")):
+            texts += _copilot_policy_values(winreg, hive, hive_name)
+    return texts
+
+
+def _copilot_policy_values(winreg, hive, hive_name) -> list:
+    r"""(where, text or None) for the ``Policy`` values under one hive's
+    ``Software\Policies\GitHub\Copilot``: the key's own, and each subkey's.
+    A value that isn't a string is None: it can't be ruled out."""
+    path = r"Software\Policies\GitHub\Copilot"
+    try:
+        key = winreg.OpenKey(hive, path)
+    except OSError:
+        return []
+    found = []
+    with key:
+        try:
+            value, _kind = winreg.QueryValueEx(key, "Policy")
+            found.append((rf"{hive_name}\{path}", value if isinstance(value, str) else None))
+        except OSError:
+            pass
+        index = 0
+        while True:
+            try:
+                name = winreg.EnumKey(key, index)
+            except OSError:
+                break
+            index += 1
+            try:
+                with winreg.OpenKey(key, name) as sub:
+                    value, _kind = winreg.QueryValueEx(sub, "Policy")
+            except OSError:
+                continue
+            found.append((rf"{hive_name}\{path}\{name}", value if isinstance(value, str) else None))
+    return found
+
+
+#: The most read of any one Copilot settings or hook file.
+COPILOT_SETTINGS_BYTES = 2 * 1024 * 1024
+
+
 def copilot_sessions_dir() -> Path:
     """One folder per Copilot CLI session, each named for its id."""
     return copilot_home() / "session-state"
@@ -411,6 +486,55 @@ def process_start(pid: int) -> Optional[int]:
         return (created.dwHighDateTime << 32) | created.dwLowDateTime
     finally:
         kernel32.CloseHandle(handle)
+
+
+def process_started_at(pid: int) -> Optional[float]:
+    """When a running process started, as a Unix time, or None if that
+    can't be told (it isn't running, or isn't ours to ask about). Used to
+    tell a lock file a live process wrote from one left by a process whose id
+    was handed out again (#364)."""
+    if not isinstance(pid, int) or pid <= 0:
+        return None
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return None
+        try:
+            # An exited process still answers while anything holds a handle
+            # to it: only a running one counts.
+            code = wintypes.DWORD()
+            kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value != 259:
+                return None
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not kernel32.GetProcessTimes(handle, *[ctypes.byref(t) for t in times]):
+                return None
+            ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+            return ticks / 10_000_000 - 11_644_473_600  # 100 ns since 1601 -> Unix time
+        finally:
+            kernel32.CloseHandle(handle)
+    import subprocess
+    import time as time_module
+    try:
+        # Elapsed time, not the start date: its format doesn't depend on the locale.
+        out = subprocess.run(["ps", "-o", "etime=", "-p", str(pid)], capture_output=True,
+                             text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.fullmatch(r"(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)", out)
+    if not match:
+        return None
+    days, hours, minutes, seconds = (int(part or 0) for part in match.groups())
+    return time_module.time() - (((days * 24 + hours) * 60 + minutes) * 60 + seconds)
 
 
 def pid_alive(pid: int) -> bool:
@@ -1591,6 +1715,102 @@ def start_codex_server(executable: Optional[str] = None) -> CodexServerProcess:
     tree = ProcessTree()
     process = subprocess.Popen([executable, "app-server", "--listen", "stdio://"],
                                env=codex_child_environment(),
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+    owned = CodexServerProcess(process, tree)
+    try:
+        tree.attach(process)
+    except Exception:
+        owned.close()
+        raise
+    return owned
+
+
+# ---------------------------------------------------------------------------
+# GitHub Copilot CLI (#352)
+# ---------------------------------------------------------------------------
+
+
+def copilot_native_candidates() -> List[Path]:
+    """Where the native Copilot CLI is installed: winget, Homebrew and
+    GitHub's install script. npm's copilot.cmd / node script is never used,
+    for the reason claude.cmd isn't: a command run through a shell could be
+    injected from a chat's text."""
+    home = Path.home()
+    if sys.platform == "darwin":
+        return [Path("/opt/homebrew/bin/copilot"), Path("/usr/local/bin/copilot"),
+                home / ".local/bin/copilot"]
+    if sys.platform == "win32":
+        local = Path(os.environ.get("LOCALAPPDATA") or home / "AppData/Local")
+        packages = local / "Microsoft/WinGet/Packages"
+        try:
+            installed = sorted(p / "copilot.exe" for p in packages.iterdir()
+                               if p.name.startswith("GitHub.Copilot_"))
+        except OSError:
+            installed = []
+        return [local / "Microsoft/WinGet/Links/copilot.exe", *installed,
+                home / ".local/bin/copilot.exe"]
+    return [home / ".local/bin/copilot", Path("/usr/local/bin/copilot")]
+
+
+def find_copilot(which=None, native_candidates=None) -> Optional[str]:
+    """The native Copilot CLI, or None. The same check as Codex's: a real
+    executable, never a script (#352)."""
+    import shutil
+
+    found = (which or shutil.which)("copilot")
+    if native_candidates is None:
+        native_candidates = copilot_native_candidates()
+    for candidate in ([found] if found else []) + list(native_candidates):
+        if _native_codex(str(candidate)):
+            return str(candidate)
+    return None
+
+
+#: Environment that would change who Copilot answers as, what pays for it, or
+#: whether it asks before acting (#352): ``COPILOT_ALLOW_ALL`` approves every
+#: tool without asking; a token picks an account other than the one signed
+#: in; ``COPILOT_OFFLINE`` and ``COPILOT_PROVIDER_*`` (bring your own key)
+#: send prompts to another model service; ``COPILOT_MODEL`` and
+#: ``COPILOT_AUTO_TIER`` would override the model The Chat Place shows.
+COPILOT_OVERRIDE_VARS = frozenset({
+    "COPILOT_ALLOW_ALL", "COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN",
+    "COPILOT_OFFLINE", "COPILOT_MODEL", "COPILOT_AUTO_TIER",
+})
+COPILOT_OVERRIDE_PREFIXES = ("COPILOT_PROVIDER_",)
+
+
+def copilot_child_environment(environ=None) -> dict:
+    """The environment for a Copilot CLI The Chat Place starts: everything
+    but the overrides above, matched case-insensitively for Windows. PATH,
+    HOME, COPILOT_HOME and GH_HOST stay, so Copilot finds its sign-in.
+    GH_HOST is kept on purpose: GitHub Enterprise Cloud with data residency
+    (a company's own ghe.com host) needs it to reach that company's Copilot,
+    whose answers are still GitHub Copilot's, as each turn's billing check
+    confirms."""
+    source = os.environ if environ is None else environ
+    return {key: value for key, value in source.items()
+            if key.upper() not in COPILOT_OVERRIDE_VARS
+            and not key.upper().startswith(COPILOT_OVERRIDE_PREFIXES)}
+
+
+#: What start_copilot_acp says when there's no Copilot CLI to start: safe
+#: to show, unlike the system's own reasons.
+COPILOT_MISSING = "Install GitHub Copilot CLI, then restart."
+
+
+def start_copilot_acp(executable: Optional[str] = None,
+                      cwd: Optional[str] = None) -> CodexServerProcess:
+    """``copilot --acp`` on stdio, without a shell, in a kill-on-close tree
+    (the same process wrapper as Codex's app-server)."""
+    import subprocess
+
+    executable = executable or find_copilot()
+    if not executable or not _native_codex(executable):
+        raise OSError(COPILOT_MISSING)
+    tree = ProcessTree()
+    process = subprocess.Popen([executable, "--acp", "--disable-client-telemetry"],
+                               env=copilot_child_environment(), cwd=cwd or None,
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL, **tree.popen_kwargs())
     owned = CodexServerProcess(process, tree)
