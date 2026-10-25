@@ -333,7 +333,8 @@ def collect_codex(cwds: Iterable[str] = (), home: Optional[Path] = None,
     this inventory, just as parent instructions are for Claude's inventory.
     """
     home = Path(home) if home is not None else platform_paths.codex_home()
-    user = Path(user_home) if user_home is not None else Path.home()
+    user_skills = (Path(user_home) / ".agents/skills" if user_home is not None
+                   else platform_paths.agents_skills_dir())
     kinds = {name: KnownKind(name, about) for name, about in [
         (INSTRUCTIONS, "Instructions for Codex (AGENTS.md and AGENTS.override.md)"),
         (MEMORIES, "Local Markdown memories saved in Codex's memories folder"),
@@ -363,11 +364,14 @@ def collect_codex(cwds: Iterable[str] = (), home: Optional[Path] = None,
             add(INSTRUCTIONS, folder / name, name, project)
         add(SETTINGS, (folder / ".codex" if project else folder) / "config.toml",
             "Project settings" if project else "Your settings", project)
+    # Codex keeps a summary of each past chat in memories/rollout_summaries:
+    # those are chat history, not memories you'd edit, and stay out like rollouts.
     for path in _files(home / "memories", "**/*.md"):
-        add(MEMORIES, path)
+        if "rollout_summaries" not in path.relative_to(home / "memories").parts:
+            add(MEMORIES, path)
     for path in _files(home / "prompts", "*.md"):
         add(PROMPTS, path)
-    skill_folders = [(user / ".agents/skills", ""), (home / "skills", "")]
+    skill_folders = [(user_skills, ""), (home / "skills", "")]
     skill_folders += [(folder / ".agents/skills", project)
                       for folder, project in folders if project]
     for folder, project in skill_folders:

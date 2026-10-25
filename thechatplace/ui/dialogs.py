@@ -2417,14 +2417,18 @@ class PropertiesDialog(LinesDialog):
 
 
 class AboutYouDialog(wx.Dialog):
-    """Local provider customization files (#92, #305).
-    A list of kinds, the chosen kind's items, and
-    the selected item's file to read by line. The Chat Place only reads them:
-    Edit opens the file in your own editor, and Reload shows what changed."""
+    """What AI Knows About You (#92, #305): a provider's local customization
+    files. A list of kinds, the chosen kind's items, and the selected item's
+    file to read by line. The Chat Place only reads them: Edit opens the file
+    in your own editor, and Reload shows what changed."""
 
     def __init__(self, parent, kinds, load, edit, show, copy, provider_load=None):
-        """``kinds`` is what was found; ``load(done)`` reads it all again
-        in the background and calls ``done(kinds)`` on the UI thread."""
+        """``kinds`` is what was found for Claude. ``provider_load(provider,
+        done)`` reads a provider's files in the background and calls
+        ``done(kinds)`` on the UI thread, or ``done(None)`` if the read failed;
+        ``done`` returns False when the result came too late to be shown.
+        Without ``provider_load`` the Provider list is off and ``load(done)``
+        reads Claude's files again."""
         super().__init__(parent, title="What AI Knows About You", size=dialog_size(parent, 860, 700),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._load, self._edit, self._show_file, self._copy = load, edit, show, copy
@@ -2432,12 +2436,15 @@ class AboutYouDialog(wx.Dialog):
         self._provider_load = provider_load
         self._request = 0
         self._items = []
+        # What the lists say while they're empty: reading, or a read that failed,
+        # mustn't sound like nothing was found.
+        self._placeholder = "Nothing here yet."
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label=(
             "Local customization files, not an account-wide memory or active-context report.\n"
             "Edit opens a file in your editor; Reload reads your changes.")),
             0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
-        sizer.Add(wx.StaticText(self, label="&Provider:"), 0, wx.LEFT | wx.TOP, 8)
+        sizer.Add(wx.StaticText(self, label="Pro&vider:"), 0, wx.LEFT | wx.TOP, 8)
         self.provider = wx.Choice(self, choices=["Claude", "Codex"])
         self.provider.SetSelection(0)
         set_accessible_name(self.provider, "Provider")
@@ -2504,6 +2511,7 @@ class AboutYouDialog(wx.Dialog):
 
     def _change_provider(self, event):
         self._kinds = []
+        self._placeholder = "Reading…"
         self._fill_kinds()
         self.reload()
 
@@ -2513,22 +2521,25 @@ class AboutYouDialog(wx.Dialog):
         self.reload_btn.Enable()
         if kinds is not None:
             self._kinds = list(kinds)
+            self._placeholder = "Nothing here yet."
+        elif not self._kinds:
+            self._placeholder = "Couldn't read these files."
         self._fill_kinds()
 
     def _fill_kinds(self):
         kind_index = max(self.kinds.GetSelection(), 0)
         selected = self.selected_item()
         # Each kind says what it is, since focus never reaches a label.
-        self.kinds.Set([f"{k.row()}: {k.about}" for k in self._kinds])
-        if self._kinds:
-            self.kinds.SetSelection(min(kind_index, len(self._kinds) - 1))
+        self.kinds.Set([f"{k.row()}: {k.about}" for k in self._kinds] or [self._placeholder])
+        self.kinds.SetSelection(min(kind_index, max(len(self._kinds) - 1, 0)))
         self._fill_items(keep=selected.path if selected is not None else None)
 
     def _fill_items(self, keep=None):
         index = self.kinds.GetSelection()
         kind = self._kinds[index] if 0 <= index < len(self._kinds) else None
         self._items = list(kind.items) if kind is not None else []
-        self.items.Set([i.row() for i in self._items] or ["Nothing here yet."])
+        self.items.Set([i.row() for i in self._items]
+                       or [self._placeholder if not self._kinds else "Nothing here yet."])
         name = kind.name if kind is not None else "Items"
         set_accessible_name(self.items, f"{name}, {len(self._items)}")
         paths = [i.path for i in self._items]

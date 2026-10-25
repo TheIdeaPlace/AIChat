@@ -2418,15 +2418,20 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._read_about_you(cwds, lambda kinds: self._show_about_you(kinds, cwds))
 
     def _read_about_you(self, cwds, done, provider="claude"):
-        """``about_you.collect`` in the background, then ``done(kinds)`` on
-        the UI thread (or a message if it failed)."""
+        """The provider's ``about_you.collect`` or ``collect_codex`` in the
+        background, then ``done(kinds)`` on the UI thread. If it failed,
+        ``done(None)``, and the failure is said unless ``done`` returns False:
+        the dialog has moved on to another provider, so it's no longer news."""
+        def failed(message):
+            if done(None) is not False:
+                self._feedback(message)
+
         def work():
             try:
                 kinds = (about_you.collect_codex(cwds) if provider == "codex"
                          else about_you.collect(cwds))
             except Exception as exc:  # noqa: BLE001
-                wx.CallAfter(self._feedback, f"Couldn't read {provider.title()} customization files: {exc}")
-                wx.CallAfter(done, None)
+                wx.CallAfter(failed, f"Couldn't read {provider.title()} customization files: {exc}")
                 return
             wx.CallAfter(done, kinds)
         self._pool.submit(work)
@@ -2446,6 +2451,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 if accepted and fresh is not None:
                     self._feedback(provider.title() + ": " + about_you.summary(
                         fresh, provider.title()))
+                return accepted
             self._read_about_you(folders, loaded, provider)
         self._modal(AboutYouDialog(self, kinds, lambda done: provider_load("claude", done), platform_paths.edit_file,
                                    platform_paths.show_in_folder, copy, provider_load))

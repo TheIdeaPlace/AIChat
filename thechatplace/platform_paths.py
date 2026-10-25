@@ -591,8 +591,8 @@ def _windows_program(*parts: str) -> str:
 
 
 def edit_file(path: Path) -> None:
-    """Open a text file in your own editor (What Claude Knows About You's
-    Edit, #92): The Chat Place itself never writes to Claude Code's files.
+    """Open a text file in your own editor (What AI Knows About You's
+    Edit, #92, #305): The Chat Place itself never writes to these files.
     Windows tries the file type's Edit verb, then Open, then Notepad, since
     a ``.md`` file often has no program set for it. Raises OSError if none
     of them could start."""
@@ -1306,8 +1306,17 @@ def _codex_npm_candidates(roots) -> List[Path]:
 
 
 def codex_home() -> Path:
-    """Codex's local profile, including a user's CODEX_HOME override."""
+    """Codex's local profile, including a user's CODEX_HOME override. Only
+    read, for What AI Knows About You (#305), so a relative or network
+    CODEX_HOME is taken as given; ``_codex_package_candidates`` refuses those
+    because it finds programs to run."""
     return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+
+
+def agents_skills_dir() -> Path:
+    """Your own skills shared by agents such as Codex (``~/.agents/skills``,
+    #305), outside Codex home, so tests can point it elsewhere too."""
+    return Path.home() / ".agents" / "skills"
 
 
 def _codex_package_candidates(home: Path, name: str):

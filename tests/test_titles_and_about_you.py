@@ -27,6 +27,26 @@ def test_codex_inventory_is_scoped_deduplicated_and_never_lists_credentials(tmp_
     assert all(k.name != "Slash commands" for k in kinds)
 
 
+def test_codex_memories_leave_out_past_chat_summaries(tmp_path):
+    home = tmp_path / "codex"
+    for path in (home / "memories/MEMORY.md", home / "memories/rollout_summaries/chat.md"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Synthetic memory\n", encoding="utf-8")
+    kinds = about_you.collect_codex(home=home, user_home=str(tmp_path))
+    memories = next(k for k in kinds if k.name == "Memories")
+    assert [i.path for i in memories.items] == [home / "memories/MEMORY.md"]
+
+
+def test_codex_user_skills_come_from_platform_paths(monkeypatch, tmp_path):
+    skill = tmp_path / "shared/helper/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("---\nname: helper\n---\n", encoding="utf-8")
+    monkeypatch.setattr(platform_paths, "agents_skills_dir", lambda: tmp_path / "shared")
+    kinds = about_you.collect_codex(home=tmp_path / "codex")
+    skills = next(k for k in kinds if k.name == "Skills")
+    assert [i.path for i in skills.items] == [skill]
+
+
 def test_codex_home_honors_profile_override(monkeypatch, tmp_path):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     assert platform_paths.codex_home() == tmp_path

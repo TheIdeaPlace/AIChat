@@ -1021,9 +1021,11 @@ View, Show Sessions, Terminal Sessions includes them; ones started from another 
   it has. Elsewhere it's the loaded session. Ctrl+C copies the selected line, Copy All (Alt+A)
   copies every line, and Escape closes the list. On a Mac the key is Option+Return.
 - **Export** (Ctrl+E) saves a session's conversation as Markdown, a web page or plain text.
-- **What Claude Knows About You** (Ctrl+Shift+K) lists what Claude Code keeps about you: your
-  instructions (CLAUDE.md files), the memories it saved, your skills, subagents, commands and
-  settings. Enter reads one, and Edit in Your Editor opens it in your own editor.
+- **What AI Knows About You** (Ctrl+Shift+K) lists the files on this computer that shape an AI's
+  work for you. Choose Claude or Codex in the Provider list (Alt+V). For Claude: your instructions
+  (CLAUDE.md files), the memories it saved, your skills, subagents, commands and settings. For
+  Codex: your instructions (AGENTS.md files), memories, skills, saved prompts and settings.
+  Enter reads one, and Edit in Your Editor opens it in your own editor.
 
 ### Codex usage
 

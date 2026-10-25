@@ -5400,6 +5400,118 @@ def test_about_you_provider_switch_discards_stale_results_and_recovers(frame, en
         dialog.Destroy()
 
 
+def test_about_you_lists_say_when_reading_or_unreadable(frame, env):
+    from thechatplace import about_you
+    from thechatplace.ui.dialogs import AboutYouDialog
+    kinds = about_you.collect(home=_about_you_home(env), user_home="")
+    pending = []
+    dialog = AboutYouDialog(frame, kinds, lambda done: done(kinds),
+                            platform_paths.edit_file, platform_paths.show_in_folder,
+                            env["copied"].append,
+                            lambda provider, done: pending.append(done))
+    try:
+        # Alt+V, since Copy Path has Alt+P.
+        assert dialog.FindWindowByLabel("Pro&vider:") is not None
+        dialog.provider.SetSelection(1)
+        dialog._change_provider(None)
+        # Empty while reading mustn't sound like nothing was found.
+        assert dialog.kinds.GetStrings() == ["Reading…"]
+        assert dialog.items.GetStrings() == ["Reading…"]
+        assert pending[-1](None) is True
+        assert dialog.kinds.GetStrings() == ["Couldn't read these files."]
+        assert dialog.selected_item() is None and not dialog.edit_btn.IsEnabled()
+        dialog.reload()
+        pending[-1](kinds)
+        assert dialog.kinds.GetString(0).startswith("Instructions, 1 item")
+        dialog.kinds.SetSelection(1)
+        dialog._fill_items()
+        assert dialog.items.GetStrings() == ["Nothing here yet."]
+    finally:
+        dialog.Destroy()
+
+
+def _codex_window_session(frame):
+    import dataclasses
+    first = frame._snapshot.sessions[0]
+    codex = dataclasses.replace(first, key="codex-1", provider="codex", cwd="C:\\G\\CodexWork")
+    frame._snapshot.sessions.append(codex)
+
+
+def test_about_you_switches_to_codex_through_the_window(frame, env, monkeypatch):
+    from thechatplace import about_you
+    from thechatplace.ui import main_frame
+    _about_you_home(env)
+    _codex_window_session(frame)
+    home = env["tmp"] / "codex"
+    home.mkdir()
+    (home / "AGENTS.md").write_text("# Synthetic Codex instructions\n", encoding="utf-8")
+    seen = {}
+    real = about_you.collect_codex
+
+    def collect_codex(cwds):
+        seen["cwds"] = list(cwds)
+        return real(cwds)
+    monkeypatch.setattr(main_frame.about_you, "collect_codex", collect_codex)
+    shown = {}
+
+    def modal(self, dialog):
+        dialog.provider.SetSelection(1)
+        dialog._change_provider(None)
+        assert pump(lambda: dialog.reload_btn.IsEnabled())
+        shown["row"] = dialog.items.GetString(0)
+        shown["path"] = dialog.selected_item().path
+        dialog.Destroy()
+    monkeypatch.setattr(main_frame.MainFrame, "_modal", modal)
+    frame.on_about_you()
+    assert pump(lambda: shown)
+    # Only the Codex sessions' folders, never the Claude ones.
+    assert seen["cwds"] == ["C:\\G\\CodexWork"]
+    assert shown["path"] == home / "AGENTS.md"
+    assert env["feedback"][-1] == "Codex: Found: Instructions 1."
+
+
+def test_about_you_codex_failure_is_said_unless_the_dialog_moved_on(frame, env, monkeypatch):
+    from thechatplace.ui import main_frame
+    _about_you_home(env)
+    _codex_window_session(frame)
+
+    def broken(cwds):
+        raise RuntimeError("bad disk")
+    monkeypatch.setattr(main_frame.about_you, "collect_codex", broken)
+    read_about_you = main_frame.MainFrame._read_about_you
+    shown = {}
+
+    def modal(self, dialog):
+        # Codex fails while it's still the provider shown: said, and Reload is back.
+        dialog.provider.SetSelection(1)
+        dialog._change_provider(None)
+        assert pump(lambda: "bad disk" in env["feedback"][-1])
+        assert dialog.reload_btn.IsEnabled()
+        assert dialog.kinds.GetStrings() == ["Couldn't read these files."]
+        # Switched back to Claude before Codex's failure came in: not said.
+        env["feedback"].clear()
+        loads = []
+        monkeypatch.setattr(main_frame.MainFrame, "_read_about_you",
+                            lambda self, cwds, done, provider="claude": loads.append(done))
+        dialog.provider.SetSelection(1)
+        dialog._change_provider(None)
+        dialog.provider.SetSelection(0)
+        dialog._change_provider(None)
+        assert loads[0](None) is False
+        shown["done"] = True
+        dialog.Destroy()
+    monkeypatch.setattr(main_frame.MainFrame, "_modal", modal)
+    frame.on_about_you()
+    assert pump(lambda: shown)
+    monkeypatch.setattr(main_frame.MainFrame, "_read_about_you", read_about_you)
+    # The window itself stays quiet about a failure the dialog no longer wants.
+    env["feedback"].clear()
+    calls = []
+    frame._read_about_you([], lambda kinds: calls.append(kinds) or False, "codex")
+    assert pump(lambda: calls) and calls == [None]
+    assert not any("bad disk" in line for line in env["feedback"])
+
+
 # -- Remote Control, easier to find (#96) ----------------------------------------------------
 
 
