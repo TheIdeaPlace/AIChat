@@ -157,7 +157,7 @@ SHORTCUTS = [
                          "a message, through Claude in the loaded Chat Place session (it needs "
                          "Remote Control on)"),
         ("Ctrl+Shift+E", "Send Reply to Another Chat: the selected reply (or the latest one) "
-                         "goes to another Chat Place chat, Claude or Codex, labelled with who "
+                         "goes to another Chat Place chat, Claude or Codex, or a new one, labelled with who "
                          "wrote it; read and change it first, then Enter sends and you go to "
                          "that chat. In an agent conversation, hands the waiting reply to the "
                          "other agent"),

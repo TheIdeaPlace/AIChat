@@ -453,8 +453,10 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Claude can answer Codex's review. It sends the selected reply in the messages list, or the
   latest one if a message of yours is selected. Choose the chat it goes to: any of The Chat
   Place's own chats, Claude or Codex, other than this one (desktop app, terminal and hidden
-  chats aren't offered). The chat must already be started; start it first with File, New
-  Session (Ctrl+N). The message starts with a line saying which agent wrote it and in
+  chats aren't offered), or, at the end of the list, New Claude chat or New Codex chat. A new
+  chat opens New Session with the message as its first message, the folder of the chat the
+  reply came from, and the title "Forwarded from" that chat; choose its permission and model
+  there, then start it. The message starts with a line saying which agent wrote it and in
   which chat, so the agent reading it knows these are another agent's words, not yours. Read
   it and change or add to it in the Message box (Enter there starts a new line), then press
   Ctrl+Enter, or Enter in the list, to send it. The Chat Place goes to that chat and sends it
@@ -466,6 +468,16 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Enter. It's also on a reply's menu in the messages list (Applications key). A forwarded
   message is only ever a message: it can't answer a question or approve anything, which still
   comes to you.
+  - **Just send it, or start an agent conversation (#378).** Under Send to, **Just send it**
+    (Alt+J) is chosen; **Send it and start an agent conversation with both chats** (Alt+C)
+    instead makes the two chats an agent conversation (below), titled in **Agent conversation
+    title** (Alt+I, the chat's title to start with). The reply goes as its first hand-off, the
+    chat you sent it to answers first, and you approve each hand-off (change that with File,
+    Agent Conversation Hand-offs). With a new chat, New Session comes first. It can't be done
+    with a chat that isn't one of The Chat Place's own, one already in an agent conversation, or
+    while the chat the reply came from is still working: then the option's name ends with
+    "unavailable" and why. If the label line of the message is changed, what's sent is your own
+    words rather than a hand-off.
 - **Agent conversations (File, New Agent Conversation, Ctrl+Shift+G).** Two of The Chat
   Place's own chats, Claude and Codex (or two of either), talk to each other in one
   conversation, with you in it. Choose each agent's chat: one of yours, keeping its history,
@@ -1021,7 +1033,7 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+P | Prompts: use, add, edit, reorder or delete your saved prompts |
 | Anywhere | Ctrl+Shift+F | Attach files or images to the next message |
 | Anywhere | Ctrl+Shift+M | Other machines: list your sessions on other computers and message one |
-| Anywhere | Ctrl+Shift+E | Send Reply to Another Chat: pass the selected (or latest) reply to another Chat Place chat, Claude or Codex; in an agent conversation, hand the waiting reply on |
+| Anywhere | Ctrl+Shift+E | Send Reply to Another Chat: pass the selected (or latest) reply to another Chat Place chat, Claude or Codex, or a new one; in an agent conversation, hand the waiting reply on |
 | Anywhere | Ctrl+Shift+G | New Agent Conversation: two chats that pass replies to each other |
 | Anywhere | Ctrl+Shift+I | Lists: code blocks, links, changed files, commands, decisions and Claude's tasks, for this message or the whole chat |
 | Anywhere | Ctrl+Shift+D | Lists, on Changed Files: each change to read by line |

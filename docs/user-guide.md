@@ -630,8 +630,8 @@ pasting.
 1. In the chat with the reply, select it in the messages list. If a message of yours is
    selected instead, the latest reply is used.
 2. Press **Ctrl+Shift+E**. **Send to** lists The Chat Place's own chats, Claude and Codex, other
-   than this one. Desktop app, terminal and hidden chats aren't offered. The chat you send to
-   must already be started: start it first with File, New Session (Ctrl+N).
+   than this one. Desktop app, terminal and hidden chats aren't offered. At the end of the list
+   are **New Claude chat** and **New Codex chat**, to start a new chat with the reply.
 3. Below it, **Message** has the reply, starting with a line that says which agent wrote it and
    in which chat, so the agent reading it knows these are another agent's words, not yours.
    Change it or add your own words; Enter there starts a new line.
@@ -640,6 +640,17 @@ pasting.
    and it's queued if that chat is working. A Codex chat that isn't ready yet gets ready first
    ("Getting Reviewer ready"), and the message goes when it is; if you go to another chat before
    then, it isn't sent and stays in that chat's reply box.
+
+To a new chat, New Session opens next, with the message as the first message, the folder of
+the chat the reply came from, and the title "Forwarded from" and that chat's title. Choose the
+permission and model, then press Start.
+
+**Just send it** (Alt+J) is chosen under Send to. Choose **Send it and start an agent
+conversation with both chats** (Alt+C) instead to make the two chats an agent conversation
+(see the next section), and give it a title in **Agent conversation title** (Alt+I). The reply
+goes as its first hand-off and the chat you sent it to answers first; you approve each
+hand-off. When it can't be done, because a chat wasn't started in The Chat Place, is already in
+an agent conversation, or is still working, the option says "unavailable" and why.
 
 When the answer comes, press **Ctrl+Shift+E** again: the chat the reply came from is first in the
 list, so **Enter** sends the answer back. If a message can't be sent, it's left in that chat's
