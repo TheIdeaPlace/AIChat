@@ -8,7 +8,7 @@ from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_policy import CodexPolicy
 from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent, CodexRememberedApprovalError
-from .codex_permissions import CodexPermissionStore, candidate, matches
+from .codex_permissions import CodexPermissionStore, CodexReviewStore, candidate, matches
 from .codex_tokens import CodexTokenUsage
 from ..codex_diagnostics import record_failure, safe_reason
 from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE
@@ -76,6 +76,8 @@ class CodexChatRuntime:
         self._saved_plans = {}
         self._plan_lock = threading.Lock()
         self.permission_store = CodexPermissionStore()
+        self.review_store = CodexReviewStore()
+        self._saved_reviews = {}
         self._permission_lock = threading.RLock()
         self._permission_evaluated = set()
         self._permission_pending = set()
@@ -110,10 +112,10 @@ class CodexChatRuntime:
         self._notify(proof.native_id)
         return proof.record()
 
-    def create(self, cwd, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request'):
+    def create(self, cwd, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request', approvals_reviewer='user'):
         connection, _ = self._binding()
         proof = CodexOwnedThreads(connection).start(cwd, title, model=model, effort=effort,
-            sandbox=sandbox, approval_policy=approval_policy)
+            sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer)
         return self._remember(proof, new=True)
 
     def history_route(self, native_id):
@@ -141,10 +143,10 @@ class CodexChatRuntime:
             return proof.connection
         return None
 
-    def fork(self, source, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request'):
+    def fork(self, source, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request', approvals_reviewer='user'):
         connection, _ = self._binding()
         return self._remember(CodexOwnedThreads(connection).fork(source, title, model=model, effort=effort,
-            sandbox=sandbox, approval_policy=approval_policy))
+            sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer))
 
     def reopen(self, record):
         # Explicit user action only, after the caller has reconciled history.
@@ -166,7 +168,7 @@ class CodexChatRuntime:
             if unsent:
                 self._notify(record.cli_session_id, unsent=unsent)
 
-    def prepare_policy(self, record, sandbox, approval_policy):
+    def prepare_policy(self, record, sandbox, approval_policy, approvals_reviewer='user'):
         """Verify an idle chat's new grant, keeping sends blocked until saved.
 
         The UI persists the returned record on its own thread and then confirms
@@ -176,9 +178,12 @@ class CodexChatRuntime:
             raise CodexRpcError('Only owned Codex chats can change permissions')
         if record.provider_options.get('sandbox') == 'workspace-write':
             CodexPolicy('workspace-write', workspace_root=record.provider_options.get('workspace_root', '')).verify_workspace(record.cwd)
-        policy = CodexPolicy.choose(record.cwd, sandbox, approval_policy)
+        policy = CodexPolicy.choose(record.cwd, sandbox, approval_policy, approvals_reviewer)
         options = dict(record.provider_options)
         options.update(sandbox=sandbox, approval_policy=approval_policy)
+        options.pop('approvals_reviewer', None)
+        if approvals_reviewer != 'user':
+            options['approvals_reviewer'] = approvals_reviewer
         options.pop('workspace_root', None)
         if policy.workspace_root:
             options['workspace_root'] = policy.workspace_root
@@ -618,6 +623,8 @@ class CodexChatRuntime:
         if proof is None or executor is None:
             return CodexChatState(native_id, STATUS_UNAVAILABLE)
         state = executor.snapshot(proof)
+        permission_notices += tuple((state.turn_id, identity, text)
+                                    for identity, text in state.review_notices)
         with self._permission_lock:
             requests = tuple(r for r in state.requests if
                 (native_id, r.turn_id, r.request_id) not in self._permission_pending)
@@ -649,6 +656,13 @@ class CodexChatRuntime:
                               + tuple(self._queues.pop(native_id, ())))
             with self._plan_lock:
                 state = self.snapshot(native_id)
+                reviews = tuple(row for row in state.permission_notices if row[1].startswith('auto-review:'))
+                if reviews and self._saved_reviews.get(native_id) != reviews:
+                    try:
+                        self.review_store.remember(native_id, state.turn_id, [(row[1], row[2]) for row in reviews])
+                        self._saved_reviews[native_id] = reviews
+                    except (OSError, ValueError):
+                        pass  # Never interrupt execution to save display history.
                 if state.plan_received:
                     signature = (state.turn_id, tuple((t.task_id, t.subject, t.status) for t in state.tasks))
                     if self._saved_plans.get(native_id) != signature:

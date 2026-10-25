@@ -111,6 +111,8 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         sandbox = options.get('sandbox', 'read-only')
         lines.append('Sandbox: ' + {'read-only': 'read-only', 'workspace-write': 'can edit files in its folder'}.get(sandbox, 'not reported'))
         lines.append('Approval policy: ' + {'on-request': 'on request', 'never': 'never ask'}.get(options.get('approval_policy', 'on-request'), 'not reported'))
+        lines.append('Approval reviewer: ' + {'user': 'human', 'auto_review': 'automatic approval review'}.get(
+            options.get('approvals_reviewer', 'user'), 'not reported'))
         if sandbox == 'workspace-write':
             lines.append('Writable folder: ' + options.get('workspace_root', 'not verified'))
     if info.provider == "codex":

@@ -16,6 +16,17 @@ CODEX_MODES = [(('read-only', 'on-request'), 'Read-only; asks before allowing ch
                (('workspace-write', 'on-request'),
                 'Can edit files in this folder; asks before anything else')]
 
+# Keep agent-conversation templates' sandbox choices separate: selecting a
+# template must not opt someone into automatic review (#358).
+CODEX_REVIEW_MODES = [(value + ('user',), label) for value, label in CODEX_MODES] + [
+    (('read-only', 'on-request', 'auto_review'), 'Read-only; automatic approval review'),
+    (('workspace-write', 'on-request', 'auto_review'), 'Can edit files in this folder; automatic approval review')]
+
+CODEX_REVIEW_NOTE = ('Automatic approval review lets Codex review eligible requests instead of asking you. '
+                     'It can deny requests, and does not grant unrestricted access. Human review remains available. '
+                     'Network access and access to temporary folders outside this folder require approval. '
+                     'The Chat Place overrides these boundaries for this chat only; saved Codex rules still apply.')
+
 
 class ClaudePermissions:
     can_remove = True
@@ -117,7 +128,8 @@ class CodexPermissions:
     def mode_text(self) -> str:
         options = self.record.provider_options
         current = (options.get('sandbox', 'read-only'), options.get('approval_policy', 'on-request'))
-        return dict(CODEX_MODES).get(current, 'not recorded')
+        return dict(CODEX_REVIEW_MODES).get(current + (options.get('approvals_reviewer', 'user'),),
+                                          dict(CODEX_MODES).get(current, 'not recorded'))
 
     def can_change_mode(self):
         state = self.frame._codex_states.get(self.info.key)
@@ -133,7 +145,12 @@ class CodexPermissions:
 
     def note(self) -> str:
         from ..providers.codex_permissions import NOTICE
-        return ('Removal applies before the next approval is sent; work already approved may finish. '
+        options = self.record.provider_options
+        reviewer = 'automatic approval review' if options.get('approvals_reviewer') == 'auto_review' else 'human review'
+        files = ('Can read files and edit the chat folder: ' + self.record.cwd
+                 if options.get('sandbox') == 'workspace-write' else 'Can read files; changes require approval.')
+        return (f'Selected reviewer: {reviewer}. {files}\n' + CODEX_REVIEW_NOTE + '\n\n'
+                'Removal applies before the next approval is sent; work already approved may finish. '
                 'Changing mode clears remembered approvals. ' + NOTICE)
 
     def load(self, done):
@@ -162,5 +179,14 @@ class CodexPermissions:
                 done(codex_saved_rules.ERROR + (result or "Codex didn't say why."))
             else:
                 never = self.record.provider_options.get('approval_policy') == 'never'
-                done(codex_saved_rules.describe(*result, never_asks=never))
+                text = codex_saved_rules.describe(*result, never_asks=never)
+                def history_ready(reviews, failed):
+                    if failed:
+                        done(text + '\n\nAutomatic review history could not be read. Original records were preserved.')
+                    elif reviews:
+                        done(text + '\n\nRecent automatic review decisions (oldest first):\n\n'
+                             + '\n\n'.join(row[2] for row in reviews))
+                    else:
+                        done(text)
+                self.frame._codex_work(lambda: self.frame.sessions.owned_action('review_history', self.record), history_ready)
         self.frame._load_codex_saved_rules(self.record.cwd, listed)

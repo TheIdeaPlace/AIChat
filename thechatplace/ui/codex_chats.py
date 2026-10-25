@@ -149,15 +149,19 @@ class CodexChats:
             self._feedback('Codex permissions are unavailable or already being changed.')
             after()
             return
-        choices = CODEX_MODES
+        from .permission_hosts import CODEX_REVIEW_MODES
+        choices = CODEX_REVIEW_MODES
         current = (record.provider_options.get('sandbox', 'read-only'),
-                   record.provider_options.get('approval_policy', 'on-request'))
+                   record.provider_options.get('approval_policy', 'on-request'),
+                   record.provider_options.get('approvals_reviewer', 'user'))
         selected = self._change_setting('Change Permission Mode',
             codex_permission_prompt(self, info.title, record.cwd),
             choices, current)
         if selected is None:
             after()
             return
+        if len(selected) == 2:
+            selected += ('user',)
         before_cwd, before_options = record.cwd, dict(record.provider_options)
         self._codex_policy_pending.add(info.key)
         self._feedback('Verifying Codex permissions.')

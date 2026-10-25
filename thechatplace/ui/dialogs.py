@@ -57,11 +57,12 @@ def codex_permission_prompt(parent, title, folder):
     """Wrap only the native picker's prompt, using its actual GUI font (#257)."""
     from wx.lib.wordwrap import wordwrap
     from ..ui_text import CODEX_SAVED_RULES_NOTE
+    from .permission_hosts import CODEX_REVIEW_NOTE
     dc = wx.ClientDC(parent)
     dc.SetFont(wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT))
     width = min(dip_width(parent, 560), screen_area(parent).width - dip_width(parent, 80))
     text = (f'Codex permissions for {title}.\nFolder: {folder}.\n'
-            'Finish or Stop active work first.\n\n' + CODEX_SAVED_RULES_NOTE)
+            'Finish or Stop active work first.\n\n' + CODEX_REVIEW_NOTE + '\n\n' + CODEX_SAVED_RULES_NOTE)
     return '\n'.join(wordwrap(line, width, dc, breakLongWords=True).rstrip('\n')
                      for line in text.split('\n'))
 
@@ -539,8 +540,12 @@ class NewSessionDialog(wx.Dialog):
         return folder, title, mode, message, model
 
     def codex_policy(self):
-        return {'sandbox': 'workspace-write' if self.mode.GetSelection() == 1 else 'read-only',
-                'approval_policy': 'on-request'}
+        from .permission_hosts import CODEX_REVIEW_MODES
+        sandbox, approval, reviewer = CODEX_REVIEW_MODES[max(0, self.mode.GetSelection())][0]
+        options = {'sandbox': sandbox, 'approval_policy': approval}
+        if reviewer != 'user':
+            options['approvals_reviewer'] = reviewer
+        return options
 
     def provider(self):
         return (self._providers[self.provider_choice.GetSelection()]
@@ -559,15 +564,14 @@ class NewSessionDialog(wx.Dialog):
             self.model.Enable(bool(self._codex_models))
             self._on_codex_model()
             self.effort_choice.SetSelection(min(self._codex_choices[1], self.effort_choice.GetCount() - 1))
-            self.mode.Set(["Read-only; asks before allowing changes",
-                           "Can edit files in this folder; asks before anything else"])
+            from .permission_hosts import CODEX_REVIEW_MODES, CODEX_REVIEW_NOTE
+            self.mode.Set([label for value, label in CODEX_REVIEW_MODES])
             self.mode.SetSelection(self._codex_choices[2])
             self.mode.Enable()
             self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and effort level, "
                 "or leave the configured defaults. "
-                "Choose read-only or allow edits in this folder. Both ask before allowing work "
-                "outside their selected file access, except for your saved always-allow commands. Requests appear in Answer. "
-                "Permissions are verified before sending. " + self._saved_rules_note() +
+                "Choose read-only or allow edits in this folder, with human or automatic approval review. "
+                "Human requests appear in Answer. Permissions are verified before sending. " + CODEX_REVIEW_NOTE + ' ' + self._saved_rules_note() +
                 (" Model choices could not be loaded; configured defaults remain available." if self._codex_model_error else
                  " Model choices load in the background." if not self._codex_models_loaded else ""))
             if self.continuing:

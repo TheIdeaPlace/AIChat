@@ -902,14 +902,37 @@ def d_codex_new(frame, env):
                                                 load_rules=lambda folder, done: done(2, False)))
 
 
+def d_codex_auto_review(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, env['folders']['Scratch'], providers=('codex',), provider='codex',
+                              load_rules=lambda folder, done: done(0, False))
+    dialog.mode.SetSelection(3)
+    return lambda: frame._modal(dialog)
+
+
+def d_codex_review_history(frame, env):
+    from thechatplace.own_store import OwnSession
+    from thechatplace.ui.dialogs import ChatPermissionsDialog
+    from thechatplace.ui.permission_hosts import CodexPermissions
+    record = OwnSession('review-probe', 'Automatic review preview', str(env['folders']['Scratch']),
+                        provider='codex', provider_options={'sandbox': 'workspace-write',
+                            'approval_policy': 'on-request', 'approvals_reviewer': 'auto_review'})
+    host = CodexPermissions(frame, record.to_info(), record)
+    host.load = lambda done: done([], None)
+    host.native = lambda done: done('Recent automatic review decisions (oldest first):\n\n'
+        'Codex automatic review allowed the request.\nCommand: git status\nReason: Read the project status.\n\n'
+        'Codex automatic review denied the request.\nReason: Access was outside the requested task.')
+    return lambda: frame._modal(ChatPermissionsDialog(frame, record.title, host))
+
+
 def d_codex_mode(frame, env):
     from thechatplace.ui.dialogs import codex_permission_prompt
+    from thechatplace.ui.permission_hosts import CODEX_REVIEW_MODES
     title = 'Review saved command rules for a deliberately long synthetic chat title'
     folder = str(Path(env['folders']['Scratch']) / 'long-synthetic-project-folder' / 'nested-folder-for-permission-review')
     dialog = wx.SingleChoiceDialog(frame, codex_permission_prompt(frame, title, folder),
-        'Change Permission Mode', ['Read-only; asks before allowing changes',
-        'Can edit files in this folder; asks before anything else'])
-    dialog.SetSelection(1)
+        'Change Permission Mode', [label for value, label in CODEX_REVIEW_MODES])
+    dialog.SetSelection(3)
     return lambda: frame._modal(dialog)
 
 
@@ -1340,6 +1363,8 @@ SURFACES = {
                          "Settings once Copilot CLI has a session: its check box shows"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
+    "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
+    "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
     "properties-codex-owned": ("dialog", d_codex_owned_properties, "Verified owned Codex model and filesystem scope"),
     "codex-models": ("dialog", d_codex_models, "New Codex chat with advertised model and effort choices"),
@@ -1416,6 +1441,8 @@ DIALOG_CLASSES = {
     "settings-copilot": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
+    "codex-auto-review": "NewSessionDialog",
+    "codex-review-history": "ChatPermissionsDialog",
     "codex-models": "NewSessionDialog",
     "codex-change-mode": "SingleChoiceDialog",
     "properties-codex-owned": "PropertiesDialog",

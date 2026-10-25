@@ -750,6 +750,26 @@ a project folder, but the home folder, its parents and volume roots cannot be
 used as writable folders. If Stop is acknowledged but the turn stays open,
 press Stop again to check Codex's saved turn status without resending anything.
 
+**Automatic approval review (#358).** In New Session or Continue Here, the
+Permission mode list offers read-only or folder editing with **automatic approval
+review**. For an existing owned Codex chat, finish or stop its turn, then use
+File, **Change Permission Mode**, or File, **Chat Permissions**, **Change**.
+Codex's reviewer evaluates eligible requests for you and can allow or deny them;
+this reduces interruptions without giving unrestricted access. Human review remains
+the default, and existing chats keep their selected mode. This is different from
+"never ask", which does not automatically approve requests.
+
+The selected reviewer is verified when the chat starts or resumes and is pinned
+on every turn. If your Codex version or administrator's policy cannot confirm
+automatic review, no message is sent and the app explains how to select human
+review or update Codex. There is no silent fallback. Your global settings are not
+changed. Read access remains available; folder editing covers the selected project
+folder only. Network access and temporary folders outside that folder require
+approval. Your saved Codex command rules still apply. Chat Permissions explains
+these boundaries and TCP's overrides. Automatic review decisions are announced
+and shown in the chat; the most recent 128 decisions are kept locally for that
+chat and can be read again in Chat Permissions, including after restarting.
+
 The Chat Place disables external tools (MCP servers, apps and plugins) for
 Codex chats started here because those tools can reach beyond the selected
 folder. It checks that they are disabled before sending. Your global Codex

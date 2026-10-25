@@ -39,6 +39,8 @@ class CodexOwnedThread:
         if self.ephemeral:
             raise ValueError("Ephemeral Codex chats cannot be saved for later resume")
         options = {"model": self.model, "sandbox": self.policy.sandbox, "approval_policy": self.policy.approval}
+        if self.policy.reviewer != 'user':
+            options['approvals_reviewer'] = self.policy.reviewer
         if self.policy.workspace_root:
             options['workspace_root'] = self.policy.workspace_root
         if self.effort is not None:
@@ -75,7 +77,7 @@ class CodexOwnedThreads:
         return tools
 
     def _create(self, method, cwd, title, *, native_id=None, ephemeral=False, model=None, effort=None,
-                sandbox='read-only', approval_policy='on-request'):
+                sandbox='read-only', approval_policy='on-request', approvals_reviewer='user'):
         if not isinstance(title, str) or not title.strip():
             raise ValueError("Codex chat title required")
         if type(ephemeral) is not bool:
@@ -86,7 +88,7 @@ class CodexOwnedThreads:
         if effort is not None and (model is None or not isinstance(effort, str) or not effort.strip()
                                    or len(effort) > 256 or any(ord(c) < 32 for c in effort)):
             raise ValueError("Codex reasoning effort requires a selected model")
-        policy = CodexPolicy.choose(cwd, sandbox, approval_policy)
+        policy = CodexPolicy.choose(cwd, sandbox, approval_policy, approvals_reviewer)
         if policy.workspace_root:
             cwd = policy.workspace_root
         tools = self._preflight(cwd)
@@ -114,7 +116,7 @@ class CodexOwnedThreads:
                   "approvalPolicy": policy.approval, "config": {
                       "model_provider": "openai", "model_providers": {},
                       "forced_login_method": "chatgpt", "openai_base_url": None,
-                      "chatgpt_base_url": CHATGPT_BASE_URL, "approvals_reviewer": "user"}}
+                      "chatgpt_base_url": CHATGPT_BASE_URL, "approvals_reviewer": policy.reviewer}}
         params['config'].update(policy.config())
         params['config'].update(tools)
         if native_id is not None:
@@ -125,7 +127,14 @@ class CodexOwnedThreads:
             params["config"]["model_reasoning_effort"] = effort
         if method != "thread/resume":
             params["ephemeral"] = ephemeral
-        result = self.connection.request(method, params)
+        try:
+            result = self.connection.request(method, params)
+        except CodexRpcError as error:
+            if policy.reviewer == 'auto_review':
+                raise CodexTurnRejected('auto_review_unavailable') from error
+            raise
+        if policy.reviewer == 'auto_review' and result.get('approvalsReviewer') != policy.reviewer:
+            raise CodexTurnRejected('auto_review_unavailable')
         thread = result.get("thread")
         actual_id = thread.get("id") if isinstance(thread, dict) else None
         status = thread.get("status") if isinstance(thread, dict) else None
@@ -137,7 +146,7 @@ class CodexOwnedThreads:
                 or len(result["model"]) > 256
                 or (model is not None and result["model"] != model)
                 or (effort is not None and result.get("reasoningEffort") != effort)
-                or result.get("approvalsReviewer") != "user"
+                or result.get("approvalsReviewer") != policy.reviewer
                 or not isinstance(status, dict) or status.get("type") != "idle"
                 or thread.get("ephemeral") is not ephemeral
                 or (method == "thread/resume" and actual_id != native_id)
@@ -160,19 +169,19 @@ class CodexOwnedThreads:
         return proof
 
     def start(self, cwd, title, *, ephemeral=False, model=None, effort=None,
-              sandbox='read-only', approval_policy='on-request'):
+              sandbox='read-only', approval_policy='on-request', approvals_reviewer='user'):
         return self._create("thread/start", cwd, title, ephemeral=ephemeral, model=model, effort=effort,
-                            sandbox=sandbox, approval_policy=approval_policy)
+                            sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer)
 
     def fork(self, source: SessionInfo, title, *, ephemeral=False, model=None, effort=None,
-             sandbox='read-only', approval_policy='on-request'):
+             sandbox='read-only', approval_policy='on-request', approvals_reviewer='user'):
         if (not isinstance(source, SessionInfo) or source.provider != "codex"
                 or not isinstance(source.cli_session_id, str)
                 or not platform_paths.is_safe_id(source.cli_session_id)):
             raise ValueError("Codex fork requires a valid source chat")
         return self._create("thread/fork", source.cwd, title,
                             native_id=source.cli_session_id, ephemeral=ephemeral, model=model, effort=effort,
-                            sandbox=sandbox, approval_policy=approval_policy)
+                            sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer)
 
     def resume(self, record: OwnSession):
         if (not isinstance(record, OwnSession) or record.provider != "codex"
@@ -180,7 +189,7 @@ class CodexOwnedThreads:
                 or not platform_paths.is_safe_id(record.cli_session_id)):
             raise ValueError("Only a started TCP-owned Codex chat can be resumed")
         options = record.provider_options
-        if (not isinstance(options, dict) or set(options) - {"model", "sandbox", "approval_policy", "effort", "workspace_root"}
+        if (not isinstance(options, dict) or set(options) - {"model", "sandbox", "approval_policy", "effort", "workspace_root", "approvals_reviewer"}
                 or options.get("sandbox", "read-only") not in ('read-only', 'workspace-write')
                 or options.get("approval_policy", "on-request") not in ('on-request', 'never')):
             raise ValueError("Codex owned chat options are not supported yet")
@@ -196,4 +205,5 @@ class CodexOwnedThreads:
         return self._create("thread/resume", record.cwd, record.title,
                             native_id=record.cli_session_id, model=options.get("model"), effort=options.get("effort"),
                             sandbox=options.get('sandbox', 'read-only'),
-                            approval_policy=options.get('approval_policy', 'on-request'))
+                            approval_policy=options.get('approval_policy', 'on-request'),
+                            approvals_reviewer=options.get('approvals_reviewer', 'user'))

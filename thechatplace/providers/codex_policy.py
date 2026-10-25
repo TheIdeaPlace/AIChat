@@ -10,13 +10,16 @@ class CodexPolicy:
     sandbox: str = 'read-only'
     approval: str = 'on-request'
     workspace_root: str = ''
+    reviewer: str = 'user'
 
     @classmethod
-    def choose(cls, cwd, sandbox='read-only', approval='on-request'):
+    def choose(cls, cwd, sandbox='read-only', approval='on-request', reviewer='user'):
         if sandbox not in ('read-only', 'workspace-write') or approval not in ('on-request', 'never'):
             raise ValueError('Unsupported Codex sandbox or approval policy')
+        if reviewer not in ('user', 'auto_review') or reviewer == 'auto_review' and approval != 'on-request':
+            raise ValueError('Automatic review requires Codex on-request approvals')
         root = platform_paths.codex_workspace_root(cwd) if sandbox == 'workspace-write' else ''
-        return cls(sandbox, approval, root)
+        return cls(sandbox, approval, root, reviewer)
 
     def config(self):
         if self.sandbox == 'read-only':
