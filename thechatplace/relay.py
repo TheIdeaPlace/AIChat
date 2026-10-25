@@ -81,3 +81,58 @@ def too_long(provider: str, text: str) -> Optional[str]:
         return (f"{provider_name(provider)} takes messages of up to {limit:,} characters, "
                 f"and this one has {len(text):,}. Shorten it, then send.")
     return None
+
+
+# -- a new chat, or an agent conversation (#378) -----------------------------------------
+
+#: The providers a reply can start a new chat of, in the order offered.
+NEW_KINDS = ("claude", "codex")
+
+
+def new_target_label(provider: str) -> str:
+    """How a new chat is offered in the target list."""
+    return f"New {provider_name(provider)} chat"
+
+
+def new_chat_title(source_title: str) -> str:
+    """The new chat's title as New Session starts it: without one, the
+    title would be made from the label's first words."""
+    title = " ".join((source_title or "").split()) or "Untitled chat"
+    return f"Forwarded from {title}"
+
+
+def split_label(text: str, agent: str, chat_title: str) -> Optional[str]:
+    """The reply in ``text`` without the forwarding label, or None when the
+    label was changed or taken out: then the words are the user's own, and
+    go as they are rather than as another agent's reply."""
+    prefix = label(agent or "Another agent", chat_title)
+    stripped = (text or "").strip()
+    if not stripped.startswith(prefix):
+        return None
+    body = stripped[len(prefix):].strip()
+    return body or None
+
+
+def joint_problem(source: SessionInfo, *, can_edit: bool, in_conversation: bool,
+                  working: bool, blocked: str = "") -> Optional[str]:
+    """Why the chat a reply came from can't start an agent conversation with
+    the chat it goes to, or None. ``blocked`` is why conversations can't be
+    saved at all."""
+    if blocked:
+        return blocked
+    if not source.is_own or source.provider not in NEW_KINDS or not can_edit:
+        return f"{source.title} wasn't started in The Chat Place"
+    if in_conversation:
+        return f"{source.title} is already in an agent conversation"
+    if working:
+        return f"{source.title} is still working; wait until it has finished"
+    return None
+
+
+def joint_target_problem(target: SessionInfo, in_conversation: bool) -> Optional[str]:
+    """Why ``target`` can't be the other half of an agent conversation."""
+    if target.provider not in NEW_KINDS:
+        return "agent conversations are for Claude and Codex chats"
+    if in_conversation:
+        return f"{target.title} is already in an agent conversation"
+    return None

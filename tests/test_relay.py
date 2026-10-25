@@ -81,3 +81,48 @@ def test_codex_length_limit_matches_what_codex_refuses():
     record = OwnSession("n", "T", "C:\\G", provider="codex")
     with pytest.raises(ValueError):
         CodexChatRuntime.send(None, record, "x" * (limit + 1))
+
+
+# -- a new chat, or an agent conversation (#378) --------------------------------------
+
+
+def test_a_new_chat_is_offered_and_titled_by_where_the_reply_came_from():
+    assert relay.new_target_label("codex") == "New Codex chat"
+    assert relay.new_chat_title("  Build   it ") == "Forwarded from Build it"
+    assert relay.new_chat_title("") == "Forwarded from Untitled chat"
+
+
+def test_the_label_comes_off_only_while_it_is_unchanged():
+    text = relay.message_text(ChatMessage(ASSISTANT, "Two bugs.", key="a",
+                                          assistant_name="Codex"), "Reviewer")
+    assert relay.split_label(text, "Codex", "Reviewer") == "Two bugs."
+    assert relay.split_label(text + "\n\nFix the first.", "Codex", "Reviewer") == \
+        "Two bugs.\n\nFix the first."
+    assert relay.split_label("Please fix the two bugs.", "Codex", "Reviewer") is None
+    assert relay.split_label(text.replace("Codex", "Claude", 1), "Codex", "Reviewer") is None
+    assert relay.split_label(relay.label("Codex", "Reviewer"), "Codex", "Reviewer") is None
+
+
+@pytest.mark.parametrize("source, kwargs, expected", [
+    (_chat("c1", "Builder"), {}, None),
+    (_chat("c1", "Builder", source=DESKTOP), {}, "Builder wasn't started in The Chat Place"),
+    (_chat("c1", "Builder", provider="copilot"), {},
+     "Builder wasn't started in The Chat Place"),
+    (_chat("c1", "Builder"), {"can_edit": False}, "Builder wasn't started in The Chat Place"),
+    (_chat("c1", "Builder"), {"in_conversation": True},
+     "Builder is already in an agent conversation"),
+    (_chat("c1", "Builder"), {"working": True},
+     "Builder is still working; wait until it has finished"),
+    (_chat("c1", "Builder"), {"blocked": "The file can't be read"}, "The file can't be read"),
+])
+def test_why_a_chat_cant_start_an_agent_conversation(source, kwargs, expected):
+    options = {"can_edit": True, "in_conversation": False, "working": False, **kwargs}
+    assert relay.joint_problem(source, **options) == expected
+
+
+def test_why_a_target_cant_join_one():
+    assert relay.joint_target_problem(_chat("codex:x", "Reviewer", "codex"), False) is None
+    assert relay.joint_target_problem(_chat("codex:x", "Reviewer", "codex"), True) == \
+        "Reviewer is already in an agent conversation"
+    assert relay.joint_target_problem(_chat("copilot:x", "Pilot", "copilot"), False) == \
+        "agent conversations are for Claude and Codex chats"

@@ -11137,13 +11137,19 @@ class _RelayAnswer:
     pick = None
     seen = None
 
-    def __init__(self, parent, source_title, choices, text, check, working=False):
+    joint = None  # an agent conversation's title (#378), or None to just send
+
+    def __init__(self, parent, source_title, choices, text, check, working=False, joint=None):
         from thechatplace.ui.dialogs import RelayDialog
-        real = RelayDialog(parent, source_title, choices, text, check, working=working)
+        real = RelayDialog(parent, source_title, choices, text, check, working=working,
+                           joint=joint)
         _RelayAnswer.seen = (list(real.targets.GetStrings()), real.text.GetValue(),
                              real.GetTitle())
+        _RelayAnswer.joint_problem = joint.problem if joint else None
         real.Destroy()
         self.chosen = _RelayAnswer.pick(text) if _RelayAnswer.pick else None
+        self.joint_chosen = _RelayAnswer.joint is not None
+        self.joint_title = _RelayAnswer.joint or ""
 
     def ShowModal(self):
         return wx.ID_OK if self.chosen else wx.ID_CANCEL
@@ -11156,7 +11162,7 @@ class _RelayAnswer:
 def relay_dialog(monkeypatch):
     from thechatplace.ui import relay_chats
     monkeypatch.setattr(relay_chats, "RelayDialog", _RelayAnswer)
-    _RelayAnswer.pick, _RelayAnswer.seen = None, None
+    _RelayAnswer.pick, _RelayAnswer.seen, _RelayAnswer.joint = None, None, None
     return _RelayAnswer
 
 
@@ -11837,3 +11843,142 @@ def test_each_runtime_providers_usage_check_keeps_its_own_slot(frame, monkeypatc
     frame._check_codex_usage(SimpleNamespace(provider="codex", key="codex:c"))
     assert frame._codex_usage_check_again.key == "codex:c"
     assert frame._runtime_usage_checks["otherai"]["again"] is None
+
+
+# -- Send Reply to Another Chat: a new chat, or an agent conversation (#378) ----------
+
+
+def test_relay_dialog_offers_an_agent_conversation(app, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace.ui import dialogs
+    boxes = []
+    monkeypatch.setattr(dialogs.wx, "MessageBox", lambda text, *a, **k: boxes.append(text))
+    frame = wx.Frame(None)
+    try:
+        joint = SimpleNamespace(problem=lambda i: "Reviewer is already in an agent conversation"
+                                if i == 0 else None, title="Builder")
+        dialog = dialogs.RelayDialog(frame, "Builder", ["Reviewer, Codex", "New Claude chat"],
+                                     "From Claude: hi", lambda i, t: None, joint=joint)
+        ended = []
+        monkeypatch.setattr(dialog, "EndModal", lambda code: ended.append(code))
+        # Just send is chosen; the other says why it can't be done with Reviewer.
+        assert dialog.just_send.GetValue() and not dialog.joint_option.GetValue()
+        assert dialog.joint_option.GetLabel().endswith(
+            "(unavailable: Reviewer is already in an agent conversation)")
+        assert not dialog.joint_title_box.IsEnabled()
+        assert dialog.joint_title_box.GetValue() == "Builder"
+        dialog.joint_option.SetValue(True)
+        dialog._sync_joint()
+        assert dialog.joint_title_box.IsEnabled()
+        dialog._send()
+        assert boxes[-1].startswith("An agent conversation can't be started: Reviewer is "
+                                    "already in an agent conversation.")
+        assert ended == [] and dialog.chosen is None
+        dialog.targets.SetSelection(1)
+        dialog._sync_joint()
+        assert dialog.joint_option.GetLabel() == dialogs.RelayDialog.JOINT
+        dialog.joint_title_box.SetValue("  Build   and review ")
+        dialog._send()
+        assert dialog.chosen == (1, "From Claude: hi") and ended == [wx.ID_OK]
+        assert dialog.joint_chosen and dialog.joint_title == "Build and review"
+        dialog.Destroy()
+        # Without ``joint`` (an agent conversation's own hand-off) there's no choice.
+        plain = dialogs.RelayDialog(frame, "Builder", ["Codex"], "hi", lambda i, t: None)
+        assert plain.joint_option is None
+        plain.Destroy()
+    finally:
+        frame.Destroy()
+
+
+def _fills_new_session(monkeypatch, seen, accept=True):
+    from thechatplace.ui import main_frame
+
+    class Fills(main_frame.NewSessionDialog):
+        def ShowModal(self):
+            seen["folder"] = self.folder.GetValue()
+            seen["title"] = self.title_text.GetValue()
+            seen["message"] = self.message.GetValue()
+            seen["providers"] = self._providers
+            return wx.ID_OK if accept else wx.ID_CANCEL
+    monkeypatch.setattr(main_frame, "NewSessionDialog", Fills)
+
+
+def test_relay_to_a_new_claude_chat_starts_it_with_the_reply(frame, env, fake_runner,
+                                                             relay_dialog, monkeypatch):
+    _two_own_chats(frame, env)
+    seen = {}
+    _fills_new_session(monkeypatch, seen)
+    relay_dialog.pick = lambda text: (1, text)  # after Hub probe: New Claude chat
+    frame.on_send_reply_to()
+    assert relay_dialog.seen[0][-1] == "New Claude chat"
+    assert seen["folder"] == "C:\\G\\Scratch"
+    assert seen["title"] == "Forwarded from Builder"
+    assert seen["message"].startswith('From Claude, another AI agent, forwarded by the user '
+                                      'from their chat "Builder":')
+    assert seen["providers"] == ("claude",)
+    runner = fake_runner.instances[-1]
+    assert runner.prompt == seen["message"]
+    assert frame._open.title == "Forwarded from Builder"
+    # Sending back offers Builder first.
+    assert frame._relay_partners[frame._open.key] == "own-2"
+    assert frame.agents.all() == []
+
+
+def test_relay_to_a_new_chat_cancelled_starts_nothing(frame, env, fake_runner, relay_dialog,
+                                                      monkeypatch):
+    _two_own_chats(frame, env)
+    _fills_new_session(monkeypatch, {}, accept=False)
+    count = len(frame.store.all())
+    relay_dialog.pick = lambda text: (1, text)
+    frame.on_send_reply_to()
+    assert fake_runner.instances == [] and len(frame.store.all()) == count
+    assert frame._open.title == "Builder"
+
+
+def test_relay_as_an_agent_conversation_with_an_existing_chat(frame, env, fake_runner,
+                                                              relay_dialog):
+    from thechatplace import agents
+    _two_own_chats(frame, env)
+    relay_dialog.joint = "Build and review"
+    relay_dialog.pick = lambda text: (0, text)  # Hub probe
+    frame.on_send_reply_to()
+    assert relay_dialog.joint_problem(0) is None
+    [conversation] = frame.agents.all()
+    assert conversation.title == "Build and review"
+    assert [m.native_id for m in conversation.members][0] == "own-2"
+    assert conversation.mode == agents.MODE_APPROVE
+    assert frame._open.provider == "agents" and frame._open.key == conversation.key
+    runner = fake_runner.instances[-1]
+    # Hub probe gets the setup, then Builder's reply as a hand-off.
+    assert runner.prompt.startswith(agents.SETUP_START)
+    assert 'From Claude 1 (agent conversation "Build and review"):\n\nBuilt it. Tests pass.' \
+        in runner.prompt
+    # A chat in a conversation is offered no second one.
+    frame._runners.clear()
+    select(frame, "Builder")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._chat_messages)
+    relay_dialog.joint, relay_dialog.pick = None, None
+    frame.on_send_reply_to()
+    assert relay_dialog.joint_problem(0) == "Builder is already in an agent conversation"
+
+
+def test_relay_as_an_agent_conversation_with_a_new_claude_chat(frame, env, fake_runner,
+                                                               relay_dialog, monkeypatch):
+    from thechatplace import agents
+    _two_own_chats(frame, env)
+    seen = {}
+    _fills_new_session(monkeypatch, seen)
+    relay_dialog.joint = "Second look"
+    relay_dialog.pick = lambda text: (1, text)  # New Claude chat
+    frame.on_send_reply_to()
+    assert seen["title"] == "Second look: Claude"
+    [conversation] = frame.agents.all()
+    new_id = conversation.members[1].native_id
+    assert frame.store.get(new_id).title == "Second look: Claude"
+    assert conversation.next_index == 0  # it answered first; Builder is next
+    assert frame._open.key == conversation.key
+    runner = fake_runner.instances[-1]
+    assert len(fake_runner.instances) == 1  # the conversation's send, not New Session's too
+    assert runner.prompt.startswith(agents.SETUP_START)
+    assert "Built it. Tests pass." in runner.prompt

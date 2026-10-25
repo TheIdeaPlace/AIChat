@@ -3729,9 +3729,19 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._update_send_state()
         self.refresh_sessions()
 
-    def on_new_session(self, _event=None):
+    def on_new_session(self, _event=None, forward=None):
+        """File, New Session. ``forward`` (#378): a reply going on to a new
+        chat, with its ``provider``, ``folder``, ``message`` and ``title``
+        filled in; ``made(info, message)`` hears of the chat once it exists.
+        With ``forward.joint`` the message isn't sent here: ``made`` makes
+        the agent conversation, which sends it."""
         lookup = platform_paths.find_claude()
         codex_available = self.sessions.can_create("codex")
+        if forward is not None and not (lookup.path if forward.provider == "claude"
+                                        else codex_available):
+            self._relay_kept(forward.message, f"{forward.provider.capitalize()} isn't "
+                                              "available, so no chat was started.")
+            return
         if not lookup.path and not codex_available:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
             return
@@ -3756,6 +3766,17 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 sessions, limit=limit, exists=lambda folder: True, removed=removed)
                 if same(folder) != same(root)]
             recent = [root] + recent if limit else []
+        prefill = {}
+        if forward is not None:
+            # The folder of the chat it came from first, and only the
+            # provider chosen in Send Reply to Another Chat (#378).
+            same = workplaces.folder_key
+            if forward.folder:
+                recent = [forward.folder] + [f for f in recent
+                                             if same(f) != same(forward.folder)]
+            prefill = {"title_text": forward.title, "message": forward.message,
+                       "providers": (forward.provider,), "provider": forward.provider}
+            codex_available = codex_available and forward.provider == "codex"
         provider_options = ({"providers": (("claude", "codex") if lookup.path else ("codex",)),
                              "provider": self.speech.new_session_provider,
                              "load_models": self._load_codex_models,
@@ -3764,7 +3785,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         dialog = NewSessionDialog(self, root, recent=recent, projects_root=root,
                                   feedback=self._feedback,
                                   clone_root=str(platform_paths.clone_root()),
-                                  remove_recent=self._remove_recent_folder, **provider_options)
+                                  remove_recent=self._remove_recent_folder,
+                                  **{**provider_options, **prefill})
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
@@ -3774,14 +3796,18 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             policy = getattr(dialog, 'codex_policy', lambda: {})() if provider == 'codex' else {}
         finally:
             dialog.Destroy()
-        self.speech.new_session_provider = provider
-        try:
-            self.speech.save()
-        except OSError:
-            pass
+        if forward is None:
+            self.speech.new_session_provider = provider
+            try:
+                self.speech.save()
+            except OSError:
+                pass
+        made = forward.made if forward is not None else None
+        joint = forward is not None and forward.joint
         if provider == "codex":
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
-            self._create_codex_owned(folder, title, message, **options, **policy)
+            self._create_codex_owned(folder, title, message, **options, **policy,
+                                     made=made, joint=joint)
             return
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
@@ -3792,10 +3818,17 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                          permission_mode=mode, started=False, model=model, effort=effort)
         if not self._store_write(self.store.add, own):
             return
+        if joint:
+            # The agent conversation sends the first message (#378).
+            self.refresh_sessions()
+            made(own.to_info(), message)
+            return
         # Start the turn first, so the session view sees it running.
         self._start_turn(own.cli_session_id, command, folder, message, title)
         self.open_session(own.to_info())
         self.refresh_sessions()
+        if made is not None:
+            made(own.to_info(), message)
 
     # ------------------------------------------------- attachments (#22)
 

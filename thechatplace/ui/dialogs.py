@@ -104,7 +104,8 @@ class NewSessionDialog(wx.Dialog):
 
     def __init__(self, parent, default_folder: str, continue_from: str = "",
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
-                 remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None):
+                 remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
+                 title_text: str = "", message: str = ""):
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
@@ -191,7 +192,7 @@ class NewSessionDialog(wx.Dialog):
 
         grid.Add(wx.StaticText(self, label="&Title:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.title_text = wx.TextCtrl(self, value=f"{continue_from} (continued)"
-                                      if continue_from else "")
+                                      if continue_from else title_text)
         set_accessible_name(self.title_text, "Title (optional)")
         grid.Add(self.title_text, 1, wx.EXPAND)
 
@@ -230,7 +231,8 @@ class NewSessionDialog(wx.Dialog):
         outer.Add(note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         outer.Add(wx.StaticText(self, label="First &message:"), 0, wx.LEFT | wx.TOP, 10)
-        self.message = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_RICH2)
+        # A reply sent on to a new chat (#378) starts here, to read first.
+        self.message = wx.TextCtrl(self, value=message, style=wx.TE_MULTILINE | wx.TE_RICH2)
         set_accessible_name(self.message, "First message")
         outer.Add(self.message, 1, wx.EXPAND | wx.ALL, 10)
 
@@ -2950,10 +2952,18 @@ class RelayDialog(wx.Dialog):
     first. Enter in the list sends; in the message, Enter starts a new line
     and Ctrl+Enter sends, as in the reply box. ``check(index, text)`` says
     why the message can't go to that chat, or None; the dialog stays open
-    with the reason, so nothing written is lost."""
+    with the reason, so nothing written is lost.
+
+    With ``joint`` (#378) it also offers to start an agent conversation of
+    the two chats instead of just sending: ``joint.problem(index)`` says why
+    that can't be done with that chat, or None, and ``joint.title`` starts
+    its title. ``joint_chosen`` and ``joint_title`` hold the choice."""
+
+    JUST_SEND = "&Just send it"
+    JOINT = "Send it and start an agent &conversation with both chats"
 
     def __init__(self, parent, source_title: str, choices, text: str, check,
-                 working: bool = False, title: str = ""):
+                 working: bool = False, title: str = "", joint=None):
         # Said first, with the title: the chat is mid-turn, so the reply
         # may be a step on the way rather than its answer. An agent
         # conversation's hand-off (#248) gives its own title.
@@ -2964,7 +2974,10 @@ class RelayDialog(wx.Dialog):
                          size=dialog_size(parent, 700, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._check = check
+        self._joint = joint
         self.chosen = None
+        self.joint_chosen = False
+        self.joint_title = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="Send &to:"), 0, wx.LEFT | wx.TOP, 8)
         self.targets = wx.ListBox(self, choices=list(choices), style=wx.LB_SINGLE)
@@ -2973,6 +2986,26 @@ class RelayDialog(wx.Dialog):
         if choices:
             self.targets.SetSelection(0)
         sizer.Add(self.targets, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        self.just_send = self.joint_option = self.joint_title_box = None
+        if joint is not None:
+            # Two radio buttons whose labels say the whole choice, so each
+            # reads on its own; when the joint one can't be done for the
+            # chosen chat, its label says why, rather than it being skipped.
+            self.just_send = wx.RadioButton(self, label=self.JUST_SEND, style=wx.RB_GROUP)
+            self.joint_option = wx.RadioButton(self, label=self.JOINT)
+            self.just_send.SetValue(True)
+            sizer.Add(self.just_send, 0, wx.LEFT | wx.TOP, 8)
+            sizer.Add(self.joint_option, 0, wx.LEFT | wx.TOP, 8)
+            self.joint_title_label = wx.StaticText(self, label="Agent conversation t&itle:")
+            sizer.Add(self.joint_title_label, 0, wx.LEFT | wx.TOP, 8)
+            self.joint_title_box = wx.TextCtrl(self, value=joint.title or "")
+            self.joint_title_box.SetMaxLength(200)
+            set_accessible_name(self.joint_title_box, "Agent conversation title")
+            sizer.Add(self.joint_title_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+            for radio in (self.just_send, self.joint_option):
+                radio.Bind(wx.EVT_RADIOBUTTON, lambda e: self._sync_joint())
+            self.targets.Bind(wx.EVT_LISTBOX, lambda e: self._sync_joint())
+            self._sync_joint()
         sizer.Add(wx.StaticText(self, label="&Message:"), 0, wx.LEFT | wx.TOP, 8)
         self.text = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_RICH2)
         set_accessible_name(self.text, "Message")
@@ -3016,8 +3049,33 @@ class RelayDialog(wx.Dialog):
             wx.MessageBox(problem, self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
             self.text.SetFocus()
             return
+        joint = self.joint_option is not None and self.joint_option.GetValue()
+        if joint:
+            why = self._joint.problem(index)
+            if why:
+                wx.MessageBox(f"An agent conversation can't be started: {why}. Choose Just "
+                              "send it, or another chat.", self.GetTitle(),
+                              wx.OK | wx.ICON_INFORMATION, self)
+                self.joint_option.SetFocus()
+                return
+            self.joint_title = " ".join(self.joint_title_box.GetValue().split())
+        self.joint_chosen = joint
         self.chosen = (index, text)
         self.EndModal(wx.ID_OK)
+
+    def _sync_joint(self):
+        """The joint option's label says why it can't be done with the
+        chosen chat; its title box is there only while it's chosen."""
+        index = self.targets.GetSelection()
+        why = self._joint.problem(index) if index != wx.NOT_FOUND else None
+        label = f"{self.JOINT} (unavailable: {why})" if why else self.JOINT
+        if self.joint_option.GetLabel() != label:
+            self.joint_option.SetLabel(label)
+            set_accessible_name(self.joint_option, label.replace("&", ""))
+        on = self.joint_option.GetValue()
+        self.joint_title_label.Enable(on)
+        self.joint_title_box.Enable(on)
+        self.Layout()
 
 
 class AgentConversationDialog(wx.Dialog):
