@@ -2417,25 +2417,33 @@ class PropertiesDialog(LinesDialog):
 
 
 class AboutYouDialog(wx.Dialog):
-    """What Claude knows about you (#92): your instructions, memories,
-    skills, subagents, slash commands, output styles and settings, read from
-    Claude Code's own files. A list of kinds, the chosen kind's items, and
+    """Local provider customization files (#92, #305).
+    A list of kinds, the chosen kind's items, and
     the selected item's file to read by line. The Chat Place only reads them:
     Edit opens the file in your own editor, and Reload shows what changed."""
 
-    def __init__(self, parent, kinds, load, edit, show, copy):
+    def __init__(self, parent, kinds, load, edit, show, copy, provider_load=None):
         """``kinds`` is what was found; ``load(done)`` reads it all again
         in the background and calls ``done(kinds)`` on the UI thread."""
-        super().__init__(parent, title="What Claude Knows About You", size=dialog_size(parent, 860, 640),
+        super().__init__(parent, title="What AI Knows About You", size=dialog_size(parent, 860, 700),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._load, self._edit, self._show_file, self._copy = load, edit, show, copy
         self._kinds = list(kinds)
+        self._provider_load = provider_load
+        self._request = 0
         self._items = []
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label=(
-            "Read from Claude Code's own files on this computer. The Chat Place only reads "
-            "them: Edit opens a file in your editor, and Reload shows your changes.")),
+            "Local customization files, not an account-wide memory or active-context report.\n"
+            "Edit opens a file in your editor; Reload reads your changes.")),
             0, wx.LEFT | wx.TOP | wx.RIGHT, 8)
+        sizer.Add(wx.StaticText(self, label="&Provider:"), 0, wx.LEFT | wx.TOP, 8)
+        self.provider = wx.Choice(self, choices=["Claude", "Codex"])
+        self.provider.SetSelection(0)
+        set_accessible_name(self.provider, "Provider")
+        sizer.Add(self.provider, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        self.provider.Bind(wx.EVT_CHOICE, self._change_provider)
+        self.provider.Enable(provider_load is not None)
         sizer.Add(wx.StaticText(self, label="&Kind:"), 0, wx.LEFT | wx.TOP, 8)
         self.kinds = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.kinds, "Kind")
@@ -2482,13 +2490,29 @@ class AboutYouDialog(wx.Dialog):
         """Read everything again (in the background), keeping your place
         where it still exists."""
         self.reload_btn.Disable()
-        self._load(self._reloaded)
+        self._request += 1
+        request = self._request
+        def done(kinds):
+            if self and request == self._request:
+                self._reloaded(kinds)
+                return True
+            return False
+        if self._provider_load is not None:
+            self._provider_load(self.provider.GetStringSelection().lower(), done)
+        else:
+            self._load(done)
+
+    def _change_provider(self, event):
+        self._kinds = []
+        self._fill_kinds()
+        self.reload()
 
     def _reloaded(self, kinds):
         if not self:
             return  # closed while reading
         self.reload_btn.Enable()
-        self._kinds = list(kinds)
+        if kinds is not None:
+            self._kinds = list(kinds)
         self._fill_kinds()
 
     def _fill_kinds(self):
@@ -2556,7 +2580,7 @@ class AboutYouDialog(wx.Dialog):
             self._edit(item.path)
         except OSError as exc:
             wx.MessageBox(f"Couldn't open {item.path} in an editor: {exc}",
-                          "What Claude Knows About You", wx.OK | wx.ICON_WARNING, self)
+                          "What AI Knows About You", wx.OK | wx.ICON_WARNING, self)
 
     def show_selected(self):
         item = self.selected_item()
@@ -2566,7 +2590,7 @@ class AboutYouDialog(wx.Dialog):
             self._show_file(item.path)
         except OSError as exc:
             wx.MessageBox(f"Couldn't show {item.path}: {exc}",
-                          "What Claude Knows About You", wx.OK | wx.ICON_WARNING, self)
+                          "What AI Knows About You", wx.OK | wx.ICON_WARNING, self)
 
     def copy_selected(self):
         item = self.selected_item()

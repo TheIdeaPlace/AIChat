@@ -565,7 +565,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._item(view, "Repeat &Last Announcement\tCtrl+Shift+R",
                    lambda e: self._say(self._last_announcement, force=True))
         view.AppendSeparator()
-        self._item(view, "What Claude &Knows About You...\tCtrl+Shift+K",
+        self._item(view, "What AI &Knows About You...\tCtrl+Shift+K",
                    lambda e: self.on_about_you())
         bar.Append(view, "&View")
 
@@ -2409,40 +2409,46 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("Couldn't open the clipboard.")
 
     def on_about_you(self):
-        """View, What Claude Knows About You (Ctrl+Shift+K, #92): your
-        instructions, memories, skills and the rest, read from Claude Code's
-        files, with the projects your sessions work in."""
+        """View local customization files, with a provider switch (#92, #305)."""
         cwds = sorted({s.cwd for s in self._snapshot.sessions
                        if s.cwd and s.provider == "claude"})
-        self._feedback("Reading what Claude knows about you…")
+        self._feedback("Reading Claude's customization files…")
         # On the pool: a session folder on a disconnected or network drive
         # can take seconds to answer.
         self._read_about_you(cwds, lambda kinds: self._show_about_you(kinds, cwds))
 
-    def _read_about_you(self, cwds, done):
+    def _read_about_you(self, cwds, done, provider="claude"):
         """``about_you.collect`` in the background, then ``done(kinds)`` on
         the UI thread (or a message if it failed)."""
         def work():
             try:
-                kinds = about_you.collect(cwds)
+                kinds = (about_you.collect_codex(cwds) if provider == "codex"
+                         else about_you.collect(cwds))
             except Exception as exc:  # noqa: BLE001
-                wx.CallAfter(self._feedback, f"Couldn't read what Claude knows about you: {exc}")
+                wx.CallAfter(self._feedback, f"Couldn't read {provider.title()} customization files: {exc}")
+                wx.CallAfter(done, None)
                 return
             wx.CallAfter(done, kinds)
         self._pool.submit(work)
 
     def _show_about_you(self, kinds, cwds):
+        if kinds is None:
+            return
         def copy(path: str):
             self._feedback("Copied the file's location." if self._copy_text(path)
                            else "Couldn't open the clipboard.")
 
-        def reload(done):
-            def reloaded(fresh):
-                self._feedback("Reloaded. " + about_you.summary(fresh))
-                done(fresh)
-            self._read_about_you(cwds, reloaded)
-        self._modal(AboutYouDialog(self, kinds, reload, platform_paths.edit_file,
-                                   platform_paths.show_in_folder, copy))
+        def provider_load(provider, done):
+            folders = sorted({s.cwd for s in self._snapshot.sessions
+                              if s.cwd and s.provider == provider})
+            def loaded(fresh):
+                accepted = done(fresh)
+                if accepted and fresh is not None:
+                    self._feedback(provider.title() + ": " + about_you.summary(
+                        fresh, provider.title()))
+            self._read_about_you(folders, loaded, provider)
+        self._modal(AboutYouDialog(self, kinds, lambda done: provider_load("claude", done), platform_paths.edit_file,
+                                   platform_paths.show_in_folder, copy, provider_load))
 
     def copy_last_code_block(self):
         """Ctrl+Shift+C: the last code block of the selected message, usually

@@ -5350,14 +5350,14 @@ def test_about_you_reads_in_the_background_with_the_sessions_folders(frame, env,
         dialog.Destroy()
     monkeypatch.setattr(main_frame.MainFrame, "_modal", modal)
     frame.on_about_you()
-    assert env["feedback"][-1] == "Reading what Claude knows about you…"
+    assert env["feedback"][-1] == "Reading Claude's customization files…"
     assert pump(lambda: shown)
     assert seen["thread"] is not threading.main_thread()
     assert seen["cwds"] == ["C:\\G\\Repo", "C:\\G\\Scratch"]
     assert shown[0].startswith("Instructions, 1 item")
-    assert env["feedback"][-1].startswith("Reloaded. Found: Instructions 1")
+    assert env["feedback"][-1].startswith("Claude: Found: Instructions 1")
     labels = [i.GetItemLabel() for i in frame.GetMenuBar().GetMenu(1).GetMenuItems()]
-    assert "What Claude &Knows About You...\tCtrl+Shift+K" in labels
+    assert "What AI &Knows About You...\tCtrl+Shift+K" in labels
 
 
 def test_about_you_says_so_when_reading_fails(frame, env, monkeypatch):
@@ -5368,6 +5368,36 @@ def test_about_you_says_so_when_reading_fails(frame, env, monkeypatch):
     monkeypatch.setattr(main_frame.about_you, "collect", broken)
     frame.on_about_you()
     assert pump(lambda: "bad disk" in env["feedback"][-1])
+
+
+def test_about_you_provider_switch_discards_stale_results_and_recovers(frame, env):
+    from thechatplace import about_you
+    from thechatplace.ui.dialogs import AboutYouDialog
+    home = _about_you_home(env)
+    kinds = about_you.collect(home=home, user_home="")
+    pending = []
+    dialog = AboutYouDialog(frame, kinds, lambda done: done(kinds),
+                            platform_paths.edit_file, platform_paths.show_in_folder,
+                            env["copied"].append,
+                            lambda provider, done: pending.append((provider, done)))
+    try:
+        dialog.provider.SetSelection(1)
+        dialog._change_provider(None)
+        assert pending[-1][0] == "codex"
+        assert dialog.selected_item() is None
+        assert not dialog.edit_btn.IsEnabled()
+        assert dialog.text.GetValue() == ""
+        dialog.provider.SetSelection(0)
+        dialog._change_provider(None)
+        pending[1][1](kinds)
+        pending[0][1]([])
+        assert dialog.selected_item().path == home / "CLAUDE.md"
+        dialog.reload()
+        pending[-1][1](None)
+        assert dialog.reload_btn.IsEnabled()
+        assert dialog.selected_item().path == home / "CLAUDE.md"
+    finally:
+        dialog.Destroy()
 
 
 # -- Remote Control, easier to find (#96) ----------------------------------------------------

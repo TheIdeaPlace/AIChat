@@ -1305,6 +1305,11 @@ def _codex_npm_candidates(roots) -> List[Path]:
     return candidates
 
 
+def codex_home() -> Path:
+    """Codex's local profile, including a user's CODEX_HOME override."""
+    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+
+
 def _codex_package_candidates(home: Path, name: str):
     """Codex's own installer packages under CODEX_HOME (#283).
 

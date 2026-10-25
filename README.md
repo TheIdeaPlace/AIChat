@@ -117,7 +117,16 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
 - **The session's menu** (Applications key or Shift+F10 in the session list, VO+Shift+M with
   VoiceOver on a Mac, or a right-click) has the File menu's commands for the selected session:
   load, open in Claude, continue here, rename, Remote Control, groups, export, and hide or delete.
-- **What Claude knows about you** (Ctrl+Shift+K, View, What Claude Knows About You). Claude Code
+- **What AI knows about you** (Ctrl+Shift+K, View, What AI Knows About You). Choose **Claude**
+  or **Codex** in the Provider list. This is an inventory of local customization files,
+  not an account-wide memory report or a list of everything active in a particular turn.
+  Codex lists `AGENTS.md` and `AGENTS.override.md`, Markdown files under its `memories`
+  folder, skills in your `.agents/skills` and Codex home's `skills` (including `.system`),
+  saved `prompts`, and `config.toml`. It honors `CODEX_HOME` and includes instruction files,
+  `.agents/skills` and `.codex/config.toml` in the folders your Codex sessions work in.
+  Parent folders, configured alternate instruction filenames, plugins and managed settings
+  are not included; project configuration may require trusting the project in Codex.
+  Claude Code
   keeps what it knows about you in plain files, and this lists them by kind: your instructions
   (`CLAUDE.md`, yours and each project's), the memories Claude saved for each project, your
   skills (including ones synced from your account), subagents, slash commands, output styles and
@@ -981,7 +990,7 @@ shows it as plain text instead.
 | Session list | Ctrl+G | Add the selected session to a group |
 | Session list | F2 | Rename the selected session |
 | Session list | Applications key, Shift+F10 | The session's menu |
-| Anywhere | Ctrl+Shift+K | What Claude knows about you: instructions, memories, skills and more |
+| Anywhere | Ctrl+Shift+K | What AI knows about you: choose Claude or Codex; local instructions, memories, skills and more |
 | Session list | Ctrl+F | Show only sessions matching some text (Escape shows all) |
 | Messages | Ctrl+F, F3, Shift+F3 | Find a message by its text; next; previous |
 | Anywhere | Ctrl+E | Export the session to a file |
@@ -1193,7 +1202,7 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 | `thechatplace/own_store.py` | The Chat Place's own sessions |
 | `thechatplace/titles.py` | Names you've given desktop app sessions |
 | `thechatplace/prompts.py` | Your saved prompts |
-| `thechatplace/about_you.py` | Finding what Claude knows about you |
+| `thechatplace/about_you.py` | Finding Claude and Codex local customization files |
 | `thechatplace/claude_cli.py` | `claude` commands, the `--resume` guard, the environment, stream-json events, running a turn |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |

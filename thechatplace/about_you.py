@@ -1,4 +1,4 @@
-"""What Claude knows about you (View, What Claude Knows About You, #92).
+"""Local customization files for What AI Knows About You (#92, #305).
 
 Claude Code keeps what it knows about you in plain files: your instructions
 (``CLAUDE.md``), the memories it saved for each project, your skills,
@@ -10,6 +10,7 @@ Claude Code's files.
 The layout follows Claude Code's documented locations under ``~/.claude``
 (``CLAUDE_CONFIG_DIR`` is honoured through ``platform_paths.claude_home``),
 plus the project-level ones in the folders your sessions work in.
+``collect_codex`` supplies the same list structure for local Codex files.
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ MEMORIES = "Memories"
 SKILLS = "Skills"
 SUBAGENTS = "Subagents"
 COMMANDS = "Slash commands"
+PROMPTS = "Prompts"
 OUTPUT_STYLES = "Output styles"
 SETTINGS = "Settings"
 
@@ -322,9 +324,62 @@ def collect(cwds: Iterable[str] = (), home: Optional[Path] = None,
     return [kinds[name] for name, _about in KINDS]
 
 
-def summary(kinds: List[KnownKind]) -> str:
+def collect_codex(cwds: Iterable[str] = (), home: Optional[Path] = None,
+                  user_home: Optional[str] = None) -> List[KnownKind]:
+    """Inventory local Codex files, not a claim about a turn's active context.
+
+    Only known customization locations are read; never scan auth, histories or
+    rollout files. Parent folders and configured alternate filenames are outside
+    this inventory, just as parent instructions are for Claude's inventory.
+    """
+    home = Path(home) if home is not None else platform_paths.codex_home()
+    user = Path(user_home) if user_home is not None else Path.home()
+    kinds = {name: KnownKind(name, about) for name, about in [
+        (INSTRUCTIONS, "Instructions for Codex (AGENTS.md and AGENTS.override.md)"),
+        (MEMORIES, "Local Markdown memories saved in Codex's memories folder"),
+        (SKILLS, "Packaged instructions for Codex tasks"),
+        (PROMPTS, "Saved prompts in Codex's prompts folder"),
+        (SETTINGS, "Codex configuration; project settings apply only to trusted projects"),
+    ]}
+    seen = set()
+
+    def add(kind, path, label="", project=""):
+        try:
+            key = (kind, path.resolve())
+            if not path.is_file() or key in seen:
+                return
+            seen.add(key)
+            kinds[kind].items.append(_markdown_item(kind, path, label, project))
+        except OSError:
+            return
+
+    folders = [(home, "")]
+    cwds = list(cwds)
+    names = _project_names(cwds)
+    folders += [(p, names.get(platform_paths.encode_cwd(str(p)), p.name))
+                for p in _project_folders(cwds) if not _same_folder(p, home)]
+    for folder, project in folders:
+        for name in ("AGENTS.md", "AGENTS.override.md"):
+            add(INSTRUCTIONS, folder / name, name, project)
+        add(SETTINGS, (folder / ".codex" if project else folder) / "config.toml",
+            "Project settings" if project else "Your settings", project)
+    for path in _files(home / "memories", "**/*.md"):
+        add(MEMORIES, path)
+    for path in _files(home / "prompts", "*.md"):
+        add(PROMPTS, path)
+    skill_folders = [(user / ".agents/skills", ""), (home / "skills", "")]
+    skill_folders += [(folder / ".agents/skills", project)
+                      for folder, project in folders if project]
+    for folder, project in skill_folders:
+        for pattern in ("*/SKILL.md", ".system/*/SKILL.md"):
+            for path in _files(folder, pattern):
+                add(SKILLS, path, path.parent.name, project)
+    return list(kinds.values())
+
+
+def summary(kinds: List[KnownKind], provider: str = "Claude Code") -> str:
     """One sentence for the dialog to say on opening."""
     found = [k for k in kinds if k.items]
     if not found:
-        return "Claude Code hasn't saved anything about you on this computer yet."
+        return f"No local {provider} customization files were found on this computer."
     return "Found: " + ", ".join(f"{k.name} {len(k.items)}" for k in found) + "."

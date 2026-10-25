@@ -6,6 +6,38 @@ from thechatplace import about_you, platform_paths
 from thechatplace.titles import MAX_TITLE, TitleStore, clean_title
 
 
+def test_codex_inventory_is_scoped_deduplicated_and_never_lists_credentials(tmp_path):
+    home, project = tmp_path / "codex", tmp_path / "project"
+    files = [home / "AGENTS.md", home / "AGENTS.override.md", home / "config.toml",
+             home / "memories/summary.md", home / "skills/.system/helper/SKILL.md",
+             tmp_path / ".agents/skills/helper/SKILL.md", project / "AGENTS.md",
+             project / ".agents/skills/review/SKILL.md", project / ".codex/config.toml",
+             home / "prompts/review.md"]
+    for path in files + [home / "auth.json", home / "sessions/secret.md"]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Synthetic customization\n", encoding="utf-8")
+    kinds = about_you.collect_codex([str(project), str(project), str(home)],
+                                    home=home, user_home=str(tmp_path))
+    found = [i.path for k in kinds for i in k.items]
+    assert set(found) == set(files)
+    assert len(found) == len(files)
+    assert all("Claude" not in k.about for k in kinds)
+    prompts = next(k for k in kinds if k.name == "Prompts")
+    assert [i.path for i in prompts.items] == [home / "prompts/review.md"]
+    assert all(k.name != "Slash commands" for k in kinds)
+
+
+def test_codex_home_honors_profile_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    assert platform_paths.codex_home() == tmp_path
+
+
+def test_codex_missing_home_is_empty(tmp_path):
+    kinds = about_you.collect_codex(home=tmp_path / "missing", user_home=str(tmp_path))
+    assert all(not k.items for k in kinds)
+    assert "Codex" in about_you.summary(kinds, "Codex")
+
+
 # -- titles --------------------------------------------------------------------------------
 
 
@@ -170,8 +202,8 @@ def test_collect_names_unknown_memory_folders_without_your_home(tmp_path):
 def test_collect_on_an_empty_or_missing_home(tmp_path):
     kinds = about_you.collect(["C:\\nowhere"], home=tmp_path / "missing", user_home="")
     assert all(not k.items for k in kinds)
-    assert about_you.summary(kinds) == ("Claude Code hasn't saved anything about you on this "
-                                        "computer yet.")
+    assert about_you.summary(kinds) == (
+        "No local Claude Code customization files were found on this computer.")
     assert kinds[0].row() == "Instructions, 0 items"
 
 
