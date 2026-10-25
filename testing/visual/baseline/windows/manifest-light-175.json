@@ -459,7 +459,7 @@
    "kind": "dialog",
    "png": "about-you-light-175.png",
    "json": "about-you-light-175.json",
-   "title": "What Claude Knows About You",
+   "title": "What AI Knows About You",
    "class": "AboutYouDialog",
    "size": [
     1505,
@@ -467,7 +467,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, What Claude Knows About You"
+   "about": "View, What AI Knows About You: Claude"
   },
   "session-columns": {
    "kind": "dialog",
@@ -636,6 +636,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Synthetic Copilot-only list with explicit Provider column"
+  },
+  "about-you-codex": {
+   "kind": "dialog",
+   "png": "about-you-codex-light-175.png",
+   "json": "about-you-codex-light-175.json",
+   "title": "What AI Knows About You",
+   "class": "AboutYouDialog",
+   "size": [
+    1505,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "What AI Knows About You: Codex"
   }
  },
  "seconds": 94.1

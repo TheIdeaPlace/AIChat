@@ -308,11 +308,19 @@ This is a 751 by 360 dialog, one of the smallest. "Usage and context:" heads a w
 
 **What looks off:** Most of the list is empty. The dialog is now wide enough for the first row, but only just.
 
-## about-you: View, What Claude Knows About You
+## about-you: View, What AI Knows About You (Claude)
 
-This is the largest dialog, 860 by 640. A one-line note runs across the top. "Kind:" heads a list (828 by 120) with seven rows, such as "Instructions, 1 item: What you've told Claude to do in every session (CLAUDE.md), and in each project" (selected, with the focus outline), "Memories, 0 items..." and "Skills, 1 item...". "Items:" heads a second list (140 tall) with one selected row. A "Location:" row has a read-only grey box with a path. "Contents:" heads a text box (175 tall) showing "# How I like to work" and "Test everything.". Five buttons sit at the bottom right: "Edit in Your Editor", "Show in Folder", "Copy Path", "Reload" and "Close".
+This is the largest dialog, 860 by 700, titled "What AI Knows About You" (#305). Two lines of black text run across the top: "Local customization files, not an account-wide memory or active-context report." and "Edit opens a file in your editor; Reload reads your changes." Neither reaches the right edge. "Provider:" heads a dropdown the full width of the dialog showing "Claude". "Kind:" heads a list (828 by 120) with seven rows, such as "Instructions, 1 item: What you've told Claude to do in every session (CLAUDE.md), and in each project" (selected, with the focus outline), "Memories, 0 items..." and "Skills, 1 item...". "Items:" heads a second list (80 tall, room for five rows) with one selected row. A "Location:" row has a read-only grey box with a path. "Contents:" heads a text box (233 tall) showing "# How I like to work" and "Test everything.". Five buttons sit at the bottom right: "Edit in Your Editor", "Show in Folder", "Copy Path", "Reload" and "Close". In High Contrast Aquatic the dialog is near-black with white text (16.3:1) and the selected rows dark blue-grey on light aqua (7.9:1); in Desert, near-black on cream (15.7:1) with cream on brown selected rows (7.0:1). dark-100 looks the same as light-100 (#177).
 
-**What looks off:** Both lists show a blue selected row at once, so it isn't clear which has focus (as in #181). The Location row puts its label beside the box while every other field has its label above. The five buttons have uneven widths (75 to 116).
+**At 150% and 175%:** all five buttons stay in view. At 175% (1505 by 956, as tall as the screen allows) Contents is 175 tall and shows both lines of the file; before #368 the Provider row had left it 70 tall, two lines, because the Items list kept 140. The Kind list cuts its seventh row, "Settings", at 175% and scrolls, as before #305.
+
+**What looks off:** Both lists show a selected row at once, so it isn't clear which has focus (as in #181). The Location row puts its label beside the box while every other field has its label above. The five buttons have uneven widths (75 to 116).
+
+## about-you-codex: What AI Knows About You with Codex chosen
+
+The same dialog with "Codex" in the Provider dropdown, reading a synthetic Codex folder. The Kind list has five rows, all naming Codex: "Instructions, 1 item: Instructions for Codex (AGENTS.md and AGENTS.override.md)" (selected), "Memories, 0 items: Local Markdown memories saved in Codex's memories folder", "Skills, 1 item: Packaged instructions for Codex tasks", "Prompts, 0 items: Saved prompts in Codex's prompts folder" and "Settings, 0 items: Codex configuration; project settings apply only to trusted projects", leaving two empty rows. Items holds "AGENTS.md — How I like to work" (selected), the Location box ends "codex\AGENTS.md", and Contents shows "# How I like to work" and "Test everything.". No Claude wording is left on screen. The variants differ as in about-you.
+
+**What looks off:** As in about-you.
 
 ## properties: View, Properties of a session (#214)
 

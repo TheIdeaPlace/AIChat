@@ -1,0 +1,339 @@
+{
+ "title": "What AI Knows About You",
+ "class": "AboutYouDialog",
+ "size": [
+  1505,
+  956
+ ],
+ "client": [
+  1481,
+  892
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Local customization files, not an account-wide memory or active-context report.\nEdit opens a file in your editor; Reload reads your changes.",
+   "rect": [
+    8,
+    8,
+    741,
+    61
+   ],
+   "best": [
+    741,
+    61
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Pro&vider:",
+   "rect": [
+    8,
+    77,
+    82,
+    31
+   ],
+   "best": [
+    82,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Provider",
+   "label": "",
+   "rect": [
+    8,
+    108,
+    1465,
+    38
+   ],
+   "best": [
+    105,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Codex"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Kind:",
+   "rect": [
+    8,
+    154,
+    47,
+    31
+   ],
+   "best": [
+    47,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Kind",
+   "label": "",
+   "rect": [
+    10,
+    187,
+    1465,
+    210
+   ],
+   "best": [
+    850,
+    210
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Instructions, 1 item: Instructions for Codex (AGENTS.md and AGENTS.override.md)",
+    "Memories, 0 items: Local Markdown memories saved in Codex's memories folder",
+    "Skills, 1 item: Packaged instructions for Codex tasks",
+    "Prompts, 0 items: Saved prompts in Codex's prompts folder",
+    "Settings, 0 items: Codex configuration; project settings apply only to trusted projects"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Items:",
+   "rect": [
+    8,
+    403,
+    57,
+    31
+   ],
+   "best": [
+    57,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Instructions, 1",
+   "label": "",
+   "rect": [
+    10,
+    436,
+    1465,
+    140
+   ],
+   "best": [
+    381,
+    140
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "AGENTS.md — How I like to work"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Locatio&n:",
+   "rect": [
+    8,
+    585,
+    85,
+    31
+   ],
+   "best": [
+    85,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Location",
+   "label": "",
+   "rect": [
+    101,
+    584,
+    1374,
+    38
+   ],
+   "best": [
+    192,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\about-you-codex\\codex\\AGENTS.md"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "C&ontents:",
+   "rect": [
+    8,
+    628,
+    89,
+    31
+   ],
+   "best": [
+    89,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Contents of AGENTS.md",
+   "label": "",
+   "rect": [
+    10,
+    661,
+    1465,
+    175
+   ],
+   "best": [
+    222,
+    350
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "# How I like to work\n\nTest everything.\n"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Edit in Your Editor",
+   "rect": [
+    675,
+    842,
+    203,
+    42
+   ],
+   "best": [
+    203,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Show in Fol&der",
+   "rect": [
+    884,
+    842,
+    172,
+    42
+   ],
+   "best": [
+    172,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &Path",
+   "rect": [
+    1062,
+    842,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Reload",
+   "rect": [
+    1201,
+    842,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    1340,
+    842,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

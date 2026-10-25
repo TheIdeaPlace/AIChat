@@ -1,13 +1,13 @@
 {
- "title": "What Claude Knows About You",
+ "title": "What AI Knows About You",
  "class": "AboutYouDialog",
  "size": [
   860,
-  640
+  700
  ],
  "client": [
   844,
-  601
+  661
  ],
  "dpi": [
   96,
@@ -18,16 +18,16 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Read from Claude Code's own files on this computer. The Chat Place only reads them: Edit opens a file in your editor, and Reload shows your changes.",
+   "label": "Local customization files, not an account-wide memory or active-context report.\nEdit opens a file in your editor; Reload reads your changes.",
    "rect": [
     8,
     8,
-    793,
-    16
+    425,
+    31
    ],
    "best": [
-    793,
-    16
+    425,
+    31
    ],
    "depth": 0,
    "parent": -1,
@@ -37,10 +37,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
+   "label": "Pro&vider:",
+   "rect": [
+    8,
+    47,
+    48,
+    16
+   ],
+   "best": [
+    48,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Provider",
+   "label": "",
+   "rect": [
+    8,
+    63,
+    828,
+    23
+   ],
+   "best": [
+    65,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Claude"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
    "label": "&Kind:",
    "rect": [
     8,
-    32,
+    94,
     28,
     16
    ],
@@ -59,7 +98,7 @@
    "label": "",
    "rect": [
     10,
-    50,
+    112,
     828,
     120
    ],
@@ -88,7 +127,7 @@
    "label": "&Items:",
    "rect": [
     8,
-    176,
+    238,
     33,
     16
    ],
@@ -107,13 +146,13 @@
    "label": "",
    "rect": [
     10,
-    194,
+    256,
     828,
-    140
+    80
    ],
    "best": [
     335,
-    140
+    80
    ],
    "depth": 0,
    "parent": -1,
@@ -130,7 +169,7 @@
    "label": "Locatio&n:",
    "rect": [
     8,
-    343,
+    345,
     50,
     16
    ],
@@ -149,7 +188,7 @@
    "label": "",
    "rect": [
     66,
-    342,
+    344,
     772,
     23
    ],
@@ -169,7 +208,7 @@
    "label": "C&ontents:",
    "rect": [
     8,
-    371,
+    373,
     52,
     16
    ],
@@ -188,9 +227,9 @@
    "label": "",
    "rect": [
     10,
-    389,
+    391,
     828,
-    175
+    233
    ],
    "best": [
     127,
@@ -208,7 +247,7 @@
    "label": "&Edit in Your Editor",
    "rect": [
     371,
-    570,
+    630,
     116,
     23
    ],
@@ -227,7 +266,7 @@
    "label": "Show in Fol&der",
    "rect": [
     493,
-    570,
+    630,
     99,
     23
    ],
@@ -246,7 +285,7 @@
    "label": "Copy &Path",
    "rect": [
     598,
-    570,
+    630,
     76,
     23
    ],
@@ -265,7 +304,7 @@
    "label": "&Reload",
    "rect": [
     680,
-    570,
+    630,
     75,
     23
    ],
@@ -284,7 +323,7 @@
    "label": "C&lose",
    "rect": [
     761,
-    570,
+    630,
     75,
     23
    ],
