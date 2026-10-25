@@ -459,7 +459,7 @@
    "kind": "dialog",
    "png": "about-you-light-175.png",
    "json": "about-you-light-175.json",
-   "title": "What Claude Knows About You",
+   "title": "What AI Knows About You",
    "class": "AboutYouDialog",
    "size": [
     1505,
@@ -467,7 +467,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, What Claude Knows About You"
+   "about": "View, What AI Knows About You: Claude"
   },
   "session-columns": {
    "kind": "dialog",
@@ -594,6 +594,62 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "New Agent Conversation with the Builder and reviewer template and a third agent"
+  },
+  "settings-copilot": {
+   "kind": "dialog",
+   "png": "settings-copilot-light-175.png",
+   "json": "settings-copilot-light-175.json",
+   "title": "Settings",
+   "class": "SettingsDialog",
+   "size": [
+    1190,
+    996
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Settings once Copilot CLI has a session: its check box shows"
+  },
+  "main-copilot": {
+   "kind": "window",
+   "png": "main-copilot-light-175.png",
+   "json": "main-copilot-light-175.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1750,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Copilot CLI history in the shared window: read-only controls"
+  },
+  "main-copilot-filter": {
+   "kind": "window",
+   "png": "main-copilot-filter-light-175.png",
+   "json": "main-copilot-filter-light-175.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1750,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Copilot-only list with explicit Provider column"
+  },
+  "about-you-codex": {
+   "kind": "dialog",
+   "png": "about-you-codex-light-175.png",
+   "json": "about-you-codex-light-175.json",
+   "title": "What AI Knows About You",
+   "class": "AboutYouDialog",
+   "size": [
+    1505,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "What AI Knows About You: Codex"
   }
  },
  "seconds": 94.1

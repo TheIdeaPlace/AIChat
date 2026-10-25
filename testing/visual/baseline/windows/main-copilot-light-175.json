@@ -1,0 +1,338 @@
+{
+ "title": "Copilot history preview — The Chat Place",
+ "class": "MainFrame",
+ "size": [
+  1750,
+  956
+ ],
+ "client": [
+  1726,
+  808
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    0,
+    1726,
+    808
+   ],
+   "best": [
+    915,
+    909
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Session &list:",
+   "rect": [
+    8,
+    8,
+    107,
+    31
+   ],
+   "best": [
+    107,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Session list",
+   "label": "",
+   "rect": [
+    10,
+    49,
+    674,
+    753
+   ],
+   "best": [
+    1823,
+    154
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app session",
+    "Visual probe, Claude, Scratch, idle, active just now, Chat Place session",
+    "Write the release notes for 0.2, Claude, AIChat, idle, active 1 hour ago, desktop app session",
+    "A session whose title goes on and on to show what a very long title does to the session list and the heading above the messages, Claude, Website, idle, active yesterday, desktop app session",
+    "Copilot history preview, Copilot, Scratch, idle, active just now, external session"
+   ],
+   "selection": 4
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Copilot history preview, Scratch, idle. Copilot chat, read-only.",
+   "rect": [
+    698,
+    8,
+    1020,
+    31
+   ],
+   "best": [
+    562,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Messages in Copilot history preview (idle, read-only):",
+   "rect": [
+    698,
+    47,
+    1020,
+    31
+   ],
+   "best": [
+    97,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Messages in Copilot history preview (idle, read-only)",
+   "label": "",
+   "rect": [
+    700,
+    80,
+    1020,
+    381
+   ],
+   "best": [
+    350,
+    94
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "You: Explain the upload test.",
+    "Copilot: ## What changed"
+   ],
+   "selection": 1
+  },
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    698,
+    467,
+    1020,
+    245
+   ],
+   "best": [
+    222,
+    245
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "About replying:",
+   "rect": [
+    698,
+    467,
+    143,
+    31
+   ],
+   "best": [
+    143,
+    31
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About replying",
+   "label": "This session belongs to the Claude desktop app, so you reply to it in Claude. The Chat Place only reads it: sending from here while the desktop app has it open could run two turns at once and tangle the conversation. Open in Claude switches the desktop app to it. Continue Here starts a Chat Place copy of it, with the whole conversation so far, that you can reply to here; the desktop app session isn't changed.",
+   "rect": [
+    700,
+    504,
+    1020,
+    210
+   ],
+   "best": [
+    222,
+    210
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": [],
+   "value": "This is a Copilot chat. The Chat Place currently reads its local history. Reply in Copilot CLI."
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Show tool &activity",
+   "rect": [
+    698,
+    720,
+    205,
+    30
+   ],
+   "best": [
+    205,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&New Session...",
+   "rect": [
+    698,
+    758,
+    168,
+    42
+   ],
+   "best": [
+    168,
+    42
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Refresh",
+   "rect": [
+    872,
+    758,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StatusBar",
+   "name": "statusBar",
+   "label": "",
+   "rect": [
+    0,
+    808,
+    1726,
+    50
+   ],
+   "best": [
+    429,
+    50
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Status",
+   "label": "Loaded Copilot history preview, 2 messages.",
+   "rect": [
+    2,
+    812,
+    833,
+    43
+   ],
+   "best": [
+    175,
+    140
+   ],
+   "depth": 1,
+   "parent": 12,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Loaded session",
+   "label": "Copilot history preview: idle",
+   "rect": [
+    840,
+    812,
+    557,
+    43
+   ],
+   "best": [
+    175,
+    140
+   ],
+   "depth": 1,
+   "parent": 12,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "1 session needs you",
+   "rect": [
+    1402,
+    812,
+    247,
+    43
+   ],
+   "best": [
+    197,
+    38
+   ],
+   "depth": 1,
+   "parent": 12,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

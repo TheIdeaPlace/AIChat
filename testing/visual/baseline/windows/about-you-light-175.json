@@ -1,5 +1,5 @@
 {
- "title": "What Claude Knows About You",
+ "title": "What AI Knows About You",
  "class": "AboutYouDialog",
  "size": [
   1505,
@@ -18,16 +18,16 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Read from Claude Code's own files on this computer. The Chat Place only reads them: Edit opens a file in your editor, and Reload shows your changes.",
+   "label": "Local customization files, not an account-wide memory or active-context report.\nEdit opens a file in your editor; Reload reads your changes.",
    "rect": [
     8,
     8,
-    1395,
-    31
+    741,
+    61
    ],
    "best": [
-    1395,
-    31
+    741,
+    61
    ],
    "depth": 0,
    "parent": -1,
@@ -37,10 +37,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
+   "label": "Pro&vider:",
+   "rect": [
+    8,
+    77,
+    82,
+    31
+   ],
+   "best": [
+    82,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Provider",
+   "label": "",
+   "rect": [
+    8,
+    108,
+    1465,
+    38
+   ],
+   "best": [
+    105,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Claude"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
    "label": "&Kind:",
    "rect": [
     8,
-    47,
+    154,
     47,
     31
    ],
@@ -59,7 +98,7 @@
    "label": "",
    "rect": [
     10,
-    80,
+    187,
     1465,
     210
    ],
@@ -88,7 +127,7 @@
    "label": "&Items:",
    "rect": [
     8,
-    296,
+    403,
     57,
     31
    ],
@@ -107,13 +146,13 @@
    "label": "",
    "rect": [
     10,
-    329,
+    436,
     1465,
-    245
+    140
    ],
    "best": [
     585,
-    245
+    140
    ],
    "depth": 0,
    "parent": -1,
@@ -130,7 +169,7 @@
    "label": "Locatio&n:",
    "rect": [
     8,
-    583,
+    585,
     85,
     31
    ],
@@ -149,7 +188,7 @@
    "label": "",
    "rect": [
     101,
-    582,
+    584,
     1374,
     38
    ],
@@ -169,7 +208,7 @@
    "label": "C&ontents:",
    "rect": [
     8,
-    626,
+    628,
     89,
     31
    ],
@@ -188,9 +227,9 @@
    "label": "",
    "rect": [
     10,
-    659,
+    661,
     1465,
-    177
+    175
    ],
    "best": [
     222,

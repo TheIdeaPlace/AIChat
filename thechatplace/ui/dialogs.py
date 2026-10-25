@@ -984,7 +984,9 @@ class SettingsDialog(wx.Dialog):
         self.agent_auto.SetValue(speech.agent_auto_mode)
         # A little less below it than the others, so Settings still fits a
         # 768-high screen without scrolling (it did by 2 pixels on a Mac).
-        outer.Add(self.agent_auto, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        # Only below: its sides keep the others' 10, so it lines up (#368).
+        outer.Add(self.agent_auto, 0, wx.LEFT | wx.RIGHT, 10)
+        outer.AddSpacer(6)
 
         # #141: the dialog at the first start after an update.
         self.update_notice = wx.CheckBox(
@@ -2463,7 +2465,10 @@ class AboutYouDialog(wx.Dialog):
         sizer.Add(wx.StaticText(self, label="&Items:"), 0, wx.LEFT | wx.TOP, 8)
         self.items = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.items, "Items")
-        self.items.SetMinSize(dip(self, -1, 140))
+        # 80, not 140: the list scrolls and still shows four or five rows,
+        # and the Provider row (#305) had left Contents two lines tall at
+        # 175% (#368).
+        self.items.SetMinSize(dip(self, -1, 80))
         sizer.Add(self.items, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         row.Add(wx.StaticText(self, label="Locatio&n:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)

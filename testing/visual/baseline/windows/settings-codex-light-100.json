@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   680,
-  615
+  636
  ],
  "client": [
   664,
-  576
+  597
  ],
  "dpi": [
   96,
@@ -23,7 +23,7 @@
     0,
     0,
     664,
-    537
+    558
    ],
    "best": [
     644,
@@ -458,10 +458,29 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "&Tell me when an update has been installed, with a link to what's new",
+   "label": "Let a&gent conversations hand replies across automatically",
    "rect": [
     10,
     512,
+    325,
+    15
+   ],
+   "best": [
+    325,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "&Tell me when an update has been installed, with a link to what's new",
+   "rect": [
+    10,
+    533,
     382,
     15
    ],
@@ -480,7 +499,7 @@
    "label": "OK",
    "rect": [
     494,
-    545,
+    566,
     75,
     23
    ],
@@ -499,7 +518,7 @@
    "label": "Cancel",
    "rect": [
     577,
-    545,
+    566,
     75,
     23
    ],

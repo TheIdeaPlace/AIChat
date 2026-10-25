@@ -22,7 +22,7 @@ from thechatplace.sessions import NEEDS_YOU  # noqa: E402
 
 from records import (assistant_block, lines, text_block, tool_result, tool_use_block,  # noqa: E402
                      user_text)
-from markers import msaa, voiceover, windows_paths  # noqa: E402
+from markers import msaa, voiceover, windows_layout, windows_paths  # noqa: E402
 import fake_env  # noqa: E402
 from fake_env import (FAKE_COMMANDS, FakeRunner, add_desktop, add_transcript,  # noqa: E402,F401
                       now_ms, pump)
@@ -1720,6 +1720,22 @@ def test_settings_dialog_has_the_read_back_checkbox(frame):
         assert not box.GetValue() and not dialog.get_settings().announce_own
         box.SetValue(True)
         assert dialog.get_settings().announce_own
+    finally:
+        dialog.Destroy()
+
+
+def test_settings_dialog_lines_up_its_check_boxes(frame):
+    """The agent check box once sat 4 pixels left of the rest (#368)."""
+    from thechatplace.ui.dialogs import SettingsDialog
+    # Copilot on, so its check box is there to line up too.
+    dialog = SettingsDialog(frame, speech.SpeechSettings(copilot_enabled=True),
+                            speech.default_options())
+    try:
+        dialog._body.Layout()  # the check boxes live in the scrolled body, not the dialog
+        boxes = [dialog.own_messages, dialog.remote_control, dialog.task_list,
+                 dialog.codex_enabled, dialog.copilot_enabled, dialog.agent_auto,
+                 dialog.update_notice]
+        assert {box.GetPosition().x for box in boxes} == {10}
     finally:
         dialog.Destroy()
 
@@ -5401,6 +5417,20 @@ def test_about_you_provider_switch_discards_stale_results_and_recovers(frame, en
         pending[-1][1](None)
         assert dialog.reload_btn.IsEnabled()
         assert dialog.selected_item().path == home / "CLAUDE.md"
+    finally:
+        dialog.Destroy()
+
+
+@windows_layout  # 510 is Windows' own measurement
+def test_about_you_contents_keeps_room_on_a_short_screen(frame, env):
+    """At 175% the dialog's inside is 510 high (892 pixels at 168 dpi), and
+    Contents was left two lines tall there (#368)."""
+    dialog = _dialog(frame, env, _about_you_home(env))
+    try:
+        dialog.SetClientSize(dialog.GetClientSize().width, 510)
+        dialog.Layout()
+        # Four lines, plus the box's own border.
+        assert dialog.text.GetSize().height >= 4 * dialog.text.GetCharHeight() + 4
     finally:
         dialog.Destroy()
 
