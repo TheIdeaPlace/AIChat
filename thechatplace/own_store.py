@@ -116,7 +116,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                 return None
             # Separate backend settings; never interpret Codex policy names as
             # Claude permission modes. Runtime model support needs validation.
-            allowed = {"model", "effort", "sandbox", "approval_policy", "workspace_root"}
+            allowed = {"model", "effort", "sandbox", "approval_policy", "workspace_root", "approvals_reviewer"}
             if (provider == "claude" and options
                     or any(k not in allowed or not isinstance(v, str)
                            for k, v in options.items())):

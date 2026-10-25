@@ -13,8 +13,9 @@ def _isolated_codex_diagnostics(monkeypatch, tmp_path):
     from thechatplace import platform_paths
     monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: tmp_path / 'codex-errors.log')
     from thechatplace.providers import codex_runtime
-    from thechatplace.providers.codex_permissions import CodexPermissionStore
+    from thechatplace.providers.codex_permissions import CodexPermissionStore, CodexReviewStore
     monkeypatch.setattr(codex_runtime, 'CodexPermissionStore', lambda: CodexPermissionStore(tmp_path / 'permissions'))
+    monkeypatch.setattr(codex_runtime, 'CodexReviewStore', lambda: CodexReviewStore(tmp_path / 'permissions'))
 
 
 @pytest.fixture(scope="session")

@@ -200,3 +200,38 @@ class CodexPermissionStore:
             path.unlink(missing_ok=True)
             for preserved in self.root.glob(path.stem + '.preserved-*.json'):
                 preserved.unlink(missing_ok=True)
+
+
+class CodexReviewStore(CodexPermissionStore):
+    """Bounded decision history in TCP only; never a permission grant (#358)."""
+    def __init__(self, root=None):
+        super().__init__(root)
+        self.root = self.root / 'automatic-reviews'
+
+    def load(self, native_id):
+        with self._io_lock:
+            try:
+                path = self._path(native_id)
+                if path.stat().st_size > 2 * 1024 * 1024:
+                    raise ValueError('Automatic review history is too large; original preserved')
+                raw = json.loads(path.read_text(encoding='utf-8'))
+            except FileNotFoundError:
+                return ()
+            if (not isinstance(raw, dict) or raw.get('version') != 1 or raw.get('provider') != 'codex'
+                    or raw.get('native_id') != native_id or not isinstance(raw.get('reviews'), list)
+                    or len(raw['reviews']) > 128
+                    or any(not isinstance(row, list) or len(row) != 3
+                           or any(not isinstance(s, str) or not s or len(s) > 10000 for s in row)
+                           for row in raw['reviews'])):
+                raise ValueError('Automatic review history could not be read; original preserved')
+            return tuple(tuple(row) for row in raw['reviews'])
+
+    def remember(self, native_id, turn_id, reviews):
+        with self._io_lock:
+            kept = list(self.load(native_id))
+            seen = {(row[0], row[1]) for row in kept}
+            fresh = [(turn_id, identity, text) for identity, text in reviews
+                     if (turn_id, identity) not in seen]
+            if fresh:
+                atomic_write_json(self._path(native_id), {'version': 1, 'provider': 'codex',
+                    'native_id': native_id, 'reviews': (kept + fresh)[-128:]})

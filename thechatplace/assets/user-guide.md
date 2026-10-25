@@ -439,6 +439,25 @@ a project folder, but the home folder, its parents and volume roots cannot be
 used as writable folders. If Stop is acknowledged but the turn stays open,
 press Stop again to check Codex's saved turn status without resending anything.
 
+**Automatic approval review.** In New Session or Continue Here, Permission mode
+offers read-only or folder editing with **automatic approval review**. For an
+existing owned chat, finish or stop its turn and choose File,
+**Change Permission Mode** (Ctrl+Shift+O), or File, **Chat Permissions**, **Change**. Codex reviews
+eligible permission requests for you and can allow or deny them. Human review
+remains the default; existing chats keep their selected mode. "Never ask" does
+not mean automatic approval.
+
+The selected reviewer is verified before use and pinned on every turn. If your
+Codex version or administrator's policy cannot confirm it, the app sends no
+message and explains how to update Codex or choose human review. Your global
+settings stay unchanged. Read access remains available; folder editing covers
+the project folder. Network access and temporary folders outside that folder
+require approval, and your saved Codex command rules still apply. Chat Permissions
+explains these boundaries and The Chat Place's overrides. Review decisions are
+announced and shown in the chat; the most recent 128 are kept locally per chat
+and can be read again in Chat Permissions after restarting, even if Codex is
+unavailable.
+
 The Chat Place disables external tools (MCP servers, apps and plugins) for
 Codex chats started here because those tools can reach beyond the selected
 folder. It checks that they are disabled before sending. Your global Codex
@@ -544,8 +563,8 @@ mode you chose here, unless that was plan.
 Desktop app and terminal sessions are set in Claude or in the terminal, so for them these items
 say so and change nothing.
 
-For an Codex chat started here, **Change Permission Mode** changes an idle chat between
-read-only and editing files in its selected folder with on-request approvals.
+For a Codex chat started here, **Change Permission Mode** changes an idle chat between
+read-only and editing files in its selected folder with human or automatic approval review.
 Existing saved permissions stay in effect until the change is verified and saved.
 Choose Codex model and effort in New Session or Continue Here; changing them
 later with Change Model or Change Effort is not yet supported.

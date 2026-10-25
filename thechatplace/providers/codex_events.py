@@ -49,6 +49,34 @@ def decode_event(method, params):
     rather than assuming deltas describe the final reply. Backend error bodies
     are not copied into these displayable events.
     """
+    if method in ('item/autoApprovalReview/started', 'item/autoApprovalReview/completed'):
+        # Display only: these notifications never authorize a local answer.
+        # The installed app-server's experimental schema calls the payload
+        # GuardianApprovalReview; its wire methods use autoApprovalReview (#358).
+        if not isinstance(params, dict):
+            return None
+        try:
+            thread, turn, review_id = (_id(params.get(key)) for key in ('threadId', 'turnId', 'reviewId'))
+            if method.endswith('/started'):
+                return CodexEvent('activity', thread, turn, review_id, 'Codex is reviewing a permission request.')
+            review = params.get('review')
+            if not isinstance(review, dict):
+                return None
+            status = review.get('status')
+            labels = {'approved': 'allowed the request', 'denied': 'denied the request',
+                      'timedOut': 'timed out; no approval was confirmed',
+                      'aborted': 'stopped; no approval was confirmed'}
+            if not isinstance(status, str) or status not in labels:
+                return None
+            text = 'Codex automatic review ' + labels[status] + '.'
+            action = params.get('action')
+            if isinstance(action, dict) and isinstance(action.get('command'), str):
+                text += '\nCommand: ' + _text(action['command'], 4096)
+            if isinstance(review.get('rationale'), str) and review['rationale'].strip():
+                text += '\nReason: ' + _text(review['rationale'], 4096)
+            return CodexEvent('auto_review', thread, turn, 'auto-review:' + review_id, text, status)
+        except ValueError:
+            return None
     if method == 'turn/plan/updated':
         # Optional display data must never break execution on a bad shape.
         if not isinstance(params, dict):
@@ -177,6 +205,7 @@ class CodexTurnBuffer:
         self.activity = "Codex is working."
         self.tasks = ()
         self.plan_received = False
+        self.review_notices = {}
 
     @property
     def replies(self):
@@ -199,6 +228,16 @@ class CodexTurnBuffer:
     def apply(self, event):
         if not isinstance(event, CodexEvent):
             raise ValueError("Invalid Codex event")
+        if event.kind == 'auto_review':
+            # A completed review may follow the turn's terminal notification.
+            if (event.thread_id, event.turn_id) != (self.thread_id, self.turn_id):
+                return False
+            if event.item_id in self.review_notices:
+                return False
+            if len(self.review_notices) >= 128:
+                self.review_notices.pop(next(iter(self.review_notices)))
+            self.review_notices[event.item_id] = event.text
+            return True
         if ((event.thread_id, event.turn_id) != (self.thread_id, self.turn_id)
                 or self.status != "inProgress"):
             return False

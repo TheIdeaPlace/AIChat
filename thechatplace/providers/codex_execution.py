@@ -24,6 +24,7 @@ class CodexTurnState:
     tasks: tuple = field(default=(), repr=False)
     plan_received: bool = False
     changed_paths: tuple = field(default=(), repr=False)
+    review_notices: tuple = field(default=(), repr=False)
 
 
 class CodexExecutionConnection(CodexLifecycleConnection):
@@ -60,7 +61,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
             raise CodexRpcError('Codex execution requires a verified owned chat')
         proof.policy.verify_workspace(proof.cwd)
         expected = {'threadId': proof.native_id, 'cwd': proof.cwd, 'model': proof.model,
-                    'approvalPolicy': proof.policy.approval, 'approvalsReviewer': 'user',
+                    'approvalPolicy': proof.policy.approval, 'approvalsReviewer': proof.policy.reviewer,
                     'sandboxPolicy': proof.policy.turn_policy()}
         if proof.effort is not None:
             expected['effort'] = proof.effort
@@ -120,7 +121,7 @@ class CodexTurnExecutor:
         try:
             params = {
                 'threadId': proof.native_id, 'cwd': proof.cwd, 'model': proof.model,
-                'approvalPolicy': proof.policy.approval, 'approvalsReviewer': 'user',
+                'approvalPolicy': proof.policy.approval, 'approvalsReviewer': proof.policy.reviewer,
                 'sandboxPolicy': proof.policy.turn_policy(),
                 'input': [{'type': 'text', 'text': text}]}
             if proof.effort is not None:
@@ -233,7 +234,7 @@ class CodexTurnExecutor:
                                   buffer.started_at, buffer.activity, self._notices.get(proof.native_id, ''),
                                   self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0),
                                   tuple(replace(t) for t in buffer.tasks), buffer.plan_received,
-                                  buffer.changed_paths)
+                                  buffer.changed_paths, tuple(buffer.review_notices.items()))
 
     def answer(self, proof, request, result, *, dispatch_guard=None):
         if not self.connection.owns_runtime(proof):

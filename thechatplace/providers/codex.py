@@ -490,18 +490,22 @@ class CodexProvider:
     def can_create(self):
         return self.runtime is not None
 
-    def create_owned(self, cwd, title, *, model=None, effort=None, sandbox=None, approval_policy=None):
+    def create_owned(self, cwd, title, *, model=None, effort=None, sandbox=None, approval_policy=None, approvals_reviewer=None):
         options = {key: value for key, value in (('sandbox', sandbox), ('approval_policy', approval_policy))
                    if value is not None}
+        if approvals_reviewer is not None:
+            options['approvals_reviewer'] = approvals_reviewer
         return self.runtime.create(cwd, title, model=model, effort=effort, **options)
 
-    def fork_owned(self, source, title, *, model=None, effort=None, sandbox=None, approval_policy=None):
+    def fork_owned(self, source, title, *, model=None, effort=None, sandbox=None, approval_policy=None, approvals_reviewer=None):
         options = {key: value for key, value in (('sandbox', sandbox), ('approval_policy', approval_policy))
                    if value is not None}
+        if approvals_reviewer is not None:
+            options['approvals_reviewer'] = approvals_reviewer
         return self.runtime.fork(source, title, model=model, effort=effort, **options)
 
-    def prepare_policy_owned(self, record, sandbox, approval_policy):
-        return self.runtime.prepare_policy(record, sandbox, approval_policy)
+    def prepare_policy_owned(self, record, sandbox, approval_policy, approvals_reviewer='user'):
+        return self.runtime.prepare_policy(record, sandbox, approval_policy, approvals_reviewer)
 
     def finish_policy_owned(self, record, change, saved):
         if record.cli_session_id != change.proof.native_id:
@@ -531,6 +535,9 @@ class CodexProvider:
 
     def chat_rules_owned(self, record):
         return self.runtime.chat_rules(record)
+
+    def review_history_owned(self, record):
+        return self.runtime.review_store.load(record.cli_session_id)
 
     def remove_chat_rule_owned(self, record, rule_id):
         return self.runtime.remove_chat_rule(record, rule_id)

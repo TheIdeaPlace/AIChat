@@ -2172,7 +2172,8 @@ def test_chat_permissions_for_a_codex_chat_shows_empty_remembered_list(frame, en
     assert rows == ['No command approvals are remembered for this chat.'] and name == "Allowed for this chat, 0"
     assert remove is not None and remove_all is not None and not asked
     assert mode == "Read-only; asks before allowing changes"
-    assert note.startswith('Removal applies before the next approval is sent')
+    assert note.startswith('Selected reviewer: human review.')
+    assert 'Removal applies before the next approval is sent' in note
     assert "From Codex's own saved rules." in note
     assert "Allowed without asking: commands starting with git push." in note
     assert "Nothing is allowed beyond the permission mode" not in note
@@ -10100,6 +10101,26 @@ def test_codex_new_permissions_default_and_provider_switch_preserve_selection(fr
         dialog._on_provider()
         dialog.provider_choice.SetSelection(1)
         dialog._on_provider()
+        assert dialog.codex_policy()['sandbox'] == 'read-only'
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_automatic_review_choices_are_opt_in_and_survive_provider_switch(frame):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, '/', providers=('claude', 'codex'), provider='codex')
+    try:
+        assert dialog.codex_policy().get('approvals_reviewer', 'user') == 'user'
+        dialog.mode.SetSelection(3)
+        assert dialog.codex_policy() == {'sandbox': 'workspace-write', 'approval_policy': 'on-request',
+                                         'approvals_reviewer': 'auto_review'}
+        dialog.provider_choice.SetSelection(0)
+        dialog._on_provider()
+        dialog.provider_choice.SetSelection(1)
+        dialog._on_provider()
+        assert dialog.codex_policy()['approvals_reviewer'] == 'auto_review'
+        assert 'can deny requests' in dialog.note.GetValue()
+        dialog.mode.SetSelection(2)
         assert dialog.codex_policy()['sandbox'] == 'read-only'
     finally:
         dialog.Destroy()

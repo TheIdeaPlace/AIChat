@@ -14,6 +14,7 @@ shipped.
 
 | Note | Issue |
 |---|---|
+| [codex-auto-review.md](codex-auto-review.md): per-chat reviewer verification, independent review fixes and validation limits | #358, #374 |
 | [speech-routing.md](speech-routing.md): how The Chat Place chooses what speaks, why NVDA users hear a Windows voice, and the options for fixing it | #98 |
 
 - [Provider integration review slices](provider-integration-slices.md): release scope, layer boundaries and review gates (#184, #171, #225).
