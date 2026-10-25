@@ -295,7 +295,25 @@ class NewSessionDialog(wx.Dialog):
         lines = sum(len(wordwrap(paragraph, width, dc).rstrip("\n").split("\n"))
                     for paragraph in self.note.GetValue().split("\n"))
         # Plus the box's own padding, which grows with the scaling (#185).
-        self.note.SetMinSize((-1, self.note.GetCharHeight() * lines + dip_width(self, 12)))
+        padding = dip_width(self, 12)
+        whole = self.note.GetCharHeight() * lines + padding
+        self.note.SetMinSize((-1, whole))
+        # First message keeps four lines: the whole note had left it one at
+        # 175% (Codex's note, #368). When everything is then taller than the
+        # dialog, the dialog grows into the screen's spare height before it's
+        # shown, and past that the note gives up height, keeping three lines
+        # and scrolling.
+        self.message.SetMinSize((-1, self.message.GetCharHeight() * 4 + padding))
+        self.Layout()
+        over = self.GetSizer().GetMinSize().height - self.GetClientSize().height
+        if over > 0 and not self.IsShown():
+            room = screen_area(self).height - SCREEN_MARGIN - self.GetSize().height
+            grow = min(over, max(room, 0))
+            if grow:
+                self.SetSize(self.GetSize().width, self.GetSize().height + grow)
+                over -= grow
+        if over > 0:
+            self.note.SetMinSize((-1, max(self.note.GetCharHeight() * 3 + padding, whole - over)))
         self.Layout()
 
     def _on_char_hook(self, event):

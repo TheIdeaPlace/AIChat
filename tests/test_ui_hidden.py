@@ -10299,6 +10299,38 @@ def test_codex_permission_picker_wraps_long_names_without_breaking_new_session_n
     assert '\n' not in CODEX_SAVED_RULES_NOTE
 
 
+@windows_layout  # sizes measured against Windows' own controls
+def test_new_codex_session_keeps_four_lines_of_first_message_on_a_short_screen(
+        frame, tmp_path, monkeypatch):
+    """At 175% New Session is as tall as the screen allows, and Codex's whole
+    permissions note left First message one line (#368)."""
+    from thechatplace.ui import dialogs
+    dialog = dialogs.NewSessionDialog(frame, str(tmp_path), providers=("claude", "codex"),
+                                      provider="codex")
+    try:
+        dialog.SetClientSize(dialog.GetClientSize().width, 900)
+        dialog._fit_note()
+        whole = dialog.note.GetMinSize().height
+        # 30 short of room for the whole note and four lines of First message.
+        dialog.SetClientSize(dialog.GetClientSize().width,
+                             dialog.GetSizer().GetMinSize().height - 30)
+        # A screen with no spare height, so the dialog can't grow into it.
+        monkeypatch.setattr(dialogs, "screen_area", lambda window: wx.Rect(
+            0, 0, 1920, dialog.GetSize().height + dialogs.SCREEN_MARGIN))
+        dialog._fit_note()
+        assert dialog.message.GetSize().height >= 4 * dialog.message.GetCharHeight()
+        # The note gives up the 30 and scrolls, and Start stays in the window.
+        assert dialog.note.GetMinSize().height == whole - 30
+        assert dialog.note.GetSize().height >= 3 * dialog.note.GetCharHeight()
+        assert dialog.start_btn.GetRect().GetBottom() <= dialog.GetClientSize().height
+        # With room to spare, the whole note shows again.
+        dialog.SetClientSize(dialog.GetClientSize().width, 900)
+        dialog._fit_note()
+        assert dialog.note.GetMinSize().height == whole
+    finally:
+        dialog.Destroy()
+
+
 def test_codex_properties_open_before_rule_check_and_show_refusal(frame, monkeypatch):
     import threading
     from thechatplace.own_store import OwnSession

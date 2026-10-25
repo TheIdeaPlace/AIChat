@@ -123,7 +123,7 @@
     512
    ],
    "best": [
-    572,
+    578,
     49
    ],
    "depth": 1,
@@ -131,7 +131,7 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "No sessions yet. Start one with File, New Session (Ctrl+N), in the Claude desktop app or in a terminal."
+    "No sessions yet. Start one with File, New Session (Ctrl+N), in a supported desktop app or in a terminal."
    ],
    "selection": 0
   },

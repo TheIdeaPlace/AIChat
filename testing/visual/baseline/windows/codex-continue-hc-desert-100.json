@@ -1,0 +1,331 @@
+{
+ "title": "Continue Here: Codex still working",
+ "class": "NewSessionDialog",
+ "size": [
+  680,
+  620
+ ],
+ "client": [
+  664,
+  581
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Folder:",
+   "rect": [
+    10,
+    13,
+    37,
+    16
+   ],
+   "best": [
+    37,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Folder",
+   "label": "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\codex-continue\\Projects\\Scratch",
+   "rect": [
+    116,
+    12,
+    540,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\codex-continue\\Projects\\Scratch"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Title:",
+   "rect": [
+    10,
+    44,
+    27,
+    16
+   ],
+   "best": [
+    27,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Title (optional)",
+   "label": "Codex still working (continued)",
+   "rect": [
+    116,
+    43,
+    540,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Codex still working (continued)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Mo&del:",
+   "rect": [
+    10,
+    75,
+    38,
+    16
+   ],
+   "best": [
+    38,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Model",
+   "label": "",
+   "rect": [
+    114,
+    72,
+    540,
+    23
+   ],
+   "best": [
+    161,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Configured Codex model"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Effort:",
+   "rect": [
+    10,
+    106,
+    33,
+    16
+   ],
+   "best": [
+    33,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Effort",
+   "label": "",
+   "rect": [
+    114,
+    103,
+    540,
+    23
+   ],
+   "best": [
+    156,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Configured Codex effort"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission m&ode:",
+   "rect": [
+    10,
+    137,
+    96,
+    16
+   ],
+   "best": [
+    96,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Permission mode",
+   "label": "",
+   "rect": [
+    114,
+    134,
+    540,
+    23
+   ],
+   "best": [
+    311,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Read-only; asks before allowing changes"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "About &continuing:",
+   "rect": [
+    10,
+    167,
+    98,
+    16
+   ],
+   "best": [
+    98,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About continuing",
+   "label": "This starts a Chat Place session that is a copy of this session, with its whole conversation so far, so you can carry on and reply here. The original, in the desktop app or a terminal, isn't changed, and replies here don't appear in it. The copy starts with nothing allowed beyond its permission mode.\r\n\r\nThe permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
+   "rect": [
+    12,
+    185,
+    644,
+    177
+   ],
+   "best": [
+    127,
+    177
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.\n\nCodex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions "
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "First &message:",
+   "rect": [
+    10,
+    370,
+    75,
+    16
+   ],
+   "best": [
+    75,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "First message",
+   "label": "",
+   "rect": [
+    12,
+    398,
+    644,
+    136
+   ],
+   "best": [
+    127,
+    72
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Start",
+   "rect": [
+    494,
+    550,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    577,
+    550,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

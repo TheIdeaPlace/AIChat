@@ -1,0 +1,434 @@
+{
+ "title": "Codex history preview — The Chat Place",
+ "class": "MainFrame",
+ "size": [
+  1500,
+  968
+ ],
+ "client": [
+  1478,
+  838
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    0,
+    1478,
+    838
+   ],
+   "best": [
+    890,
+    999
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Session &list:",
+   "rect": [
+    8,
+    8,
+    92,
+    26
+   ],
+   "best": [
+    92,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Session list",
+   "label": "",
+   "rect": [
+    10,
+    44,
+    575,
+    788
+   ],
+   "best": [
+    1566,
+    129
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app session",
+    "Codex history preview, Codex, Scratch, working, active 2 hours ago, Chat Place session",
+    "Visual probe, Claude, Scratch, idle, active just now, Chat Place session",
+    "Write the release notes for 0.2, Claude, AIChat, idle, active 1 hour ago, desktop app session",
+    "A session whose title goes on and on to show what a very long title does to the session list and the heading above the messages, Claude, Website, idle, active yesterday, desktop app session"
+   ],
+   "selection": 1
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Codex history preview, Scratch, working. Codex chat.",
+   "rect": [
+    599,
+    8,
+    871,
+    26
+   ],
+   "best": [
+    416,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Messages in Codex history preview (working, on Codex):",
+   "rect": [
+    599,
+    42,
+    871,
+    26
+   ],
+   "best": [
+    83,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Messages in Codex history preview (working, on Codex)",
+   "label": "",
+   "rect": [
+    601,
+    70,
+    871,
+    395
+   ],
+   "best": [
+    315,
+    79
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "You: Explain the upload test.",
+    "Codex: ## What changed",
+    "Queued: Run the unit tests next."
+   ],
+   "selection": 1
+  },
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    599,
+    471,
+    871,
+    282
+   ],
+   "best": [
+    518,
+    282
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Your message (Ctrl+Enter sends):",
+   "rect": [
+    599,
+    471,
+    262,
+    26
+   ],
+   "best": [
+    262,
+    26
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Your message",
+   "label": "",
+   "rect": [
+    601,
+    503,
+    871,
+    180
+   ],
+   "best": [
+    191,
+    180
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": [],
+   "value": "Draft of a message still being typed"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Sen&d",
+   "rect": [
+    599,
+    687,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Sto&p",
+   "rect": [
+    719,
+    687,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&ommands...",
+   "rect": [
+    839,
+    687,
+    137,
+    36
+   ],
+   "best": [
+    137,
+    36
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "A&ttach Files...",
+   "rect": [
+    982,
+    687,
+    135,
+    36
+   ],
+   "best": [
+    135,
+    36
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Codex is working. 1 message queued.",
+   "rect": [
+    599,
+    727,
+    871,
+    26
+   ],
+   "best": [
+    1,
+    26
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Show tool &activity",
+   "rect": [
+    599,
+    761,
+    177,
+    25
+   ],
+   "best": [
+    177,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&New Session...",
+   "rect": [
+    599,
+    794,
+    145,
+    36
+   ],
+   "best": [
+    145,
+    36
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Refresh",
+   "rect": [
+    750,
+    794,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StatusBar",
+   "name": "statusBar",
+   "label": "",
+   "rect": [
+    0,
+    838,
+    1478,
+    44
+   ],
+   "best": [
+    386,
+    44
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Status",
+   "label": "5 sessions: 1 need you, 1 working.",
+   "rect": [
+    2,
+    842,
+    710,
+    37
+   ],
+   "best": [
+    150,
+    120
+   ],
+   "depth": 1,
+   "parent": 17,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Loaded session",
+   "label": "Codex history preview: working",
+   "rect": [
+    717,
+    842,
+    475,
+    37
+   ],
+   "best": [
+    150,
+    120
+   ],
+   "depth": 1,
+   "parent": 17,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "1 session needs you",
+   "rect": [
+    1197,
+    842,
+    210,
+    37
+   ],
+   "best": [
+    171,
+    33
+   ],
+   "depth": 1,
+   "parent": 17,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

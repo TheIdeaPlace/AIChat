@@ -1,0 +1,445 @@
+{
+ "title": "New Chat Place Session",
+ "class": "NewSessionDialog",
+ "size": [
+  1190,
+  956
+ ],
+ "client": [
+  1166,
+  892
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Folder:",
+   "rect": [
+    10,
+    13,
+    63,
+    31
+   ],
+   "best": [
+    63,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ComboBox",
+   "name": "Folder",
+   "label": "",
+   "rect": [
+    408,
+    10,
+    748,
+    38
+   ],
+   "best": [
+    187,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Browse...",
+   "rect": [
+    408,
+    56,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "From &GitHub...",
+   "rect": [
+    547,
+    56,
+    169,
+    42
+   ],
+   "best": [
+    169,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Work &in:",
+   "rect": [
+    10,
+    109,
+    78,
+    31
+   ],
+   "best": [
+    78,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Work in",
+   "label": "",
+   "rect": [
+    408,
+    106,
+    748,
+    38
+   ],
+   "best": [
+    541,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The folder as it is (not a git repository, so no worktree)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "B&ranch (choose one, or type a new name):",
+   "rect": [
+    10,
+    155,
+    390,
+    31
+   ],
+   "best": [
+    390,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "ComboBox",
+   "name": "Branch (choose one, or type a new name)",
+   "label": "",
+   "rect": [
+    408,
+    152,
+    748,
+    38
+   ],
+   "best": [
+    187,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Title:",
+   "rect": [
+    10,
+    201,
+    45,
+    31
+   ],
+   "best": [
+    45,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Title (optional)",
+   "label": "",
+   "rect": [
+    410,
+    200,
+    748,
+    38
+   ],
+   "best": [
+    192,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Mo&del:",
+   "rect": [
+    10,
+    247,
+    65,
+    31
+   ],
+   "best": [
+    65,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Model",
+   "label": "",
+   "rect": [
+    408,
+    244,
+    748,
+    38
+   ],
+   "best": [
+    272,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Configured Codex model"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Effort:",
+   "rect": [
+    10,
+    293,
+    57,
+    31
+   ],
+   "best": [
+    57,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Effort",
+   "label": "",
+   "rect": [
+    408,
+    290,
+    748,
+    38
+   ],
+   "best": [
+    265,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Configured Codex effort"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission m&ode:",
+   "rect": [
+    10,
+    339,
+    165,
+    31
+   ],
+   "best": [
+    165,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Permission mode",
+   "label": "",
+   "rect": [
+    408,
+    336,
+    748,
+    38
+   ],
+   "best": [
+    538,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Can edit files in this folder; automatic approval review"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "About &permissions:",
+   "rect": [
+    10,
+    384,
+    178,
+    31
+   ],
+   "best": [
+    178,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About permissions",
+   "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
+   "rect": [
+    12,
+    417,
+    1146,
+    217
+   ],
+   "best": [
+    222,
+    217
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Codex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions are verified before sending. Automatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricte"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "First &message:",
+   "rect": [
+    10,
+    642,
+    131,
+    31
+   ],
+   "best": [
+    131,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "First message",
+   "label": "",
+   "rect": [
+    12,
+    685,
+    1146,
+    141
+   ],
+   "best": [
+    222,
+    141
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Start",
+   "rect": [
+    874,
+    842,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    1019,
+    842,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

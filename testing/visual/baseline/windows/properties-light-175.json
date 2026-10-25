@@ -54,6 +54,7 @@
    "problems": [],
    "items": [
     "Title: Visual probe",
+    "Provider: Claude",
     "Kind: Chat Place session",
     "Folder: C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\properties\\Projects\\Scratch",
     "Status: Idle",
@@ -63,8 +64,7 @@
     "Model chosen: the default model",
     "Effort: Default (your Claude Code setting)",
     "Permission mode: auto",
-    "Messages: 2",
-    "Your messages: 1"
+    "Messages: 2"
    ],
    "selection": 0
   },

@@ -1,0 +1,130 @@
+{
+ "title": "Properties of Codex history preview",
+ "class": "PropertiesDialog",
+ "size": [
+  1120,
+  630
+ ],
+ "client": [
+  1096,
+  566
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Properties:",
+   "rect": [
+    8,
+    8,
+    99,
+    31
+   ],
+   "best": [
+    99,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Properties",
+   "label": "",
+   "rect": [
+    10,
+    41,
+    1080,
+    469
+   ],
+   "best": [
+    915,
+    304
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Title: Codex history preview",
+    "Provider: Codex",
+    "Kind: External session",
+    "Folder: C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\properties-codex\\Projects\\Scratch",
+    "Status: Unavailable",
+    "Started: 11 October 2026 at 14:05 (2 hours ago)",
+    "Last activity: 11 October 2026 at 14:05 (2 hours ago)",
+    "Saved command rules check: Codex command rules could not be checked.",
+    "Messages: 2",
+    "Your messages: 1",
+    "Codex's replies: 1",
+    "Tool calls: 0"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    677,
+    516,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &All",
+   "rect": [
+    816,
+    516,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    955,
+    516,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

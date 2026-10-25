@@ -1,0 +1,217 @@
+{
+ "title": "Chat Permissions: Codex preview",
+ "class": "ChatPermissionsDialog",
+ "size": [
+  1020,
+  780
+ ],
+ "client": [
+  998,
+  724
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission &mode:",
+   "rect": [
+    8,
+    13,
+    143,
+    26
+   ],
+   "best": [
+    143,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Permission mode",
+   "label": "",
+   "rect": [
+    159,
+    11,
+    713,
+    33
+   ],
+   "best": [
+    165,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Read-only; asks before allowing changes"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&hange...",
+   "rect": [
+    876,
+    8,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Allowed for this chat:",
+   "rect": [
+    8,
+    52,
+    168,
+    26
+   ],
+   "best": [
+    168,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Allowed for this chat, 2",
+   "label": "",
+   "rect": [
+    10,
+    80,
+    982,
+    284
+   ],
+   "best": [
+    1883,
+    225
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Run git commit with supported arguments, starting in C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\chat-permissions-codex-kept\\Projects\\Scratch. May run outside the sandbox. git commit. Allowed 19 October 2026 at 03:53.",
+    "Run git push with supported arguments, starting in C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\chat-permissions-codex-kept\\Projects\\Scratch. May run outside the sandbox. git push. Allowed 19 October 2026 at 03:53."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Remove...",
+   "rect": [
+    8,
+    370,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Remove A&ll...",
+   "rect": [
+    128,
+    370,
+    135,
+    36
+   ],
+   "best": [
+    135,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Close",
+   "rect": [
+    876,
+    370,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Abou&t these permissions:",
+   "rect": [
+    8,
+    414,
+    202,
+    26
+   ],
+   "best": [
+    202,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About these permissions",
+   "label": "",
+   "rect": [
+    10,
+    450,
+    982,
+    268
+   ],
+   "best": [
+    191,
+    258
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Selected reviewer: human review. Can read files; changes require approval.\nAutomatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricted access. Human review remains available. Network access and access to temporary folders outside this folder require approval. The Chat Place overrides these boundaries for this chat only;"
+  }
+ ],
+ "capture": "PrintWindow"
+}

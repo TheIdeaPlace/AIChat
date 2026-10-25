@@ -33,7 +33,9 @@ CODEX_SAVED_RULES_NOTE = (
 
 def codex_saved_rules_text(count):
     if type(count) is int and count >= 0:
-        return f"Saved user/system rule files in effect: {count}. " + (CODEX_SAVED_RULES_NOTE if count else "")
+        # No trailing space with none, or the next sentence follows two (#368).
+        return f"Saved user/system rule files in effect: {count}." + (
+            " " + CODEX_SAVED_RULES_NOTE if count else "")
     return "Saved command rules have not been checked. " + CODEX_SAVED_RULES_NOTE
 
 

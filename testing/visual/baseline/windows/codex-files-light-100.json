@@ -59,7 +59,7 @@
    "name": "button",
    "label": "&Allow Once",
    "rect": [
-    337,
+    286,
     470,
     82,
     23
@@ -78,7 +78,7 @@
    "name": "button",
    "label": "&Deny",
    "rect": [
-    425,
+    374,
     470,
     75,
     23
@@ -95,15 +95,15 @@
   {
    "class": "Button",
    "name": "button",
-   "label": "&Stop Turn",
+   "label": "Deny and &Stop Turn",
    "rect": [
-    506,
+    455,
     470,
-    75,
+    126,
     23
    ],
    "best": [
-    75,
+    126,
     23
    ],
    "depth": 0,

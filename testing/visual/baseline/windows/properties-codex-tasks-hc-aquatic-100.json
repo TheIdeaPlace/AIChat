@@ -64,9 +64,9 @@
     "Effort: configured Codex effort",
     "Sandbox: read-only",
     "Approval policy: on request",
-    "Saved command rules check: Codex command rules could not be checked."
+    "Approval reviewer: human"
    ],
-   "selection": 18
+   "selection": 19
   },
   {
    "class": "Button",

@@ -1,0 +1,211 @@
+{
+ "title": "Codex asks: Codex preview",
+ "class": "QuestionDialog",
+ "size": [
+  1050,
+  350
+ ],
+ "client": [
+  1028,
+  294
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "ScrolledWindow",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    4,
+    4,
+    1020,
+    234
+   ],
+   "best": [
+    310,
+    25
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "Checks: Which checks should run?",
+   "rect": [
+    10,
+    10,
+    1008,
+    101
+   ],
+   "best": [
+    298,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Unit tests",
+   "rect": [
+    22,
+    41,
+    110,
+    25
+   ],
+   "best": [
+    110,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Smoke test",
+   "rect": [
+    22,
+    74,
+    125,
+    25
+   ],
+   "best": [
+    125,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "Secret: Enter the test secret.",
+   "rect": [
+    10,
+    123,
+    1008,
+    109
+   ],
+   "best": [
+    246,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Other (type below)",
+   "rect": [
+    22,
+    154,
+    184,
+    25
+   ],
+   "best": [
+    184,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Secret: your own answer",
+   "label": "",
+   "rect": [
+    24,
+    189,
+    984,
+    33
+   ],
+   "best": [
+    165,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Send Answers",
+   "rect": [
+    522,
+    250,
+    144,
+    36
+   ],
+   "best": [
+    144,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Decline and Stop &Turn",
+   "rect": [
+    672,
+    250,
+    208,
+    36
+   ],
+   "best": [
+    208,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    886,
+    250,
+    134,
+    36
+   ],
+   "best": [
+    134,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

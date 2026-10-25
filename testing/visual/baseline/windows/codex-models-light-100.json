@@ -3,11 +3,11 @@
  "class": "NewSessionDialog",
  "size": [
   680,
-  620
+  635
  ],
  "client": [
   664,
-  581
+  596
  ],
  "dpi": [
   96,
@@ -354,7 +354,7 @@
     23
    ],
    "best": [
-    303,
+    311,
     23
    ],
    "depth": 0,
@@ -390,17 +390,17 @@
     12,
     309,
     644,
-    87
+    132
    ],
    "best": [
     127,
-    87
+    132
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Codex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder. Both ask before allowing work outside their selected file access, except for your saved always-allow commands. Requests appear in Answer. Permissions are verified before sending. Saved command rules have not been checked. Commands you've told Codex to "
+   "value": "Codex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions are verified before sending. Automatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricte"
   },
   {
    "class": "StaticText",
@@ -408,7 +408,7 @@
    "label": "First &message:",
    "rect": [
     10,
-    404,
+    449,
     75,
     16
    ],
@@ -427,13 +427,13 @@
    "label": "",
    "rect": [
     12,
-    432,
+    477,
     644,
-    102
+    72
    ],
    "best": [
     127,
-    38
+    72
    ],
    "depth": 0,
    "parent": -1,
@@ -447,7 +447,7 @@
    "label": "&Start",
    "rect": [
     494,
-    550,
+    565,
     75,
     23
    ],
@@ -466,7 +466,7 @@
    "label": "Cancel",
    "rect": [
     577,
-    550,
+    565,
     75,
     23
    ],

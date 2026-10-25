@@ -1,0 +1,135 @@
+{
+ "title": "Codex needs permission: Codex preview",
+ "class": "CodexPermissionDialog",
+ "size": [
+  1225,
+  945
+ ],
+ "client": [
+  1201,
+  881
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Request:",
+   "rect": [
+    8,
+    8,
+    81,
+    31
+   ],
+   "best": [
+    81,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Request",
+   "label": "Update: app.py\r\n@@ -1 +1 @@\r\n-print('old')\r\n+print('new')",
+   "rect": [
+    10,
+    49,
+    1185,
+    768
+   ],
+   "best": [
+    222,
+    280
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Update: app.py\n@@ -1 +1 @@\n-print('old')\n+print('new')"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Allow Once",
+   "rect": [
+    523,
+    831,
+    142,
+    42
+   ],
+   "best": [
+    142,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Deny",
+   "rect": [
+    671,
+    831,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Deny and &Stop Turn",
+   "rect": [
+    810,
+    831,
+    221,
+    42
+   ],
+   "best": [
+    221,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    1037,
+    831,
+    156,
+    42
+   ],
+   "best": [
+    156,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

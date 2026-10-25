@@ -193,7 +193,7 @@
    "kind": "dialog",
    "png": "message-formatted-light-150.png",
    "json": "message-formatted-light-150.json",
-   "title": "Message from Claude",
+   "title": "Message: Claude",
    "class": "FormattedMessageDialog",
    "size": [
     1230,
@@ -207,7 +207,7 @@
    "kind": "dialog",
    "png": "message-plain-light-150.png",
    "json": "message-plain-light-150.json",
-   "title": "Message from Claude",
+   "title": "Message: Claude",
    "class": "MessageDialog",
    "size": [
     1080,
@@ -476,7 +476,7 @@
    "title": "Session List Columns",
    "class": "SessionColumnsDialog",
    "size": [
-    960,
+    1024,
     840
    ],
    "capture": "PrintWindow",
@@ -636,6 +636,510 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "What AI Knows About You: Codex"
+  },
+  "main-compacted": {
+   "kind": "window",
+   "png": "main-compacted-light-150.png",
+   "json": "main-compacted-light-150.json",
+   "title": "Visual probe — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Compaction and command output remain visible with tool activity off."
+  },
+  "main-codex": {
+   "kind": "window",
+   "png": "main-codex-light-150.png",
+   "json": "main-codex-light-150.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Codex history in the shared window: read-only controls and Codex labels"
+  },
+  "main-codex-owned": {
+   "kind": "window",
+   "png": "main-codex-owned-light-150.png",
+   "json": "main-codex-owned-light-150.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Owned Codex chat with send/stop controls, queued text and a draft"
+  },
+  "main-codex-interrupted": {
+   "kind": "window",
+   "png": "main-codex-interrupted-light-150.png",
+   "json": "main-codex-interrupted-light-150.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Interrupted Codex chat with a safe reason and explicit Stop recovery"
+  },
+  "main-codex-request-declined": {
+   "kind": "window",
+   "png": "main-codex-request-declined-light-150.png",
+   "json": "main-codex-request-declined-light-150.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Working Codex chat after an unsupported request was safely declined"
+  },
+  "main-codex-context": {
+   "kind": "window",
+   "png": "main-codex-context-light-150.png",
+   "json": "main-codex-context-light-150.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Owned Codex chat with reported live context and a queued warning"
+  },
+  "main-codex-filter": {
+   "kind": "window",
+   "png": "main-codex-filter-light-150.png",
+   "json": "main-codex-filter-light-150.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Codex-only list with explicit Provider column"
+  },
+  "main-codex-last-message": {
+   "kind": "window",
+   "png": "main-codex-last-message-light-150.png",
+   "json": "main-codex-last-message-light-150.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Codex last-message column populated through the adapter"
+  },
+  "main-codex-unavailable": {
+   "kind": "window",
+   "png": "main-codex-unavailable-light-150.png",
+   "json": "main-codex-unavailable-light-150.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Cached synthetic Codex history with a redacted discovery outage notice"
+  },
+  "settings-codex": {
+   "kind": "dialog",
+   "png": "settings-codex-light-150.png",
+   "json": "settings-codex-light-150.json",
+   "title": "Settings",
+   "class": "SettingsDialog",
+   "size": [
+    1020,
+    901
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Settings with Codex automatically included"
+  },
+  "codex-review-history": {
+   "kind": "dialog",
+   "png": "codex-review-history-light-150.png",
+   "json": "codex-review-history-light-150.json",
+   "title": "Chat Permissions: Automatic review preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    1020,
+    780
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Automatic reviewer, boundaries and recent decisions"
+  },
+  "codex-change-mode": {
+   "kind": "dialog",
+   "png": "codex-change-mode-light-150.png",
+   "json": "codex-change-mode-light-150.json",
+   "title": "Change Permission Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    895,
+    625
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change permissions for an owned Codex chat"
+  },
+  "properties-codex-owned": {
+   "kind": "dialog",
+   "png": "properties-codex-owned-light-150.png",
+   "json": "properties-codex-owned-light-150.json",
+   "title": "Properties of Codex policy preview",
+   "class": "PropertiesDialog",
+   "size": [
+    960,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Verified owned Codex model and filesystem scope"
+  },
+  "codex-permission": {
+   "kind": "dialog",
+   "png": "codex-permission-light-150.png",
+   "json": "codex-permission-light-150.json",
+   "title": "Codex needs permission: Codex preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    1050,
+    810
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex asks for one-time command permission"
+  },
+  "codex-permission-kept": {
+   "kind": "dialog",
+   "png": "codex-permission-kept-light-150.png",
+   "json": "codex-permission-kept-light-150.json",
+   "title": "Codex needs permission: Codex preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    1050,
+    810
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Remember a Codex command for this TCP chat"
+  },
+  "chat-permissions-codex-kept": {
+   "kind": "dialog",
+   "png": "chat-permissions-codex-kept-light-150.png",
+   "json": "chat-permissions-codex-kept-light-150.json",
+   "title": "Chat Permissions: Codex preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    1020,
+    780
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Review and remove TCP-kept Codex approvals"
+  },
+  "chat-permissions": {
+   "kind": "dialog",
+   "png": "chat-permissions-light-150.png",
+   "json": "chat-permissions-light-150.json",
+   "title": "Chat Permissions: Visual probe",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    1020,
+    780
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions: a Claude chat's kept rules"
+  },
+  "chat-permissions-empty": {
+   "kind": "dialog",
+   "png": "chat-permissions-empty-light-150.png",
+   "json": "chat-permissions-empty-light-150.json",
+   "title": "Chat Permissions: Visual probe",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    1020,
+    780
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions with nothing kept"
+  },
+  "chat-permissions-codex": {
+   "kind": "dialog",
+   "png": "chat-permissions-codex-light-150.png",
+   "json": "chat-permissions-codex-light-150.json",
+   "title": "Chat Permissions: Codex preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    1020,
+    780
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's saved rules"
+  },
+  "codex-files": {
+   "kind": "dialog",
+   "png": "codex-files-light-150.png",
+   "json": "codex-files-light-150.json",
+   "title": "Codex needs permission: Codex preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    1050,
+    810
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex file changes to review before allowing"
+  },
+  "codex-question": {
+   "kind": "dialog",
+   "png": "codex-question-light-150.png",
+   "json": "codex-question-light-150.json",
+   "title": "Codex asks: Codex preview",
+   "class": "QuestionDialog",
+   "size": [
+    1050,
+    350
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex choices and a masked secret answer"
+  },
+  "lists-commands": {
+   "kind": "dialog",
+   "png": "lists-commands-light-150.png",
+   "json": "lists-commands-light-150.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    1230,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Lists: Commands"
+  },
+  "lists-decisions": {
+   "kind": "dialog",
+   "png": "lists-decisions-light-150.png",
+   "json": "lists-decisions-light-150.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    1230,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Lists: Decisions"
+  },
+  "lists-tasks": {
+   "kind": "dialog",
+   "png": "lists-tasks-light-150.png",
+   "json": "lists-tasks-light-150.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    1230,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: Claude's task list"
+  },
+  "lists-codex-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-tasks-light-150.png",
+   "json": "lists-codex-tasks-light-150.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    1230,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: Codex's live plan"
+  },
+  "lists-codex-no-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-no-tasks-light-150.png",
+   "json": "lists-codex-no-tasks-light-150.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    1230,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: no task list from an external Codex chat"
+  },
+  "lists-codex-owned-no-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-owned-no-tasks-light-150.png",
+   "json": "lists-codex-owned-no-tasks-light-150.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    1230,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: owned Codex chat with no tasks"
+  },
+  "properties-codex-tasks": {
+   "kind": "dialog",
+   "png": "properties-codex-tasks-light-150.png",
+   "json": "properties-codex-tasks-light-150.json",
+   "title": "Properties of Codex history preview",
+   "class": "PropertiesDialog",
+   "size": [
+    960,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Properties with live task progress"
+  },
+  "usage-codex": {
+   "kind": "dialog",
+   "png": "usage-codex-light-150.png",
+   "json": "usage-codex-light-150.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
+   "size": [
+    960,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex account usage and reset reports"
+  },
+  "properties-codex": {
+   "kind": "dialog",
+   "png": "properties-codex-light-150.png",
+   "json": "properties-codex-light-150.json",
+   "title": "Properties of Codex history preview",
+   "class": "PropertiesDialog",
+   "size": [
+    960,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Properties of a synthetic Codex chat with provider-specific history labels"
+  },
+  "relay": {
+   "kind": "dialog",
+   "png": "relay-light-150.png",
+   "json": "relay-light-150.json",
+   "title": "Send Reply to Another Chat: Codex history preview (still working; this is its latest reply so far)",
+   "class": "RelayDialog",
+   "size": [
+    1050,
+    840
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Send Reply to Another Chat: a Codex reply going to a Claude chat"
+  },
+  "agent-new-three": {
+   "kind": "dialog",
+   "png": "agent-new-three-light-150.png",
+   "json": "agent-new-three-light-150.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    1080,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Agent Conversation with the Builder and reviewer template and a third agent"
+  },
+  "codex-new": {
+   "kind": "dialog",
+   "png": "codex-new-light-150.png",
+   "json": "codex-new-light-150.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    1020,
+    930
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session with Codex selected as Provider"
+  },
+  "codex-models": {
+   "kind": "dialog",
+   "png": "codex-models-light-150.png",
+   "json": "codex-models-light-150.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    1020,
+    930
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Codex chat with advertised model and effort choices"
+  },
+  "codex-auto-review": {
+   "kind": "dialog",
+   "png": "codex-auto-review-light-150.png",
+   "json": "codex-auto-review-light-150.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    1020,
+    930
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Codex chat with automatic approval review selected"
+  },
+  "codex-continue": {
+   "kind": "dialog",
+   "png": "codex-continue-light-150.png",
+   "json": "codex-continue-light-150.json",
+   "title": "Continue Here: Codex still working",
+   "class": "NewSessionDialog",
+   "size": [
+    1020,
+    930
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Continue a possibly active Codex chat with explicit runtime policy"
   }
  },
  "seconds": 93.2

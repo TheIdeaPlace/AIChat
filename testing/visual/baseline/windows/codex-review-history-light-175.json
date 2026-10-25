@@ -1,0 +1,216 @@
+{
+ "title": "Chat Permissions: Automatic review preview",
+ "class": "ChatPermissionsDialog",
+ "size": [
+  1190,
+  910
+ ],
+ "client": [
+  1166,
+  846
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission &mode:",
+   "rect": [
+    8,
+    13,
+    165,
+    31
+   ],
+   "best": [
+    165,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Permission mode",
+   "label": "",
+   "rect": [
+    181,
+    12,
+    840,
+    38
+   ],
+   "best": [
+    192,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Can edit files in this folder; automatic approval review"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&hange...",
+   "rect": [
+    1025,
+    8,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Allowed for this chat:",
+   "rect": [
+    8,
+    58,
+    197,
+    31
+   ],
+   "best": [
+    197,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Allowed for this chat, 0",
+   "label": "",
+   "rect": [
+    10,
+    91,
+    1150,
+    334
+   ],
+   "best": [
+    573,
+    263
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "No command approvals are remembered for this chat."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Remove...",
+   "rect": [
+    8,
+    431,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Remove A&ll...",
+   "rect": [
+    147,
+    431,
+    156,
+    42
+   ],
+   "best": [
+    156,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Close",
+   "rect": [
+    1025,
+    431,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Abou&t these permissions:",
+   "rect": [
+    8,
+    481,
+    234,
+    31
+   ],
+   "best": [
+    234,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About these permissions",
+   "label": "",
+   "rect": [
+    10,
+    522,
+    1150,
+    318
+   ],
+   "best": [
+    222,
+    308
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Selected reviewer: automatic approval review. Can read files and edit the chat folder: C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\codex-review-history\\Projects\\Scratch\nAutomatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricted access. Human review remains available. Network access and access to temporary folders outs"
+  }
+ ],
+ "capture": "PrintWindow"
+}

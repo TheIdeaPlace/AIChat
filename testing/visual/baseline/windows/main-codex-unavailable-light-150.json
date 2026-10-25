@@ -1,0 +1,338 @@
+{
+ "title": "Codex history preview — The Chat Place",
+ "class": "MainFrame",
+ "size": [
+  1500,
+  968
+ ],
+ "client": [
+  1478,
+  838
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    0,
+    1478,
+    838
+   ],
+   "best": [
+    790,
+    783
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Session &list:",
+   "rect": [
+    8,
+    8,
+    92,
+    26
+   ],
+   "best": [
+    92,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Session list",
+   "label": "",
+   "rect": [
+    10,
+    44,
+    575,
+    788
+   ],
+   "best": [
+    1566,
+    129
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app session",
+    "Visual probe, Claude, Scratch, idle, active just now, Chat Place session",
+    "Write the release notes for 0.2, Claude, AIChat, idle, active 1 hour ago, desktop app session",
+    "A session whose title goes on and on to show what a very long title does to the session list and the heading above the messages, Claude, Website, idle, active yesterday, desktop app session",
+    "Codex history preview, Codex, Scratch, active 2 hours ago, external session"
+   ],
+   "selection": 4
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Codex history preview, Scratch, status unavailable. Codex chat, read-only.",
+   "rect": [
+    599,
+    8,
+    871,
+    26
+   ],
+   "best": [
+    577,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Messages in Codex history preview (read-only):",
+   "rect": [
+    599,
+    42,
+    871,
+    26
+   ],
+   "best": [
+    83,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Messages in Codex history preview (read-only)",
+   "label": "",
+   "rect": [
+    601,
+    70,
+    871,
+    449
+   ],
+   "best": [
+    300,
+    79
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "You: Explain the upload test.",
+    "Codex: ## What changed"
+   ],
+   "selection": 1
+  },
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    599,
+    525,
+    871,
+    228
+   ],
+   "best": [
+    191,
+    210
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "About replying:",
+   "rect": [
+    599,
+    525,
+    124,
+    26
+   ],
+   "best": [
+    124,
+    26
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About replying",
+   "label": "This session belongs to the Claude desktop app, so you reply to it in Claude. The Chat Place only reads it: sending from here while the desktop app has it open could run two turns at once and tangle the conversation. Open in Claude switches the desktop app to it. Continue Here starts a Chat Place copy of it, with the whole conversation so far, that you can reply to here; the desktop app session isn't changed.",
+   "rect": [
+    601,
+    557,
+    871,
+    198
+   ],
+   "best": [
+    191,
+    180
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": [],
+   "value": "This is a Codex chat. The Chat Place currently reads its local history. Reply in Codex."
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Show tool &activity",
+   "rect": [
+    599,
+    761,
+    177,
+    25
+   ],
+   "best": [
+    177,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&New Session...",
+   "rect": [
+    599,
+    794,
+    145,
+    36
+   ],
+   "best": [
+    145,
+    36
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Refresh",
+   "rect": [
+    750,
+    794,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StatusBar",
+   "name": "statusBar",
+   "label": "",
+   "rect": [
+    0,
+    838,
+    1478,
+    44
+   ],
+   "best": [
+    386,
+    44
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Status",
+   "label": "Codex session discovery is unavailable. Its listed chats may be out of date.",
+   "rect": [
+    2,
+    842,
+    710,
+    37
+   ],
+   "best": [
+    150,
+    120
+   ],
+   "depth": 1,
+   "parent": 12,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Loaded session",
+   "label": "Codex history preview: status unavailable",
+   "rect": [
+    717,
+    842,
+    475,
+    37
+   ],
+   "best": [
+    150,
+    120
+   ],
+   "depth": 1,
+   "parent": 12,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "1 session needs you",
+   "rect": [
+    1197,
+    842,
+    210,
+    37
+   ],
+   "best": [
+    171,
+    33
+   ],
+   "depth": 1,
+   "parent": 12,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

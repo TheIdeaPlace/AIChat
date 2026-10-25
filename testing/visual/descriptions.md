@@ -105,13 +105,13 @@ The owned chat after Codex sent a request the app can't answer. The heading wrap
 
 ## main-codex-request-declined: A working Codex chat after a request was declined
 
-Like main-codex-owned. The status bar's left part reads "Codex history preview: An unsupported Codex request was declined. No permission ..." (cut with "..."), and the middle "Codex history preview: working".
+Like main-codex-owned. As there, the Codex reply "Codex: ## What changed" is the selected message and "Queued: Run the unit tests next." sits unselected below it (#343; the earlier picture had the queued row selected). The status bar's left part reads "Codex history preview: An unsupported Codex request was declined. No permission ..." (cut with "..."), and the middle "Codex history preview: working".
 
 **What looks off:** The notice is visible only in the status bar's left part, and cut off there. A screen reader speaks it when it arrives.
 
 ## main-codex-context: A working Codex chat with its context reported
 
-Like main-codex-request-declined, with a fourth status-bar part, a button "Context 85% reported", between the middle part and "1 session needs you". The left part reads "Codex history preview: Codex's latest reported model request uses ..." (cut with "..."), and the middle "Codex history preview: working".
+Like main-codex-request-declined, with the reply selected and the queued row below it, and a fourth status-bar part, a button "Context 85% reported", between the middle part and "1 session needs you". The left part reads "Codex history preview: Codex's latest reported model request uses ..." (cut with "..."), and the middle "Codex history preview: working".
 
 **What looks off:** Nothing beyond the cut status text, which is normal for that part.
 
@@ -153,7 +153,7 @@ This is an 820 by 620 dialog. A web page fills almost all of it (796 by 534) ins
 
 ## shortcuts-plain: Keyboard Shortcuts as plain text
 
-This is a smaller 620 by 520 dialog. "Shortcuts:" heads a white read-only text box 588 by 402 that fills most of the dialog. It holds the same content as plain text. It opens with a four-line paragraph about the window's three parts in Tab order, then section names such as "Moving around:" and "Session list:" on their own lines, and each shortcut indented two spaces, as in "Ctrl+1: Go to the session list". Long lines wrap with no hanging indent, so continuation lines start at the left margin. The text is the small standard font. A single "Close" button sits at the bottom right.
+This is a smaller 620 by 520 dialog. "Shortcuts:" heads a white read-only text box 588 by 402 that fills most of the dialog. It holds the same content as plain text. It opens with a five-line paragraph about the window's three parts in Tab order, ending with Provider and Kind as default session-list columns, then section names such as "Moving around:" and "Session list:" on their own lines, and each shortcut indented two spaces, as in "Ctrl+1: Go to the session list". Long lines wrap with no hanging indent, so continuation lines start at the left margin. The text is the small standard font. A single "Close" button sits at the bottom right. The 2026-10-25 run's text adds New Agent Conversation (Ctrl+Shift+G) and the agent-conversation use of Ctrl+Shift+E (#347), What AI Knows About You with Claude or Codex (Ctrl+Shift+K, #371) and Codex's approval reviewer under Change Permission Mode (Ctrl+Shift+O, #374); all of these are below the first screenful, so the light-100 and hc-aquatic-100 pictures look as before. At 175% the first screenful now shows the longer opening paragraph, five lines, so everything below it starts two lines lower.
 
 **What looks off:** Wrapped lines aren't indented, so they run into the next shortcut visually. The bottom line is cut through, as the box scrolls. Nothing else.
 
@@ -171,12 +171,7 @@ This uses the same 820 by 620 frame as the other formatted pages, titled "Messag
 
 ## message-plain: The same message as plain text
 
-**Pending #226:** the description below records the accepted earlier screenshot.
-Current MessageDialog source uses the provider name ("Claude:"), and the formatted
-message title is "Message: Claude". Re-capture and review these surfaces before
-updating/accepting the Windows baseline; no updated screenshot is claimed here.
-
-This is a 720 by 520 dialog. "Claude said:" heads a white read-only text box 688 by 402, with a single "Close" button below it on the right. The box shows the raw Markdown in the small standard font: "## What changed", list lines starting with "- " and backticks, the code fenced with three backticks and "python", the table as pipe characters and dashes, and the link written out in full, "[the issue](https://github.com/example/repo/issues/42)". The text wraps at about 80 characters in places and runs wider in others. The code is in the same proportional font as everything else.
+This is a 720 by 520 dialog titled "Message: Claude" (it was "Message from Claude"; #255 named the speaker by provider). "Claude:" (it was "Claude said:") heads a white read-only text box 688 by 402, with a single "Close" button below it on the right. The box shows the raw Markdown in the small standard font: "## What changed", list lines starting with "- " and backticks, the code fenced with three backticks and "python", the table as pipe characters and dashes, and the link written out in full, "[the issue](https://github.com/example/repo/issues/42)". The text wraps at about 80 characters in places and runs wider in others. The code is in the same proportional font as everything else.
 
 **What looks off:** The line lengths are uneven: the first paragraph wraps early, around 430 pixels, while the long paragraph uses the full width. Nothing else.
 
@@ -256,9 +251,9 @@ This is a 720 by 520 dialog laid out like From GitHub. "Search:" heads a full-wi
 
 ## bug-report: Help, Report a Bug
 
-This is a 660 by 640 dialog. It is a stack of labelled boxes, each the full width (628): "Summary (the issue's title):" with a single line (focused, blue underline), then three empty 95-tall boxes, "What happened", "What you expected (optional)" and "Steps to reproduce (optional)". Below them, "What the report includes besides your words (no session titles, folders or messages):" heads a read-only box of the same height listing the version, Windows, Python, wxPython, Claude Code and, on its sixth line, "Announcements: full, speech engine auto", with a scroll bar for the rest. A note in the small standard font follows on two lines, "Open on GitHub needs access to the app's repository on GitHub. Without it, use Copy Report and email the report to" and "support@theideaplace.net.", and then "Open on GitHub" (default), "Copy Report" and "Cancel" at the bottom right.
+This is a 660 by 640 dialog. It is a stack of labelled boxes, each the full width (628): "Summary (the issue's title):" with a single line (focused, blue underline), then three empty 95-tall boxes, "What happened", "What you expected (optional)" and "Steps to reproduce (optional)". Below them, "What the report includes besides your words (no session titles, folders or messages):" heads a read-only box of the same height listing the version ("The Chat Place: 0.2.0 (run from source)" in the 2026-10-25 run), Windows, Python, wxPython ("4.3.2 msw (phoenix) wxWidgets 3.3.4"), Claude Code and, on its sixth line, "Announcements: full, speech engine auto", with a scroll bar for the rest. A note in the small standard font follows on two lines, "Open on GitHub needs access to the app's repository on GitHub. Without it, use Copy Report and email the report to" and "support@theideaplace.net.", and then "Open on GitHub" (default), "Copy Report" and "Cancel" at the bottom right.
 
-**What looks off:** Nothing. The note now wraps, so the support address shows in full, and the read-only box shows its six lines whole.
+**What looks off:** Nothing. The note now wraps, so the support address shows in full, and the read-only box shows its six lines whole. The version lines change with every release and every wxPython the test VM installs, so this screen shows as changed after each one.
 
 ## find-all: View, Find in All Sessions: the results (#109)
 
@@ -324,39 +319,43 @@ The same dialog with "Codex" in the Provider dropdown, reading a synthetic Codex
 
 ## properties: View, Properties of a session (#214)
 
-This is a 976 by 360 dialog titled "Properties of Visual probe", laid out like Usage and Context. "Properties:" heads a white list 944 by 258 with one fact per row: "Title: Visual probe" (selected), "Kind: Chat Place session", the folder's full path, "Status: Idle", "Started" and "Last activity" with a date and "(just now)", the model of the latest reply and the model chosen, effort, permission mode, then counts: messages, your messages, Claude's replies, tool calls, links, code blocks and files changed. More rows than fit, so it has a vertical scroll bar. "Copy", "Copy All" and "Close" are at the bottom right. The probe shows a fixed date and time, so the picture is the same every run.
+This is a 976 by 360 dialog titled "Properties of Visual probe", laid out like Usage and Context. "Properties:" heads a white list 944 by 258 with one fact per row: "Title: Visual probe" (selected), "Provider: Claude" (#255), "Kind: Chat Place session", the folder's full path, "Status: Idle", "Started" and "Last activity" with a date and "(just now)", the model of the latest reply and the model chosen, effort, permission mode, then counts: messages, your messages, Claude's replies, tool calls, links, code blocks and files changed. More rows than fit, so it has a vertical scroll bar. "Copy", "Copy All" and "Close" are at the bottom right. The probe shows a fixed date and time, so the picture is the same every run.
 
 **What looks off:** Nothing in particular: every row fits the width.
 
 ## codex-new: File, New Session with Codex chosen as Provider
 
-Update for #358, local 200% capture: the About permissions box now explains human
-and automatic approval review and the network/temporary-folder boundaries. It is
-taller and the first-message box remains below it, with Start and Cancel at the
-bottom right. Text is black on white (21:1). This local check does not update the
-light-100 or High Contrast baseline described below.
+The New Chat Place Session dialog, 680 by 635 (15 taller than for Claude, #368). Labels sit in a column on the left and their controls in a column from x=243 to the right edge: "Provider" (a dropdown showing "Codex", with the focus outline), "Folder" (a dropdown with the folder's path, cut at the right edge), "Browse..." and "From GitHub..." under it, "Work in" ("The folder as it is (not a git repository, so no worktree)"), "Branch" (greyed out and empty), "Title" (an empty box), "Model" and "Effort" (greyed out, "Configured Codex model" and "Configured Codex effort"), and "Permission mode" ("Can edit files in this folder; asks before anything else"). Below them "About permissions:" heads a read-only box the full width, 132 tall (it was 102; #374), with an eight-line paragraph: ChatGPT sign-in, "Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer.", what automatic approval review does and doesn't do, that network access and temporary folders outside the folder still need approval, "Saved user/system rule files in effect: 2", the saved always-allow commands, refused project rules and "Model choices load in the background." The text fills the box, which has a scroll bar. "First message:" heads an empty box 72 tall, four lines (it was 87 before #374, and 57 after it until #368 made the dialog grow to keep four lines), and "Start" (default) and "Cancel" are at the bottom right. The greyed text is #6D6D6D on #FAFAFA (5.0:1); in High Contrast Aquatic it is #A6A6A6 on #202020 (6.7:1), and the default Start button is light aqua (#8EE3F0) with dark text (#263B50, 7.9:1).
 
-The New Chat Place Session dialog, 680 by 620. Labels sit in a column on the left and their controls in a column from x=243 to the right edge: "Provider" (a dropdown showing "Codex", with the focus outline), "Folder" (a dropdown with the folder's path, cut at the right edge), "Browse..." and "From GitHub..." under it, "Work in" ("The folder as it is (not a git repository, so no worktree)"), "Branch" (greyed out and empty), "Title" (an empty box), "Model" and "Effort" (greyed out, "Configured Codex model" and "Configured Codex effort"), and "Permission mode" ("Can edit files in this folder; asks before anything else"). Below them "About permissions:" heads a read-only box the full width, 102 tall, with a paragraph about ChatGPT sign-in, the two permission choices, saved always-allow commands ("Saved user/system rule files in effect: 2", then that they "will run without asking and outside this folder's limits, including the network"), refused project rules and "Model choices load in the background." It takes five lines, leaving the bottom of the box empty, and the box has a scroll bar. "First message:" heads an empty box 87 tall, and "Start" (default) and "Cancel" are at the bottom right. The greyed text is #6D6D6D on #FAFAFA (5.0:1); in High Contrast Aquatic it is #A6A6A6 on #202020 (6.7:1).
+At 175% the dialog is 1190 by 956, as tall as the screen allows. The About box gives up height so First message keeps four lines (#368): it is 171 tall, shows five lines of the paragraph with the sixth cut through at its bottom edge, and has a scroll bar for the rest. First message is 141 tall, with Start and Cancel below it. Before #368 the About box showed the whole paragraph and left First message one line tall.
 
-**What looks off:** The folder path is cut at the dropdown's edge, as long paths are in any dropdown. Nothing else.
+**What looks off:** The folder path is cut at the dropdown's edge, as long paths are in any dropdown. At 175% the About box's last visible line is cut through, as in any box that scrolls.
 
 ## codex-models: New Codex chat with the models Codex offers
 
-The same dialog after Codex has sent its models: Model is now enabled and shows "Synthetic Codex model", and Effort shows "Extra high". The About permissions paragraph says "Saved command rules have not been checked" and ends with "Project-supplied command rules are refused."; its five lines fill the box.
+The same dialog after Codex has sent its models: Model is now enabled and shows "Synthetic Codex model", and Effort shows "Extra high". The About permissions paragraph is the codex-new one with "Saved command rules have not been checked." in place of the rule-file count, and ends with "Project-supplied command rules are refused."; its eight lines fill the 132-tall box. The dialog is 680 by 635 and First message 72 tall, and at 175% the About box scrolls and First message is 141 tall, as in codex-new.
 
-**What looks off:** Nothing.
+**What looks off:** As in codex-new.
+
+## codex-auto-review: New Codex chat with automatic approval review selected (#374)
+
+The same 680 by 620 New Chat Place Session dialog, offered for Codex only, so it has no Provider row and every row sits 31 pixels higher than in codex-new. The Folder dropdown has the focus: its path is selected in blue and scrolled to its end, so it reads "...er\AppData\Local\Temp\tcp-probe\codex-auto-review\Projects\Scratch" with the start cut off. Browse... and From GitHub... are under it, then Work in, Branch (greyed out), Title, Model and Effort (greyed out, "Configured Codex model" and "Configured Codex effort") and "Permission mode" showing "Can edit files in this folder; automatic approval review". "About permissions:" heads a read-only box 117 tall with the codex-new paragraph in seven lines; with no saved rule files it says "Saved user/system rule files in effect: 0." and goes straight on to "Model choices load in the background." (with one space between them since #368; there were two). The seven lines just fit the box. "First message:" heads an empty box 103 tall, and "Start" (default) and "Cancel" are at the bottom right.
+
+Light mode is black on #F0F0F0 and white, the selected folder text white on #0078D4 (4.5:1), the greyed Branch label #A0A0A0 on #F0F0F0 (2.3:1, as for any disabled label) and the greyed dropdown text #6D6D6D on #FAFAFA (5.0:1). In High Contrast Aquatic everything is white on #202020 (16.3:1), the selected folder text near-black on aqua (#202020 on #8EE3F0, 11.2:1), the greyed text #A6A6A6 (6.7:1) and Start light aqua with #263B50 text (7.9:1). In High Contrast Desert it is near-black on cream (#FFFAEF), the selected folder text and Start rust brown (#903909) with cream text (7.0 to 7.3:1) and the greyed text #676767 (5.4:1). At 175% the dialog is 1190 by 956; the About box (217 tall) shows the whole paragraph in six lines with a scroll bar, and First message is 141 tall (four lines, #368).
+
+**What looks off:** Nothing is cut off or overlapping.
 
 ## codex-continue: Continue Here from a Codex chat that may still be working
 
-A 680 by 620 dialog titled "Continue Here: Codex still working". Rows: "Folder" (a read-only grey box with the full path), "Title" ("Codex still working (continued)"), Model and Effort greyed out, and "Permission mode" ("Read-only; asks before allowing changes"). "About continuing:" heads a box that opens with "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.", a blank line, and the same permissions paragraph as codex-new, filling the box, which is 147 tall. "First message:" heads a box 166 tall with the text cursor in it. "Start" (default) and "Cancel" are at the bottom right.
+A 680 by 620 dialog titled "Continue Here: Codex still working". Rows: "Folder" (a read-only grey box with the full path), "Title" ("Codex still working (continued)"), Model and Effort greyed out, and "Permission mode" ("Read-only; asks before allowing changes"). "About continuing:" heads a box that opens with "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.", a blank line, and the permissions paragraph of codex-models (with human and automatic approval review, #374), filling the box, which is 177 tall (it was 147). "First message:" heads an empty box 136 tall (it was 166). At 175% the About box is 351 tall and shows the whole text, and First message is 149 tall. "Start" (default) and "Cancel" are at the bottom right.
 
 **What looks off:** Nothing.
 
 ## codex-change-mode: Change permissions for a Codex chat
 
-A small 596 by 300 dialog, "Change Permission Mode" (Windows' own single-choice dialog). Its text, in the dialog's background: "Codex permissions for Review saved command rules for a deliberately long synthetic chat title.", "Folder:", the folder's path, which wraps mid-word ("long-syntheti" / "c-project-folder"), "Finish or Stop active work first.", a blank line, then two lines: "Commands you've told Codex to always allow will run without asking and outside this folder's limits," and "including the network. Project-supplied command rules are refused.". Below is a list three rows tall with two choices, "Read-only; asks before allowing changes" and "Can edit files in this folder; asks before anything else" (selected), with a scroll bar, and "OK" (default) and "Cancel".
+A 596 by 394 dialog (it was 300 tall), "Change Permission Mode" (Windows' own single-choice dialog). Its text, in the dialog's background: "Codex permissions for Review saved command rules for a deliberately long synthetic chat title.", "Folder:", the folder's path, which wraps mid-word ("long-syntheti" / "c-project-folder"), "Finish or Stop active work first.", a blank line, a new four-line paragraph (#374), "Automatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricted access. Human review remains available. Network access and access to temporary folders outside this folder require approval. The Chat Place overrides these boundaries for this chat only; saved Codex rules still apply.", another blank line, then two lines: "Commands you've told Codex to always allow will run without asking and outside this folder's limits," and "including the network. Project-supplied command rules are refused.". Below is a list 64 tall holding exactly its four choices: "Read-only; asks before allowing changes", "Can edit files in this folder; asks before anything else", "Read-only; automatic approval review" and "Can edit files in this folder; automatic approval review" (selected, white on #0078D4, 4.5:1). "OK" (default) and "Cancel" are at the bottom right under a separator line. In High Contrast Aquatic the text is white on #202020 (16.3:1) and the selected row #263B50 on aqua (7.9:1); in Desert the selected row and OK are rust brown with cream text. At 175% (1038 by 739) the path wraps after "long-synthetic-", the paragraphs keep their line breaks, and all four choices fit.
 
-**What looks off:** The path breaks in the middle of a word, because it has no spaces. The list shows a scroll bar for two rows.
+**What looks off:** The path breaks in the middle of a word at 100%, because it has no spaces. The list shows a scroll bar though all four rows fit.
 
 ## codex-permission: Codex asks to run a command
 
@@ -366,7 +365,7 @@ A 700 by 540 dialog titled "Codex needs permission: Codex preview". "Request:" h
 
 ## codex-files: Codex file changes to review before allowing
 
-The same dialog, showing a file change: "Update: app.py", "@@ -1 +1 @@", "-print('old')" and "+print('new')", in the standard font. Four buttons, with Deny the default; the baseline picture still shows the older "Stop Turn" label, which is now "Deny and Stop Turn" (#284).
+The same dialog, showing a file change: "Update: app.py", "@@ -1 +1 @@", "-print('old')" and "+print('new')", in the standard font. Four buttons at the bottom right, with Deny the default: "Allow Once", "Deny", "Deny and Stop Turn" (it was "Stop Turn"; #284, #295) and "Answer Later". The longer third label moved Allow Once and Deny 51 pixels to the left. In High Contrast Aquatic the buttons are white-outlined on near-black and Deny is filled light aqua. At 175% all four labels fit their buttons.
 
 **What looks off:** The diff isn't in a monospaced font, unlike the Lists dialog's Details. The box is mostly empty.
 
@@ -390,13 +389,13 @@ A 640 by 360 dialog, "Properties of Codex history preview", laid out like proper
 
 ## properties-codex-owned: Properties of a Codex chat started here
 
-The same dialog for "Codex policy preview", a Codex chat the app started: "Kind: Chat Place session", "Status: Idle", Started and Last activity "not recorded", "Model chosen: Synthetic model", "Effort: High", "Sandbox: can edit files in its folder", "Approval policy: on request", "Writable folder:" and the path, "Saved user/system rule files in effect: 2", Groups, Session ID and "History: unavailable from Codex". Every row fits.
+The same dialog for "Codex policy preview", a Codex chat the app started: "Kind: Chat Place session", "Status: Idle", Started and Last activity "not recorded", "Model chosen: Synthetic model", "Effort: High", "Sandbox: can edit files in its folder", "Approval policy: on request", "Approval reviewer: human" (#374), "Writable folder:" and the path, "Saved user/system rule files in effect: 2", Groups, Session ID and "History: unavailable from Codex". Every row fits; the new row pushes "History: unavailable from Codex" to the list's last visible line. At 175% (1120 by 630) the rows to "Groups: none" show, with Session ID cut by the list's bottom edge as it scrolls.
 
 **What looks off:** Nothing.
 
 ## session-columns: View, Session List Columns
 
-This is a 700 by 560 dialog. A two-line intro runs across the top (668 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what each session is" and "doing before its title.". Below it are two equal lists side by side, each 326 by 294: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with eleven rows: Title, "Provider (Claude or Codex)", Folder, "Status (needs you, working or idle)", New reply, Last activity, "Kind (desktop app, Cowork, terminal or The Chat Place)", Remote Control, Archived, Hidden and Groups. Every row fits, the Kind row with its closing bracket. Both have a selected row; the right one has the focus outline. Under them is one row of seven ordinary-sized buttons: "Add", "Remove", "Move Up", "Move Down", "Move to Top", "Move to Bottom" and "Reset to Default", the last ending near the right list's edge. "Preview of the selected session's line:" heads a 60-tall read-only box whose text wraps onto two lines: "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app" and "session". "OK" (default) and "Cancel" are at the bottom right.
+This is a 700 by 560 dialog. A two-line intro runs across the top (668 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what each session is" and "doing before its title.". Below it are two equal lists side by side, each 326 by 294: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with eleven rows: Title, "Provider (Claude, Codex or Copilot)" (#355), Folder, "Status (needs you, working or idle)", New reply, Last activity, "Kind (desktop app, Cowork, terminal or The Chat Place)", Remote Control, Archived, Hidden and Groups. Every row fits, the Kind row with its closing bracket. Both have a selected row; the right one has the focus outline. Under them is one row of seven ordinary-sized buttons: "Add", "Remove", "Move Up", "Move Down", "Move to Top", "Move to Bottom" and "Reset to Default", the last ending near the right list's edge. "Preview of the selected session's line:" heads a 60-tall read-only box whose text wraps onto two lines: "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app" and "session". "OK" (default) and "Cancel" are at the bottom right. At 175% the dialog is 1190 by 956 (the earlier 175% picture was 1120 wide, from before #300): the two lists are 567 wide, all seven buttons fit on one row with Reset to Default at its end, and the preview wraps onto two lines, ending "desktop app session".
 
 **What looks off:** Nothing (#289).
 
@@ -452,7 +451,7 @@ This is a small 346 by 153 dialog. The line "New name for Visual probe:" sits ab
 
 ## main-empty: Main window with no sessions at all (a first run)
 
-This picture has the same layout as main-start. The session list on the left is completely empty white, apart from a thin dotted focus rectangle across its top row. The messages list on the right says "No sessions yet. Start one with File, New Session (Ctrl+N), in the Claude desktop app or in a terminal." (selected in blue), on one line that fits the list. The status bar shows two parts: "0 sessions: 0 need you, 0 working." and "No session loaded". It has no needs-you button, and its left part is wider (572).
+This picture has the same layout as main-start. The session list on the left is completely empty white, apart from a thin dotted focus rectangle across its top row. The messages list on the right says "No sessions yet. Start one with File, New Session (Ctrl+N), in a supported desktop app or in a terminal." (selected in blue; it said "the Claude desktop app" before #255), on one line that fits the list. The status bar shows two parts: "0 sessions: 0 need you, 0 working." and "No session loaded". It has no needs-you button, and its left part is wider (572).
 
 **What looks off:** The session list itself stays empty white, with no words of its own; the line about how to start is in the messages list (#182 put it there).
 
@@ -513,9 +512,11 @@ page was accepted: the initial blank WebView capture was rerun successfully.
 
 A 640 by 360 Properties dialog for "Codex history preview". The 608 by 258
 properties list is scrolled to the selected line "Tasks: Task 2 of 3: Make the
-retry wait for the server. 1 done." The full line fits. Status: Working, model,
-effort, sandbox, approval policy, message counts and Code blocks are visible above
-it, with Groups below it. Copy, Copy All and Close are aligned along the lower
+retry wait for the server. 1 done." (row 19; "Approval reviewer: human", added by
+#374 after "Approval policy: on request", moved it down one). The full line fits.
+Status: Working, model, effort, sandbox, approval policy, approval reviewer, the
+saved-command-rules check, message counts and Code blocks are visible above it,
+with Groups below it. Copy, Copy All and Close are aligned along the lower
 right. The probe selects this row to show progress rather than the earlier rows
 about title and provider. High Contrast Aquatic preserves the layout and uses the
 same near-black, white and aqua colours as the Codex Tasks screenshots.
@@ -548,12 +549,7 @@ The same dialog with one row in the list, "Nothing is allowed beyond the permiss
 
 ## chat-permissions-codex: File, Chat Permissions for a Codex chat (#332)
 
-Update for #358, local 200% capture: About these permissions starts with the
-selected reviewer and file scope, followed by the automatic-review explanation,
-then the existing remembered-approval and native-rule text. The text box scrolls;
-the list and buttons retain their positions. No layout flags were reported.
-
-The same 680 by 520 dialog, titled "Chat Permissions: Codex preview". The mode box reads "Can edit files in this folder; asks before anything else", with Change beside it. The selected list entry reads "No command approvals are remembered for this chat." Remove and Remove All now sit below the list on the left, with Close on the right. The About box explains when removal counts, that remembered commands may run outside the sandbox, and that only this chat in The Chat Place keeps the approval. The About box now shares the dialog's height with the list (list 186 tall, About box 169). A second paragraph reads "From Codex's own saved rules. These apply to every Codex chat, here, in the Codex app or a terminal. Each rule covers any command that starts with its words, ...", then "In <folder>/default.rules:" and "Allowed without asking: commands starting with git commit."; the remaining rules continue below the viewport (#307). High Contrast Aquatic uses white outlines and text on near-black, and an aqua selected row. Control sizes and positions match the earlier dialog; only the two buttons and the text changed.
+The same 680 by 520 dialog, titled "Chat Permissions: Codex preview". The mode box reads "Can edit files in this folder; asks before anything else", with Change beside it. The selected list entry reads "No command approvals are remembered for this chat." Remove and Remove All now sit below the list on the left, with Close on the right. The About box shares the dialog's height with the list (list 186 tall, About box 169). Since #374 it opens with "Selected reviewer: human review. Can read files and edit the chat folder:" and the folder's path (wrapping after "tcp-"), then a four-line paragraph on automatic approval review and its boundaries, as in codex-change-mode. After a blank line comes the earlier text: when removal counts, that remembered commands may run outside the sandbox, and that only this chat in The Chat Place keeps the approval, ending "No Codex or Claude settings or rules are changed." at the box's bottom edge. The Codex saved-rules paragraph (#307) is now below the first view, so the scroll thumb is shorter. High Contrast Aquatic uses white outlines and text on near-black, and an aqua selected row. Control sizes and positions match the earlier dialog; only the two buttons and the text changed.
 
 **What looks off:** Nothing in these pictures.
 
@@ -565,9 +561,14 @@ A 700 by 540 dialog. Request heads a 668 by 391 read-only box showing the comman
 
 ## chat-permissions-codex-kept: Review remembered Codex commands (#307)
 
-Update for #358: the About box adds reviewer and boundary information ahead of
-the remembered-approval text. Local 200% capture only; High Contrast was not rerun.
-
-A 680 by 520 dialog. Permission mode and Change run across the top. A 648 by 186 list takes the middle, with git commit selected above git push. Long rows continue beyond the initial horizontal viewport; a horizontal scrollbar runs below them. Remove and Remove All sit below the list at the left, and Close at the right. A 648 by 169 About box explains removal, mode changes and command authority, followed by the Codex saved-rules paragraph and "Codex's own saved rules allow nothing extra.", all in view now the box shares the height (#307). High Contrast uses white outlines, near-black backgrounds and an aqua selected row. The selected light text measures 4.53:1 (#FFFFFF on #0078D4); High Contrast selected glyph cores measure 7.89:1 (#263B50 on #8EE3F0).
+A 680 by 520 dialog. Permission mode and Change run across the top. A 648 by 186 list takes the middle, with git commit selected above git push. Long rows continue beyond the initial horizontal viewport; a horizontal scrollbar runs below them. Remove and Remove All sit below the list at the left, and Close at the right. A 648 by 169 About box opens with "Selected reviewer: human review. Can read files; changes require approval." and the automatic-review paragraph (#374), then explains removal, mode changes and command authority; the Codex saved-rules paragraph and "Codex's own saved rules allow nothing extra." are now below the first view, reached by scrolling. High Contrast uses white outlines, near-black backgrounds and an aqua selected row. The selected light text measures 4.53:1 (#FFFFFF on #0078D4); High Contrast selected glyph cores measure 7.89:1 (#263B50 on #8EE3F0).
 
 **What looks off:** Nothing in these pictures; long rules use the scrollbar.
+
+## codex-review-history: Chat Permissions for a Codex chat with automatic approval review (#374)
+
+The 680 by 520 Chat Permissions dialog, titled "Chat Permissions: Automatic review preview", laid out exactly like chat-permissions-codex. The mode box reads "Can edit files in this folder; automatic approval review", with Change... beside it. The list holds one selected row, "No command approvals are remembered for this chat.", and Remove..., Remove All... and Close sit below it. The About box (648 by 169) is scrolled to its end, which reads "Recent automatic review decisions (oldest first):", a blank line, "Codex automatic review allowed the request.", "Command: git status", "Reason: Read the project status.", a blank line, "Codex automatic review denied the request." and "Reason: Access was outside the requested task.", leaving about a third of the box empty below. The scroll thumb sits at the bottom of its track.
+
+Text is black on white (21:1) and the selected row white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1) and the selected row #263B50 on aqua #8EE3F0 (7.9:1); in Desert the text is dark on cream (#FFFAEF, 10.4:1 or better) and the selected row cream on rust brown (#FFF5E3 on #903909, 7.0:1). At 175% (1190 by 910) the same lines show larger, with more space below them.
+
+**What looks off:** Nothing.
