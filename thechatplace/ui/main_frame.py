@@ -80,7 +80,7 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         DESKTOP, NEEDS_YOU, OWN, SORT_ORDERS,
                         SORT_SPOKEN, VIEW_ALL, VIEW_ARCHIVED, VIEW_HIDDEN, VIEW_NEEDS_YOU, VIEWS,
                         WORKING, STATUS_UNAVAILABLE,
-                        SessionInfo, field_short_name, group_view, in_view, end_sentence, LISTED_PROVIDERS, home_app,
+                        SessionInfo, field_short_name, group_view, in_view, end_sentence, LISTED_PROVIDERS, RUNTIME_PROVIDERS, home_app,
                         state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
@@ -789,7 +789,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     def _update_status_context(self):
         tokens, window = self._context(self._open)
         text = ""
-        if self._open is not None and self._open.provider == 'codex':
+        if self._open is not None and self._open.provider in RUNTIME_PROVIDERS:
             state = self._codex_states.get(self._open.key)
             report = state.token_usage if state is not None and not state.problem and state.state != STATUS_UNAVAILABLE else None
             if report is not None and report.share is not None:
@@ -1465,8 +1465,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("No session selected.")
             return
         if self._open is not None and info.key == self._open.key:
-            if info.provider == "codex" and info.is_own:
-                record = self.store.get(info.cli_session_id, provider="codex")
+            if info.provider in RUNTIME_PROVIDERS and info.is_own:
+                record = self.store.get(info.cli_session_id, provider=info.provider)
                 if record is not None and not self.sessions.owned_action("ready", record):
                     self.open_session(info)
                     return
@@ -1480,7 +1480,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if self._open is not None and self._open.is_own and self._open.provider == "claude":
             self._drafts[self._open.cli_session_id] = self.reply_text.GetValue()
         elif self._open is not None and (
-                (self._open.is_own and self._open.provider == "codex")
+                (self._open.is_own and self._open.provider in RUNTIME_PROVIDERS)
                 or self._open.provider == AGENTS):
             self._codex_drafts[self._open.key] = self.reply_text.GetValue()
 
@@ -1526,8 +1526,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self.chat_list.SetSelection(0)
         self._update_messages_label()
         editable = self._can_edit(info)
-        if editable and info.provider == "codex":
-            record = self.store.get(info.cli_session_id, provider="codex")
+        if editable and info.provider in RUNTIME_PROVIDERS:
+            record = self.store.get(info.cli_session_id, provider=info.provider)
             # Creation already verified this connection's runtime. Its history
             # may not exist until the first message; only persisted/unbound
             # chats need successful history reconciliation before owned resume.
@@ -1676,8 +1676,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             # the messages; the heading above is never focused.
             own = self.store.get(info.cli_session_id, provider=info.provider)
             kind = f", on {model_label(own.model)}" if own is not None else ""
-        elif info.provider == "codex" and self._can_edit(info):
-            kind = ", on Codex"
+        elif info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
+            kind = f", on {provider_name(info.provider)}"
         elif info.provider == AGENTS:
             kind = ", agent conversation"
         if info.provider in LISTED_PROVIDERS and info.state == STATUS_UNAVAILABLE:
@@ -1743,7 +1743,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._reader = reader
         self._apply_chat(generation, *result)
         if (not self._gone() and generation == self._open_generation and self._open is not None
-                and self._open.provider == "codex" and self._can_edit(self._open)):
+                and self._open.provider in RUNTIME_PROVIDERS and self._can_edit(self._open)):
             self._prepare_codex_owned(generation)
 
     def _show_missing_transcript(self, info: SessionInfo):
@@ -2752,14 +2752,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self.turn_status.SetLabelText(label)
             self._update_status_session()
             return
-        if info is not None and info.provider == "codex" and self._can_edit(info):
+        if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             self.send_btn.Enable(True)
             self.stop_btn.Enable(True)
             state = self._codex_states.get(info.key)
-            label = ("Getting Codex ready." if info.key in self._codex_preparing else
+            name = provider_name(info.provider)
+            label = (f"Getting {name} ready." if info.key in self._codex_preparing else
                      state.problem if state is not None and state.problem else
-                     f"Codex is waiting for you. {key_name('Ctrl+Shift+A')} answers." if state is not None and state.requests else
-                     "Codex is working." if state is not None and state.state == WORKING else "Ready.")
+                     f"{name} is waiting for you. {key_name('Ctrl+Shift+A')} answers." if state is not None and state.requests else
+                     f"{name} is working." if state is not None and state.state == WORKING else "Ready.")
             if state is not None and state.queued:
                 label += " " + self._queued_words(len(state.queued))
             self.turn_status.SetLabelText(label)
@@ -2827,7 +2828,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         if not self._require_capability("usage", self._open):
             return
-        if self._open is not None and self._open.provider == 'codex':
+        if self._open is not None and self._open.provider in RUNTIME_PROVIDERS:
             if getattr(self, '_codex_usage_busy', False):
                 return
             info = self._open
@@ -2837,7 +2838,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 if self._open is None or self._open.key != info.key:
                     return
                 if error:
-                    self._feedback('Could not read Codex usage. Check Codex sign-in and try again.')
+                    name = provider_name(info.provider)
+                    self._feedback(f'Could not read {name} usage. Check {name} sign-in and try again.')
                 else:
                     self._modal(UsageDialog(self, lines, self._copy_usage))
             self._codex_work(lambda: self.sessions.usage_lines(info), done)
@@ -3475,15 +3477,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         tokens, window = self._context(info)
         if info is None:
             return
-        if info.provider == 'codex':
+        if info.provider in RUNTIME_PROVIDERS:
             state = self._codex_states.get(info.key)
             report = state.token_usage if state is not None and not state.problem and state.state != STATUS_UNAVAILABLE else None
             if report is None or report.share is None or report.share < usage.CONTEXT_WARNING:
                 return
-            key = ('codex-context', info.key, state.context_epoch, report.context_window)
+            key = (f'{info.provider}-context', info.key, state.context_epoch, report.context_window)
             if key not in self._warned:
                 self._warned.add(key)
-                self._say(f'{info.title}: Codex\'s latest reported model request uses '
+                self._say(f'{info.title}: {provider_name(info.provider)}\'s latest reported model request uses '
                           f'{round(100 * report.share)}% of its context window.', interrupt=False)
             return
         compactions = self._reader.transcript.compactions if self._reader else 0
@@ -3503,9 +3505,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if info is not None and info.provider == AGENTS:
             self._feedback(self._agent_status_text(info))
             return
-        if info is not None and info.provider == "codex" and self._can_edit(info):
+        if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             state = self._codex_states.get(info.key)
-            text = self._codex_status_text(state)
+            text = self._codex_status_text(state, info.provider)
             working = state is not None and state.outcome == 'inProgress'
             if self._chat_tasks and (working or tasklist.is_current(self._chat_tasks, self._chat_turns)):
                 text += ' ' + tasklist.progress(self._chat_tasks, working)
@@ -3576,12 +3578,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     self._answer_claude(member.native_id)
                     return
                 state = self._codex_states.get(member.key)
-                if member.provider == "codex" and state is not None and state.requests:
+                if member.provider in RUNTIME_PROVIDERS and state is not None and state.requests:
                     info = self._agent_member_info(member)
                     if info is not None:
                         self._answer_codex_owned(info, state)
                         return
-        if self._open is not None and self._open.provider == "codex":
+        if self._open is not None and self._open.provider in RUNTIME_PROVIDERS:
             state = self._codex_states.get(self._open.key)
             if state is not None and state.requests:
                 self._answer_codex_owned(self._open, state)
@@ -3590,7 +3592,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if session_id is None:
             for key, state in self._codex_states.items():
                 if state.requests:
-                    record = self.store.get(state.native_id, provider="codex")
+                    # The key names the provider ("codex:<id>").
+                    record = self.store.get(state.native_id, provider=key.split(":", 1)[0])
                     if record is not None:
                         self._answer_codex_owned(record.to_info(), state)
                         return
@@ -3987,15 +3990,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self._codex_drafts.pop(info.key, None)
             self.reply_text.SetFocus()
             return
-        if info is not None and info.provider == "codex" and self._can_edit(info):
+        if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             if info.key in self._codex_preparing:
-                self._feedback("This Codex chat is still getting ready.")
+                self._feedback(f"This {provider_name(info.provider)} chat is still getting ready.")
                 return
             message = self.reply_text.GetValue().strip()
             if not message:
                 self._feedback("Type a message first.")
                 return
-            record = self.store.get(info.cli_session_id, provider="codex")
+            record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is not None:
                 self.reply_text.SetValue("")
                 self._codex_drafts.pop(info.key, None)
@@ -4503,7 +4506,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     def _queued_rows(self) -> List[ChatMessage]:
         """The loaded session's queued messages, as rows after its messages."""
         info = self._open
-        if info is not None and info.is_own and info.provider == "codex":
+        if info is not None and info.is_own and info.provider in RUNTIME_PROVIDERS:
             state = self._codex_states.get(info.key)
             if state is None:
                 return []
@@ -4526,8 +4529,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     def remove_queued(self):
         """Remove the selected queued message (Delete, or the context menu)."""
         info = self._open
-        if info is not None and info.provider == "codex" and self._can_edit(info):
-            self._feedback("Stop this Codex turn to return its queued messages for editing.")
+        if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
+            self._feedback(f"Stop this {provider_name(info.provider)} turn to return its queued "
+                           "messages for editing.")
             return
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):
             return
@@ -4552,8 +4556,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         and takes it straight away, in the same turn, as the desktop app's
         Send Now does."""
         info = self._open
-        if info is not None and info.provider == "codex" and self._can_edit(info):
-            self._feedback("Codex sends queued messages after its reply. Stop returns them for editing.")
+        if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
+            self._feedback(f"{provider_name(info.provider)} sends queued messages after its reply. "
+                           "Stop returns them for editing.")
             return
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):
             return
@@ -4590,8 +4595,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         """Take the selected queued message back into the reply box, to
         change it and send it again."""
         info = self._open
-        if info is not None and info.provider == "codex" and self._can_edit(info):
-            self._feedback("Stop this Codex turn to return its queued messages for editing.")
+        if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
+            self._feedback(f"Stop this {provider_name(info.provider)} turn to return its queued "
+                           "messages for editing.")
             return
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):
             return
@@ -4630,7 +4636,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if info is not None and info.provider == AGENTS:
             self._agent_stop(info)
             return
-        if info is not None and info.provider == "codex" and self._can_edit(info):
+        if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             self._stop_codex_owned(info)
             return
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):
@@ -5556,8 +5562,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         Code's slash commands or your skills; it goes at the start of the
         reply box, ready to finish and send."""
         info = self._open
-        if info is not None and info.provider == "codex":
-            self._feedback("The command and skill picker isn't available for Codex chats yet.")
+        if info is not None and info.provider in RUNTIME_PROVIDERS:
+            self._feedback("The command and skill picker isn't available for "
+                           f"{provider_name(info.provider)} chats yet.")
             return
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):
             return

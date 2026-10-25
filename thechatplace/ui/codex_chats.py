@@ -1,4 +1,9 @@
-"""UI-thread callbacks for owned Codex chats; all backend actions use workers."""
+"""UI-thread callbacks for owned chats that run through a provider runtime
+(Codex; sessions.RUNTIME_PROVIDERS); all backend actions use workers.
+
+The names say Codex because Codex came first; the shared paths take the
+provider from the chat's record or key (#352). Change Permission Mode, saved
+rules, plans and creation stay Codex's own."""
 import time
 from dataclasses import replace
 from types import SimpleNamespace
@@ -8,6 +13,7 @@ import wx
 from ..providers.codex_requests import QUESTIONS
 from ..providers.codex_rpc import CodexRpcError, CodexTurnRejected
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE
+from ..agents import provider_name
 from .. import announce
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
@@ -26,23 +32,24 @@ class CodexChats:
         return [replace(task, turn=position, changed_turn=position) for task in state.tasks]
 
     @staticmethod
-    def _codex_status_text(state):
+    def _codex_status_text(state, provider='codex'):
+        name = provider_name(provider)
         if state is None:
-            return 'No Codex turn is running in this chat.'
+            return f'No {name} turn is running in this chat.'
         if state.problem:
             return state.problem
         if state.state == STATUS_UNAVAILABLE:
-            return 'Codex status is unavailable. Reload this chat to check its history.'
+            return f'{name} status is unavailable. Reload this chat to check its history.'
         if state.requests:
-            text = f'Codex is waiting for you. {key_name("Ctrl+Shift+A")} answers.'
+            text = f'{name} is waiting for you. {key_name("Ctrl+Shift+A")} answers.'
             if state.activity:
                 text += ' Latest activity: ' + state.activity
         elif state.outcome == 'inProgress':
-            text = state.activity or 'Codex is working.'
+            text = state.activity or f'{name} is working.'
         elif state.state == WORKING:
-            text = 'Starting a Codex turn.'
+            text = f'Starting a {name} turn.'
         else:
-            text = 'No Codex turn is running in this chat.'
+            text = f'No {name} turn is running in this chat.'
         if state.started_at and state.outcome == 'inProgress':
             text += ' The turn has run for ' + describe_elapsed(time.monotonic() - state.started_at) + '.'
         if state.queued:
@@ -184,7 +191,10 @@ class CodexChats:
         info = self._open
         if info is None or self._codex_preparing.get(info.key) != generation:
             return
-        record = self.store.get(info.cli_session_id, provider='codex')
+        # A runtime chat's key starts with its provider ("codex:<id>"); some
+        # callers pass a bare object with only a key and an id.
+        provider = getattr(info, 'provider', '') or info.key.split(':', 1)[0]
+        record = self.store.get(info.cli_session_id, provider=provider)
         if record is None or info.key in self._codex_preparation_running:
             return
         key = info.key
@@ -203,7 +213,8 @@ class CodexChats:
                     # A saved folder-editing chat reopened read-only: reloading
                     # it after fixing the sandbox prepares it again (#257).
                     _result += ' Reload this chat to try again.'
-                self._feedback(relayed + (_result or 'Could not prepare this Codex chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in Codex before restarting The Chat Place.'))
+                name = provider_name(provider)
+                self._feedback(relayed + (_result or f'Could not prepare this {name} chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in {name} before restarting The Chat Place.'))
             self._update_send_state()
         self._codex_work(prepare, done)
 
@@ -222,7 +233,7 @@ class CodexChats:
                 pass
             elif error:
                 self._restore_codex_text(key, (text,))
-                self._feedback(queued or 'Codex could not confirm this send. Check the chat history before sending again.')
+                self._feedback(queued or f'{provider_name(record.provider)} could not confirm this send. Check the chat history before sending again.')
             elif not announce_send:
                 pass
             else:
@@ -231,20 +242,21 @@ class CodexChats:
                                          self.speech.announce_own))
             if not remaining:
                 for state in self._codex_delayed_updates.pop(key, ()):
-                    self._on_codex_update(state)
+                    self._on_owned_update(record.provider, state)
             self._update_send_state()
             if on_result is not None:
                 on_result(queued, error)
         self._codex_work(lambda: self.sessions.owned_action('send', record, text), done)
 
     def _stop_codex_owned(self, info):
-        record = self.store.get(info.cli_session_id, provider='codex')
+        record = self.store.get(info.cli_session_id, provider=info.provider)
         if record is None:
             return
+        name = provider_name(record.provider)
         def done(_result, error):
-            self._feedback((_result or 'Could not stop or recover this Codex chat. Check its state in Codex.') if error
-                           else 'Codex chat reconnected after verifying its previous turn ended. No message was resent.' if _result
-                           else 'Stop requested. If the turn does not finish, press Stop again to check whether Codex has ended it.')
+            self._feedback((_result or f'Could not stop or recover this {name} chat. Check its state in {name}.') if error
+                           else f'{name} chat reconnected after verifying its previous turn ended. No message was resent.' if _result
+                           else f'Stop requested. If the turn does not finish, press Stop again to check whether {name} has ended it.')
             self._update_send_state()
         def stop_or_recover():
             try:
@@ -258,24 +270,44 @@ class CodexChats:
                 return True
         self._codex_work(stop_or_recover, done)
 
+    def _usage_check_slot(self, provider):
+        """Each provider's own pending/again pair, so one provider's check
+        never replaces another's. Codex keeps the attributes it always had."""
+        if provider == 'codex':
+            return None
+        if not hasattr(self, '_runtime_usage_checks'):
+            self._runtime_usage_checks = {}
+        return self._runtime_usage_checks.setdefault(provider, {'pending': False, 'again': None})
+
     def _check_codex_usage(self, info):
         read = getattr(self.sessions, 'usage_warnings', None)
         if not callable(read):
             return
-        if getattr(self, '_codex_usage_check_pending', False):
-            self._codex_usage_check_again = info
-            return
-        self._codex_usage_check_pending = True
-        self._codex_usage_check_again = None
-        def done(warnings, error):
-            self._codex_usage_check_pending = False
-            again = self._codex_usage_check_again
+        provider = getattr(info, 'provider', 'codex')
+        slot = self._usage_check_slot(provider)
+        if slot is not None:
+            if slot['pending']:
+                slot['again'] = info
+                return
+            slot['pending'], slot['again'] = True, None
+        else:
+            if getattr(self, '_codex_usage_check_pending', False):
+                self._codex_usage_check_again = info
+                return
+            self._codex_usage_check_pending = True
             self._codex_usage_check_again = None
+        def done(warnings, error):
+            if slot is not None:
+                again, slot['pending'], slot['again'] = slot['again'], False, None
+            else:
+                self._codex_usage_check_pending = False
+                again = self._codex_usage_check_again
+                self._codex_usage_check_again = None
             if not error:
                 if not hasattr(self, '_warned'):
                     self._warned = set()
                 for warning in warnings:
-                    key = ('codex-account', warning.key)
+                    key = (f'{provider}-account', warning.key)
                     if key not in self._warned:
                         self._warned.add(key)
                         self._say(warning.text, interrupt=False)
@@ -286,9 +318,14 @@ class CodexChats:
         self._codex_work(lambda: read(info), done)
 
     def _on_codex_update(self, state):
+        self._on_owned_update('codex', state)
+
+    def _on_owned_update(self, provider, state):
+        """A runtime's state for one of its chats (on the UI thread)."""
         if self._gone():
             return
-        key = 'codex:' + state.native_id
+        name = provider_name(provider)
+        key = f'{provider}:' + state.native_id
         if self._codex_send_pending.get(key):
             updates = self._codex_delayed_updates.setdefault(key, [])
             # Keep terminal transitions and unsent text, but replace progressive
@@ -306,9 +343,9 @@ class CodexChats:
             # An agent conversation's own message goes back to it (#248).
             agent_unsent = getattr(self, '_agent_unsent', None)
             if agent_unsent is not None:
-                unsent = agent_unsent('codex', state.native_id, unsent)
+                unsent = agent_unsent(provider, state.native_id, unsent)
         self._restore_codex_text(key, unsent)
-        record = self.store.get(state.native_id, provider='codex')
+        record = self.store.get(state.native_id, provider=provider)
         if record is None:
             return
         loaded = self._open is not None and self._open.key == key
@@ -316,7 +353,7 @@ class CodexChats:
         if seen is None:
             seen = self._codex_permission_notices_seen = set()
         for notice in getattr(state, 'permission_notices', ()):
-            identity = (state.native_id, notice[0], notice[1])
+            identity = (provider, state.native_id, notice[0], notice[1])
             if identity not in seen:
                 seen.add(identity)
                 self._say(f'{record.title}: {notice[2]}', interrupt=False)
@@ -324,7 +361,7 @@ class CodexChats:
             self._check_context()
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
                 and (previous is None or previous.turn_id != state.turn_id)):
-            self._status(f'{record.title}: Codex is working.')
+            self._status(f'{record.title}: {name} is working.')
         if state.problem and (previous is None or previous.problem != state.problem):
             self._say(f'{record.title}: {state.problem}', interrupt=False)
         if state.notice and (previous is None or previous.notice != state.notice):
@@ -332,35 +369,35 @@ class CodexChats:
         if state.requests:
             agent_asked = getattr(self, '_agent_member_asked', None)
             if agent_asked is not None:
-                agent_asked('codex', state.native_id)
+                agent_asked(provider, state.native_id)
         if state.requests and not state.problem and (previous is None or previous.requests != state.requests):
             request = state.requests[0]
             summary = ' '.join(request.summary().split())[:200]
-            self._say(f'{record.title}: Codex needs your answer. {summary} {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
+            self._say(f'{record.title}: {name} needs your answer. {summary} {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
             self._notify(key, f'{record.title} needs you', summary, needs_you=True)
-        if loaded and state.plan_received:
+        if loaded and state.plan_received and provider == 'codex':  # plans are Codex's own
             self._apply_tasks(self._codex_task_steps(state, self._chat_turns),
                               first_load=previous is None)
-        finished = (state.native_id, state.turn_id)
+        finished = (provider, state.native_id, state.turn_id)
         fresh_terminal = (state.turn_id and state.outcome in ('completed', 'failed', 'interrupted')
                           and finished not in self._codex_finished)
         if fresh_terminal:
             self._codex_finished.add(finished)
-            self._store_write(self.store.update, state.native_id, provider='codex',
+            self._store_write(self.store.update, state.native_id, provider=provider,
                               state=IDLE, unread=not loaded,
                               last_activity_ms=int(time.time() * 1000))
             reply = '\n\n'.join(text for _identity, text in state.replies)
-            text = (f'{record.title}: Codex answered.' if state.outcome == 'completed'
-                    else f'{record.title}: Codex turn {state.outcome}.')
+            text = (f'{record.title}: {name} answered.' if state.outcome == 'completed'
+                    else f'{record.title}: {name} turn {state.outcome}.')
             # Use the same configured announcement level as Claude replies.
             if reply:
                 text = announce.reply_text(record.title, reply, self.speech.announce)
             agent_quiet = getattr(self, '_agent_quiet', None)
-            quiet = agent_quiet is not None and agent_quiet('codex', state.native_id)
+            quiet = agent_quiet is not None and agent_quiet(provider, state.native_id)
             if not quiet:  # an agent conversation says it, by its own name (#248)
                 self._say(text, interrupt=False)
             if state.outcome != 'interrupted' and not quiet:
-                self._notify(key, f'{record.title}: Codex ' + ('answered' if state.outcome == 'completed' else state.outcome),
+                self._notify(key, f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
                              text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
         if state.unsent:
@@ -373,7 +410,7 @@ class CodexChats:
         if fresh_terminal:
             agent_ended = getattr(self, '_agent_turn_ended', None)
             if agent_ended is not None:
-                agent_ended('codex', state.native_id, reply, state.outcome != 'completed',
+                agent_ended(provider, state.native_id, reply, state.outcome != 'completed',
                             more_queued=bool(state.queued),
                             detail=state.problem or '',
                             files=tuple(getattr(state, 'changed_paths', ())))
@@ -393,7 +430,7 @@ class CodexChats:
         self.refresh_sessions()
 
     def _answer_codex_owned(self, info, state):
-        record = self.store.get(info.cli_session_id, provider='codex')
+        record = self.store.get(info.cli_session_id, provider=info.provider)
         if record is None or not state.requests:
             return
         request = state.requests[0]
@@ -402,7 +439,7 @@ class CodexChats:
             if pending is None:
                 pending = self._codex_answer_checks = set()
             if info.key in pending:
-                self._feedback('Still checking this Codex request.')
+                self._feedback(f'Still checking this {provider_name(info.provider)} request.')
                 return
             pending.add(info.key)
             def checked(rule, error):
@@ -419,7 +456,7 @@ class CodexChats:
                               options=[dict(label=l, description=d) for l, d in q.options],
                               isOther=q.allow_other, isSecret=q.secret) for q in request.questions]
             dialog = QuestionDialog(self, info.title, SimpleNamespace(questions=lambda: questions),
-                                    provider='Codex')
+                                    provider=provider_name(info.provider))
         else:
             detail = dict(state.file_changes).get(request.item_id, '')
             dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule)
@@ -436,13 +473,14 @@ class CodexChats:
                 keep = dialog.choice == 'tcp_chat_rule'
                 result = None if keep else request.approval_answer(dialog.choice)
         except ValueError:
-            self._feedback('These Codex answers are invalid. Open Answer and choose again.')
+            self._feedback(f'These {provider_name(info.provider)} answers are invalid. Open Answer and choose again.')
             return
         finally:
             dialog.Destroy()
         def done(_result, error):
-            self._feedback((_result or 'This Codex request could not be answered. It may no longer be waiting.')
-                           if error else 'Approval kept for this chat and answer sent to Codex.' if keep else 'Answer sent to Codex.')
+            name = provider_name(info.provider)
+            self._feedback((_result or f'This {name} request could not be answered. It may no longer be waiting.')
+                           if error else f'Approval kept for this chat and answer sent to {name}.' if keep else f'Answer sent to {name}.')
             agent_answered = getattr(self, '_agent_member_answered', None)
             if not error and agent_answered is not None:
                 # An approval or an answer lets an agent conversation's
@@ -457,7 +495,7 @@ class CodexChats:
                 others = any(r.request_id != request.request_id
                              for r in (current.requests or ()))
                 if not allowed or not others:
-                    agent_answered('codex', info.cli_session_id, allowed)
+                    agent_answered(info.provider, info.cli_session_id, allowed)
         action = (lambda: self.sessions.owned_action('allow_for_chat', record, request)) if keep else (
             lambda: self.sessions.owned_action('answer', record, request, result))
         self._codex_work(action, done)
