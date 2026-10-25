@@ -5421,6 +5421,17 @@ def test_about_you_provider_switch_discards_stale_results_and_recovers(frame, en
         dialog.Destroy()
 
 
+def test_about_you_contents_keeps_room_on_a_short_screen(frame, env):
+    """At 175% the dialog is 546 high; Contents was left two lines tall (#368)."""
+    dialog = _dialog(frame, env, _about_you_home(env))
+    try:
+        dialog.SetSize(860, 546)
+        dialog.Layout()
+        assert dialog.text.GetSize().height >= 4 * dialog.text.GetCharHeight()
+    finally:
+        dialog.Destroy()
+
+
 def test_about_you_lists_say_when_reading_or_unreadable(frame, env):
     from thechatplace import about_you
     from thechatplace.ui.dialogs import AboutYouDialog
