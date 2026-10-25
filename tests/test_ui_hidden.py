@@ -1724,6 +1724,19 @@ def test_settings_dialog_has_the_read_back_checkbox(frame):
         dialog.Destroy()
 
 
+def test_settings_dialog_lines_up_its_check_boxes(frame):
+    """The agent check box once sat 4 pixels left of the rest (#368)."""
+    from thechatplace.ui.dialogs import SettingsDialog
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        dialog.Layout()
+        boxes = [dialog.own_messages, dialog.task_list, dialog.codex_enabled,
+                 dialog.agent_auto, dialog.update_notice]
+        assert {box.GetPosition().x for box in boxes} == {dialog.own_messages.GetPosition().x}
+    finally:
+        dialog.Destroy()
+
+
 # -- choosing the model (issue #180) --------------------------------------------------------
 
 
