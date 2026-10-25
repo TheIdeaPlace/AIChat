@@ -1727,12 +1727,15 @@ def test_settings_dialog_has_the_read_back_checkbox(frame):
 def test_settings_dialog_lines_up_its_check_boxes(frame):
     """The agent check box once sat 4 pixels left of the rest (#368)."""
     from thechatplace.ui.dialogs import SettingsDialog
-    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    # Copilot on, so its check box is there to line up too.
+    dialog = SettingsDialog(frame, speech.SpeechSettings(copilot_enabled=True),
+                            speech.default_options())
     try:
-        dialog.Layout()
-        boxes = [dialog.own_messages, dialog.task_list, dialog.codex_enabled,
-                 dialog.agent_auto, dialog.update_notice]
-        assert {box.GetPosition().x for box in boxes} == {dialog.own_messages.GetPosition().x}
+        dialog._body.Layout()  # the check boxes live in the scrolled body, not the dialog
+        boxes = [dialog.own_messages, dialog.remote_control, dialog.task_list,
+                 dialog.codex_enabled, dialog.copilot_enabled, dialog.agent_auto,
+                 dialog.update_notice]
+        assert {box.GetPosition().x for box in boxes} == {10}
     finally:
         dialog.Destroy()
 
