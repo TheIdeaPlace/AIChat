@@ -645,12 +645,13 @@ To a new chat, New Session opens next, with the message as the first message, th
 the chat the reply came from, and the title "Forwarded from" and that chat's title. Choose the
 permission and model, then press Start.
 
-**Just send it** (Alt+J) is chosen under Send to. Choose **Send it and start an agent
-conversation with both chats** (Alt+C) instead to make the two chats an agent conversation
-(see the next section), and give it a title in **Agent conversation title** (Alt+I). The reply
+**Just send it** (Alt+J) is chosen under Send to. Choose
+**Start an agent conversation with both chats** (Alt+C) instead to make the two chats an agent
+conversation (see the next section), and give it a title in **Agent conversation title** (Alt+I). The reply
 goes as its first hand-off and the chat you sent it to answers first; you approve each
 hand-off. When it can't be done, because a chat wasn't started in The Chat Place, is already in
-an agent conversation, or is still working, the option says "unavailable" and why.
+an agent conversation, or is still working, the option says "unavailable" and why,
+and Send says it in full.
 
 When the answer comes, press **Ctrl+Shift+E** again: the chat the reply came from is first in the
 list, so **Enter** sends the answer back. If a message can't be sent, it's left in that chat's

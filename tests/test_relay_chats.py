@@ -520,8 +520,9 @@ def test_a_joint_chat_links_the_two_and_sends_the_reply_as_a_hand_off(dialog):
     assert w.agent_opened == ['Build and review']
     [(sent_id, text, targets)] = w.agent_sent
     assert sent_id == conversation.conversation_id and targets == [1]
+    # Your words after the reply go as yours, not inside Claude's.
     assert text == ('From Claude (agent conversation "Build and review"):\n\n'
-                    'Built it. Tests pass.\n\nCheck the tests too.')
+                    'Built it. Tests pass.' + agents.USER_ADDS + 'Check the tests too.')
     assert agents.is_relay(text)
     assert w.opened == [] and w.work == [] and w.claude_sent == []
     assert w._relay_partners == {}
@@ -545,12 +546,14 @@ def test_the_dialog_says_why_a_joint_chat_cant_be_started(dialog):
     w.agents.add(taken)
     w.on_send_reply_to()
     problem = dialog.seen.joint.problem
-    assert problem(0) == 'Reviewer is already in an agent conversation'
+    assert problem(0).full == 'Reviewer is already in an agent conversation'
     assert problem(1) is None
     assert dialog.seen.joint.title == 'Builder'
+    w._runners['claude-2'] = SimpleNamespace(waiting_on_background=False)
+    assert problem(1).full == 'Second opinion is still working; wait until it has finished'
     w._runners['claude-1'] = SimpleNamespace(waiting_on_background=False)
     w.on_send_reply_to()
-    assert dialog.seen.joint.problem(1) == \
+    assert dialog.seen.joint.problem(1).full == \
         'Builder is still working; wait until it has finished'
 
 
@@ -578,8 +581,8 @@ def test_a_new_chat_made_joint_starts_the_conversation_once_it_exists(dialog, cl
     dialog.choose = lambda text: (3, text)  # New Codex chat
     w.on_send_reply_to()
     forward = w.new_sessions[-1]
-    assert (forward.provider, forward.joint, forward.title) == \
-        ('codex', True, 'Second look: Codex')
+    assert (forward.provider, forward.joint, forward.title, forward.edited) == \
+        ('codex', True, 'Second look: Codex', False)
     assert w.agents.all() == []  # nothing until the chat exists
     made = _own('codex-new', 'Second look: Codex', 'codex')
     forward.made(made, forward.message)
@@ -588,3 +591,21 @@ def test_a_new_chat_made_joint_starts_the_conversation_once_it_exists(dialog, cl
     assert w.agent_sent[-1][2] == [1]
     assert w.agent_sent[-1][1].startswith('From Claude (agent conversation "Second look")')
     assert w._relay_partners == {}
+
+
+def test_a_joint_send_that_fails_keeps_the_message(dialog, monkeypatch):
+    w = Window()
+    monkeypatch.setattr(Window, '_agent_send', lambda self, *a: False)
+    dialog.joint = 'Pair'
+    dialog.choose = lambda text: (1, text)
+    w.on_send_reply_to()
+    assert len(w.agents.all()) == 1  # the conversation stays, with nothing sent
+    assert w.copied[-1].startswith('From Claude, another AI agent')
+    assert w.said[-1].startswith("The message wasn't sent to Second opinion.")
+
+
+def test_an_edited_message_says_so_to_new_session(dialog, claude_installed):
+    w = Window()
+    dialog.choose = lambda text: (2, text + ' Thoughts?')
+    w.on_send_reply_to()
+    assert w.new_sessions[-1].edited is True

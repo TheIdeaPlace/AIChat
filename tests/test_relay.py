@@ -117,12 +117,31 @@ def test_the_label_comes_off_only_while_it_is_unchanged():
 ])
 def test_why_a_chat_cant_start_an_agent_conversation(source, kwargs, expected):
     options = {"can_edit": True, "in_conversation": False, "working": False, **kwargs}
-    assert relay.joint_problem(source, **options) == expected
+    problem = relay.joint_problem(source, **options)
+    assert (problem and problem.full) == expected
+    if problem:
+        assert "Builder" not in problem.short  # no title in the option's name
 
 
 def test_why_a_target_cant_join_one():
-    assert relay.joint_target_problem(_chat("codex:x", "Reviewer", "codex"), False) is None
-    assert relay.joint_target_problem(_chat("codex:x", "Reviewer", "codex"), True) == \
-        "Reviewer is already in an agent conversation"
-    assert relay.joint_target_problem(_chat("copilot:x", "Pilot", "copilot"), False) == \
+    reviewer = _chat("codex:x", "Reviewer", "codex")
+    assert relay.joint_target_problem(reviewer, False) is None
+    assert relay.joint_target_problem(reviewer, True) == relay.Problem(
+        "that chat is already in one", "Reviewer is already in an agent conversation")
+    # Working, its turn would end inside the conversation as if it answered.
+    assert relay.joint_target_problem(reviewer, False, working=True) == relay.Problem(
+        "that chat is still working", "Reviewer is still working; wait until it has finished")
+    assert relay.joint_target_problem(_chat("copilot:x", "Pilot", "copilot"), False).full == \
         "agent conversations are for Claude and Codex chats"
+
+
+@pytest.mark.parametrize("sent, expected", [
+    ("LABEL\n\nTwo bugs.", ("Two bugs.", "")),
+    ("LABEL\n\nTwo bugs.\n\nFix the first.", ("Two bugs.", "Fix the first.")),
+    ("LABEL\n\nTwo real bugs.", ("Two real bugs.", "")),   # the reply edited: still the reply
+    ("Please fix the two bugs.", (None, "Please fix the two bugs.")),  # the label gone: yours
+])
+def test_what_is_the_reply_and_what_is_yours(sent, expected):
+    label = relay.label("Codex", "Reviewer")
+    assert relay.joint_message(sent.replace("LABEL", label), "Codex", "Reviewer",
+                               "Two bugs.") == expected

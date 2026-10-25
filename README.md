@@ -469,13 +469,13 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   message is only ever a message: it can't answer a question or approve anything, which still
   comes to you.
   - **Just send it, or start an agent conversation (#378).** Under Send to, **Just send it**
-    (Alt+J) is chosen; **Send it and start an agent conversation with both chats** (Alt+C)
+    (Alt+J) is chosen; **Start an agent conversation with both chats** (Alt+C)
     instead makes the two chats an agent conversation (below), titled in **Agent conversation
     title** (Alt+I, the chat's title to start with). The reply goes as its first hand-off, the
     chat you sent it to answers first, and you approve each hand-off (change that with File,
     Agent Conversation Hand-offs). With a new chat, New Session comes first. It can't be done
     with a chat that isn't one of The Chat Place's own, one already in an agent conversation, or
-    while the chat the reply came from is still working: then the option's name ends with
+    while either chat is still working: then the option's name ends with
     "unavailable" and why. If the label line of the message is changed, what's sent is your own
     words rather than a hand-off.
 - **Agent conversations (File, New Agent Conversation, Ctrl+Shift+G).** Two of The Chat

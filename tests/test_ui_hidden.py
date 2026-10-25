@@ -11145,7 +11145,9 @@ class _RelayAnswer:
                            joint=joint)
         _RelayAnswer.seen = (list(real.targets.GetStrings()), real.text.GetValue(),
                              real.GetTitle())
-        _RelayAnswer.joint_problem = joint.problem if joint else None
+        # As the dialog asked it, before anything was sent.
+        _RelayAnswer.problems = ([joint.problem(i) for i in range(len(choices))]
+                                 if joint else None)
         real.Destroy()
         self.chosen = _RelayAnswer.pick(text) if _RelayAnswer.pick else None
         self.joint_chosen = _RelayAnswer.joint is not None
@@ -11174,7 +11176,8 @@ def test_relay_sends_a_claude_reply_to_another_chat_and_goes_there(frame, env, f
     frame.on_send_reply_to()
     targets, text, title = relay_dialog.seen
     assert title == "Send Reply to Another Chat: Builder"
-    assert targets == ["Hub probe, Claude, Scratch, idle"]  # not Builder itself, nor desktop ones
+    # Not Builder itself, nor desktop ones; then a new chat (#378).
+    assert targets == ["Hub probe, Claude, Scratch, idle", "New Claude chat"]
     assert text == ('From Claude, another AI agent, forwarded by the user from their chat '
                     '"Builder":\n\nBuilt it. Tests pass.')
     assert frame._open.title == "Hub probe"
@@ -11243,7 +11246,9 @@ def test_relay_from_a_desktop_session_reads_only(frame, env, fake_runner, relay_
     assert pump(lambda: frame._chat_loaded and frame._chat_messages)
     relay_dialog.pick = lambda text: (0, text)
     frame.on_send_reply_to()
-    assert relay_dialog.seen[0] == ["Hub probe, Claude, Scratch, idle"]
+    assert relay_dialog.seen[0] == ["Hub probe, Claude, Scratch, idle", "New Claude chat"]
+    # A desktop session can't be in an agent conversation (#378).
+    assert relay_dialog.problems[0].short == "this chat wasn't started here"
     assert fake_runner.instances[-1].prompt.endswith("Desktop answer")
     assert all("cli-a" not in part for part in fake_runner.instances[-1].command)
 
@@ -11855,23 +11860,27 @@ def test_relay_dialog_offers_an_agent_conversation(app, monkeypatch):
     monkeypatch.setattr(dialogs.wx, "MessageBox", lambda text, *a, **k: boxes.append(text))
     frame = wx.Frame(None)
     try:
-        joint = SimpleNamespace(problem=lambda i: "Reviewer is already in an agent conversation"
-                                if i == 0 else None, title="Builder")
+        from thechatplace.relay import Problem
+        taken = Problem("that chat is already in one",
+                        "R&D is already in an agent conversation")
+        joint = SimpleNamespace(problem=lambda i: taken if i == 0 else None, title="Builder")
         dialog = dialogs.RelayDialog(frame, "Builder", ["Reviewer, Codex", "New Claude chat"],
                                      "From Claude: hi", lambda i, t: None, joint=joint)
         ended = []
         monkeypatch.setattr(dialog, "EndModal", lambda code: ended.append(code))
         # Just send is chosen; the other says why it can't be done with Reviewer.
         assert dialog.just_send.GetValue() and not dialog.joint_option.GetValue()
-        assert dialog.joint_option.GetLabel().endswith(
-            "(unavailable: Reviewer is already in an agent conversation)")
+        # Briefly, without a title (whose "&" would be an access key).
+        assert dialog.joint_option.GetLabel() == (
+            "Start an agent &conversation with both chats (unavailable: that chat is "
+            "already in one)")
         assert not dialog.joint_title_box.IsEnabled()
         assert dialog.joint_title_box.GetValue() == "Builder"
         dialog.joint_option.SetValue(True)
         dialog._sync_joint()
         assert dialog.joint_title_box.IsEnabled()
         dialog._send()
-        assert boxes[-1].startswith("An agent conversation can't be started: Reviewer is "
+        assert boxes[-1].startswith("An agent conversation can't be started: R&D is "
                                     "already in an agent conversation.")
         assert ended == [] and dialog.chosen is None
         dialog.targets.SetSelection(1)
@@ -11920,7 +11929,7 @@ def test_relay_to_a_new_claude_chat_starts_it_with_the_reply(frame, env, fake_ru
     assert runner.prompt == seen["message"]
     assert frame._open.title == "Forwarded from Builder"
     # Sending back offers Builder first.
-    assert frame._relay_partners[frame._open.key] == "own-2"
+    assert frame._relay_partners[frame._open.key] == "own:own-2"
     assert frame.agents.all() == []
 
 
@@ -11942,7 +11951,7 @@ def test_relay_as_an_agent_conversation_with_an_existing_chat(frame, env, fake_r
     relay_dialog.joint = "Build and review"
     relay_dialog.pick = lambda text: (0, text)  # Hub probe
     frame.on_send_reply_to()
-    assert relay_dialog.joint_problem(0) is None
+    assert relay_dialog.problems == [None, None]
     [conversation] = frame.agents.all()
     assert conversation.title == "Build and review"
     assert [m.native_id for m in conversation.members][0] == "own-2"
@@ -11955,12 +11964,13 @@ def test_relay_as_an_agent_conversation_with_an_existing_chat(frame, env, fake_r
         in runner.prompt
     # A chat in a conversation is offered no second one.
     frame._runners.clear()
-    select(frame, "Builder")
-    frame.on_open_session()
+    # Its members are out of the list (the conversation's row stands for
+    # them), but each can still be opened.
+    frame.open_session(frame.store.get("own-2").to_info())
     assert pump(lambda: frame._chat_loaded and frame._chat_messages)
     relay_dialog.joint, relay_dialog.pick = None, None
     frame.on_send_reply_to()
-    assert relay_dialog.joint_problem(0) == "Builder is already in an agent conversation"
+    assert relay_dialog.problems[0].full == "Builder is already in an agent conversation"
 
 
 def test_relay_as_an_agent_conversation_with_a_new_claude_chat(frame, env, fake_runner,
@@ -11972,10 +11982,10 @@ def test_relay_as_an_agent_conversation_with_a_new_claude_chat(frame, env, fake_
     relay_dialog.joint = "Second look"
     relay_dialog.pick = lambda text: (1, text)  # New Claude chat
     frame.on_send_reply_to()
-    assert seen["title"] == "Second look: Claude"
+    assert seen["title"] == "Second look: Claude 2"  # as the conversation names it
     [conversation] = frame.agents.all()
     new_id = conversation.members[1].native_id
-    assert frame.store.get(new_id).title == "Second look: Claude"
+    assert frame.store.get(new_id).title == "Second look: Claude 2"
     assert conversation.next_index == 0  # it answered first; Builder is next
     assert frame._open.key == conversation.key
     runner = fake_runner.instances[-1]

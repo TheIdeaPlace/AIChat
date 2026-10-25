@@ -9,7 +9,7 @@ still come to the user through Answer (Ctrl+Shift+A).
 """
 from __future__ import annotations
 
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, NamedTuple, Optional, Tuple
 
 from .sessions import FIELD_FOLDER, FIELD_PROVIDER, FIELD_STATUS, FIELD_TITLE, SessionInfo
 from .transcript import ASSISTANT, PLAN, ChatMessage
@@ -113,26 +113,61 @@ def split_label(text: str, agent: str, chat_title: str) -> Optional[str]:
     return body or None
 
 
+class Problem(NamedTuple):
+    """Why an agent conversation can't be started: ``short`` goes in the
+    option's name, without chat titles, so it fits and has no "&" of a
+    title's in it; ``full`` is said when Send is pressed."""
+    short: str
+    full: str
+
+
 def joint_problem(source: SessionInfo, *, can_edit: bool, in_conversation: bool,
-                  working: bool, blocked: str = "") -> Optional[str]:
+                  working: bool, blocked: str = "") -> Optional[Problem]:
     """Why the chat a reply came from can't start an agent conversation with
     the chat it goes to, or None. ``blocked`` is why conversations can't be
     saved at all."""
     if blocked:
-        return blocked
+        return Problem("agent conversations can't be saved", blocked)
     if not source.is_own or source.provider not in NEW_KINDS or not can_edit:
-        return f"{source.title} wasn't started in The Chat Place"
+        return Problem("this chat wasn't started here",
+                       f"{source.title} wasn't started in The Chat Place")
     if in_conversation:
-        return f"{source.title} is already in an agent conversation"
+        return Problem("this chat is already in one",
+                       f"{source.title} is already in an agent conversation")
     if working:
-        return f"{source.title} is still working; wait until it has finished"
+        return Problem("this chat is still working",
+                       f"{source.title} is still working; wait until it has finished")
     return None
 
 
-def joint_target_problem(target: SessionInfo, in_conversation: bool) -> Optional[str]:
-    """Why ``target`` can't be the other half of an agent conversation."""
+def joint_target_problem(target: SessionInfo, in_conversation: bool,
+                         working: bool = False) -> Optional[Problem]:
+    """Why ``target`` can't be the other half of an agent conversation. A
+    working one would end its turn inside the conversation, and that
+    unrelated reply would be taken as its answer."""
     if target.provider not in NEW_KINDS:
-        return "agent conversations are for Claude and Codex chats"
+        return Problem("that chat can't join one",
+                       "agent conversations are for Claude and Codex chats")
     if in_conversation:
-        return f"{target.title} is already in an agent conversation"
+        return Problem("that chat is already in one",
+                       f"{target.title} is already in an agent conversation")
+    if working:
+        return Problem("that chat is still working",
+                       f"{target.title} is still working; wait until it has finished")
     return None
+
+
+def joint_message(sent: str, agent: str, chat_title: str, reply: str
+                  ) -> Tuple[Optional[str], str]:
+    """What of ``sent`` is the other agent's reply, and what is the user's
+    own: (reply, yours). Words added after the unchanged reply are yours,
+    and go as yours (``agents.USER_ADDS``), not inside the other agent's
+    words. The label changed, it's all yours: (None, sent). The reply
+    itself changed, it's still passed as the reply."""
+    body = split_label(sent, agent, chat_title)
+    if body is None:
+        return None, sent.strip()
+    reply = (reply or "").strip()
+    if reply and body.startswith(reply):
+        return reply, body[len(reply):].strip()
+    return body, ""

@@ -3789,6 +3789,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                                   **{**provider_options, **prefill})
         try:
             if dialog.ShowModal() != wx.ID_OK:
+                if forward is not None and forward.edited:
+                    # Your changes to the forwarded reply (#378) aren't lost.
+                    self._relay_kept(forward.message, "No chat was started.")
                 return
             folder, title, mode, message, model = dialog.values()
             effort = dialog.effort()

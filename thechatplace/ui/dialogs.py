@@ -2956,11 +2956,12 @@ class RelayDialog(wx.Dialog):
 
     With ``joint`` (#378) it also offers to start an agent conversation of
     the two chats instead of just sending: ``joint.problem(index)`` says why
-    that can't be done with that chat, or None, and ``joint.title`` starts
-    its title. ``joint_chosen`` and ``joint_title`` hold the choice."""
+    that can't be done with that chat (a ``relay.Problem``), or None, and
+    ``joint.title`` starts its title. ``joint_chosen`` and ``joint_title``
+    hold the choice."""
 
     JUST_SEND = "&Just send it"
-    JOINT = "Send it and start an agent &conversation with both chats"
+    JOINT = "Start an agent &conversation with both chats"
 
     def __init__(self, parent, source_title: str, choices, text: str, check,
                  working: bool = False, title: str = "", joint=None):
@@ -3053,7 +3054,7 @@ class RelayDialog(wx.Dialog):
         if joint:
             why = self._joint.problem(index)
             if why:
-                wx.MessageBox(f"An agent conversation can't be started: {why}. Choose Just "
+                wx.MessageBox(f"An agent conversation can't be started: {why.full}. Choose Just "
                               "send it, or another chat.", self.GetTitle(),
                               wx.OK | wx.ICON_INFORMATION, self)
                 self.joint_option.SetFocus()
@@ -3064,11 +3065,13 @@ class RelayDialog(wx.Dialog):
         self.EndModal(wx.ID_OK)
 
     def _sync_joint(self):
-        """The joint option's label says why it can't be done with the
-        chosen chat; its title box is there only while it's chosen."""
+        """The joint option's label says, briefly, why it can't be done with
+        the chosen chat (Send says it in full); its title box is there only
+        while it's chosen. The short reason never has a chat's title in it,
+        so it fits on one line and brings no "&" of a title's."""
         index = self.targets.GetSelection()
         why = self._joint.problem(index) if index != wx.NOT_FOUND else None
-        label = f"{self.JOINT} (unavailable: {why})" if why else self.JOINT
+        label = f"{self.JOINT} (unavailable: {why.short})" if why else self.JOINT
         if self.joint_option.GetLabel() != label:
             self.joint_option.SetLabel(label)
             set_accessible_name(self.joint_option, label.replace("&", ""))
