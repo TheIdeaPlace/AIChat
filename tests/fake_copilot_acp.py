@@ -166,6 +166,10 @@ def prompt(message_id, session):
             os._exit(1)
         threading.Event().wait(60)  # deaf: never ends, ignores cancel
         return
+    if MODE in ("flip", "curmode"):
+        # Long enough for a second message to be queued first, even on the
+        # macOS CI runner, where send() reads hooks and the log before queuing.
+        time.sleep(1.0)
     if MODE == "flip":
         update(session, {"sessionUpdate": "config_option_update", "configOptions": [
             {"type": "select", "id": "mode", "currentValue": AUTOPILOT},
@@ -173,7 +177,7 @@ def prompt(message_id, session):
     if MODE == "curmode":
         update(session, {"sessionUpdate": "current_mode_update", "currentModeId": AUTOPILOT})
     if MODE == "flipback":
-        time.sleep(0.3)  # long enough for a second message to be queued
+        time.sleep(1.0)  # long enough for a second message to be queued, even on macOS CI
         update(session, {"sessionUpdate": "config_option_update", "configOptions": [
             {"type": "select", "id": "mode", "currentValue": AGENT},
             {"type": "select", "id": "allow_all", "currentValue": "on"}]})
