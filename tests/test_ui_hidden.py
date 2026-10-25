@@ -10311,21 +10311,50 @@ def test_new_codex_session_keeps_four_lines_of_first_message_on_a_short_screen(
         dialog.SetClientSize(dialog.GetClientSize().width, 900)
         dialog._fit_note()
         whole = dialog.note.GetMinSize().height
-        # 30 short of room for the whole note and four lines of First message.
-        dialog.SetClientSize(dialog.GetClientSize().width,
-                             dialog.GetSizer().GetMinSize().height - 30)
-        # A screen with no spare height, so the dialog can't grow into it.
-        monkeypatch.setattr(dialogs, "screen_area", lambda window: wx.Rect(
-            0, 0, 1920, dialog.GetSize().height + dialogs.SCREEN_MARGIN))
-        dialog._fit_note()
+        needed = dialog.GetSizer().GetMinSize().height
+        char = dialog.note.GetCharHeight()
+        padding = dialogs.dip_width(dialog, 12)  # the box's own, as _fit_note has it
+        width = dialog.GetClientSize().width
+
+        def fit_at(client_height, spare):
+            """Fit the note in a dialog this tall, on a screen with this much
+            room below it."""
+            dialog.SetClientSize(width, client_height)
+            monkeypatch.setattr(dialogs, "screen_area", lambda window: wx.Rect(
+                0, 0, 1920, dialog.GetSize().height + dialogs.SCREEN_MARGIN + spare))
+            dialog._fit_note()
+
+        def buttons_in_view():
+            return dialog.start_btn.GetRect().GetBottom() <= dialog.GetClientSize().height
+
+        # Room on the screen: the dialog grows by what it lacks, whole note shown.
+        fit_at(needed - 30, spare=200)
+        assert dialog.GetClientSize().height == needed
+        assert dialog.note.GetMinSize().height == whole and buttons_in_view()
+
+        # No room: the note gives up whole lines, at least the 30, and scrolls.
+        fit_at(needed - 30, spare=0)
+        note = dialog.note.GetMinSize().height
+        assert note <= whole - 30 and (note - padding) % char == 0 and note >= 3 * char
         assert dialog.message.GetSize().height >= 4 * dialog.message.GetCharHeight()
-        # The note gives up the 30 and scrolls, and Start stays in the window.
-        assert dialog.note.GetMinSize().height == whole - 30
-        assert dialog.note.GetSize().height >= 3 * dialog.note.GetCharHeight()
-        assert dialog.start_btn.GetRect().GetBottom() <= dialog.GetClientSize().height
+        assert buttons_in_view()
+
+        # Already open (a provider change): no growing, the note gives way.
+        monkeypatch.setattr(dialog, "IsShown", lambda: True)
+        fit_at(needed - 30, spare=200)
+        assert dialog.GetClientSize().height == needed - 30
+        assert dialog.note.GetMinSize().height == note
+
+        # Too short even for three lines of note: First message gives way
+        # down to one line, and Start and Cancel stay in the window.
+        fit_at(needed - (whole - 3 * char - padding) - 40, spare=0)
+        assert dialog.note.GetMinSize().height == 3 * char + padding
+        assert dialog.message.GetCharHeight() <= dialog.message.GetSize().height
+        assert dialog.message.GetSize().height < 4 * dialog.message.GetCharHeight()
+        assert buttons_in_view()
+
         # With room to spare, the whole note shows again.
-        dialog.SetClientSize(dialog.GetClientSize().width, 900)
-        dialog._fit_note()
+        fit_at(900, spare=0)
         assert dialog.note.GetMinSize().height == whole
     finally:
         dialog.Destroy()
