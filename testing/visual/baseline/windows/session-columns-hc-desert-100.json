@@ -2,11 +2,11 @@
  "title": "Session List Columns",
  "class": "SessionColumnsDialog",
  "size": [
-  640,
+  700,
   560
  ],
  "client": [
-  624,
+  684,
   521
  ],
  "dpi": [
@@ -22,11 +22,11 @@
    "rect": [
     8,
     8,
-    608,
+    668,
     31
    ],
    "best": [
-    574,
+    654,
     31
    ],
    "depth": 0,
@@ -60,11 +60,11 @@
    "rect": [
     10,
     69,
-    296,
-    265
+    326,
+    294
    ],
    "best": [
-    220,
+    326,
     200
    ],
    "depth": 0,
@@ -82,7 +82,7 @@
    "name": "staticText",
    "label": "&Shown columns, in the order they're read:",
    "rect": [
-    320,
+    350,
     47,
     221,
     16
@@ -101,13 +101,13 @@
    "name": "Shown columns, in the order they're read",
    "label": "",
    "rect": [
-    322,
+    352,
     69,
-    296,
-    265
+    326,
+    294
    ],
    "best": [
-    241,
+    335,
     200
    ],
    "depth": 0,
@@ -116,11 +116,12 @@
    "problems": [],
    "items": [
     "Title",
+    "Provider (Claude, Codex or Copilot)",
     "Folder",
     "Status (needs you, working or idle)",
     "New reply",
     "Last activity",
-    "Kind (Chat Place, Cowork or terminal)",
+    "Kind (desktop app, Cowork, terminal or The Chat Place)",
     "Remote Control",
     "Archived",
     "Hidden",
@@ -134,7 +135,7 @@
    "label": "&Add",
    "rect": [
     8,
-    340,
+    369,
     75,
     23
    ],
@@ -153,7 +154,7 @@
    "label": "&Remove",
    "rect": [
     89,
-    340,
+    369,
     75,
     23
    ],
@@ -172,7 +173,7 @@
    "label": "Move &Up",
    "rect": [
     170,
-    340,
+    369,
     75,
     23
    ],
@@ -191,7 +192,7 @@
    "label": "Move &Down",
    "rect": [
     251,
-    340,
+    369,
     85,
     23
    ],
@@ -210,7 +211,7 @@
    "label": "Move to &Top",
    "rect": [
     342,
-    340,
+    369,
     89,
     23
    ],
@@ -229,7 +230,7 @@
    "label": "Move to &Bottom",
    "rect": [
     437,
-    340,
+    369,
     108,
     23
    ],
@@ -247,9 +248,9 @@
    "name": "button",
    "label": "R&eset to Default",
    "rect": [
-    8,
+    551,
     369,
-    537,
+    104,
     23
    ],
    "best": [
@@ -287,25 +288,25 @@
    "rect": [
     10,
     424,
-    608,
+    668,
     60
    ],
    "best": [
     127,
-    98
+    60
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Fix the flaky upload test, AIChat, needs you: Pick a name for the release branch, active 1 minute ago"
+   "value": "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app session"
   },
   {
    "class": "Button",
    "name": "button",
    "label": "OK",
    "rect": [
-    454,
+    514,
     490,
     75,
     23
@@ -324,7 +325,7 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    537,
+    597,
     490,
     75,
     23

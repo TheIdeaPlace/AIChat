@@ -64,7 +64,7 @@
     590
    ],
    "best": [
-    876,
+    1031,
     64
    ],
    "depth": 1,
@@ -72,10 +72,10 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Fix the flaky upload test, AIChat, needs you: Pick a name for the release branch, active 1 minute ago",
-    "Visual probe, Scratch, idle, active just now, Chat Place session",
-    "Write the release notes for 0.2, AIChat, idle, active 1 hour ago",
-    "A session whose title goes on and on to show what a very long title does to the session list and the heading above the messages, Website, idle, active yesterday"
+    "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app session",
+    "Visual probe, Claude, Scratch, idle, active just now, Chat Place session",
+    "Write the release notes for 0.2, Claude, AIChat, idle, active 1 hour ago, desktop app session",
+    "A session whose title goes on and on to show what a very long title does to the session list and the heading above the messages, Claude, Website, idle, active yesterday, desktop app session"
    ],
    "selection": 0
   },

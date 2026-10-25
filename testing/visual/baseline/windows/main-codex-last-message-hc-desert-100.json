@@ -1,0 +1,334 @@
+{
+ "title": "Codex history preview — The Chat Place",
+ "class": "MainFrame",
+ "size": [
+  1000,
+  720
+ ],
+ "client": [
+  984,
+  630
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    0,
+    984,
+    630
+   ],
+   "best": [
+    540,
+    530
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Session &list, Codex chats, 1 of 5:",
+   "rect": [
+    8,
+    8,
+    166,
+    16
+   ],
+   "best": [
+    166,
+    16
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Session list, Codex chats, 1 of 5",
+   "label": "",
+   "rect": [
+    10,
+    34,
+    378,
+    590
+   ],
+   "best": [
+    1010,
+    49
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Codex history preview, Codex, Codex: What changed The upload test failed one run in ten because it read the progress file before the writer had flushed it. It now waits for the writer to…"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Codex history preview, Scratch, status unavailable. Codex chat, read-only.",
+   "rect": [
+    402,
+    8,
+    574,
+    16
+   ],
+   "best": [
+    387,
+    16
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Messages in Codex history preview (read-only):",
+   "rect": [
+    402,
+    32,
+    574,
+    16
+   ],
+   "best": [
+    55,
+    16
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Messages in Codex history preview (read-only)",
+   "label": "",
+   "rect": [
+    404,
+    50,
+    574,
+    339
+   ],
+   "best": [
+    200,
+    49
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "You: Explain the upload test.",
+    "Codex: ## What changed"
+   ],
+   "selection": 1
+  },
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    402,
+    395,
+    574,
+    173
+   ],
+   "best": [
+    127,
+    140
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "About replying:",
+   "rect": [
+    402,
+    395,
+    83,
+    16
+   ],
+   "best": [
+    83,
+    16
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About replying",
+   "label": "This session belongs to the Claude desktop app, so you reply to it in Claude. The Chat Place only reads it: sending from here while the desktop app has it open could run two turns at once and tangle the conversation. Open in Claude switches the desktop app to it. Continue Here starts a Chat Place copy of it, with the whole conversation so far, that you can reply to here; the desktop app session isn't changed.",
+   "rect": [
+    404,
+    417,
+    574,
+    153
+   ],
+   "best": [
+    127,
+    120
+   ],
+   "depth": 2,
+   "parent": 6,
+   "enabled": true,
+   "problems": [],
+   "value": "This is a Codex chat. The Chat Place currently reads its local history. Reply in Codex."
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Show tool &activity",
+   "rect": [
+    402,
+    576,
+    116,
+    15
+   ],
+   "best": [
+    116,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&New Session...",
+   "rect": [
+    402,
+    599,
+    96,
+    23
+   ],
+   "best": [
+    96,
+    23
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Refresh",
+   "rect": [
+    504,
+    599,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StatusBar",
+   "name": "statusBar",
+   "label": "",
+   "rect": [
+    0,
+    630,
+    984,
+    31
+   ],
+   "best": [
+    301,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Status",
+   "label": "Loaded Codex history preview, 2 messages.",
+   "rect": [
+    2,
+    634,
+    464,
+    24
+   ],
+   "best": [
+    100,
+    80
+   ],
+   "depth": 1,
+   "parent": 12,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Control",
+   "name": "Loaded session",
+   "label": "Codex history preview: status unavailable",
+   "rect": [
+    471,
+    634,
+    312,
+    24
+   ],
+   "best": [
+    100,
+    80
+   ],
+   "depth": 1,
+   "parent": 12,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "1 session needs you",
+   "rect": [
+    788,
+    634,
+    146,
+    24
+   ],
+   "best": [
+    111,
+    23
+   ],
+   "depth": 1,
+   "parent": 12,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

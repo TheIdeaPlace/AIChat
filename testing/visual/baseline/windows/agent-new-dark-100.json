@@ -3,11 +3,11 @@
  "class": "AgentConversationDialog",
  "size": [
   720,
-  720
+  760
  ],
  "client": [
   704,
-  681
+  721
  ],
  "dpi": [
   96,
@@ -23,10 +23,10 @@
     0,
     0,
     704,
-    642
+    682
    ],
    "best": [
-    547,
+    697,
     16
    ],
    "depth": 0,
@@ -37,10 +37,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Title:",
+   "label": "&Kind of conversation:",
    "rect": [
     8,
     8,
+    113,
+    16
+   ],
+   "best": [
+    113,
+    16
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Kind of conversation",
+   "label": "",
+   "rect": [
+    8,
+    24,
+    671,
+    23
+   ],
+   "best": [
+    664,
+    23
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Your own roles"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Title:",
+   "rect": [
+    8,
+    55,
     27,
     16
    ],
@@ -59,8 +98,8 @@
    "label": "",
    "rect": [
     10,
-    26,
-    688,
+    73,
+    671,
     23
    ],
    "best": [
@@ -79,7 +118,7 @@
    "label": "First &agent's chat:",
    "rect": [
     8,
-    55,
+    102,
     93,
     16
    ],
@@ -98,8 +137,8 @@
    "label": "",
    "rect": [
     8,
-    71,
-    688,
+    118,
+    671,
     23
    ],
    "best": [
@@ -118,7 +157,7 @@
    "label": "First agent's &role (optional), such as Build the fix:",
    "rect": [
     8,
-    102,
+    149,
     255,
     16
    ],
@@ -137,8 +176,8 @@
    "label": "",
    "rect": [
     10,
-    120,
-    688,
+    167,
+    671,
     23
    ],
    "best": [
@@ -157,7 +196,7 @@
    "label": "First agent's new chat &permission:",
    "rect": [
     8,
-    149,
+    196,
     179,
     16
    ],
@@ -176,8 +215,8 @@
    "label": "",
    "rect": [
     8,
-    165,
-    688,
+    212,
+    671,
     23
    ],
    "best": [
@@ -196,7 +235,7 @@
    "label": "S&econd agent's chat:",
    "rect": [
     8,
-    196,
+    243,
     110,
     16
    ],
@@ -215,8 +254,8 @@
    "label": "",
    "rect": [
     8,
-    212,
-    688,
+    259,
+    671,
     23
    ],
    "best": [
@@ -235,7 +274,7 @@
    "label": "Second agent's r&ole (optional), such as Review each change:",
    "rect": [
     8,
-    243,
+    290,
     317,
     16
    ],
@@ -254,8 +293,8 @@
    "label": "",
    "rect": [
     10,
-    261,
-    688,
+    308,
+    671,
     23
    ],
    "best": [
@@ -274,7 +313,7 @@
    "label": "Second agent's new chat permissio&n:",
    "rect": [
     8,
-    290,
+    337,
     196,
     16
    ],
@@ -293,8 +332,8 @@
    "label": "",
    "rect": [
     8,
-    306,
-    688,
+    353,
+    671,
     23
    ],
    "best": [
@@ -310,10 +349,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
+   "label": "Thir&d agent's chat (optional):",
+   "rect": [
+    8,
+    384,
+    154,
+    16
+   ],
+   "best": [
+    154,
+    16
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Third agent's chat (optional)",
+   "label": "",
+   "rect": [
+    8,
+    400,
+    671,
+    23
+   ],
+   "best": [
+    182,
+    23
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "No third agent"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
    "label": "&Folder for new chats:",
    "rect": [
     8,
-    337,
+    431,
     111,
     16
    ],
@@ -332,8 +410,8 @@
    "label": "",
    "rect": [
     8,
-    353,
-    607,
+    447,
+    590,
     23
    ],
    "best": [
@@ -350,8 +428,8 @@
    "name": "Browse for the folder for new chats",
    "label": "&Browse...",
    "rect": [
-    621,
-    353,
+    604,
+    447,
     75,
     23
    ],
@@ -370,7 +448,7 @@
    "label": "&Hand-offs:",
    "rect": [
     8,
-    384,
+    478,
     58,
     16
    ],
@@ -389,19 +467,19 @@
    "label": "",
    "rect": [
     8,
-    400,
-    688,
+    494,
+    671,
     23
    ],
    "best": [
-    353,
+    396,
     23
    ],
    "depth": 1,
    "parent": 0,
    "enabled": true,
    "problems": [],
-   "value": "Approve each hand-off: you pass each reply on (Ctrl+Shift+E)"
+   "value": "Approve each hand-off: you pass each reply on (type, or Ctrl+Shift+E)"
   },
   {
    "class": "StaticText",
@@ -409,7 +487,7 @@
    "label": "Who goes f&irst:",
    "rect": [
     8,
-    431,
+    525,
     80,
     16
    ],
@@ -428,8 +506,8 @@
    "label": "",
    "rect": [
     8,
-    447,
-    688,
+    541,
+    671,
     23
    ],
    "best": [
@@ -448,7 +526,7 @@
    "label": "Opening &message (Enter starts a new line; Ctrl+Enter starts the conversation):",
    "rect": [
     8,
-    478,
+    572,
     406,
     16
    ],
@@ -467,9 +545,9 @@
    "label": "",
    "rect": [
     10,
-    496,
-    688,
-    140
+    590,
+    671,
+    120
    ],
    "best": [
     127,
@@ -487,7 +565,7 @@
    "label": "&Start",
    "rect": [
     540,
-    650,
+    690,
     75,
     23
    ],
@@ -506,7 +584,7 @@
    "label": "Cancel",
    "rect": [
     621,
-    650,
+    690,
     75,
     23
    ],

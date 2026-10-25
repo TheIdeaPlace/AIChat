@@ -64,7 +64,7 @@
     "Effort: High",
     "Sandbox: can edit files in its folder",
     "Approval policy: on request",
-    "Writable folder: C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\properties-codex-owned\\Projects\\Scratch"
+    "Approval reviewer: human"
    ],
    "selection": 0
   },

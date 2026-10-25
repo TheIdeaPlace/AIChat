@@ -1,0 +1,135 @@
+{
+ "title": "Codex needs permission: Codex preview",
+ "class": "CodexPermissionDialog",
+ "size": [
+  1050,
+  810
+ ],
+ "client": [
+  1028,
+  754
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Request:",
+   "rect": [
+    8,
+    8,
+    69,
+    26
+   ],
+   "best": [
+    69,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Request",
+   "label": "Command:\r\ngit checkout -b fix\r\n\r\nFolder:\r\nC:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission\r\n\r\nThis also needs:\r\nWrite access to C:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission/.git\r\nNetwork access to any site\r\n\r\nReason:\r\nThe sandbox blocked writing Git's HEAD.lock.\r\n\r\nCodex also offered to keep allowing this, for the rest of the session or from now on. The Chat Place leaves that out: your answer covers this request only. Allow for This Chat isn't offered for this request, so approving it keeps nothing in Chat Permissions. The Chat Place can keep only some Git commands, with their usual options: status, switch, add, commit, push, fetch, diff and log.",
+   "rect": [
+    10,
+    44,
+    1012,
+    652
+   ],
+   "best": [
+    191,
+    258
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Command:\ngit checkout -b fix\n\nFolder:\nC:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission\n\nThis also needs:\nWrite access to C:/Users/vmuser/AppData/Local/Temp/tcp-probe/codex-permission/.git\nNetwork access to any site\n\nReason:\nThe sandbox blocked writing Git's HEAD.lock.\n\nCodex also offered to keep allowing this, for the rest of the session or from now on. The Chat Place leaves that out:"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Allow Once",
+   "rect": [
+    439,
+    710,
+    123,
+    36
+   ],
+   "best": [
+    123,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Deny",
+   "rect": [
+    568,
+    710,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Deny and &Stop Turn",
+   "rect": [
+    688,
+    710,
+    192,
+    36
+   ],
+   "best": [
+    192,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    886,
+    710,
+    134,
+    36
+   ],
+   "best": [
+    134,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

@@ -1,0 +1,484 @@
+{
+ "title": "New Chat Place Session",
+ "class": "NewSessionDialog",
+ "size": [
+  1020,
+  930
+ ],
+ "client": [
+  998,
+  874
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Pro&vider:",
+   "rect": [
+    10,
+    13,
+    71,
+    26
+   ],
+   "best": [
+    71,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Provider",
+   "label": "",
+   "rect": [
+    349,
+    10,
+    639,
+    33
+   ],
+   "best": [
+    91,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Codex"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Folder:",
+   "rect": [
+    10,
+    54,
+    55,
+    26
+   ],
+   "best": [
+    55,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ComboBox",
+   "name": "Folder",
+   "label": "",
+   "rect": [
+    349,
+    51,
+    639,
+    33
+   ],
+   "best": [
+    162,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Browse...",
+   "rect": [
+    349,
+    92,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "From &GitHub...",
+   "rect": [
+    469,
+    92,
+    148,
+    36
+   ],
+   "best": [
+    148,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Work &in:",
+   "rect": [
+    10,
+    139,
+    67,
+    26
+   ],
+   "best": [
+    67,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Work in",
+   "label": "",
+   "rect": [
+    349,
+    136,
+    639,
+    33
+   ],
+   "best": [
+    467,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The folder as it is (not a git repository, so no worktree)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "B&ranch (choose one, or type a new name):",
+   "rect": [
+    10,
+    180,
+    331,
+    26
+   ],
+   "best": [
+    331,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "ComboBox",
+   "name": "Branch (choose one, or type a new name)",
+   "label": "",
+   "rect": [
+    349,
+    177,
+    639,
+    33
+   ],
+   "best": [
+    162,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Title:",
+   "rect": [
+    10,
+    221,
+    37,
+    26
+   ],
+   "best": [
+    37,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Title (optional)",
+   "label": "",
+   "rect": [
+    351,
+    220,
+    639,
+    33
+   ],
+   "best": [
+    165,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Mo&del:",
+   "rect": [
+    10,
+    262,
+    56,
+    26
+   ],
+   "best": [
+    56,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Model",
+   "label": "",
+   "rect": [
+    349,
+    259,
+    639,
+    33
+   ],
+   "best": [
+    237,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Configured Codex model"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Effort:",
+   "rect": [
+    10,
+    303,
+    49,
+    26
+   ],
+   "best": [
+    49,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Effort",
+   "label": "",
+   "rect": [
+    349,
+    300,
+    639,
+    33
+   ],
+   "best": [
+    230,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Configured Codex effort"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission m&ode:",
+   "rect": [
+    10,
+    344,
+    143,
+    26
+   ],
+   "best": [
+    143,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Permission mode",
+   "label": "",
+   "rect": [
+    349,
+    341,
+    639,
+    33
+   ],
+   "best": [
+    460,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Can edit files in this folder; asks before anything else"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "About &permissions:",
+   "rect": [
+    10,
+    384,
+    155,
+    26
+   ],
+   "best": [
+    155,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About permissions",
+   "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
+   "rect": [
+    12,
+    412,
+    978,
+    218
+   ],
+   "best": [
+    191,
+    218
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Codex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions are verified before sending. Automatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricte"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "First &message:",
+   "rect": [
+    10,
+    638,
+    113,
+    26
+   ],
+   "best": [
+    113,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "First message",
+   "label": "",
+   "rect": [
+    12,
+    676,
+    978,
+    138
+   ],
+   "best": [
+    191,
+    118
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Start",
+   "rect": [
+    747,
+    830,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    871,
+    830,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

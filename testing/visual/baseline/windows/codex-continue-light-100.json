@@ -201,7 +201,7 @@
     23
    ],
    "best": [
-    303,
+    311,
     23
    ],
    "depth": 0,
@@ -237,17 +237,17 @@
     12,
     185,
     644,
-    147
+    177
    ],
    "best": [
     127,
-    147
+    177
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.\n\nCodex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder. Both ask before allowing work outside their selected file access, except for your save"
+   "value": "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.\n\nCodex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions "
   },
   {
    "class": "StaticText",
@@ -255,7 +255,7 @@
    "label": "First &message:",
    "rect": [
     10,
-    340,
+    370,
     75,
     16
    ],
@@ -274,13 +274,13 @@
    "label": "",
    "rect": [
     12,
-    368,
+    398,
     644,
-    166
+    136
    ],
    "best": [
     127,
-    38
+    72
    ],
    "depth": 0,
    "parent": -1,

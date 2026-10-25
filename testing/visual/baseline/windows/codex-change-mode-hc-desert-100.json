@@ -1,0 +1,312 @@
+{
+ "title": "Change Permission Mode",
+ "class": "SingleChoiceDialog",
+ "size": [
+  596,
+  394
+ ],
+ "client": [
+  580,
+  355
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Codex permissions for Review saved command rules for a deliberately long synthetic chat title.",
+   "rect": [
+    15,
+    15,
+    498,
+    16
+   ],
+   "best": [
+    498,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Folder: ",
+   "rect": [
+    15,
+    31,
+    40,
+    16
+   ],
+   "best": [
+    40,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\codex-change-mode\\Projects\\Scratch\\long-syntheti",
+   "rect": [
+    15,
+    47,
+    550,
+    16
+   ],
+   "best": [
+    550,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "c-project-folder\\nested-folder-for-permission-review.",
+   "rect": [
+    15,
+    63,
+    286,
+    16
+   ],
+   "best": [
+    286,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Finish or Stop active work first.",
+   "rect": [
+    15,
+    79,
+    162,
+    16
+   ],
+   "best": [
+    162,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Automatic approval review lets Codex review eligible requests instead of asking you. It can deny ",
+   "rect": [
+    15,
+    110,
+    507,
+    16
+   ],
+   "best": [
+    507,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "requests, and does not grant unrestricted access. Human review remains available. Network access and ",
+   "rect": [
+    15,
+    126,
+    545,
+    16
+   ],
+   "best": [
+    545,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "access to temporary folders outside this folder require approval. The Chat Place overrides these ",
+   "rect": [
+    15,
+    142,
+    503,
+    16
+   ],
+   "best": [
+    503,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "boundaries for this chat only; saved Codex rules still apply.",
+   "rect": [
+    15,
+    158,
+    308,
+    16
+   ],
+   "best": [
+    308,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Commands you've told Codex to always allow will run without asking and outside this folder's limits, ",
+   "rect": [
+    15,
+    189,
+    534,
+    16
+   ],
+   "best": [
+    534,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "including the network. Project-supplied command rules are refused.",
+   "rect": [
+    15,
+    205,
+    360,
+    16
+   ],
+   "best": [
+    360,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "listBox",
+   "label": "",
+   "rect": [
+    17,
+    238,
+    550,
+    64
+   ],
+   "best": [
+    325,
+    64
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Read-only; asks before allowing changes",
+    "Can edit files in this folder; asks before anything else",
+    "Read-only; automatic approval review",
+    "Can edit files in this folder; automatic approval review"
+   ],
+   "selection": 3
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    408,
+    322,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    491,
+    322,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticLine",
+   "name": "staticLine",
+   "label": "",
+   "rect": [
+    11,
+    311,
+    560,
+    2
+   ],
+   "best": [
+    -1,
+    2
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

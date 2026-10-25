@@ -207,7 +207,7 @@
    "kind": "dialog",
    "png": "message-plain-hc-aquatic-100.png",
    "json": "message-plain-hc-aquatic-100.json",
-   "title": "Message from Claude",
+   "title": "Message: Claude",
    "class": "MessageDialog",
    "size": [
     720,
@@ -575,7 +575,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    620
+    635
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -589,7 +589,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    620
+    635
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -603,7 +603,7 @@
    "class": "SingleChoiceDialog",
    "size": [
     596,
-    300
+    394
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1112,6 +1112,34 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "What AI Knows About You: Codex"
+  },
+  "codex-review-history": {
+   "kind": "dialog",
+   "png": "codex-review-history-hc-aquatic-100.png",
+   "json": "codex-review-history-hc-aquatic-100.json",
+   "title": "Chat Permissions: Automatic review preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Automatic reviewer, boundaries and recent decisions"
+  },
+  "codex-auto-review": {
+   "kind": "dialog",
+   "png": "codex-auto-review-hc-aquatic-100.png",
+   "json": "codex-auto-review-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Codex chat with automatic approval review selected"
   }
  },
  "seconds": 91.6

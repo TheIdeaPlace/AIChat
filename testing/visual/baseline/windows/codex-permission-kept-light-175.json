@@ -1,0 +1,154 @@
+{
+ "title": "Codex needs permission: Codex preview",
+ "class": "CodexPermissionDialog",
+ "size": [
+  1225,
+  945
+ ],
+ "client": [
+  1201,
+  881
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Request:",
+   "rect": [
+    8,
+    8,
+    81,
+    31
+   ],
+   "best": [
+    81,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Request",
+   "label": "Command:\r\ngit commit -m first\r\n\r\nFolder:\r\nC:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\codex-permission-kept\\Projects\\Scratch\r\n\r\nIf you allow it, this command may run outside the chat's folder sandbox, where it can change any file you can and use the network.\r\n\r\nCodex offered to keep a native approval. If you choose Allow for This Chat, The Chat Place remembers it only in this chat. Allow Once keeps no approval. Codex keeps no approval with either choice.\r\n\r\nRemember for this chat: Run git commit with supported arguments, starting in C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\codex-permission-kept\\projects\\Scratch. May run outside the sandbox.\r\n\r\nRemembered approvals have the same authority as Allow Once: matching commands may run outside the sandbox, change files elsewhere, use the network, and run Git hooks or other configured programs. The folder identifies where the command starts; it does not confine what it can access. Only this chat in The Chat Place keeps the approval. No Codex or Claude settings or rules are changed.",
+   "rect": [
+    10,
+    49,
+    1185,
+    718
+   ],
+   "best": [
+    222,
+    308
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Command:\ngit commit -m first\n\nFolder:\nC:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\codex-permission-kept\\Projects\\Scratch\n\nIf you allow it, this command may run outside the chat's folder sandbox, where it can change any file you can and use the network.\n\nCodex offered to keep a native approval. If you choose Allow for This Chat, The Chat Place remembers it only in this chat. Allow Once keeps no ap"
+  },
+  {
+   "class": "Button",
+   "name": "Allow for this chat: Run git commit with supported arguments, starting in C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\codex-permission-kept\\projects\\Scratch. May run outside the sandbox.",
+   "label": "Allow for This &Chat",
+   "rect": [
+    982,
+    773,
+    211,
+    42
+   ],
+   "best": [
+    211,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Allow Once",
+   "rect": [
+    523,
+    831,
+    142,
+    42
+   ],
+   "best": [
+    142,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Deny",
+   "rect": [
+    671,
+    831,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Deny and &Stop Turn",
+   "rect": [
+    810,
+    831,
+    221,
+    42
+   ],
+   "best": [
+    221,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    1037,
+    831,
+    156,
+    42
+   ],
+   "best": [
+    156,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

@@ -1,5 +1,5 @@
 {
- "title": "Message from Claude",
+ "title": "Message: Claude",
  "class": "MessageDialog",
  "size": [
   1080,
@@ -18,15 +18,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Claude said:",
+   "label": "&Claude:",
    "rect": [
     8,
     8,
-    96,
+    59,
     26
    ],
    "best": [
-    96,
+    59,
     26
    ],
    "depth": 0,
@@ -36,7 +36,7 @@
   },
   {
    "class": "TextCtrl",
-   "name": "Claude said",
+   "name": "Claude",
    "label": "## What changed\r\n\r\nThe upload test failed one run in ten because it read the progress file before the\r\nwriter had flushed it. It now waits for the writer to say it's done.\r\n\r\n- `uploader.py`: flush and close before signalling\r\n- `test_upload.py`: wait on the signal, not on a sleep\r\n\r\n```python\r\ndef finish(self):\r\n    self._file.flush()\r\n    self._file.close()\r\n    self.done.set()\r\n```\r\n\r\n| File | Lines added | Lines removed |\r\n|---|---|---|\r\n| uploader.py | 4 | 1 |\r\n| test_upload.py | 6 | 3 |\r\n\r\nSee [the issue](https://github.com/example/repo/issues/42) for the history. A long line\r\nfollows so wrapping shows: wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping",
    "rect": [
     10,

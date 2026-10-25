@@ -209,7 +209,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Removal applies before the next approval is sent; work already approved may finish. Changing mode clears remembered approvals. Remembered approvals have the same authority as Allow Once: matching commands may run outside the sandbox, change files elsewhere, use the network, and run Git hooks or other configured programs. The folder identifies where the command starts; it does not confine what it c"
+   "value": "Selected reviewer: human review. Can read files and edit the chat folder: C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\chat-permissions-codex\\Projects\\Scratch\nAutomatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricted access. Human review remains available. Network access and access to temporary folders outside this fo"
   }
  ],
  "capture": "PrintWindow"

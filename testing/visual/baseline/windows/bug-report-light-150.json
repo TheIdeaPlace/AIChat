@@ -193,7 +193,7 @@
   {
    "class": "TextCtrl",
    "name": "What the report includes",
-   "label": "The Chat Place: 0.1.6 (run from source)\r\nWindows: Windows-11-10.0.26300-SP0\r\nPython: 3.12.10\r\nwxPython: 4.3.1 msw (phoenix) wxWidgets 3.3.3\r\nClaude Code: 2.1.286 (Claude Code)\r\nAnnouncements: full, speech engine auto\r\nSession list: showing all, sorted status\r\nReading: formatted full messages\r\nSessions listed: 3 desktop app, 1 Chat Place, 0 terminal",
+   "label": "The Chat Place: 0.2.0 (run from source)\r\nWindows: Windows-11-10.0.26300-SP0\r\nPython: 3.12.10\r\nwxPython: 4.3.2 msw (phoenix) wxWidgets 3.3.4\r\nClaude Code: 2.1.286 (Claude Code)\r\nAnnouncements: full, speech engine auto\r\nSession list: showing all, sorted status\r\nReading: formatted full messages\r\nSessions listed: 3 desktop app, 1 Chat Place, 0 terminal",
    "rect": [
     10,
     648,
@@ -208,7 +208,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "The Chat Place: 0.1.6 (run from source)\nWindows: Windows-11-10.0.26300-SP0\nPython: 3.12.10\nwxPython: 4.3.1 msw (phoenix) wxWidgets 3.3.3\nClaude Code: 2.1.286 (Claude Code)\nAnnouncements: full, speech engine auto\nSession list: showing all, sorted status\nReading: formatted full messages\nSessions listed: 3 desktop app, 1 Chat Place, 0 terminal"
+   "value": "The Chat Place: 0.2.0 (run from source)\nWindows: Windows-11-10.0.26300-SP0\nPython: 3.12.10\nwxPython: 4.3.2 msw (phoenix) wxWidgets 3.3.4\nClaude Code: 2.1.286 (Claude Code)\nAnnouncements: full, speech engine auto\nSession list: showing all, sorted status\nReading: formatted full messages\nSessions listed: 3 desktop app, 1 Chat Place, 0 terminal"
   },
   {
    "class": "StaticText",

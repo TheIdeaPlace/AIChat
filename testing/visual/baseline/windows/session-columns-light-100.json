@@ -116,7 +116,7 @@
    "problems": [],
    "items": [
     "Title",
-    "Provider (Claude or Codex)",
+    "Provider (Claude, Codex or Copilot)",
     "Folder",
     "Status (needs you, working or idle)",
     "New reply",

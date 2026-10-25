@@ -151,6 +151,9 @@ def test_rule_disclosure_has_count_and_plain_warning():
     assert '2' in text and "without asking and outside this folder's limits, including the network" in text
     assert 'not been checked' in codex_saved_rules_text(None)
     assert '0' in codex_saved_rules_text(0)
+    # No trailing space with none: the next sentence would follow two (#368).
+    assert codex_saved_rules_text(0) == 'Saved user/system rule files in effect: 0.'
+    assert '  ' not in codex_saved_rules_text(2)
 
 
 def test_properties_show_only_rule_count():

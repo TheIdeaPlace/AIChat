@@ -1,0 +1,218 @@
+{
+ "title": "Chat Permissions: Visual probe",
+ "class": "ChatPermissionsDialog",
+ "size": [
+  1020,
+  780
+ ],
+ "client": [
+  998,
+  724
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission &mode:",
+   "rect": [
+    8,
+    13,
+    143,
+    26
+   ],
+   "best": [
+    143,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Permission mode",
+   "label": "",
+   "rect": [
+    159,
+    11,
+    713,
+    33
+   ],
+   "best": [
+    165,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Auto: Claude decides what is safe to run without asking"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&hange...",
+   "rect": [
+    876,
+    8,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Allowed for this chat:",
+   "rect": [
+    8,
+    52,
+    168,
+    26
+   ],
+   "best": [
+    168,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Allowed for this chat, 3",
+   "label": "",
+   "rect": [
+    10,
+    80,
+    982,
+    284
+   ],
+   "best": [
+    1167,
+    225
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Run git push (any arguments). Bash(git push:*). Allowed: time not recorded.",
+    "Fetch pages from docs.python.org. WebFetch(domain:docs.python.org). Allowed 19 October 2026 at 03:53.",
+    "Work in the folder C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\chat-permissions\\Projects\\Scratch. Allowed 19 October 2026 at 03:53."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Remove...",
+   "rect": [
+    8,
+    370,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Remove A&ll...",
+   "rect": [
+    128,
+    370,
+    135,
+    36
+   ],
+   "best": [
+    135,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Close",
+   "rect": [
+    876,
+    370,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Abou&t these permissions:",
+   "rect": [
+    8,
+    414,
+    202,
+    26
+   ],
+   "best": [
+    202,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About these permissions",
+   "label": "",
+   "rect": [
+    10,
+    450,
+    982,
+    268
+   ],
+   "best": [
+    191,
+    208
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Removing a rule applies from this chat's next turn.\n\nFrom Claude Code's own settings. These apply to every Claude session working in this folder, here, in the desktop app or a terminal. The Chat Place only reads them; change them in Claude Code, for example with /permissions.\nClaude Code's own settings allow nothing extra for this folder."
+  }
+ ],
+ "capture": "PrintWindow"
+}

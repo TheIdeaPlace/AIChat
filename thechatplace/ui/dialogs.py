@@ -295,7 +295,35 @@ class NewSessionDialog(wx.Dialog):
         lines = sum(len(wordwrap(paragraph, width, dc).rstrip("\n").split("\n"))
                     for paragraph in self.note.GetValue().split("\n"))
         # Plus the box's own padding, which grows with the scaling (#185).
-        self.note.SetMinSize((-1, self.note.GetCharHeight() * lines + dip_width(self, 12)))
+        padding = dip_width(self, 12)
+        char = self.note.GetCharHeight()
+        whole = char * lines + padding
+        self.note.SetMinSize((-1, whole))
+        # First message keeps four lines: the whole note had left it one at
+        # 175% (Codex's note, #368). When everything is then taller than the
+        # dialog, the dialog grows into the screen's spare height before it's
+        # shown (centred again, so its foot stays on screen), and past that
+        # the note gives up whole lines, keeping three and scrolling. Only
+        # then does First message give way, down to one line, rather than
+        # Start and Cancel being pushed out of the window.
+        line = self.message.GetCharHeight()
+        self.message.SetMinSize((-1, line * 4 + padding))
+        self.Layout()
+        over = self.GetSizer().GetMinSize().height - self.GetClientSize().height
+        if over > 0 and not self.IsShown():
+            room = screen_area(self).height - SCREEN_MARGIN - self.GetSize().height
+            grow = min(over, max(room, 0))
+            if grow:
+                self.SetSize(self.GetSize().width, self.GetSize().height + grow)
+                self.CentreOnParent(wx.VERTICAL)
+                over -= grow
+        if over > 0:
+            fit = max(3, (whole - over - padding) // char)
+            self.note.SetMinSize((-1, char * fit + padding))
+            self.Layout()
+            over = self.GetSizer().GetMinSize().height - self.GetClientSize().height
+            if over > 0:
+                self.message.SetMinSize((-1, max(line + padding, line * 4 + padding - over)))
         self.Layout()
 
     def _on_char_hook(self, event):

@@ -1,0 +1,536 @@
+{
+ "title": "Settings",
+ "class": "SettingsDialog",
+ "size": [
+  1020,
+  901
+ ],
+ "client": [
+  998,
+  845
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "ScrolledWindow",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    0,
+    998,
+    793
+   ],
+   "best": [
+    987,
+    25
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioBox",
+   "name": "radioBox",
+   "label": "Announcements",
+   "rect": [
+    10,
+    10,
+    978,
+    150
+   ],
+   "best": [
+    532,
+    150
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Full: read the whole reply",
+   "rect": [
+    26,
+    45,
+    233,
+    25
+   ],
+   "best": [
+    233,
+    25
+   ],
+   "depth": 2,
+   "parent": 1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Summary: the session's name and the reply's first sentence",
+   "rect": [
+    26,
+    82,
+    500,
+    25
+   ],
+   "best": [
+    500,
+    25
+   ],
+   "depth": 2,
+   "parent": 1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Silent: status bar only",
+   "rect": [
+    26,
+    119,
+    205,
+    25
+   ],
+   "best": [
+    205,
+    25
+   ],
+   "depth": 2,
+   "parent": 1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Announce when &any listed session finishes a turn, not just the open one",
+   "rect": [
+    10,
+    170,
+    601,
+    25
+   ],
+   "best": [
+    601,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Read your own &messages back when they're sent",
+   "rect": [
+    10,
+    205,
+    424,
+    25
+   ],
+   "best": [
+    424,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "Reading messages",
+   "rect": [
+    10,
+    240,
+    978,
+    103
+   ],
+   "best": [
+    178,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Open full messages as a formatted &page (headings, lists and tables), not plain text",
+   "rect": [
+    24,
+    273,
+    684,
+    25
+   ],
+   "best": [
+    684,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Read the &whole message on each item in the messages list (otherwise just its first line)",
+   "rect": [
+    24,
+    304,
+    713,
+    25
+   ],
+   "best": [
+    713,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Speech &engine:",
+   "rect": [
+    10,
+    366,
+    120,
+    26
+   ],
+   "best": [
+    120,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Speech engine",
+   "label": "",
+   "rect": [
+    138,
+    363,
+    850,
+    33
+   ],
+   "best": [
+    602,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Automatic (your screen reader, or a system voice when none is running)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Speaking &rate:",
+   "rect": [
+    10,
+    407,
+    113,
+    26
+   ],
+   "best": [
+    113,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Speaking rate",
+   "label": "",
+   "rect": [
+    138,
+    404,
+    96,
+    33
+   ],
+   "best": [
+    96,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": false,
+   "problems": [],
+   "value": "Default"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Voice and rate follow your screen reader's own settings.",
+   "rect": [
+    10,
+    447,
+    441,
+    26
+   ],
+   "best": [
+    441,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Windows &notifications:",
+   "rect": [
+    10,
+    486,
+    181,
+    26
+   ],
+   "best": [
+    181,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Windows notifications, while The Chat Place isn't the active window",
+   "label": "",
+   "rect": [
+    199,
+    483,
+    502,
+    33
+   ],
+   "best": [
+    502,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "When your sessions finish a turn, or any session needs you"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Recent &folders New Session offers:",
+   "rect": [
+    10,
+    531,
+    274,
+    26
+   ],
+   "best": [
+    274,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "SpinCtrl",
+   "name": "Recent folders New Session offers",
+   "label": "",
+   "rect": [
+    292,
+    526,
+    74,
+    33
+   ],
+   "best": [
+    74,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lear Recent Folders",
+   "rect": [
+    374,
+    526,
+    193,
+    36
+   ],
+   "best": [
+    193,
+    36
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Turn on Remote &Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)",
+   "rect": [
+    10,
+    572,
+    937,
+    50
+   ],
+   "best": [
+    937,
+    50
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so View, Tasks shows how far\nalong it is (from the next message)",
+   "rect": [
+    10,
+    632,
+    967,
+    50
+   ],
+   "best": [
+    967,
+    50
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Include Code&x chats (restart required)",
+   "rect": [
+    10,
+    692,
+    330,
+    25
+   ],
+   "best": [
+    330,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Let a&gent conversations hand replies across automatically",
+   "rect": [
+    10,
+    727,
+    489,
+    25
+   ],
+   "best": [
+    489,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "&Tell me when an update has been installed, with a link to what's new",
+   "rect": [
+    10,
+    758,
+    572,
+    25
+   ],
+   "best": [
+    572,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    747,
+    801,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    871,
+    801,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
