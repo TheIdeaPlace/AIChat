@@ -580,6 +580,48 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "An agent conversation's hand-off (Ctrl+Shift+E): a reply going to the other agent"
+  },
+  "settings-copilot": {
+   "kind": "dialog",
+   "png": "settings-copilot-dark-100.png",
+   "json": "settings-copilot-dark-100.json",
+   "title": "Settings",
+   "class": "SettingsDialog",
+   "size": [
+    680,
+    676
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Settings once Copilot CLI has a session: its check box shows"
+  },
+  "main-copilot": {
+   "kind": "window",
+   "png": "main-copilot-dark-100.png",
+   "json": "main-copilot-dark-100.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Copilot CLI history in the shared window: read-only controls"
+  },
+  "main-copilot-filter": {
+   "kind": "window",
+   "png": "main-copilot-filter-dark-100.png",
+   "json": "main-copilot-filter-dark-100.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Copilot-only list with explicit Provider column"
   }
  },
  "seconds": 91.3
