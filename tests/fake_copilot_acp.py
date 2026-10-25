@@ -25,6 +25,20 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
   deaf        each prompt streams one chunk and ignores session/cancel
   garbage     writes bad JSON lines before every message
   mute        never answers session/new
+  flipback    mid-turn, reports allow_all on, waits for session/cancel,
+              reports allow_all off, waits two seconds, then ends the turn
+              normally anyway (end_turn), as Copilot may despite a cancel
+  byokhang    the first prompt waits for session/cancel; later prompts are
+              billed to another provider
+  hookran     each prompt's log shows a preToolUse hook running
+  twousers    each prompt's log shows a second user.message, as another
+              Copilot sending to the same chat at the same time leaves
+  inuse       session/load logs a session.resume saying the chat is already
+              in use elsewhere, at once
+  inuselater  the same, logged when the first prompt after session/load
+              arrives (as 1.0.103 logs every session.resume)
+
+Every prompt logs a user.message first, as Copilot does.
 
 FAKE_COPILOT_SESSIONS names the folder session logs are written under, as
 Copilot writes ~/.copilot/session-state/<id>/events.jsonl.
@@ -34,6 +48,7 @@ import json
 import os
 import sys
 import threading
+import time
 import uuid
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "answer"
@@ -43,6 +58,12 @@ AGENT = "https://agentclientprotocol.com/protocol/session-modes#agent"
 AUTOPILOT = "https://agentclientprotocol.com/protocol/session-modes#autopilot"
 write_lock = threading.Lock()
 answers = {}
+#: Sessions open in this process: like Copilot 1.0.103, it won't load one
+#: that's already open until it's closed (session/close).
+open_sessions = set()
+#: Reopened sessions whose session.resume is still to be logged: Copilot
+#: writes it when the first prompt after session/load arrives.
+resume_pending = {}
 turns = [0]
 client = ["github/acp"]  # what Copilot records unless clientInfo names one
 cancelled = threading.Event()
@@ -69,12 +90,22 @@ def options():
             {"type": "select", "id": "allow_all", "currentValue": allow}]
 
 
+def log_event(session, kind, data):
+    if not SESSIONS:
+        return
+    folder = os.path.join(SESSIONS, session)
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, "events.jsonl"), "a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"type": kind, "data": data}) + "\n")
+
+
 def log_usage(session):
     if not SESSIONS or MODE == "nolog":
         return
     folder = os.path.join(SESSIONS, session)
     os.makedirs(folder, exist_ok=True)
-    kind = "openai" if MODE == "byok" or (MODE == "byok2" and turns[0] > 1) else "copilot"
+    later = MODE in ("byok2", "byokhang") and turns[0] > 1
+    kind = "openai" if MODE == "byok" or later else "copilot"
     with open(os.path.join(folder, "events.jsonl"), "a", encoding="utf-8") as handle:
         handle.write(json.dumps({"type": "session.usage_record", "data": {"usage": {
             "model": "synthetic", "provider": {"id": kind, "kind": kind}}}}) + "\n")
@@ -96,6 +127,13 @@ def ask(session, tool_call):
 
 def prompt(message_id, session):
     turns[0] += 1
+    if session in resume_pending:
+        log_event(session, "session.resume", {"alreadyInUse": resume_pending.pop(session)})
+    log_event(session, "user.message", {"content": "synthetic"})
+    if MODE == "twousers":
+        log_event(session, "user.message", {"content": "from elsewhere"})
+    if MODE == "hookran":
+        log_event(session, "hook.start", {"hookType": "preToolUse", "input": {}})
     if MODE in ("edit", "editcontent"):
         call = {"toolCallId": "call-e", "title": "Create file", "kind": "edit",
                 "locations": [{"path": "C:/synthetic/a.txt"}]}
@@ -134,7 +172,17 @@ def prompt(message_id, session):
             {"type": "select", "id": "allow_all", "currentValue": "off"}]})
     if MODE == "curmode":
         update(session, {"sessionUpdate": "current_mode_update", "currentModeId": AUTOPILOT})
-    if MODE == "hang":
+    if MODE == "flipback":
+        time.sleep(0.3)  # long enough for a second message to be queued
+        update(session, {"sessionUpdate": "config_option_update", "configOptions": [
+            {"type": "select", "id": "mode", "currentValue": AGENT},
+            {"type": "select", "id": "allow_all", "currentValue": "on"}]})
+        cancelled.wait(10)
+        update(session, {"sessionUpdate": "config_option_update", "configOptions": [
+            {"type": "select", "id": "mode", "currentValue": AGENT},
+            {"type": "select", "id": "allow_all", "currentValue": "off"}]})
+        time.sleep(2.0)  # long enough for a third message to be queued
+    if MODE == "hang" or (MODE == "byokhang" and turns[0] == 1):
         update(session, {"sessionUpdate": "agent_message_chunk",
                          "content": {"type": "text", "text": "Working"}})
         cancelled.wait(30)
@@ -149,7 +197,10 @@ def prompt(message_id, session):
         send({"jsonrpc": "2.0", "id": ask_id, "method": "session/request_permission", "params": {
             "sessionId": session,
             "toolCall": {"toolCallId": "call-1", "title": "Run a synthetic command",
-                         "kind": "execute", "rawInput": {"command": "echo synthetic"}},
+                         "kind": "execute", "rawInput": {
+                             "command": "echo synthetic",
+                             # As Copilot 1.0.103 lists the commands it found.
+                             "commands": [{"identifier": "echo synthetic", "readOnly": False}]}},
             "options": [{"optionId": "allow_once", "name": "Allow once", "kind": "allow_once"},
                         {"optionId": "allow_always", "name": "Always", "kind": "allow_always"},
                         {"optionId": "reject_once", "name": "Reject", "kind": "reject_once"}]}})
@@ -199,10 +250,20 @@ def main():
                 with open(os.path.join(SESSIONS, session, "workspace.yaml"), "w",
                           encoding="utf-8") as handle:
                     handle.write(f"id: {session}\nclient_name: {client[0]}\n")
+            open_sessions.add(session)
             send({"jsonrpc": "2.0", "id": message_id,
                   "result": {"sessionId": session, "configOptions": options()}})
         elif method == "session/load":
             session = params.get("sessionId")
+            if session in open_sessions:
+                send({"jsonrpc": "2.0", "id": message_id,
+                      "error": {"code": -32603, "message": "already loaded"}})
+                continue
+            open_sessions.add(session)
+            if MODE == "inuse":  # logged at once, which 1.0.103 doesn't, but might
+                log_event(session, "session.resume", {"alreadyInUse": True})
+            else:
+                resume_pending[session] = MODE == "inuselater"
             update(session, {"sessionUpdate": "user_message_chunk",
                              "content": {"type": "text", "text": "Replayed history"}})
             update(session, {"sessionUpdate": "agent_message_chunk",
@@ -211,6 +272,9 @@ def main():
         elif method == "session/prompt":
             threading.Thread(target=prompt, args=(message_id, params.get("sessionId")),
                              daemon=True).start()
+        elif method == "session/close":
+            open_sessions.discard(params.get("sessionId"))
+            send({"jsonrpc": "2.0", "id": message_id, "result": {}})
         elif method == "session/cancel":
             if MODE != "deaf":
                 cancelled.set()

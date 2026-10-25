@@ -107,6 +107,57 @@ def copilot_home() -> Path:
     return Path.home() / ".copilot"
 
 
+def copilot_policy_texts() -> list:
+    """(where, text or None) for each of Copilot CLI's managed policy files and, on
+    Windows, its policy registry values: an organisation's hooks live there,
+    and Copilot loads them whatever its own settings say (#352)."""
+    texts = []
+    if sys.platform == "win32":
+        root = Path(os.environ.get("ProgramData") or r"C:\ProgramData")
+        folder = root / "GitHub" / "Copilot" / "policy.d"
+    else:
+        folder = Path("/etc/github-copilot/policy.d")
+    try:
+        files = sorted(folder.glob("*.json"))
+    except OSError:
+        files = []
+    for path in files:
+        # A policy that can't be read in full is given as None: it can't be
+        # ruled out.
+        try:
+            data = path.read_bytes()
+        except OSError:
+            data = None
+        texts.append((str(path), None if data is None or len(data) > COPILOT_SETTINGS_BYTES
+                      else data.decode("utf-8-sig", "replace")))
+    if sys.platform == "win32":
+        import winreg
+        try:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"Software\Policies\GitHub\Copilot")
+        except OSError:
+            return texts
+        with key:
+            index = 0
+            while True:
+                try:
+                    name = winreg.EnumKey(key, index)
+                except OSError:
+                    break
+                index += 1
+                try:
+                    with winreg.OpenKey(key, name) as sub:
+                        value, _kind = winreg.QueryValueEx(sub, "Policy")
+                except OSError:
+                    continue
+                texts.append((rf"HKLM\Software\Policies\GitHub\Copilot\{name}",
+                              value if isinstance(value, str) else None))
+    return texts
+
+
+#: The most read of any one Copilot settings or hook file.
+COPILOT_SETTINGS_BYTES = 2 * 1024 * 1024
+
+
 def copilot_sessions_dir() -> Path:
     """One folder per Copilot CLI session, each named for its id."""
     return copilot_home() / "session-state"
@@ -1670,6 +1721,11 @@ def copilot_child_environment(environ=None) -> dict:
             and not key.upper().startswith(COPILOT_OVERRIDE_PREFIXES)}
 
 
+#: What start_copilot_acp says when there's no Copilot CLI to start: safe
+#: to show, unlike the system's own reasons.
+COPILOT_MISSING = "Install GitHub Copilot CLI, then restart."
+
+
 def start_copilot_acp(executable: Optional[str] = None,
                       cwd: Optional[str] = None) -> CodexServerProcess:
     """``copilot --acp`` on stdio, without a shell, in a kill-on-close tree
@@ -1678,7 +1734,7 @@ def start_copilot_acp(executable: Optional[str] = None,
 
     executable = executable or find_copilot()
     if not executable or not _native_codex(executable):
-        raise OSError("Install GitHub Copilot CLI, then restart.")
+        raise OSError(COPILOT_MISSING)
     tree = ProcessTree()
     process = subprocess.Popen([executable, "--acp", "--disable-client-telemetry"],
                                env=copilot_child_environment(), cwd=cwd or None,

@@ -5,7 +5,10 @@ Plain text in and out, so it reads well with a screen reader in a terminal.
 Each message you type is sent through copilot_runtime with all its safety
 rules; when Copilot asks permission, you're asked "allow once or deny".
 
-    python tools/probe_copilot.py [--folder PATH] [--resume CHAT_ID]
+    python tools/probe_copilot.py --folder PATH [--resume CHAT_ID]
+
+PATH is the folder Copilot works in, and may change. Give it a scratch
+folder, never this repository.
 
 An empty line or "quit" ends. Ctrl+C while Copilot is answering stops that
 turn. Every message uses a premium request from your Copilot plan.
@@ -29,8 +32,8 @@ DONE = ("completed", "interrupted", "failed")
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--folder", default=str(Path.cwd()),
-                        help="the folder Copilot works in (default: this one)")
+    parser.add_argument("--folder", required=True,
+                        help="the folder Copilot works in: a scratch folder, since it may change")
     parser.add_argument("--resume", help="reopen a chat this tool or The Chat Place started")
     args = parser.parse_args(argv)
     states: "queue.Queue" = queue.Queue()

@@ -72,6 +72,14 @@ It says "Safe to send (agent mode, allow-all off): yes", then asks "You (empty l
 7. **Chats started elsewhere stay read-only.** Run the tool with `--resume` and the id of a chat
    started in a terminal (its folder name under `~/.copilot/session-state`): "This Copilot chat
    was started outside The Chat Place, so it can only be read here."
+8. **Hooks.** In the scratch folder, make `.github\hooks\allow.json` holding
+   `{"version": 1, "hooks": {"preToolUse": [{"bash": "echo"}]}}`, and start the tool there:
+   "Couldn't use Copilot: Copilot is set up with a hook that could approve its actions without
+   asking you (…allow.json) …". Copilot isn't started. Delete the file afterwards.
+9. **Used in a terminal meanwhile.** Start a chat with the tool and send one message. In another
+   terminal, in the same folder, run `copilot --resume <its id> -p "Say hi"`. Back in the tool,
+   send another message: "Not sent: This Copilot chat was used outside The Chat Place since it
+   was opened here. Open it again to carry on."
 
 ## What to report in the PR
 

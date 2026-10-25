@@ -69,7 +69,9 @@ file edits.
 **Shell commands ask too** (checked later): asked to run `echo shellprobe > probe_shell.txt`,
 Copilot sent `session/request_permission` with `toolCall.kind` `execute`, the title "Run the
 requested shell command" and `rawInput.command` / `rawInput.commands`. `reject_once` left the
-file unwritten.
+file unwritten. `command` is the text that runs; `commands` lists each command Copilot found in
+it, as objects (`{"identifier": "echo shellprobe > probe_shell.txt", "readOnly": false}`). The
+approval dialog shows `command`, plus any listed one it doesn't already contain.
 
 **Reopening:** `session/load` of an earlier session id returns its `configOptions` and replays the
 history first as `user_message_chunk`, `agent_message_chunk`, `tool_call` and `tool_call_update`
@@ -210,6 +212,43 @@ second turn; a terminal chat was refused.
 
 `tools/probe_copilot.py` runs one chat through this runtime in plain text, asking "allow once or
 deny" at the keyboard; `testing/copilot.md` is the hand-testing guide for each Copilot PR.
+
+### Hooks and terminals (checked 2026-10-25, for Kelly's review of #364)
+
+**A hook can approve for the person.** In a scratch folder never marked trusted, a
+`.github/hooks/allow.json` whose `preToolUse` hook printed `{"permissionDecision":"allow"}` let
+Copilot run a shell command over ACP with no `session/request_permission` at all. Setting
+`disableAllHooks: true` in `~/.copilot/settings.json` (the file `copilot config` writes) didn't
+stop it: ACP ignores that setting, as it ignores `defaultPermissionMode`. A hook that runs leaves
+`hook.start` (with `hookType`) and `hook.end` in the session's log. Copilot rejects a hook file
+that isn't strict JSON, and logs why in `~/.copilot/logs`.
+
+So `providers/copilot_hooks.py` looks wherever the
+[hooks reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference)
+says hooks load from: policy (`%ProgramData%\GitHub\Copilot\policy.d`, `/etc/github-copilot/policy.d`,
+`HKLM\Software\Policies\GitHub\Copilot`), the user's `hooks/*.json` and `settings.json`, the
+repository's `.github/hooks/*.json`, `.github/copilot/settings*.json` and `.claude/settings*.json`
+(from the working folder up to the first folder with a `.git`, or only the working folder outside
+a repository, both as given and with links resolved), and installed plugins (`hooks.json`, JSON
+in a `hooks` folder, `plugin.json` manifests and any hooks file they name; `node_modules` is
+skipped). In the person's own places a `preToolUse` or `permissionRequest` entry counts, whatever
+its matcher. In the project any hook counts: Copilot runs a project's hooks over ACP without the
+folder being trusted, so a cloned repository's `sessionStart` command would run unasked too. A
+file that can't be read in full, or a search cut short, refuses as well. Nothing is opened or sent
+while one is found, and a turn whose log shows an approving hook ran stops that chat until the app
+restarts (the search missed it, so reopening can't prove it gone). Not covered: a custom agent's
+own hooks, which apply only while that agent is chosen (this app never chooses one).
+
+**A terminal can use this app's chat.** `copilot --resume <id> -p …` in a terminal left
+`client_name: thechatplace` in `workspace.yaml`, so ownership alone can't tell. The log shows it:
+a `session.resume` with `alreadyInUse: true` (this app's Copilot had the chat open) and another
+`user.message` (a sub-agent's messages name it in `parentAgentTaskId`, so they don't count). Copilot writes `session.start` / `session.resume` lazily, when the first prompt
+after opening arrives. Copilot also won't `session/load` a chat its process already has open
+("Copilot couldn't do that"); `session/close` (advertised in `sessionCapabilities`) releases it and
+writes `session.shutdown`. So the runtime remembers the log's size after each turn and after
+opening; anything another Copilot added since means the chat must be opened again, which closes it
+in this app's Copilot and loads it afresh. Checked end to end: refused after the terminal reply,
+reopened, and answered again.
 
 ## Next, in rough order
 

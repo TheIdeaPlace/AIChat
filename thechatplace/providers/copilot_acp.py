@@ -44,6 +44,10 @@ class AcpError(Exception):
     never Copilot's own error text, which may hold paths or account names."""
 
 
+class AcpNotSent(AcpError):
+    """The message never left The Chat Place: Copilot can't have seen it."""
+
+
 class AcpConnection:
     """One running ``copilot --acp``. Notifications and permission requests
     arrive on the reader thread, through the callbacks.
@@ -83,15 +87,20 @@ class AcpConnection:
         """Queue one message for the writer thread; never waits on the pipe."""
         data = (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
         if len(data) > MAX_MESSAGE_BYTES:
-            raise AcpError("That message is too long to send to Copilot.")
+            raise AcpNotSent("That message is too long to send to Copilot.")
         if self._closed:
-            raise AcpError("Copilot isn't running.")
+            raise AcpNotSent("Copilot isn't running.")
         try:
             self._outgoing.put_nowait(data)
         except queue.Full:
             # Copilot has stopped reading: nothing more can reach it safely.
-            self.close()
-            raise AcpError("Copilot stopped responding.") from None
+            # Marked closed at once, so nothing else is queued or offered as
+            # ready; the process is closed on a thread of its own, since that
+            # waits for it to end and the caller may be the window.
+            if self._fail_all():
+                threading.Thread(target=self._finish_close, daemon=True,
+                                 name="copilot-acp-close").start()
+            raise AcpNotSent("Copilot stopped responding.") from None
 
     def _write_loop(self) -> None:
         while True:
@@ -111,9 +120,9 @@ class AcpConnection:
         done = threading.Event()
         with self._lock:
             if self._closed:
-                raise AcpError("Copilot isn't running.")
+                raise AcpNotSent("Copilot isn't running.")
             if len(self._pending) >= MAX_PENDING:
-                raise AcpError("Copilot is busy; try again in a moment.")
+                raise AcpNotSent("Copilot is busy; try again in a moment.")
             self._next_id += 1
             request_id = self._next_id
             slot = {"done": done, "message": None}
@@ -213,7 +222,11 @@ class AcpConnection:
         return first
 
     def close(self) -> None:
-        first = self._fail_all()
+        self._finish_close(self._fail_all())
+
+    def _finish_close(self, first: bool = True) -> None:
+        """Close the process (once _fail_all has marked this closed) and,
+        the first time, say so."""
         try:
             self._outgoing.put_nowait(None)  # let the writer thread end
         except queue.Full:
