@@ -224,7 +224,7 @@ jobs:
           if ($bad) { throw "$bad program(s) aren't validly signed." }
 
       - name: Keep the build
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: thechatplace-windows-${{ env.VERSION }}-${{ env.SIGN == 'true' && 'signed' || 'unsigned' }}
           path: |
@@ -363,7 +363,7 @@ jobs:
           hdiutil detach "$MNT"
 
       - name: Keep the build
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: thechatplace-macos-${{ env.VERSION }}-${{ env.SIGN == 'true' && 'signed' || 'unsigned' }}
           # The .pkg and portable zip vpk also makes aren't published: the .pkg would need a
