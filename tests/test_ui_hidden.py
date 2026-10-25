@@ -5366,8 +5366,12 @@ def test_about_you_says_so_when_reading_fails(frame, env, monkeypatch):
     def broken(cwds):
         raise RuntimeError("bad disk")
     monkeypatch.setattr(main_frame.about_you, "collect", broken)
+    opened = []
+    monkeypatch.setattr(main_frame.MainFrame, "_modal", lambda self, dialog: opened.append(dialog))
     frame.on_about_you()
     assert pump(lambda: "bad disk" in env["feedback"][-1])
+    assert env["feedback"][-1] == "Couldn't read Claude customization files: bad disk"
+    assert not opened
 
 
 def test_about_you_provider_switch_discards_stale_results_and_recovers(frame, env):
@@ -5411,7 +5415,8 @@ def test_about_you_lists_say_when_reading_or_unreadable(frame, env):
                             lambda provider, done: pending.append(done))
     try:
         # Alt+V, since Copy Path has Alt+P.
-        assert dialog.FindWindowByLabel("Pro&vider:") is not None
+        assert wx.Window.FindWindowByLabel("Pro&vider:", dialog) is not None
+        assert wx.Window.FindWindowByLabel("&Provider:", dialog) is None
         dialog.provider.SetSelection(1)
         dialog._change_provider(None)
         # Empty while reading mustn't sound like nothing was found.
@@ -5421,6 +5426,7 @@ def test_about_you_lists_say_when_reading_or_unreadable(frame, env):
         assert dialog.kinds.GetStrings() == ["Couldn't read these files."]
         assert dialog.selected_item() is None and not dialog.edit_btn.IsEnabled()
         dialog.reload()
+        assert dialog.kinds.GetStrings() == ["Reading…"]
         pending[-1](kinds)
         assert dialog.kinds.GetString(0).startswith("Instructions, 1 item")
         dialog.kinds.SetSelection(1)
@@ -5432,6 +5438,7 @@ def test_about_you_lists_say_when_reading_or_unreadable(frame, env):
 
 def _codex_window_session(frame):
     import dataclasses
+    frame._list_timer.Stop()  # a refresh would replace the snapshot and drop this session
     first = frame._snapshot.sessions[0]
     codex = dataclasses.replace(first, key="codex-1", provider="codex", cwd="C:\\G\\CodexWork")
     frame._snapshot.sessions.append(codex)
@@ -5488,7 +5495,8 @@ def test_about_you_codex_failure_is_said_unless_the_dialog_moved_on(frame, env, 
         assert pump(lambda: "bad disk" in env["feedback"][-1])
         assert dialog.reload_btn.IsEnabled()
         assert dialog.kinds.GetStrings() == ["Couldn't read these files."]
-        # Switched back to Claude before Codex's failure came in: not said.
+        # Switched back to Claude before Codex's failure came in: the dialog
+        # turns it down (and the window then keeps quiet, checked below).
         env["feedback"].clear()
         loads = []
         monkeypatch.setattr(main_frame.MainFrame, "_read_about_you",

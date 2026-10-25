@@ -2497,6 +2497,9 @@ class AboutYouDialog(wx.Dialog):
         """Read everything again (in the background), keeping your place
         where it still exists."""
         self.reload_btn.Disable()
+        if not self._kinds:  # after a failed read, don't still say it failed
+            self._placeholder = "Reading…"
+            self._fill_kinds()
         self._request += 1
         request = self._request
         def done(kinds):
