@@ -2465,9 +2465,9 @@ class AboutYouDialog(wx.Dialog):
         sizer.Add(wx.StaticText(self, label="&Items:"), 0, wx.LEFT | wx.TOP, 8)
         self.items = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.items, "Items")
-        # 100, not 140: the list scrolls, and the Provider row (#305) had
-        # left Contents two lines tall at 175% (#368).
-        self.items.SetMinSize(dip(self, -1, 100))
+        # 80, not 140: the list scrolls and still shows five rows, and the
+        # Provider row (#305) had left Contents two lines tall at 175% (#368).
+        self.items.SetMinSize(dip(self, -1, 80))
         sizer.Add(self.items, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         row.Add(wx.StaticText(self, label="Locatio&n:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)

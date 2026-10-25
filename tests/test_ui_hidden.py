@@ -5422,12 +5422,14 @@ def test_about_you_provider_switch_discards_stale_results_and_recovers(frame, en
 
 
 def test_about_you_contents_keeps_room_on_a_short_screen(frame, env):
-    """At 175% the dialog is 546 high; Contents was left two lines tall (#368)."""
+    """At 175% the dialog's inside is 510 high (892 pixels at 168 dpi), and
+    Contents was left two lines tall there (#368)."""
     dialog = _dialog(frame, env, _about_you_home(env))
     try:
-        dialog.SetSize(860, 546)
+        dialog.SetClientSize(dialog.GetClientSize().width, 510)
         dialog.Layout()
-        assert dialog.text.GetSize().height >= 4 * dialog.text.GetCharHeight()
+        # Four lines, plus the box's own border.
+        assert dialog.text.GetSize().height >= 4 * dialog.text.GetCharHeight() + 4
     finally:
         dialog.Destroy()
 
