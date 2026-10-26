@@ -12380,7 +12380,8 @@ def test_copilot_chats_arent_offered_as_reply_targets_yet(frame, monkeypatch):
     monkeypatch.setattr(relay, "message_text", lambda message, title: "text")
     monkeypatch.setattr(relay, "describe", lambda target: target.title)
     frame.on_send_reply_to()
-    assert offered == ["Claude target"]
+    # New chats of other providers may follow (#378); the Copilot chat isn't offered.
+    assert "Claude target" in offered and "Copilot target" not in offered
 
 
 def test_the_messages_list_keeps_its_name_while_you_are_in_it(frame, monkeypatch):
@@ -12465,6 +12466,7 @@ def test_both_replies_are_announced_when_a_message_waited(frame, env, monkeypatc
         pump(lambda: False, timeout=0.5)
         replies = [text for text in said if "Hello there" in text]
         assert len(replies) == 2, said
+        assert "First" in replies[0] and "Second" in replies[1]  # each once, in order
         assert _received_prompts(env) == ["First", "Second"]
     finally:
         runtime.close()
@@ -12503,4 +12505,31 @@ def test_stop_says_when_copilot_has_already_answered(frame, env, monkeypatch):
     frame._codex_states[info.key] = CopilotChatState("cp-chk", "working", "1", "inProgress", checking=True)
     frame._stop_codex_owned(info)
     assert calls == [] and "already answered" in env["feedback"][-1]
+    frame._codex_states.clear()
+
+
+
+def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatch):
+    """Kelly's review of #372: "nothing to stop" only when nothing waits;
+    otherwise Stop goes to the runtime, which gives the message back."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-q", "Queued Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-q", "Queued Copilot", "C:/w", "cp-q", provider="copilot")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    frame._codex_states[info.key] = CopilotChatState("cp-q", "working", "1", "inProgress",
+                                                     checking=True, queued=("Two",))
+    calls = []
+
+    def owned_action(action, record, *args):
+        calls.append(action)
+        return ("Two",) if action == "stop" else None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    frame.reply_text.SetValue("")
+    frame._stop_codex_owned(info)
+    assert pump(lambda: calls == ["stop"] and frame.reply_text.GetValue() == "Two")
+    assert pump(lambda: any("already answered" in t and "back in the message box" in t
+                            for t in env["feedback"]))
     frame._codex_states.clear()

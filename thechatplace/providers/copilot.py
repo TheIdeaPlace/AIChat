@@ -443,6 +443,9 @@ class CopilotProvider:
         #: is on; without it, Copilot chats are read only. Built lazily: it
         #: starts no process until a chat is created or opened.
         self.runtime = runtime
+        #: Chats once listed from their own log: if that goes, they aren't
+        #: listed again from the runtime alone.
+        self._listed_before: set = set()
         if execution and runtime is None:
             from .copilot_runtime import CopilotChatRuntime
             self.runtime = CopilotChatRuntime(on_update, sessions_dir=sessions_dir)
@@ -503,11 +506,14 @@ class CopilotProvider:
         state, and a new chat with no log yet (listed from the runtime, and
         made the app's own by the window's record)."""
         listed = {info.cli_session_id: info for info in snapshot.sessions}
+        self._listed_before |= listed.keys()
         for native_id, cwd in self.runtime.known():
             state = self.runtime.snapshot(native_id)
             if state is None:
                 continue
             info = listed.get(native_id)
+            if info is None and native_id in self._listed_before:
+                continue  # listed from its log before, and its folder was removed (Kelly, #372)
             if info is None:
                 # Titled from the window's record when there is one; a chat
                 # whose record couldn't be saved stays read-only, named.

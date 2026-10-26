@@ -1425,7 +1425,7 @@ def test_a_turn_with_a_message_waiting_is_heard_to_end_first(make, tmp_path):
     seen = [(u.turn_id, u.outcome) for u in updates]
     first_done = seen.index(("1", "completed"))
     assert first_done < seen.index(("2", "inProgress"))
-    assert [text for _id, text in updates[first_done].replies] == ["Hello there"]
+    assert [text for _id, text in updates[first_done].replies] == ["Hello there: First"]
     assert prompts_sent(tmp_path) == ["First", "Second"]
 
 
@@ -1485,3 +1485,46 @@ def test_a_new_chat_listed_before_its_log_is_never_untitled(make, tmp_path):
     provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
     row = next(info for info in provider.collect().sessions if info.cli_session_id == chat)
     assert row.title == "New Copilot chat" and not row.is_own
+
+
+
+def test_stop_while_an_answer_is_checked_takes_back_the_waiting_message(make, tmp_path):
+    """Kelly's review of #372: once Copilot has answered, Stop cancels
+    nothing, but it still takes back what's waiting, so it isn't sent."""
+    runtime, updates = make("nolog")  # the billing check then waits a moment
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "One")
+    assert runtime.send(chat, "Two") is True
+    assert wait(lambda: any(u.checking for u in updates))
+    assert runtime.stop(chat) == ("Two",)
+    assert wait(lambda: not runtime._chats[chat].busy)
+    assert prompts_sent(tmp_path) == ["One"]
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
+    assert runtime.snapshot(chat).unsent == ()  # given back once, by Stop, not again
+
+
+def test_a_chat_whose_log_was_removed_isnt_listed_again(make, tmp_path):
+    import shutil
+    from thechatplace.providers.copilot import CopilotProvider
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed" and not runtime._chats[chat].busy)
+    provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
+    assert [info.cli_session_id for info in provider.collect().sessions] == [chat]  # from its log
+    shutil.rmtree(tmp_path / "sessions" / chat)  # removed outside the app
+    assert not [info for info in provider.collect().sessions if info.cli_session_id == chat]
+
+
+
+def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypatch):
+    """Copilot writes the log a moment after the first message is sent: the
+    chat stays listed from the runtime meanwhile (the review of the fix above)."""
+    from thechatplace.providers.copilot import CopilotProvider
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")  # running; the fake logs only the user.message
+    (tmp_path / "sessions" / chat / "events.jsonl").unlink(missing_ok=True)  # not written yet
+    provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
+    assert [info.cli_session_id for info in provider.collect().sessions] == [chat]
+    runtime.stop(chat)

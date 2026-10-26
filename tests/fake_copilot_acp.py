@@ -30,7 +30,8 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
               normally anyway (end_turn), as Copilot may despite a cancel
   byokhang    the first prompt waits for session/cancel; later prompts are
               billed to another provider
-  slow        as answer, after a second and a half, so a message can wait its turn
+  slow        as answer, after a second and a half, so a message can wait its turn;
+              the reply ends with the message it answers ("Hello there: First")
   hookran     each prompt's log shows a preToolUse hook running
   twousers    each prompt's log shows a second user.message, as another
               Copilot sending to the same chat at the same time leaves
@@ -137,7 +138,7 @@ def ask(session, tool_call):
     return ((answers[ask_id][1] or {}).get("outcome") or {}).get("optionId")
 
 
-def prompt(message_id, session):
+def prompt(message_id, session, text=""):
     turns[0] += 1
     if session in resume_pending:
         log_event(session, "session.resume", {"alreadyInUse": resume_pending.pop(session)})
@@ -227,12 +228,13 @@ def prompt(message_id, session):
         text = "Allowed" if chosen == "allow_once" else "Denied"
         update(session, {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}})
     else:
-        for piece in ("Hello", " there"):
+        reply = f"Hello there: {text}" if MODE == "slow" else "Hello there"
+        for piece in ("Hello", reply[len("Hello"):]):
             update(session, {"sessionUpdate": "agent_message_chunk",
                              "content": {"type": "text", "text": piece}})
         # As Copilot logs a step: the whole reply, at the step's end.
         log_event(session, "assistant.turn_start", {"turnId": str(turns[0])})
-        log_event(session, "assistant.message", {"content": "Hello there"})
+        log_event(session, "assistant.message", {"content": reply})
         log_event(session, "assistant.turn_end", {"turnId": str(turns[0])})
     update(session, {"sessionUpdate": "usage_update", "used": 100, "size": 1000})
     log_usage(session)
@@ -294,7 +296,8 @@ def main():
                              "content": {"type": "text", "text": "Replayed reply"}})
             send({"jsonrpc": "2.0", "id": message_id, "result": {"configOptions": options()}})
         elif method == "session/prompt":
-            threading.Thread(target=prompt, args=(message_id, params.get("sessionId")),
+            text = ((params.get("prompt") or [{}])[0] or {}).get("text", "")
+            threading.Thread(target=prompt, args=(message_id, params.get("sessionId"), text),
                              daemon=True).start()
         elif method == "session/close":
             open_sessions.discard(params.get("sessionId"))

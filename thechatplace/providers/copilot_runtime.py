@@ -52,6 +52,7 @@ from typing import Callable, Dict, List, Optional
 
 from .. import platform_paths
 from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, WORKING
+from ..usage import CONTEXT_WARNING
 from . import copilot_acp, copilot_hooks
 from .copilot import EVENTS_FILE, WORKSPACE_FILE, parse_workspace
 
@@ -1221,8 +1222,12 @@ class CopilotChatRuntime:
             elif kind == "usage_update":
                 used, size = update.get("used"), update.get("size")
                 if isinstance(used, int) and isinstance(size, int):
-                    if chat.context[0] and used < chat.context[0] // 2:
-                        chat.context_epoch += 1  # compacted: the 80% warning can come again
+                    before, after = chat.context, (used, size)
+                    if (before[1] > 0 and after[1] > 0
+                            and before[0] / before[1] >= CONTEXT_WARNING > after[0] / after[1]):
+                        # Compacted from past the window's 80% warning to below
+                        # it: the warning can be said again (Kelly, #372).
+                        chat.context_epoch += 1
                     chat.context = (used, size)
             else:
                 return

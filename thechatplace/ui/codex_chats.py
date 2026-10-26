@@ -273,15 +273,20 @@ class CodexChats:
         if record is None:
             return
         name = provider_name(record.provider)
+        checking = False
         if record.provider != 'codex':
             state = self._codex_states.get(info.key)
             if state is not None and state.outcome != 'inProgress':
                 self._feedback(f'{record.title}: {name} isn\'t answering, so there\'s nothing to stop.')
                 return
-            if state is not None and getattr(state, 'checking', False):
+            checking = state is not None and getattr(state, 'checking', False)
+            if checking and not state.queued:
                 self._feedback(f'{record.title}: {name} has already answered; The Chat Place is '
                                'checking it, so there\'s nothing to stop.')
                 return
+            # With messages waiting, Stop still goes to the runtime: that's
+            # what takes them back (it cancels nothing once Copilot has
+            # answered), so the next one isn't sent (Kelly, #372).
         def done(result, error):
             if error:
                 self._feedback(result or f'Could not stop or recover this {name} chat. Check its state in {name}.')
@@ -296,6 +301,8 @@ class CodexChats:
                     'back in the message box, unsent.') if waiting else ''
             if reconnected:
                 text = f'{name} chat reconnected after verifying its previous turn ended. No message was resent.'
+            elif checking and waiting:
+                text = f'{name} has already answered.'
             elif record.provider == 'codex':
                 text = f'Stop requested. If the turn does not finish, press Stop again to check whether {name} has ended it.'
             else:

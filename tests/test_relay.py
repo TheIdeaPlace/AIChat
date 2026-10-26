@@ -106,8 +106,9 @@ def test_the_label_comes_off_only_while_it_is_unchanged():
 @pytest.mark.parametrize("source, kwargs, expected", [
     (_chat("c1", "Builder"), {}, None),
     (_chat("c1", "Builder", source=DESKTOP), {}, "Builder wasn't started in The Chat Place"),
+    # Started here, but Copilot can't be in one yet (#369): said so, not "not started here".
     (_chat("c1", "Builder", provider="copilot"), {},
-     "Builder wasn't started in The Chat Place"),
+     "agent conversations are for Claude and Codex chats"),
     (_chat("c1", "Builder"), {"can_edit": False}, "Builder wasn't started in The Chat Place"),
     (_chat("c1", "Builder"), {"in_conversation": True},
      "Builder is already in an agent conversation"),
