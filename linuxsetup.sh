@@ -119,7 +119,6 @@ else
 fi
 check orca "Orca" "the screen reader the app is made for"
 check spd-say "speech-dispatcher" "announcements need it when Orca can't take them"
-check busctl "busctl (Orca 49 and later take announcements through it)" "gdbus or dbus-send do too"
 check xdg-open "xdg-utils" "links and files open in other programs through it"
 check dotnet ".NET SDK (the build installs vpk, Velopack's packer, with it)" "needed only to build the AppImage"
 check objdump "binutils" "needed only to build"

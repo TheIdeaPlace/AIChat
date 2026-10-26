@@ -7,6 +7,7 @@ import time
 import pytest
 
 from thechatplace import speech
+from thechatplace.orca import Outcome as OrcaOutcome
 from thechatplace.screen_readers import Outcome
 from thechatplace.speech import Speaker, SpeechSettings
 
@@ -153,7 +154,8 @@ def test_an_announcement_stops_everything_in_flight_and_queued(tmp_path, monkeyp
 def cancels(monkeypatch):
     """Never run a real spd-say: record the cancels instead."""
     calls = []
-    monkeypatch.setattr(speech, "_cancel_speech_dispatcher", lambda: calls.append(1))
+    monkeypatch.setattr(speech, "_cancel_speech_dispatcher",
+                        lambda wait=False: calls.append("wait" if wait else 1))
     return calls
 
 
@@ -168,6 +170,44 @@ def test_stop_cancels_speech_dispatcher_only_when_an_engine_was_running(
     assert FakeEngine.started[0].waiting.wait(5)
     s.stop()
     assert cancels == [1]
+
+
+def test_an_interrupting_announcement_cancels_before_it_speaks(tmp_path, monkeypatch, cancels):
+    """The cancel is made on the speech thread, before the next utterance
+    reaches speech-dispatcher (or Orca), so it can't land on it."""
+    monkeypatch.setattr(speech, "IS_LINUX", True)
+    s = make(tmp_path, monkeypatch)
+    order = []
+    monkeypatch.setattr(speech, "_cancel_speech_dispatcher",
+                        lambda wait=False: order.append(("cancel", wait)))
+    s.speak("one", SpeechSettings(), interrupt=False)
+    assert wait_until(lambda: len(FakeEngine.started) == 1)
+    assert FakeEngine.started[0].waiting.wait(5)
+    original = FakeEngine.__init__
+
+    def started(self, command, **kwargs):
+        order.append(("engine", None))
+        original(self, command, **kwargs)
+    monkeypatch.setattr(FakeEngine, "__init__", started)
+    s.speak("two", SpeechSettings(), interrupt=True)
+    assert wait_until(lambda: len(FakeEngine.started) == 2)
+    assert order == [("cancel", True), ("engine", None)]
+    s.stop()
+
+
+def test_speech_dispatcher_isnt_cancelled_when_orca_spoke_last(tmp_path, monkeypatch, cancels):
+    """speech-dispatcher's cancel stops every client's speech, Orca's too,
+    so it's made only when The Chat Place's own voice was cut off (#230)."""
+    monkeypatch.setattr(speech, "IS_LINUX", True)
+    readers = FakeReaders(OrcaOutcome(spoke="D-Bus", running=["orca"]))
+    s = make(tmp_path, monkeypatch, readers)
+    s.speak("one", SpeechSettings(engine="orca"), interrupt=True)
+    assert wait_until(lambda: len(readers.calls) == 1)
+    assert wait_until(lambda: not s.busy())
+    s.speak("two", SpeechSettings(engine="orca"), interrupt=True)
+    assert wait_until(lambda: len(readers.calls) == 2)
+    s.stop()
+    assert cancels == [] and FakeEngine.started == []
 
 
 def test_stop_kills_every_running_engine(tmp_path, monkeypatch):

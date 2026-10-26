@@ -6,15 +6,16 @@ neither covers every case (see ``dev-notes/linux-port.md``):
 * **PresentMessage**, Orca's D-Bus remote controller (Orca 49 and later):
   speech and braille in the user's own Orca settings, whatever window is in
   front. The service was ``org.gnome.Orca.Service`` in Orca 49 and 50 and is
-  ``org.gnome.Orca1.Service`` from 51. Called through libgio (ctypes), which
-  keeps the text out of /proc; without it, with ``busctl``, ``gdbus`` or
-  ``dbus-send``, whichever the system has.
+  ``org.gnome.Orca1.Service`` from 51. Called through libgio (ctypes), so
+  the text is passed in memory. Never through a D-Bus command-line tool:
+  announcements are chat replies, and a command line can be read in /proc by
+  other users. GTK 3, which the app needs, needs libgio.
 * **An ATK notification from the app's window** (Orca 45.2 and later):
   ``gtk_a11y.announce``. Orca only presents these from the active window, so
   it's used only while The Chat Place is active (``window_announcer``).
 
 When Orca is running but neither works (Orca 48 or older, with The Chat
-Place in the background), the speaker falls back to speech-dispatcher, the
+Place in the background, or libgio can't be loaded), the speaker falls back to speech-dispatcher, the
 speech server Orca itself uses. That isn't the #98 defect on Windows (a
 second voice over the screen reader): speech-dispatcher speaks one message
 at a time, so the two never talk at once, and Orca's next words cut the
@@ -25,7 +26,6 @@ Calls happen on the speaker's worker thread, never the UI thread. No wx here.
 from __future__ import annotations
 
 import ctypes
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -39,18 +39,17 @@ SERVICES = [
     ("org.gnome.Orca.Service", "/org/gnome/Orca/Service", "org.gnome.Orca.Service"),
 ]
 
-#: Bytes of text sent. A command line holds 128 KiB per argument, and the
-#: limit is on UTF-8 bytes, not characters; a whole reply read at the Full
-#: level is cut here (it's minutes of speech already).
+#: Bytes of UTF-8 text sent. A whole reply read at the Full level is cut
+#: here (it's minutes of speech already).
 MESSAGE_LIMIT = 100_000
 
 #: Seconds a D-Bus call may take before Orca is treated as not answering.
 CALL_TIMEOUT = 2
 
-#: Seconds all the attempts for one announcement may take together. The
-#: speaker gives up on the call after ``speech.SCREEN_READER_TIMEOUT`` (3 s)
-#: and drops the announcements behind it, and the window announcer, tried
-#: after these, may take 1 s of that (the UI thread answers it).
+#: Seconds the calls for one announcement may take together. The speaker
+#: gives up on the call after ``speech.SCREEN_READER_TIMEOUT`` (3 s) and
+#: drops the announcements behind it, and the window announcer, tried after
+#: these, may take 1 s of that (the UI thread answers it).
 DEADLINE = 1.5
 
 NAME = "Orca"
@@ -87,49 +86,9 @@ class Outcome:
         return "no screen reader running"
 
 
-def _quote_gvariant(text: str) -> str:
-    """``text`` as a GVariant string literal, so gdbus never reads "true" or
-    "42" as another type."""
-    escaped = text.replace("\\", "\\\\").replace("'", "\\'")
-    escaped = escaped.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-    return f"'{escaped}'"
-
-
 def _truncated(text: str) -> str:
     """``text`` cut to MESSAGE_LIMIT bytes of UTF-8, at a whole character."""
     return text.encode("utf-8", "replace")[:MESSAGE_LIMIT].decode("utf-8", "ignore")
-
-
-def _attempts(text: str, find, timeout: float = CALL_TIMEOUT):
-    """((tool path, service name), command line) for each way to call
-    PresentMessage with a D-Bus tool, newest service first."""
-    attempts = []
-    busctl, gdbus, dbus_send = find("busctl"), find("gdbus"), find("dbus-send")
-    seconds = max(1, int(timeout))
-    for name, path, interface in SERVICES:
-        if busctl:
-            attempts.append(((busctl, name), [
-                busctl, "--user", "--timeout", str(seconds), "call",
-                name, path, interface, "PresentMessage", "s", text]))
-        if gdbus:
-            attempts.append(((gdbus, name), [
-                gdbus, "call", "--session", "--timeout", str(seconds),
-                "--dest", name, "--object-path", path,
-                "--method", f"{interface}.PresentMessage", _quote_gvariant(text)]))
-        if dbus_send:
-            attempts.append(((dbus_send, name), [
-                dbus_send, "--session", "--print-reply", f"--dest={name}",
-                f"--reply-timeout={int(timeout * 1000)}", path,
-                f"{interface}.PresentMessage", f"string:{text}"]))
-    return attempts
-
-
-def present_message_commands(text: str, find=platform_paths.find_tool) -> List[List[str]]:
-    """Every command line that would call PresentMessage, for each service
-    name and each D-Bus tool there is: tried in order until one works. The
-    text is on the command line, so other users can read it in /proc; this
-    is only the way in when libgio can't be used (``_gio_present``)."""
-    return [argv for _key, argv in _attempts(text, find)]
 
 
 _gio = None
@@ -178,7 +137,7 @@ def _gio_present(name: str, path: str, interface: str, text: str, timeout: float
     """Call PresentMessage through libgio, with the text passed in memory,
     not on a command line. ``(True, "")`` when Orca returned true, ``(False,
     output)`` otherwise (``output`` is the D-Bus error), or None when libgio
-    isn't there and a D-Bus tool must do it. Blocks up to ``timeout``."""
+    can't be used. Blocks up to ``timeout``."""
     global _bus
     libs = _load_gio()
     if not libs:
@@ -206,7 +165,7 @@ def _gio_present(name: str, path: str, interface: str, text: str, timeout: float
             glib.g_variant_unref(value)
         glib.g_variant_unref(reply)
         return spoke, ""
-    except Exception:  # noqa: BLE001 - the D-Bus tools are the other way in
+    except Exception:  # noqa: BLE001 - speech-dispatcher speaks instead
         return None
 
 
@@ -224,62 +183,26 @@ NO_SERVICE = "has no D-Bus remote controller (Orca 49 and later have one)"
 
 def _no_such_service(output: str) -> bool:
     """D-Bus's answer when nothing owns the name, or it has no such method:
-    an Orca before 49. Each tool words it its own way."""
+    an Orca before 49."""
     return any(marker in output for marker in (
         "ServiceUnknown", "was not provided by any", "UnknownMethod", "UnknownObject",
         "NameHasNoOwner"))
 
 
-def _said_true(output: str) -> bool:
-    """PresentMessage's answer, as each tool prints it: ``b true``,
-    ``(true,)``, or ``boolean true``."""
-    return "true" in output.lower()
-
-
 class OrcaClient:
     """Orca's D-Bus remote controller. Remembers which Orca had none, so an
     Orca 48 isn't asked again for every announcement (a new Orca, another
-    process id, is asked afresh), and which service and way in worked, so the
-    next announcement makes one call, not up to eight."""
+    process id, is asked afresh), and which service name worked, so the next
+    announcement makes one call, not two."""
 
-    def __init__(self, run=subprocess.run, find=platform_paths.find_tool,
-                 orca_pids: Optional[Callable[[], set]] = None, gio=_gio_present,
+    def __init__(self, orca_pids: Optional[Callable[[], set]] = None, gio=_gio_present,
                  clock=time.monotonic):
-        self._run = run
-        self._find = find
         self._gio = gio
         self._clock = clock
         self.orca_pids = orca_pids or (lambda: platform_paths.process_ids("orca"))
         self._without_service: set = set()
-        #: The (way in, service) that last worked: ("gio", name) or (tool, name).
-        self._working = None
-        self._deadline = 0.0
-
-    def _ordered(self, text: str, remaining: float):
-        """(key, call) for every way in, the one that worked last first.
-        ``call()`` returns ``(spoke, output)`` or None when it can't be made."""
-        attempts = []
-        for name, path, interface in SERVICES:
-            if self._gio is not None:
-                attempts.append((("gio", name), lambda n=name, p=path, i=interface:
-                                 self._gio(n, p, i, text, min(CALL_TIMEOUT, self._left()))))
-        for key, argv in _attempts(text, self._find, min(CALL_TIMEOUT, remaining)):
-            attempts.append((key, lambda a=argv: self._tool(a)))
-        if self._working in [key for key, _call in attempts]:
-            attempts.sort(key=lambda each: each[0] != self._working)  # stable
-        return attempts
-
-    def _left(self) -> float:
-        return max(0.2, self._deadline - self._clock())
-
-    def _tool(self, argv):
-        try:
-            done = self._run(argv, capture_output=True, text=True,
-                             timeout=self._left())
-        except (OSError, subprocess.SubprocessError):
-            return False, ""
-        output = f"{done.stdout or ''} {done.stderr or ''}"
-        return (done.returncode == 0 and _said_true(done.stdout or "")), output
+        #: The service name that last worked.
+        self._working: Optional[str] = None
 
     def present(self, text: str, pids: Optional[set] = None) -> Optional[str]:
         """None when Orca took the text, else why not. Never takes longer
@@ -288,30 +211,28 @@ class OrcaClient:
         if pids and pids <= self._without_service:
             return NO_SERVICE
         text = _truncated(text)
-        self._deadline = self._clock() + DEADLINE
-        attempts = self._ordered(text, DEADLINE)
+        deadline = self._clock() + DEADLINE
+        services = sorted(SERVICES, key=lambda service: service[0] != self._working)  # stable
         unknown = True  # every answer said the service doesn't exist
-        tried = False
-        for key, call in attempts:
-            if tried and self._clock() >= self._deadline:
+        for index, (name, path, interface) in enumerate(services):
+            left = deadline - self._clock()
+            if index and left <= 0:
                 unknown = False
                 break
-            answer = call()
-            if answer is None:  # libgio can't be used: the tools are next
-                continue
-            tried = True
+            answer = self._gio(name, path, interface, text, max(0.2, min(CALL_TIMEOUT, left)))
+            if answer is None:
+                return "can't be reached: libgio couldn't be loaded"
             spoke, output = answer
             if spoke:
-                self._working = key
+                self._working = name
                 return None
             if not _no_such_service(output):
                 unknown = False
-        if not tried:
-            return "can't be reached: there's no libgio, busctl, gdbus or dbus-send"
         if unknown:
             self._without_service |= pids
             return NO_SERVICE
         return "didn't answer on D-Bus"
+
 
 class Orca:
     """Hands an announcement to Orca, if it's running: through D-Bus, else

@@ -565,6 +565,8 @@ class Speaker:
         self._lock = threading.Lock()
         self._queue: "deque[tuple]" = deque()
         self._running: List[subprocess.Popen] = []
+        #: Linux: speech-dispatcher must cancel what the killed voice left.
+        self._cancel_owed = False
         self._worker: Optional[threading.Thread] = None
         self._generation = 0
         #: Called on the speech thread with a one-line reason when a screen
@@ -631,7 +633,13 @@ class Speaker:
         if not spoken:
             return False
         if interrupt:
-            self.stop()
+            self._stop(cancel_now=False)
+        queued = self._queue_utterance(spoken, settings, interrupt)
+        if not queued:
+            self._cancel_if_owed()
+        return queued
+
+    def _queue_utterance(self, spoken: str, settings: SpeechSettings, interrupt: bool) -> bool:
         try:
             # One file pair per utterance: two utterances close together
             # must not overwrite each other's text before it is read. The
@@ -695,6 +703,11 @@ class Speaker:
                     return
                 command, request = self._queue.popleft()
                 generation = self._generation
+                cancel, self._cancel_owed = self._cancel_owed, False
+            if cancel:
+                # Before this utterance reaches Orca or speech-dispatcher,
+                # so the cancel can't land on it.
+                _cancel_speech_dispatcher(wait=True)
             if request is not None:
                 if generation != self._generation:
                     continue  # stop() ran after it left the queue
@@ -836,17 +849,34 @@ class Speaker:
         """Empty the queue and kill every engine process. Never raises.
 
         Stops system-voice audio immediately (the synthesizer lives in those
-        processes). Speech already queued inside JAWS/NVDA/VoiceOver keeps
-        their own silence key as the off switch — same behaviour as
+        processes). Speech already queued inside JAWS/NVDA/VoiceOver/Orca
+        keeps their own silence key as the off switch — same behaviour as
         ClaudeSpeak.
         """
+        self._stop(cancel_now=True)
+
+    def _stop(self, cancel_now: bool) -> None:
+        """``stop``. Linux: killing ``spd-say`` leaves the text with
+        speech-dispatcher, so it's told to cancel, but only when The Chat
+        Place's own voice was speaking: speech-dispatcher's cancel stops
+        every client's speech, Orca's too. An interrupting announcement
+        leaves the cancel to the speech thread (``cancel_now=False``), which
+        makes it before the next utterance, never after."""
         with self._lock:
             self._generation += 1
             self._queue.clear()
             running, self._running = self._running, []
+            if running and IS_LINUX:
+                self._cancel_owed = True
         for process in running:
             _kill_quietly(process)
-        if running and IS_LINUX:
+        if cancel_now:
+            self._cancel_if_owed()
+
+    def _cancel_if_owed(self) -> None:
+        with self._lock:
+            cancel, self._cancel_owed = self._cancel_owed, False
+        if cancel:
             _cancel_speech_dispatcher()
 
     def _log(self, text: str, settings: SpeechSettings, interrupt: bool) -> None:
@@ -897,16 +927,21 @@ class Speaker:
             pass
 
 
-def _cancel_speech_dispatcher() -> None:
+def _cancel_speech_dispatcher(wait: bool = False) -> None:
     """Linux: killing ``spd-say`` doesn't stop text speech-dispatcher already
-    has, so it's told to cancel. Never raises, never waits."""
+    has, so it's told to cancel. Never raises. ``wait`` (the speech thread
+    only) waits up to 2 s for it; otherwise it doesn't wait."""
     tool = shutil.which("spd-say")
     if not tool:
         return
     try:
-        subprocess.Popen([tool, "-C"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
-    except OSError:
+        if wait:
+            subprocess.run([tool, "-C"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=2)
+        else:
+            subprocess.Popen([tool, "-C"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+    except (OSError, subprocess.SubprocessError):
         pass
 
 
