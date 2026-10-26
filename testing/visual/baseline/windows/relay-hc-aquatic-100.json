@@ -53,9 +53,88 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Visual probe, Claude, Scratch, idle"
+    "Visual probe, Claude, Scratch, idle",
+    "New Claude chat",
+    "New Codex chat"
    ],
    "selection": 0
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "&Just send it",
+   "rect": [
+    8,
+    152,
+    80,
+    15
+   ],
+   "best": [
+    80,
+    15
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "Start an agent conversation with both chats (unavailable: this chat is still working)",
+   "label": "Start an agent &conversation with both chats (unavailable: this chat is still working)",
+   "rect": [
+    8,
+    175,
+    451,
+    15
+   ],
+   "best": [
+    451,
+    15
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Agent conversation t&itle:",
+   "rect": [
+    8,
+    198,
+    130,
+    16
+   ],
+   "best": [
+    130,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Agent conversation title",
+   "label": "Codex history preview",
+   "rect": [
+    10,
+    216,
+    668,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Codex history preview"
   },
   {
    "class": "StaticText",
@@ -63,7 +142,7 @@
    "label": "&Message:",
    "rect": [
     8,
-    152,
+    245,
     50,
     16
    ],
@@ -82,9 +161,9 @@
    "label": "From Codex, another AI agent, forwarded by the user from their chat \"Codex history preview\":\r\n\r\n## What changed\r\n\r\nThe upload test failed one run in ten because it read the progress file before the\r\nwriter had flushed it. It now waits for the writer to say it's done.\r\n\r\n- `uploader.py`: flush and close before signalling\r\n- `test_upload.py`: wait on the signal, not on a sleep\r\n\r\n```python\r\ndef finish(self):\r\n    self._file.flush()\r\n    self._file.close()\r\n    self.done.set()\r\n```\r\n\r\n| File | Lines added | Lines removed |\r\n|---|---|---|\r\n| uploader.py | 4 | 1 |\r\n| test_upload.py | 6 | 3 |\r\n\r\nSee [the issue](https://github.com/example/repo/issues/42) for the history. A long line\r\nfollows so wrapping shows: wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping wrapping",
    "rect": [
     10,
-    170,
+    263,
     668,
-    314
+    221
    ],
    "best": [
     127,
