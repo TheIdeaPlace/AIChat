@@ -97,7 +97,10 @@ class CodexChats:
     def _load_codex_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
-    def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None, approval_policy=None):
+    def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None, approval_policy=None,
+                            made=None, joint=False):
+        """``made(info, message)`` hears of the new chat (#378); with
+        ``joint`` it sends the message, as an agent conversation's."""
         options = {key: value for key, value in (('model', model), ('effort', effort),
                    ('sandbox', sandbox), ('approval_policy', approval_policy)) if value}
         def create():
@@ -113,6 +116,10 @@ class CodexChats:
             if not self._store_write(self.store.add, record):
                 self._feedback('Codex created the chat, but it could not be saved here. Open it in Codex.')
                 return
+            if joint:
+                self.refresh_sessions()
+                made(record.to_info(), message)
+                return
             self._codex_drafts[record.to_info().key] = message
             self.open_session(record.to_info())
             self.refresh_sessions()
@@ -120,6 +127,8 @@ class CodexChats:
                 self.reply_text.SetValue('')
                 self._codex_drafts.pop(record.to_info().key, None)
                 self._send_codex_owned(record, message)
+            if made is not None:
+                made(record.to_info(), message)
         self._codex_work(create, done)
 
     def _keep_first_message(self, message):

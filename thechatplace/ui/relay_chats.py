@@ -5,9 +5,11 @@ another of The Chat Place's own chats, of either provider, as an ordinary
 message. The window then goes to that chat, so its answer is the next thing
 heard, and the same key sends that answer back.
 """
+from types import SimpleNamespace
+
 import wx
 
-from .. import relay
+from .. import agents, relay
 from ..sessions import WORKING
 from .dialogs import RelayDialog
 
@@ -30,23 +32,147 @@ class RelayChats:
             return
         targets = relay.targets(self._snapshot.sessions, info.key, self._can_edit,
                                 self._relay_partners.get(info.key))
-        if not targets:
+        # A new chat of each provider that can start one (#378), after the
+        # existing chats, so the chat that last sent a reply here is still
+        # first and sending back is still Enter.
+        entries = [t for t in targets] + list(self._relay_new_kinds())
+        if not entries:
             wx.MessageBox("There's no other chat to send it to. A reply can go to The Chat "
                           "Place's own chats, of any provider; start one with File, New "
                           "Session.", "Send Reply to Another Chat",
                           wx.OK | wx.ICON_INFORMATION, self)
             return
-        dialog = RelayDialog(self, info.title, [relay.describe(t) for t in targets],
-                             relay.message_text(message, info.title),
-                             lambda index, text: relay.too_long(targets[index].provider, text),
-                             working=self._relay_source_working(info))
+        working = self._relay_source_working(info)
+        source_problem = self._relay_joint_problem(info, working)
+
+        def joint_problem(index):
+            entry = entries[index]
+            if source_problem or isinstance(entry, str):
+                return source_problem
+            return self._relay_target_problem(entry)
+
+        original = relay.message_text(message, info.title)
+        dialog = RelayDialog(self, info.title, [self._relay_describe(e) for e in entries],
+                             original,
+                             lambda index, text: relay.too_long(self._relay_provider(
+                                 entries[index]), text),
+                             working=working,
+                             joint=SimpleNamespace(problem=joint_problem, title=info.title))
         try:
             if dialog.ShowModal() != wx.ID_OK or dialog.chosen is None:
                 return
             index, text = dialog.chosen
+            joint, title = dialog.joint_chosen, dialog.joint_title or info.title
         finally:
             dialog.Destroy()
-        self._relay(info, targets[index], text)
+        # Where it came from, for a new chat or an agent conversation.
+        came = SimpleNamespace(info=info, agent=message.assistant_name or "Another agent",
+                               reply=message.text, edited=text != original.strip())
+        entry = entries[index]
+        if isinstance(entry, str):
+            self._relay_new(came, entry, text, title if joint else None)
+        elif joint:
+            self._relay_joint(came, entry, text, title)
+        else:
+            self._relay(info, entry, text)
+
+    @staticmethod
+    def _relay_describe(entry) -> str:
+        return relay.new_target_label(entry) if isinstance(entry, str) else relay.describe(entry)
+
+    @staticmethod
+    def _relay_provider(entry) -> str:
+        return entry if isinstance(entry, str) else entry.provider
+
+    def _relay_new_kinds(self):
+        """The providers a new chat can be started with here (#378)."""
+        from .. import platform_paths
+        for kind in relay.NEW_KINDS:
+            if kind == "claude" and platform_paths.find_claude().path:
+                yield kind
+            elif kind == "codex" and self.sessions.can_create("codex"):
+                yield kind
+
+    def _relay_joint_problem(self, info, working):
+        """Why the chat a reply came from can't start an agent conversation
+        (#378), or None."""
+        store = self.agents
+        blocked = store.load_error if store.load_error and store._save_blocked else ""
+        return relay.joint_problem(
+            info, can_edit=self._can_edit(info), working=working, blocked=blocked,
+            in_conversation=store.containing(info.provider, info.cli_session_id) is not None)
+
+    def _relay_target_problem(self, target):
+        return relay.joint_target_problem(
+            target, self.agents.containing(target.provider, target.cli_session_id) is not None,
+            working=self._relay_source_working(target))
+
+    def _relay_new(self, came, provider, text, joint_title):
+        """Start a new chat with the reply as its first message (#378):
+        New Session, for the folder, permission and model, with the source's
+        folder and the message filled in. ``joint_title``: then make the two
+        an agent conversation of that title, which sends the message."""
+        source = came.info
+        joint = joint_title is not None
+
+        def made(info, message):
+            if joint:
+                self._relay_joint(came, info, message, joint_title)
+            else:
+                self._relay_partners[info.key] = source.key
+
+        if joint:
+            # Named as the conversation will name it: "Claude 2" beside a
+            # Claude chat, as New Agent Conversation names its new chats.
+            name = agents.member_names([agents.Member(source.provider, "1", ""),
+                                        agents.Member(provider, "2", "")])[1]
+            title = f"{joint_title}: {name}"
+        else:
+            title = relay.new_chat_title(source.title)
+        self.on_new_session(forward=SimpleNamespace(provider=provider, folder=source.cwd,
+                                                    message=text, title=title, joint=joint,
+                                                    made=made, edited=came.edited))
+
+    def _relay_joint(self, came, target, text, title):
+        """Make the chat the reply came from and ``target`` an agent
+        conversation (#378) and send the reply to ``target`` as the first
+        hand-off: it answers first, and its reply waits for you to hand it
+        back. Each chat stays an ordinary chat; the conversation is only the
+        record that links them."""
+        source = came.info
+        problem = (self._relay_joint_problem(source, self._relay_source_working(source))
+                   or self._relay_target_problem(target))
+        if problem:
+            # It changed since the dialog: the message isn't lost.
+            self._relay_kept(text, f"An agent conversation can't be started: {problem.full}.")
+            return
+        members = [agents.Member(source.provider, source.cli_session_id, ""),
+                   agents.Member(target.provider, target.cli_session_id, "")]
+        for member, name in zip(members, agents.member_names(members)):
+            member.name = name
+        try:
+            conversation = agents.new_conversation(title, members, agents.MODE_APPROVE)
+            conversation.next_index = 1
+            self.agents.add(conversation)
+        except Exception as exc:  # noqa: BLE001
+            self._relay_kept(text, f"Couldn't start the agent conversation: {exc}.")
+            return
+        self.refresh_sessions()
+        self._agent_open(conversation)
+        # The reply goes labelled as the conversation labels a hand-off, and
+        # anything you added after it as your own words, as when you type
+        # with a reply waiting. The label changed, it's all your own.
+        reply, yours = relay.joint_message(text, came.agent, source.title, came.reply)
+        if reply is None:
+            message = yours
+        else:
+            message = agents.relay_text(conversation, 0, reply)
+            if yours:
+                message += agents.USER_ADDS + yours
+        if not self._agent_send(conversation.conversation_id, message, [1]):
+            # The conversation stays, with nothing sent: the message goes
+            # where you can paste it to try again.
+            self._relay_kept(text, f"The message wasn't sent to {target.title}.")
 
     def _relay_source_working(self, info) -> bool:
         """Still working, its latest reply may be a step on the way ("Let me

@@ -1,10 +1,13 @@
 """Send Reply to Another Chat (#248): routing to Claude and Codex chats,
 without a native window or a real provider."""
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 pytest.importorskip('wx')
+from thechatplace import agents
 from thechatplace.own_store import OwnSession
 from thechatplace.sessions import OWN, SessionInfo
 from thechatplace.transcript import ASSISTANT, USER, ChatMessage
@@ -58,7 +61,13 @@ class Window(CodexChats, RelayChats):
         self._relay_partners, self._relay_waiting = {}, {}
         self.store = SimpleNamespace(get=lambda native, provider='claude': self.records.get(native))
         self.speech = SimpleNamespace(announce='full', announce_own=True)
-        self.sessions = SimpleNamespace(owned_action=lambda *a: None)
+        self.sessions = SimpleNamespace(owned_action=lambda *a: None,
+                                        can_create=lambda provider: False)
+        self.agents = agents.AgentConversationStore(
+            Path(tempfile.mkdtemp()) / 'agent-conversations.json')
+        self.new_sessions, self.agent_sent, self.agent_opened = [], [], []
+        self.refreshed = 0
+        self.can_edit = True
         self.said, self.work, self.opened, self.claude_sent = [], [], [], []
         self.claude_accepts = True
         self.codex_ready = True
@@ -70,7 +79,21 @@ class Window(CodexChats, RelayChats):
         return self.selected
 
     def _can_edit(self, info):
-        return info.is_own
+        return info.is_own and self.can_edit
+
+    # what a new chat or an agent conversation (#378) calls
+    def on_new_session(self, forward=None):
+        self.new_sessions.append(forward)
+
+    def refresh_sessions(self):
+        self.refreshed += 1
+
+    def _agent_open(self, conversation):
+        self.agent_opened.append(conversation.title)
+
+    def _agent_send(self, conversation_id, text, targets):
+        self.agent_sent.append((conversation_id, text, targets))
+        return True
 
     def open_session(self, info):
         # As MainFrame's: the reply box is saved first, then a message
@@ -135,10 +158,14 @@ class FakeDialog:
     choose = None
     seen = None
 
-    def __init__(self, parent, source_title, choices, text, check, working=False):
+    joint = None   # (title) to start an agent conversation, or None to just send
+
+    def __init__(self, parent, source_title, choices, text, check, working=False, joint=None):
         FakeDialog.seen = SimpleNamespace(title=source_title, choices=choices, text=text,
-                                          check=check, working=working)
+                                          check=check, working=working, joint=joint)
         self.chosen = None if FakeDialog.choose is None else FakeDialog.choose(text)
+        self.joint_chosen = FakeDialog.joint is not None
+        self.joint_title = FakeDialog.joint or ''
 
     def ShowModal(self):
         import wx
@@ -151,6 +178,9 @@ class FakeDialog:
 @pytest.fixture
 def dialog(monkeypatch):
     monkeypatch.setattr(relay_chats, 'RelayDialog', FakeDialog)
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, 'find_claude', lambda: SimpleNamespace(path=''))
+    FakeDialog.joint = None
     boxes = []
     monkeypatch.setattr(relay_chats.wx, 'MessageBox', lambda text, *a, **k: boxes.append(text))
     FakeDialog.choose, FakeDialog.seen = None, None
@@ -382,7 +412,8 @@ def test_relay_into_a_codex_chat_waiting_on_approval_only_sends(dialog):
     from thechatplace.providers.codex_runtime import CodexChatState
     w = Window()
     calls = []
-    w.sessions = SimpleNamespace(owned_action=lambda *a: calls.append(a) or True)
+    w.sessions = SimpleNamespace(owned_action=lambda *a: calls.append(a) or True,
+                                 can_create=lambda provider: False)
     w._codex_states[w.reviewer.key] = CodexChatState(
         'codex-1', 'needs_you', 'turn', 'inProgress', requests=(object(),))
     dialog.choose = lambda text: (0, 'Yes, approve it. Allow.')
@@ -429,3 +460,152 @@ def test_a_message_that_fails_to_go_to_codex_is_a_draft_not_work(dialog):
     w.work.pop()[1]('Codex connection interrupted.', True)
     assert MainFrame._active_owned_turn_count(w) == 0
     assert MainFrame._unsent_text(w)  # it's that chat's draft now
+
+
+# -- a new chat, or an agent conversation (#378) --------------------------------------
+
+
+@pytest.fixture
+def claude_installed(monkeypatch):
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, 'find_claude',
+                        lambda: SimpleNamespace(path='C:/claude.exe'))
+
+
+def test_new_chats_are_offered_after_the_existing_ones(dialog, claude_installed):
+    w = Window()
+    w.sessions.can_create = lambda provider: provider == 'codex'
+    w.on_send_reply_to()
+    assert dialog.seen.choices[-2:] == ['New Claude chat', 'New Codex chat']
+    assert dialog.seen.choices[0].startswith('Reviewer')  # sending back is still Enter
+    long = 'x' * 32001
+    assert '32,000' in dialog.seen.check(3, long)  # a new Codex chat has Codex's limit
+    assert dialog.seen.check(2, long) is None
+
+
+def test_only_new_chats_when_there_is_no_other(dialog, claude_installed):
+    w = Window()
+    w._snapshot.sessions = [w.builder]
+    w.on_send_reply_to()
+    assert dialog.seen.choices == ['New Claude chat']
+    assert dialog.boxes == []
+
+
+def test_a_new_chat_opens_new_session_with_the_reply_and_the_folder(dialog, claude_installed):
+    w = Window()
+    dialog.choose = lambda text: (2, text)
+    w.on_send_reply_to()
+    forward = w.new_sessions[-1]
+    assert (forward.provider, forward.folder, forward.joint) == ('claude', '/work', False)
+    assert forward.title == 'Forwarded from Builder'
+    assert forward.message.startswith('From Claude, another AI agent, forwarded by the user')
+    assert w.claude_sent == [] and w.opened == []  # New Session sends it
+    made = _own('claude-new', 'Forwarded from Builder', 'claude')
+    forward.made(made, forward.message)
+    assert w._relay_partners == {'claude-new': 'claude-1'}  # sending back is Enter
+    assert w.agents.all() == []
+
+
+def test_a_joint_chat_links_the_two_and_sends_the_reply_as_a_hand_off(dialog):
+    w = Window()
+    dialog.joint = 'Build and review'
+    dialog.choose = lambda text: (0, text + '\n\nCheck the tests too.')
+    w.on_send_reply_to()
+    [conversation] = w.agents.all()
+    assert conversation.title == 'Build and review'
+    assert [(m.provider, m.native_id, m.name) for m in conversation.members] == \
+        [('claude', 'claude-1', 'Claude'), ('codex', 'codex-1', 'Codex')]
+    assert conversation.mode == agents.MODE_APPROVE
+    assert conversation.next_index == 1  # Codex answers first
+    assert w.agent_opened == ['Build and review']
+    [(sent_id, text, targets)] = w.agent_sent
+    assert sent_id == conversation.conversation_id and targets == [1]
+    # Your words after the reply go as yours, not inside Claude's.
+    assert text == ('From Claude (agent conversation "Build and review"):\n\n'
+                    'Built it. Tests pass.' + agents.USER_ADDS + 'Check the tests too.')
+    assert agents.is_relay(text)
+    assert w.opened == [] and w.work == [] and w.claude_sent == []
+    assert w._relay_partners == {}
+
+
+def test_a_joint_chat_with_the_label_changed_sends_your_words(dialog):
+    w = Window()
+    dialog.joint = 'Pair'
+    dialog.choose = lambda text: (1, 'Please review what Builder did.')
+    w.on_send_reply_to()
+    [(_id, text, targets)] = w.agent_sent
+    assert text == 'Please review what Builder did.' and targets == [1]
+    [conversation] = w.agents.all()
+    assert [m.name for m in conversation.members] == ['Claude 1', 'Claude 2']
+
+
+def test_the_dialog_says_why_a_joint_chat_cant_be_started(dialog):
+    w = Window()
+    taken = agents.new_conversation('Other', [agents.Member('codex', 'codex-1', 'Codex'),
+                                              agents.Member('claude', 'x', 'Claude')])
+    w.agents.add(taken)
+    w.on_send_reply_to()
+    problem = dialog.seen.joint.problem
+    assert problem(0).full == 'Reviewer is already in an agent conversation'
+    assert problem(1) is None
+    assert dialog.seen.joint.title == 'Builder'
+    w._runners['claude-2'] = SimpleNamespace(waiting_on_background=False)
+    assert problem(1).full == 'Second opinion is still working; wait until it has finished'
+    w._runners['claude-1'] = SimpleNamespace(waiting_on_background=False)
+    w.on_send_reply_to()
+    assert dialog.seen.joint.problem(1).full == \
+        'Builder is still working; wait until it has finished'
+
+
+def test_a_chat_that_changed_since_the_dialog_keeps_the_message(dialog, monkeypatch):
+    w = Window()
+    dialog.joint = 'Pair'
+
+    def choose(text):
+        # Between the dialog's check and the send, Builder joined another.
+        w.agents.add(agents.new_conversation('Other', [agents.Member('claude', 'claude-1', 'C'),
+                                                       agents.Member('claude', 'y', 'D')]))
+        return (1, text)
+    dialog.choose = choose
+    w.on_send_reply_to()
+    assert w.agent_sent == []
+    assert len(w.agents.all()) == 1
+    assert w.copied and w.copied[-1].startswith('From Claude')
+    assert w.said[-1].startswith("An agent conversation can't be started: Builder is already")
+
+
+def test_a_new_chat_made_joint_starts_the_conversation_once_it_exists(dialog, claude_installed):
+    w = Window()
+    w.sessions.can_create = lambda provider: True
+    dialog.joint = 'Second look'
+    dialog.choose = lambda text: (3, text)  # New Codex chat
+    w.on_send_reply_to()
+    forward = w.new_sessions[-1]
+    assert (forward.provider, forward.joint, forward.title, forward.edited) == \
+        ('codex', True, 'Second look: Codex', False)
+    assert w.agents.all() == []  # nothing until the chat exists
+    made = _own('codex-new', 'Second look: Codex', 'codex')
+    forward.made(made, forward.message)
+    [conversation] = w.agents.all()
+    assert [m.native_id for m in conversation.members] == ['claude-1', 'codex-new']
+    assert w.agent_sent[-1][2] == [1]
+    assert w.agent_sent[-1][1].startswith('From Claude (agent conversation "Second look")')
+    assert w._relay_partners == {}
+
+
+def test_a_joint_send_that_fails_keeps_the_message(dialog, monkeypatch):
+    w = Window()
+    monkeypatch.setattr(Window, '_agent_send', lambda self, *a: False)
+    dialog.joint = 'Pair'
+    dialog.choose = lambda text: (1, text)
+    w.on_send_reply_to()
+    assert len(w.agents.all()) == 1  # the conversation stays, with nothing sent
+    assert w.copied[-1].startswith('From Claude, another AI agent')
+    assert w.said[-1].startswith("The message wasn't sent to Second opinion.")
+
+
+def test_an_edited_message_says_so_to_new_session(dialog, claude_installed):
+    w = Window()
+    dialog.choose = lambda text: (2, text + ' Thoughts?')
+    w.on_send_reply_to()
+    assert w.new_sessions[-1].edited is True
