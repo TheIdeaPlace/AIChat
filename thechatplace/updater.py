@@ -300,10 +300,14 @@ class CheckResult:
         return f"Couldn't check for updates: {self.detail or 'unknown error'}."
 
 
-def latest_published_version(fetch: Optional[Callable[[str], bytes]] = None) -> Optional[str]:
-    """The newest v* release on GitHub, or None if there is none.
-    Raises on network errors (the caller reports them)."""
+def latest_published_version(fetch: Optional[Callable[[str], bytes]] = None,
+                             channel: Optional[str] = None) -> Optional[str]:
+    """The newest v* release on GitHub that has this platform's feed, or
+    None if there is none. A release whose Linux build failed goes out
+    without the Linux files (#230); Linux copies then stay on the release
+    before it. Raises on network errors (the caller reports them)."""
     fetch = fetch or _fetch
+    feed = f"releases.{channel or CHANNEL}.json"
     releases = json.loads(fetch(RELEASES_API).decode("utf-8"))
     versions = []
     for release in releases if isinstance(releases, list) else []:
@@ -311,6 +315,10 @@ def latest_published_version(fetch: Optional[Callable[[str], bytes]] = None) -> 
             continue
         tag = str(release.get("tag_name") or "")
         if release.get("draft") or not tag.startswith(TAG_PREFIX):
+            continue
+        assets = release.get("assets")
+        if isinstance(assets, list) and assets and not any(
+                isinstance(asset, dict) and asset.get("name") == feed for asset in assets):
             continue
         versions.append(tag[len(TAG_PREFIX):])
     if not versions:

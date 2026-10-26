@@ -67,8 +67,10 @@ The version lives in one place: `__version__` in `thechatplace/__init__.py`. To 
 add `release-notes/v<version>.md` in the same commit, then push the tag `v<version>`. The release
 workflow fails if the tag and `__version__` disagree, or if the notes file is missing. It builds
 Windows, macOS and Linux (x64 and arm64) in parallel jobs, and a `publish` job makes the release only
-if all succeed (the Windows installer, portable zip and `windows` feed; the notarized `.dmg` and
-`osx` feed; the two AppImages and `linux-x64` / `linux-arm64` feeds).
+if Windows and macOS succeed (the Windows installer, portable zip and `windows` feed; the notarized
+`.dmg` and `osx` feed), with the AppImages and `linux-x64` / `linux-arm64` feeds of each Linux build
+that succeeded. Linux is non-blocking until it has a release or two behind it; the updater passes
+over a release without its platform's feed (`updater.latest_published_version`).
 Versions below 1.0 publish as pre-releases. Both platforms update through Velopack
 (`updater.CHANNEL`). Velopack calls every Mac app portable, so the portable check is Windows-only
 (`updater.PORTABLE_COPIES_EXIST`); applying it on a Mac silently stops all Mac updates.

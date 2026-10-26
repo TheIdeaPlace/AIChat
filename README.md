@@ -1084,7 +1084,9 @@ The version lives in one place, `__version__` in `thechatplace/__init__.py`. To 
 2. Tag it `v<version>` and push the tag.
 
 `.github/workflows/release-thechatplace.yml` then builds every platform side by side, and
-publishes one GitHub release (a pre-release before 1.0) only if all of them succeed:
+publishes one GitHub release (a pre-release before 1.0) only if Windows and macOS succeed. For
+now a Linux build that fails doesn't hold the release up: it goes out without that AppImage and
+feed, and Linux copies stay on the release before.
 
 - **Windows:** runs the tests, fails if the tag and `__version__` disagree, builds the app with
   PyInstaller, smoke-tests the built exe, signs it with Azure Artifact Signing, packs the Velopack

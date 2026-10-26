@@ -180,6 +180,21 @@ def test_latest_published_version_filters_by_prefix():
     assert latest_published_version(lambda url: json.dumps(odd).encode()) == "0.3.0"
 
 
+def test_a_release_without_this_platforms_feed_is_passed_over():
+    """Linux builds don't hold up a release (#230): one that went out
+    without them isn't offered to Linux copies, which stay on the last
+    release that has their feed."""
+    def files(*channels):
+        return [{"name": f"releases.{channel}.json"} for channel in channels]
+    releases = [
+        {"tag_name": "v0.3.0", "assets": files("windows", "osx")},
+        {"tag_name": "v0.2.0", "assets": files("windows", "osx", "linux-x64", "linux-arm64")},
+    ]
+    fetch = lambda url: json.dumps(releases).encode()  # noqa: E731
+    assert latest_published_version(fetch, channel="linux-x64") == "0.2.0"
+    assert latest_published_version(fetch, channel="windows") == "0.3.0"
+
+
 # -- data safety ---------------------------------------------------------------------------
 
 

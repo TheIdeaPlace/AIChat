@@ -2,7 +2,11 @@ name: Release The Chat Place
 
 # A tag like v0.1.0 tests and builds The Chat Place for Windows, macOS and Linux side by side, and
 # publishes one GitHub release with all of them, as Image Description Toolkit's release.yml does, and
-# only if every build succeeds: a release without one of them is worse than none.
+# only if the Windows and Mac builds succeed: a release without one of them is worse than none.
+# Linux is new, so for now a Linux build that fails doesn't hold the release up: it goes out without
+# that processor's AppImage and feed, and Linux copies stay on the release before (the updater
+# passes over a release without their feed). Once Linux has a release or two behind it, it becomes
+# required like the others (#230).
 #
 #   windows  PyInstaller, signed with Azure Artifact Signing; the Velopack installer, portable
 #            zip and update feed; every signature checked.
@@ -473,7 +477,10 @@ jobs:
   publish:
     name: Publish the release
     needs: [windows, macos, linux]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Waits for Linux, but publishes whatever it made (see the top).
+    if: >-
+      always() && startsWith(github.ref, 'refs/tags/v')
+      && needs.windows.result == 'success' && needs.macos.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -486,6 +493,7 @@ jobs:
           path: releases
           merge-multiple: true
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        continue-on-error: true  # no Linux build succeeded
         with:
           pattern: thechatplace-linux-*
           path: releases
@@ -505,7 +513,19 @@ jobs:
           ls -l releases
           shopt -s nullglob
           assets=()
-          for channel in windows osx linux-x64 linux-arm64; do
+          channels=(windows osx)
+          files=(TheChatPlace-windows-Setup.exe TheChatPlace-windows-Portable.zip
+                 TheChatPlace-macos-arm64.dmg)
+          # A Linux build is kept only after its AppImage passed its smoke test, so its files are
+          # all there or none are.
+          for arch in x64 arm64; do
+            if [ -f "releases/TheChatPlace-linux-$arch.AppImage" ]; then
+              channels+=("linux-$arch"); files+=("TheChatPlace-linux-$arch.AppImage")
+            else
+              echo "::warning::The Linux $arch build failed; the release goes out without it."
+            fi
+          done
+          for channel in "${channels[@]}"; do
             packages=(releases/TheChatPlace-*-$channel-*.nupkg)
             if [ ! -f "releases/TheChatPlace-$VERSION-$channel-full.nupkg" ]; then
               echo "::error::TheChatPlace-$VERSION-$channel-full.nupkg is missing."; exit 1
@@ -516,9 +536,7 @@ jobs:
               assets+=("releases/$name")
             done
           done
-          for name in TheChatPlace-windows-Setup.exe TheChatPlace-windows-Portable.zip \
-                      TheChatPlace-macos-arm64.dmg TheChatPlace-linux-x64.AppImage \
-                      TheChatPlace-linux-arm64.AppImage; do
+          for name in "${files[@]}"; do
             if [ ! -f "releases/$name" ]; then echo "::error::$name is missing."; exit 1; fi
             assets+=("releases/$name")
           done

@@ -166,7 +166,8 @@ def smoke_test(out_path: str) -> int:
     if sys.platform == "win32" or sys.platform.startswith("linux"):
         report["link_registration"] = platform_paths.url_scheme_command() or ""
     if sys.platform.startswith("linux"):
-        # Orca's way in for names and announcements (ui/gtk_a11y.py).
+        # Orca's way in for names and announcements (ui/gtk_a11y.py, orca.py).
+        from . import orca  # noqa: F401 - imported lazily by the speaker
         from .ui import gtk_a11y
         report["atk"] = gtk_a11y._load() is not None
         if not report["atk"]:

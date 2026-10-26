@@ -122,7 +122,9 @@ echo ""
 echo "Building the app (PyInstaller)..."
 rm -rf "$APP"
 "$PY" -m PyInstaller --noconfirm --clean --windowed --onedir --name TheChatPlace \
-    --hidden-import velopack \
+    --hidden-import velopack --hidden-import thechatplace.providers.codex \
+    --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.copilot \
+    --hidden-import thechatplace.providers.copilot_runtime \
     --add-data "thechatplace/assets:thechatplace/assets" \
     --add-data "thechatplace/speech:thechatplace/speech" \
     TheChatPlace.pyw || fail "PyInstaller"
