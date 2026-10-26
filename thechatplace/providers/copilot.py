@@ -436,8 +436,16 @@ class CopilotProvider:
     provider_id = PROVIDER_ID
     MAX_LAST_MESSAGES = 512
 
-    def __init__(self, sessions_dir: Optional[Path] = None):
+    def __init__(self, sessions_dir: Optional[Path] = None, *, execution: bool = False,
+                 on_update=lambda state: None, runtime=None):
         self._sessions_dir = sessions_dir
+        #: Runs the chats The Chat Place owns (copilot_runtime), if execution
+        #: is on; without it, Copilot chats are read only. Built lazily: it
+        #: starts no process until a chat is created or opened.
+        self.runtime = runtime
+        if execution and runtime is None:
+            from .copilot_runtime import CopilotChatRuntime
+            self.runtime = CopilotChatRuntime(on_update, sessions_dir=sessions_dir)
         # native id -> _Entry, so an unchanged session isn't re-read on every
         # refresh of the list, and a changed log is read once for its state,
         # title and last message together.
@@ -451,6 +459,8 @@ class CopilotProvider:
 
     def close(self) -> None:
         self.forget_last_messages()
+        if self.runtime is not None:
+            self.runtime.close()
 
     def _check(self, session: SessionInfo) -> None:
         if (session.provider != self.provider_id
@@ -484,7 +494,29 @@ class CopilotProvider:
                 snapshot.sessions.append(info)
         with self._lock:
             self._entries = entries
+        if self.runtime is not None:
+            self._overlay(snapshot)
         return snapshot
+
+    def _overlay(self, snapshot: Snapshot) -> None:
+        """What the runtime knows is fresher than the log: a running turn's
+        state, and a new chat with no log yet (listed from the runtime, and
+        made the app's own by the window's record)."""
+        listed = {info.cli_session_id: info for info in snapshot.sessions}
+        for native_id, cwd in self.runtime.known():
+            state = self.runtime.snapshot(native_id)
+            if state is None:
+                continue
+            info = listed.get(native_id)
+            if info is None:
+                # Titled from the window's record when there is one; a chat
+                # whose record couldn't be saved stays read-only, named.
+                info = SessionInfo("external", f"{PROVIDER_ID}:{native_id}", "New Copilot chat",
+                                   cwd, native_id, provider=PROVIDER_ID)
+                snapshot.sessions.append(info)
+            info.state = state.state
+            if state.problem:
+                info.detail = state.problem
 
     def _session(self, folder: Path, native_id: str, entries: dict) -> Optional[SessionInfo]:
         events = folder / EVENTS_FILE
@@ -558,9 +590,50 @@ class CopilotProvider:
 
     def capabilities(self, session: SessionInfo) -> SessionCapabilities:
         self._check(session)
-        # Reading only. Sending needs the ACP runner and its permission and
-        # billing checks (dev-notes/copilot-cli-probe.md), which don't exist yet.
-        return SessionCapabilities()
+        # Only a chat The Chat Place owns can be sent to, and only with the
+        # runtime; the runtime checks again (client name, hooks, billing,
+        # use elsewhere) before anything is sent. Others are read only.
+        owned = self.runtime is not None and session.is_own
+        return SessionCapabilities(send=owned, approvals=owned)
+
+    # -- owned chats (copilot_runtime) ---------------------------------------
+
+    def can_create(self) -> bool:
+        """Offered in New Session only once Copilot CLI is installed."""
+        return self.runtime is not None and platform_paths.find_copilot() is not None
+
+    def create_owned(self, cwd: str, title: str):
+        """A new chat, as the window's record of it. Waits for Copilot to
+        start, so call it off the UI thread."""
+        from ..own_store import OwnSession
+        native_id = self.runtime.create(cwd)
+        return OwnSession(native_id, title, cwd, provider=PROVIDER_ID, started=True,
+                          created_ms=int(time.time() * 1000))
+
+    def owned_ready(self, record) -> bool:
+        return self.runtime is not None and self.runtime.ready(record.cli_session_id)
+
+    def prepare_owned(self, record) -> None:
+        """Open a chat from the window's own record of it (the only place
+        the runtime is told a chat is the app's), in the folder recorded."""
+        self.runtime.adopt(record.cli_session_id)
+        self.runtime.prepare(record.cli_session_id, record.cwd)
+
+    def send_owned(self, record, text: str) -> bool:
+        return self.runtime.send(record.cli_session_id, text)
+
+    def stop_owned(self, record) -> tuple:
+        """The messages that were still waiting, given back unsent."""
+        return self.runtime.stop(record.cli_session_id)
+
+    def answer_owned(self, record, request, result) -> None:
+        """``result`` is ``request.approval_answer(choice)``, as the window
+        makes it for every provider; the runtime is told the choice."""
+        option = ((result or {}).get("outcome") or {}).get("optionId")
+        choice = next((kind for kind, option_id in request.choices if option_id == option), None)
+        if choice is None:
+            raise ValueError("Unsupported Copilot approval choice")
+        self.runtime.answer(record.cli_session_id, request.request_id, choice)
 
     def has_history(self, session: SessionInfo) -> bool:
         self._check(session)

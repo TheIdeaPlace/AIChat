@@ -89,6 +89,15 @@ def _end_modal(dialog: wx.Dialog, code: int) -> None:
 WORK_IN_FOLDER, WORK_IN_WORKTREE = 0, 1
 
 
+#: What New Session says about a Copilot chat (#352).
+COPILOT_NOTE = ("Copilot uses your GitHub Copilot sign-in, and each message uses requests from "
+                "your Copilot plan. It uses its own model and effort, which can't be chosen "
+                "here. Copilot asks before it runs a command or changes a file: "
+                "each request appears in Answer, where you can allow it once or deny it. "
+                "The Chat Place won't send to Copilot in a folder whose Copilot hooks could act "
+                "without asking you.")
+
+
 class NewSessionDialog(wx.Dialog):
     """Folder, where in it to work, title, model, permission mode, first message.
 
@@ -126,7 +135,7 @@ class NewSessionDialog(wx.Dialog):
         outer = wx.BoxSizer(wx.VERTICAL)
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
-        self._providers = tuple(p for p in providers if p in ("claude", "codex")) or ("claude",)
+        self._providers = tuple(p for p in providers if p in ("claude", "codex", "copilot")) or ("claude",)
         self._provider = provider if provider in self._providers else self._providers[0]
         self.provider_choice = None
         self._control_provider = "claude"
@@ -265,7 +274,7 @@ class NewSessionDialog(wx.Dialog):
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         if self.provider_choice is not None:
             self.provider_choice.Bind(wx.EVT_CHOICE, self._on_provider)
-        if self._provider == "codex":
+        if self._provider in ("codex", "copilot"):
             self._on_provider()
         if load_models is not None and "codex" in self._providers:
             wx.CallAfter(load_models, self._set_codex_models)
@@ -567,6 +576,8 @@ class NewSessionDialog(wx.Dialog):
             mode = DEFAULT_PERMISSION_MODE
             index = self.model.GetSelection() - 1
             model = self._codex_models[index].model if 0 <= index < len(self._codex_models) else ""
+        elif self.provider() == "copilot":
+            mode, model = DEFAULT_PERMISSION_MODE, ""  # Copilot's own settings, and it asks
         return folder, title, mode, message, model
 
     def codex_policy(self):
@@ -586,9 +597,20 @@ class NewSessionDialog(wx.Dialog):
         provider = self.provider()
         if self._control_provider == "claude":
             self._claude_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
-        else:
+        elif self._control_provider == "codex":
             self._codex_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
-        if provider == "codex":
+        if provider == "copilot":
+            # Nothing to choose yet: Copilot's own model and effort, and it
+            # always asks before acting (copilot_runtime). Shown, not hidden,
+            # so the dialog keeps its shape and says so.
+            for control, label in ((self.model, "Copilot's configured model"),
+                                   (self.effort_choice, "Copilot's own setting"),
+                                   (self.mode, "Asks before running commands or changing files")):
+                control.Set([label])
+                control.SetSelection(0)
+                control.Disable()
+            self.note.SetValue(COPILOT_NOTE)
+        elif provider == "codex":
             self.model.Set(["Configured Codex model"] + [choice.label for choice in self._codex_models])
             self.model.SetSelection(min(self._codex_choices[0], len(self._codex_models)))
             self.model.Enable(bool(self._codex_models))
@@ -622,6 +644,8 @@ class NewSessionDialog(wx.Dialog):
 
     def effort(self) -> str:
         """The ``--effort`` chosen, "" for Claude Code's own setting (#189)."""
+        if self.provider() == "copilot":
+            return ""
         if self.provider() == "codex":
             model = self.model.GetSelection() - 1
             effort = self.effort_choice.GetSelection() - 1
@@ -999,9 +1023,12 @@ class SettingsDialog(wx.Dialog):
         # read, and Settings keeps fitting a 768-high screen unscrolled (#352).
         self._copilot_choice = speech.copilot_enabled
         self.copilot_enabled = None
-        if speech.copilot_enabled or platform_paths.copilot_has_sessions():
+        # Only once Copilot CLI is here (installed, or has saved a chat), so
+        # Settings keeps its height for everyone else (the Mac's 768).
+        if (speech.copilot_enabled or platform_paths.copilot_has_sessions()
+                or platform_paths.find_copilot() is not None):
             self.copilot_enabled = wx.CheckBox(body, label=_wrapped(
-                self, "Include GitHub C&opilot CLI chats (read-only; restart required)",
+                self, "Include GitHub C&opilot CLI chats (preview; restart required)",
                 self.GetClientSize().width - 20 - _check_box_glyph(self)))
             self.copilot_enabled.SetValue(speech.copilot_enabled)
             outer.Add(self.copilot_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -1539,16 +1566,24 @@ CODEX_NOT_KEPT = ("Allow for This Chat isn't offered for this request, so approv
                   "with their usual options: status, switch, add, commit, push, fetch, diff and log.")
 
 
+#: Each runtime provider's one-time decisions: allowing, and denying (#352).
+ALLOW_DECISIONS = ("accept", "allow_once")
+DENY_DECISIONS = ("decline", "reject_once")
+
+
 class CodexPermissionDialog(wx.Dialog):
-    """Codex decisions: only the one-time ones Codex listed (#284).
+    """A runtime provider's decisions: only the one-time ones it listed
+    (#284). Codex's, and Copilot's (``provider``), whose requests have the
+    same methods (copilot_runtime.CopilotRequest).
 
     The request text says everything being asked for, including extra access
     (folders, network) beyond the chat's own folder. Deny is the default
     button when offered; otherwise Answer Later is, so a stray Enter never
     allows anything or stops the turn.
     """
-    def __init__(self, parent, session_title, request, file_detail="", *, chat_rule=None):
-        super().__init__(parent, title=f"Codex needs permission: {session_title}",
+    def __init__(self, parent, session_title, request, file_detail="", *, chat_rule=None,
+                 provider="Codex"):
+        super().__init__(parent, title=f"{provider} needs permission: {session_title}",
                          size=dialog_size(parent, 700, 540),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.choice = ""
@@ -1583,16 +1618,16 @@ class CodexPermissionDialog(wx.Dialog):
         self.buttons = {}
         for decision in request.offered():
             button = wx.Button(self, label=request.choice_text(decision))
-            if decision == "accept":
+            if decision in ALLOW_DECISIONS:
                 # Nothing to review means nothing to allow.
                 button.Enable(reviewable)
             row.Add(button, 0, wx.RIGHT, 6)
             button.Bind(wx.EVT_BUTTON, lambda event, choice=decision: self._choose(choice))
             self.buttons[decision] = button
-        self.allow = self.buttons.get("accept")
+        self.allow = next((self.buttons[d] for d in ALLOW_DECISIONS if d in self.buttons), None)
         later = wx.Button(self, wx.ID_CANCEL, "Answer &Later")
         row.Add(later, 0)
-        self.buttons.get("decline", later).SetDefault()
+        next((self.buttons[d] for d in DENY_DECISIONS if d in self.buttons), later).SetDefault()
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)

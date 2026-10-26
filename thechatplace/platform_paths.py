@@ -488,53 +488,119 @@ def process_start(pid: int) -> Optional[int]:
         kernel32.CloseHandle(handle)
 
 
-def process_started_at(pid: int) -> Optional[float]:
-    """When a running process started, as a Unix time, or None if that
-    can't be told (it isn't running, or isn't ours to ask about). Used to
-    tell a lock file a live process wrote from one left by a process whose id
-    was handed out again (#364)."""
-    if not isinstance(pid, int) or pid <= 0:
-        return None
-    if sys.platform == "win32":
-        import ctypes
-        from ctypes import wintypes
+#: A running process whose start can't be told (someone else's): it
+#: started before anything, so a lock it may hold counts (#364).
+STARTED_UNKNOWN = float("-inf")
 
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
-        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not handle:
-            return None
-        try:
-            # An exited process still answers while anything holds a handle
-            # to it: only a running one counts.
-            code = wintypes.DWORD()
-            kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
-            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value != 259:
-                return None
-            times = [wintypes.FILETIME() for _ in range(4)]
-            if not kernel32.GetProcessTimes(handle, *[ctypes.byref(t) for t in times]):
-                return None
-            ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
-            return ticks / 10_000_000 - 11_644_473_600  # 100 ns since 1601 -> Unix time
-        finally:
-            kernel32.CloseHandle(handle)
+
+def processes_started_at(pids) -> dict:
+    """{pid: when it started, as a Unix time} for each running process among
+    ``pids``; ``STARTED_UNKNOWN`` for one that's running but won't say (on
+    Windows, another user's); left out if it isn't running. Used to tell a
+    lock file a live process wrote from one left by a process whose id was
+    handed out again (#364)."""
+    pids = sorted({pid for pid in pids if isinstance(pid, int) and pid > 0})
+    if not pids:
+        return {}
+    if sys.platform == "win32":
+        every = _windows_process_starts()
+        if every is not None:
+            return {pid: every[pid] for pid in pids if pid in every}
+        # The system list wasn't available: ask each process. One that won't
+        # say (another user's) can't be ruled out, so it counts.
+        started = {}
+        for pid in pids:
+            if not pid_alive(pid):  # an exited process still answers while a handle is held
+                continue
+            filetime = process_start(pid)
+            started[pid] = (STARTED_UNKNOWN if filetime is None or filetime == NOT_YOURS
+                            else filetime / 10_000_000 - 11_644_473_600)
+        return started
     import subprocess
     import time as time_module
+    # Before ps runs: a slow ps then makes a process look older, never newer
+    # than a lock it wrote.
+    now = time_module.time()
     try:
-        # Elapsed time, not the start date: its format doesn't depend on the locale.
-        out = subprocess.run(["ps", "-o", "etime=", "-p", str(pid)], capture_output=True,
-                             text=True, timeout=5).stdout.strip()
+        # One call for them all (stale locks pile up), by full path, and
+        # elapsed time rather than the start date: its format doesn't depend
+        # on the locale.
+        out = subprocess.run(["/bin/ps", "-o", "pid=,etime=", "-p", ",".join(map(str, pids))],
+                             capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
+        return {pid: STARTED_UNKNOWN for pid in pids if pid_alive(pid)}
+    started = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0].isdigit() and int(parts[0]) in pids:
+            seconds = etime_seconds(parts[1])
+            started[int(parts[0])] = STARTED_UNKNOWN if seconds is None else now - seconds
+    return started
+
+
+def _windows_process_starts() -> Optional[dict]:
+    """{pid: start, as a Unix time} for every running process, from one
+    NtQuerySystemInformation(SystemProcessInformation) call, as Task Manager
+    and psutil read it: it needs no access to any of them, so a process of
+    another user's (about half of them: services) has its real start too,
+    rather than an unknown one that would make every stale Copilot lock
+    whose id it reused count (#372). None if the call fails."""
+    import ctypes
+
+    try:
+        ntdll = ctypes.WinDLL("ntdll")
+    except OSError:
         return None
-    match = re.fullmatch(r"(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)", out)
+    query = ntdll.NtQuerySystemInformation
+    query.restype = ctypes.c_long
+    query.argtypes = [ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong,
+                      ctypes.POINTER(ctypes.c_ulong)]
+    SYSTEM_PROCESS_INFORMATION = 5
+    STATUS_INFO_LENGTH_MISMATCH = -1073741820  # 0xC0000004
+    size = ctypes.c_ulong(512 * 1024)
+    for _ in range(8):
+        buffer = ctypes.create_string_buffer(size.value)
+        status = query(SYSTEM_PROCESS_INFORMATION, buffer, size, ctypes.byref(size))
+        if status == STATUS_INFO_LENGTH_MISMATCH:
+            size = ctypes.c_ulong(size.value + 64 * 1024)  # it grew meanwhile
+            continue
+        if status != 0:
+            return None
+        break
+    else:
+        return None
+    data = buffer.raw
+    pointer = ctypes.sizeof(ctypes.c_void_p)
+    # SYSTEM_PROCESS_INFORMATION: CreateTime at 32; UniqueProcessId after
+    # ImageName (a UNICODE_STRING at 56) and BasePriority.
+    pid_at = 80 if pointer == 8 else 68
+    starts, offset = {}, 0
+    while offset + pid_at + pointer <= len(data):
+        following = int.from_bytes(data[offset:offset + 4], "little")
+        created = int.from_bytes(data[offset + 32:offset + 40], "little", signed=True)
+        pid = int.from_bytes(data[offset + pid_at:offset + pid_at + pointer], "little")
+        if pid and created > 0:
+            starts[pid] = created / 10_000_000 - 11_644_473_600
+        if not following:
+            break
+        offset += following
+    # A guard on the layout: this process must be there, with the start
+    # Windows gives for it directly; otherwise the careful way is used.
+    own = process_start(os.getpid())
+    if (own is None or own == NOT_YOURS or os.getpid() not in starts
+            or abs(starts[os.getpid()] - (own / 10_000_000 - 11_644_473_600)) > 1):
+        return None
+    return starts
+
+
+def etime_seconds(text: str) -> Optional[int]:
+    """``ps``'s elapsed time (``mm:ss``, ``hh:mm:ss`` or ``dd-hh:mm:ss``) in
+    seconds, or None if it isn't one."""
+    match = re.fullmatch(r"(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)", (text or "").strip())
     if not match:
         return None
     days, hours, minutes, seconds = (int(part or 0) for part in match.groups())
-    return time_module.time() - (((days * 24 + hours) * 60 + minutes) * 60 + seconds)
+    return ((days * 24 + hours) * 60 + minutes) * 60 + seconds
 
 
 def pid_alive(pid: int) -> bool:

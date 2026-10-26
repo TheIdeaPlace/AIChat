@@ -257,7 +257,9 @@ class SpeechSettings:
         choice = raw.get("codex_enabled")
         settings.codex_enabled = choice if type(choice) is bool else None
         settings.copilot_enabled = raw.get("copilot_enabled") is True
-        settings.new_session_provider = ("codex" if raw.get("new_session_provider") == "codex" else "claude")
+        settings.new_session_provider = (raw.get("new_session_provider")
+                                         if raw.get("new_session_provider") in ("codex", "copilot")
+                                         else "claude")
         settings.agent_auto_mode = raw.get("agent_auto_mode") is True
         from .sessions import clean_fields, FIELD_PROVIDER, FIELD_TITLE
         settings.session_fields = clean_fields(raw.get("session_fields"))

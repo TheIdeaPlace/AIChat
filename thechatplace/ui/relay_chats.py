@@ -30,7 +30,9 @@ class RelayChats:
         if message is None:
             self._feedback(f"{info.title} has no reply to send yet.")
             return
-        targets = relay.targets(self._snapshot.sessions, info.key, self._can_edit,
+        # Sending into a Copilot chat isn't built yet (#369).
+        targets = relay.targets(self._snapshot.sessions, info.key,
+                                lambda chat: chat.provider != "copilot" and self._can_edit(chat),
                                 self._relay_partners.get(info.key))
         # A new chat of each provider that can start one (#378), after the
         # existing chats, so the chat that last sent a reply here is still
@@ -183,7 +185,7 @@ class RelayChats:
             runner = self._runners.get(info.cli_session_id)
             if runner is not None:
                 return not runner.waiting_on_background
-        elif info.provider == "codex":
+        elif info.provider in ("codex", "copilot"):
             state = self._codex_states.get(info.key)
             if state is not None:
                 return state.outcome == "inProgress" or state.state == WORKING

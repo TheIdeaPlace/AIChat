@@ -30,6 +30,7 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
               normally anyway (end_turn), as Copilot may despite a cancel
   byokhang    the first prompt waits for session/cancel; later prompts are
               billed to another provider
+  slow        as answer, after a second and a half, so a message can wait its turn
   hookran     each prompt's log shows a preToolUse hook running
   twousers    each prompt's log shows a second user.message, as another
               Copilot sending to the same chat at the same time leaves
@@ -90,13 +91,24 @@ def options():
             {"type": "select", "id": "allow_all", "currentValue": allow}]
 
 
+def hold_lock(session):
+    """As Copilot 1.0.103 does with a chat it has open: inuse.<its pid>.lock
+    in the session folder, left behind when it exits."""
+    if not SESSIONS:
+        return
+    folder = os.path.join(SESSIONS, session)
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, f"inuse.{os.getpid()}.lock"), "w", encoding="utf-8"):
+        pass
+
+
 def log_event(session, kind, data):
     if not SESSIONS:
         return
     folder = os.path.join(SESSIONS, session)
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(folder, "events.jsonl"), "a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"type": kind, "data": data}) + "\n")
+        handle.write(json.dumps({"type": kind, "data": data, "id": uuid.uuid4().hex}) + "\n")
 
 
 def log_usage(session):
@@ -166,6 +178,8 @@ def prompt(message_id, session):
             os._exit(1)
         threading.Event().wait(60)  # deaf: never ends, ignores cancel
         return
+    if MODE == "slow":
+        time.sleep(1.5)
     if MODE in ("flip", "curmode"):
         # Long enough for a second message to be queued first, even on the
         # macOS CI runner, where send() reads hooks and the log before queuing.
@@ -216,6 +230,10 @@ def prompt(message_id, session):
         for piece in ("Hello", " there"):
             update(session, {"sessionUpdate": "agent_message_chunk",
                              "content": {"type": "text", "text": piece}})
+        # As Copilot logs a step: the whole reply, at the step's end.
+        log_event(session, "assistant.turn_start", {"turnId": str(turns[0])})
+        log_event(session, "assistant.message", {"content": "Hello there"})
+        log_event(session, "assistant.turn_end", {"turnId": str(turns[0])})
     update(session, {"sessionUpdate": "usage_update", "used": 100, "size": 1000})
     log_usage(session)
     send({"jsonrpc": "2.0", "id": message_id, "result": {"stopReason": "end_turn"}})
@@ -255,6 +273,7 @@ def main():
                           encoding="utf-8") as handle:
                     handle.write(f"id: {session}\nclient_name: {client[0]}\n")
             open_sessions.add(session)
+            hold_lock(session)
             send({"jsonrpc": "2.0", "id": message_id,
                   "result": {"sessionId": session, "configOptions": options()}})
         elif method == "session/load":
@@ -264,6 +283,7 @@ def main():
                       "error": {"code": -32603, "message": "already loaded"}})
                 continue
             open_sessions.add(session)
+            hold_lock(session)
             if MODE == "inuse":  # logged at once, which 1.0.103 doesn't, but might
                 log_event(session, "session.resume", {"alreadyInUse": True})
             else:

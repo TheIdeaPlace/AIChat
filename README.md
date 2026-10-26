@@ -827,17 +827,43 @@ such as requirements an administrator set. If a new Codex chat can't be started,
 first message is kept: in the open chat's message box if you can type there, otherwise
 on the clipboard.
 
-**Settings: local GitHub Copilot CLI history (#352).** Enable **Include GitHub Copilot CLI
-chats (read-only; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
-sessions alongside Claude. The option appears once Copilot CLI has saved a session on this
-computer: to decide that, Settings looks at the names of the folders in Copilot's session folder
-and whether each has a conversation log, never what's in them, even with the option off; with it off nothing else of Copilot's is read.
+**Settings: GitHub Copilot CLI chats (#352).** Enable **Include GitHub Copilot CLI
+chats (preview; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
+sessions alongside Claude, and to start Copilot chats of your own. The option appears once
+Copilot CLI is installed or has saved a session on this computer: to decide that, Settings looks
+for the Copilot CLI program and at the names of the folders in Copilot's session folder and
+whether each has a conversation log, never what's in them, even with the option off; with it off
+nothing else of Copilot's is read.
 The Chat Place reads the session folders Copilot CLI keeps in
 `%USERPROFILE%\.copilot\session-state` on Windows and `~/.copilot/session-state` on a Mac (or
-under `COPILOT_HOME`); it never starts Copilot, so reading uses none of your Copilot requests. Selecting a Copilot chat opens its messages;
+under `COPILOT_HOME`); reading never starts Copilot, so it uses none of your Copilot requests. Selecting a Copilot chat opens its messages;
 formatted reading, Find and export work too, and Show Tool Activity shows the commands and file
-changes Copilot ran. Reply in Copilot CLI: sending, approvals and Continue Here are unavailable
-in this preview. A chat that's answering says working, even while Copilot runs a command, and is
+changes Copilot ran. Chats started in Copilot CLI, or in another app, are read-only here: reply
+in Copilot CLI.
+
+**Starting a Copilot chat here.** In New Session, choose **Copilot** as the Provider, then a
+folder and your first message. Copilot uses its own model and settings, and each message uses
+requests from your Copilot plan. Type and send as in any chat started here; messages sent while
+Copilot is answering wait their turn, and Stop (Ctrl+Period) cancels the answer and
+puts any waiting messages back in the message box, unsent. Copilot asks before it runs a command
+or changes a file: you hear "needs your answer", and Answer (Ctrl+Shift+A) shows the whole
+command or change, with **Allow Once** and **Deny**. Deny is the default, and nothing is ever
+allowed for later. A command or change too long to show in full can only be denied. The Chat
+Place won't send to Copilot:
+
+- in a folder whose Copilot hooks could act without asking you (a project's hooks of any kind,
+  or your own or your organisation's hooks that can approve); it names the file, and Copilot CLI
+  can still be used there;
+- if the answer can't be confirmed as billed to GitHub Copilot;
+- after the chat has been used in Copilot CLI in a terminal since it was opened here: open it
+  again first;
+- with a message starting with `/`, since Copilot's commands include ones that turn off its
+  questions.
+
+Continue Here, agent conversations, Change Permission Mode and Chat Permissions aren't
+available for Copilot chats yet, and Send Reply to Another Chat can send a Copilot chat's reply
+to another chat but not into a Copilot chat. A chat started here is kept in The Chat
+Place's own list in `provider-sessions-copilot.json`, beside `sessions.json`. A chat that's answering says working, even while Copilot runs a command, and is
 announced once when its answer is finished. After 10 minutes with no activity it adds "no
 activity from Copilot for 10 minutes", and after 2 hours it's shown as status unavailable (Copilot
 may have been closed partway through); one waiting for your permission stays needs you for up to a day, then is shown as status

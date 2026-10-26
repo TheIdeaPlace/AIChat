@@ -81,6 +81,53 @@ It says "Safe to send (agent mode, allow-all off): yes", then asks "You (empty l
    send another message: "Not sent: This Copilot chat was used outside The Chat Place since it
    was opened here. Open it again to carry on."
 
+## Running Copilot chats in the window
+
+Run from source with the Copilot setting on (Settings, Alt+O, then restart). Use a scratch folder
+that isn't a git repository with hooks. Each message uses Copilot requests.
+
+1. **Settings.** The check box reads "Include GitHub Copilot CLI chats (preview; restart
+   required)".
+2. **New Session (Ctrl+N).** Provider offers Claude, Codex (if set up) and Copilot. Choose
+   Copilot: Model, Effort and Permission mode say "Copilot's configured model", "Copilot's own
+   setting" and "Asks before running commands or changing files", and can't be changed; the note
+   says Copilot asks before acting and uses your plan's requests. Choose the scratch folder, type
+   `Reply with just the word: ready` and start.
+3. **The new chat.** It opens with "No messages yet.", you hear "Sent to …", then "… replied.
+   ready". The row is a Chat Place session with Provider Copilot, the message box is there, and
+   the heading ends ", on Copilot".
+4. **A second message.** Send `Reply with just the word: again`: you hear only "again", not the
+   first reply again.
+5. **Asking.** Send `Run this shell command: echo test > probe.txt`. You hear "Copilot needs your
+   answer. Command: echo test > probe.txt" and Ctrl+Shift+A answers. Ctrl+Shift+A opens "Copilot
+   needs permission: <title>"; the request names the whole command; the buttons are Allow Once,
+   Deny and Answer Later; Enter denies. Deny: "Answer sent to Copilot.", and probe.txt isn't
+   created. Ask again and choose Allow Once: probe.txt is created.
+6. **Waiting and Stop.** Send `Without using any tools, write a 1500-word story about a
+   lighthouse`. Straight away, while it's still answering, type and send `And then stop`: it
+   waits its turn (Copilot would run a command for a list of numbers, and finish too soon).
+   Press Ctrl+Period: "Stop requested…", "1 waiting message is back in the message box,
+   unsent.", and "And then stop" is back in the message box.
+6a. **Both replies, when one waited.** Send `Reply with just the word: one`, and straight away,
+   while it's answering, send `Reply with just the word: two`. Let both finish: you hear "one"
+   and then "two", each once, and nothing is put back in the message box.
+7. **Refusals in Copilot's words.** Send `/allow-all on`: it's refused with "Copilot commands
+   starting with / can't be sent…", and the text stays in the message box.
+8. **Context.** The status bar shows "Context N% reported" once Copilot has reported it.
+9. **After a restart.** Quit and start again: the chat is still listed as a Chat Place session,
+   opens, and a message sends (the app reopens it in Copilot first).
+10. **Used in a terminal meanwhile.** With the chat open here, run
+    `copilot --resume <its id> -p "Say hi"` in a terminal in the same folder (the id is in the
+    chat's Properties). Sending here then says the chat was used outside The Chat Place; select
+    another chat and come back to open it again, then send.
+11. **A hook.** Put `.github\hooks\allow.json` holding
+    `{"version": 1, "hooks": {"preToolUse": [{"bash": "echo"}]}}` in the scratch folder: a
+    message is refused, naming the file. Delete the file afterwards.
+12. **Other chats stay read-only.** A chat started in Copilot CLI in a terminal still says
+    "Reply in Copilot CLI", with no message box.
+13. **Chat Permissions (Ctrl+Shift+H)** on a Copilot chat started here says it keeps no
+    permissions and Copilot asks each time.
+
 ## What to report in the PR
 
 Copilot CLI version (`copilot --version`), the operating system, which checks passed, and

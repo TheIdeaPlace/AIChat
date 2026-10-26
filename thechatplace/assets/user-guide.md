@@ -1011,19 +1011,19 @@ notifications (on a Mac, Notifications) chooses every finished turn (the default
 session needs you, or off. While you're in The Chat Place, the announcement is enough and no
 notification is shown.
 
-### Local GitHub Copilot CLI history in Settings
+### GitHub Copilot CLI chats in Settings
 
-Enable **Include GitHub Copilot CLI chats (read-only; restart required)** in Settings
-(Alt+O), save and restart. The option appears once Copilot CLI has saved a session on this
-computer: Settings checks the names of the folders in Copilot's session folder, and whether each has a
-conversation log, never what's in them. With the option off, nothing else of Copilot's is read. Your GitHub Copilot CLI sessions are then listed with your Claude
+Enable **Include GitHub Copilot CLI chats (preview; restart required)** in Settings
+(Alt+O), save and restart. The option appears once Copilot CLI is installed or has saved a
+session on this computer: Settings looks for the Copilot CLI program, and checks the names of the
+folders in Copilot's session folder and whether each has a conversation log, never what's in them. With the option off, nothing else of Copilot's is read. Your GitHub Copilot CLI sessions are then listed with your Claude
 chats, and View, Show Sessions, GitHub Copilot Chats lists only them. The Chat Place reads the
-sessions Copilot CLI keeps on this computer; it never starts Copilot, so reading uses none of
+sessions Copilot CLI keeps on this computer; reading never starts Copilot, so it uses none of
 your Copilot requests. Selecting a Copilot chat opens its messages, and formatted reading, Find
 and export work too. Show Tool Activity also shows the commands and file changes Copilot ran,
 and a change you refused shows as Permission denied, with what was refused.
 
-Reply in Copilot CLI: sending, approvals and Continue Here aren't available in this preview.
+Chats started in Copilot CLI, or in another app, are read-only here: reply in Copilot CLI.
 A Copilot chat that's answering says working, even while Copilot runs a command between steps,
 and you hear it once when its answer is finished. If Copilot hasn't written anything for 10
 minutes (a long command, or Copilot closed partway through), it still says working and adds "no
@@ -1031,6 +1031,34 @@ activity from Copilot for 10 minutes"; after 2 hours it says status unavailable 
 waiting for your permission stays needs you for up to a day; after that it says status
 unavailable, "waiting in Copilot for over a day", since Copilot may have been closed while asking. Sessions started in Copilot CLI in a terminal are listed as terminal sessions, so
 View, Show Sessions, Terminal Sessions includes them; ones started from another app aren't. Turn the option off and restart to hide Copilot chats again.
+
+### Starting a Copilot chat
+
+In New Session (Ctrl+N), choose **Copilot** as the Provider, then a folder and your first
+message. Copilot uses its own model and settings, and each message uses requests from your
+Copilot plan. Type and send as in any chat started here. Messages you send while Copilot is
+answering wait their turn, and Stop (Ctrl+Period) cancels the answer and puts any waiting
+messages back in the message box, unsent.
+
+Copilot asks before it runs a command or changes a file. You hear "needs your answer", and
+Answer (Ctrl+Shift+A) shows the whole command or change, with **Allow Once** and **Deny**. Deny
+is the default button, and nothing is ever allowed for later. A command or change too long to
+show in full can only be denied: ask Copilot to do it in smaller steps.
+
+The Chat Place won't send to Copilot:
+
+- in a folder whose Copilot hooks could act without asking you. That's any hook in the project,
+  or one of your own or your organisation's that can approve a request. The message names the
+  file; you can still use Copilot CLI there.
+- if it can't confirm an answer was billed to GitHub Copilot.
+- after the chat was used in Copilot CLI in a terminal since you opened it here. Open it again
+  first.
+- with a message that starts with `/`, because some of Copilot's commands turn off its
+  questions.
+
+Continue Here, agent conversations, Change Permission Mode and Chat Permissions aren't
+available for Copilot chats yet, and Send Reply to Another Chat can send a Copilot chat's reply
+to another chat but not into a Copilot chat.
 
 ## More things you can do
 

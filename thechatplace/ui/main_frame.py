@@ -227,7 +227,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     on_update=lambda state: wx.CallAfter(self._on_codex_update, state)))
             if self.speech.copilot_enabled:
                 from ..providers.copilot import CopilotProvider
-                providers.append(CopilotProvider())
+                # Its runtime starts no Copilot until a chat is created or
+                # opened; only chats this app owns can be sent to (#352).
+                providers.append(CopilotProvider(execution=True,
+                    on_update=lambda state: wx.CallAfter(self._on_owned_update, "copilot", state)))
             sessions = SessionController(providers)
         self.sessions = sessions
         # Agent conversations (#248): their record, and a backend that reads
@@ -636,6 +639,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self.chat_list.Bind(wx.EVT_CONTEXT_MENU, self._on_message_menu)
         set_voiceover_menu(self.chat_list, self._on_message_menu)
         self.chat_list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.on_read_message())
+        # The list's name says the chat's state; a change waits while you're
+        # in the list (_update_messages_label) and is made on leaving it.
+        self._pending_messages_label: Optional[str] = None
+        self._messages_label_key: Optional[tuple] = None  # (key, title, kind)
+        self.chat_list.Bind(wx.EVT_KILL_FOCUS, self._on_chat_list_left)
 
         # Where the reply goes: one panel for The Chat Place's sessions, one for
         # desktop ones, in the same place so the layout is the same.
@@ -1597,6 +1605,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self.chat_list.SetString(0, line)
 
     def _show_no_session(self):
+        # No chat: a name held for one (_update_messages_label) is dropped.
+        self._pending_messages_label = self._messages_label_key = None
         self.messages_label.SetLabel("&Messages:")
         set_accessible_name(self.chat_list, "Messages")
         self.chat_list.Set([self._no_session_line()])
@@ -1684,9 +1694,30 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             state = ""
         description = state + kind if state else kind.lstrip(", ")
         label = f"Messages in {info.title} ({description})"
+        # What the chat is, apart from its state: a change there (another
+        # chat, a new title, read-only becoming yours) is said at once.
+        identity = (info.key, info.title, kind)
+        if (self._messages_label_key == identity and self.chat_list.HasFocus()
+                and self.messages_label.GetLabel() != f"&{label}:"):
+            # Only the state changed, with you in the list: a screen reader
+            # says a focused control's new name again, and on a braille
+            # display it replaces the message you're on (JAWS showed
+            # "Messages in … (idle, …)" as each reply came). Made on leaving.
+            self._pending_messages_label = label
+            return
+        self._set_messages_label(label)
+        self._messages_label_key = identity
+
+    def _set_messages_label(self, label):
+        self._pending_messages_label = None
         if self.messages_label.GetLabel() != f"&{label}:":
             self.messages_label.SetLabel(f"&{label}:")
             set_accessible_name(self.chat_list, label)
+
+    def _on_chat_list_left(self, event):
+        event.Skip()
+        if self._pending_messages_label is not None:
+            self._set_messages_label(self._pending_messages_label)
 
     def _on_chat_timer(self, _event=None):
         self._update_send_state()
@@ -1735,6 +1766,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._refresh_chat()
             return
         self._show_missing_transcript(self._open)
+        if (self._open.provider in RUNTIME_PROVIDERS and self._open.provider != "codex"
+                and self._can_edit(self._open)):
+            # Copilot writes no log until a chat's first message: it still
+            # has to be opened to be sent to (#352).
+            self._prepare_codex_owned(generation)
         if pending:
             wx.CallAfter(self._refresh_chat)
 
@@ -1752,7 +1788,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._select_on_load = None  # nothing to find a message in
         self._chat_loaded = True
         own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
-        if info.provider != "claude":
+        if info.provider == "copilot" and info.is_own:
+            # Copilot writes a chat's log only once its first message arrives.
+            line = "No messages yet."
+            self._chat_loaded = False  # keep looking until it appears
+        elif info.provider != "claude":
             line = f"Chat history is unavailable from {info.provider.capitalize()}. Try refreshing."
         elif info.is_own and (info.cli_session_id in self._runners
                             or (own is not None and not own.started)):
@@ -2013,6 +2053,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     self.chat_list.SetSelection(
                         keys.index(selected_key) if selected_key in keys
                         else min(index, len(keys) - 1))
+        elif not keys and current == lines:
+            pass  # still only "No messages yet.": a runtime's updates mustn't reset the list
         else:
             self.chat_list.Set(lines)
             if focus_newest or not keys:
@@ -2775,7 +2817,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                      f"{name} is working." if state is not None and state.state == WORKING else "Ready.")
             if state is not None and state.queued:
                 label += " " + self._queued_words(len(state.queued))
-            self.turn_status.SetLabelText(label)
+            # Only when it changes, as for Claude: this runs on every tick,
+            # and each new label is a name change JAWS shows again in braille
+            # over the message you're on ("Messages in …" and part of it).
+            if self.turn_status.GetLabelText() != label:
+                self.turn_status.SetLabelText(label)
             self._update_status_session()
             return
         running = info is not None and info.cli_session_id in self._runners
@@ -3425,6 +3471,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if info is None:
             self._feedback("No session selected.")
             return
+        if info.is_own and info.provider == "copilot":
+            self._feedback(f"{info.title} keeps no permissions: Copilot asks before each command "
+                           "or file change, and each answer is for that one request.")
+            return
         if not info.is_own or info.provider not in ("claude", "codex"):
             where = "terminal" if info.is_terminal else "desktop app"
             self._feedback(f"{info.title} is {kind_name(info)}: it's read-only here, so it keeps "
@@ -3737,12 +3787,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         the agent conversation, which sends it."""
         lookup = platform_paths.find_claude()
         codex_available = self.sessions.can_create("codex")
+        copilot_available = self.sessions.can_create("copilot")
         if forward is not None and not (lookup.path if forward.provider == "claude"
-                                        else codex_available):
+                                        else codex_available if forward.provider == "codex"
+                                        else copilot_available):
             self._relay_kept(forward.message, f"{forward.provider.capitalize()} isn't "
                                               "available, so no chat was started.")
             return
-        if not lookup.path and not codex_available:
+        if not lookup.path and not codex_available and not copilot_available:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
             return
         exe = lookup.path
@@ -3777,11 +3829,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             prefill = {"title_text": forward.title, "message": forward.message,
                        "providers": (forward.provider,), "provider": forward.provider}
             codex_available = codex_available and forward.provider == "codex"
-        provider_options = ({"providers": (("claude", "codex") if lookup.path else ("codex",)),
+            copilot_available = copilot_available and forward.provider == "copilot"
+        offered = tuple(p for p, ok in (("claude", bool(lookup.path)), ("codex", codex_available),
+                                        ("copilot", copilot_available)) if ok)
+        provider_options = ({"providers": offered,
                              "provider": self.speech.new_session_provider,
-                             "load_models": self._load_codex_models,
-                             "load_rules": self._load_codex_rules}
-                            if codex_available else {})
+                             "load_models": self._load_codex_models if codex_available else None,
+                             "load_rules": self._load_codex_rules if codex_available else None}
+                            if codex_available or copilot_available else {})
         dialog = NewSessionDialog(self, root, recent=recent, projects_root=root,
                                   feedback=self._feedback,
                                   clone_root=str(platform_paths.clone_root()),
@@ -3811,6 +3866,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
             self._create_codex_owned(folder, title, message, **options, **policy,
                                      made=made, joint=joint)
+            return
+        if provider == "copilot":
+            self._create_codex_owned(folder, title, message, made=made, joint=joint,
+                                     provider="copilot")
             return
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)

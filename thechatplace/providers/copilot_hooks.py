@@ -119,15 +119,16 @@ def _repository_folders(cwd: str) -> List[Path]:
 
 
 def _plugin_files(root: Path) -> List[tuple]:
-    # Where: the reference says only "each plugin's hooks.json or
-    # hooks/hooks.json inside its install directory"; Copilot CLI 1.0.103
-    # installs plugins under ~/.copilot/installed-plugins (COPILOT_HOME's),
-    # the folder `copilot plugin` manages. A plugin loaded with --plugin-dir
-    # is never used: The Chat Place starts Copilot without it.
     """(path, any_event) for each file under the installed plugins that may
     hold hooks: hooks.json, JSON files in a folder named hooks, manifests,
     and any hooks file a manifest names. Raises CantCheck if the search
-    can't be finished."""
+    can't be finished.
+
+    Where: the reference says only "each plugin's hooks.json or
+    hooks/hooks.json inside its install directory"; Copilot CLI 1.0.103
+    installs plugins under ~/.copilot/installed-plugins (COPILOT_HOME's),
+    the folder `copilot plugin` manages. A plugin loaded with --plugin-dir
+    is never used: The Chat Place starts Copilot without it."""
     if not root.is_dir():
         return []
     found, seen = [], 0

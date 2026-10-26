@@ -2,9 +2,13 @@
 may send messages into.
 
 Claude sessions stay in the version-1 ``sessions.json`` understood by 0.1.6.
-Other providers use ``provider-sessions.json``, which older releases never
-read. Each file is replaced atomically; mixed-format migration preserves an
-exact backup and writes foreign records before removing them from the old file.
+Codex uses ``provider-sessions.json``, which older releases never read.
+Providers added later each have a file of their own
+(``provider-sessions-copilot.json``), because releases that read
+``provider-sessions.json`` refuse the whole of it over a provider they don't
+know, and would then save nothing (#352). Each file is replaced atomically;
+mixed-format migration preserves an exact backup and writes foreign records
+before removing them from the old file.
 """
 from __future__ import annotations
 
@@ -16,7 +20,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from . import platform_paths
-from .provider_storage import PartitionedFile, CodexPlanStore
+from .provider_storage import PartitionedFile, CodexPlanStore, atomic_write_json
 from .claude_cli import EFFORT_LABELS, MODEL_LABELS, is_safe_dir, is_safe_rule
 from .sessions import IDLE, OWN, SessionInfo
 
@@ -93,6 +97,11 @@ class OwnSession:
 _FIELDS = {f.name for f in fields(OwnSession)}
 _TYPES = {f.name: f.type for f in fields(OwnSession)}
 _DEFAULTS = {f.name: f.default for f in fields(OwnSession)}
+#: Every provider a record may name.
+PROVIDERS = ("claude", "codex", "copilot")
+#: Providers kept in a companion file of their own, never in
+#: provider-sessions.json (see the module docstring).
+SEPARATE_PROVIDERS = ("copilot",)
 
 
 def _session_from_dict(item: dict) -> Optional[OwnSession]:
@@ -100,7 +109,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
     their defaults; a wrong-typed id, title or folder drops the entry."""
     cli_id = item.get("cli_session_id")
     provider = item.get("provider", "claude")
-    if provider not in ("claude", "codex"):
+    if provider not in PROVIDERS:
         return None
     if not isinstance(cli_id, str) or not platform_paths.is_safe_id(cli_id):
         return None
@@ -117,7 +126,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             # Separate backend settings; never interpret Codex policy names as
             # Claude permission modes. Runtime model support needs validation.
             allowed = {"model", "effort", "sandbox", "approval_policy", "workspace_root", "approvals_reviewer"}
-            if (provider == "claude" and options
+            if (provider in ("claude", "copilot") and options
                     or any(k not in allowed or not isinstance(v, str)
                            for k, v in options.items())):
                 return None
@@ -170,7 +179,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                                  if d in folders}
     if values.get("fork_source") and not platform_paths.is_safe_id(values["fork_source"]):
         values["fork_source"] = ""
-    if provider == "codex":
+    if provider != "claude":
         # These values drive only Claude runners. A foreign record must never
         # carry permissions or Remote Control into that legacy path.
         for name in ("model", "effort", "fork_source", "remote_control",
@@ -188,6 +197,9 @@ class OwnSessionStore:
     def __init__(self, path: Optional[Path] = None) -> None:
         self.path = Path(path) if path else platform_paths.app_data_dir() / "sessions.json"
         self._files = PartitionedFile(self.path)
+        #: provider -> its own companion file (SEPARATE_PROVIDERS).
+        self._separate = {name: self.path.with_name(f"provider-{self.path.stem}-{name}{self.path.suffix}")
+                          for name in SEPARATE_PROVIDERS}
         self._sessions: Dict[tuple[str, str], OwnSession] = {}
         self._needs_backup = False
         self.migration_backup: Optional[Path] = None
@@ -279,6 +291,9 @@ class OwnSessionStore:
                     self._save_blocked = True
                     return
                 self._sessions[session.identity] = session
+        for name, path in self._separate.items():
+            if not self._load_separate(name, path):
+                return
         self._files.baseline(self._legacy_payload())
         # Evacuate the experimental mixed format before an older app can read
         # it again. Write the provider file first; a retry can merge duplicates.
@@ -289,6 +304,38 @@ class OwnSessionStore:
             except OSError as exc:
                 self.load_error = f"Couldn't separate provider sessions: {exc}. Changes won't be saved."
                 self._save_blocked = True
+
+    def _load_separate(self, provider: str, path: Path) -> bool:
+        """Read one provider's own companion file; False (with saving
+        blocked) if it can't be trusted."""
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return True
+        except (OSError, ValueError) as exc:
+            self.load_error = f"Couldn't read {provider} sessions ({path}): {exc}. Changes won't be saved."
+            self._save_blocked = True
+            return False
+        entries = raw.get("sessions") if isinstance(raw, dict) else None
+        if not isinstance(raw, dict) or raw.get("version") != 2 or not isinstance(entries, list):
+            self.load_error = f"Invalid {provider} session store ({path}). Changes won't be saved."
+            self._save_blocked = True
+            return False
+        seen = set()
+        for item in entries:
+            session = _session_from_dict(item) if isinstance(item, dict) else None
+            if session is None or session.provider != provider or session.identity in seen:
+                self.load_error = f"Invalid {provider} session store ({path}). Changes won't be saved."
+                self._save_blocked = True
+                return False
+            seen.add(session.identity)
+            existing = self._sessions.get(session.identity)
+            if existing is not None and existing != session:
+                self.load_error = "Conflicting provider sessions. Changes won't be saved."
+                self._save_blocked = True
+                return False
+            self._sessions[session.identity] = session
+        return True
 
     def _set_aside(self, why: str) -> None:
         """Move an unreadable store out of the way, so the next save can't
@@ -322,8 +369,34 @@ class OwnSessionStore:
         if self._needs_backup and self.path.exists():
             self.migration_backup = platform_paths.backup_session_store(self.path)
         foreign = {"version": 2, "sessions": [asdict(s) for s in self._sessions.values()
-                                                if s.provider != "claude"]}
-        self._files.save(self._legacy_payload(), foreign, force_legacy=force_legacy)
+                                                if s.provider not in ("claude", *SEPARATE_PROVIDERS)]}
+        # Each separate provider's file first, as the provider file goes
+        # before the legacy one: put back as it was if the rest fails.
+        previous = {}
+        try:
+            for name, path in self._separate.items():
+                records = [asdict(s) for s in self._sessions.values() if s.provider == name]
+                try:
+                    previous[path] = path.read_bytes()
+                except FileNotFoundError:
+                    previous[path] = None
+                if records or previous[path] is not None:
+                    atomic_write_json(path, {"version": 2, "sessions": records})
+            self._files.save(self._legacy_payload(), foreign, force_legacy=force_legacy)
+        except Exception:
+            # A migration keeps what it copied out (PartitionedFile keeps the
+            # new provider file too), so a record moved out of the old file is
+            # never left in neither (Kelly, #372).
+            if not force_legacy:
+                for path, contents in previous.items():
+                    try:
+                        if contents is None:
+                            path.unlink(missing_ok=True)
+                        else:
+                            PartitionedFile._replace(path, contents)
+                    except OSError:
+                        pass
+            raise
         self._needs_backup = False
 
     # -- access -----------------------------------------------------------------

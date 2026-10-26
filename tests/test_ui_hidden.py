@@ -11833,7 +11833,6 @@ def test_unlisted_providers_never_take_the_runtime_path(frame, env, monkeypatch)
     assert calls == []
 
 
-
 def test_each_runtime_providers_usage_check_keeps_its_own_slot(frame, monkeypatch):
     from types import SimpleNamespace
     settle(frame)
@@ -11992,3 +11991,516 @@ def test_relay_as_an_agent_conversation_with_a_new_claude_chat(frame, env, fake_
     assert len(fake_runner.instances) == 1  # the conversation's send, not New Session's too
     assert runner.prompt.startswith(agents.SETUP_START)
     assert "Built it. Tests pass." in runner.prompt
+
+
+def test_an_unlisted_provider_is_told_why_nothing_was_sent(frame, env, monkeypatch):
+    """Kelly's note on #370: what the person hears, not only that nothing
+    was routed."""
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a: None)
+    other = SessionInfo(OWN, "notlisted:y", "Unlisted", "C:/w", "y", provider="notlisted")
+    monkeypatch.setattr(frame, "_open", other)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    env["feedback"].clear()
+    frame.reply_text.SetValue("Hello")
+    frame.on_send()
+    assert env["feedback"] and frame.reply_text.GetValue() == "Hello"
+
+
+def test_the_waiting_list_answer_finds_another_providers_request_by_its_key(frame, monkeypatch):
+    """Kelly's note on #370: on_answer's fallback reads the provider from
+    the state's key ("copilot:<id>") to find its record."""
+    from types import SimpleNamespace
+    settle(frame)
+    record = OwnSession("cp-1", "Waiting Copilot", "C:/w", provider="copilot", started=True)
+    frame.store.add(record)
+    state = SimpleNamespace(native_id="cp-1", requests=(object(),))
+    frame._codex_states["copilot:cp-1"] = state
+    frame._open = None
+    seen = []
+    monkeypatch.setattr(frame, "_answer_codex_owned", lambda info, st: seen.append((info.key, st)))
+    frame.on_answer()
+    assert seen == [("copilot:cp-1", state)]
+    frame._codex_states.clear()
+
+
+def test_permission_notices_are_kept_apart_by_provider(frame, monkeypatch):
+    """Kelly's note on #370: the same turn and notice in two providers'
+    chats are each said once."""
+    from thechatplace.providers.codex_runtime import CodexChatState
+    settle(frame)
+    spoken = []
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: spoken.append(text))
+    monkeypatch.setattr(frame, "_notify", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
+    for provider in ("codex", "copilot"):
+        frame.store.add(OwnSession("same", f"{provider} chat", "C:/w", provider=provider, started=True))
+    notice = (("t1", "n1", "Ran a command"),)
+    for provider in ("codex", "copilot", "codex", "copilot"):
+        frame._on_owned_update(provider, CodexChatState(
+            "same", "working", "t1", "inProgress", permission_notices=notice))
+    said = [text for text in spoken if "Ran a command" in text]
+    assert len(said) == 2
+    frame._codex_states.clear()
+
+
+# -- owned GitHub Copilot CLI chats (#352) -------------------------------------
+
+
+#: The fake Copilot is a separate process: a slow machine (the macOS
+#: release build's) can take well over 10 seconds to start it and answer.
+COPILOT_WAIT = 45
+
+
+def _copilot_window(frame, env, monkeypatch, mode="answer"):
+    """The window with a real Copilot runtime, talking to the fake Copilot."""
+    import os
+    from test_copilot_runtime import Process
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.providers.copilot import CopilotProvider
+    from thechatplace.providers.copilot_runtime import CopilotChatRuntime
+    from thechatplace.session_controller import SessionController
+    settle(frame)
+    sessions = platform_paths.copilot_sessions_dir()
+    sessions.mkdir(parents=True, exist_ok=True)
+    child_env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(sessions),
+                     FAKE_COPILOT_LOG=str(env["tmp"] / "copilot-received.jsonl"))
+    monkeypatch.setattr(platform_paths, "find_copilot", lambda *a, **kw: "C:/synthetic/copilot.exe")
+    runtime = CopilotChatRuntime(lambda state: wx.CallAfter(frame._on_owned_update, "copilot", state),
+                                 start=lambda: Process(mode, child_env), sessions_dir=sessions,
+                                 billing_wait=1.0)
+    frame.sessions = SessionController([ClaudeConversations(), CopilotProvider(sessions, runtime=runtime)])
+    folder = env["tmp"] / "copilot-work"
+    folder.mkdir(exist_ok=True)
+    return runtime, str(folder)
+
+
+def _copilot_state(frame):
+    return frame._codex_states.get(frame._open.key) if frame._open is not None else None
+
+
+def _received_prompts(env):
+    path = env["tmp"] / "copilot-received.jsonl"
+    if not path.exists():
+        return []
+    return [m["params"]["prompt"][0]["text"] for m in map(json.loads, path.read_text(
+        encoding="utf-8").splitlines()) if m.get("method") == "session/prompt"]
+
+
+def test_a_new_copilot_chat_is_started_sent_to_and_kept_in_its_own_file(frame, env, monkeypatch):
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    said = []
+    real_say = frame._say
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: (said.append(text), real_say(text, **kw)))
+    try:
+        frame._create_codex_owned(folder, "Owned Copilot", "Say hello", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        assert frame._open.provider == "copilot" and frame.own_reply.IsShown()
+        record = frame.store.get(frame._open.cli_session_id, provider="copilot")
+        assert record is not None and record.cwd == folder
+        assert [text for _id, text in _copilot_state(frame).replies] == ["Hello there"]
+        assert _received_prompts(env) == ["Say hello"]
+        assert (env["tmp"] / "provider-own-copilot.json").exists()
+        assert "copilot" not in (env["tmp"] / "own.json").read_text(encoding="utf-8")
+        assert any("Hello there" in text for text in said), said
+        # Sending again goes to the same chat.
+        frame.reply_text.SetValue("Again")
+        frame.on_send()
+        assert pump(lambda: _received_prompts(env) == ["Say hello", "Again"]
+                    and _copilot_state(frame).turn_id == "2"
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        # Only the new turn's reply is announced, not the first one again.
+        assert said[-1].count("Hello there") == 1, said
+    finally:
+        runtime.close()
+
+
+def test_answering_a_copilot_request_asks_in_copilots_name_and_denies(frame, env, monkeypatch):
+    from thechatplace.ui import codex_chats
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "ask")
+    shown = []
+
+    class Dialog:
+        def __init__(self, parent, title, request, detail="", *, chat_rule=None, provider="Codex"):
+            shown.append((provider, request.offered(), chat_rule))
+            self.choice = "reject_once"
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog", Dialog)
+    try:
+        frame._create_codex_owned(folder, "Asking Copilot", "Run it", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None and _copilot_state(frame).requests,
+                    timeout=COPILOT_WAIT)
+        frame.on_answer()
+        assert pump(lambda: _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        assert shown == [("Copilot", ("allow_once", "reject_once"), None)]
+        assert _copilot_state(frame).replies[-1][1] == "Denied"
+        assert "Answer sent to Copilot." in env["feedback"]
+    finally:
+        runtime.close()
+
+
+def test_stopping_a_copilot_chat_gives_back_its_waiting_message(frame, env, monkeypatch):
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "hang")
+    try:
+        frame._create_codex_owned(folder, "Long Copilot", "Long job", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None and _copilot_state(frame).replies,
+                    timeout=COPILOT_WAIT)
+        frame.reply_text.SetValue("Then this")
+        frame.on_send()
+        assert pump(lambda: _copilot_state(frame).queued == ("Then this",))
+        frame.reply_text.SetValue("Typed later")
+        frame.on_stop()
+        assert pump(lambda: frame.reply_text.GetValue() == "Then this\n\nTyped later", timeout=COPILOT_WAIT)
+        assert pump(lambda: any("back in the message box" in text for text in env["feedback"]))
+        # Built from CANCEL_GRACE_SECONDS, not written out by hand.
+        assert any("within 15 seconds" in text for text in env["feedback"])
+        assert pump(lambda: _copilot_state(frame).outcome == "interrupted", timeout=COPILOT_WAIT)
+        assert _received_prompts(env) == ["Long job"]
+    finally:
+        runtime.close()
+
+
+def test_a_copilot_refusal_is_said_in_its_own_words(frame, env, monkeypatch):
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        frame._create_codex_owned(folder, "Refusing Copilot", "", provider="copilot")
+        assert pump(lambda: frame._open is not None and frame._open.provider == "copilot"
+                    and not frame._codex_preparing, timeout=COPILOT_WAIT)
+        env["feedback"].clear()
+        frame.reply_text.SetValue("/allow-all on")
+        frame.on_send()
+        assert pump(lambda: any("starting with /" in text for text in env["feedback"]), timeout=COPILOT_WAIT)
+        assert frame.reply_text.GetValue() == "/allow-all on" or "/allow-all on" in frame._codex_drafts.get(
+            frame._open.key, "/allow-all on")
+        assert _received_prompts(env) == []
+        from thechatplace import codex_diagnostics
+        assert codex_diagnostics.last_failure().startswith("Copilot worker failed")
+    finally:
+        runtime.close()
+
+
+def test_a_copilot_chat_is_reopened_after_a_restart_from_its_record(frame, env, monkeypatch):
+    """Kelly's note on #370: preparing goes through another provider too,
+    and the runtime is told the chat is the app's only from the record."""
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        frame._create_codex_owned(folder, "Kept Copilot", "Say hello", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        native = frame._open.cli_session_id
+    finally:
+        runtime.close()
+    frame._codex_states.clear()
+    frame._open = None
+    runtime, _ = _copilot_window(frame, env, monkeypatch)  # a new run: a new runtime
+    try:
+        record = frame.store.get(native, provider="copilot")
+        frame.open_session(record.to_info())
+        assert pump(lambda: frame.sessions.owned_action("ready", record), timeout=COPILOT_WAIT)
+        frame.reply_text.SetValue("Again")
+        frame.on_send()
+        assert pump(lambda: _received_prompts(env)[-1:] == ["Again"]
+                    and _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+    finally:
+        runtime.close()
+
+
+def test_a_copilot_chat_started_elsewhere_stays_read_only(frame, env, monkeypatch):
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        sessions = platform_paths.copilot_sessions_dir() / "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        sessions.mkdir(parents=True)
+        (sessions / "workspace.yaml").write_text(
+            f"id: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\ncwd: {folder}\nclient_name: github/cli\n"
+            "name: Terminal chat\n", encoding="utf-8")
+        (sessions / "events.jsonl").write_text(json.dumps(
+            {"type": "user.message", "data": {"content": "Hi"}}) + "\n", encoding="utf-8")
+        info = next(i for i in frame.sessions._providers["copilot"].collect().sessions)
+        frame.open_session(info)
+        assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+        assert not frame.own_reply.IsShown() and "Reply in Copilot CLI" in frame.desktop_note.GetValue()
+    finally:
+        runtime.close()
+
+
+def test_chat_permissions_says_a_copilot_chat_keeps_none(frame, env, monkeypatch):
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    info = SessionInfo(OWN, "copilot:cp", "My Copilot", "C:/w", "cp", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    frame.on_chat_permissions()
+    assert "asks before each command" in env["feedback"][-1]
+
+
+def test_new_session_offers_copilot_with_its_own_note(frame):
+    from thechatplace.ui.dialogs import COPILOT_NOTE, NewSessionDialog
+    dialog = NewSessionDialog(frame, "C:/w", providers=("claude", "codex", "copilot"),
+                              provider="copilot")
+    try:
+        assert dialog.provider() == "copilot"
+        assert dialog.note.GetValue() == COPILOT_NOTE
+        assert not dialog.model.IsEnabled() and not dialog.mode.IsEnabled()
+        _folder, _title, _mode, _message, model = dialog.values()
+        assert model == "" and dialog.effort() == ""
+        dialog.provider_choice.SetSelection(0)  # back to Claude: its controls return
+        dialog._on_provider()
+        assert dialog.model.IsEnabled() and dialog.note.GetValue() != COPILOT_NOTE
+    finally:
+        dialog.Destroy()
+
+
+def test_copilot_is_offered_only_once_its_cli_is_installed(frame, env, monkeypatch):
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.providers.copilot import CopilotProvider
+    from thechatplace.session_controller import SessionController
+    from types import SimpleNamespace
+    settle(frame)
+    frame.sessions = SessionController([ClaudeConversations(), CopilotProvider(
+        runtime=SimpleNamespace(close=lambda: None, known=lambda: []))])
+    assert not frame.sessions.can_create("copilot")  # fake_env: no Copilot CLI here
+    monkeypatch.setattr(platform_paths, "find_copilot", lambda *a, **kw: "C:/synthetic/copilot.exe")
+    assert frame.sessions.can_create("copilot")
+
+
+def test_the_copilot_permission_dialog_defaults_to_deny(frame):
+    from thechatplace.providers.copilot_runtime import CopilotRequest
+    from thechatplace.ui.dialogs import CodexPermissionDialog
+    request = CopilotRequest.decode(1, {"toolCall": {"kind": "execute", "title": "Run",
+                                                     "rawInput": {"command": "echo synthetic"}},
+        "options": [{"optionId": "a", "kind": "allow_once"}, {"optionId": "r", "kind": "reject_once"}]})
+    dialog = CodexPermissionDialog(frame, "Owned", request, provider="Copilot")
+    try:
+        assert dialog.GetTitle() == "Copilot needs permission: Owned"
+        assert dialog.allow is dialog.buttons["allow_once"] and dialog.allow.IsEnabled()
+        assert dialog.buttons["reject_once"].IsThisEnabled()
+        assert dialog.GetDefaultItem() is dialog.buttons["reject_once"]  # Enter denies
+    finally:
+        dialog.Destroy()
+    empty = CopilotRequest.decode(2, {"toolCall": {"kind": "execute", "rawInput": {}},
+        "options": [{"optionId": "a", "kind": "allow_once"}, {"optionId": "r", "kind": "reject_once"}]})
+    dialog = CodexPermissionDialog(frame, "Owned", empty, provider="Copilot")
+    try:
+        assert not dialog.allow.IsEnabled()  # nothing to review, nothing to allow
+    finally:
+        dialog.Destroy()
+
+
+def test_a_copilot_chats_unsent_message_comes_back_once(frame, env, monkeypatch):
+    """The review of the window PR: unsent text is in one update only, so
+    later updates (a reopen, Copilot exiting) don't add it to the draft again."""
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "flip")
+    try:
+        frame._create_codex_owned(folder, "Flipping Copilot", "First", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "inProgress", timeout=COPILOT_WAIT)
+        frame.reply_text.SetValue("Second")
+        frame.on_send()
+        assert pump(lambda: _copilot_state(frame).outcome not in ("", "inProgress"), timeout=COPILOT_WAIT)
+        assert pump(lambda: frame.reply_text.GetValue() == "Second")
+        chat = runtime._chats[frame._open.cli_session_id]
+        runtime._notify(chat)  # any later update
+        runtime._notify(chat)
+        pump(lambda: False, timeout=0.5)
+        assert frame.reply_text.GetValue() == "Second"
+        assert runtime.snapshot(chat.native_id).unsent == ("Second",)  # still there to read
+    finally:
+        runtime.close()
+
+
+def test_a_copilot_chat_with_no_messages_yet_is_still_opened(frame, env, monkeypatch):
+    """Copilot writes no log until a chat's first message: after a restart
+    such a chat still gets ready, rather than waiting for ever."""
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        frame._create_codex_owned(folder, "Empty Copilot", "", provider="copilot")
+        assert pump(lambda: frame._open is not None and frame._open.provider == "copilot"
+                    and not frame._codex_preparing, timeout=COPILOT_WAIT)
+        native = frame._open.cli_session_id
+    finally:
+        runtime.close()
+    frame._codex_states.clear()
+    frame._open = None
+    runtime, _ = _copilot_window(frame, env, monkeypatch)
+    try:
+        record = frame.store.get(native, provider="copilot")
+        frame.open_session(record.to_info())
+        assert pump(lambda: frame.sessions.owned_action("ready", record)
+                    and not frame._codex_preparing, timeout=COPILOT_WAIT)
+    finally:
+        runtime.close()
+
+
+def test_stop_on_a_copilot_chat_with_nothing_running_says_so(frame, env, monkeypatch):
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-idle", "Idle Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-idle", "Idle Copilot", "C:/w", "cp-idle", provider="copilot")
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    frame._codex_states[info.key] = CopilotChatState("cp-idle", "idle", "1", "completed")
+    calls = []
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a: calls.append(a))
+    frame._stop_codex_owned(info)
+    assert calls == [] and "nothing to stop" in env["feedback"][-1]
+    frame._codex_states.clear()
+
+
+def test_copilot_chats_arent_offered_as_reply_targets_yet(frame, monkeypatch):
+    """Sending into a Copilot chat isn't built yet (#369), so it isn't offered."""
+    from thechatplace import relay
+    from thechatplace.sessions import OWN, SessionInfo
+    from thechatplace.ui import relay_chats
+    settle(frame)
+    source = SessionInfo(OWN, "own:a", "Source", "C:/w", "a")
+    copilot = SessionInfo(OWN, "copilot:b", "Copilot target", "C:/w", "b", provider="copilot")
+    claude = SessionInfo(OWN, "own:c", "Claude target", "C:/w", "c")
+    frame._open, frame._chat_loaded = source, True
+    monkeypatch.setattr(relay, "reply_to_send", lambda messages, selected: object())
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    monkeypatch.setattr(frame._snapshot, "sessions", [source, copilot, claude])
+    offered = []
+
+    class Dialog:
+        def __init__(self, parent, title, choices, *args, **kwargs):
+            offered.extend(choices)
+
+        def ShowModal(self):
+            return wx.ID_CANCEL
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(relay_chats, "RelayDialog", Dialog)
+    monkeypatch.setattr(relay, "message_text", lambda message, title: "text")
+    monkeypatch.setattr(relay, "describe", lambda target: target.title)
+    frame.on_send_reply_to()
+    assert offered == ["Claude target"]
+
+
+def test_the_messages_list_keeps_its_name_while_you_are_in_it(frame, monkeypatch):
+    """JAWS showed the list's new name ("Messages in … (idle, on Copilot)")
+    on the braille display, in place of the reply, as each turn ended: a
+    state change waits until you leave the list. Opening another chat
+    renames it at once."""
+    import dataclasses
+    settle(frame)
+    owned = next(info for info in frame._snapshot.sessions if info.is_own)
+    frame._open = dataclasses.replace(owned, state="working")
+    frame._update_messages_label()
+    before = frame.messages_label.GetLabel()
+    assert "working" in before
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)
+    frame._open.state = "idle"
+    frame._update_messages_label()
+    assert frame.messages_label.GetLabel() == before  # not while you're there
+    frame._on_chat_list_left(wx.FocusEvent(wx.wxEVT_KILL_FOCUS))
+    assert "idle" in frame.messages_label.GetLabel()
+    other = dataclasses.replace(owned, key="own:other", title="Another chat", state="idle")
+    frame._open = other
+    frame._update_messages_label()  # a different chat: at once, even in the list
+    assert "Another chat" in frame.messages_label.GetLabel()
+
+
+def test_a_runtime_chats_status_isnt_rewritten_on_every_tick(frame, monkeypatch):
+    """JAWS showed "Messages in …" and part of a message in braille, now and
+    then, while arrowing through an idle Copilot chat: the turn status was
+    set again on every tick, as a name change, though it hadn't changed."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-tick", "Ticking Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-tick", "Ticking Copilot", "C:/w", "cp-tick", provider="copilot")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    frame._codex_states[info.key] = CopilotChatState("cp-tick", "idle", "1", "completed")
+    frame._update_send_state()
+    assert frame.turn_status.GetLabelText() == "Ready."
+    set_calls = []
+    real = frame.turn_status.SetLabelText
+    monkeypatch.setattr(frame.turn_status, "SetLabelText",
+                        lambda text: (set_calls.append(text), real(text)))
+    for _ in range(5):
+        frame._update_send_state()
+    assert set_calls == []
+    frame._codex_states.clear()
+
+
+def test_a_held_list_name_is_dropped_when_the_chat_is_unloaded(frame, monkeypatch):
+    """Review of the held name: unloading the chat while in the list mustn't
+    leave its name to be put back later, with no chat open."""
+    import dataclasses
+    settle(frame)
+    owned = next(info for info in frame._snapshot.sessions if info.is_own)
+    frame._open = dataclasses.replace(owned, state="working")
+    frame._update_messages_label()
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)
+    frame._open.state = "idle"
+    frame._update_messages_label()  # held
+    frame._show_no_session()
+    frame._on_chat_list_left(wx.FocusEvent(wx.wxEVT_KILL_FOCUS))
+    assert frame.messages_label.GetLabel() == "&Messages:"
+
+
+def test_both_replies_are_announced_when_a_message_waited(frame, env, monkeypatch):
+    """Kelly's review of #372: a turn that ends with a message waiting is
+    announced before the next one starts, so each reply is said once, in order."""
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "slow")
+    said = []
+    real_say = frame._say
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: (said.append(text), real_say(text, **kw)))
+    try:
+        frame._create_codex_owned(folder, "Two turns", "First", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "inProgress", timeout=COPILOT_WAIT)
+        frame.reply_text.SetValue("Second")
+        frame.on_send()
+        assert pump(lambda: _copilot_state(frame).turn_id == "2"
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        pump(lambda: False, timeout=0.5)
+        replies = [text for text in said if "Hello there" in text]
+        assert len(replies) == 2, said
+        assert _received_prompts(env) == ["First", "Second"]
+    finally:
+        runtime.close()
+
+
+def test_a_chat_that_becomes_yours_is_named_so_even_while_in_the_list(frame, monkeypatch):
+    """Kelly's review of #372: holding the name in the list kept "read-only"
+    for a chat you can send to. Only a state change within the same chat,
+    with the same kind, waits."""
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    info = SessionInfo(OWN, "copilot:cp-own", "Owned Copilot", "C:/w", "cp-own", provider="copilot",
+                       state="idle")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: False)
+    frame._update_messages_label()
+    assert "read-only" in frame.messages_label.GetLabel()
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)  # loaded as yours
+    frame._update_messages_label()
+    assert "read-only" not in frame.messages_label.GetLabel()
+    assert "on Copilot" in frame.chat_list.GetName()
+    info.state = "working"
+    frame._update_messages_label()  # only the state: held while you're there
+    assert "idle" in frame.messages_label.GetLabel()
+
+
+def test_stop_says_when_copilot_has_already_answered(frame, env, monkeypatch):
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-chk", "Checking Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-chk", "Checking Copilot", "C:/w", "cp-chk", provider="copilot")
+    calls = []
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a: calls.append(a))
+    frame._codex_states[info.key] = CopilotChatState("cp-chk", "working", "1", "inProgress", checking=True)
+    frame._stop_codex_owned(info)
+    assert calls == [] and "already answered" in env["feedback"][-1]
+    frame._codex_states.clear()

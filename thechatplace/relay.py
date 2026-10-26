@@ -128,6 +128,10 @@ def joint_problem(source: SessionInfo, *, can_edit: bool, in_conversation: bool,
     saved at all."""
     if blocked:
         return Problem("agent conversations can't be saved", blocked)
+    if source.is_own and can_edit and source.provider not in NEW_KINDS:
+        # Started here, but its provider can't be in one yet (Copilot, #369).
+        return Problem("this chat can't be in one",
+                       "agent conversations are for Claude and Codex chats")
     if not source.is_own or source.provider not in NEW_KINDS or not can_edit:
         return Problem("this chat wasn't started here",
                        f"{source.title} wasn't started in The Chat Place")
