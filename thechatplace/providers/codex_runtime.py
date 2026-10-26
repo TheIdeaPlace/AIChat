@@ -179,15 +179,6 @@ class CodexChatRuntime:
         if record.provider_options.get('sandbox') == 'workspace-write':
             CodexPolicy('workspace-write', workspace_root=record.provider_options.get('workspace_root', '')).verify_workspace(record.cwd)
         policy = CodexPolicy.choose(record.cwd, sandbox, approval_policy, approvals_reviewer)
-        options = dict(record.provider_options)
-        options.update(sandbox=sandbox, approval_policy=approval_policy)
-        options.pop('approvals_reviewer', None)
-        if approvals_reviewer != 'user':
-            options['approvals_reviewer'] = approvals_reviewer
-        options.pop('workspace_root', None)
-        if policy.workspace_root:
-            options['workspace_root'] = policy.workspace_root
-        proposed = replace(record, cwd=policy.workspace_root or record.cwd, provider_options=options)
         native_id = record.cli_session_id
         with self._lock:
             proof = self._proofs.get(native_id)
@@ -202,7 +193,32 @@ class CodexChatRuntime:
             with self._permission_lock:
                 self.permission_store.clear(native_id)
             connection, _ = self._binding()
-            change = PreparedCodexPolicy(CodexOwnedThreads(connection).resume(proposed))
+            lifecycle = CodexOwnedThreads(connection)
+            if proof is None or not connection.owns_runtime(proof):
+                # A saved mode may no longer be available. An unloaded chat
+                # can resume directly with the newly selected mode.
+                options = dict(record.provider_options, sandbox=policy.sandbox,
+                               approval_policy=policy.approval)
+                options.pop('workspace_root', None)
+                options.pop('approvals_reviewer', None)
+                if policy.workspace_root:
+                    options['workspace_root'] = policy.workspace_root
+                if policy.reviewer != 'user':
+                    options['approvals_reviewer'] = policy.reviewer
+                proof = lifecycle.resume(replace(record, cwd=policy.workspace_root or record.cwd,
+                                                 provider_options=options))
+            # Resuming an already loaded thread returns its old settings and
+            # ignores overrides. Verify the requested grant in an empty,
+            # ephemeral thread instead; every real turn explicitly pins it.
+            # This also works before the owned chat has any saved history.
+            checked = lifecycle.start(policy.workspace_root or record.cwd, record.title, ephemeral=True,
+                model=proof.model, effort=proof.effort, sandbox=policy.sandbox,
+                approval_policy=policy.approval, approvals_reviewer=policy.reviewer)
+            if checked.policy != policy:
+                raise CodexRpcError('Changed Codex workspace scope could not be verified')
+            updated = replace(proof, cwd=checked.cwd, policy=checked.policy)
+            connection._accept_owned_thread(updated)
+            change = PreparedCodexPolicy(updated)
             with self._lock:
                 if self._stop.is_set():
                     raise CodexRpcError('Codex chats are closing')

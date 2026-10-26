@@ -778,6 +778,8 @@ press Stop again to check Codex's saved turn status without resending anything.
 Permission mode list offers read-only or folder editing with **automatic approval
 review**. For an existing owned Codex chat, finish or stop its turn, then use
 File, **Change Permission Mode**, or File, **Chat Permissions**, **Change**.
+The new mode applies to the next message in the same chat, including when you
+change it before sending the first message. The chat keeps its history.
 Codex's reviewer evaluates eligible requests for you and can allow or deny them;
 this reduces interruptions without giving unrestricted access. Human review remains
 the default, and existing chats keep their selected mode. This is different from

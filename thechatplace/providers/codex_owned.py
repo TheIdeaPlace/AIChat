@@ -164,7 +164,7 @@ class CodexOwnedThreads:
         proof = CodexOwnedThread(actual_id, policy.workspace_root or result["cwd"], result["model"], title,
                                  created_ms, self.connection, ephemeral, effort, policy)
         accept = getattr(self.connection, "_accept_owned_thread", None)
-        if callable(accept):
+        if callable(accept) and not ephemeral:
             accept(proof)
         return proof
 

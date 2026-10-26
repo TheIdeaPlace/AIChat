@@ -9990,7 +9990,9 @@ def test_codex_model_catalog_failure_and_late_callback_are_safe(frame):
     callbacks[0](_synthetic_codex_models(), False)  # cannot resurrect a cancelled native dialog
 
 
-def test_codex_create_and_fork_forward_selected_options_through_controller(frame, monkeypatch):
+@pytest.mark.parametrize('sandbox', ['read-only', 'workspace-write'])
+@pytest.mark.parametrize('reviewer', ['user', 'auto_review'])
+def test_codex_create_and_fork_forward_selected_options_through_controller(frame, monkeypatch, sandbox, reviewer):
     from thechatplace.providers.codex import CodexProvider
     from thechatplace.providers.claude import ClaudeConversations
     from thechatplace.session_controller import SessionController
@@ -10007,10 +10009,11 @@ def test_codex_create_and_fork_forward_selected_options_through_controller(frame
     frame.sessions = SessionController([ClaudeConversations(), CodexProvider(object(), runtime=Runtime())])
     monkeypatch.setattr(frame, '_codex_work', lambda action, done: action())
     source = SessionInfo('external', 'codex:source', 'Source', '/', 'source', provider='codex')
-    frame._create_codex_owned('/', 'Synthetic', '', model='synthetic-one', effort='future-effort')
-    frame._create_codex_owned('/', 'Synthetic', '', source=source, model='synthetic-two', effort='high')
-    assert calls == [('create', {'model': 'synthetic-one', 'effort': 'future-effort'}),
-                     ('fork', {'model': 'synthetic-two', 'effort': 'high'})]
+    policy = {'sandbox': sandbox, 'approval_policy': 'on-request', 'approvals_reviewer': reviewer}
+    frame._create_codex_owned('/', 'Synthetic', '', model='synthetic-one', effort='future-effort', **policy)
+    frame._create_codex_owned('/', 'Synthetic', '', source=source, model='synthetic-two', effort='high', **policy)
+    assert calls == [('create', {'model': 'synthetic-one', 'effort': 'future-effort', **policy}),
+                     ('fork', {'model': 'synthetic-two', 'effort': 'high', **policy})]
 
 
 @pytest.mark.parametrize('continuing', [False, True])

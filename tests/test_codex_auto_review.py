@@ -93,7 +93,19 @@ class AutoConnection(RuntimeConnection):
     def request(self, method, params):
         result = super().request(method, params)
         if method in ('thread/start', 'thread/fork', 'thread/resume'):
-            result['approvalsReviewer'] = params['config']['approvals_reviewer']
+            from thechatplace.providers.codex_policy import CodexPolicy
+            policies = self.__dict__.setdefault('policies', {})
+            native = result['thread']['id']
+            # A loaded thread ignores resume overrides, including the
+            # reviewer. A fresh thread uses the requested configuration.
+            if method != 'thread/resume':
+                policies[native] = CodexPolicy.choose(params['cwd'], params['sandbox'],
+                    params['approvalPolicy'], params['config']['approvals_reviewer'])
+            policy = policies[native]
+            result.update(cwd=params['cwd'], sandbox=policy.turn_policy(),
+                          approvalPolicy=policy.approval, approvalsReviewer=policy.reviewer)
+        elif method == 'turn/start':
+            self.policies[params['threadId']] = self.proofs[params['threadId']].policy
         return result
 
 
@@ -128,6 +140,38 @@ def test_failed_save_does_not_activate_automatic_review():
         with pytest.raises(CodexRpcError):
             runtime.send(record, 'Must not send')
         assert not any(m == 'turn/start' for m, p in connection.calls)
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('has_history', [False, True])
+def test_permission_changes_keep_the_chat_and_apply_to_its_next_turn(tmp_path, has_history):
+    connection = AutoConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Original chat')
+        native = record.cli_session_id
+        if has_history:
+            runtime.send(record, 'Initial synthetic turn')
+            connection.events.append(decode_event('turn/completed', {
+                'threadId': native, 'turn': {'id': 'turn-1', 'status': 'completed'}}))
+            wait(lambda: runtime.snapshot(native).outcome == 'completed')
+        for sandbox, reviewer in [('workspace-write', 'auto_review'), ('read-only', 'user')]:
+            change = runtime.prepare_policy(record, sandbox, 'on-request', reviewer)
+            assert not runtime.ready(record)
+            record = change.record()
+            runtime.finish_policy(change, True)
+            assert record.cli_session_id == native
+            runtime.send(record, 'Synthetic message after changing permissions')
+            params = [p for m, p in connection.calls if m == 'turn/start'][-1]
+            assert params['threadId'] == native
+            assert params['approvalsReviewer'] == reviewer
+            assert params['sandboxPolicy']['type'] == ('workspaceWrite' if sandbox == 'workspace-write' else 'readOnly')
+            connection.events.append(decode_event('turn/completed', {
+                'threadId': native, 'turn': {'id': f'turn-{connection.turns}', 'status': 'completed'}}))
+            wait(lambda: runtime.snapshot(native).outcome == 'completed')
+        assert not any(m == 'thread/resume' for m, _ in connection.calls)
+        assert set(connection.proofs) == {native}
     finally:
         runtime.close()
 

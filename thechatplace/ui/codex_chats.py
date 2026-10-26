@@ -98,13 +98,14 @@ class CodexChats:
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
     def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None,
-                            approval_policy=None, made=None, joint=False, provider='codex'):
+                            approval_policy=None, made=None, joint=False, provider='codex', approvals_reviewer=None):
         """A new owned chat with a runtime provider (Codex's name is history:
         Copilot comes here too, #352). ``made(info, message)`` hears of the
         new chat (#378); with ``joint`` it sends the message, as an agent
         conversation's."""
         options = {key: value for key, value in (('model', model), ('effort', effort),
-                   ('sandbox', sandbox), ('approval_policy', approval_policy)) if value}
+                   ('sandbox', sandbox), ('approval_policy', approval_policy),
+                   ('approvals_reviewer', approvals_reviewer)) if value}
         name = provider_name(provider)
         def create():
             return (self.sessions.fork_owned(source, title, **options) if source is not None

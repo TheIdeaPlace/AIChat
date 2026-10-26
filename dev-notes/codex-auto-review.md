@@ -41,3 +41,33 @@ Validation on the reconciled code, including main's About You work (#371):
 The release-note conflict with #371 was resolved by retaining both entries.
 Generated documentation includes both changes. Other open Copilot work was not
 included or modified.
+
+Permission-change regression, verified with installed codex-cli 0.163.0:
+`thread/resume` on an already loaded thread returns its existing sandbox and
+reviewer, ignoring the requested overrides. An empty persistent thread cannot
+be resumed before its first turn has saved history, either. Permission changes
+now keep the owned thread loaded, verify the requested policy in an ephemeral
+thread without inference, and pin that policy on the owned chat's next
+`turn/start`. The ephemeral check never receives an executable ownership proof.
+The existing persistence barrier still prevents sends before the change is saved.
+
+Live regression validation switched one synthetic chat through folder editing
+with automatic review, read-only with human review, folder editing with human
+review, and read-only with automatic review. Each mode completed a tiny text
+turn; the first change happened before any message. Reloading the saved record
+into a fresh runtime preserved automatic review and completed another turn.
+The synthetic chat was archived afterward. The window's creation helper also
+forwards the reviewer again, fixing the missing-argument error in New Session
+and Continue Here. No user's chat content was used in regression fixtures.
+
+The full local suite passed (3,134 passed, 7 skipped). A final recovery case
+also verifies that an unloaded chat can select read-only when its saved editing
+mode is no longer available; all 189 ownership, runtime, execution, approval and
+automatic-review tests pass with that case included. Hidden-window tests cover
+all four creation/fork permission choices and the permission-change command.
+
+The VM visual run completed at `%TEMP%/tcp-ui-probe/20261025-225332` for New
+Session, Continue Here, Change Permission Mode and User Guide, in light-100 and
+hc-aquatic-100. All eight screenshots were opened and reviewed, with no layout
+flags. Comparison against the baselines reports 0 changed, 8 unchanged and no
+new, missing or failed surfaces. No baseline or visual description changed.

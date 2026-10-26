@@ -566,6 +566,8 @@ say so and change nothing.
 For a Codex chat started here, **Change Permission Mode** changes an idle chat between
 read-only and editing files in its selected folder with human or automatic approval review.
 Existing saved permissions stay in effect until the change is verified and saved.
+The new mode applies to the next message in the same chat, including before its
+first message. The chat keeps its history.
 Choose Codex model and effort in New Session or Continue Here; changing them
 later with Change Model or Change Effort is not yet supported.
 

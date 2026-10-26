@@ -44,6 +44,9 @@ class Connection:
             return {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
         if method == 'mcpServerStatus/list':
             return {'data': [], 'nextCursor': None}
+        if method == 'model/list':
+            from test_codex_models import model
+            return {'data': [model('gpt-default')]}
         if method == 'config/read':
             return {'config': {}, 'layers': [{'name': {'type': 'project',
                 'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]}
@@ -53,7 +56,9 @@ class Connection:
             return {'data': []}
         if method in ('thread/start', 'thread/fork'):
             self.created += 1
-            return response(f'owned-{self.created}')
+            result = response(f'owned-{self.created}')
+            result['thread']['ephemeral'] = params.get('ephemeral', False)
+            return result
         if method == 'thread/resume':
             return response(params['threadId'])
         if method == 'turn/start':
@@ -474,6 +479,10 @@ def test_permission_change_blocks_sends_until_saved_and_verified(tmp_path):
         with pytest.raises(CodexRpcError):
             service.send(record, 'Must not run before save')
         proposed = change.record()
+        assert proposed.cli_session_id == record.cli_session_id
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+        assert any(method == 'thread/start' and params.get('ephemeral')
+                   for method, params in connection.calls)
         assert proposed.provider_options['workspace_root'] == str(tmp_path.resolve())
         assert record.provider_options['sandbox'] == 'read-only'
         service.finish_policy(change, True)
@@ -497,6 +506,48 @@ def test_failed_policy_save_requires_explicit_reload_of_old_permissions(tmp_path
         restored = service.reopen(record)
         assert restored.provider_options['sandbox'] == 'read-only'
         assert service.ready(restored)
+        assert not any(method == 'turn/start' for method, _ in connection.calls)
+    finally:
+        service.close()
+
+
+def test_permission_check_cannot_retarget_the_requested_workspace(tmp_path, monkeypatch):
+    from thechatplace.providers.codex_owned import CodexOwnedThreads
+    service, connection, record = policy_runtime(tmp_path)
+    other = tmp_path / 'different-project'
+    other.mkdir()
+    start = CodexOwnedThreads.start
+    def retargeted(lifecycle, cwd, title, **options):
+        return start(lifecycle, str(other), title, **options)
+    monkeypatch.setattr(CodexOwnedThreads, 'start', retargeted)
+    try:
+        with pytest.raises(CodexRpcError, match='workspace scope'):
+            service.prepare_policy(record, 'workspace-write', 'on-request')
+        assert not service.ready(record)
+        assert not any(method == 'turn/start' for method, _ in connection.calls)
+        assert connection.proofs[record.cli_session_id].policy.sandbox == 'read-only'
+    finally:
+        service.close()
+
+
+def test_unloaded_chat_can_change_to_readonly_when_its_saved_edit_mode_is_unavailable(tmp_path, monkeypatch):
+    service, connection, record = policy_runtime(tmp_path)
+    record.provider_options.update(sandbox='workspace-write', workspace_root=str(tmp_path.resolve()))
+    service._proofs.clear()
+    connection.proofs.clear()
+    request = connection.request
+    def unavailable(method, params):
+        if method == 'thread/resume' and params['sandbox'] == 'workspace-write':
+            raise CodexRpcError('Previous editing mode is unavailable')
+        return request(method, params)
+    monkeypatch.setattr(connection, 'request', unavailable)
+    try:
+        change = service.prepare_policy(record, 'read-only', 'on-request')
+        service.finish_policy(change, True)
+        restored = change.record()
+        assert service.ready(restored)
+        assert restored.provider_options['sandbox'] == 'read-only'
+        assert restored.cli_session_id == record.cli_session_id
         assert not any(method == 'turn/start' for method, _ in connection.calls)
     finally:
         service.close()
@@ -542,7 +593,7 @@ def test_permission_change_to_downgraded_sandbox_blocks_with_the_sandbox_reason(
 
         def downgraded(method, params):
             result = request(method, params)
-            if method == 'thread/resume':
+            if method == 'thread/start' and params.get('ephemeral'):
                 result = dict(result, sandbox={'type': 'readOnly', 'networkAccess': False})
             return result
         monkeypatch.setattr(connection, 'request', downgraded)
