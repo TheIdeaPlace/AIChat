@@ -197,6 +197,11 @@ def test_a_rows_description_is_the_rest_of_its_message():
     assert rest("You: first line", "You: first line, and the rest.") == "and the rest."
     # The row shows the first line as written; the spoken text has it as words.
     assert rest("Claude: ## Plan", "Claude: Plan. Step one.") == "Step one."
+    # Any provider's name, and an agent conversation's role after it.
+    assert rest("Codex: ## Plan", "Codex: Plan. Step one.") == "Step one."
+    assert rest("GitHub Copilot: Done…", "GitHub Copilot: Done. Tests pass.") == "Tests pass."
+    assert rest("Codex (reviewer): Looks right", "Codex (reviewer): Looks right. One nit.") == \
+        "One nit."
     # The word the row cuts is the first one the description says.
     assert rest("Claude: abc…", "Claude: abcdef more") == "abcdef more"
     # A "…" after a whole word cuts nothing.

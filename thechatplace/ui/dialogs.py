@@ -1288,9 +1288,9 @@ def _webview_backend():
     system's WebKit on a Mac (#119), and on Linux WebKitGTK, which Orca reads
     like a web page in a browser."""
     import wx.html2
-    if sys.platform == "darwin" or wx.Platform == "__WXGTK__":
-        return wx.html2.WebViewBackendWebKit
-    return wx.html2.WebViewBackendEdge
+    if sys.platform == "win32":
+        return wx.html2.WebViewBackendEdge
+    return wx.html2.WebViewBackendWebKit
 
 
 def formatted_view_available() -> bool:
@@ -1313,7 +1313,7 @@ def _prepare_webview_data_folder() -> None:
     Linux: WebKitGTK's DMA-BUF renderer draws a blank page with some
     graphics drivers (seen on ARM boards and in virtual machines); a page of
     text loses nothing without it."""
-    if wx.Platform == "__WXGTK__":
+    if sys.platform.startswith("linux"):
         os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
         return
     if sys.platform != "win32" or os.environ.get("WEBVIEW2_USER_DATA_FOLDER"):
