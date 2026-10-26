@@ -1140,6 +1140,62 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "New Codex chat with automatic approval review selected"
+  },
+  "copilot-new": {
+   "kind": "dialog",
+   "png": "copilot-new-hc-aquatic-100.png",
+   "json": "copilot-new-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session with Copilot selected as Provider"
+  },
+  "copilot-permission": {
+   "kind": "dialog",
+   "png": "copilot-permission-hc-aquatic-100.png",
+   "json": "copilot-permission-hc-aquatic-100.json",
+   "title": "Copilot needs permission: Copilot preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot asks to run a command, once"
+  },
+  "copilot-files": {
+   "kind": "dialog",
+   "png": "copilot-files-hc-aquatic-100.png",
+   "json": "copilot-files-hc-aquatic-100.json",
+   "title": "Copilot needs permission: Copilot preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot asks to create a file, with its diff"
+  },
+  "main-copilot-owned": {
+   "kind": "window",
+   "png": "main-copilot-owned-hc-aquatic-100.png",
+   "json": "main-copilot-owned-hc-aquatic-100.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A Copilot chat started here: reply box, queued message and context"
   }
  },
  "seconds": 91.6

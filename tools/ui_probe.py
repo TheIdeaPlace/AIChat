@@ -829,7 +829,8 @@ def s_main_copilot_owned(frame, env):
                              context_size=128_000,
                              token_usage=ContextReport(41_000 / 128_000, 128_000))
     frame.sessions._providers["copilot"].runtime = SimpleNamespace(
-        known=lambda: [], snapshot=lambda native: state, ready=lambda native: True,
+        known=lambda: [(info.cli_session_id, info.cwd)], snapshot=lambda native: state,
+        ready=lambda native: True,
         adopt=lambda native: None, prepare=lambda native, cwd: None, close=lambda: None)
     frame._codex_states[info.key] = state
     frame.open_session(dataclasses.replace(record.to_info(), state=WORKING))
@@ -838,6 +839,10 @@ def s_main_copilot_owned(frame, env):
     frame.reply_text.SetValue("Draft of a message still being typed")
     frame._update_send_state()
     frame._update_status_context()
+    # The row says "working" and "Chat Place session" from the next refresh,
+    # as the app's own timer would bring in a moment (as main-codex-owned).
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
 
 
 def s_main_copilot_filter(frame, env):

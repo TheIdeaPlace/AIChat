@@ -1,0 +1,484 @@
+{
+ "title": "New Chat Place Session",
+ "class": "NewSessionDialog",
+ "size": [
+  680,
+  620
+ ],
+ "client": [
+  664,
+  581
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Pro&vider:",
+   "rect": [
+    10,
+    13,
+    48,
+    16
+   ],
+   "best": [
+    48,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Provider",
+   "label": "",
+   "rect": [
+    241,
+    10,
+    413,
+    23
+   ],
+   "best": [
+    67,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Copilot"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Folder:",
+   "rect": [
+    10,
+    44,
+    37,
+    16
+   ],
+   "best": [
+    37,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ComboBox",
+   "name": "Folder",
+   "label": "",
+   "rect": [
+    241,
+    41,
+    413,
+    23
+   ],
+   "best": [
+    111,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Browse...",
+   "rect": [
+    241,
+    72,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "From &GitHub...",
+   "rect": [
+    322,
+    72,
+    99,
+    23
+   ],
+   "best": [
+    99,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Work &in:",
+   "rect": [
+    10,
+    106,
+    45,
+    16
+   ],
+   "best": [
+    45,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Work in",
+   "label": "",
+   "rect": [
+    241,
+    103,
+    413,
+    23
+   ],
+   "best": [
+    312,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The folder as it is (not a git repository, so no worktree)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "B&ranch (choose one, or type a new name):",
+   "rect": [
+    10,
+    137,
+    223,
+    16
+   ],
+   "best": [
+    223,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "ComboBox",
+   "name": "Branch (choose one, or type a new name)",
+   "label": "",
+   "rect": [
+    241,
+    134,
+    413,
+    23
+   ],
+   "best": [
+    111,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Title:",
+   "rect": [
+    10,
+    168,
+    27,
+    16
+   ],
+   "best": [
+    27,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Title (optional)",
+   "label": "",
+   "rect": [
+    243,
+    167,
+    413,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Mo&del:",
+   "rect": [
+    10,
+    199,
+    38,
+    16
+   ],
+   "best": [
+    38,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Model",
+   "label": "",
+   "rect": [
+    241,
+    196,
+    413,
+    23
+   ],
+   "best": [
+    173,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Copilot's configured model"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Effort:",
+   "rect": [
+    10,
+    230,
+    33,
+    16
+   ],
+   "best": [
+    33,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Effort",
+   "label": "",
+   "rect": [
+    241,
+    227,
+    413,
+    23
+   ],
+   "best": [
+    140,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Copilot's own setting"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission m&ode:",
+   "rect": [
+    10,
+    261,
+    96,
+    16
+   ],
+   "best": [
+    96,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Permission mode",
+   "label": "",
+   "rect": [
+    241,
+    258,
+    413,
+    23
+   ],
+   "best": [
+    288,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "Asks before running commands or changing files"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "About &permissions:",
+   "rect": [
+    10,
+    291,
+    103,
+    16
+   ],
+   "best": [
+    103,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About permissions",
+   "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
+   "rect": [
+    12,
+    309,
+    644,
+    72
+   ],
+   "best": [
+    127,
+    72
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Copilot uses your GitHub Copilot sign-in, and each message uses requests from your Copilot plan. It uses its own model and effort, which can't be chosen here. Copilot asks before it runs a command or changes a file: each request appears in Answer, where you can allow it once or deny it. The Chat Place won't send to Copilot in a folder whose Copilot hooks could act without asking you."
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "First &message:",
+   "rect": [
+    10,
+    389,
+    75,
+    16
+   ],
+   "best": [
+    75,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "First message",
+   "label": "",
+   "rect": [
+    12,
+    417,
+    644,
+    117
+   ],
+   "best": [
+    127,
+    72
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Start",
+   "rect": [
+    494,
+    550,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    577,
+    550,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
