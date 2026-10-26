@@ -2702,7 +2702,7 @@ def test_help_user_guide_shows_the_guide_page_or_the_text_box(frame, env, monkey
     frame.on_user_guide()
     assert shown[0][0] == "User Guide"
     assert "<h1>The Chat Place User Guide</h1>" in shown[0][1]
-    assert ">Answering permissions and questions</h2>" in shown[0][1] and texts == []
+    assert ">Permissions and questions</h2>" in shown[0][1] and texts == []
     _fake_viewer(monkeypatch, ID_PLAIN_TEXT)
     frame.on_user_guide()
     assert len(texts) == 1 and isinstance(texts[0], MessageDialog)

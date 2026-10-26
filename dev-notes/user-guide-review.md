@@ -3,8 +3,11 @@
 A review of the user guide by Claude and Codex in an agent conversation ("review user guide"),
 22 October 2026, against version 0.2.0. Each read the whole guide on its own, checked claims
 against the code, then the two lists were merged here. This is for Kelly to decide what to do.
-Done so far: section 1 item 1 (Codex "preview") and section 2 item 5 (more in Troubleshooting,
-which "When something isn't right" became).
+Done: all of section 1 and all of section 2. Section 1 item 1 (Codex "preview") and section 2
+Gaps item 5 (more in Troubleshooting, which "When something isn't right" became) were done in
+#389; the rest of sections 1 and 2, with the shortcut check, in the user guide review PR. The
+README got only the same corrections (version, issue numbers, Codex loading on Enter,
+Claude-only features, where the app writes, the shortcut table). Section 3 is still open.
 
 - **The guide** is `thechatplace/assets/user-guide.md` (Help, User Guide). `docs/user-guide.html`
   and the other `docs/` copies are made from it by `python tools/make_docs.py`.
