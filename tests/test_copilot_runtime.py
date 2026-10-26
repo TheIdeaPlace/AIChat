@@ -13,7 +13,7 @@ from thechatplace import platform_paths
 from thechatplace.providers import copilot_acp
 from thechatplace.providers.copilot_runtime import (ALLOW_ONCE, COMMAND, MAX_DIFF_CHARS,
                                                     MAX_TEXT_CHARS, REJECT, CopilotChatError,
-                                                    CopilotChatRuntime, CopilotRequest,
+                                                    CopilotChatRuntime, CopilotRequest, Stopped,
                                                     usage_kinds)
 from thechatplace.sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, WORKING
 
@@ -162,7 +162,7 @@ def test_stop_cancels_and_gives_back_waiting_messages_unsent(make, tmp_path):
     runtime.send(chat, "Long job")
     runtime.send(chat, "Then this")
     assert wait(lambda: runtime.snapshot(chat).replies)
-    assert runtime.stop(chat) == ("Then this",)
+    assert runtime.stop(chat) == Stopped(("Then this",), cancelled=True)
     assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
     assert runtime.snapshot(chat).state == IDLE
     prompts = [m for m in received(tmp_path) if m.get("method") == "session/prompt"]
@@ -397,7 +397,7 @@ def test_messages_held_by_an_automatic_stop_always_come_back(make, tmp_path):
     runtime.send(chat, "Long job")
     runtime.send(chat, "Waiting")
     assert wait(lambda: runtime.snapshot(chat).replies)
-    assert runtime.stop(chat, hold=True) == ()  # kept, not returned
+    assert runtime.stop(chat, hold=True) == Stopped((), cancelled=True)  # kept, not returned
     assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
     assert runtime.snapshot(chat).unsent == ("Waiting",)
 
@@ -1458,15 +1458,21 @@ def test_the_process_list_is_trusted_only_if_it_agrees_about_this_process(monkey
     assert platform_paths._windows_process_starts() is None  # the careful way is used instead
 
 
-def test_a_sharp_drop_in_context_counts_as_a_compaction(make, tmp_path):
+@pytest.mark.parametrize("before, after, counts", [
+    (95_000, 20_000, True),
+    (85_000, 45_000, True),  # from past the 80% warning to below it
+    (70_000, 30_000, False),  # the warning was never reached, so not again
+])
+def test_a_sharp_drop_in_context_counts_as_a_compaction(make, tmp_path, before, after, counts):
     runtime, _ = make()
     chat = runtime.create(str(tmp_path))
     connection = runtime._connection
-    for used in (90_000, 95_000, 20_000):
+    for used in (before - 5_000, before, after):
         runtime._on_notification(connection, "session/update", {
             "sessionId": chat, "update": {"sessionUpdate": "usage_update", "used": used, "size": 100_000}})
     state = runtime.snapshot(chat)
-    assert state.context_epoch == 1 and state.token_usage.share == 0.2
+    assert state.context_epoch == (1 if counts else 0)
+    assert state.token_usage.share == after / 100_000
 
 
 def test_the_window_hears_when_copilot_has_already_answered(make, tmp_path):
@@ -1496,8 +1502,11 @@ def test_stop_while_an_answer_is_checked_takes_back_the_waiting_message(make, tm
     runtime.send(chat, "One")
     assert runtime.send(chat, "Two") is True
     assert wait(lambda: any(u.checking for u in updates))
-    assert runtime.stop(chat) == ("Two",)
+    # Not cancelled: the window words Stop from this, not its own state,
+    # which can lag behind (Kelly, #372).
+    assert runtime.stop(chat) == Stopped(("Two",), cancelled=False, answered=True)
     assert wait(lambda: not runtime._chats[chat].busy)
+    assert runtime.stop(chat) == Stopped()  # nothing running
     assert prompts_sent(tmp_path) == ["One"]
     assert not [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
     assert runtime.snapshot(chat).unsent == ()  # given back once, by Stop, not again
@@ -1514,6 +1523,32 @@ def test_a_chat_whose_log_was_removed_isnt_listed_again(make, tmp_path):
     assert [info.cli_session_id for info in provider.collect().sessions] == [chat]  # from its log
     shutil.rmtree(tmp_path / "sessions" / chat)  # removed outside the app
     assert not [info for info in provider.collect().sessions if info.cli_session_id == chat]
+
+
+def test_a_chat_whose_log_cant_be_read_for_a_moment_stays_listed(make, tmp_path, monkeypatch):
+    """Kelly's review of #372: only a removed folder drops a chat listed
+    before. A read that fails while Copilot writes the log (a sharing
+    violation on Windows) keeps it listed, so focus doesn't move."""
+    from thechatplace.providers import copilot
+    from thechatplace.providers.copilot import CopilotProvider
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed" and not runtime._chats[chat].busy)
+    provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
+    [before] = provider.collect().sessions
+    assert before.cli_session_id == chat and before.title == "synthetic"  # from its log
+
+    def locked(*args, **kwargs):
+        raise PermissionError(32, "The process cannot access the file")
+    monkeypatch.setattr(copilot, "_read_entry", locked)
+    with open(tmp_path / "sessions" / chat / "events.jsonl", "a", encoding="utf-8") as log:
+        log.write("\n")  # a new size, so it's read again
+    snapshot = provider.collect()
+    assert snapshot.unreadable_files == 1
+    [row] = snapshot.sessions  # as it was last listed, so it doesn't move
+    assert (row.cli_session_id, row.title, row.source, row.created_ms, row.last_activity_ms) == (
+        chat, before.title, before.source, before.created_ms, before.last_activity_ms)
 
 
 

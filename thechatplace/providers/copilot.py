@@ -15,6 +15,7 @@ resume a session, send a prompt or spend a premium request.
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import replace
 from datetime import datetime
 import json
 import os
@@ -443,9 +444,9 @@ class CopilotProvider:
         #: is on; without it, Copilot chats are read only. Built lazily: it
         #: starts no process until a chat is created or opened.
         self.runtime = runtime
-        #: Chats once listed from their own log: if that goes, they aren't
-        #: listed again from the runtime alone.
-        self._listed_before: set = set()
+        #: Chats once listed from their own log, as last listed: if the
+        #: folder goes, they aren't listed again from the runtime alone.
+        self._listed_before: dict = {}
         if execution and runtime is None:
             from .copilot_runtime import CopilotChatRuntime
             self.runtime = CopilotChatRuntime(on_update, sessions_dir=sessions_dir)
@@ -506,14 +507,22 @@ class CopilotProvider:
         state, and a new chat with no log yet (listed from the runtime, and
         made the app's own by the window's record)."""
         listed = {info.cli_session_id: info for info in snapshot.sessions}
-        self._listed_before |= listed.keys()
+        self._listed_before.update((native_id, replace(info)) for native_id, info in listed.items())
         for native_id, cwd in self.runtime.known():
             state = self.runtime.snapshot(native_id)
             if state is None:
                 continue
             info = listed.get(native_id)
-            if info is None and native_id in self._listed_before:
-                continue  # listed from its log before, and its folder was removed (Kelly, #372)
+            before = self._listed_before.get(native_id)
+            if info is None and before is not None:
+                if not (self.sessions_dir / native_id).exists():
+                    continue  # listed from its log before, and its folder was removed
+                # Only missing from this scan: a read that failed while
+                # Copilot wrote the log (a sharing violation on Windows) mustn't
+                # drop a running chat or move it, so it's listed as it last
+                # was, title and times included (Kelly, #372).
+                info = replace(before)
+                snapshot.sessions.append(info)
             if info is None:
                 # Titled from the window's record when there is one; a chat
                 # whose record couldn't be saved stays read-only, named.
@@ -628,8 +637,9 @@ class CopilotProvider:
     def send_owned(self, record, text: str) -> bool:
         return self.runtime.send(record.cli_session_id, text)
 
-    def stop_owned(self, record) -> tuple:
-        """The messages that were still waiting, given back unsent."""
+    def stop_owned(self, record):
+        """A ``copilot_runtime.Stopped``: the messages that were still
+        waiting, given back unsent, and what Stop found."""
         return self.runtime.stop(record.cli_session_id)
 
     def answer_owned(self, record, request, result) -> None:

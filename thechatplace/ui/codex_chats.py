@@ -273,26 +273,22 @@ class CodexChats:
         if record is None:
             return
         name = provider_name(record.provider)
-        checking = False
         if record.provider != 'codex':
             state = self._codex_states.get(info.key)
             if state is not None and state.outcome != 'inProgress':
                 self._feedback(f'{record.title}: {name} isn\'t answering, so there\'s nothing to stop.')
                 return
-            checking = state is not None and getattr(state, 'checking', False)
-            if checking and not state.queued:
-                self._feedback(f'{record.title}: {name} has already answered; The Chat Place is '
-                               'checking it, so there\'s nothing to stop.')
-                return
-            # With messages waiting, Stop still goes to the runtime: that's
-            # what takes them back (it cancels nothing once Copilot has
-            # answered), so the next one isn't sent (Kelly, #372).
+            # Even while the window's state says Copilot has answered, Stop
+            # goes to the runtime: that state can lag behind it, and only the
+            # runtime knows whether a waiting message has started meanwhile.
+            # Its answer says what happened, and the message is worded from
+            # that (Kelly, #372).
         def done(result, error):
             if error:
                 self._feedback(result or f'Could not stop or recover this {name} chat. Check its state in {name}.')
                 self._update_send_state()
                 return
-            reconnected, waiting = result
+            reconnected, waiting, stopped = result
             if waiting:
                 # Copilot's stop gives back the messages still waiting; Codex
                 # gives them back through its state's unsent instead.
@@ -301,10 +297,15 @@ class CodexChats:
                     'back in the message box, unsent.') if waiting else ''
             if reconnected:
                 text = f'{name} chat reconnected after verifying its previous turn ended. No message was resent.'
-            elif checking and waiting:
-                text = f'{name} has already answered.'
             elif record.provider == 'codex':
                 text = f'Stop requested. If the turn does not finish, press Stop again to check whether {name} has ended it.'
+            elif stopped is not None and stopped.answered:
+                text = (f'{name} has already answered.' if waiting else
+                        f'{record.title}: {name} has already answered, so there\'s nothing to stop.')
+            elif stopped is not None and not stopped.cancelled:
+                # The turn ended meanwhile, or Copilot's process has gone and
+                # the turn is ending with it: either way it isn't answering.
+                text = f'{record.title}: {name} isn\'t answering, so there\'s nothing to stop.'
             else:
                 from ..providers.copilot_runtime import CANCEL_GRACE_SECONDS
                 text = (f'Stop requested. If {name} does not stop within '
@@ -313,15 +314,20 @@ class CodexChats:
             self._update_send_state()
         def stop_or_recover():
             try:
-                waiting = self.sessions.owned_action('stop', record)
-                return False, (tuple(waiting) if record.provider != 'codex' and isinstance(waiting, tuple)
-                               else ())
+                stopped = self.sessions.owned_action('stop', record)
+                if record.provider == 'codex':
+                    return False, (), None
+                if hasattr(stopped, 'cancelled'):  # copilot_runtime.Stopped
+                    return False, tuple(stopped.waiting), stopped
+                # A provider that gives back only the waiting messages, or
+                # nothing, is taken to have cancelled.
+                return False, (tuple(stopped) if isinstance(stopped, tuple) else ()), None
             except CodexRpcError:
                 # Stop is explicit intent to recover, unlike selecting a chat.
                 # Reopen checks both local reservations and native turn history
                 # before resuming, and never resends an uncertain message.
                 self.sessions.owned_action('reopen', record)
-                return True, ()
+                return True, (), None
         self._codex_work(stop_or_recover, done)
 
     def _usage_check_slot(self, provider):
