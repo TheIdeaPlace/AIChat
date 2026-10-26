@@ -12,6 +12,7 @@ import wx
 
 from ..providers.codex_requests import QUESTIONS
 from ..providers.codex_rpc import CodexRpcError, CodexTurnRejected
+from ..providers.codex_runtime import STOP_TO_RECHECK
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
 from .. import announce
@@ -39,7 +40,7 @@ class CodexChats:
         if state.problem:
             return state.problem
         if state.state == STATUS_UNAVAILABLE:
-            return f'{name} status is unavailable. Reload this chat to check its history.'
+            return f'{name} status is unavailable. Use Stop ({key_name("Ctrl+Period")}) to recheck this chat.'
         if state.requests:
             text = f'{name} is waiting for you. {key_name("Ctrl+Shift+A")} answers.'
             if state.activity:
@@ -98,13 +99,14 @@ class CodexChats:
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
     def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None,
-                            approval_policy=None, made=None, joint=False, provider='codex'):
+                            approval_policy=None, made=None, joint=False, provider='codex', approvals_reviewer=None):
         """A new owned chat with a runtime provider (Codex's name is history:
         Copilot comes here too, #352). ``made(info, message)`` hears of the
         new chat (#378); with ``joint`` it sends the message, as an agent
         conversation's."""
         options = {key: value for key, value in (('model', model), ('effort', effort),
-                   ('sandbox', sandbox), ('approval_policy', approval_policy)) if value}
+                   ('sandbox', sandbox), ('approval_policy', approval_policy),
+                   ('approvals_reviewer', approvals_reviewer)) if value}
         name = provider_name(provider)
         def create():
             return (self.sessions.fork_owned(source, title, **options) if source is not None
@@ -179,12 +181,26 @@ class CodexChats:
         if len(selected) == 2:
             selected += ('user',)
         before_cwd, before_options = record.cwd, dict(record.provider_options)
+        earlier = self._codex_states.get(info.key)
+        earlier_problem = earlier.problem if earlier is not None else ''
         self._codex_policy_pending.add(info.key)
         self._feedback('Verifying Codex permissions.')
+        def failure(fallback):
+            # The runtime's update for a latched problem arrives first (both
+            # come through wx.CallAfter, in order) but is not spoken while the
+            # change is pending; say it once here, ending with what Stop does.
+            # A problem from before this change is not replayed for a refusal.
+            self._codex_policy_pending.discard(info.key)
+            state = self._codex_states.get(info.key)
+            problem = state.problem if state is not None else ''
+            text = problem if problem and problem != earlier_problem else fallback
+            if problem and 'use stop' not in text.lower():
+                text += ' ' + STOP_TO_RECHECK
+            self._feedback(text)
         def prepared(change, error):
             if error:
-                self._codex_policy_pending.discard(info.key)
-                self._feedback(change or 'Could not change Codex permissions. Wait for an idle chat or reload to check its status.')
+                failure(change or 'Could not change Codex permissions. Wait for an idle chat, or use Stop '
+                        f'({key_name("Ctrl+Period")}) to check its status.')
                 after()
                 return
             proposed = change.record()
@@ -192,13 +208,15 @@ class CodexChats:
                                       cwd=proposed.cwd, provider_options=proposed.provider_options)
             if not saved:
                 # Store.update mutates its record before writing. A failed
-                # save must not make Reload use an unpersisted broader grant.
+                # save must not make Stop use an unpersisted broader grant.
                 record.cwd, record.provider_options = before_cwd, before_options
             def finished(_result, failed):
-                self._codex_policy_pending.discard(info.key)
-                if failed or not saved:
-                    self._feedback('Changed Codex permissions could not be saved or confirmed. Reload before sending.')
+                state = self._codex_states.get(info.key)
+                # A problem that arrived meanwhile also stops the new mode.
+                if failed or not saved or (state is not None and state.problem):
+                    failure('Changed Codex permissions could not be saved or confirmed. Use Stop to recheck the saved permissions before sending.')
                 else:
+                    self._codex_policy_pending.discard(info.key)
                     label = next(label for value, label in choices if value == selected)
                     self._feedback(f'Codex permissions for {info.title}: {label}.')
                 self._update_send_state()
@@ -229,10 +247,13 @@ class CodexChats:
             relay = getattr(self, '_relay_prepared', None)
             relayed = relay(key, record, error) if relay is not None else ''
             if error:
-                if isinstance(_result, str) and _result.startswith(CodexTurnRejected.REASONS['sandbox_unavailable']):
-                    # A saved folder-editing chat reopened read-only: reloading
-                    # it after fixing the sandbox prepares it again (#257).
-                    _result += ' Reload this chat to try again.'
+                if isinstance(_result, str) and _result.startswith(
+                        (CodexTurnRejected.REASONS['sandbox_unavailable'],
+                         CodexTurnRejected.REASONS['auto_review_unavailable'])):
+                    # A saved chat whose sandbox or automatic review could
+                    # not be confirmed: once that is fixed, Stop opens it
+                    # again without sending anything (#257) (#390).
+                    _result += f' Once that\'s fixed, use Stop ({key_name("Ctrl+Period")}) to open this chat again.'
                 name = provider_name(provider)
                 self._feedback(relayed + (_result or f'Could not prepare this {name} chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in {name} before restarting The Chat Place.'))
             self._update_send_state()
@@ -274,8 +295,10 @@ class CodexChats:
             return
         name = provider_name(record.provider)
         checking = False
+        state = self._codex_states.get(info.key)
+        recover_idle = (record.provider == 'codex' and state is not None
+                        and state.outcome in ('idle', 'completed', 'failed', 'interrupted'))
         if record.provider != 'codex':
-            state = self._codex_states.get(info.key)
             if state is not None and state.outcome != 'inProgress':
                 self._feedback(f'{record.title}: {name} isn\'t answering, so there\'s nothing to stop.')
                 return
@@ -299,7 +322,11 @@ class CodexChats:
                 self._restore_codex_text(info.key, waiting)
             back = (f' {len(waiting)} waiting {"message is" if len(waiting) == 1 else "messages are"} '
                     'back in the message box, unsent.') if waiting else ''
-            if reconnected:
+            if reconnected == 'permissions':
+                text = f'Saved {name} permissions rechecked. You can send again. No message was sent.'
+            elif reconnected == 'rechecked':
+                text = f'{name} chat rechecked. You can send again. No message was sent.'
+            elif reconnected:
                 text = f'{name} chat reconnected after verifying its previous turn ended. No message was resent.'
             elif checking and waiting:
                 text = f'{name} has already answered.'
@@ -311,17 +338,25 @@ class CodexChats:
                         f'{CANCEL_GRACE_SECONDS:g} seconds, The Chat Place closes it.')
             self._feedback(text + back)
             self._update_send_state()
+        def recover():
+            # Stop is explicit intent to recover, unlike selecting a chat.
+            # Reopen checks both local reservations and native turn history
+            # before resuming, and never resends an uncertain message. Codex
+            # says which check it made, so Stop announces that one (#385).
+            if record.provider == 'codex':
+                return self.sessions.owned_action('recover', record) or 'resumed', ()
+            self.sessions.owned_action('reopen', record)
+            return 'resumed', ()
         def stop_or_recover():
             try:
                 waiting = self.sessions.owned_action('stop', record)
-                return False, (tuple(waiting) if record.provider != 'codex' and isinstance(waiting, tuple)
-                               else ())
             except CodexRpcError:
-                # Stop is explicit intent to recover, unlike selecting a chat.
-                # Reopen checks both local reservations and native turn history
-                # before resuming, and never resends an uncertain message.
-                self.sessions.owned_action('reopen', record)
-                return True, ()
+                return recover()
+            # Outside the try: a failed recheck must not run a second time.
+            if recover_idle and not self.sessions.owned_action('ready', record):
+                return recover()
+            return False, (tuple(waiting) if record.provider != 'codex' and isinstance(waiting, tuple)
+                           else ())
         self._codex_work(stop_or_recover, done)
 
     def _usage_check_slot(self, provider):
@@ -416,7 +451,9 @@ class CodexChats:
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
                 and (previous is None or previous.turn_id != state.turn_id)):
             self._status(f'{record.title}: {name} is working.')
-        if state.problem and (previous is None or previous.problem != state.problem):
+        if (state.problem and (previous is None or previous.problem != state.problem)
+                and key not in getattr(self, '_codex_policy_pending', ())):
+            # A pending permission change says its own failure once (#385).
             self._say(f'{record.title}: {state.problem}', interrupt=False)
         if state.notice and (previous is None or previous.notice != state.notice):
             self._say(f'{record.title}: {state.notice}', interrupt=False)

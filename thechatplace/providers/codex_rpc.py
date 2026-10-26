@@ -29,8 +29,8 @@ class CodexApprovalNotSent(CodexRpcError):
 class CodexRememberedApprovalError(CodexRpcError):
     REASONS = {
         'not_sent': 'The answer was not sent and no new approval was kept. Open Answer to try again.',
-        'kept_uncertain': 'The approval was kept, but its answer could not be confirmed. Reload this chat before continuing; the answer will not be resent.',
-        'removed_uncertain': 'The approval was removed, but its earlier answer could not be confirmed. Reload this chat before continuing; the answer will not be resent.',
+        'kept_uncertain': 'The approval was kept, but its answer could not be confirmed. Use Stop to end any running turn and recheck this chat; the answer will not be resent.',
+        'removed_uncertain': 'The approval was removed, but its earlier answer could not be confirmed. Use Stop to end any running turn and recheck this chat; the answer will not be resent.',
         'cleanup_failed': 'The answer was not sent, but removing the new approval failed. Check File, Chat Permissions before continuing.',
     }
 
@@ -39,14 +39,18 @@ class CodexRememberedApprovalError(CodexRpcError):
         super().__init__(self.REASONS[code])
 
 
+#: Said after any lost connection: Stop checks the chat's turn and reconnects (#390).
+STOP_TO_RECONNECT = "Use Stop to reconnect."
+
+
 class CodexConnectionFailure(CodexRpcError):
     """Fixed connection reasons, never server payloads or exception text."""
     REASONS = {
-        'stream_closed': 'Codex connection interrupted: the stream closed; reconcile chat history.',
-        'request_timeout': 'Codex connection interrupted: a request timed out; reconcile chat history.',
-        'write_failed': 'Codex connection interrupted: a request could not be written; reconcile chat history.',
-        'invalid_protocol': 'Codex connection interrupted: an invalid protocol message was received; reconcile chat history.',
-        'unsupported_request': 'Codex connection interrupted: an unsupported approval or question was received; reconcile chat history.',
+        'stream_closed': 'Codex connection interrupted: the stream closed. ' + STOP_TO_RECONNECT,
+        'request_timeout': 'Codex connection interrupted: a request timed out. ' + STOP_TO_RECONNECT,
+        'write_failed': 'Codex connection interrupted: a request could not be written. ' + STOP_TO_RECONNECT,
+        'invalid_protocol': 'Codex connection interrupted: an invalid protocol message was received. ' + STOP_TO_RECONNECT,
+        'unsupported_request': 'Codex connection interrupted: an unsupported approval or question was received. ' + STOP_TO_RECONNECT,
     }
 
     def __init__(self, code):
@@ -66,8 +70,7 @@ class CodexTurnRejected(CodexRpcError):
     """The inference request was never queued; fixed reasons are safe to report."""
     REASONS = {
         'auto_review_unavailable': ('Codex could not confirm automatic approval review. This Codex version or managed policy '
-                                  'may not allow it. No message was sent. Update Codex or choose human review; '
-                                  'reload an existing chat before sending again.'),
+                                  'may not allow it. No message was sent. Update Codex or choose human review.'),
         'chatgpt_required': 'Codex turns require ChatGPT sign-in.',
         'not_idle': 'This Codex chat is not confirmed idle. No new turn was sent.',
         'preflight_failed': 'Codex could not verify this chat before sending. No new turn was sent.',

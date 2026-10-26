@@ -99,7 +99,7 @@ Like main-own. The chat's row has moved to second place in the session list and 
 
 ## main-codex-interrupted: A Codex chat whose connection was interrupted
 
-The owned chat after Codex sent a request the app can't answer. The heading wraps onto two lines: "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history. Codex chat.", with one full stop after "history". The session row and the status bar say the same, cut with "...". The line under the buttons reads "Codex connection interrupted: an unsupported approval or question was received; reconcile chat history." The messages are the two history rows; the queued message is gone.
+The owned chat after Codex sent a request the app can't answer. The heading wraps onto two lines: "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received. Use Stop to reconnect. Codex chat.", with one full stop after "reconnect". The session row and the status bar say the same, cut with "...". The line under the buttons shows whole at every size: "Codex connection interrupted: an unsupported approval or question was received. Use Stop to reconnect." The Messages label reads "Messages in Codex history preview (working, on Codex):", because a state change isn't put on the label while the messages list has focus (#372). The messages are the two history rows; the queued message is gone.
 
 **What looks off:** Nothing.
 

@@ -416,13 +416,13 @@ def test_slow_sign_in_does_not_stall_other_chats_and_removal_prevents_wire_send(
         service.close()
 
 
-def test_mode_change_revokes_rules_even_if_native_resume_fails(tmp_path, monkeypatch):
+def test_mode_change_revokes_rules_even_if_native_policy_check_fails(tmp_path, monkeypatch):
     from test_codex_runtime import policy_runtime
     from thechatplace.providers.codex_owned import CodexOwnedThreads
     service, connection, record = policy_runtime(tmp_path)
     req = request(tmp_path)
     service.permission_store.save(record.cli_session_id, (candidate(req, str(tmp_path)),))
-    monkeypatch.setattr(CodexOwnedThreads, 'resume', lambda *a: (_ for _ in ()).throw(RuntimeError('failed')))
+    monkeypatch.setattr(CodexOwnedThreads, 'start', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('failed')))
     try:
         with pytest.raises(RuntimeError):
             service.prepare_policy(record, 'read-only', 'on-request')

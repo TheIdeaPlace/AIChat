@@ -435,7 +435,7 @@ safely are declined with a notice without disconnecting the chat; Turn Status
 keeps the notice available. Turn Status (Ctrl+Shift+T)
 reports elapsed time and the latest activity. Your messages are read back
 according to the same announcement setting used for Claude chats. If a send
-cannot be confirmed, reopen the chat to read its history before sending again.
+cannot be confirmed, use Stop (Ctrl+Period) to recheck the chat, and read its history before sending again.
 
 
 Continue Here starts a Codex copy read-only. You can select folder editing for
@@ -570,6 +570,11 @@ say so and change nothing.
 For a Codex chat started here, **Change Permission Mode** changes an idle chat between
 read-only and editing files in its selected folder with human or automatic approval review.
 Existing saved permissions stay in effect until the change is verified and saved.
+The new mode applies to the next message in the same chat, including before its
+first message. The chat keeps its history.
+If the change cannot be verified or saved, sending stays disabled. Use **Stop**
+to recheck the saved permissions, or try **Change Permission Mode** again.
+Recovery sends no message.
 Choose Codex model and effort in New Session or Continue Here; changing them
 later with Change Model or Change Effort is not yet supported.
 
