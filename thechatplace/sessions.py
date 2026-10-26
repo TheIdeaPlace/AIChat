@@ -38,11 +38,19 @@ STATUS_UNAVAILABLE = "status unavailable"
 LISTED_PROVIDERS = ("codex", "copilot")
 #: Backends whose owned chats run through a provider runtime that the window
 #: drives with SessionController.owned_action (send, stop, answer, prepare,
-#: live state updates). Codex now; each provider is added when its runtime
-#: and window support land (#352). Adding one also means wiring its
-#: on_update to MainFrame._on_owned_update where providers are built, and
-#: Stop's recovery (codex_chats._stop_codex_owned) knowing its errors.
-RUNTIME_PROVIDERS = ("codex",)
+#: live state updates). Adding one means at least (#352, #370):
+#: - wiring its on_update to MainFrame._on_owned_update where providers are
+#:   built, and closing its runtime with the provider;
+#: - Stop's recovery (codex_chats._stop_codex_owned) knowing its errors,
+#:   and the waiting messages its stop gives back;
+#: - Answer (codex_chats._answer_codex_owned) taking its requests, whose
+#:   approval_answer the provider's answer_owned must accept;
+#: - codex_diagnostics.safe_reason passing its errors' own words through;
+#: - New Session offering it, and own_store accepting its records (in a
+#:   file of their own if older releases would refuse them).
+#: Codex-only features (permission modes, saved rules, plans, Continue Here,
+#: agent conversations) stay Codex's until each is built for another.
+RUNTIME_PROVIDERS = ("codex", "copilot")
 #: The app to go to for a listed provider's chat ("Reply in Copilot CLI").
 HOME_APPS = {"codex": "Codex", "copilot": "Copilot CLI"}
 

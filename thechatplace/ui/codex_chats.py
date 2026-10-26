@@ -12,7 +12,7 @@ import wx
 
 from ..providers.codex_requests import QUESTIONS
 from ..providers.codex_rpc import CodexRpcError, CodexTurnRejected
-from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE
+from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
 from .. import announce
 from ..claude_cli import describe_elapsed
@@ -97,24 +97,29 @@ class CodexChats:
     def _load_codex_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
-    def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None, approval_policy=None,
-                            made=None, joint=False):
-        """``made(info, message)`` hears of the new chat (#378); with
-        ``joint`` it sends the message, as an agent conversation's."""
+    def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None,
+                            approval_policy=None, made=None, joint=False, provider='codex'):
+        """A new owned chat with a runtime provider (Codex's name is history:
+        Copilot comes here too, #352). ``made(info, message)`` hears of the
+        new chat (#378); with ``joint`` it sends the message, as an agent
+        conversation's."""
         options = {key: value for key, value in (('model', model), ('effort', effort),
                    ('sandbox', sandbox), ('approval_policy', approval_policy)) if value}
+        name = provider_name(provider)
         def create():
             return (self.sessions.fork_owned(source, title, **options) if source is not None
-                    else self.sessions.create_owned('codex', folder, title, **options))
+                    else self.sessions.create_owned(provider, folder, title, **options))
         def done(record, error):
             if error:
-                text = record or 'Could not create this Codex chat. Check Codex sign-in and configuration.'
+                text = record or (f'Could not create this {name} chat. Check {name} sign-in and '
+                                  'configuration.')
                 if message:
-                    text = self._keep_first_message(message) + ' ' + text
+                    text = self._keep_first_message(message, provider) + ' ' + text
                 self._feedback(text)
                 return
             if not self._store_write(self.store.add, record):
-                self._feedback('Codex created the chat, but it could not be saved here. Open it in Codex.')
+                self._feedback(f'{name} created the chat, but it could not be saved here. Open it in '
+                               f'{home_app(provider)}.')
                 return
             if joint:
                 self.refresh_sessions()
@@ -131,7 +136,7 @@ class CodexChats:
                 made(record.to_info(), message)
         self._codex_work(create, done)
 
-    def _keep_first_message(self, message):
+    def _keep_first_message(self, message, provider='codex'):
         """New Session is gone when Codex refuses, so keep its first message
         somewhere reachable and say where, first, before the reason (#257).
         Only an editable chat shows the message box; otherwise it would be
@@ -140,10 +145,12 @@ class CodexChats:
         if self._can_edit(info):
             self._give_back(info.cli_session_id, message, True)
             self._save_draft()
-            return f'No Codex chat was started. Your first message is in the message box of {info.title}.'
+            return (f'No {provider_name(provider)} chat was started. Your first message is in the '
+                    f'message box of {info.title}.')
         if self._copy_text(message):
-            return 'No Codex chat was started. Your first message is copied to the clipboard.'
-        return "No Codex chat was started, and your first message couldn't be kept."
+            return (f'No {provider_name(provider)} chat was started. Your first message is copied '
+                    'to the clipboard.')
+        return f"No {provider_name(provider)} chat was started, and your first message couldn't be kept."
 
     def _change_codex_permissions(self, info, after=None):
         """``after()`` runs once the change is finished, refused or cancelled,
@@ -266,21 +273,55 @@ class CodexChats:
         if record is None:
             return
         name = provider_name(record.provider)
-        def done(_result, error):
-            self._feedback((_result or f'Could not stop or recover this {name} chat. Check its state in {name}.') if error
-                           else f'{name} chat reconnected after verifying its previous turn ended. No message was resent.' if _result
-                           else f'Stop requested. If the turn does not finish, press Stop again to check whether {name} has ended it.')
+        checking = False
+        if record.provider != 'codex':
+            state = self._codex_states.get(info.key)
+            if state is not None and state.outcome != 'inProgress':
+                self._feedback(f'{record.title}: {name} isn\'t answering, so there\'s nothing to stop.')
+                return
+            checking = state is not None and getattr(state, 'checking', False)
+            if checking and not state.queued:
+                self._feedback(f'{record.title}: {name} has already answered; The Chat Place is '
+                               'checking it, so there\'s nothing to stop.')
+                return
+            # With messages waiting, Stop still goes to the runtime: that's
+            # what takes them back (it cancels nothing once Copilot has
+            # answered), so the next one isn't sent (Kelly, #372).
+        def done(result, error):
+            if error:
+                self._feedback(result or f'Could not stop or recover this {name} chat. Check its state in {name}.')
+                self._update_send_state()
+                return
+            reconnected, waiting = result
+            if waiting:
+                # Copilot's stop gives back the messages still waiting; Codex
+                # gives them back through its state's unsent instead.
+                self._restore_codex_text(info.key, waiting)
+            back = (f' {len(waiting)} waiting {"message is" if len(waiting) == 1 else "messages are"} '
+                    'back in the message box, unsent.') if waiting else ''
+            if reconnected:
+                text = f'{name} chat reconnected after verifying its previous turn ended. No message was resent.'
+            elif checking and waiting:
+                text = f'{name} has already answered.'
+            elif record.provider == 'codex':
+                text = f'Stop requested. If the turn does not finish, press Stop again to check whether {name} has ended it.'
+            else:
+                from ..providers.copilot_runtime import CANCEL_GRACE_SECONDS
+                text = (f'Stop requested. If {name} does not stop within '
+                        f'{CANCEL_GRACE_SECONDS:g} seconds, The Chat Place closes it.')
+            self._feedback(text + back)
             self._update_send_state()
         def stop_or_recover():
             try:
-                self.sessions.owned_action('stop', record)
-                return False
+                waiting = self.sessions.owned_action('stop', record)
+                return False, (tuple(waiting) if record.provider != 'codex' and isinstance(waiting, tuple)
+                               else ())
             except CodexRpcError:
                 # Stop is explicit intent to recover, unlike selecting a chat.
                 # Reopen checks both local reservations and native turn history
                 # before resuming, and never resends an uncertain message.
                 self.sessions.owned_action('reopen', record)
-                return True
+                return True, ()
         self._codex_work(stop_or_recover, done)
 
     def _usage_check_slot(self, provider):
@@ -447,7 +488,8 @@ class CodexChats:
         if record is None or not state.requests:
             return
         request = state.requests[0]
-        if request.method != QUESTIONS:
+        # Only Codex can offer to keep an approval for the chat (#307).
+        if request.method != QUESTIONS and info.provider == 'codex':
             pending = getattr(self, '_codex_answer_checks', None)
             if pending is None:
                 pending = self._codex_answer_checks = set()
@@ -472,8 +514,10 @@ class CodexChats:
                                     provider=provider_name(info.provider))
         else:
             detail = dict(state.file_changes).get(request.item_id, '')
-            dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule)
+            dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule,
+                                           provider=provider_name(info.provider))
         keep = False
+        choice = ''
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
@@ -483,8 +527,9 @@ class CodexChats:
                     return
                 result = request.question_answer(dialog.answers())
             else:
-                keep = dialog.choice == 'tcp_chat_rule'
-                result = None if keep else request.approval_answer(dialog.choice)
+                choice = dialog.choice
+                keep = choice == 'tcp_chat_rule'
+                result = None if keep else request.approval_answer(choice)
         except ValueError:
             self._feedback(f'These {provider_name(info.provider)} answers are invalid. Open Answer and choose again.')
             return
@@ -499,7 +544,8 @@ class CodexChats:
                 # An approval or an answer lets an agent conversation's
                 # automatic hand-offs go on; a refusal pauses them (#248).
                 allowed = keep or request.method == QUESTIONS or (
-                    (result or {}).get('decision') not in ('decline', 'cancel'))
+                    choice not in ('decline', 'cancel', 'reject_once')
+                    and (result or {}).get('decision') not in ('decline', 'cancel'))
                 # An approval with another request still waiting counts once
                 # that one is answered too.
                 # Any other request waiting now (not when the dialog opened;

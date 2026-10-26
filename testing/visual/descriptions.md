@@ -145,6 +145,12 @@ View, Show Sessions, GitHub Copilot Chats. The list's label reads "Session list,
 
 **What looks off:** The rest of the list is empty, as in main-codex-filter. Nothing else.
 
+## main-copilot-owned: A Copilot chat started here, mid-turn, with a message queued and a draft
+
+Like main-codex-owned, for Copilot (#352, #372). The chat's row is second in the session list and reads "Copilot history preview, Copilot, Scratch, working, active just now, Cha..." (cut at the list's edge). The heading is "Copilot history preview, Scratch, working. Copilot chat." and the label "Messages in Copilot history preview (working, on Copilot):". The messages are "You: Explain the upload test.", "Copilot: ## What changed" (selected, white on Windows blue, #FFFFFF on #0078D4, 4.5:1) and "Queued: Run the unit tests next.". The reply box holds "Draft of a message still being typed", with Send, Stop, Commands... and Attach Files... under it and "Copilot is working. 1 message queued." below them. The status bar reads "5 sessions: 1 need you, 1 working.", "Copilot history preview: working", a "Context 32% reported" button and "1 session needs you". In High Contrast Aquatic the selected message is #263B50 on light aqua #8EE3F0 (7.9:1), with the usual white outlines on near-black.
+
+**What looks off:** Nothing beyond the cut session rows, which is normal for that list.
+
 ## shortcuts-page: Help, Keyboard Shortcuts (formatted page)
 
 This is an 820 by 620 dialog. A web page fills almost all of it (796 by 534) inside a thin grey border, with a grey vertical scroll bar on the right. The page has a large bold "Keyboard shortcuts" heading, an intro paragraph (five lines in 0.1.7, now naming the Provider and Kind columns), then a "Moving around" heading and a two-column table, "Keys" and "What it does". Keys are in bold, and the table has thin grey grid lines and generous row padding. The text is about 12 point, noticeably bigger than the rest of the app. At the bottom right are two small buttons, "Read as Plain Text" (115 wide) and "Close".
@@ -191,7 +197,7 @@ The same dialog, 680 by 636, on a computer where Codex is found. The Codex check
 
 ## settings-copilot: Settings once Copilot CLI has a session
 
-The same dialog as settings, 680 by 676 (25 taller), on a computer where GitHub Copilot CLI has saved a session (#352, #355). A new unticked check box, "Include GitHub Copilot CLI chats (read-only; restart required)", fits on one line (343 wide) between the Codex check box and the agent conversations one, with its access key O underlined. Every check box below the Reading messages group starts at x=10. In High Contrast Aquatic and Desert it follows the theme like the rest of Settings, and dark-100 looks the same as light-100 (#177).
+The same dialog as settings, 680 by 676 (25 taller), on a computer where GitHub Copilot CLI has saved a session (#352, #355). A new unticked check box, "Include GitHub Copilot CLI chats (preview; restart required)" (it said "read-only" before #372), fits on one line (343 wide) between the Codex check box and the agent conversations one, with its access key O underlined. Every check box below the Reading messages group starts at x=10. In High Contrast Aquatic and Desert it follows the theme like the rest of Settings, and dark-100 looks the same as light-100 (#177).
 
 **What looks off:** Nothing at 100% and 150%. At 175% the settings scroll (#231), as in settings, and the Copilot check box is the one cut through at the bottom until you scroll.
 
@@ -368,6 +374,24 @@ A 700 by 540 dialog titled "Codex needs permission: Codex preview". "Request:" h
 The same dialog, showing a file change: "Update: app.py", "@@ -1 +1 @@", "-print('old')" and "+print('new')", in the standard font. Four buttons at the bottom right, with Deny the default: "Allow Once", "Deny", "Deny and Stop Turn" (it was "Stop Turn"; #284, #295) and "Answer Later". The longer third label moved Allow Once and Deny 51 pixels to the left. In High Contrast Aquatic the buttons are white-outlined on near-black and Deny is filled light aqua. At 175% all four labels fit their buttons.
 
 **What looks off:** The diff isn't in a monospaced font, unlike the Lists dialog's Details. The box is mostly empty.
+
+## copilot-new: File, New Session with Copilot chosen as Provider
+
+The New Chat Place Session dialog, 680 by 620, laid out as in codex-new (#352, #372). "Provider" shows "Copilot" with the focus outline. "Model", "Effort" and "Permission mode" are greyed out and read "Copilot's configured model", "Copilot's own setting" and "Asks before running commands or changing files" (#6D6D6D on #FAFAFA, 5.0:1). "About permissions:" heads a read-only box with a four-line paragraph: Copilot uses your GitHub Copilot sign-in and your plan's requests, uses its own model and effort, which can't be chosen here, asks before it runs a command or changes a file (each request appears in Answer, to allow once or deny), and The Chat Place won't send to Copilot in a folder whose Copilot hooks could act without asking. The paragraph fits the box, which shows a scroll bar. "First message:" heads an empty box, and "Start" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic the greyed text is #A6A6A6 on #202020 (6.7:1) and Start is filled light aqua (#263B50 on #8EE3F0, 7.9:1).
+
+**What looks off:** Nothing.
+
+## copilot-permission: Copilot asks to run a command
+
+A 700 by 540 dialog titled "Copilot needs permission: Copilot preview", like codex-permission (#352, #372). "Request:" heads a read-only box that fills the dialog, holding "Run the upload tests on a new branch", a blank line, "Command:" and "git checkout -b fix-upload-test && python -m pytest tests/test_upload.py" (black on white, 21:1). Three buttons sit at the bottom right: "Allow Once", "Deny" (the default, blue-outlined) and "Answer Later". There is no Allow for This Chat and no Deny and Stop Turn, as Copilot's requests offer only these. In High Contrast Aquatic the text is white on near-black (16.3:1) and Deny is filled light aqua (#263B50 on #8EE3F0, 7.9:1).
+
+**What looks off:** The box is mostly empty for a short request, as in codex-permission. Nothing else.
+
+## copilot-files: Copilot asks to create a file, with its diff
+
+The same dialog, showing a file change: "Create notes.txt", "File:" and the file's path, then "Changes:" with "--- a/dev/null", "+++ b/" and the path, "+First synthetic line" and "+Second synthetic line", in the standard font. The same three buttons, with Deny the default. In High Contrast Aquatic it follows the theme as copilot-permission does.
+
+**What looks off:** As in codex-files, the diff isn't in a monospaced font and the box is mostly empty.
 
 ## codex-question: Codex asks questions
 

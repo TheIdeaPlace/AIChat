@@ -38,6 +38,10 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "find_codex", lambda: None)
     # Never this computer's own Copilot CLI sessions (#352).
     patch(platform_paths, "copilot_sessions_dir", lambda: root / "copilot" / "session-state")
+    # Nor its Copilot CLI, settings, hooks or organisation policy.
+    patch(platform_paths, "find_copilot", lambda *args, **kwargs: None)
+    patch(platform_paths, "copilot_home", lambda: root / "copilot")
+    patch(platform_paths, "copilot_policy_texts", lambda: [])
     desktop = root / "desktop"
     live = root / "live"
     projects = root / "projects"

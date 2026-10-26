@@ -212,3 +212,130 @@ def test_conflicting_titles_block_saving_and_preserve_both_files(tmp_path):
     with pytest.raises(OSError):
         store.set('own:two', 'Attempted update')
     assert (path.read_bytes(), companion.read_bytes()) == before
+
+
+# -- Copilot records have a file of their own (#352) ---------------------------
+
+
+def copilot_chat(native="copilot-id"):
+    return OwnSession(native, "Synthetic Copilot chat", "/synthetic", provider="copilot",
+                      started=True)
+
+
+def test_copilot_records_never_reach_the_files_older_releases_read(tmp_path):
+    """Releases that read provider-sessions.json refuse all of it over a
+    provider they don't know, so Copilot is kept out of it entirely."""
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(chat())
+    store.add(chat("codex"))
+    store.add(copilot_chat())
+    codex_file = json.loads((tmp_path / "provider-sessions.json").read_text(encoding="utf-8"))
+    assert [item["provider"] for item in codex_file["sessions"]] == ["codex"]
+    assert "copilot" not in (tmp_path / "sessions.json").read_text(encoding="utf-8")
+    own = json.loads((tmp_path / "provider-sessions-copilot.json").read_text(encoding="utf-8"))
+    assert own["version"] == 2 and [item["provider"] for item in own["sessions"]] == ["copilot"]
+    again = OwnSessionStore(path)
+    assert again.get("copilot-id", "copilot") == store.get("copilot-id", "copilot")
+    assert again.get("copilot-id", "copilot").to_info().key == "copilot:copilot-id"
+    assert len(again.all(None)) == 3 and not again.load_error
+
+
+def test_an_older_store_without_a_copilot_file_loads_and_saves_unchanged(tmp_path):
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(chat())
+    store.add(chat("codex"))
+    legacy = path.read_bytes()
+    codex = (tmp_path / "provider-sessions.json").read_bytes()
+    again = OwnSessionStore(path)
+    assert not again.load_error and len(again.all(None)) == 2
+    again.save()
+    assert path.read_bytes() == legacy
+    assert (tmp_path / "provider-sessions.json").read_bytes() == codex
+    assert not (tmp_path / "provider-sessions-copilot.json").exists()  # no Copilot, no file
+
+
+def test_removing_the_last_copilot_chat_leaves_an_empty_copilot_file(tmp_path):
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(copilot_chat())
+    store.remove("copilot-id", "copilot")
+    own = json.loads((tmp_path / "provider-sessions-copilot.json").read_text(encoding="utf-8"))
+    assert own == {"version": 2, "sessions": []}
+    assert OwnSessionStore(path).all(None) == []
+
+
+@pytest.mark.parametrize("raw", ["{not json", json.dumps({"version": 1, "sessions": []}),
+                                 json.dumps({"version": 2, "sessions": [asdict(chat("codex"))]}),
+                                 json.dumps({"version": 2, "sessions": [None]})])
+def test_a_bad_copilot_file_blocks_saving_rather_than_being_overwritten(tmp_path, raw):
+    path = tmp_path / "sessions.json"
+    own = tmp_path / "provider-sessions-copilot.json"
+    own.write_text(raw, encoding="utf-8")
+    store = OwnSessionStore(path)
+    assert store.load_error
+    with pytest.raises(OSError):
+        store.add(chat())
+    assert own.read_text(encoding="utf-8") == raw
+
+
+def test_copilot_records_carry_no_claude_or_codex_settings(tmp_path):
+    with pytest.raises(ValueError):
+        OwnSessionStore(tmp_path / "sessions.json").add(
+            OwnSession("x", "t", "/synthetic", provider="copilot", provider_options={"model": "m"}))
+
+
+def test_a_failed_save_puts_the_copilot_file_back(tmp_path, monkeypatch):
+    from thechatplace import provider_storage
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(copilot_chat("first"))
+    before = (tmp_path / "provider-sessions-copilot.json").read_bytes()
+
+    def fail(*args, **kwargs):
+        raise OSError("synthetic failure")
+    monkeypatch.setattr(provider_storage.PartitionedFile, "save", fail)
+    with pytest.raises(OSError):
+        store.add(copilot_chat("second"))
+    assert (tmp_path / "provider-sessions-copilot.json").read_bytes() == before
+
+
+def test_a_copilot_record_in_the_codex_file_is_moved_to_its_own(tmp_path):
+    """Written there by some other build: read, and moved out on the next
+    save, so releases that read provider-sessions.json can read it again."""
+    path = tmp_path / "sessions.json"
+    (tmp_path / "provider-sessions.json").write_text(json.dumps(
+        {"version": 2, "sessions": [asdict(chat("codex")), asdict(copilot_chat())]}), encoding="utf-8")
+    store = OwnSessionStore(path)
+    assert not store.load_error and store.get("copilot-id", "copilot") is not None
+    store.save()
+    codex_file = json.loads((tmp_path / "provider-sessions.json").read_text(encoding="utf-8"))
+    assert [item["provider"] for item in codex_file["sessions"]] == ["codex"]
+    own = json.loads((tmp_path / "provider-sessions-copilot.json").read_text(encoding="utf-8"))
+    assert [item["provider"] for item in own["sessions"]] == ["copilot"]
+
+
+def test_a_failed_migration_keeps_the_copilot_record_it_moved(tmp_path, monkeypatch):
+    """Kelly's review of #372: a migration keeps what it copied out, as
+    PartitionedFile keeps provider-sessions.json, so a Copilot record moved out
+    of the old file is never left in neither."""
+    from thechatplace import provider_storage
+    path = tmp_path / "sessions.json"
+    # An older mixed store to migrate, and a stray Copilot record in the
+    # Codex file from some other build.
+    path.write_text(json.dumps({"version": 2, "sessions": [asdict(chat()), asdict(chat("codex"))]}),
+                    encoding="utf-8")
+    (tmp_path / "provider-sessions.json").write_text(
+        json.dumps({"version": 2, "sessions": [asdict(copilot_chat())]}), encoding="utf-8")
+    real = provider_storage.PartitionedFile._write
+
+    def legacy_fails(target, payload):
+        if target == path:
+            raise OSError("synthetic failure")
+        real(target, payload)
+    monkeypatch.setattr(provider_storage.PartitionedFile, "_write", staticmethod(legacy_fails))
+    store = OwnSessionStore(path)
+    assert store.load_error  # the migration couldn't finish
+    own = json.loads((tmp_path / "provider-sessions-copilot.json").read_text(encoding="utf-8"))
+    assert [item["cli_session_id"] for item in own["sessions"]] == ["copilot-id"]

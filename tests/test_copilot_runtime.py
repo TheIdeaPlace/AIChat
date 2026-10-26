@@ -18,6 +18,7 @@ from thechatplace.providers.copilot_runtime import (ALLOW_ONCE, COMMAND, MAX_DIF
 from thechatplace.sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, WORKING
 
 FAKE = Path(__file__).with_name("fake_copilot_acp.py")
+PYTHON = getattr(sys, "_base_executable", None) or sys.executable
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +33,10 @@ class Process:
     """What platform_paths.start_copilot_acp returns: pipes and close()."""
 
     def __init__(self, mode, env):
-        self.process = subprocess.Popen([sys.executable, "-u", str(FAKE), mode],
+        # The interpreter itself, not a venv's python.exe: on Windows that's
+        # a launcher whose child would have another pid than the one this
+        # app knows, and the fake names its lock for itself, as Copilot does.
+        self.process = subprocess.Popen([PYTHON, "-u", str(FAKE), mode],
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.DEVNULL, env=env)
         self.stdin, self.stdout = self.process.stdin, self.process.stdout
@@ -110,9 +114,11 @@ def test_a_message_sent_while_working_waits_its_turn(make, tmp_path):
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "First")
     assert runtime.send(chat, "Second") is True
-    assert wait(lambda: len(runtime.snapshot(chat).replies) == 2
+    assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
                 and runtime.snapshot(chat).outcome == "completed"
-                and not runtime.snapshot(chat).queued)
+                and not runtime._chats[chat].busy)
+    # Each turn's state has its own replies, as Codex's does.
+    assert [text for _id, text in runtime.snapshot(chat).replies] == ["Hello there"]
     prompts = [m["params"]["prompt"][0]["text"] for m in received(tmp_path)
                if m.get("method") == "session/prompt"]
     assert prompts == ["First", "Second"]
@@ -1229,7 +1235,7 @@ def test_a_terminal_message_counts_when_ours_never_reached_copilot(make, tmp_pat
 @pytest.fixture
 def live_other_pid():
     """A process that's running and isn't this app's Copilot."""
-    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    process = subprocess.Popen([PYTHON, "-c", "import time; time.sleep(60)"])
     yield process.pid
     process.kill()
     process.wait(5)
@@ -1317,8 +1323,208 @@ def test_a_log_shorter_than_last_time_means_the_chat_is_opened_again(make, tmp_p
 
 
 def test_process_start_times_are_known_for_running_processes_only():
-    started = platform_paths.process_started_at(os.getpid())
-    assert started is not None and started <= time.time()
+    started = platform_paths.processes_started_at([os.getpid()])
+    assert started[os.getpid()] <= time.time()
     dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait(10)  # exited, though this test still holds its handle
+    assert dead.pid not in platform_paths.processes_started_at([dead.pid, os.getpid()])
+
+
+# -- Kelly's follow-ups on approving #364 ----------------------------------------
+
+
+@pytest.mark.parametrize("text, seconds", [("05:23", 323), ("02:03:04", 7384),
+                                           ("1-02:03:04", 93784), ("", None), ("soon", None)])
+def test_ps_elapsed_times_are_read(text, seconds):
+    assert platform_paths.etime_seconds(text) == seconds
+
+
+def test_the_fakes_own_lock_is_really_checked(make, tmp_path, monkeypatch):
+    """The fake holds inuse.<its pid>.lock, as Copilot does: if this app
+    couldn't tell its own Copilot, every send would be refused."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    own = runtime._own_pid(runtime._connection)
+    assert (tmp_path / "sessions" / chat / f"inuse.{own}.lock").exists()
+    monkeypatch.setattr(runtime, "_own_pid", lambda connection: None)
+    with pytest.raises(CopilotChatError, match="open in another Copilot"):
+        runtime.send(chat, "Hello")
+
+
+def test_a_lock_that_goes_while_looking_is_skipped_and_one_unreadable_counts(tmp_path, monkeypatch,
+                                                                            live_other_pid):
+    from thechatplace.providers import copilot_runtime
+    folder = tmp_path / "chat"
+    folder.mkdir()
+    (folder / f"inuse.{live_other_pid}.lock").write_text("", encoding="utf-8")
+    (folder / "inuse.1.hold").write_text("", encoding="utf-8")
+    real = os.stat
+
+    def gone(path, *args, **kwargs):
+        if str(path).endswith(".lock"):
+            raise FileNotFoundError(path)
+        return real(path, *args, **kwargs)
+    monkeypatch.setattr(copilot_runtime.os, "stat", gone)
+    assert not copilot_runtime.locked_elsewhere(folder, None)
+
+    def unreadable(path, *args, **kwargs):
+        if str(path).endswith(".lock"):
+            raise PermissionError(path)
+        return real(path, *args, **kwargs)
+    monkeypatch.setattr(copilot_runtime.os, "stat", unreadable)
+    assert copilot_runtime.locked_elsewhere(folder, None)
+
+
+def test_no_cancel_timer_is_left_when_copilot_answers_during_stop(make, tmp_path):
+    """Copilot can answer while the cancel goes out: no timer is kept for a
+    turn that has ended (it made a test flaky)."""
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    connection = runtime._connection
+    real = connection.notify
+
+    def answered_meanwhile(method, params):
+        real(method, params)
+        runtime._chats[chat].answered = True
+    connection.notify = answered_meanwhile
+    runtime.stop(chat)
+    assert runtime._chats[chat].cancel_timer is None
+    assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Windows process list")
+def test_every_running_process_has_its_real_start_on_windows():
+    """Read without opening any process, so another user's (a service whose
+    id a stale Copilot lock names) has its start too, never an unknown that
+    would count (#372)."""
+    every = platform_paths._windows_process_starts()
+    filetime = platform_paths.process_start(os.getpid())
+    assert abs(every[os.getpid()] - (filetime / 10_000_000 - 11_644_473_600)) < 0.01
+    others = [pid for pid in list(every)[:400] if platform_paths.process_start(pid) == platform_paths.NOT_YOURS]
+    assert all(every[pid] > 0 for pid in others)
+    dead = subprocess.Popen([PYTHON, "-c", "pass"])
     dead.wait(10)
-    assert platform_paths.process_started_at(dead.pid) is None
+    assert dead.pid not in platform_paths._windows_process_starts()
+
+
+# -- Kelly's review of #372 -------------------------------------------------------
+
+
+def test_a_turn_with_a_message_waiting_is_heard_to_end_first(make, tmp_path):
+    """The window hears turn 1 complete, with its reply, before turn 2 starts:
+    one update for both skipped turn 1's announcement."""
+    runtime, updates = make("slow")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "First")
+    assert runtime.send(chat, "Second") is True
+    assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
+                and runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    seen = [(u.turn_id, u.outcome) for u in updates]
+    first_done = seen.index(("1", "completed"))
+    assert first_done < seen.index(("2", "inProgress"))
+    assert [text for _id, text in updates[first_done].replies] == ["Hello there: First"]
+    assert prompts_sent(tmp_path) == ["First", "Second"]
+
+
+def test_a_stop_between_two_turns_sends_nothing_more(make, tmp_path, monkeypatch):
+    """Stop pressed just as one turn ends and the waiting message's begins:
+    that message comes back unsent and never reaches Copilot."""
+    runtime, _ = make("slow")
+    chat = runtime.create(str(tmp_path))
+    real = runtime._deliver
+    stopped = []
+
+    def stop_in_the_gap(state):
+        real(state)
+        if state.turn_id == "1" and state.outcome == "completed" and not stopped:
+            stopped.append(runtime.stop(chat))
+    monkeypatch.setattr(runtime, "_deliver", stop_in_the_gap)
+    runtime.send(chat, "First")
+    assert runtime.send(chat, "Second") is True
+    assert wait(lambda: stopped and runtime.snapshot(chat).turn_id == "2"
+                and not runtime._chats[chat].busy)
+    assert runtime.snapshot(chat).unsent == ("Second",)
+    assert prompts_sent(tmp_path) == ["First"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Windows process list")
+def test_the_process_list_is_trusted_only_if_it_agrees_about_this_process(monkeypatch):
+    real = platform_paths.process_start
+    monkeypatch.setattr(platform_paths, "process_start",
+                        lambda pid: real(pid) + 10 ** 9 if pid == os.getpid() else real(pid))
+    assert platform_paths._windows_process_starts() is None  # the careful way is used instead
+
+
+def test_a_sharp_drop_in_context_counts_as_a_compaction(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    for used in (90_000, 95_000, 20_000):
+        runtime._on_notification(connection, "session/update", {
+            "sessionId": chat, "update": {"sessionUpdate": "usage_update", "used": used, "size": 100_000}})
+    state = runtime.snapshot(chat)
+    assert state.context_epoch == 1 and state.token_usage.share == 0.2
+
+
+def test_the_window_hears_when_copilot_has_already_answered(make, tmp_path):
+    runtime, updates = make("nolog")  # the billing check then waits a moment
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: any(u.checking for u in updates))
+    assert wait(lambda: not runtime._chats[chat].busy)
+    assert not runtime.snapshot(chat).checking
+
+
+def test_a_new_chat_listed_before_its_log_is_never_untitled(make, tmp_path):
+    from thechatplace.providers.copilot import CopilotProvider
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
+    row = next(info for info in provider.collect().sessions if info.cli_session_id == chat)
+    assert row.title == "New Copilot chat" and not row.is_own
+
+
+
+def test_stop_while_an_answer_is_checked_takes_back_the_waiting_message(make, tmp_path):
+    """Kelly's review of #372: once Copilot has answered, Stop cancels
+    nothing, but it still takes back what's waiting, so it isn't sent."""
+    runtime, updates = make("nolog")  # the billing check then waits a moment
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "One")
+    assert runtime.send(chat, "Two") is True
+    assert wait(lambda: any(u.checking for u in updates))
+    assert runtime.stop(chat) == ("Two",)
+    assert wait(lambda: not runtime._chats[chat].busy)
+    assert prompts_sent(tmp_path) == ["One"]
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
+    assert runtime.snapshot(chat).unsent == ()  # given back once, by Stop, not again
+
+
+def test_a_chat_whose_log_was_removed_isnt_listed_again(make, tmp_path):
+    import shutil
+    from thechatplace.providers.copilot import CopilotProvider
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed" and not runtime._chats[chat].busy)
+    provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
+    assert [info.cli_session_id for info in provider.collect().sessions] == [chat]  # from its log
+    shutil.rmtree(tmp_path / "sessions" / chat)  # removed outside the app
+    assert not [info for info in provider.collect().sessions if info.cli_session_id == chat]
+
+
+
+def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypatch):
+    """Copilot writes the log a moment after the first message is sent: the
+    chat stays listed from the runtime meanwhile (the review of the fix above)."""
+    from thechatplace.providers.copilot import CopilotProvider
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")  # running; the fake logs only the user.message
+    (tmp_path / "sessions" / chat / "events.jsonl").unlink(missing_ok=True)  # not written yet
+    provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
+    assert [info.cli_session_id for info in provider.collect().sessions] == [chat]
+    runtime.stop(chat)

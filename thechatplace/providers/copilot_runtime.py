@@ -39,7 +39,7 @@ Safety rules, each with a test:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import difflib
 import json
 import os
@@ -52,6 +52,7 @@ from typing import Callable, Dict, List, Optional
 
 from .. import platform_paths
 from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, WORKING
+from ..usage import CONTEXT_WARNING
 from . import copilot_acp, copilot_hooks
 from .copilot import EVENTS_FILE, WORKSPACE_FILE, parse_workspace
 
@@ -145,6 +146,14 @@ def _command(raw: dict) -> tuple:
     return shown[:MAX_TEXT_CHARS], too_long or len(shown) > MAX_TEXT_CHARS
 
 
+@dataclass(frozen=True)
+class ContextReport:
+    """How full the context is, as the window reads a Codex token report:
+    ``share`` (0 to 1) of ``context_window`` tokens, from usage_update."""
+    share: float
+    context_window: int
+
+
 class CopilotChatError(Exception):
     """A reason a chat can't do something now, in words to show."""
 
@@ -177,6 +186,9 @@ class CopilotChatState:
     #: Context used and its size, from Copilot's usage_update (0 if unknown).
     context_used: int = 0
     context_size: int = 0
+    #: Copilot has answered; only this app's checks (billing, the log) are
+    #: left, so Stop has nothing to cancel.
+    checking: bool = False
 
 
 def _text(value, limit: int = MAX_TEXT_CHARS) -> str:
@@ -476,17 +488,29 @@ def locked_elsewhere(folder: Path, own_pid: Optional[int]) -> bool:
     process ids are handed out again, and a later process with a stale lock's
     id has nothing to do with the chat."""
     try:
-        entries = [(entry.name, entry.stat().st_mtime) for entry in os.scandir(folder)]
+        names = [entry.name for entry in os.scandir(folder)]
+    except FileNotFoundError:
+        return False  # no session folder: nothing holds it
     except OSError:
-        return False
-    for name, written in entries:
+        return True  # can't look: it can't be ruled out
+    locks = {}
+    for name in names:
         match = _LOCK.fullmatch(name)
         if not match or int(match.group(1)) == own_pid:
             continue
-        started = platform_paths.process_started_at(int(match.group(1)))
-        if started is not None and started <= written + 2:  # filesystem times are coarse
+        # Only lock files are looked at, each on its own: others come and go
+        # (.hold, temporary files) and must not switch the check off (Kelly).
+        try:
+            locks[int(match.group(1))] = os.stat(folder / name).st_mtime
+        except FileNotFoundError:
+            continue  # released while looking
+        except OSError:
             return True
-    return False
+    if not locks:
+        return False
+    started = platform_paths.processes_started_at(locks)
+    return any(pid in started and started[pid] <= written + 2  # filesystem times are coarse
+               for pid, written in locks.items())
 
 
 class _Chat:
@@ -507,6 +531,12 @@ class _Chat:
         self.requests: Dict[object, CopilotRequest] = {}
         self.queue: List[str] = []
         self.unsent: tuple = ()
+        #: The unsent messages an update has already carried (_notify).
+        self.unsent_told: tuple = ()
+        #: Taken before _lock, while a state is made and handed to the
+        #: window, so this chat's updates reach it in the order they were
+        #: made (a finished turn's before the next one's).
+        self.delivering = threading.RLock()
         self.problem = ""
         self.notice = ""
         self.outcome = ""
@@ -515,6 +545,9 @@ class _Chat:
         self.loading = False
         self.stopping = False
         self.context = (0, 0)
+        #: Counts compactions (context use dropping sharply), as Codex's state
+        #: does, so the window's context warning can be said again after one.
+        self.context_epoch = 0
         self.log_offset = 0
         #: The log's size when the last turn began: billing is checked on
         #: what was written after it.
@@ -854,13 +887,16 @@ class CopilotChatRuntime:
         self._notify(chat)
         return queued
 
-    def _begin(self, chat: _Chat, text: str) -> None:
-        """Start a turn (with _lock held, after _refusal said yes)."""
+    def _begin(self, chat: _Chat, text: str, start: bool = True) -> threading.Thread:
+        """Start a turn (with _lock held, after _refusal said yes). With
+        ``start`` off, the caller starts the returned thread, once it has
+        said the previous turn ended."""
         chat.busy, chat.outcome, chat.notice = True, "inProgress", ""
         chat.answered = False
         chat.turns += 1
         chat.started_at = time.monotonic()
         chat.reply_open = False
+        chat.replies = []  # this turn's replies, as Codex's state has
         chat.unsent = ()
         # Billing is checked on what this turn adds to the log, never on an
         # earlier turn's record.
@@ -871,15 +907,25 @@ class CopilotChatRuntime:
         # Billing, though, only on what this turn adds: a record our own
         # Copilot wrote after the last check mustn't vouch for this turn.
         chat.billing_offset = _size(self._events(chat.native_id))
-        threading.Thread(target=self._run_turn, args=(chat, chat.connection, text),
-                         daemon=True, name="copilot-turn").start()
+        thread = threading.Thread(target=self._run_turn, args=(chat, chat.connection, text),
+                                  daemon=True, name="copilot-turn")
+        if start:
+            thread.start()
+        return thread
 
     def _run_turn(self, chat: _Chat, connection, text: str) -> None:
         outcome = "failed"
         not_sent = ()
+        with self._lock:
+            # Stopped between the last turn's end and this one's start: the
+            # message goes back unsent, never to Copilot.
+            stopped_first = chat.stopping
+        if stopped_first:
+            not_sent = (text,)
         try:
-            result = connection.request("session/prompt", {
-                "sessionId": chat.native_id, "prompt": [{"type": "text", "text": text}]},
+            result = {"stopReason": "cancelled"} if stopped_first else connection.request(
+                "session/prompt", {"sessionId": chat.native_id,
+                                   "prompt": [{"type": "text", "text": text}]},
                 timeout=None)
             reason = result.get("stopReason")
             outcome = {"end_turn": "completed", "cancelled": "interrupted"}.get(reason, "failed")
@@ -905,6 +951,7 @@ class CopilotChatRuntime:
             if chat.cancel_timer is not None:
                 chat.cancel_timer.cancel()  # it stopped in time
                 chat.cancel_timer = None
+        self._notify(chat)  # the window knows Stop has nothing left to cancel
         try:
             self._check_billing(chat, outcome)
         except Exception:  # noqa: BLE001 - an unreadable log is a failed check
@@ -912,23 +959,29 @@ class CopilotChatRuntime:
         # What else this turn's stretch of the log shows: another Copilot
         # using the chat at the same time, or a hook answering for the person.
         events_path = self._events(chat.native_id)
-        log_end = _whole_lines_end(events_path)  # first: nothing after it goes unread
-        events = log_events(events_path, chat.log_offset, _ELSEWHERE_EVENTS + ("hook.start",),
-                            log_end)
-        # Copilot writes a reopened chat's session.resume when its first
-        # prompt arrives, so this app's own reopening shows here too; one
-        # from another Copilot, while this one has the chat open, says
-        # alreadyInUse (as Copilot 1.0.103 does).
-        elsewhere = (any(kind == "session.resume" and data_.get("alreadyInUse") is True
-                         for kind, data_ in events)
-                     # Ours is one of them, unless it never reached Copilot.
-                     or _prompts(events) > (0 if not_sent else 1))
-        hook_ran = _hook_ran(events)
-        hooks = self._hooks_refusal(chat.cwd)
-        # Before a queued message goes: is another Copilot holding the chat
-        # now? And a log shorter than the last check means it was replaced.
-        elsewhere = (elsewhere or log_end < chat.log_end
-                     or locked_elsewhere(events_path.parent, self._own_pid(connection)))
+        log_end, hook_ran, hooks = chat.log_end, False, ""
+        finished, following = None, None
+        try:
+            log_end = _whole_lines_end(events_path)  # first: nothing after it goes unread
+            events = log_events(events_path, chat.log_offset, _ELSEWHERE_EVENTS + ("hook.start",),
+                                log_end)
+            # Copilot writes a reopened chat's session.resume when its first
+            # prompt arrives, so this app's own reopening shows here too; one
+            # from another Copilot, while this one has the chat open, says
+            # alreadyInUse (as Copilot 1.0.103 does).
+            elsewhere = (any(kind == "session.resume" and data_.get("alreadyInUse") is True
+                             for kind, data_ in events)
+                         # Ours is one of them, unless it never reached Copilot.
+                         or _prompts(events) > (0 if not_sent else 1))
+            hook_ran = _hook_ran(events)
+            hooks = self._hooks_refusal(chat.cwd)
+            # Before a queued message goes: is another Copilot holding the chat
+            # now? And a log shorter than the last check means it was replaced.
+            elsewhere = (elsewhere or log_end < chat.log_end
+                         or locked_elsewhere(events_path.parent, self._own_pid(connection)))
+        except Exception:  # noqa: BLE001 - a check that fails must not leave the chat busy
+            elsewhere = True
+        chat.delivering.acquire()  # released once the finished turn is handed over
         with self._lock:
             chat.log_end = log_end
             if elsewhere:
@@ -950,10 +1003,22 @@ class CopilotChatRuntime:
                 if refusal and chat.unsent and not chat.notice:
                     chat.notice = refusal
             elif chat.queue:
-                self._begin(chat, chat.queue.pop(0))
+                # The window hears this turn end, with its replies, before
+                # the waiting message's turn starts (Kelly, #372): one update
+                # for both would skip this one's announcement.
+                chat.unsent = ()
+                finished = self._state(chat)
+                chat.unsent_told = chat.unsent
+                following = self._begin(chat, chat.queue.pop(0), start=False)
             else:
                 chat.unsent = ()
-        self._notify(chat)
+        try:
+            if following is not None:
+                self._deliver(finished)
+                following.start()
+            self._notify(chat)
+        finally:
+            chat.delivering.release()
 
     def _check_billing(self, chat: _Chat, outcome: str) -> None:
         """What this turn wrote must say GitHub Copilot answered. A completed
@@ -1027,10 +1092,15 @@ class CopilotChatRuntime:
                                     args=(chat, connection, turn))
             timer.daemon = True  # never keeps the app open after it quits
             with self._lock:
-                if chat.cancel_timer is not None:
-                    chat.cancel_timer.cancel()
-                chat.cancel_timer = timer
-            timer.start()
+                # Copilot may have answered while the cancel went out: a
+                # timer is kept only for the same turn, still unanswered.
+                keep = not chat.answered and chat.turns == turn
+                if keep:
+                    if chat.cancel_timer is not None:
+                        chat.cancel_timer.cancel()
+                    chat.cancel_timer = timer
+            if keep:
+                timer.start()
         self._notify(chat)
         return waiting
 
@@ -1152,6 +1222,12 @@ class CopilotChatRuntime:
             elif kind == "usage_update":
                 used, size = update.get("used"), update.get("size")
                 if isinstance(used, int) and isinstance(size, int):
+                    before, after = chat.context, (used, size)
+                    if (before[1] > 0 and after[1] > 0
+                            and before[0] / before[1] >= CONTEXT_WARNING > after[0] / after[1]):
+                        # Compacted from past the window's 80% warning to below
+                        # it: the warning can be said again (Kelly, #372).
+                        chat.context_epoch += 1
                     chat.context = (used, size)
             else:
                 return
@@ -1160,6 +1236,12 @@ class CopilotChatRuntime:
         self._notify(chat)
 
     # -- state -----------------------------------------------------------------
+
+    def known(self) -> list:
+        """(native id, folder) of each chat open in this runtime, so a new
+        chat can be listed before Copilot has written its log."""
+        with self._lock:
+            return [(chat.native_id, chat.cwd) for chat in self._chats.values()]
 
     def snapshot(self, native_id: str) -> Optional[CopilotChatState]:
         with self._lock:
@@ -1180,11 +1262,24 @@ class CopilotChatRuntime:
             replies=tuple((rid, "".join(pieces)) for rid, pieces in chat.replies),
             requests=tuple(chat.requests.values()), queued=tuple(chat.queue), unsent=chat.unsent,
             problem=chat.problem, started_at=chat.started_at, activity=chat.activity,
-            notice=chat.notice, context_used=chat.context[0], context_size=chat.context[1])
+            notice=chat.notice, context_used=chat.context[0], context_size=chat.context[1],
+            context_epoch=chat.context_epoch, checking=chat.busy and chat.answered,
+            token_usage=(ContextReport(min(1.0, chat.context[0] / chat.context[1]), chat.context[1])
+                         if chat.context[1] > 0 and chat.context[0] >= 0 else None))
 
     def _notify(self, chat: _Chat) -> None:
-        with self._lock:
-            state = self._state(chat)
+        with chat.delivering:
+            with self._lock:
+                state = self._state(chat)
+                # The window puts unsent messages back in the message box
+                # when an update has them, so each is in one update only (as
+                # Codex's); snapshot() still shows them.
+                if chat.unsent and chat.unsent_told is chat.unsent:
+                    state = replace(state, unsent=())
+                chat.unsent_told = chat.unsent
+            self._deliver(state)
+
+    def _deliver(self, state: CopilotChatState) -> None:
         try:
             self._on_update(state)
         except Exception:  # noqa: BLE001 - the window's problem mustn't stop the turn

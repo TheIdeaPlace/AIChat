@@ -458,15 +458,15 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "Include GitHub C&opilot CLI chats (read-only; restart required)",
+   "label": "Include GitHub C&opilot CLI chats (preview; restart required)",
    "rect": [
     10,
     527,
-    343,
+    333,
     15
    ],
    "best": [
-    343,
+    333,
     15
    ],
    "depth": 1,

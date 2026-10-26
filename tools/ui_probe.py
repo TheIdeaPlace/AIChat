@@ -810,6 +810,41 @@ def s_main_copilot(frame, env):
     _open(frame, "Copilot history preview")
 
 
+def s_main_copilot_owned(frame, env):
+    """A Copilot chat The Chat Place started (#352): the reply box, a queued
+    message, and Copilot's reported context, from a stand-in runtime."""
+    import dataclasses
+    from types import SimpleNamespace
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.copilot_runtime import ContextReport, CopilotChatState
+    from thechatplace.sessions import WORKING
+    import fake_env
+
+    s_main_copilot(frame, env)
+    info = frame._open
+    record = OwnSession(info.cli_session_id, info.title, info.cwd, provider="copilot", started=True)
+    frame.store.add(record)
+    state = CopilotChatState(info.cli_session_id, WORKING, "1", "inProgress",
+                             queued=("Run the unit tests next.",), context_used=41_000,
+                             context_size=128_000,
+                             token_usage=ContextReport(41_000 / 128_000, 128_000))
+    frame.sessions._providers["copilot"].runtime = SimpleNamespace(
+        known=lambda: [(info.cli_session_id, info.cwd)], snapshot=lambda native: state,
+        ready=lambda native: True,
+        adopt=lambda native: None, prepare=lambda native, cwd: None, close=lambda: None)
+    frame._codex_states[info.key] = state
+    frame.open_session(dataclasses.replace(record.to_info(), state=WORKING))
+    fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy
+                  and not frame._codex_preparing, timeout=10)
+    frame.reply_text.SetValue("Draft of a message still being typed")
+    frame._update_send_state()
+    frame._update_status_context()
+    # The row says "working" and "Chat Place session" from the next refresh,
+    # as the app's own timer would bring in a moment (as main-codex-owned).
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
+
+
 def s_main_copilot_filter(frame, env):
     from thechatplace.sessions import FIELD_PROVIDER, VIEW_COPILOT
 
@@ -925,6 +960,45 @@ def d_codex_review_history(frame, env):
     dialog = ChatPermissionsDialog(frame, record.title, host)
     wx.CallAfter(dialog.note.ShowPosition, dialog.note.GetValue().index('Recent automatic review decisions'))
     return lambda: frame._modal(dialog)
+
+
+def d_copilot_new(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
+                                                providers=("claude", "codex", "copilot"),
+                                                provider="copilot"))
+
+
+def _copilot_request(tool_call):
+    from thechatplace.providers.copilot_runtime import CopilotRequest
+    return CopilotRequest.decode(1, {"toolCall": tool_call, "options": [
+        {"optionId": "allow_once", "kind": "allow_once"},
+        {"optionId": "allow_always", "kind": "allow_always"},
+        {"optionId": "reject_once", "kind": "reject_once"}]})
+
+
+def d_copilot_permission(frame, env):
+    """Copilot asks to run a command, as Copilot CLI 1.0.103 asks (#352)."""
+    from thechatplace.ui.dialogs import CodexPermissionDialog
+    command = "git checkout -b fix-upload-test && python -m pytest tests/test_upload.py"
+    request = _copilot_request({"toolCallId": "call-1", "kind": "execute",
+                                "title": "Run the upload tests on a new branch",
+                                "rawInput": {"command": command, "commands": [
+                                    {"identifier": "git checkout -b fix-upload-test", "readOnly": False},
+                                    {"identifier": "python -m pytest tests/test_upload.py", "readOnly": False}]}})
+    return lambda: frame._modal(CodexPermissionDialog(frame, "Copilot preview", request,
+                                                      provider="Copilot"))
+
+
+def d_copilot_files(frame, env):
+    from thechatplace.ui.dialogs import CodexPermissionDialog
+    folder = env["tmp"].as_posix()
+    request = _copilot_request({"toolCallId": "call-2", "kind": "edit", "title": "Create notes.txt",
+                                "rawInput": {"fileName": f"{folder}/notes.txt",
+                                             "diff": f"--- a/dev/null\n+++ b/{folder}/notes.txt\n"
+                                                     "+First synthetic line\n+Second synthetic line\n"}})
+    return lambda: frame._modal(CodexPermissionDialog(frame, "Copilot preview", request,
+                                                      provider="Copilot"))
 
 
 def d_codex_mode(frame, env):
@@ -1367,6 +1441,8 @@ SURFACES = {
                                "Cached synthetic Codex history with a redacted discovery outage notice"),
     "main-copilot": ("window", s_main_copilot,
                      "Synthetic Copilot CLI history in the shared window: read-only controls"),
+    "main-copilot-owned": ("window", s_main_copilot_owned,
+                           "A Copilot chat started here: reply box, queued message and context"),
     "main-copilot-filter": ("window", s_main_copilot_filter,
                             "Synthetic Copilot-only list with explicit Provider column"),
     "main-activity": ("window", s_main_activity, "Show tool activity turned on"),
@@ -1389,6 +1465,9 @@ SURFACES = {
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
     "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
+    "copilot-new": ("dialog", d_copilot_new, "New Session with Copilot selected as Provider"),
+    "copilot-permission": ("dialog", d_copilot_permission, "Copilot asks to run a command, once"),
+    "copilot-files": ("dialog", d_copilot_files, "Copilot asks to create a file, with its diff"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
     "properties-codex-owned": ("dialog", d_codex_owned_properties, "Verified owned Codex model and filesystem scope"),
     "codex-models": ("dialog", d_codex_models, "New Codex chat with advertised model and effort choices"),
@@ -1468,6 +1547,9 @@ DIALOG_CLASSES = {
     "codex-new": "NewSessionDialog",
     "codex-auto-review": "NewSessionDialog",
     "codex-review-history": "ChatPermissionsDialog",
+    "copilot-new": "NewSessionDialog",
+    "copilot-permission": "CodexPermissionDialog",
+    "copilot-files": "CodexPermissionDialog",
     "codex-models": "NewSessionDialog",
     "codex-change-mode": "SingleChoiceDialog",
     "properties-codex-owned": "PropertiesDialog",
