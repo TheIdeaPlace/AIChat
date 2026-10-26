@@ -871,8 +871,17 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ## Install
 
-You need Windows 10 or 11, or a Mac with Apple silicon. For Codex chats, the preview needs a
-native Codex CLI signed in to ChatGPT. Claude Code is not required for Codex chats.
+You need Windows 10 or 11, or a Mac with Apple silicon. For Codex chats, you need a native
+Codex CLI signed in to ChatGPT. Claude Code is not required for Codex chats.
+
+For GitHub Copilot CLI chats (a preview), you need the native GitHub Copilot CLI
+(`winget install GitHub.Copilot` on Windows, `brew install copilot-cli` or GitHub's install
+script on a Mac), signed in with `copilot login` to a GitHub account that has Copilot. An npm
+install (`npm install -g @github/copilot`) is never used. Then turn the preview on in Settings.
+
+If something isn't working, the user guide's
+[Troubleshooting](https://theideaplace.github.io/AIChat/user-guide.html#troubleshooting) section
+covers the usual problems with each provider, speech and the session list.
 
 For Claude chats, you need **Claude Code installed with its
 native installer and signed in** to a Claude subscription (the `claude` command, the same login
