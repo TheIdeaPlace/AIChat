@@ -1496,6 +1496,44 @@ which version you now have. **See what's new** (Alt+W) opens that version's rele
 browser; **Close** or Escape goes back to the app. To stop it appearing, clear "Tell me when an
 update has been installed, with a link to what's new" in Settings (Ctrl+Comma).
 
+## Uninstalling
+
+Quit The Chat Place first.
+
+**Windows, installed copy:** open Settings, Apps, Installed apps (on Windows 10, Apps &
+features), choose The Chat Place, then Uninstall. That removes the program, in `%LOCALAPPDATA%\TheChatPlace`, and its Start menu entry,
+and takes away the `thechatplace://` links it set up for your Windows account (see "Links to
+chats").
+
+**Windows, portable copy:** delete the folder you unzipped it into. The portable copy never sets
+up links, so there's nothing else to undo.
+
+**Mac:** drag The Chat Place from Applications (or wherever you keep it) to the Trash. Its
+`thechatplace://` links are declared inside the app itself.
+
+**What's left behind.** Uninstalling keeps your settings and records, in case you install The
+Chat Place again. To remove them too, delete these folders, the main things it leaves:
+
+- The Chat Place's own folder: `%APPDATA%\TheChatPlace` on Windows,
+  `~/Library/Application Support/TheChatPlace` on a Mac. It holds its records of the chats started
+  here, your settings, groups, names, hidden chats, saved prompts, pasted pictures, agent
+  conversations, remembered Codex approvals and its logs.
+- On Windows, the formatted page's WebView2 profile, `%LOCALAPPDATA%\TheChatPlace WebView2`.
+- Its speech folder: `%TEMP%\thechatplace-speak` on Windows, `$TMPDIR/thechatplace-speak` on a
+  Mac. Its speech scripts also keep small logs in `claude-speak` (and, on Windows,
+  `claude-speak-nvda`) in the same temporary folder. ClaudeSpeak uses those folders too, so keep
+  them if you use ClaudeSpeak.
+
+**What it never removes**, because none of it belongs to The Chat Place:
+
+- Your Claude, Codex and GitHub Copilot CLI chats and settings, including the conversations of
+  chats you started here. Claude Code keeps them in the `.claude` folder in your home folder,
+  Codex in `.codex`, and Copilot CLI in `.copilot`. Claude Code, Codex and Copilot CLI themselves
+  stay installed, and so does the Claude desktop app.
+- Exports you saved, repositories cloned with From GitHub, and worktrees made with A new
+  worktree (in the repository's `.claude/worktrees` folder). Delete them yourself if you no longer
+  want them.
+
 ## Troubleshooting
 
 Problems are grouped under the headings below. Each starts with what you notice, then says what

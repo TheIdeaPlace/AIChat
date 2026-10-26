@@ -18,11 +18,8 @@ Keyboard shortcuts: [a web page](https://theideaplace.github.io/AIChat/keyboard-
 [Markdown](docs/keyboard-shortcuts.md) and [plain text](docs/keyboard-shortcuts.txt): the same list
 as Help, Keyboard Shortcuts (F1) in the app.
 
-> **Status: version 0.2.0, a pre-release** (0.1.0, the first release, came out on 7 October 2026). Used with JAWS on Kelly's PC; the
-> installer, uninstaller and update check have been tested in the vmtest VM. Downloading and
-> installing an update needs two published releases, so it is first tried with 0.1.1. It has not
-> yet had a pass with NVDA. The Mac build is used with VoiceOver on Kelly's Mac, and since 0.1.2
-> the release workflow signs and notarizes it.
+> **Status: version 0.2.0, a pre-release** (0.1.0, the first release, came out on 7 October 2026). How it
+> has been tested is in [DEVELOPING.md](DEVELOPING.md#how-its-been-tested).
 
 The Chat Place brings Claude and Codex chats into one accessible list. Read each conversation,
 find or export its messages, hear when it answers, and reply to chats started here. Provider
@@ -45,6 +42,8 @@ session list is always there. **F6** and **Shift+F6** move between those parts a
 bar**, which holds whatever was said last ("12 sessions: 1 need you", "Claude is using Bash.") in
 a read-only box to read by line, word and character; **Ctrl+9** goes straight there. The status
 bar isn't a Tab stop, and your screen reader's own read-status-bar key still works.
+
+### The session list
 
 - **Session list.** Each item reads its title, its repo folder, its state (needs you, working or
   idle), and when it was last active: "Fix the release build, QuickMail, needs you: Choose a
@@ -101,74 +100,6 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   with a provider's name or "You"); Ctrl+F still finds a session by title or folder.
   Arrowing doesn't load anything; **Enter loads that session** into the messages list, moves you
   there, and says "Loaded Quiet one, 12 messages."
-- **Hide or delete a session.** **Delete** (File, Hide Session) takes the selected session out of
-  the list without changing it; View, Show Sessions, Hidden lists hidden sessions, and File, Bring
-  Back Session returns one. **Shift+Delete** (File, Delete Session Permanently) deletes one of The
-  Chat Place's own sessions for good, from any view, hidden or not: after you confirm (No is the
-  default), its Claude Code transcript is deleted (permanent deletion is currently supported for Claude chats) from the computer and it leaves the list, its
-  groups and the hidden list. It waits while the session is working, here or in a terminal.
-  Desktop app sessions can only be hidden; delete those in the desktop app.
-  On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).
-- **Rename a session** (F2, File, Rename Session, or the session's menu). One of The Chat
-  Place's own sessions is renamed outright. A desktop app session's new name shows only in The
-  Chat Place, since its files are never changed: it's kept in
-  `%APPDATA%\TheChatPlace\titles.json`, and the desktop app keeps its own name for it. Renaming
-  it to nothing (clear the box) goes back to the desktop app's name.
-- **The session's menu** (Applications key or Shift+F10 in the session list, VO+Shift+M with
-  VoiceOver on a Mac, or a right-click) has the File menu's commands for the selected session:
-  load, open in Claude, continue here, rename, Remote Control, groups, export, and hide or delete.
-- **What AI knows about you** (Ctrl+Shift+K, View, What AI Knows About You). Choose **Claude**
-  or **Codex** in the Provider list (Alt+V). This is an inventory of local customization files,
-  not an account-wide memory report or a list of everything active in a particular turn. Pick a
-  kind, arrow through its items (each with its description), and Enter reads the file in a box
-  you can move through by line. **Edit in Your Editor** opens the file in your own editor (on
-  Windows, the program set to edit that kind of file, or Notepad); The Chat Place itself never
-  writes to these files. Reload shows your changes; Show in Folder and Copy Path (Alt+P) find
-  the file. While a provider's files are being read the lists say "Reading…", and if they can't
-  be read they say so.
-  - **Claude:** Claude Code keeps what it knows about you in plain files, and this lists them by
-    kind: your instructions (`CLAUDE.md`, yours and each project's), the memories Claude saved
-    for each project, your skills (including ones synced from your account), subagents, slash
-    commands, output styles and settings. It includes the project-level ones in the folders your
-    sessions work in. Not listed yet: what plugins add, `CLAUDE.md` files in a project's parent
-    folders, `.claude/rules`, and an organization's managed settings.
-  - **Codex:** `AGENTS.md` and `AGENTS.override.md`, Markdown files under its `memories` folder
-    (not the summaries of past chats it keeps in `memories/rollout_summaries`), skills in your
-    `.agents/skills` and Codex home's `skills` (including `.system`), saved `prompts`, and
-    `config.toml`. It honors `CODEX_HOME` and includes instruction files, `.agents/skills` and
-    `.codex/config.toml` in the folders your Codex sessions work in. It never reads Codex's
-    sign-in, history or chat files. Parent folders, configured alternate instruction filenames,
-    plugins and managed settings are not included; project configuration may require trusting
-    the project in Codex.
-- **Find** (Ctrl+F, View, Find). In the session list it asks for some text and shows only
-  sessions whose title, folder or "needs you" note contains it, within the current view; the
-  list's name says so ("Session list, matching \"build\", 3 of 139") and Escape shows them
-  all again. In the messages it finds the next message containing the text, searching each
-  message's whole text, not just the first line you see; F3 and Shift+F3 find the next and
-  previous, going round from the other end when they reach one (and saying so).
-- **Find in All Sessions** (Ctrl+Shift+S, View, Find in All Sessions) answers "which session did
-  we talk about that in?". It asks for some text and searches the whole text of every message in
-  every session the list shows (its Show Sessions view, and any Ctrl+F text), in the background,
-  ignoring case; tool calls and results count only in sessions with Show Tool Activity on. You
-  hear "Searching 32 sessions" (and, in a long search, how far it's got every ten seconds;
-  Ctrl+Shift+S again stops it), and then a list of the messages found, each read as the session,
-  who wrote it, when, and the words around the match ("Build, Claude, yesterday 10:42: …the
-  database migration ran…"), newest first within each session. The list's name says how many
-  sessions were searched and how many couldn't be read (a transcript no longer on disk, say).
-  Enter (or Go to Message) loads that session on that message. If you've moved on by the time
-  it finishes (to another dialog, another place in the window, or another app), the list waits:
-  you hear how many were found and "Press Ctrl+Shift+S to see them" (for ten minutes, until the
-  list's view changes or you start another search). With no match, you hear so and no list opens. It stops at 500 messages.
-- **Groups**, like groups in Claude on the web: **Ctrl+G** (File, Add to Group) puts the
-  selected session in a group, or a new one; File, Remove from Group takes it out; File,
-  Manage Groups lists your groups with how many sessions each has, to make, rename or delete
-  them (deleting a group never touches its sessions). A session can be in several groups, and
-  its row says which ("…, group Work"). The Chat Place's groups are kept in
-  `%APPDATA%\TheChatPlace\groups.json`; the desktop app's files are never changed.
-  The **desktop app's own groups** show too: in View, Show Sessions, in each session's row,
-  and in Add to Group. They're read from the desktop app's settings each refresh, so a change
-  there shows here; they're changed in the desktop app. Adding one of The Chat Place's sessions
-  to a desktop app group keeps a Chat Place group of the same name, shown together with it.
 - **What "needs you" means.** For a Claude desktop app session: it isn't working right now (it can
   still be open in the desktop app), and the desktop
   app's summary of its latest turn says it's waiting on you, either with a "needs action" note
@@ -180,6 +111,12 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   restart, until its next turn starts. Codex chats say needs you for permissions or questions;
   unavailable status means live state could not be verified. After an uncertain send, use Stop
   (Ctrl+Period) to recheck the chat, and check its history before sending again.
+- **The session's menu** (Applications key or Shift+F10 in the session list, VO+Shift+M with
+  VoiceOver on a Mac, or a right-click) has the File menu's commands for the selected session:
+  load, open in Claude, continue here, rename, Remote Control, groups, export, and hide or delete.
+
+### Reading a chat
+
 - **Messages:** newest last, with focus on the newest. Each row shows "You:" or the provider's name, such as "Claude:" or "Codex:", and its
   first line, but on Windows your screen reader reads the **whole message** as you arrow onto it, as words
   (headings and list items as sentences, and each code block as what it is: "Code block, Python, 14
@@ -241,21 +178,9 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   together, counted when there are many ("Using Read 4 times, then Bash."), and never cuts off your
   screen reader. At the summary level tools are always counted; at silent only the status bar shows
   them. Tool results aren't spoken. New messages arrive at the end without moving you.
-- **Reply box:** for The Chat Place's own sessions, type and press Ctrl+Enter (or Send). You stay in
-  the reply box. For a desktop app or terminal session the same place holds a read-only note
-  saying where you reply, with Open in Claude and Continue Here as they apply.
 - **Escape** in the messages or the reply box (or Backspace in the messages) goes back to the
   session list, on the same session. Enter there on the session that's already loaded takes you
   back to its messages where you left them, without reloading.
-- **Commands and skills** (Ctrl+/, the Commands button after Stop, or File, Insert Command
-  or Skill), in The Chat Place's own Claude sessions (not yet for Codex or Copilot chats): a searchable list of your skills and custom commands, then Claude Code's own
-  (/compact, /context, /code-review and the rest), each with its description and what it
-  takes. Type to filter by name or description, Down to the list, Enter to choose: it goes
-  at the start of the reply box ("/compact "), replacing a command already there and keeping
-  what you typed, ready to finish and send. The list is Claude Code's own for the session's
-  folder, asked for in the background when the session loads (no turn, no cost) and kept
-  current by each turn. If it isn't there yet, you hear "Commands are ready" when it is; the list
-  never opens by itself.
 - **Command results and compaction:** local Claude Code output, such as `/context`
   and `/cost`, appears as Claude Code messages with tool activity off. After `/compact`,
   a Conversation compacted row and a queued announcement confirm it happened. Reported
@@ -264,58 +189,63 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   removed; long command output is shortened with a notice, including in exports.
   Command-result notifications use a brief summary even in Full announcements;
   Silent keeps them in the status bar.
-- **Prompts** (Ctrl+Shift+P, File, Prompts): a library of messages you send often, each with a
-  name. The dialog lists them by name, with the selected one's text below to read (Alt+X). **Use**
-  (or Enter on a prompt) closes it and puts the prompt in the reply box of the loaded Chat Place
-  session: in place of an empty reply, or at the cursor in what you've typed (replacing any text
-  you've selected), ready to change and send. **New** and **Edit** ask for a name and the text (Enter starts a new line in the text;
-  Ctrl+Enter saves), **Delete** (or Delete on a prompt) asks first, and **Move Up** and **Move
-  Down** put them in the order you want. Each change is saved at once and spoken ("Prompt saved:
-  Review", "Prompt deleted: Review"); Close or Escape closes. To save something as you send it,
-  press **Ctrl+Shift+Enter** in the reply box (File, Send and Save as Prompt): it asks for a name,
-  starting with the message's first few words, saves the prompt and then sends the message as
-  Ctrl+Enter does. Escape at the name does neither, and leaves your message in the reply box.
-  Prompts are kept in `%APPDATA%\TheChatPlace\prompts.json`. The Chat Place doesn't read Claude
-  Code's own history of what you've typed.
-- **Attachments**, in The Chat Place's own Claude sessions: **Attach Files** (Alt+T, after Commands;
-  Ctrl+Shift+F) adds files and images to your next message, and **Ctrl+V** in the reply box
-  attaches a picture on the clipboard, such as a screenshot from Win+Shift+S. They're listed
-  under the reply box ("2 attachments: screenshot.png, log.txt"); Delete there removes one.
-  Images go to Claude as images, so it can describe what's on screen; other files are named
-  in the message as `@"path"`, which Claude Code reads in for Claude. A message can be
-  just attachments. Each session keeps its own until they're sent. Pasted pictures are saved
-  in `%APPDATA%\TheChatPlace\pasted images`.
-- **Export** (Ctrl+E, File, Export Session) saves the selected session's conversation,
-  or the loaded one's, to a file: **Markdown**, a **web page** (formatted like the full-message
-  view, nothing fetched from the internet) or **plain text**, chosen by the Save as type list
-  or the file name's extension. Each message is a heading ("Claude, 10:43") and its text as
-  written, with the message's own headings moved down two levels so the file's outline stays
-  session, message, section. Tool activity is included when Show Tool Activity is on. It
-  starts in Documents, named after the session and the date, works in the background (a long
-  session never freezes the window), and says where it saved; the status bar keeps that to read
-  back. Headings carry the time, and the date whenever the day changes.
+- **Changed Files** (Ctrl+Shift+D, View menu) opens Lists on Changed Files: the files
+  Claude changed in the selected message's turn (your latest, if none is selected), or in the
+  whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
+  removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a
+  time: where each change is, then "Removed:", "Added:" and "Unchanged:" lines. It's built from the
+  transcript, so it works for desktop app sessions too, with no git needed. Changes made by a
+  subagent Claude hands work to, and notebook edits, aren't counted yet. When the loaded
+  session's turn ends, the announcement (at the full level) is followed by a one-line summary:
+  "Changed 3 files: main_frame.py, 40 lines added, 12 removed; …".
+- **The task list.** On longer work Claude keeps a list of its steps (Claude Code's
+  TaskCreate and TaskUpdate, or the older TodoWrite), and The Chat Place reads it from the
+  transcript, for desktop app and terminal sessions as well as its own. View, Tasks
+  (**Ctrl+Shift+J**) lists it; Turn Status (Ctrl+Shift+T) and Properties say how far along it is
+  ("Task 3 of 7: Running the tests. 2 done.", or "Stopped at task 3 of 7: …" once Claude isn't
+  working; Turn Status leaves out a list that's finished or from an earlier turn); and when the
+  loaded chat marks a step done, it's
+  announced ("Done: Run the tests. 4 of 7."), at the Full announcement level only, without
+  cutting off anything being read. Claude Code leaves the task list out on its newer models
+  unless asked, while the desktop app's sessions have it, so The Chat Place asks for it in its
+  own sessions (`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, from Claude Code 2.1.233). Settings, "Let
+  Claude keep a task list" (Alt+K) turns that off, from the next message; it's on to start
+  with. The list costs a little context each turn, and Claude decides when a task is worth a
+  list, so short turns usually have none.
+  Codex's task list appears in the same Tasks list, Turn Status and Properties while a chat
+  runs here. Its latest reported steps are saved in The Chat Place's own data folder
+  and restored when that owned chat is reopened. The list keeps its last
+  reported states after a turn finishes, fails or is stopped, and remains available if a later
+  message produces no task update. Codex task lists from earlier sessions or chats
+  run elsewhere are not available. Proposed plan text is separate from this checklist.
+  The "Let Claude keep a task list" setting applies only to Claude.
+
+### Finding things
+
+- **Find** (Ctrl+F, View, Find). In the session list it asks for some text and shows only
+  sessions whose title, folder or "needs you" note contains it, within the current view; the
+  list's name says so ("Session list, matching \"build\", 3 of 139") and Escape shows them
+  all again. In the messages it finds the next message containing the text, searching each
+  message's whole text, not just the first line you see; F3 and Shift+F3 find the next and
+  previous, going round from the other end when they reach one (and saying so).
+- **Find in All Sessions** (Ctrl+Shift+S, View, Find in All Sessions) answers "which session did
+  we talk about that in?". It asks for some text and searches the whole text of every message in
+  every session the list shows (its Show Sessions view, and any Ctrl+F text), in the background,
+  ignoring case; tool calls and results count only in sessions with Show Tool Activity on. You
+  hear "Searching 32 sessions" (and, in a long search, how far it's got every ten seconds;
+  Ctrl+Shift+S again stops it), and then a list of the messages found, each read as the session,
+  who wrote it, when, and the words around the match ("Build, Claude, yesterday 10:42: …the
+  database migration ran…"), newest first within each session. The list's name says how many
+  sessions were searched and how many couldn't be read (a transcript no longer on disk, say).
+  Enter (or Go to Message) loads that session on that message. If you've moved on by the time
+  it finishes (to another dialog, another place in the window, or another app), the list waits:
+  you hear how many were found and "Press Ctrl+Shift+S to see them" (for ten minutes, until the
+  list's view changes or you start another search). With no match, you hear so and no list opens. It stops at 500 messages.
+
+### Desktop app, Cowork and terminal sessions
+
 - **Open in Claude** (Ctrl+O) switches the desktop app to the session, for approving a permission
   prompt or answering a question card in a desktop app session.
-- **Copy Session Link** (Ctrl+Shift+L, File menu, or the session's menu) copies a link to the
-  selected Claude session (not yet for Codex or Copilot chats), to paste into a note, an email or another session. A list offers the links that
-  apply, best first; Enter on the first copies a Markdown link, `[Title](thechatplace://session/…)`,
-  that opens the session in The Chat Place. Below it are a desktop app session's Open in Claude link
-  (`claude://…`) and, for one of The Chat Place's sessions on Remote Control, its claude.ai address,
-  each as a Markdown link and then as the bare link. What was copied is said. Following a
-  `thechatplace://` link (from a note, Win+R or Terminal's `open`, a link in a message's formatted
-  view) brings The Chat Place forward, starting it if it isn't running, selects the session, loads
-  its messages and puts you in them, as choosing it yourself does. If the list's view or search
-  leaves the session out, it shows all sessions (or Archived or Hidden) and says so. A link only
-  ever finds a session, as Enter on it does: it never sends a message, runs a turn or changes a
-  conversation, and anything that isn't exactly a link to a session gets "That link isn't one The
-  Chat Place knows." A session's link uses the id that lasts: the Claude Code session id for The
-  Chat Place's own sessions, the desktop app's `local_…` id for its Code and Cowork sessions. On
-  Windows the installed copy registers `thechatplace://` for your user account
-  (`HKEY_CURRENT_USER\Software\Classes\thechatplace`) when it's installed and at start, and
-  uninstalling removes it; the portable copy and a source run never register. On a Mac the app
-  declares the link type itself. When The Chat Place is already running, the copy a link starts
-  hands the link over (as a small file in its own data folder, `links`, taken within a second) and
-  closes.
 - **Cowork sessions.** The desktop app's Cowork sessions are listed too, read-only, as desktop app
   sessions are. Each row says "Cowork session", and in place of a repo folder it names the folder
   you gave Cowork to work on, or says "no folder" if there isn't one. View, Show Sessions, Cowork
@@ -338,11 +268,14 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   terminal, or carry it on here with Continue Here; Open in Claude isn't offered, since the
   desktop app doesn't list it. Sessions run by scripts with `claude -p`, and those of the VS Code
   extension, aren't listed.
-- **Continue Here** (Ctrl+Shift+N, or the Continue Here button after that note) carries a desktop
+- **Continue Here** (Ctrl+Shift+N, or the Continue Here button after the reply box's note) carries a desktop
   app or terminal session on in The Chat Place, as a copy: a new Chat Place session in the same
   folder, with the whole conversation so far in its messages, that you reply to here. You type its
   first message in the same dialog as New Session; the title starts as "<title> (continued)". The
   original session isn't changed, and what you do in the copy doesn't appear in it.
+
+### Starting a session and replying
+
 - **New Session** (Ctrl+N) starts a session of The Chat Place's own: choose a folder, a title,
   the model (Alt+D), the effort (Alt+E), a permission mode (auto by default; accept edits, manual
   and plan are offered) and the first message. The models are Default (your Claude Code setting), Opus,
@@ -393,147 +326,44 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   folder, so it has none of these. git and gh are run with no shell and never prompt; branch and
   repository names are checked before either sees them. On a Mac without Apple's Command Line
   Tools, `/usr/bin/git` isn't used, since running it asks to install them.
-- **The task list.** On longer work Claude keeps a list of its steps (Claude Code's
-  TaskCreate and TaskUpdate, or the older TodoWrite), and The Chat Place reads it from the
-  transcript, for desktop app and terminal sessions as well as its own. View, Tasks
-  (**Ctrl+Shift+J**) lists it; Turn Status (Ctrl+Shift+T) and Properties say how far along it is
-  ("Task 3 of 7: Running the tests. 2 done.", or "Stopped at task 3 of 7: …" once Claude isn't
-  working; Turn Status leaves out a list that's finished or from an earlier turn); and when the
-  loaded chat marks a step done, it's
-  announced ("Done: Run the tests. 4 of 7."), at the Full announcement level only, without
-  cutting off anything being read. Claude Code leaves the task list out on its newer models
-  unless asked, while the desktop app's sessions have it, so The Chat Place asks for it in its
-  own sessions (`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, from Claude Code 2.1.233). Settings, "Let
-  Claude keep a task list" (Alt+K) turns that off, from the next message; it's on to start
-  with. The list costs a little context each turn, and Claude decides when a task is worth a
-  list, so short turns usually have none.
-  Codex's task list appears in the same Tasks list, Turn Status and Properties while a chat
-  runs here. Its latest reported steps are saved in The Chat Place's own data folder
-  and restored when that owned chat is reopened. The list keeps its last
-  reported states after a turn finishes, fails or is stopped, and remains available if a later
-  message produces no task update. Codex task lists from earlier sessions or chats
-  run elsewhere are not available. Proposed plan text is separate from this checklist.
-  The "Let Claude keep a task list" setting applies only to Claude.
-- **Remote Control.** Settings can turn on Remote Control for The Chat Place's sessions, and
-  **File, Remote Control** turns it on or off for one session (or back to the Settings
-  default). A session on Remote Control can be reached from claude.ai and your other devices
-  while one of its turns is running: each turn is its own Claude Code process, so between turns
-  it shows as offline. The same Remote Control session is joined every turn, and File, Remote
-  Control copies its claude.ai address. Turning it on copies the conversation to claude.ai,
-  where it stays (turning Remote Control off, or deleting the session, doesn't remove it;
-  archive it on claude.ai). While a turn runs, anyone signed in to your account on claude.ai
-  can type into it or answer its questions; a question answered there is cleared here.
-  It's also on the session's menu (Applications key). A session on Remote Control says so in
-  its row and heading, and View, Show Sessions, Remote Control Sessions lists it (with only the
-  Settings default on, a Chat Place session's row says so once it has connected). For a Claude
-  desktop app session, File, Remote Control offers to open it in the desktop app, where its
-  Remote Control is turned on, or to continue it here as a copy with Remote Control on from the
-  first turn; The Chat Place never changes the desktop app's session itself.
-- **Other machines (File, Other Machines, Ctrl+Shift+M).** Your Claude Code sessions on
-  your other computers, reached through Claude in the loaded Chat Place session, which needs
-  Remote Control on (as do they). It lists them from Claude's latest look: their names and
-  whether each is idle, busy or offline. "Offline" often only means between turns, and a
-  message waits for it. **Refresh the list** asks Claude to look again, as a turn in the
-  session, and the list is there next time you press Ctrl+Shift+M. Choose a session, type
-  your message, and Claude sends it word for word; its reply comes back to the same session.
-  Only Claude can reach other computers, and only what they send back can be shown: their
-  own conversations can't be read from here. It works between turns, not during one.
-- **Messages from other sessions.** Claude can also send a message to another Claude Code
-  session when you ask in your own words, for example "send the session called Mac Hub a
-  message asking for its hostname". A message that comes back shows in the messages list as **From** and the
-  session's name ("From Mac Hub: ..."), not as something you typed, and it's announced in
-  any open session. Other sessions reach a Chat Place session by its title, which stays the
-  same every turn, so rename it to something they can find. A Chat Place session only acts on
-  a message during one of its turns, so a message that arrives between turns waits for the
-  next one. The other computer's own conversation can't be read from here; only what its
-  Claude sends back.
-- **Send a reply to another chat (File, Send Reply to Another Chat, Ctrl+Shift+E).** Pass
-  what one agent said to another, for example so Codex can review what Claude built, or so
-  Claude can answer Codex's review. It sends the selected reply in the messages list, or the
-  latest one if a message of yours is selected. Choose the chat it goes to: any of The Chat
-  Place's own chats, Claude or Codex, other than this one (desktop app, terminal and hidden
-  chats aren't offered), or, at the end of the list, New Claude chat or New Codex chat. A new
-  chat opens New Session with the message as its first message, the folder of the chat the
-  reply came from, and the title "Forwarded from" that chat; choose its permission and model
-  there, then start it. The message starts with a line saying which agent wrote it and in
-  which chat, so the agent reading it knows these are another agent's words, not yours. Read
-  it and change or add to it in the Message box (Enter there starts a new line), then press
-  Ctrl+Enter, or Enter in the list, to send it. The Chat Place goes to that chat and sends it
-  as if you'd typed it: queued if that chat is working, and after Codex has got the chat ready
-  if it wasn't (going to another chat before then leaves it unsent, in that chat's reply box).
-  If it can't be sent, it's left in that chat's reply box. While the chat it comes from is
-  still working, the dialog's title says so: the reply may be a step on the way. The chat it
-  came from is first in the list next time, so sending the answer back is Ctrl+Shift+E then
-  Enter. It's also on a reply's menu in the messages list (Applications key). A forwarded
-  message is only ever a message: it can't answer a question or approve anything, which still
-  comes to you.
-  - **Just send it, or start an agent conversation.** Under Send to, **Just send it**
-    (Alt+J) is chosen; **Start an agent conversation with both chats** (Alt+C)
-    instead makes the two chats an agent conversation (below), titled in **Agent conversation
-    title** (Alt+I, the chat's title to start with). The reply goes as its first hand-off, the
-    chat you sent it to answers first, and you approve each hand-off (change that with File,
-    Agent Conversation Hand-offs). With a new chat, New Session comes first. It can't be done
-    with a chat that isn't one of The Chat Place's own, one already in an agent conversation, or
-    while either chat is still working: then the option's name ends with
-    "unavailable" and why. If the label line of the message is changed, what's sent is your own
-    words rather than a hand-off.
-- **Agent conversations (File, New Agent Conversation, Ctrl+Shift+G).** Two of The Chat
-  Place's own chats, Claude and Codex (or two of either), talk to each other in one
-  conversation, with you in it. Choose each agent's chat: one of yours, keeping its history,
-  or a new Claude or Codex chat (with its permission, in a folder you choose), and give each
-  a role if you like ("Build the fix", "Review each change; don't edit files"). Kind of
-  conversation fills in the roles, new chats' permissions and who goes first for a builder
-  and reviewer, a second opinion, a debate, or plan and do. An optional third agent joins
-  in turn: replies go from the first to the second, the second to the third, and back, and
-  each agent is sent the replies it missed along with the one passed to it. Choose how
-  replies go across, who answers first, and write the opening message. The conversation is
-  one row in the session list (Provider "Claude + Codex", Kind "agent conversation"); its
-  member chats leave the list, and File, Agent Conversation Members goes to any of them.
-  Loaded, its messages list has every agent's messages in order, each starting with who said
-  it ("Codex: ...", "You, to Claude: ...") and the relay's own lines ("Relay: Claude's reply
-  passed to Codex.", with what went if you changed it on the way, and why the relay
-  stopped). What you type goes to the agent whose turn it is; start it with @ and a
-  name ("@Codex check the tests"), or the name and a comma ("Codex, what's broken?"), to
-  choose, or "@all" for every agent. Each agent is told once, at
-  the start, who else is in it, that their messages aren't yours, and to end its reply
-  with DONE when they all agree the work is finished.
-  - **Approve each hand-off** (the default): when an agent answers, you hear its reply, and
-    it waits to go to the other agent. Usually you just type your next message: it goes to
-    that agent with the waiting reply ahead of it. Ctrl+Shift+E is for passing the reply on
-    without adding anything, or reading and changing it first. The row says a reply is
-    waiting.
-  - **Automatic**, once turned on in Settings: replies go across by themselves, up to a turn
-    limit (6 exchanges unless you choose another, here or with File, Agent Conversation
-    Hand-offs). Approving what an agent asks doesn't stop it; it pauses, with the last reply
-    waiting for Ctrl+Shift+E, when you refused something or a request went unanswered. It
-    stops when a turn fails, and you hear why; your next message goes back to that agent.
-    Sending a message, or handing a reply on, starts it again with a fresh count.
-  - In either mode, the relay finishes when an agent says DONE after the others have replied
-    since your last message, or the replies start repeating. The last reply still waits for
-    Ctrl+Shift+E (a reviewer's DONE comes with its findings), but the row doesn't need you
-    for it.
-  - A reply given before background work (a build, say) is handed on when it's given.
-  - Writing to the agent a reply is waiting for sends that reply too, ahead of your words,
-    and so does "@all". Writing only to the agent that sent it sets it aside (you hear so):
-    you've carried on with that agent instead.
-  - **Stop** (Ctrl+Period) stops every agent and the relay; a waiting reply isn't passed on,
-    a message that hadn't gone comes back to the reply box, and your next message goes to
-    the agent you stopped. **Turn Status**
-    (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
-    to. **Usage and Context** (Ctrl+Shift+U) lists each agent's context and each provider's
-    limits.
-  - The relay also stops when the agents are only thanking each other. File, Agent
-    Conversation Hand-offs can make automatic mode say only when it stops or needs you, and
-    asks first if either provider is near a usage limit.
-  - The relay's own lines are one line each in the list; Enter reads exactly what was sent
-    (the setup each agent got, or the reply as it went).
-  - A reply passed on ends with the files its agent changed in that turn, so a reviewer
-    knows what to look at.
-  - Permissions and questions still come to you, from each agent, through Answer
-    (Ctrl+Shift+A): a message from one agent can never answer or approve anything for the
-    other. Rename (F2), Properties (Alt+Enter) and Delete (Shift+Delete) work on the row;
-    deleting it keeps both chats and their histories and puts them back in the list. A
-    member chat can't be deleted while it's in a conversation.
+- **Reply box:** for The Chat Place's own sessions, type and press Ctrl+Enter (or Send). You stay in
+  the reply box. For a desktop app or terminal session the same place holds a read-only note
+  saying where you reply, with Open in Claude and Continue Here as they apply.
+- **Commands and skills** (Ctrl+/, the Commands button after Stop, or File, Insert Command
+  or Skill), in The Chat Place's own Claude sessions (not yet for Codex or Copilot chats): a searchable list of your skills and custom commands, then Claude Code's own
+  (/compact, /context, /code-review and the rest), each with its description and what it
+  takes. Type to filter by name or description, Down to the list, Enter to choose: it goes
+  at the start of the reply box ("/compact "), replacing a command already there and keeping
+  what you typed, ready to finish and send. The list is Claude Code's own for the session's
+  folder, asked for in the background when the session loads (no turn, no cost) and kept
+  current by each turn. If it isn't there yet, you hear "Commands are ready" when it is; the list
+  never opens by itself.
+- **Prompts** (Ctrl+Shift+P, File, Prompts): a library of messages you send often, each with a
+  name. The dialog lists them by name, with the selected one's text below to read (Alt+X). **Use**
+  (or Enter on a prompt) closes it and puts the prompt in the reply box of the loaded Chat Place
+  session: in place of an empty reply, or at the cursor in what you've typed (replacing any text
+  you've selected), ready to change and send. **New** and **Edit** ask for a name and the text (Enter starts a new line in the text;
+  Ctrl+Enter saves), **Delete** (or Delete on a prompt) asks first, and **Move Up** and **Move
+  Down** put them in the order you want. Each change is saved at once and spoken ("Prompt saved:
+  Review", "Prompt deleted: Review"); Close or Escape closes. To save something as you send it,
+  press **Ctrl+Shift+Enter** in the reply box (File, Send and Save as Prompt): it asks for a name,
+  starting with the message's first few words, saves the prompt and then sends the message as
+  Ctrl+Enter does. Escape at the name does neither, and leaves your message in the reply box.
+  Prompts are kept in `%APPDATA%\TheChatPlace\prompts.json` (on a Mac,
+  `~/Library/Application Support/TheChatPlace/prompts.json`). The Chat Place doesn't read Claude
+  Code's own history of what you've typed.
+- **Attachments**, in The Chat Place's own Claude sessions: **Attach Files** (Alt+T, after Commands;
+  Ctrl+Shift+F) adds files and images to your next message, and **Ctrl+V** in the reply box
+  attaches a picture on the clipboard, such as a screenshot from Win+Shift+S. They're listed
+  under the reply box ("2 attachments: screenshot.png, log.txt"); Delete there removes one.
+  Images go to Claude as images, so it can describe what's on screen; other files are named
+  in the message as `@"path"`, which Claude Code reads in for Claude. A message can be
+  just attachments. Each session keeps its own until they're sent. Pasted pictures are saved
+  in `%APPDATA%\TheChatPlace\pasted images` (on a Mac,
+  `~/Library/Application Support/TheChatPlace/pasted images`).
+
+### Permissions and questions
+
 - **Claude asks, you answer.** In The Chat Place's own sessions, when Claude needs permission
   for something the permission mode doesn't allow, asks you a question, or has a plan for you
   to approve, the turn waits for you. It's announced ("Build needs you. Claude wants to run
@@ -586,132 +416,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   asks about or never allows, with the file each comes from. Desktop app and terminal
   sessions are read-only here, so they have none, and a Continue Here copy starts with nothing
   kept.
-- **Announcements.** When the open session gets a new reply, or one of The Chat Place's sessions
-  finishes a turn, or any listed session stops working, it's announced through your screen reader
-  (or a system voice when no screen reader is running) and put on the status bar. Settings (Ctrl+Comma) chooses full (the whole
-  reply), summary (the session's name and the first sentence) or silent (status bar only), whether
-  every listed session is announced or just the open one, and the speech route; its Reading
-  messages group chooses whether full messages open as a formatted page or plain text.
-  Ctrl+Shift+R repeats the last announcement.
-- **Which voice speaks.** On Windows, Automatic (the default) speaks through JAWS or NVDA,
-  whichever is running, in your screen reader's own voice and rate. NVDA needs nothing extra: The
-  Chat Place ships NV Access's NVDA Controller Client. A system voice is used only when no screen
-  reader is running in your Windows session. If one is running but can't be reached (or takes
-  more than 3 seconds to answer), The Chat Place doesn't talk over it in another voice. Instead,
-  the status bar shows the announcement with the reason beside it, a Windows notification says
-  announcements aren't being spoken (unless notifications are off), and Settings shows a Speech
-  problem box after the speaking rate. Each new reason is reported once, until speech works
-  again. Nothing is spoken through a screen reader while Windows is locked. Choosing JAWS or NVDA in
-  Settings only decides which is tried first when both are running. On a Mac, Automatic speaks
-  through VoiceOver when it's running, else a system voice.
-- **The status bar** (F6, or Ctrl+9) has parts, as in QuickMail, and Left and Right move between
-  them: what was last said, then the loaded session and what it's doing (read-only text), then
-  buttons that appear when there's something to act on: how full the context is (Usage and
-  Context), how many sessions need you (goes to the first), and an available update. Tab leaves
-  the status bar. Your screen reader's read-status-bar key reads all the parts.
-- **Answers to what you do are spoken too**, briefly and without cutting off your screen reader:
-  "Tool activity shown in Build.", "Message copied.", and so on (unless announcements are set to silent).
-- **Your own message is read back when it's sent**, so you hear what actually went to the selected provider,
-  and where: "Sent to Hub probe: Fix the build." During a turn it's "Queued for Hub probe: …",
-  and when the queued message goes out you hear only "Sent your queued message", not the
-  message again. It follows the announcement level: at full, the message up to about 300
-  characters, then "… and 412 more words"; at summary, its first sentence; at silent, nothing.
-  Markdown is read as words: a code block is "Code block omitted", and headings and list items
-  are read as separate sentences. Turn it off in Settings with "Read your own messages back when
-  they're sent" (Alt+M), and you hear just "Sent. Hub probe is working."
-- **Notifications** while you're in another window: when one of The Chat Place's own
-  sessions finishes a turn, fails or needs you (a permission or a question), when a desktop app
-  session starts needing you, and when the loaded session finishes. Choosing one brings
-  The Chat Place forward with that session loaded. Settings, Windows notifications (on a Mac,
-  Notifications) chooses every finished turn of its own sessions (the default), only when a
-  session needs you, or off. While you're in The Chat Place (or one of its dialogs), the
-  announcement is enough and none are shown.
-  - On Windows they're ordinary Windows notifications from The Chat Place's icon in the
-    notification area: read by your screen reader, and quiet under Do Not Disturb. Choosing the
-    icon itself brings The Chat Place forward.
-  - On a Mac they're macOS notifications, in Notification Center and under Focus like any other.
-    macOS asks once whether The Chat Place may send them (System Settings, Notifications changes
-    that). Each one remembers its own session, so choosing an older one still opens the right
-    session.
-- **Changed Files** (Ctrl+Shift+D, View menu) opens Lists on Changed Files: the files
-  Claude changed in the selected message's turn (your latest, if none is selected), or in the
-  whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
-  removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a
-  time: where each change is, then "Removed:", "Added:" and "Unchanged:" lines. It's built from the
-  transcript, so it works for desktop app sessions too, with no git needed. Changes made by a
-  subagent Claude hands work to, and notebook edits, aren't counted yet. When the loaded
-  session's turn ends, the announcement (at the full level) is followed by a one-line summary:
-  "Changed 3 files: main_frame.py, 40 lines added, 12 removed; …".
-- **Usage and Context** (Ctrl+Shift+U, View menu) opens a list to read with the arrow keys: first
-  how full the loaded session's context is ("Quiet one: Context 62% full: 124,000 of 200,000
-  tokens"), then each of your plan's usage limits on a line of its own. When something isn't known
-  yet, the line says so. Copy (Alt+C), or Ctrl+C in the list, copies the selected line, and Copy
-  All (Alt+A) copies every line; Escape or Close (Alt+L) closes it. The context comes from the token counts of Claude's latest
-  reply (the percentage only once the window's size is known: Claude Code reports it for a model
-  when one of The Chat Place's sessions runs a turn on it, and a session past 200,000 tokens has the
-  1,000,000 window), and the limits are as the latest turn reported them ("5-hour limit 8% used,
-  resets at 10:00 AM.", then "Weekly limit 34% used, resets on Friday at 9:00 AM.").
-  It's said once, unasked, when the loaded session's context passes 80%, when a limit passes
-  90% or is reached, and when Claude Code compacts a conversation (the messages list shows
-  "Conversation compacted" too). A turn that fails on a usage limit says so in plain words,
-  with when it resets.
-  For a Codex chat, the same command reads current ChatGPT account limits in the
-  background, including used and remaining percentages and reported reset times.
-  Limits are shared across your Codex chats. Missing values are shown as not reported.
-  Codex chats started here also show the latest reported model request's input, output
-  and total tokens, separately from cumulative usage. When Codex reports its
-  context window, the latest request's percentage appears here and in the status
-  bar; at 80% The Chat Place warns once until the next compaction. After an owned Codex
-  turn ends, The Chat Place checks account limits in the background and warns at 80% and
-  100%, once per allowance and reset window, without interrupting read-back. These values become
-  available only after this connection receives a usage report. Missing windows
-  stay not reported; The Chat Place never substitutes Claude's counts or model defaults.
-- **Properties** (Alt+Enter, View menu, or the session's and the message's context menus; Option+Return
-  on a Mac) opens a list of "Property: value" lines, read and copied like Usage and Context. In the
-  session list it's the selected session; in the messages, the selected message; anywhere else,
-  the loaded session. A session's lines are its title, provider, kind, folder, status, when it started and
-  was last active, the model of its latest reply (for supported chats started here, the model, effort
-  and permission mode chosen), how many messages, your messages, the provider's replies, tool calls,
-  links, code blocks and changed files it has, how far along the task list is, how full its
-  context is, how many times it was
-  compacted, its groups, Remote Control, whether it's archived or hidden, its session and desktop
-  app IDs where available. Claude chats also show the transcript file and size; Codex history
-  comes through its API. Complete history is read for the message counts, so the counts
-  don't depend on Show Tool Activity. A message's lines are who it's from, its date and time,
-  its position in the list ("12 of 40"), its lines, words and characters, its links and code
-  blocks, and its ID.
-- **Turn Status** (Ctrl+Shift+T) says how long the provider has been working on the current turn and
-  what it last did, and how far along the loaded chat's task list is when available. For Claude
-  chats, it also reports background work still running. There's no
-  time limit on a turn; Stop (Ctrl+Period) ends it, along with anything it started, such as a
-  build.
-- **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the
-  keyboard shortcuts, or as plain text (Alt+P). It's part of the app, so it works offline. It's
-  edited in `thechatplace/assets/user-guide.md`; `python tools/make_docs.py` makes the copies in
-  `docs/`.
-- **Claude Code Sign-in** (Help menu) says whether Claude Code is signed in, to which plan and
-  as whom ("Claude Code is signed in to your Claude Max plan as …"). If it isn't, it offers to
-  sign in: `claude auth login` opens in its own window (a Terminal window on a Mac) and your
-  browser shows Claude's sign-in page; when you've finished, The Chat Place checks again and
-  says the result. If Claude Code isn't installed, or only an old npm install is, it says so,
-  gives the install command, and offers to run Claude Code's native installer in its own
-  window, then checks again once it's done. If Claude Code is there but can't be asked, it says
-  why: no answer in 20 seconds, couldn't be started, too old (`claude update` fixes that), or
-  what it printed. The Chat Place also checks at start-up and says so only if there's a problem.
-  Your sessions are listed whether or not Claude Code is signed in (they're read from disk);
-  only sending a message needs a sign-in.
-- **Codex Sign-in** (Help menu) says whether Codex is signed in to ChatGPT. If it isn't, or is
-  using another credential such as an API key, it offers to run `codex login` in its own window;
-  your browser shows ChatGPT's sign-in page, and The Chat Place checks again when it finishes.
-  If Codex isn't installed or its status can't be read, the same item explains what is needed.
-- **Report a Bug** (Help menu) asks for a summary, what happened, what you expected and the
-  steps, and shows exactly what else the report includes before it goes anywhere: versions
-  (The Chat Place, Windows, Python, wxPython, Claude Code), the announcement level and speech
-  engine, what happened to the last announcement (which screen reader spoke it, or why none
-  did), the list's view and sort, and how many sessions it lists. Never a session's title,
-  folder or messages. **Open on GitHub** copies the whole report and opens GitHub's new-issue
-  page with it filled in; **Copy Report** only copies it. Filing on GitHub needs access to the
-  repository; anyone else can Copy Report and email it to support@theideaplace.net.
+
+### Codex chats
 
 **Codex chats appear automatically** when a native Codex CLI is installed and signed in to
 ChatGPT. That includes the copy bundled with the ChatGPT app on Mac, the Codex app's copy on
@@ -831,6 +537,8 @@ such as requirements an administrator set. If a new Codex chat can't be started,
 first message is kept: in the open chat's message box if you can type there, otherwise
 on the clipboard.
 
+### GitHub Copilot CLI chats
+
 **Settings: GitHub Copilot CLI chats.** Enable **Include GitHub Copilot CLI
 chats (preview; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
 sessions alongside Claude, and to start Copilot chats of your own. The option appears once
@@ -872,6 +580,346 @@ announced once when its answer is finished. After 10 minutes with no activity it
 activity from Copilot for 10 minutes", and after 2 hours it's shown as status unavailable (Copilot
 may have been closed partway through); one waiting for your permission stays needs you for up to a day, then is shown as status
 unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot CLI in a terminal are listed as terminal sessions.
+
+### Passing replies between chats
+
+- **Send a reply to another chat (File, Send Reply to Another Chat, Ctrl+Shift+E).** Pass
+  what one agent said to another, for example so Codex can review what Claude built, or so
+  Claude can answer Codex's review. It sends the selected reply in the messages list, or the
+  latest one if a message of yours is selected. Choose the chat it goes to: any of The Chat
+  Place's own chats, Claude or Codex, other than this one (desktop app, terminal and hidden
+  chats aren't offered), or, at the end of the list, New Claude chat or New Codex chat. A new
+  chat opens New Session with the message as its first message, the folder of the chat the
+  reply came from, and the title "Forwarded from" that chat; choose its permission and model
+  there, then start it. The message starts with a line saying which agent wrote it and in
+  which chat, so the agent reading it knows these are another agent's words, not yours. Read
+  it and change or add to it in the Message box (Enter there starts a new line), then press
+  Ctrl+Enter, or Enter in the list, to send it. The Chat Place goes to that chat and sends it
+  as if you'd typed it: queued if that chat is working, and after Codex has got the chat ready
+  if it wasn't (going to another chat before then leaves it unsent, in that chat's reply box).
+  If it can't be sent, it's left in that chat's reply box. While the chat it comes from is
+  still working, the dialog's title says so: the reply may be a step on the way. The chat it
+  came from is first in the list next time, so sending the answer back is Ctrl+Shift+E then
+  Enter. It's also on a reply's menu in the messages list (Applications key). A forwarded
+  message is only ever a message: it can't answer a question or approve anything, which still
+  comes to you.
+  - **Just send it, or start an agent conversation.** Under Send to, **Just send it**
+    (Alt+J) is chosen; **Start an agent conversation with both chats** (Alt+C)
+    instead makes the two chats an agent conversation (below), titled in **Agent conversation
+    title** (Alt+I, the chat's title to start with). The reply goes as its first hand-off, the
+    chat you sent it to answers first, and you approve each hand-off (change that with File,
+    Agent Conversation Hand-offs). With a new chat, New Session comes first. It can't be done
+    with a chat that isn't one of The Chat Place's own, one already in an agent conversation, or
+    while either chat is still working: then the option's name ends with
+    "unavailable" and why. If the label line of the message is changed, what's sent is your own
+    words rather than a hand-off.
+
+### Agent conversations
+
+- **Agent conversations (File, New Agent Conversation, Ctrl+Shift+G).** Two of The Chat
+  Place's own chats, Claude and Codex (or two of either), talk to each other in one
+  conversation, with you in it. Choose each agent's chat: one of yours, keeping its history,
+  or a new Claude or Codex chat (with its permission, in a folder you choose), and give each
+  a role if you like ("Build the fix", "Review each change; don't edit files"). Kind of
+  conversation fills in the roles, new chats' permissions and who goes first for a builder
+  and reviewer, a second opinion, a debate, or plan and do. An optional third agent joins
+  in turn: replies go from the first to the second, the second to the third, and back, and
+  each agent is sent the replies it missed along with the one passed to it. Choose how
+  replies go across, who answers first, and write the opening message. The conversation is
+  one row in the session list (Provider "Claude + Codex", Kind "agent conversation"); its
+  member chats leave the list, and File, Agent Conversation Members goes to any of them.
+  Loaded, its messages list has every agent's messages in order, each starting with who said
+  it ("Codex: ...", "You, to Claude: ...") and the relay's own lines ("Relay: Claude's reply
+  passed to Codex.", with what went if you changed it on the way, and why the relay
+  stopped). What you type goes to the agent whose turn it is; start it with @ and a
+  name ("@Codex check the tests"), or the name and a comma ("Codex, what's broken?"), to
+  choose, or "@all" for every agent. Each agent is told once, at
+  the start, who else is in it, that their messages aren't yours, and to end its reply
+  with DONE when they all agree the work is finished.
+  - **Approve each hand-off** (the default): when an agent answers, you hear its reply, and
+    it waits to go to the other agent. Usually you just type your next message: it goes to
+    that agent with the waiting reply ahead of it. Ctrl+Shift+E is for passing the reply on
+    without adding anything, or reading and changing it first. The row says a reply is
+    waiting.
+  - **Automatic**, once turned on in Settings: replies go across by themselves, up to a turn
+    limit (6 exchanges unless you choose another, here or with File, Agent Conversation
+    Hand-offs). Approving what an agent asks doesn't stop it; it pauses, with the last reply
+    waiting for Ctrl+Shift+E, when you refused something or a request went unanswered. It
+    stops when a turn fails, and you hear why; your next message goes back to that agent.
+    Sending a message, or handing a reply on, starts it again with a fresh count.
+  - In either mode, the relay finishes when an agent says DONE after the others have replied
+    since your last message, or the replies start repeating. The last reply still waits for
+    Ctrl+Shift+E (a reviewer's DONE comes with its findings), but the row doesn't need you
+    for it.
+  - A reply given before background work (a build, say) is handed on when it's given.
+  - Writing to the agent a reply is waiting for sends that reply too, ahead of your words,
+    and so does "@all". Writing only to the agent that sent it sets it aside (you hear so):
+    you've carried on with that agent instead.
+  - **Stop** (Ctrl+Period) stops every agent and the relay; a waiting reply isn't passed on,
+    a message that hadn't gone comes back to the reply box, and your next message goes to
+    the agent you stopped. **Turn Status**
+    (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
+    to. **Usage and Context** (Ctrl+Shift+U) lists each agent's context and each provider's
+    limits.
+  - The relay also stops when the agents are only thanking each other. File, Agent
+    Conversation Hand-offs can make automatic mode say only when it stops or needs you, and
+    asks first if either provider is near a usage limit.
+  - The relay's own lines are one line each in the list; Enter reads exactly what was sent
+    (the setup each agent got, or the reply as it went).
+  - A reply passed on ends with the files its agent changed in that turn, so a reviewer
+    knows what to look at.
+  - Permissions and questions still come to you, from each agent, through Answer
+    (Ctrl+Shift+A): a message from one agent can never answer or approve anything for the
+    other. Rename (F2), Properties (Alt+Enter) and Delete (Shift+Delete) work on the row;
+    deleting it keeps both chats and their histories and puts them back in the list. A
+    member chat can't be deleted while it's in a conversation.
+
+### Speech, announcements and notifications
+
+- **Announcements.** When the open session gets a new reply, or one of The Chat Place's sessions
+  finishes a turn, or any listed session stops working, it's announced through your screen reader
+  (or a system voice when no screen reader is running) and put on the status bar. Settings (Ctrl+Comma) chooses full (the whole
+  reply), summary (the session's name and the first sentence) or silent (status bar only), whether
+  every listed session is announced or just the open one, and the speech route; its Reading
+  messages group chooses whether full messages open as a formatted page or plain text.
+  Ctrl+Shift+R repeats the last announcement.
+- **Which voice speaks.** On Windows, Automatic (the default) speaks through JAWS or NVDA,
+  whichever is running, in your screen reader's own voice and rate. NVDA needs nothing extra: The
+  Chat Place ships NV Access's NVDA Controller Client. A system voice is used only when no screen
+  reader is running in your Windows session. If one is running but can't be reached (or takes
+  more than 3 seconds to answer), The Chat Place doesn't talk over it in another voice. Instead,
+  the status bar shows the announcement with the reason beside it, a Windows notification says
+  announcements aren't being spoken (unless notifications are off), and Settings shows a Speech
+  problem box after the speaking rate. Each new reason is reported once, until speech works
+  again. Nothing is spoken through a screen reader while Windows is locked. Choosing JAWS or NVDA in
+  Settings only decides which is tried first when both are running. On a Mac, Automatic speaks
+  through VoiceOver when it's running, else a system voice.
+- **Answers to what you do are spoken too**, briefly and without cutting off your screen reader:
+  "Tool activity shown in Build.", "Message copied.", and so on (unless announcements are set to silent).
+- **Your own message is read back when it's sent**, so you hear what actually went to the selected provider,
+  and where: "Sent to Hub probe: Fix the build." During a turn it's "Queued for Hub probe: …",
+  and when the queued message goes out you hear only "Sent your queued message", not the
+  message again. It follows the announcement level: at full, the message up to about 300
+  characters, then "… and 412 more words"; at summary, its first sentence; at silent, nothing.
+  Markdown is read as words: a code block is "Code block omitted", and headings and list items
+  are read as separate sentences. Turn it off in Settings with "Read your own messages back when
+  they're sent" (Alt+M), and you hear just "Sent. Hub probe is working."
+- **Notifications** while you're in another window: when one of The Chat Place's own
+  sessions finishes a turn, fails or needs you (a permission or a question), when a desktop app
+  session starts needing you, and when the loaded session finishes. Choosing one brings
+  The Chat Place forward with that session loaded. Settings, Windows notifications (on a Mac,
+  Notifications) chooses every finished turn of its own sessions (the default), only when a
+  session needs you, or off. While you're in The Chat Place (or one of its dialogs), the
+  announcement is enough and none are shown.
+  - On Windows they're ordinary Windows notifications from The Chat Place's icon in the
+    notification area: read by your screen reader, and quiet under Do Not Disturb. Choosing the
+    icon itself brings The Chat Place forward.
+  - On a Mac they're macOS notifications, in Notification Center and under Focus like any other.
+    macOS asks once whether The Chat Place may send them (System Settings, Notifications changes
+    that). Each one remembers its own session, so choosing an older one still opens the right
+    session.
+- **The status bar** (F6, or Ctrl+9) has parts, as in QuickMail, and Left and Right move between
+  them: what was last said, then the loaded session and what it's doing (read-only text), then
+  buttons that appear when there's something to act on: how full the context is (Usage and
+  Context), how many sessions need you (goes to the first), and an available update. Tab leaves
+  the status bar. Your screen reader's read-status-bar key reads all the parts.
+
+### Usage, Turn Status and Properties
+
+- **Usage and Context** (Ctrl+Shift+U, View menu) opens a list to read with the arrow keys: first
+  how full the loaded session's context is ("Quiet one: Context 62% full: 124,000 of 200,000
+  tokens"), then each of your plan's usage limits on a line of its own. When something isn't known
+  yet, the line says so. Copy (Alt+C), or Ctrl+C in the list, copies the selected line, and Copy
+  All (Alt+A) copies every line; Escape or Close (Alt+L) closes it. The context comes from the token counts of Claude's latest
+  reply (the percentage only once the window's size is known: Claude Code reports it for a model
+  when one of The Chat Place's sessions runs a turn on it, and a session past 200,000 tokens has the
+  1,000,000 window), and the limits are as the latest turn reported them ("5-hour limit 8% used,
+  resets at 10:00 AM.", then "Weekly limit 34% used, resets on Friday at 9:00 AM.").
+  It's said once, unasked, when the loaded session's context passes 80%, when a limit passes
+  90% or is reached, and when Claude Code compacts a conversation (the messages list shows
+  "Conversation compacted" too). A turn that fails on a usage limit says so in plain words,
+  with when it resets.
+  For a Codex chat, the same command reads current ChatGPT account limits in the
+  background, including used and remaining percentages and reported reset times.
+  Limits are shared across your Codex chats. Missing values are shown as not reported.
+  Codex chats started here also show the latest reported model request's input, output
+  and total tokens, separately from cumulative usage. When Codex reports its
+  context window, the latest request's percentage appears here and in the status
+  bar; at 80% The Chat Place warns once until the next compaction. After an owned Codex
+  turn ends, The Chat Place checks account limits in the background and warns at 80% and
+  100%, once per allowance and reset window, without interrupting read-back. These values become
+  available only after this connection receives a usage report. Missing windows
+  stay not reported; The Chat Place never substitutes Claude's counts or model defaults.
+- **Turn Status** (Ctrl+Shift+T) says how long the provider has been working on the current turn and
+  what it last did, and how far along the loaded chat's task list is when available. For Claude
+  chats, it also reports background work still running. There's no
+  time limit on a turn; Stop (Ctrl+Period) ends it, along with anything it started, such as a
+  build.
+- **Properties** (Alt+Enter, View menu, or the session's and the message's context menus; Option+Return
+  on a Mac) opens a list of "Property: value" lines, read and copied like Usage and Context. In the
+  session list it's the selected session; in the messages, the selected message; anywhere else,
+  the loaded session. A session's lines are its title, provider, kind, folder, status, when it started and
+  was last active, the model of its latest reply (for supported chats started here, the model, effort
+  and permission mode chosen), how many messages, your messages, the provider's replies, tool calls,
+  links, code blocks and changed files it has, how far along the task list is, how full its
+  context is, how many times it was
+  compacted, its groups, Remote Control, whether it's archived or hidden, its session and desktop
+  app IDs where available. Claude chats also show the transcript file and size; Codex history
+  comes through its API. Complete history is read for the message counts, so the counts
+  don't depend on Show Tool Activity. A message's lines are who it's from, its date and time,
+  its position in the list ("12 of 40"), its lines, words and characters, its links and code
+  blocks, and its ID.
+
+### Organizing and exporting
+
+- **Rename a session** (F2, File, Rename Session, or the session's menu). One of The Chat
+  Place's own sessions is renamed outright. A desktop app session's new name shows only in The
+  Chat Place, since its files are never changed: it's kept in
+  `%APPDATA%\TheChatPlace\titles.json` (on a Mac,
+  `~/Library/Application Support/TheChatPlace/titles.json`), and the desktop app keeps its own
+  name for it. Renaming
+  it to nothing (clear the box) goes back to the desktop app's name.
+- **Hide or delete a session.** **Delete** (File, Hide Session) takes the selected session out of
+  the list without changing it; View, Show Sessions, Hidden lists hidden sessions, and File, Bring
+  Back Session returns one. **Shift+Delete** (File, Delete Session Permanently) deletes one of The
+  Chat Place's own sessions for good, from any view, hidden or not: after you confirm (No is the
+  default), its Claude Code transcript is deleted (permanent deletion is currently supported for Claude chats) from the computer and it leaves the list, its
+  groups and the hidden list. It waits while the session is working, here or in a terminal.
+  Desktop app sessions can only be hidden; delete those in the desktop app.
+  On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).
+- **Groups**, like groups in Claude on the web: **Ctrl+G** (File, Add to Group) puts the
+  selected session in a group, or a new one; File, Remove from Group takes it out; File,
+  Manage Groups lists your groups with how many sessions each has, to make, rename or delete
+  them (deleting a group never touches its sessions). A session can be in several groups, and
+  its row says which ("…, group Work"). The Chat Place's groups are kept in
+  `%APPDATA%\TheChatPlace\groups.json` (on a Mac,
+  `~/Library/Application Support/TheChatPlace/groups.json`); the desktop app's files are never
+  changed.
+  The **desktop app's own groups** show too: in View, Show Sessions, in each session's row,
+  and in Add to Group. They're read from the desktop app's settings each refresh, so a change
+  there shows here; they're changed in the desktop app. Adding one of The Chat Place's sessions
+  to a desktop app group keeps a Chat Place group of the same name, shown together with it.
+- **Export** (Ctrl+E, File, Export Session) saves the selected session's conversation,
+  or the loaded one's, to a file: **Markdown**, a **web page** (formatted like the full-message
+  view, nothing fetched from the internet) or **plain text**, chosen by the Save as type list
+  or the file name's extension. Each message is a heading ("Claude, 10:43") and its text as
+  written, with the message's own headings moved down two levels so the file's outline stays
+  session, message, section. Tool activity is included when Show Tool Activity is on. It
+  starts in Documents, named after the session and the date, works in the background (a long
+  session never freezes the window), and says where it saved; the status bar keeps that to read
+  back. Headings carry the time, and the date whenever the day changes.
+
+### Links, Remote Control and other computers
+
+- **Copy Session Link** (Ctrl+Shift+L, File menu, or the session's menu) copies a link to the
+  selected Claude session (not yet for Codex or Copilot chats), to paste into a note, an email or another session. A list offers the links that
+  apply, best first; Enter on the first copies a Markdown link, `[Title](thechatplace://session/…)`,
+  that opens the session in The Chat Place. Below it are a desktop app session's Open in Claude link
+  (`claude://…`) and, for one of The Chat Place's sessions on Remote Control, its claude.ai address,
+  each as a Markdown link and then as the bare link. What was copied is said. Following a
+  `thechatplace://` link (from a note, Win+R or Terminal's `open`, a link in a message's formatted
+  view) brings The Chat Place forward, starting it if it isn't running, selects the session, loads
+  its messages and puts you in them, as choosing it yourself does. If the list's view or search
+  leaves the session out, it shows all sessions (or Archived or Hidden) and says so. A link only
+  ever finds a session, as Enter on it does: it never sends a message, runs a turn or changes a
+  conversation, and anything that isn't exactly a link to a session gets "That link isn't one The
+  Chat Place knows." A session's link uses the id that lasts: the Claude Code session id for The
+  Chat Place's own sessions, the desktop app's `local_…` id for its Code and Cowork sessions. On
+  Windows the installed copy registers `thechatplace://` for your user account
+  (`HKEY_CURRENT_USER\Software\Classes\thechatplace`) when it's installed and at start, and
+  uninstalling removes it; the portable copy and a source run never register. On a Mac the app
+  declares the link type itself. When The Chat Place is already running, the copy a link starts
+  hands the link over (as a small file in its own data folder, `links`, taken within a second) and
+  closes.
+- **Remote Control.** Settings can turn on Remote Control for The Chat Place's sessions, and
+  **File, Remote Control** turns it on or off for one session (or back to the Settings
+  default). A session on Remote Control can be reached from claude.ai and your other devices
+  while one of its turns is running: each turn is its own Claude Code process, so between turns
+  it shows as offline. The same Remote Control session is joined every turn, and File, Remote
+  Control copies its claude.ai address. Turning it on copies the conversation to claude.ai,
+  where it stays (turning Remote Control off, or deleting the session, doesn't remove it;
+  archive it on claude.ai). While a turn runs, anyone signed in to your account on claude.ai
+  can type into it or answer its questions; a question answered there is cleared here.
+  It's also on the session's menu (Applications key). A session on Remote Control says so in
+  its row and heading, and View, Show Sessions, Remote Control Sessions lists it (with only the
+  Settings default on, a Chat Place session's row says so once it has connected). For a Claude
+  desktop app session, File, Remote Control offers to open it in the desktop app, where its
+  Remote Control is turned on, or to continue it here as a copy with Remote Control on from the
+  first turn; The Chat Place never changes the desktop app's session itself.
+- **Other machines (File, Other Machines, Ctrl+Shift+M).** Your Claude Code sessions on
+  your other computers, reached through Claude in the loaded Chat Place session, which needs
+  Remote Control on (as do they). It lists them from Claude's latest look: their names and
+  whether each is idle, busy or offline. "Offline" often only means between turns, and a
+  message waits for it. **Refresh the list** asks Claude to look again, as a turn in the
+  session, and the list is there next time you press Ctrl+Shift+M. Choose a session, type
+  your message, and Claude sends it word for word; its reply comes back to the same session.
+  Only Claude can reach other computers, and only what they send back can be shown: their
+  own conversations can't be read from here. It works between turns, not during one.
+- **Messages from other sessions.** Claude can also send a message to another Claude Code
+  session when you ask in your own words, for example "send the session called Mac Hub a
+  message asking for its hostname". A message that comes back shows in the messages list as **From** and the
+  session's name ("From Mac Hub: ..."), not as something you typed, and it's announced in
+  any open session. Other sessions reach a Chat Place session by its title, which stays the
+  same every turn, so rename it to something they can find. A Chat Place session only acts on
+  a message during one of its turns, so a message that arrives between turns waits for the
+  next one. The other computer's own conversation can't be read from here; only what its
+  Claude sends back.
+
+### What AI knows about you
+
+- **What AI knows about you** (Ctrl+Shift+K, View, What AI Knows About You). Choose **Claude**
+  or **Codex** in the Provider list (Alt+V). This is an inventory of local customization files,
+  not an account-wide memory report or a list of everything active in a particular turn. Pick a
+  kind, arrow through its items (each with its description), and Enter reads the file in a box
+  you can move through by line. **Edit in Your Editor** opens the file in your own editor (on
+  Windows, the program set to edit that kind of file, or Notepad); The Chat Place itself never
+  writes to these files. Reload shows your changes; Show in Folder and Copy Path (Alt+P) find
+  the file. While a provider's files are being read the lists say "Reading…", and if they can't
+  be read they say so.
+  - **Claude:** Claude Code keeps what it knows about you in plain files, and this lists them by
+    kind: your instructions (`CLAUDE.md`, yours and each project's), the memories Claude saved
+    for each project, your skills (including ones synced from your account), subagents, slash
+    commands, output styles and settings. It includes the project-level ones in the folders your
+    sessions work in. Not listed yet: what plugins add, `CLAUDE.md` files in a project's parent
+    folders, `.claude/rules`, and an organization's managed settings.
+  - **Codex:** `AGENTS.md` and `AGENTS.override.md`, Markdown files under its `memories` folder
+    (not the summaries of past chats it keeps in `memories/rollout_summaries`), skills in your
+    `.agents/skills` and Codex home's `skills` (including `.system`), saved `prompts`, and
+    `config.toml`. It honors `CODEX_HOME` and includes instruction files, `.agents/skills` and
+    `.codex/config.toml` in the folders your Codex sessions work in. It never reads Codex's
+    sign-in, history or chat files. Parent folders, configured alternate instruction filenames,
+    plugins and managed settings are not included; project configuration may require trusting
+    the project in Codex.
+
+### Sign-in, the user guide and bug reports
+
+- **Claude Code Sign-in** (Help menu) says whether Claude Code is signed in, to which plan and
+  as whom ("Claude Code is signed in to your Claude Max plan as …"). If it isn't, it offers to
+  sign in: `claude auth login` opens in its own window (a Terminal window on a Mac) and your
+  browser shows Claude's sign-in page; when you've finished, The Chat Place checks again and
+  says the result. If Claude Code isn't installed, or only an old npm install is, it says so,
+  gives the install command, and offers to run Claude Code's native installer in its own
+  window, then checks again once it's done. If Claude Code is there but can't be asked, it says
+  why: no answer in 20 seconds, couldn't be started, too old (`claude update` fixes that), or
+  what it printed. The Chat Place also checks at start-up and says so only if there's a problem.
+  Your sessions are listed whether or not Claude Code is signed in (they're read from disk);
+  only sending a message needs a sign-in.
+- **Codex Sign-in** (Help menu) says whether Codex is signed in to ChatGPT. If it isn't, or is
+  using another credential such as an API key, it offers to run `codex login` in its own window;
+  your browser shows ChatGPT's sign-in page, and The Chat Place checks again when it finishes.
+  If Codex isn't installed or its status can't be read, the same item explains what is needed.
+- **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the
+  keyboard shortcuts, or as plain text (Alt+P). It's part of the app, so it works offline. It's
+  edited in `thechatplace/assets/user-guide.md`; `python tools/make_docs.py` makes the copies in
+  `docs/`.
+- **Report a Bug** (Help menu) asks for a summary, what happened, what you expected and the
+  steps, and shows exactly what else the report includes before it goes anywhere: versions
+  (The Chat Place, Windows, Python, wxPython, Claude Code), the announcement level and speech
+  engine, what happened to the last announcement (which screen reader spoke it, or why none
+  did), the list's view and sort, and how many sessions it lists. Never a session's title,
+  folder or messages. **Open on GitHub** copies the whole report and opens GitHub's new-issue
+  page with it filled in; **Copy Report** only copies it. Filing on GitHub needs access to the
+  repository; anyone else can Copy Report and email it to support@theideaplace.net.
 
 ## Install
 
@@ -916,6 +964,13 @@ control VoiceOver; allow it, and turn on "Allow VoiceOver to be controlled with 
 VoiceOver Utility, General. Your sessions and settings are in
 `~/Library/Application Support/TheChatPlace`.
 
+**Uninstalling.** On Windows, uninstall the installed copy from Settings, Apps, Installed apps (Apps & features on Windows 10);
+delete the portable copy's folder. On a Mac, drag The Chat Place to the Trash. Your settings and
+records stay in `%APPDATA%\TheChatPlace` (on a Mac, `~/Library/Application Support/TheChatPlace`)
+until you delete them, and your Claude, Codex and Copilot chats are never removed. The user
+guide's [Uninstalling](https://theideaplace.github.io/AIChat/user-guide.html#uninstalling)
+section lists everything that's left behind.
+
 ## Updates
 
 The installed app checks for a new version a few seconds after it starts, and whenever you choose
@@ -957,90 +1012,7 @@ data is in `~/Library/Application Support/TheChatPlace`. The updater refuses to 
 were ever inside what it replaces. What the updater did is logged in `update.log` in the data
 folder.
 
-The version is in Help, About. Releases come from tags named `v<version>`, and
-each release carries two Velopack update feeds, `windows` (`releases.windows.json`) and `osx`
-(`releases.osx.json`). The updater finds the newest `v*` release in this repository itself
-and reads the feed from that release only (`REPO_URL`, `RELEASES_API`, `TAG_PREFIX` and `CHANNEL`
-in `thechatplace/updater.py`).
-
-## Run from source (development)
-
-You need Python 3.11 to 3.13 (wxPython has wheels for those). The repo's virtual environment is
-`.venv` (ignored by git). The setup scripts make it, install everything the app, the tests and
-the build need (`requirements-build.txt`), and check it all imports, as Image Description
-Toolkit's do. Each replaces an existing `.venv`.
-
-| | Set up | Run | Test |
-|---|---|---|---|
-| Windows | `winsetup.bat` | `.venv\Scripts\pythonw TheChatPlace.pyw` | `.venv\Scripts\python -m pytest tests` |
-| Mac | `./macsetup.sh`, or double-click `macsetup.command` | `.venv/bin/python -m thechatplace` | `.venv/bin/python -m pytest tests` |
-
-`python -m thechatplace` works on Windows too. A copy run from source doesn't update itself; Help, Check
-for Updates says so, and names the newest release.
-
-### Build it yourself
-
-The build scripts are in `BuildAndRelease/`, laid out as in Image Description Toolkit:
-`MacBuilds/` and `WinBuilds/`. Each does what the release workflow's job for that platform does:
-makes `.venv` if it isn't there, runs the tests, builds the app with PyInstaller, smoke-tests it,
-and packs it with Velopack, whose tool `vpk` needs the .NET SDK (the scripts install `vpk` at the
-version the workflow uses). Results go in `releases\` and `dist\`; give a folder to copy the
-installer or disk image there too, relative to where you ran the script.
-
-**Windows.** `BuildAndRelease\WinBuilds\build_windows.cmd`, from a command prompt or by
-double-clicking (the window then stays open to read the result). It makes the installer and
-portable zip, **unsigned**: Windows signing is Azure Artifact Signing, which only the workflow
-does, so SmartScreen may warn when you run Setup (More info, then Run anyway). Without the .NET SDK
-it builds just the app, says why, and exits with an error.
-
-```
-BuildAndRelease\WinBuilds\build_windows.cmd
-BuildAndRelease\WinBuilds\build_windows.cmd C:\Users\kelly\OneDrive\thehub
-```
-
-**Mac.** `BuildAndRelease/MacBuilds/build_macos.sh`, or double-click `build_macos.command`. It
-makes `releases/TheChatPlace-macos-arm64.dmg` and the `osx` update feed, for Apple silicon. Like
-IDT's, a local Mac build is **signed** with your Developer ID Application certificate when the
-keychain has one; notarizing is up to you. The .NET SDK comes from `brew install dotnet`.
-
-```
-BuildAndRelease/MacBuilds/build_macos.sh                    signed if you have the certificate
-BuildAndRelease/MacBuilds/build_macos.sh ~/Desktop/builds   and copy the .dmg there
-TCP_SIGN_CODE=0 BuildAndRelease/MacBuilds/build_macos.sh    unsigned
-TCP_NOTARIZE=1 BuildAndRelease/MacBuilds/build_macos.sh     signed and notarized (credentials: notarize.sh)
-```
-
-The Mac build follows GHManage's: the app is signed inside-out (`sign.sh`), `vpk pack` adds
-Velopack's updater (`UpdateMac`) and signs that and the bundle, and the disk image is made from
-the packed app, never from `dist/`. An app without `UpdateMac` runs perfectly and never updates
-again, so the build checks that Velopack inside the packed app finds its updater. An unsigned
-disk image's README.txt says how to open it (System Settings, Privacy & Security, Open Anyway).
-
-### Releasing
-
-The version lives in one place, `__version__` in `thechatplace/__init__.py`. To release:
-
-1. Set `__version__`, and write `release-notes/v<version>.md` (what it is, what's new, downloads,
-   requirements), in one commit on main.
-2. Tag it `v<version>` and push the tag.
-
-`.github/workflows/release-thechatplace.yml` then builds both platforms side by side, and
-publishes one GitHub release (a pre-release before 1.0) only if both succeed:
-
-- **Windows:** runs the tests, fails if the tag and `__version__` disagree, builds the app with
-  PyInstaller, smoke-tests the built exe, signs it with Azure Artifact Signing, packs the Velopack
-  installer, portable zip and update feed (signing Setup, the updater and the launcher too), and
-  checks every signature.
-- **Mac:** runs `build_macos.sh` with the Developer ID certificate in a throwaway keychain, so the
-  app is signed, packed with its updater and notarized, the disk image notarized and stapled, and
-  Gatekeeper's verdict checked. It needs the repository secrets `MACOS_CERTIFICATE_P12`,
-  `MACOS_CERTIFICATE_PASSWORD`, `NOTARY_KEY_P8`, `NOTARY_KEY_ID` and `NOTARY_ISSUER_ID`, which
-  `The-Idea-Place-Projects/signing/sync-secrets.py` sets from the signing kit; a tag fails without
-  them rather than publish an unsigned app.
-
-Run by hand or for a pull request, it does everything but publish, and keeps the files as
-workflow artifacts; tick "sign" on a hand run, or label a pull request `sign-build`, to sign (and
-notarize) and check them too.
+The version is in Help, About.
 
 ## Keyboard shortcuts
 
@@ -1114,19 +1086,19 @@ Settings is in the app menu.
 
 ## How it works
 
-Everything it reads is on your own PC, so reading costs nothing.
+Everything it reads is on your own computer, so reading costs nothing.
 
 | What | Where |
 |---|---|
-| The desktop app's sessions | `%APPDATA%\Claude\claude-code-sessions\<id>\<org>\local_<id>.json`: title, folder, last activity, archived, and sometimes a summary of the last turn that says whether it needs you. Archived sessions are left out. The Microsoft Store version of the desktop app keeps the same files in `%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude\claude-code-sessions`; both places are read, and a session in both is read from the newer copy. |
-| The desktop app's Cowork sessions | `%APPDATA%\Claude\local-agent-mode-sessions\<id>\<org>\local_<id>.json`, and the same under the Store version's package folder. The `local_<id>` folder beside each is that session's own Claude Code home: its conversation is in `.claude\projects\<folder>\<session>.jsonl` and its busy or idle file in `.claude\sessions`, not in `%USERPROFILE%\.claude`. Those paths are longer than Windows' usual 260-character limit, so they're read with the `\\?\` long-path form. |
-| Terminal sessions | Every `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl` that no desktop app or Chat Place session claims and whose records say Claude Code was started interactively (`"entrypoint": "cli"`, where `claude -p` writes `sdk-cli` and the desktop app `claude-desktop`). Its folder and title come from the transcript too. Each is read once, at its start and its last megabyte, and then only what's added to it. |
-| Whether a session is working | `%USERPROFILE%\.claude\sessions\<pid>.json`, which says busy or idle while Claude Code runs it. Files whose process has gone are ignored. |
-| The conversation | `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl`, where `<folder>` is the session's folder with every character that isn't a letter or digit turned into `-`. This was checked against every transcript on Kelly's PC; if it ever misses, the app searches all the project folders for the session id instead. |
-| Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json`: the latest task list captured for each owned Codex chat, with its turn ID. The Chat Place can't delete Codex chats yet, so these files stay until you delete them. |
-| The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (and `speech.json` for settings). If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
-| Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json`. If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
-| Errors | `%APPDATA%\TheChatPlace\error.log`: anything that went wrong unexpectedly, with its traceback |
+| The desktop app's sessions | `%APPDATA%\Claude\claude-code-sessions\<id>\<org>\local_<id>.json` (on a Mac, `~/Library/Application Support/Claude/claude-code-sessions/<id>/<org>/local_<id>.json`): title, folder, last activity, archived, and sometimes a summary of the last turn that says whether it needs you. Archived sessions are left out. The Microsoft Store version of the desktop app keeps the same files in `%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude\claude-code-sessions`; both places are read, and a session in both is read from the newer copy. |
+| The desktop app's Cowork sessions | `%APPDATA%\Claude\local-agent-mode-sessions\<id>\<org>\local_<id>.json` (on a Mac, `~/Library/Application Support/Claude/local-agent-mode-sessions/<id>/<org>/local_<id>.json`), and the same under the Store version's package folder. The `local_<id>` folder beside each is that session's own Claude Code home: its conversation is in `.claude\projects\<folder>\<session>.jsonl` and its busy or idle file in `.claude\sessions`, not in `%USERPROFILE%\.claude` (on a Mac, `~/.claude`). Those paths are longer than Windows' usual 260-character limit, so on Windows they're read with the `\\?\` long-path form. |
+| Terminal sessions | Every `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl` (on a Mac, `~/.claude/projects/<folder>/<session>.jsonl`) that no desktop app or Chat Place session claims and whose records say Claude Code was started interactively (`"entrypoint": "cli"`, where `claude -p` writes `sdk-cli` and the desktop app `claude-desktop`). Its folder and title come from the transcript too. Each is read once, at its start and its last megabyte, and then only what's added to it. |
+| Whether a session is working | `%USERPROFILE%\.claude\sessions\<pid>.json` (on a Mac, `~/.claude/sessions/<pid>.json`), which says busy or idle while Claude Code runs it. Files whose process has gone are ignored. |
+| The conversation | `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl` (on a Mac, `~/.claude/projects/<folder>/<session>.jsonl`), where `<folder>` is the session's folder with every character that isn't a letter or digit turned into `-`. If it ever misses, the app searches all the project folders for the session id instead. |
+| Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json` (on a Mac, `~/Library/Application Support/TheChatPlace/provider-tasks/codex/<sha256>.json`): the latest task list captured for each owned Codex chat, with its turn ID. The Chat Place can't delete Codex chats yet, so these files stay until you delete them. |
+| The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (on a Mac, `~/Library/Application Support/TheChatPlace/sessions.json`), and `speech.json` for settings. If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
+| Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json` (on a Mac, `~/Library/Application Support/TheChatPlace/prompts.json`). If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
+| Errors | `%APPDATA%\TheChatPlace\error.log` (on a Mac, `~/Library/Application Support/TheChatPlace/error.log`): anything that went wrong unexpectedly, with its traceback |
 
 Copilot CLI sessions are read from `%USERPROFILE%\.copilot\session-state\<id>\` (`~/.copilot/session-state/<id>/` on a Mac)
 (`workspace.yaml` and `events.jsonl`), and only `thechatplace/providers/copilot.py` knows
@@ -1143,7 +1115,7 @@ skips record types it doesn't know, never crashes on a line it can't read, and s
 N lines" instead. A long transcript is read once, then only its new lines as it grows.
 
 **The Chat Place never writes to the desktop app's files or to any transcript.** Its own settings
-and records are in `%APPDATA%\TheChatPlace`. It also writes its speech files and `speech.log` in
+and records are in `%APPDATA%\TheChatPlace` (on a Mac, `~/Library/Application Support/TheChatPlace`). It also writes its speech files and `speech.log` in
 `%TEMP%\thechatplace-speak` (`$TMPDIR/thechatplace-speak` on a Mac) and, on Windows, the formatted
 view's WebView2 profile in `%LOCALAPPDATA%\TheChatPlace WebView2`; the installed Windows copy
 registers `thechatplace://` links for your account each time it starts. Otherwise it writes only
@@ -1261,7 +1233,7 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 - "Needs you" for desktop sessions depends on the desktop app's turn summary, which it doesn't
   always write. A session without one shows as idle once it stops working.
 - A desktop session's transcript can be gone if it's older than Claude Code's retention period
-  (`cleanupPeriodDays`, 90 days on Kelly's PC). The chat says so.
+  (`cleanupPeriodDays` in Claude Code's settings). The chat says so.
 - The Chat Place's own sessions, and terminal sessions, don't appear in the desktop app, so Open in
   Claude doesn't work for them; the app says so.
 - Cowork sessions can't be continued here. Their conversation is in the session's own Claude Code
@@ -1272,33 +1244,6 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   installed, since `claude -p` runs hooks; so a reply can be heard twice.
 - The desktop app's file formats are undocumented and could change with any update.
 
-## Files
+## Developing
 
-| Path | What |
-|---|---|
-| `TheChatPlace.pyw` | Double-click launcher |
-| `thechatplace/transcript.py` | Transcript parser |
-| `thechatplace/sessions.py` | Desktop metadata, terminal sessions, live state, sorting, the list wording |
-| `thechatplace/own_store.py` | The Chat Place's own sessions |
-| `thechatplace/titles.py` | Names you've given desktop app sessions |
-| `thechatplace/prompts.py` | Your saved prompts |
-| `thechatplace/about_you.py` | Finding Claude and Codex local customization files |
-| `thechatplace/claude_cli.py` | `claude` commands, the `--resume` guard, the environment, stream-json events, running a turn |
-| `thechatplace/hub.py` | Gathering the list, noticing finished turns |
-| `thechatplace/announce.py` | What gets announced |
-| `thechatplace/rendering.py` | A message's markdown as a safe HTML page, for the formatted view |
-| `thechatplace/speech.py`, `thechatplace/speech/` | Speech, adapted from Image Description Toolkit (ClaudeSpeak's engine scripts) |
-| `thechatplace/screen_readers.py` | Speaking through JAWS and NVDA on Windows |
-| `thechatplace/nvda/` | NV Access's NVDA Controller Client (LGPL 2.1, unmodified; see its README and `license.txt`) |
-| `thechatplace/platform_paths.py` | Every path and OS call |
-| `thechatplace/links.py` | `thechatplace://` links to sessions: making, reading and registering them |
-| `thechatplace/ui/` | The wxPython window and dialogs |
-| `tests/` | pytest tests, built on made-up records shaped like the real ones |
-| `thechatplace/updater.py` | Velopack updates, adapted from GHManage's updater |
-| `tools/check_version.py` | Prints the version; checks a release tag against it |
-| `tools/make_version_info.py` | The Windows version resource for the built exe |
-| `winsetup.bat`, `macsetup.sh` (`.command`) | Set up `.venv` on Windows or a Mac |
-| `BuildAndRelease/WinBuilds/build_windows.cmd` | Build on Windows (unsigned) |
-| `BuildAndRelease/MacBuilds/` | Build on a Mac (`build_macos.sh`, `.command`), and its signing, notarizing, entitlements and disk image |
-| `requirements-build.txt` | Everything a build needs; pins PyInstaller |
-| `release-notes/` | One file per release, used as the GitHub release's notes and the update's notes |
+Building, testing and releasing: see [DEVELOPING.md](DEVELOPING.md).
