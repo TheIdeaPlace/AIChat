@@ -156,6 +156,57 @@ def test_allowing_once(make, tmp_path):
     assert answer["result"] == {"outcome": {"outcome": "selected", "optionId": "allow_once"}}
 
 
+def test_stop_when_copilot_has_gone_cancels_nothing(make, tmp_path):
+    """Kelly's review of #386: Copilot's process has gone (its connection is
+    marked closed) but the turn hasn't ended yet. Stop gives the waiting
+    message back, sends no cancel, and doesn't claim an answer."""
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    runtime.send(chat, "Then this")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    runtime._connection._closed = True  # as _fail_all marks it, before the turn ends
+    assert runtime.stop(chat) == Stopped(("Then this",), cancelled=False, answered=False)
+    assert runtime._chats[chat].cancel_timer is None
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
+
+
+def test_stop_after_copilot_closes_mid_turn_cancels_nothing(make, tmp_path):
+    """Kelly's review of #386: when Copilot's process really ends mid-turn,
+    the prompt returns at once, so Stop may find the turn being checked or
+    already over. Either way it cancels nothing, and the window's wording
+    for both is neutral."""
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    runtime._connection.close()
+    stopped = runtime.stop(chat)
+    assert not stopped.cancelled and stopped.waiting == ()
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
+
+
+def test_stop_doesnt_warn_of_a_close_when_copilot_answers_during_the_cancel(make, tmp_path):
+    """Kelly's review of #386: Copilot answers while the cancel goes out, so
+    no timer is kept. Stop mustn't report a cancel, or the window would warn
+    that Copilot will be closed in 15 seconds when nothing will close it."""
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    connection = runtime._connection
+    real_notify = connection.notify
+
+    def answered_meanwhile(method, params):
+        if method == "session/cancel":
+            with runtime._lock:
+                runtime._chats[chat].answered = True
+        return real_notify(method, params)
+    connection.notify = answered_meanwhile
+    assert runtime.stop(chat) == Stopped((), cancelled=False, answered=True)
+    assert runtime._chats[chat].cancel_timer is None
+
+
 def test_stop_cancels_and_gives_back_waiting_messages_unsent(make, tmp_path):
     runtime, _ = make("hang")
     chat = runtime.create(str(tmp_path))
@@ -1525,10 +1576,61 @@ def test_a_chat_whose_log_was_removed_isnt_listed_again(make, tmp_path):
     assert not [info for info in provider.collect().sessions if info.cli_session_id == chat]
 
 
-def test_a_chat_whose_log_cant_be_read_for_a_moment_stays_listed(make, tmp_path, monkeypatch):
-    """Kelly's review of #372: only a removed folder drops a chat listed
-    before. A read that fails while Copilot writes the log (a sharing
-    violation on Windows) keeps it listed, so focus doesn't move."""
+def _locked(*args, **kwargs):
+    raise PermissionError(32, "The process cannot access the file")
+
+
+def _half_written(*args, **kwargs):
+    raise UnicodeDecodeError("utf-8", bytes([0xE2, 0x80]), 0, 2, "unexpected end of data")
+
+
+def _touch_log(tmp_path, chat):
+    with open(tmp_path / "sessions" / chat / "events.jsonl", "a", encoding="utf-8") as log:
+        log.write("\n")  # a new size, so it's read again
+
+
+@pytest.mark.parametrize("runs_it", [True, False])
+@pytest.mark.parametrize("failure", [_locked, _half_written])
+def test_a_chat_whose_log_cant_be_read_for_a_moment_stays_listed(make, tmp_path, monkeypatch, runs_it,
+                                                                 failure):
+    """Kelly's reviews of #372 and #386: a read that fails while Copilot
+    writes the log (a sharing violation on Windows) keeps the chat listed as
+    last read, so it neither drops out nor moves, and focus stays. Read-only
+    chats too, Last message included, but not what the last read said."""
+    from thechatplace.providers import copilot
+    from thechatplace.providers.copilot import CopilotProvider
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed" and not runtime._chats[chat].busy)
+    provider = CopilotProvider(tmp_path / "sessions", runtime=runtime if runs_it else None)
+    [before] = provider.collect().sessions
+    assert before.cli_session_id == chat and before.title == "synthetic"  # from its log
+    provider.fill_last_messages([before])
+    assert before.last_message
+
+    monkeypatch.setattr(copilot, "_read_entry", failure)
+    _touch_log(tmp_path, chat)
+    snapshot = provider.collect()
+    assert snapshot.unreadable_files == 1
+    [row] = snapshot.sessions
+    assert (row.cli_session_id, row.title, row.source, row.created_ms, row.last_activity_ms) == (
+        chat, before.title, before.source, before.created_ms, before.last_activity_ms)
+    # A chat this app runs gets its detail from the runtime; a read-only
+    # one keeps what its last read and the clock say.
+    assert row.detail == ("" if runs_it else before.detail)
+    provider.fill_last_messages([row])
+    assert row.last_message == before.last_message
+
+    monkeypatch.undo()  # readable again: read afresh, not kept
+    assert [info.title for info in provider.collect().sessions] == ["synthetic"]
+
+
+@pytest.mark.parametrize("gone", ["events.jsonl", "workspace.yaml"])
+def test_a_chat_whose_log_is_gone_isnt_kept_listed(make, tmp_path, monkeypatch, gone):
+    """Kelly's review of #386: only a read that failed keeps a chat listed.
+    A log, or a workspace file past its grace period, that's gone hides it,
+    as before, rather than listing it under its old title until restart."""
     from thechatplace.providers import copilot
     from thechatplace.providers.copilot import CopilotProvider
     runtime, _ = make()
@@ -1536,20 +1638,10 @@ def test_a_chat_whose_log_cant_be_read_for_a_moment_stays_listed(make, tmp_path,
     runtime.send(chat, "Hello")
     assert wait(lambda: runtime.snapshot(chat).outcome == "completed" and not runtime._chats[chat].busy)
     provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
-    [before] = provider.collect().sessions
-    assert before.cli_session_id == chat and before.title == "synthetic"  # from its log
-
-    def locked(*args, **kwargs):
-        raise PermissionError(32, "The process cannot access the file")
-    monkeypatch.setattr(copilot, "_read_entry", locked)
-    with open(tmp_path / "sessions" / chat / "events.jsonl", "a", encoding="utf-8") as log:
-        log.write("\n")  # a new size, so it's read again
-    snapshot = provider.collect()
-    assert snapshot.unreadable_files == 1
-    [row] = snapshot.sessions  # as it was last listed, so it doesn't move
-    assert (row.cli_session_id, row.title, row.source, row.created_ms, row.last_activity_ms) == (
-        chat, before.title, before.source, before.created_ms, before.last_activity_ms)
-
+    assert [info.cli_session_id for info in provider.collect().sessions] == [chat]
+    (tmp_path / "sessions" / chat / gone).unlink()
+    monkeypatch.setattr(copilot, "WORKSPACE_GRACE_SECONDS", 0)
+    assert provider.collect().sessions == []
 
 
 def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypatch):

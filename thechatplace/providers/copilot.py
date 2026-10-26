@@ -15,7 +15,6 @@ resume a session, send a prompt or spend a premium request.
 from __future__ import annotations
 
 from collections import OrderedDict
-from dataclasses import replace
 from datetime import datetime
 import json
 import os
@@ -444,9 +443,9 @@ class CopilotProvider:
         #: is on; without it, Copilot chats are read only. Built lazily: it
         #: starts no process until a chat is created or opened.
         self.runtime = runtime
-        #: Chats once listed from their own log, as last listed: if the
-        #: folder goes, they aren't listed again from the runtime alone.
-        self._listed_before: dict = {}
+        #: Chats once listed from their own log: if that goes, they aren't
+        #: listed again from the runtime alone.
+        self._listed_before: set = set()
         if execution and runtime is None:
             from .copilot_runtime import CopilotChatRuntime
             self.runtime = CopilotChatRuntime(on_update, sessions_dir=sessions_dir)
@@ -491,9 +490,9 @@ class CopilotProvider:
                 continue
             try:
                 info = self._session(Path(entry.path), entry.name, entries)
-            except (OSError, UnicodeDecodeError, ValueError):
+            except (OSError, UnicodeDecodeError, ValueError) as error:
                 snapshot.unreadable_files += 1
-                continue
+                info = self._as_last_read(entry.name, error, entries)
             if info is not None:
                 snapshot.sessions.append(info)
         with self._lock:
@@ -507,22 +506,17 @@ class CopilotProvider:
         state, and a new chat with no log yet (listed from the runtime, and
         made the app's own by the window's record)."""
         listed = {info.cli_session_id: info for info in snapshot.sessions}
-        self._listed_before.update((native_id, replace(info)) for native_id, info in listed.items())
+        self._listed_before |= listed.keys()
         for native_id, cwd in self.runtime.known():
             state = self.runtime.snapshot(native_id)
             if state is None:
                 continue
             info = listed.get(native_id)
-            before = self._listed_before.get(native_id)
-            if info is None and before is not None:
-                if not (self.sessions_dir / native_id).exists():
-                    continue  # listed from its log before, and its folder was removed
-                # Only missing from this scan: a read that failed while
-                # Copilot wrote the log (a sharing violation on Windows) mustn't
-                # drop a running chat or move it, so it's listed as it last
-                # was, title and times included (Kelly, #372).
-                info = replace(before)
-                snapshot.sessions.append(info)
+            if info is None and native_id in self._listed_before:
+                # Listed from its log before, and its log is gone. A log that
+                # couldn't be read just now is listed by collect() as it was
+                # last read, so it's never missing for that (Kelly, #372, #386).
+                continue
             if info is None:
                 # Titled from the window's record when there is one; a chat
                 # whose record couldn't be saved stays read-only, named.
@@ -532,6 +526,35 @@ class CopilotProvider:
             info.state = state.state
             if state.problem:
                 info.detail = state.problem
+
+    def _as_last_read(self, native_id: str, error: Exception, entries: dict) -> Optional[SessionInfo]:
+        """A log that's there but couldn't be read just now: Copilot may be
+        writing it (a sharing violation on Windows). Its chat is listed as last
+        read, title, times and last message included, so it doesn't drop out
+        of the list or move, and focus stays (Kelly, #372, #386). A half-written
+        file that can't be decoded yet counts too. A file that's gone, or one
+        that disagrees with its folder, isn't kept. (A log deleted while
+        Copilot still holds it open stats as a sharing violation on Windows,
+        so it's kept until Copilot lets go of it.)"""
+        if isinstance(error, FileNotFoundError) or not isinstance(error, (OSError, UnicodeDecodeError)):
+            return None
+        with self._lock:
+            entry = self._entries.get(native_id)
+        if entry is None or entry.title is None:
+            return None
+        entries[native_id] = entry  # read again once the log changes
+        state, detail = _with_detail(entry.state, entry.written_ms)
+        if self.runtime is not None and any(known == native_id for known, _ in self.runtime.known()):
+            # A chat this app runs gets its detail from the runtime: what its
+            # last read said ("waiting in Copilot", say) may be stale.
+            detail = ""
+        return self._row(native_id, entry, state, detail)
+
+    def _row(self, native_id: str, entry, state: str, detail: str) -> SessionInfo:
+        return SessionInfo(entry.source, f"{PROVIDER_ID}:{native_id}", entry.title,
+                           entry.cwd, native_id, provider=PROVIDER_ID,
+                           state=state, detail=detail, created_ms=entry.created_ms,
+                           last_activity_ms=entry.updated_ms)
 
     def _session(self, folder: Path, native_id: str, entries: dict) -> Optional[SessionInfo]:
         events = folder / EVENTS_FILE
@@ -556,10 +579,7 @@ class CopilotProvider:
             return None  # no prompt was ever sent (refused at sign-in, say)
         # The detail depends on the clock, so it's worked out every time.
         state, detail = _with_detail(entry.state, entry.written_ms)
-        return SessionInfo(entry.source, f"{PROVIDER_ID}:{native_id}", entry.title,
-                           entry.cwd, native_id, provider=PROVIDER_ID,
-                           state=state, detail=detail, created_ms=entry.created_ms,
-                           last_activity_ms=entry.updated_ms)
+        return self._row(native_id, entry, state, detail)
 
     # -- the optional Last message column -----------------------------------
 

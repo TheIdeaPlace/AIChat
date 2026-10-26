@@ -178,8 +178,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   permission, a question or a plan (Ctrl+Shift+A), which ends when you answer; or its last turn
   failed, or tools were refused in it, which is saved with the session and lasts, even across a
   restart, until its next turn starts. Codex chats say needs you for permissions or questions;
-  unavailable status means live state could not be verified. An uncertain send requires reopening
-  and checking history before sending again.
+  unavailable status means live state could not be verified. After an uncertain send, use Stop
+  (Ctrl+Period) to recheck the chat, and check its history before sending again.
 - **Messages:** newest last, with focus on the newest. Each row shows "You:" or the provider's name, such as "Claude:" or "Codex:", and its
   first line, but your screen reader reads the **whole message** as you arrow onto it, as words
   (headings and list items as sentences, and each code block as what it is: "Code block, Python, 14
@@ -778,6 +778,11 @@ press Stop again to check Codex's saved turn status without resending anything.
 Permission mode list offers read-only or folder editing with **automatic approval
 review**. For an existing owned Codex chat, finish or stop its turn, then use
 File, **Change Permission Mode**, or File, **Chat Permissions**, **Change**.
+The new mode applies to the next message in the same chat, including when you
+change it before sending the first message. The chat keeps its history.
+If the change cannot be verified or saved, sending stays disabled. Use **Stop**
+to recheck the saved permissions, or try **Change Permission Mode** again.
+Recovery sends no message.
 Codex's reviewer evaluates eligible requests for you and can allow or deny them;
 this reduces interruptions without giving unrestricted access. Human review remains
 the default, and existing chats keep their selected mode. This is different from
@@ -871,8 +876,17 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ## Install
 
-You need Windows 10 or 11, or a Mac with Apple silicon. For Codex chats, the preview needs a
-native Codex CLI signed in to ChatGPT. Claude Code is not required for Codex chats.
+You need Windows 10 or 11, or a Mac with Apple silicon. For Codex chats, you need a native
+Codex CLI signed in to ChatGPT. Claude Code is not required for Codex chats.
+
+For GitHub Copilot CLI chats (a preview), you need the native GitHub Copilot CLI
+(`winget install GitHub.Copilot` on Windows, `brew install copilot-cli` or GitHub's install
+script on a Mac), signed in with `copilot login` to a GitHub account that has Copilot. An npm
+install (`npm install -g @github/copilot`) is never used. Then turn the preview on in Settings.
+
+If something isn't working, the user guide's
+[Troubleshooting](https://theideaplace.github.io/AIChat/user-guide.html#troubleshooting) section
+covers the usual problems with each provider, speech and the session list.
 
 For Claude chats, you need **Claude Code installed with its
 native installer and signed in** to a Claude subscription (the `claude` command, the same login

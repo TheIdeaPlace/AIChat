@@ -53,6 +53,17 @@ def test_new_owned_thread_pins_runtime_options_and_returns_fresh_store_records()
     assert 'turn/start' not in CodexLifecycleConnection.METHODS
 
 
+def test_ephemeral_permission_check_never_gets_an_executable_runtime():
+    result = response()
+    result['thread']['ephemeral'] = True
+    connection = Connection(result)
+    connection._accept_owned_thread = lambda proof: pytest.fail('Ephemeral check became executable')
+    proof = CodexOwnedThreads(connection).start('/workspace', 'Permission check', ephemeral=True)
+    assert proof.ephemeral
+    with pytest.raises(ValueError, match='Ephemeral'):
+        proof.record()
+
+
 def test_external_chat_is_forked_into_another_identity_and_not_resumed():
     source = SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source', provider='codex')
     connection = Connection()

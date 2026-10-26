@@ -212,10 +212,10 @@ def test_a_codex_chat_whose_state_is_not_known_says_unavailable_once():
     result = properties.session_properties(info, None, "", 0, None, 0, now_ms=NOW_MS)
     assert "Status: Unavailable" in result
     assert not any("Status unavailable" in line for line in result)
-    info.detail = "Codex connection interrupted: the stream closed; reconcile chat history."
+    info.detail = "Codex connection interrupted: the stream closed. Use Stop to reconnect."
     result = properties.session_properties(info, None, "", 0, None, 0, now_ms=NOW_MS)
-    assert ("Status: Unavailable: Codex connection interrupted: the stream closed; "
-            "reconcile chat history") in result
+    assert ("Status: Unavailable: Codex connection interrupted: the stream closed. "
+            "Use Stop to reconnect") in result
 
 
 def test_other_states_still_read_as_before():

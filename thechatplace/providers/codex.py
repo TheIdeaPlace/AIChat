@@ -515,6 +515,9 @@ class CodexProvider:
     def reopen_owned(self, record):
         return self.runtime.reopen(record)
 
+    def recover_owned(self, record):
+        return self.runtime.recover(record)
+
     def prepare_owned(self, record):
         return self.runtime.prepare(record)
 

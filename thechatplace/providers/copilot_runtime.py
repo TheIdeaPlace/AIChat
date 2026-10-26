@@ -159,11 +159,12 @@ class Stopped(NamedTuple):
     copy of the chat's state can lag behind it (Kelly, #372)."""
     #: The messages that were still waiting, given back unsent.
     waiting: tuple = ()
-    #: Whether a cancel went to Copilot: a turn was running, unanswered, on
-    #: a live connection.
+    #: Whether a cancel went to Copilot, with the timer that closes it if
+    #: it doesn't stop: a turn was running, unanswered, on a live connection.
     cancelled: bool = False
-    #: Copilot had already answered the running turn, which was only being
-    #: checked: nothing was cancelled.
+    #: Copilot's prompt had returned and the turn was only being checked,
+    #: so nothing was cancelled. Not necessarily an answer: a cancel, a
+    #: refusal or its process ending return the prompt too.
     answered: bool = False
 
 
@@ -1115,6 +1116,10 @@ class CopilotChatRuntime:
                     chat.cancel_timer = timer
             if keep:
                 timer.start()
+            else:
+                # No timer, so nothing will be closed: the window mustn't
+                # warn that it will be. Copilot answered first (Kelly, #386).
+                cancel, answered = False, True
         self._notify(chat)
         return Stopped(waiting, cancelled=cancel, answered=answered)
 
