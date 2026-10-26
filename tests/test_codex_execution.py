@@ -93,7 +93,7 @@ def test_failed_send_is_redacted_and_never_replayed_on_same_connection():
     proof = c.proof('one')
     executor = CodexTurnExecutor(c)
     c.failure = True
-    with pytest.raises(CodexRpcError, match='Reopen') as exc:
+    with pytest.raises(CodexRpcError, match='Use Stop') as exc:
         executor.start(proof, 'Private prompt')
     assert 'private' not in str(exc.value).lower()
     c.failure = False
@@ -244,7 +244,7 @@ def test_pending_start_stream_outcomes_remain_safe(mode):
             with pytest.raises(CodexRpcError):
                 executor.drain()
             release.set()
-            with pytest.raises(CodexRpcError, match='Reopen'):
+            with pytest.raises(CodexRpcError, match='Use Stop'):
                 starting.result(timeout=5)
             c.closed = False
             with pytest.raises(CodexRpcError):
@@ -327,7 +327,7 @@ def test_mismatched_request_during_start_clears_waiting_and_closes_uncertain_str
         c.events.extend([valid, approval('wrong', 'another-turn')])
         executor.drain()
         release.set()
-        with pytest.raises(CodexRpcError, match='Reopen'):
+        with pytest.raises(CodexRpcError, match='Use Stop'):
             starting.result(timeout=5)
     assert c.closed and executor._broken and not executor.waiting(proof)
     assert not executor._requests

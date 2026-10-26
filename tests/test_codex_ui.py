@@ -375,6 +375,26 @@ def test_failed_permission_change_is_said_once_ending_with_stop(live, monkeypatc
     assert not live.runtime.ready(live.record)
 
 
+def test_refused_permission_change_does_not_replay_an_earlier_problem(live):
+    from thechatplace.providers.codex_rpc import CodexRememberedApprovalError
+    live.finish_turn()
+    native = live.record.cli_session_id
+    earlier = CodexRememberedApprovalError.REASONS['kept_uncertain']
+    with live.runtime._lock:
+        live.runtime._problems[native] = earlier
+    live.runtime._notify(native)
+    live.flush()
+    start = len(live.said)
+    live._change_codex_permissions(live._open)  # Refused before anything is checked
+    spoken = live.spoken_after(start)
+    assert spoken[0] == 'Verifying Codex permissions.'
+    assert len(spoken) == 2, spoken
+    assert spoken[1].startswith('Could not change Codex permissions.')
+    assert earlier not in spoken[1] and spoken[1].lower().count('use stop') == 1
+    assert live.runtime.snapshot(native).problem == earlier
+    assert not live._codex_policy_pending
+
+
 def test_successful_permission_change_says_only_the_new_mode(live):
     live.finish_turn()
     start = len(live.said)

@@ -12,6 +12,7 @@ import wx
 
 from ..providers.codex_requests import QUESTIONS
 from ..providers.codex_rpc import CodexRpcError, CodexTurnRejected
+from ..providers.codex_runtime import STOP_TO_RECHECK
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
 from .. import announce
@@ -180,15 +181,22 @@ class CodexChats:
         if len(selected) == 2:
             selected += ('user',)
         before_cwd, before_options = record.cwd, dict(record.provider_options)
+        earlier = self._codex_states.get(info.key)
+        earlier_problem = earlier.problem if earlier is not None else ''
         self._codex_policy_pending.add(info.key)
         self._feedback('Verifying Codex permissions.')
         def failure(fallback):
             # The runtime's update for a latched problem arrives first (both
             # come through wx.CallAfter, in order) but is not spoken while the
             # change is pending; say it once here, ending with what Stop does.
+            # A problem from before this change is not replayed for a refusal.
             self._codex_policy_pending.discard(info.key)
             state = self._codex_states.get(info.key)
-            self._feedback(state.problem if state is not None and state.problem else fallback)
+            problem = state.problem if state is not None else ''
+            text = problem if problem and problem != earlier_problem else fallback
+            if problem and 'use stop' not in text.lower():
+                text += ' ' + STOP_TO_RECHECK
+            self._feedback(text)
         def prepared(change, error):
             if error:
                 failure(change or 'Could not change Codex permissions. Wait for an idle chat, or use Stop '
@@ -245,7 +253,7 @@ class CodexChats:
                     # A saved chat whose sandbox or automatic review could
                     # not be confirmed: once that is fixed, Stop opens it
                     # again without sending anything (#257) (#390).
-                    _result += f' Then use Stop ({key_name("Ctrl+Period")}) to open this chat again.'
+                    _result += f' Once that\'s fixed, use Stop ({key_name("Ctrl+Period")}) to open this chat again.'
                 name = provider_name(provider)
                 self._feedback(relayed + (_result or f'Could not prepare this {name} chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in {name} before restarting The Chat Place.'))
             self._update_send_state()

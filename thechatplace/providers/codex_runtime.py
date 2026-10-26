@@ -7,7 +7,8 @@ from .codex_connection import ManagedCodexConnection
 from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_policy import CodexPolicy
-from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent, CodexRememberedApprovalError
+from .codex_rpc import (CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
+                        CodexRememberedApprovalError, STOP_TO_RECONNECT)
 from .codex_permissions import CodexPermissionStore, CodexReviewStore, candidate, matches
 from .codex_tokens import CodexTokenUsage
 from ..codex_diagnostics import record_failure, safe_reason
@@ -730,7 +731,7 @@ class CodexChatRuntime:
                     continue
                 except Exception:
                     with self._lock:
-                        self._problems[proof.native_id] = 'Could not confirm an automatic approval. Use Stop to recheck this chat; the answer will not be resent.'
+                        self._problems[proof.native_id] = 'Could not confirm an automatic approval. Use Stop to end any running turn and recheck this chat; the answer will not be resent.'
                     continue
                 with self._lock:
                     notices = self._permission_notices.setdefault(proof.native_id, [])
@@ -820,7 +821,7 @@ class CodexChatRuntime:
                     affected = [p for p in self._proofs.values() if p.connection is connection]
                     for proof in affected:
                         self._stopping.discard(proof.native_id)
-                        self._problems[proof.native_id] = safe_reason(error) or "Codex connection interrupted. Use Stop to check this chat's reply and reconnect."
+                        self._problems[proof.native_id] = safe_reason(error) or 'Codex connection interrupted. ' + STOP_TO_RECONNECT
                 for proof in affected:
                     self._notify(proof.native_id)
                 return

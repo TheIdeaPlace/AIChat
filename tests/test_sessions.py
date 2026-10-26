@@ -335,10 +335,10 @@ def test_a_detail_that_ends_in_a_full_stop_does_not_double_the_punctuation():
     """#291: Codex's connection problems end in a full stop, and the row,
     heading and status bar each put their own punctuation after the detail."""
     from thechatplace.sessions import STATUS_UNAVAILABLE, SessionInfo, state_with_detail
-    reason = "Codex connection interrupted: the stream closed; reconcile chat history."
+    reason = "Codex connection interrupted: the stream closed. Use Stop to check this chat's reply and reconnect."
     assert state_with_detail(STATUS_UNAVAILABLE, reason) == (
-        "status unavailable: Codex connection interrupted: the stream closed; "
-        "reconcile chat history")
+        "status unavailable: Codex connection interrupted: the stream closed. "
+        "Use Stop to check this chat's reply and reconnect")
     assert state_with_detail("working", "running tests", ", ") == "working, running tests"
     assert state_with_detail("idle", "") == "idle"
     assert state_with_detail("idle", "  ") == "idle"
@@ -347,7 +347,7 @@ def test_a_detail_that_ends_in_a_full_stop_does_not_double_the_punctuation():
                        cli_session_id="a", provider="codex", state=STATUS_UNAVAILABLE,
                        detail=reason)
     line = info.list_line(fields=["status", "title"])
-    assert "history, Scratch" in line and ".." not in line and "., " not in line
+    assert "reconnect, Scratch" in line and ".." not in line and "., " not in line
 
 
 def test_a_sentence_that_already_ends_in_punctuation_gets_no_full_stop_after_it():

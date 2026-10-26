@@ -641,7 +641,7 @@ def test_opt_in_stream_disconnects_rather_than_losing_or_misrouting_events(serve
             connection.request("thread/read", {"mode": mode})
         assert connection.closed
         assert connection._events.qsize() <= connection.MAX_EVENTS
-        with pytest.raises(CodexRpcError, match="reconcile"):
+        with pytest.raises(CodexRpcError, match="Use Stop"):
             connection.pop_event()
 
 
@@ -1135,3 +1135,12 @@ def test_live_plan_real_stdio_survives_bursts_and_stop_and_is_saved(server, tmp_
         assert not CodexPlanStore().load('foreign')[1]
     finally:
         service.close()
+
+
+def test_every_connection_failure_says_to_use_stop_in_plain_words():
+    # These become the chat's latched problem, so each says what to do (#390).
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    for code, text in CodexConnectionFailure.REASONS.items():
+        assert 'Use Stop' in text, code
+        assert 'reconcile' not in text.lower(), code
+        assert str(CodexConnectionFailure(code)) == text

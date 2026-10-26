@@ -154,7 +154,8 @@ class CodexTurnExecutor:
             # A timeout may mean the prompt was accepted. Keep the reservation:
             # another click must not silently duplicate it.
             self._break_connection()
-            raise CodexRpcError('Could not confirm this Codex turn. Reopen the chat before sending again.') from None
+            # Internal: safe_reason hides this text; the runtime says what to do.
+            raise CodexRpcError('Could not confirm this Codex turn. Use Stop to recheck this chat before sending again.') from None
 
     def interrupt(self, proof):
         if not self.connection.owns_runtime(proof):
@@ -351,6 +352,7 @@ class CodexTurnExecutor:
             self._break_connection()
             if type(error) is CodexConnectionFailure:
                 raise
+            # Internal: safe_reason hides this text; the runtime says what to do.
             raise CodexRpcError('Codex connection interrupted. Use Stop in each chat to check its reply.') from None
         return frozenset(changed)
 

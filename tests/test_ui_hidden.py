@@ -9880,7 +9880,7 @@ def test_saved_folder_editing_codex_chat_reopened_read_only_says_to_use_stop(fra
     frame._prepare_codex_owned(7)
     assert pump(lambda: env["feedback"] and 'read-only' in env["feedback"][-1])
     assert env["feedback"][-1].startswith("Codex reported this chat as read-only")
-    assert env["feedback"][-1].endswith(f'No new turn was sent. Then use Stop ({key_name("Ctrl+Period")}) to open this chat again.')
+    assert env["feedback"][-1].endswith(f'No new turn was sent. Once that\'s fixed, use Stop ({key_name("Ctrl+Period")}) to open this chat again.')
 
 
 def test_refused_new_codex_chat_without_a_message_says_only_why(frame, env, monkeypatch):
