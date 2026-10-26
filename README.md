@@ -2,8 +2,7 @@
 
 This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M), rather than Windows Alt menu sequences. On Linux, F10 opens the menu bar; Alt on its own
-doesn't, but Alt and a menu's letter does.
+VO+M), rather than Windows Alt menu sequences.
 
 A keyboard and screen reader friendly home for your AI chats, together in one session list.
 
@@ -1181,8 +1180,7 @@ takes a menu's letter.
 
 On a Mac, Ctrl is the Command key, the menus are in the menu bar (VO+M) rather than on Alt, and
 Settings is in the app menu.
-On Linux, F10 opens the menu bar, as in other GTK programs; Alt on its own doesn't, but Alt and a
-menu's letter does.
+On Linux, Alt opens the menu bar as on Windows, and so does F10, as in other GTK programs.
 
 ## How it works
 

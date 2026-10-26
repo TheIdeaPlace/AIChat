@@ -109,6 +109,18 @@ An AppImage doesn't install anything, so the app writes its own desktop entry
 `thechatplace://` handler. Its `Exec` is quoted only when the path needs it: `xdg-open` with no
 desktop to ask (a bare window manager) can't start a quoted program, though GIO can.
 
+## Alt opens the menu bar
+
+GTK opens the menu bar with F10, and Alt on its own does nothing; on Windows a tap of Alt opens
+it, so that's what people try first. `gtk_a11y.watch_alt_tap` watches keys with GTK's key
+snooper (`gtk_key_snooper_install`, deprecated in GTK 3 but there), because wxGTK's handler on the
+top-level window stops its `key-press-event` before a handler connected after it, and wx's own
+key events would need `wx.App.FilterEvent`, Python on every event. An Alt press and release with
+no other key, no Shift, Ctrl or Super, and no focus change in between sends the window an F10
+press and release (`gtk_a11y.send_key`, through `gtk_main_do_event`), so the keyboard goes to the
+menu bar exactly as for F10. GTK's handler for F10 is private, so a key event is the only way to
+reach it.
+
 ## Claude Code's pid files
 
 Claude Code 2.1.302 writes `procStart` as a Windows FILETIME only on Windows (newer versions as

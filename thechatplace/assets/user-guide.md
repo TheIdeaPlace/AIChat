@@ -2,8 +2,7 @@
 
 This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M), rather than Windows Alt menu sequences. On Linux, F10 opens the menu bar; Alt on its own
-doesn't, but Alt and a menu's letter does.
+VO+M), rather than Windows Alt menu sequences.
 
 The Chat Place is a keyboard and screen reader friendly home for your AI chats. Claude and
 Codex sessions share one list: read, find and export conversations, hear replies, and send
@@ -110,8 +109,8 @@ This guide gives the Windows keys. On a Mac:
 
 ### On Linux
 
-The keys are the Windows ones: Ctrl+N, and the Menu key or Shift+F10 for a context menu. The menu
-bar opens with F10 or Alt and a menu's letter (Alt+F for File); Alt on its own doesn't open it.
+The keys are the Windows ones: Ctrl+N, Alt for the menus (F10 works too), and the Menu key or
+Shift+F10 for a context menu.
 Orca reads a message's first line and then the rest of it as you arrow through the messages. Orca
 before version 50 doesn't say a list's name as you move into it; Orca's Where Am I says it.
 

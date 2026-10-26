@@ -72,6 +72,13 @@ def _load():
             gtk.gtk_container_get_children.restype = vp
             gtk.gtk_container_get_children.argtypes = [vp]
             gtk.gtk_widget_grab_focus.argtypes = [vp]
+            gtk.gtk_menu_bar_get_type.restype = ctypes.c_size_t
+            gobject.g_signal_connect_data.restype = ctypes.c_ulong
+            gobject.g_signal_connect_data.argtypes = [vp, cp, vp, vp, vp, i]
+            gtk.gtk_key_snooper_install.restype = ctypes.c_uint
+            gtk.gtk_key_snooper_install.argtypes = [vp, vp]
+            gtk.gtk_widget_get_toplevel.restype = vp
+            gtk.gtk_widget_get_toplevel.argtypes = [vp]
             gtk.gtk_widget_list_mnemonic_labels.restype = vp
             gtk.gtk_widget_list_mnemonic_labels.argtypes = [vp]
             gtk.gtk_widget_remove_mnemonic_label.argtypes = [vp, vp]
@@ -400,3 +407,227 @@ def focus_web_view(window) -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+# -- Alt on its own opens the menu bar ------------------------------------------------------
+#
+# GTK opens the menu bar with F10, or Alt and a menu's letter. On Windows a tap
+# of Alt on its own does it, and that's the key people coming from Windows try
+# first. Keys are watched with GTK's key snooper, which sees each key before
+# any window does: wxGTK's own handler on the window stops the window's
+# key-press-event before a handler connected after it, and wx's key events
+# would need a Python filter on every event the app handles.
+
+#: GDK's keyvals for the two Alt keys. AltGr (ISO_Level3_Shift) isn't one.
+ALT_KEYS = frozenset({0xFFE9, 0xFFEA})
+#: Shift, Control, Super (Mod4) and Super again: Alt with any of these held
+#: isn't a tap of Alt on its own.
+_OTHER_MODIFIERS = 0x1 | 0x4 | 0x40 | (1 << 26)
+
+
+class AltTap:
+    """Tells a tap of Alt on its own from Alt used with another key. Pure,
+    for tests: fed GDK's key presses and releases, and focus changes."""
+
+    def __init__(self):
+        self._armed = False
+
+    def press(self, keyval: int, state: int) -> None:
+        # Holding Alt repeats its press, which keeps it armed; any other key
+        # (Alt+F, Alt+Tab seen by the app) disarms it.
+        self._armed = keyval in ALT_KEYS and not state & _OTHER_MODIFIERS
+
+    def release(self, keyval: int, state: int) -> bool:
+        """True when this release ends a tap of Alt."""
+        tap = self._armed and keyval in ALT_KEYS and not state & _OTHER_MODIFIERS
+        self._armed = False
+        return tap
+
+    def focus_changed(self) -> None:
+        # Alt+Tab away and back: the press went to another window, and the
+        # release that comes here mustn't open the menu.
+        self._armed = False
+
+
+class _GdkEventKey(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_int), ("window", ctypes.c_void_p),
+                ("send_event", ctypes.c_int8), ("time", ctypes.c_uint32),
+                ("state", ctypes.c_uint), ("keyval", ctypes.c_uint)]
+
+
+_KEY_HANDLER = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+_GDK_KEY_PRESS, _GDK_KEY_RELEASE = 8, 9
+_KEPT: list = []
+
+
+def watch_alt_tap(window, on_tap) -> bool:
+    """Call ``on_tap()`` when Alt is pressed and released on its own in
+    ``window`` (a top-level window). True when it's watched. The snooper
+    stays installed for the app's life and does nothing once ``window`` is
+    destroyed."""
+    if not IS_LINUX:
+        return False
+    try:
+        libs = _load()
+        top = _widget(window) if libs else None
+        if top is None:
+            return False
+        gtk, _atk, gobject, _glib = libs
+        tap = AltTap()
+
+        def snoop(grab_widget, event, _data):
+            # Every key in the app, dialogs too: only those for this window
+            # count. Alt in a dialog, then Alt here, isn't a tap.
+            try:
+                if not window:  # destroyed (a wx window is false then)
+                    return False
+                key = ctypes.cast(event, ctypes.POINTER(_GdkEventKey)).contents
+                ours = grab_widget and gtk.gtk_widget_get_toplevel(grab_widget) == top.value
+                if not ours:
+                    tap.focus_changed()
+                elif key.type == _GDK_KEY_PRESS:
+                    tap.press(key.keyval, key.state)
+                elif key.type == _GDK_KEY_RELEASE and tap.release(key.keyval, key.state):
+                    on_tap()
+            except Exception:  # noqa: BLE001 - never stop a key reaching the app
+                pass
+            return False  # the key goes on as usual
+
+        def focus(_widget, _event, _data):
+            tap.focus_changed()
+            return False
+
+        handlers = [_KEY_HANDLER(snoop), _KEY_HANDLER(focus), _KEY_HANDLER(focus)]
+        gtk.gtk_key_snooper_install(ctypes.cast(handlers[0], ctypes.c_void_p), None)
+        for signal, handler in zip((b"focus-in-event", b"focus-out-event"), handlers[1:]):
+            gobject.g_signal_connect_data(top, signal, ctypes.cast(handler, ctypes.c_void_p),
+                                          None, None, 0)
+        _KEPT.extend(handlers)  # GTK holds them for good, so they must stay alive
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _menu_bar(window):
+    """The GtkMenuBar in ``window`` (a wx.MenuBar), or None."""
+    libs = _load()
+    top = _widget(window) if libs else None
+    if top is None:
+        return None
+    gtk, _atk, gobject, _glib = libs
+    bar_type = gtk.gtk_menu_bar_get_type()
+
+    def find(widget, depth=0):
+        if gobject.g_type_check_instance_is_a(widget, bar_type):
+            return widget
+        if depth > 4 or not gobject.g_type_check_instance_is_a(
+                widget, gtk.gtk_container_get_type()):
+            return None
+        for child in _list_items(gtk.gtk_container_get_children(widget)):
+            found = find(ctypes.c_void_p(child), depth + 1)
+            if found is not None:
+                return found
+        return None
+    return find(top)
+
+
+#: GDK's keyval for F10, GTK's key for the menu bar (gtk-menu-bar-accel).
+_F10 = 0xFFC7
+
+
+class _GdkKeymapKey(ctypes.Structure):
+    _fields_ = [("keycode", ctypes.c_uint), ("group", ctypes.c_int), ("level", ctypes.c_int)]
+
+
+class _GdkEventKeyFull(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_int), ("window", ctypes.c_void_p),
+                ("send_event", ctypes.c_int8), ("time", ctypes.c_uint32),
+                ("state", ctypes.c_uint), ("keyval", ctypes.c_uint),
+                ("length", ctypes.c_int), ("string", ctypes.c_void_p),
+                ("hardware_keycode", ctypes.c_uint16), ("group", ctypes.c_uint8),
+                ("is_modifier", ctypes.c_uint, 1)]
+
+
+_gdk = None
+
+
+def _load_gdk():
+    """GDK 3 with the calls ``send_key`` makes declared, or None."""
+    global _gdk
+    if _gdk is None:
+        _gdk = False
+        if _load():
+            try:
+                gdk = ctypes.CDLL("libgdk-3.so.0")
+            except OSError:
+                return None
+            vp, i = ctypes.c_void_p, ctypes.c_int
+            gdk.gdk_event_new.restype = vp
+            gdk.gdk_event_new.argtypes = [i]
+            gdk.gdk_event_free.argtypes = [vp]
+            gdk.gdk_event_set_device.argtypes = [vp, vp]
+            gdk.gdk_display_get_default.restype = vp
+            gdk.gdk_display_get_default_seat.restype = vp
+            gdk.gdk_display_get_default_seat.argtypes = [vp]
+            gdk.gdk_seat_get_keyboard.restype = vp
+            gdk.gdk_seat_get_keyboard.argtypes = [vp]
+            gdk.gdk_keymap_get_for_display.restype = vp
+            gdk.gdk_keymap_get_for_display.argtypes = [vp]
+            gdk.gdk_keymap_get_entries_for_keyval.restype = ctypes.c_bool
+            gdk.gdk_keymap_get_entries_for_keyval.argtypes = [
+                vp, ctypes.c_uint, ctypes.POINTER(ctypes.POINTER(_GdkKeymapKey)),
+                ctypes.POINTER(i)]
+            gdk.gdk_window_get_toplevel.restype = vp
+            gdk.gdk_window_get_toplevel.argtypes = [vp]
+            libs = _load()
+            libs[0].gtk_widget_get_window.restype = vp
+            libs[0].gtk_widget_get_window.argtypes = [vp]
+            libs[0].gtk_main_do_event.argtypes = [vp]
+            libs[2].g_object_ref.restype = vp
+            libs[2].g_object_ref.argtypes = [vp]
+            libs[3].g_free.argtypes = [vp]
+            _gdk = gdk
+    return _gdk or None
+
+
+def send_key(window, keyval: int, state: int = 0, release: bool = False) -> bool:
+    """Give ``window`` (a top-level window) a key press or release, through
+    GTK as if from the keyboard. True when it was sent."""
+    if not IS_LINUX:
+        return False
+    try:
+        gdk = _load_gdk()
+        top = _widget(window) if gdk else None
+        if top is None:
+            return False
+        gtk, _atk, gobject, glib = _load()
+        target = gtk.gtk_widget_get_window(top)
+        if not target:
+            return False
+        display = gdk.gdk_display_get_default()
+        keycode = 0
+        entries, count = ctypes.POINTER(_GdkKeymapKey)(), ctypes.c_int(0)
+        if gdk.gdk_keymap_get_entries_for_keyval(gdk.gdk_keymap_get_for_display(display),
+                                                 keyval, ctypes.byref(entries),
+                                                 ctypes.byref(count)):
+            if count.value:
+                keycode = entries[0].keycode
+            glib.g_free(ctypes.cast(entries, ctypes.c_void_p))
+        event = gdk.gdk_event_new(_GDK_KEY_RELEASE if release else _GDK_KEY_PRESS)
+        key = ctypes.cast(event, ctypes.POINTER(_GdkEventKeyFull)).contents
+        key.window = gobject.g_object_ref(gdk.gdk_window_get_toplevel(target))
+        key.keyval, key.state, key.hardware_keycode = keyval, state, keycode
+        key.is_modifier = 0xFFE1 <= keyval <= 0xFFEE
+        gdk.gdk_event_set_device(event, gdk.gdk_seat_get_keyboard(
+            gdk.gdk_display_get_default_seat(display)))
+        gtk.gtk_main_do_event(event)
+        gdk.gdk_event_free(event)  # unrefs the window
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def press_menu_bar_key(window) -> bool:
+    """Press F10 in ``window``: GTK puts the keyboard in its menu bar, as
+    for a real F10, and Orca reads it the same way. True when it was sent."""
+    return send_key(window, _F10) and send_key(window, _F10, release=True)

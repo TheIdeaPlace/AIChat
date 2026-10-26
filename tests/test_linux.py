@@ -318,3 +318,110 @@ def test_status_bar_parts_are_labels_in_a_status_bar(app):
         assert bar.GetStatusText(0) == ""  # the field would show through a button
     finally:
         frame.Destroy()
+
+
+def test_alt_on_its_own_is_a_tap_and_alt_with_a_key_isnt():
+    alt, f, ctrl_mask = 0xFFE9, ord("f"), 0x4
+    tap = gtk_a11y.AltTap()
+    tap.press(alt, 0)
+    assert tap.release(alt, 0x8)  # Mod1 (Alt) is still in the state as it's released
+    tap.press(alt, 0)
+    tap.press(alt, 0x8)  # held: the press repeats
+    assert tap.release(alt, 0x8)
+    # Alt+F opens File itself; its release isn't a tap.
+    tap.press(alt, 0)
+    tap.press(f, 0x8)
+    assert not tap.release(alt, 0x8)
+    # Ctrl+Alt isn't Alt on its own.
+    tap.press(alt, ctrl_mask)
+    assert not tap.release(alt, ctrl_mask | 0x8)
+    # Alt+Tab away and back: the release after the focus comes back.
+    tap.press(alt, 0)
+    tap.focus_changed()
+    assert not tap.release(alt, 0x8)
+    # AltGr isn't Alt.
+    tap.press(0xFE03, 0)
+    assert not tap.release(0xFE03, 0)
+
+
+def _send_key(wx, frame, keyval, state, kind, keycode=0):
+    """A key press (8) or release (9) given to GTK as the X server would."""
+    assert gtk_a11y.send_key(frame, keyval, state, release=kind == 9)
+    for _ in range(10):
+        wx.Yield()
+
+
+@atk
+def test_a_tap_of_alt_is_seen_past_wxs_own_key_handling(app):
+    """wxGTK's handler on the window stops its key-press-event, so the keys
+    are watched with GTK's key snooper. Alt with another key isn't a tap."""
+    import wx
+    frame = wx.Frame(None)
+    try:
+        listbox = wx.ListBox(frame, choices=["One"])
+        frame.Show()
+        listbox.SetFocus()
+        for _ in range(20):
+            wx.Yield()
+        taps = []
+        assert gtk_a11y.watch_alt_tap(frame, lambda: taps.append(1))
+        alt, x = 0xFFE9, ord("x")
+        _send_key(wx, frame, alt, 0, 8, 64)
+        _send_key(wx, frame, alt, 0x8, 9, 64)
+        assert taps == [1]
+        _send_key(wx, frame, alt, 0, 8, 64)
+        _send_key(wx, frame, x, 0x8, 8, 53)
+        _send_key(wx, frame, x, 0x8, 9, 53)
+        _send_key(wx, frame, alt, 0x8, 9, 64)
+        assert taps == [1]
+    finally:
+        frame.Destroy()
+    for _ in range(10):
+        wx.Yield()
+    # The snooper outlives the window it watched, and does nothing then.
+    other = wx.Frame(None)
+    try:
+        other.Show()
+        for _ in range(10):
+            wx.Yield()
+        _send_key(wx, other, 0xFFE9, 0, 8, 64)
+        _send_key(wx, other, 0xFFE9, 0x8, 9, 64)
+        assert taps == [1]
+    finally:
+        other.Destroy()
+
+
+@atk
+def test_alt_puts_the_keyboard_in_the_menu_bar_as_f10_does(app):
+    """The tap presses F10, GTK's key for the menu bar."""
+    import ctypes
+    import wx
+    frame = wx.Frame(None)
+    try:
+        bar = wx.MenuBar()
+        menu = wx.Menu()
+        menu.Append(wx.ID_NEW, "&New Session")
+        bar.Append(menu, "&File")
+        bar.Append(wx.Menu(), "&View")
+        frame.SetMenuBar(bar)
+        wx.ListBox(frame, choices=["One"]).SetFocus()
+        frame.Show()
+        for _ in range(20):
+            wx.Yield()
+        assert gtk_a11y.watch_alt_tap(frame, lambda: gtk_a11y.press_menu_bar_key(frame))
+        _send_key(wx, frame, 0xFFE9, 0, 8)
+        _send_key(wx, frame, 0xFFE9, 0x8, 9)
+        for _ in range(20):
+            wx.Yield()
+        gtk = gtk_a11y._load()[0]
+        gtk.gtk_menu_shell_get_selected_item.restype = ctypes.c_void_p
+        gtk.gtk_menu_shell_get_selected_item.argtypes = [ctypes.c_void_p]
+        gtk.gtk_menu_item_get_label.restype = ctypes.c_char_p
+        gtk.gtk_menu_item_get_label.argtypes = [ctypes.c_void_p]
+        gtk.gtk_menu_shell_deactivate.argtypes = [ctypes.c_void_p]
+        shell = gtk_a11y._menu_bar(bar)
+        selected = gtk.gtk_menu_shell_get_selected_item(shell)
+        assert selected and b"File" in gtk.gtk_menu_item_get_label(selected)
+        gtk.gtk_menu_shell_deactivate(shell)
+    finally:
+        frame.Destroy()

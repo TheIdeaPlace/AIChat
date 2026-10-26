@@ -271,6 +271,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if gtk_a11y.IS_LINUX:
             # Orca before 49 takes announcements only from the active window.
             speaker.window_announcer = self._announce_through_window
+            # GTK's key for the menu bar is F10; on Windows it's Alt on its own.
+            gtk_a11y.watch_alt_tap(self, lambda: wx.CallAfter(
+                lambda: self and gtk_a11y.press_menu_bar_key(self)))
 
         self._pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="hub")
         self._snapshot = Snapshot()
