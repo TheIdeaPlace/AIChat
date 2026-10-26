@@ -1701,7 +1701,9 @@ def _codex_npm_candidates(roots) -> List[Path]:
     arm = platform.machine().lower() in ("arm64", "aarch64")
     arch = "arm64" if arm else "x64"
     cpu = "aarch64" if arm else "x86_64"
-    triple = cpu + ("-apple-darwin" if sys.platform == "darwin" else "-pc-windows-msvc")
+    triple = cpu + ("-apple-darwin" if sys.platform == "darwin"
+                    else "-pc-windows-msvc" if sys.platform == "win32"
+                    else "-unknown-linux-musl")
     name = "codex.exe" if sys.platform == "win32" else "codex"
     package = "codex-" + sys.platform + "-" + arch
     candidates = []
@@ -1784,7 +1786,30 @@ def codex_native_candidates() -> List[Path]:
         # may no longer understand the config written by the current app.
         candidates.append(cache / "codex.exe")
         return candidates + _codex_npm_candidates([roaming / "npm/node_modules"]) + daemon
-    return [home / ".local/bin/codex"]
+    # Linux: an app started from the desktop's menu gets the session's PATH,
+    # without what the shell's profile adds (~/.local/bin, nvm's Node).
+    standalone, daemon = _codex_package_candidates(home, "codex")
+    return ([home / ".local/bin/codex", Path("/usr/local/bin/codex"),
+             home / ".npm-global/bin/codex", Path("/home/linuxbrew/.linuxbrew/bin/codex"),
+             Path("/usr/bin/codex")] + standalone
+            + _codex_npm_candidates([
+                Path("/usr/local/lib/node_modules"), Path("/usr/lib/node_modules"),
+                home / ".npm-global/lib/node_modules",
+                Path("/home/linuxbrew/.linuxbrew/lib/node_modules"), *_nvm_node_modules(home)])
+            + daemon)
+
+
+def _nvm_node_modules(home: Path) -> List[Path]:
+    """The global node_modules of each Node that nvm installed, newest
+    first: where ``npm install -g`` puts packages on most Linux setups."""
+    versions = home / ".nvm/versions/node"
+    try:
+        folders = [p for p in versions.iterdir() if p.is_dir() and p.name.startswith("v")]
+    except OSError:
+        return []
+    folders.sort(key=lambda p: [int(n) if n.isdigit() else 0
+                                for n in p.name[1:].split(".")], reverse=True)
+    return [p / "lib/node_modules" for p in folders[:16]]
 
 
 def find_codex(which=None, native_candidates=None) -> Optional[str]:
@@ -1909,9 +1934,21 @@ def codex_workspace_root(cwd: str) -> str:
             or root in home.parents
             or any(root.samefile(folder) for folder in (home, *home.parents))
             or os.path.ismount(root)
-            or sys.platform == 'darwin' and root == Path('/Volumes')):
+            or sys.platform == 'darwin' and root == Path('/Volumes')
+            or sys.platform.startswith('linux') and _linux_drives_folder(root)):
         raise ValueError("Codex workspace-write requires a project folder")
     return str(root)
+
+
+def _linux_drives_folder(root: Path) -> bool:
+    """A folder Linux mounts drives in (``/media``, ``/run/media``, ``/mnt``,
+    or a user's folder in the first two), like a Mac's ``/Volumes``: write
+    access there reaches every drive plugged in."""
+    parts = root.parts
+    if parts[:2] == ("/", "media") or parts[:3] == ("/", "run", "media"):
+        base = 3 if parts[1] == "media" else 4  # also the user's own folder
+        return len(parts) <= base
+    return root == Path("/mnt")
 
 
 class CodexServerProcess:
@@ -2034,7 +2071,10 @@ def copilot_native_candidates() -> List[Path]:
             installed = []
         return [local / "Microsoft/WinGet/Links/copilot.exe", *installed,
                 home / ".local/bin/copilot.exe"]
-    return [home / ".local/bin/copilot", Path("/usr/local/bin/copilot")]
+    # Linux: GitHub's install script puts it in ~/.local/bin (or
+    # /usr/local/bin as root); Homebrew on Linux in its own prefix.
+    return [home / ".local/bin/copilot", Path("/usr/local/bin/copilot"),
+            Path("/home/linuxbrew/.linuxbrew/bin/copilot"), Path("/usr/bin/copilot")]
 
 
 def find_copilot(which=None, native_candidates=None) -> Optional[str]:
