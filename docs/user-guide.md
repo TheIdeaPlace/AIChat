@@ -22,7 +22,8 @@ OpenAI products.
 
 You need:
 
-- Windows 10 or 11, or a Mac with Apple silicon.
+- Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64) at least as new as
+  Ubuntu 24.04, Debian 13 or Fedora 40, with Orca for speech.
 - For Codex chats: a native Codex CLI signed in to ChatGPT, with the preview enabled in Settings.
   Claude Code is not required.
 - For Claude chats: Claude Code, installed with its native installer and signed in to your Claude subscription.
@@ -32,7 +33,7 @@ You need:
 
 For Claude chats, install Claude Code by running its installer in a terminal, then run `claude` once to sign in:
 
-- Mac (Terminal): `curl -fsSL https://claude.ai/install.sh | bash`
+- Mac (Terminal) and Linux: `curl -fsSL https://claude.ai/install.sh | bash`
 - Windows (PowerShell): `irm https://claude.ai/install.ps1 | iex`
 - Windows (Command Prompt):
   `curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd`
@@ -58,9 +59,15 @@ Applications. The first time it speaks through VoiceOver, macOS asks whether The
 control VoiceOver: allow it, and turn on "Allow VoiceOver to be controlled with AppleScript" in
 VoiceOver Utility, General.
 
+**Linux:** download `TheChatPlace-linux-x64.AppImage`, or `TheChatPlace-linux-arm64.AppImage`
+for an Arm PC such as the MNT Reform, put it where you keep programs, make it executable
+(`chmod +x`) and run it. Its first start adds The Chat Place to your desktop's menu. It needs FUSE
+2 to run (`sudo apt install libfuse2t64` on Debian 13 and Ubuntu 24.04), and Orca and
+speech-dispatcher for speech.
+
 If Claude Code isn't signed in, your sessions are still listed; only sending a message needs a
 sign-in. Help, Claude Code Sign-in says whether it is signed in, and offers to sign you in if not.
-The sign-in opens in its own window (Terminal, on a Mac), and The Chat Place checks again when
+The sign-in opens in its own window (Terminal, on a Mac; your terminal, on Linux), and The Chat Place checks again when
 you've finished. If it can't tell, it says why, for example that Claude Code is too old to ask:
 running `claude update` in a terminal fixes that.
 For Codex, choose Help, **Codex Sign-in**. It says whether Codex is signed in to ChatGPT. If it
@@ -98,6 +105,13 @@ This guide gives the Windows keys. On a Mac:
   menu, The Chat Place.
 - A context menu, the Applications key on Windows, is VO+Shift+M.
 
+### On Linux
+
+The keys are the Windows ones: Ctrl+N, and the Menu key or Shift+F10 for a context menu. The menu
+bar opens with F10 or Alt and a menu's letter (Alt+F for File); Alt on its own doesn't open it.
+Orca reads a message's first line and then the rest of it as you arrow through the messages. Orca
+before version 50 doesn't say a list's name as you move into it; Orca's Where Am I says it.
+
 ## Reading a session
 
 ### Finding it in the list
@@ -134,7 +148,10 @@ mode moves by heading (H), table (T), list (L) and code block (each code block i
 JAWS, D in NVDA). Links open in your browser. **Read as Plain Text** (Alt+P) shows the message in
 a plain text box instead, to read by line, word and character. Escape closes either one and puts
 you back on the same message. On Windows the formatted page needs Microsoft's Edge WebView2
-runtime, which comes with Windows 11; without it, Enter opens the plain text box.
+runtime, which comes with Windows 11; without it, Enter opens the plain text box. On Linux,
+Enter opens the plain text box unless you turn on the formatted page in Settings, Reading
+messages; it needs WebKitGTK, and Orca 48 moved through its headings but didn't read it line by
+line.
 
 On a Mac the page works the same way. VoiceOver's rotor (VO+U) lists its headings, tables, links
 and landmarks, VO+Command+H moves by heading, and with Quick Nav on, H, T and L work as above.
@@ -1003,11 +1020,17 @@ If your screen reader is running but The Chat Place can't reach it, a Windows no
 announcements aren't being spoken, the status bar gives the reason beside the announcement, and
 Settings shows it in a Speech problem box after the speech engine.
 
+On Linux, **Automatic** speaks through Orca, in Orca's voice and rate. Orca 49 and later take
+every announcement, whatever window you're in. Orca 48 and earlier take them while you're in The
+Chat Place; while you're in another window, speech-dispatcher speaks them, the speech server
+Orca uses too, which never talks over Orca. Without Orca, Automatic is a speech-dispatcher
+voice, and Settings chooses the voice and rate.
+
 When you're in another window, The Chat Place can show a notification: when one of its sessions
 finishes a turn, fails or needs you, when the session you have loaded finishes, or when a desktop
 app session starts needing you. Choosing
 the notification brings The Chat Place forward with that session loaded. Settings, Windows
-notifications (on a Mac, Notifications) chooses every finished turn (the default), only when a
+notifications (on a Mac and on Linux, Notifications) chooses every finished turn (the default), only when a
 session needs you, or off. While you're in The Chat Place, the announcement is enough and no
 notification is shown.
 
@@ -1135,8 +1158,9 @@ Chat Place knows."
 **Where links work.** On Windows, the installed copy of The Chat Place sets up
 `thechatplace://` links for your Windows account when it's installed and each time it starts,
 and uninstalling it removes them. The portable copy doesn't, so links open the installed copy
-if you have one. On a Mac, links work once The Chat Place is in Applications. A link copied on
-one computer opens the session only on that computer.
+if you have one. On a Mac, links work once The Chat Place is in Applications. On Linux, the
+AppImage sets up links when it starts; if you move the AppImage, start it once from its new
+place. A link copied on one computer opens the session only on that computer.
 
 ## Remote Control
 

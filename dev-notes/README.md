@@ -16,6 +16,7 @@ shipped.
 |---|---|
 | [codex-auto-review.md](codex-auto-review.md): per-chat reviewer verification, independent review fixes and validation limits | #358, #374 |
 | [speech-routing.md](speech-routing.md): how The Chat Place chooses what speaks, why NVDA users hear a Windows voice, and the options for fixing it | #98 |
+| [linux-port.md](linux-port.md): Linux and Orca: naming controls through ATK, reading message rows, which way announcements reach Orca, the formatted page, and what the AppImage keeps of the system's libraries | Linux port |
 
 - [Provider integration review slices](provider-integration-slices.md): release scope, layer boundaries and review gates (#184, #171, #225).
 

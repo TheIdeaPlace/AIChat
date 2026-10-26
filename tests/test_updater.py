@@ -260,7 +260,19 @@ def test_windows_portable_zip_still_never_updates(monkeypatch):
 
 
 def test_each_platform_reads_its_own_feed():
-    assert updater.CHANNEL == ("windows" if sys.platform == "win32" else "osx")
+    expected = {"win32": "windows", "darwin": "osx"}.get(sys.platform)
+    if expected is None:  # Linux: one feed per processor
+        import platform
+        expected = ("linux-arm64" if platform.machine().lower() in ("aarch64", "arm64")
+                    else "linux-x64")
+    assert updater.CHANNEL == expected
+
+
+def test_linux_has_a_feed_for_each_processor():
+    assert updater._channel("linux", "x86_64") == "linux-x64"
+    assert updater._channel("linux", "aarch64") == "linux-arm64"
+    assert updater._channel("win32", "ARM64") == "windows"
+    assert updater._channel("darwin", "arm64") == "osx"
 
 
 def test_mac_app_bundle_is_the_install_folder(tmp_path, monkeypatch):
