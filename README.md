@@ -18,7 +18,7 @@ Keyboard shortcuts: [a web page](https://theideaplace.github.io/AIChat/keyboard-
 [Markdown](docs/keyboard-shortcuts.md) and [plain text](docs/keyboard-shortcuts.txt): the same list
 as Help, Keyboard Shortcuts (F1) in the app.
 
-> **Status: version 0.2.0, a pre-release** (0.1.0, the first release, came out on 7 October 2026). How it
+> **Status: version 0.3.0, a pre-release** (0.1.0, the first release, came out on 7 October 2026). How it
 > has been tested is in [DEVELOPING.md](DEVELOPING.md#how-its-been-tested).
 
 The Chat Place brings Claude and Codex chats into one accessible list. Read each conversation,
