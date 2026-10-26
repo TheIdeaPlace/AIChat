@@ -964,7 +964,7 @@ control VoiceOver; allow it, and turn on "Allow VoiceOver to be controlled with 
 VoiceOver Utility, General. Your sessions and settings are in
 `~/Library/Application Support/TheChatPlace`.
 
-**Uninstalling.** On Windows, uninstall the installed copy from Settings, Apps, Installed apps;
+**Uninstalling.** On Windows, uninstall the installed copy from Settings, Apps, Installed apps (Apps & features on Windows 10);
 delete the portable copy's folder. On a Mac, drag The Chat Place to the Trash. Your settings and
 records stay in `%APPDATA%\TheChatPlace` (on a Mac, `~/Library/Application Support/TheChatPlace`)
 until you delete them, and your Claude, Codex and Copilot chats are never removed. The user
@@ -1243,5 +1243,7 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 - Turns of The Chat Place's own sessions are also spoken by ClaudeSpeak's Stop hook, if that's
   installed, since `claude -p` runs hooks; so a reply can be heard twice.
 - The desktop app's file formats are undocumented and could change with any update.
+
+## Developing
 
 Building, testing and releasing: see [DEVELOPING.md](DEVELOPING.md).

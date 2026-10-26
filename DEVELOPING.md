@@ -92,7 +92,7 @@ in `thechatplace/updater.py`).
 
 ## How it's been tested
 
-Used with JAWS on Kelly's PC; the
+The Chat Place is used with JAWS on Kelly's PC; the
 installer, uninstaller and update check have been tested in the vmtest VM. Downloading and
 installing an update needs two published releases, so it is first tried with 0.1.1. It has not
 yet had a pass with NVDA. The Mac build is used with VoiceOver on Kelly's Mac, and since 0.1.2

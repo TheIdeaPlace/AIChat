@@ -1500,8 +1500,8 @@ update has been installed, with a link to what's new" in Settings (Ctrl+Comma).
 
 Quit The Chat Place first.
 
-**Windows, installed copy:** open Settings, Apps, Installed apps, choose The Chat Place, then
-Uninstall. That removes the program, in `%LOCALAPPDATA%\TheChatPlace`, and its Start menu entry,
+**Windows, installed copy:** open Settings, Apps, Installed apps (on Windows 10, Apps &
+features), choose The Chat Place, then Uninstall. That removes the program, in `%LOCALAPPDATA%\TheChatPlace`, and its Start menu entry,
 and takes away the `thechatplace://` links it set up for your Windows account (see "Links to
 chats").
 
@@ -1512,14 +1512,17 @@ up links, so there's nothing else to undo.
 `thechatplace://` links are declared inside the app itself.
 
 **What's left behind.** Uninstalling keeps your settings and records, in case you install The
-Chat Place again. To remove them too, delete these folders:
+Chat Place again. To remove them too, delete these folders, the main things it leaves:
 
 - The Chat Place's own folder: `%APPDATA%\TheChatPlace` on Windows,
   `~/Library/Application Support/TheChatPlace` on a Mac. It holds its records of the chats started
-  here, your settings, groups, names, hidden chats, saved prompts, pasted pictures and its logs.
+  here, your settings, groups, names, hidden chats, saved prompts, pasted pictures, agent
+  conversations, remembered Codex approvals and its logs.
 - On Windows, the formatted page's WebView2 profile, `%LOCALAPPDATA%\TheChatPlace WebView2`.
 - Its speech folder: `%TEMP%\thechatplace-speak` on Windows, `$TMPDIR/thechatplace-speak` on a
-  Mac.
+  Mac. Its speech scripts also keep small logs in `claude-speak` (and, on Windows,
+  `claude-speak-nvda`) in the same temporary folder. ClaudeSpeak uses those folders too, so keep
+  them if you use ClaudeSpeak.
 
 **What it never removes**, because none of it belongs to The Chat Place:
 

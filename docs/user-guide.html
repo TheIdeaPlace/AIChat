@@ -1497,8 +1497,8 @@ browser; <strong>Close</strong> or Escape goes back to the app. To stop it appea
 update has been installed, with a link to what's new" in Settings (Ctrl+Comma).</p>
 <h2 id="uninstalling">Uninstalling</h2>
 <p>Quit The Chat Place first.</p>
-<p><strong>Windows, installed copy:</strong> open Settings, Apps, Installed apps, choose The Chat Place, then
-Uninstall. That removes the program, in <code>%LOCALAPPDATA%\TheChatPlace</code>, and its Start menu entry,
+<p><strong>Windows, installed copy:</strong> open Settings, Apps, Installed apps (on Windows 10, Apps &amp;
+features), choose The Chat Place, then Uninstall. That removes the program, in <code>%LOCALAPPDATA%\TheChatPlace</code>, and its Start menu entry,
 and takes away the <code>thechatplace://</code> links it set up for your Windows account (see "Links to
 chats").</p>
 <p><strong>Windows, portable copy:</strong> delete the folder you unzipped it into. The portable copy never sets
@@ -1506,14 +1506,17 @@ up links, so there's nothing else to undo.</p>
 <p><strong>Mac:</strong> drag The Chat Place from Applications (or wherever you keep it) to the Trash. Its
 <code>thechatplace://</code> links are declared inside the app itself.</p>
 <p><strong>What's left behind.</strong> Uninstalling keeps your settings and records, in case you install The
-Chat Place again. To remove them too, delete these folders:</p>
+Chat Place again. To remove them too, delete these folders, the main things it leaves:</p>
 <ul>
 <li>The Chat Place's own folder: <code>%APPDATA%\TheChatPlace</code> on Windows,
   <code>~/Library/Application Support/TheChatPlace</code> on a Mac. It holds its records of the chats started
-  here, your settings, groups, names, hidden chats, saved prompts, pasted pictures and its logs.</li>
+  here, your settings, groups, names, hidden chats, saved prompts, pasted pictures, agent
+  conversations, remembered Codex approvals and its logs.</li>
 <li>On Windows, the formatted page's WebView2 profile, <code>%LOCALAPPDATA%\TheChatPlace WebView2</code>.</li>
 <li>Its speech folder: <code>%TEMP%\thechatplace-speak</code> on Windows, <code>$TMPDIR/thechatplace-speak</code> on a
-  Mac.</li>
+  Mac. Its speech scripts also keep small logs in <code>claude-speak</code> (and, on Windows,
+  <code>claude-speak-nvda</code>) in the same temporary folder. ClaudeSpeak uses those folders too, so keep
+  them if you use ClaudeSpeak.</li>
 </ul>
 <p><strong>What it never removes</strong>, because none of it belongs to The Chat Place:</p>
 <ul>
