@@ -109,6 +109,284 @@ class AutoConnection(RuntimeConnection):
         return result
 
 
+class SavedHistoryConnection(AutoConnection):
+    """An empty loaded thread has no rollout to list or resume."""
+    def __init__(self):
+        super().__init__()
+        self.saved_threads = set()
+
+    def request(self, method, params):
+        if (method in ('thread/resume', 'thread/turns/list')
+                and params['threadId'] not in self.saved_threads):
+            self.calls.append((method, params))
+            raise CodexRpcError('Synthetic thread has no saved rollout')
+        result = super().request(method, params)
+        if method == 'turn/start':
+            self.saved_threads.add(params['threadId'])
+        return result
+
+
+@pytest.mark.parametrize('failure', ['save', 'verification'])
+@pytest.mark.parametrize('recovery', ['reload', 'retry'])
+def test_unloaded_policy_failure_retains_recovery_of_the_saved_mode(tmp_path, monkeypatch, failure, recovery):
+    class UnloadedConnection(SavedHistoryConnection):
+        unloaded = False
+
+        def request(self, method, params):
+            if method == 'thread/resume' and self.unloaded:
+                from thechatplace.providers.codex_policy import CodexPolicy
+                self.policies[params['threadId']] = CodexPolicy.choose(params['cwd'], params['sandbox'],
+                    params['approvalPolicy'], params['config']['approvals_reviewer'])
+                self.unloaded = False
+            return super().request(method, params)
+
+    connection = UnloadedConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat')
+        native = record.cli_session_id
+        runtime.send(record, 'Initial synthetic turn')
+        connection.events.append(decode_event('turn/completed', {
+            'threadId': native, 'turn': {'id': 'turn-1', 'status': 'completed'}}))
+        wait(lambda: runtime.snapshot(native).outcome == 'completed')
+        runtime._proofs.clear()
+        connection.proofs.clear()
+        connection.unloaded = True
+        request = connection.request
+
+        def refuse_check(method, params):
+            if method == 'thread/start' and params.get('ephemeral'):
+                raise CodexRpcError('Synthetic verification failure')
+            return request(method, params)
+
+        if failure == 'verification':
+            monkeypatch.setattr(connection, 'request', refuse_check)
+            with pytest.raises(CodexRpcError):
+                runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+            monkeypatch.setattr(connection, 'request', request)
+        else:
+            change = runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+            runtime.finish_policy(change, False)
+        assert not runtime.ready(record)
+        assert connection.policies[native].reviewer == 'auto_review'
+        if recovery == 'reload':
+            restored = runtime.reopen(record)
+            assert restored.provider_options == record.provider_options
+        else:
+            change = runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+            restored = change.record()
+            runtime.finish_policy(change, True)
+        assert runtime.ready(restored)
+        assert len([method for method, _ in connection.calls if method == 'thread/resume']) == 1
+        assert connection.turns == 1
+        runtime.send(restored, 'Deliberate message after recovery')
+        sent = [params for method, params in connection.calls if method == 'turn/start'][-1]
+        assert sent['approvalsReviewer'] == restored.provider_options.get('approvals_reviewer', 'user')
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('saved', [False, True])
+def test_preparation_keeps_the_saved_runtime_owner_until_persistence(tmp_path, saved):
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat')
+        original = runtime._proofs[record.cli_session_id]
+        change = runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        assert connection.owns_runtime(original)
+        assert not connection.owns_runtime(change.proof)
+        assert not runtime.ready(record)
+        runtime.finish_policy(change, saved)
+        assert connection.owns_runtime(change.proof if saved else original)
+        assert not any(method == 'turn/start' for method, _ in connection.calls)
+    finally:
+        runtime.close()
+
+
+def test_failed_policy_save_after_reconnect_recovers_the_actual_saved_mode(tmp_path):
+    class FreshConnection(SavedHistoryConnection):
+        def request(self, method, params):
+            if method == 'thread/resume':
+                from thechatplace.providers.codex_policy import CodexPolicy
+                policies = self.__dict__.setdefault('policies', {})
+                policies.setdefault(params['threadId'], CodexPolicy.choose(params['cwd'], params['sandbox'],
+                    params['approvalPolicy'], params['config']['approvals_reviewer']))
+            return super().request(method, params)
+
+    first, second = SavedHistoryConnection(), FreshConnection()
+    second.created = 100  # Native ids are unique across real server processes.
+    connections = iter((first, second))
+    runtime = CodexChatRuntime(factory=lambda exe: next(connections))
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat')
+        native = record.cli_session_id
+        runtime.send(record, 'Initial synthetic turn')
+        first.events.append(decode_event('turn/completed', {
+            'threadId': native, 'turn': {'id': 'turn-1', 'status': 'completed'}}))
+        wait(lambda: runtime.snapshot(native).outcome == 'completed')
+        change = runtime.prepare_policy(record, 'read-only', 'on-request', 'auto_review')
+        saved = change.record()
+        first.close()
+        wait(lambda: bool(runtime.snapshot(native).problem))
+        runtime.finish_policy(change, True)
+        assert not runtime.ready(saved)
+        runtime.create(str(tmp_path), 'Reconnect the shared runtime')
+        second.saved_threads.add(native)
+        change = runtime.prepare_policy(saved, 'workspace-write', 'on-request', 'user')
+        runtime.finish_policy(change, False)
+        restored = runtime.reopen(saved)
+        assert restored.provider_options == saved.provider_options
+        assert runtime.ready(restored)
+        assert second.turns == 0
+        runtime.send(restored, 'Deliberate message after recovery')
+        sent = [params for method, params in second.calls if method == 'turn/start'][-1]
+        assert sent['approvalsReviewer'] == 'auto_review'
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('has_history', [False, True])
+@pytest.mark.parametrize('recovery', ['reload', 'retry'])
+def test_failed_permission_save_recovers_the_loaded_chat(tmp_path, has_history, recovery):
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat')
+        native = record.cli_session_id
+        if has_history:
+            runtime.send(record, 'Initial synthetic turn')
+            connection.events.append(decode_event('turn/completed', {
+                'threadId': native, 'turn': {'id': 'turn-1', 'status': 'completed'}}))
+            wait(lambda: runtime.snapshot(native).outcome == 'completed')
+            change = runtime.prepare_policy(record, 'read-only', 'on-request', 'auto_review')
+            record = change.record()
+            runtime.finish_policy(change, True)
+        reviewer = 'user' if has_history else 'auto_review'
+        change = runtime.prepare_policy(record, 'workspace-write', 'on-request', reviewer)
+        runtime.finish_policy(change, False)
+        assert not runtime.ready(record)
+        assert runtime.stop(record) == ()
+        if recovery == 'reload':
+            restored = runtime.reopen(record)
+            assert restored.provider_options == record.provider_options
+        else:
+            change = runtime.prepare_policy(record, 'workspace-write', 'on-request', reviewer)
+            restored = change.record()
+            runtime.finish_policy(change, True)
+        assert runtime.ready(restored)
+        assert restored.cli_session_id == native
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+        assert connection.turns == int(has_history)
+        if not has_history:
+            from thechatplace.providers.codex import EMPTY_HISTORY
+            assert runtime.history_route(native) is EMPTY_HISTORY
+        runtime.send(restored, 'Deliberate message after recovery')
+        sent = [params for method, params in connection.calls if method == 'turn/start'][-1]
+        assert sent['approvalsReviewer'] == restored.provider_options.get('approvals_reviewer', 'user')
+        assert connection.turns == int(has_history) + 1
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('recovery', ['reload', 'retry'])
+@pytest.mark.parametrize('failure', ['active', 'wrong-thread', 'unfinished-history', 'unknown-history',
+                                   'account', 'route', 'model', 'reviewer', 'owned-tools'])
+def test_policy_recovery_rechecks_native_state_and_saved_grant(tmp_path, monkeypatch, recovery, failure):
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat', approvals_reviewer='auto_review')
+        native = record.cli_session_id
+        runtime.send(record, 'Initial synthetic turn')
+        connection.events.append(decode_event('turn/completed', {
+            'threadId': native, 'turn': {'id': 'turn-1', 'status': 'completed'}}))
+        wait(lambda: runtime.snapshot(native).outcome == 'completed')
+        change = runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        runtime.finish_policy(change, False)
+        request = connection.request
+
+        def changed(method, params):
+            result = request(method, params)
+            if method == 'thread/read' and failure == 'active':
+                result['thread']['status'] = {'type': 'active', 'activeFlags': []}
+            elif method == 'thread/read' and failure == 'wrong-thread':
+                result['thread']['id'] = 'different-thread'
+            elif method == 'thread/turns/list' and failure.endswith('-history'):
+                result['data'] = [{'id': 'foreign-turn', 'status':
+                                   'inProgress' if failure == 'unfinished-history' else 'future-status'}]
+            elif method == 'account/read' and failure == 'account':
+                result['account']['type'] = 'apiKey'
+            elif method == 'config/read' and failure == 'route':
+                result['config']['model_provider'] = 'different-provider'
+            elif method == 'model/list' and failure == 'model':
+                result['data'] = []
+            elif method == 'thread/start' and failure == 'reviewer':
+                result['approvalsReviewer'] = 'user'
+            elif method == 'mcpServerStatus/list' and params['threadId'] == native and failure == 'owned-tools':
+                result['data'] = [{'runtimeStatus': 'connected', 'tools': {'unexpected': {}}}]
+            return result
+
+        monkeypatch.setattr(connection, 'request', changed)
+        with pytest.raises((CodexRpcError, ValueError)):
+            if recovery == 'reload':
+                runtime.reopen(record)
+            else:
+                runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        assert not runtime.ready(record)
+        assert connection.turns == 1
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('mismatch', ['cwd', 'sandbox', 'reviewer', 'model'])
+def test_failed_save_recovery_cannot_reuse_a_different_saved_grant(tmp_path, mismatch):
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat')
+        change = runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        runtime.finish_policy(change, False)
+        changed = replace(record, provider_options=dict(record.provider_options))
+        if mismatch == 'cwd':
+            changed.cwd = str(tmp_path / 'different-project')
+        else:
+            key, value = {'sandbox': ('sandbox', 'workspace-write'),
+                          'reviewer': ('approvals_reviewer', 'auto_review'),
+                          'model': ('model', 'different-model')}[mismatch]
+            changed.provider_options[key] = value
+        with pytest.raises(CodexRpcError, match='no longer match'):
+            runtime.reopen(changed)
+        assert not runtime.ready(record)
+        assert runtime.reopen(record).provider_options == record.provider_options
+        assert runtime.ready(record)
+        assert connection.turns == 0
+    finally:
+        runtime.close()
+
+
+def test_stream_failure_during_permission_save_cannot_use_policy_recovery(tmp_path, monkeypatch):
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat')
+        change = runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        monkeypatch.setattr(connection, 'pop_event', lambda: (_ for _ in ()).throw(CodexRpcError('Synthetic stream failure')))
+        wait(lambda: bool(runtime.snapshot(record.cli_session_id).problem))
+        problem = runtime.snapshot(record.cli_session_id).problem
+        runtime.finish_policy(change, True)
+        assert not runtime.ready(record)
+        assert runtime.snapshot(record.cli_session_id).problem == problem
+        assert connection.proofs[record.cli_session_id] is change.previous
+        assert not connection.owns_runtime(change.proof)
+        with pytest.raises(CodexRpcError):
+            runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        assert connection.turns == 0
+    finally:
+        runtime.close()
+
+
 def test_policy_change_waits_for_storage_and_does_not_affect_other_chats():
     connection = AutoConnection()
     runtime = CodexChatRuntime(factory=lambda exe: connection)

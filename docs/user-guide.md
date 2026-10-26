@@ -568,6 +568,9 @@ read-only and editing files in its selected folder with human or automatic appro
 Existing saved permissions stay in effect until the change is verified and saved.
 The new mode applies to the next message in the same chat, including before its
 first message. The chat keeps its history.
+If the change cannot be verified or saved, sending stays disabled. Use **Stop**
+to recheck the saved permissions, or try **Change Permission Mode** again.
+Recovery sends no message.
 Choose Codex model and effort in New Session or Continue Here; changing them
 later with Change Model or Change Effort is not yet supported.
 

@@ -71,3 +71,30 @@ Session, Continue Here, Change Permission Mode and User Guide, in light-100 and
 hc-aquatic-100. All eight screenshots were opened and reviewed, with no layout
 flags. Comparison against the baselines reports 0 changed, 8 unchanged and no
 new, missing or failed surfaces. No baseline or visual description changed.
+
+Independent review follow-up (#385): policy preparation now retains the current
+owner until persistence succeeds. Failed verification or saving retains a
+separate snapshot of the saved grant, including when preparation first had to
+load an idle chat. Stop explicitly rechecks that saved grant without resuming a
+loaded thread or sending a message. The check verifies account, route, model,
+reviewer, workspace, rules, native idle/history state and the owned thread's
+tool inventory. A replaced problem, unknown turn or lost owner cannot use this
+recovery path. Empty chats retain their empty history route so switching away
+and returning does not try to read a nonexistent rollout.
+
+Regression coverage includes failed saves before the first message, saved
+settings awaiting their first turn, unloaded chats, failed ephemeral checks,
+and saved settings whose owner was lost during reconnection. Hidden-window
+tests exercise Stop recovery through the controller, switching away and back,
+and stopping an active turn with an unrelated problem without attempting resume.
+The full-suite run passed 3,170 tests with 7 skips; final targeted validation
+passed 223 backend tests and 9 focused hidden-window tests. The independent
+reviewer reran these focused checks and reported no remaining findings.
+
+The follow-up visual run is `%TEMP%/tcp-ui-probe/20261026-081608`: Codex status
+unavailable, Change Permission Mode and User Guide in light-100 and
+hc-aquatic-100. Both reviewers opened all six images. Comparison reports
+0 changed, 6 unchanged and no new, missing or failed surfaces; no layout flags.
+Sampled black text on white is 21:1 and white on the High Contrast #202020
+background is 16.29:1. No baselines changed. Live inference, native speech and
+macOS execution were not repeated for this recovery-only follow-up.

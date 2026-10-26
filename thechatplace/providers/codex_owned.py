@@ -3,7 +3,7 @@
 Creation, fork and owned resume establish the runtime configuration that the
 turn executor validates independently before inference (#184) (#171).
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .. import platform_paths
 from ..own_store import OwnSession
@@ -76,6 +76,49 @@ class CodexOwnedThreads:
         verify_codex_rule_layers(result)
         return tools
 
+    def _verify_idle(self, native_id, *, loaded=False, empty=False):
+        # Inspect native state before changing or recovering a grant. A new,
+        # still-owned empty thread has no persisted rollout to list yet.
+        metadata = self.connection.request('thread/read', {'threadId': native_id, 'includeTurns': False})
+        thread = metadata.get('thread')
+        statuses = ('idle',) if loaded else ('idle', 'notLoaded')
+        if (not isinstance(thread, dict) or thread.get('id') != native_id
+                or not isinstance(thread.get('status'), dict)
+                or thread['status'].get('type') not in statuses):
+            raise CodexTurnRejected('not_idle')
+        if empty:
+            return
+        latest = self.connection.request('thread/turns/list', {
+            'threadId': native_id, 'limit': 1, 'sortDirection': 'desc', 'itemsView': 'notLoaded'})
+        turns = latest.get('data')
+        if (not isinstance(turns, list) or len(turns) > 1
+                or any(not isinstance(turn, dict) or turn.get('status') not in
+                       ('completed', 'failed', 'interrupted') for turn in turns)):
+            raise CodexTurnRejected('not_idle')
+
+    def verify_loaded(self, proof, *, empty=False):
+        """Recheck retained ownership without resuming or replacing the thread."""
+        if not self.connection.owns_runtime(proof):
+            raise CodexRpcError('Codex execution requires a verified owned chat')
+        proof.policy.verify_workspace(proof.cwd)
+        self._verify_idle(proof.native_id, loaded=True, empty=empty)
+        verify_codex_tools(self.connection, proof.native_id)
+        if not self.connection.owns_runtime(proof):
+            raise CodexRpcError('Codex connection changed while checking permissions')
+
+    def recheck_saved(self, proof, record, *, empty=False):
+        options = self._saved_options(record)
+        checked = self.start(record.cwd, record.title, ephemeral=True,
+            model=options.get('model'), effort=options.get('effort'),
+            sandbox=options.get('sandbox', 'read-only'),
+            approval_policy=options.get('approval_policy', 'on-request'),
+            approvals_reviewer=options.get('approvals_reviewer', 'user'))
+        if checked.cwd != record.cwd:
+            raise CodexRpcError('Saved Codex workspace scope could not be verified')
+        self.verify_loaded(proof, empty=empty)
+        return replace(proof, cwd=checked.cwd, model=checked.model, effort=checked.effort,
+                       policy=checked.policy, title=record.title)
+
     def _create(self, method, cwd, title, *, native_id=None, ephemeral=False, model=None, effort=None,
                 sandbox='read-only', approval_policy='on-request', approvals_reviewer='user'):
         if not isinstance(title, str) or not title.strip():
@@ -95,19 +138,7 @@ class CodexOwnedThreads:
         if method == 'thread/resume':
             # Resume changes the loaded thread. Inspect persisted turn state
             # first, even after restarting TCP; never overwrite unfinished work.
-            metadata = self.connection.request('thread/read', {'threadId': native_id, 'includeTurns': False})
-            thread = metadata.get('thread')
-            if (not isinstance(thread, dict) or thread.get('id') != native_id
-                    or not isinstance(thread.get('status'), dict)
-                    or thread['status'].get('type') not in ('idle', 'notLoaded')):
-                raise CodexTurnRejected('not_idle')
-            latest = self.connection.request('thread/turns/list', {
-                'threadId': native_id, 'limit': 1, 'sortDirection': 'desc', 'itemsView': 'notLoaded'})
-            turns = latest.get('data')
-            if (not isinstance(turns, list) or len(turns) > 1
-                    or any(not isinstance(turn, dict) or turn.get('status') not in
-                           ('completed', 'failed', 'interrupted') for turn in turns)):
-                raise CodexTurnRejected('not_idle')
+            self._verify_idle(native_id)
         if (model is not None and method != "thread/resume") or effort is not None:
             choice = next((choice for choice in read_models(self.connection) if choice.model == model), None)
             if choice is None or (effort is not None and effort not in choice.efforts):
@@ -183,7 +214,8 @@ class CodexOwnedThreads:
                             native_id=source.cli_session_id, ephemeral=ephemeral, model=model, effort=effort,
                             sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer)
 
-    def resume(self, record: OwnSession):
+    @staticmethod
+    def _saved_options(record):
         if (not isinstance(record, OwnSession) or record.provider != "codex"
                 or record.started is not True or not isinstance(record.cli_session_id, str)
                 or not platform_paths.is_safe_id(record.cli_session_id)):
@@ -202,6 +234,10 @@ class CodexOwnedThreads:
             CodexPolicy('workspace-write', options.get('approval_policy', 'on-request'), root).verify_workspace(record.cwd)
         elif 'workspace_root' in options:
             raise ValueError('Read-only Codex chats cannot retain a writable workspace grant')
+        return options
+
+    def resume(self, record: OwnSession):
+        options = self._saved_options(record)
         return self._create("thread/resume", record.cwd, record.title,
                             native_id=record.cli_session_id, model=options.get("model"), effort=options.get("effort"),
                             sandbox=options.get('sandbox', 'read-only'),

@@ -9708,6 +9708,82 @@ def test_new_owned_codex_chat_can_send_before_history_is_available(frame):
         runtime.close()
 
 
+@pytest.mark.parametrize('reselect', [False, True])
+def test_stop_recovers_an_empty_codex_chat_after_permission_save_fails(frame, env, tmp_path, reselect):
+    from test_codex_auto_review import SavedHistoryConnection
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.session_controller import SessionController
+
+    settle(frame)
+    other = frame._snapshot.sessions[0]
+    connection = SavedHistoryConnection()
+    request = connection.request
+
+    def discovery(method, params):
+        if method == 'thread/list':
+            return {'data': [], 'nextCursor': None}
+        return request(method, params)
+
+    connection.request = discovery
+    runtime = CodexChatRuntime(lambda state: wx.CallAfter(frame._on_codex_update, state),
+                               factory=lambda exe: connection)
+    frame.sessions = SessionController([ClaudeConversations(), CodexProvider(connection, runtime=runtime)])
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic recovery chat')
+        frame.store.add(record)
+        frame.open_session(record.to_info())
+        assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+        change = runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        runtime.finish_policy(change, False)
+        assert not runtime.ready(record)
+        if reselect:
+            frame.open_session(other)
+            assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+            frame.open_session(record.to_info())
+            assert pump(lambda: frame._chat_loaded and not frame._reader_busy and not frame._codex_preparing)
+        frame.on_stop()
+        assert pump(lambda: runtime.ready(record) and any('reconnected' in text for text in env['feedback']))
+        frame.reply_text.SetValue('Deliberate message after failed-save recovery')
+        frame.on_send()
+        assert pump(lambda: connection.turns == 1 and not frame._codex_send_pending)
+        turns = [params for method, params in connection.calls if method == 'turn/start']
+        assert turns[0]['approvalsReviewer'] == 'user'
+        assert turns[0]['sandboxPolicy']['type'] == 'readOnly'
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+        assert frame.store.get(record.cli_session_id, provider='codex').provider_options == record.provider_options
+    finally:
+        runtime.close()
+
+
+def test_stop_of_an_active_codex_turn_with_a_problem_does_not_attempt_reopen(frame, env, monkeypatch, tmp_path):
+    from test_codex_auto_review import SavedHistoryConnection
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    from thechatplace.session_controller import SessionController
+
+    settle(frame)
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    frame.sessions = SessionController([CodexProvider(connection, runtime=runtime)])
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic active chat')
+        frame.store.add(record)
+        runtime.send(record, 'Initial synthetic turn')
+        runtime._problems[record.cli_session_id] = 'Synthetic approval storage failure'
+        frame._on_codex_update(runtime.snapshot(record.cli_session_id))
+        reopened = []
+        monkeypatch.setattr(runtime, 'reopen', lambda record: reopened.append(record))
+        frame._stop_codex_owned(record.to_info())
+        assert pump(lambda: any('Stop requested' in text for text in env['feedback']))
+        assert any(method == 'turn/interrupt' for method, _ in connection.calls)
+        assert reopened == []
+        assert not runtime.ready(record)
+    finally:
+        runtime.close()
+
+
 def refuse_codex_creation(frame, monkeypatch):
     from thechatplace.providers.codex_rpc import CodexTurnRejected
     def refuse(*args, **options):

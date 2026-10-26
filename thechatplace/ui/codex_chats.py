@@ -198,7 +198,7 @@ class CodexChats:
             def finished(_result, failed):
                 self._codex_policy_pending.discard(info.key)
                 if failed or not saved:
-                    self._feedback('Changed Codex permissions could not be saved or confirmed. Reload before sending.')
+                    self._feedback('Changed Codex permissions could not be saved or confirmed. Use Stop to recheck the saved permissions before sending.')
                 else:
                     label = next(label for value, label in choices if value == selected)
                     self._feedback(f'Codex permissions for {info.title}: {label}.')
@@ -275,8 +275,10 @@ class CodexChats:
             return
         name = provider_name(record.provider)
         checking = False
+        state = self._codex_states.get(info.key)
+        recover_idle = (record.provider == 'codex' and state is not None
+                        and state.outcome in ('idle', 'completed', 'failed', 'interrupted'))
         if record.provider != 'codex':
-            state = self._codex_states.get(info.key)
             if state is not None and state.outcome != 'inProgress':
                 self._feedback(f'{record.title}: {name} isn\'t answering, so there\'s nothing to stop.')
                 return
@@ -315,6 +317,9 @@ class CodexChats:
         def stop_or_recover():
             try:
                 waiting = self.sessions.owned_action('stop', record)
+                if recover_idle and not self.sessions.owned_action('ready', record):
+                    self.sessions.owned_action('reopen', record)
+                    return True, ()
                 return False, (tuple(waiting) if record.provider != 'codex' and isinstance(waiting, tuple)
                                else ())
             except CodexRpcError:

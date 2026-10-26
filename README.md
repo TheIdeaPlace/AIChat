@@ -780,6 +780,9 @@ review**. For an existing owned Codex chat, finish or stop its turn, then use
 File, **Change Permission Mode**, or File, **Chat Permissions**, **Change**.
 The new mode applies to the next message in the same chat, including when you
 change it before sending the first message. The chat keeps its history.
+If the change cannot be verified or saved, sending stays disabled. Use **Stop**
+to recheck the saved permissions, or try **Change Permission Mode** again.
+Recovery sends no message.
 Codex's reviewer evaluates eligible requests for you and can allow or deny them;
 this reduces interruptions without giving unrestricted access. Human review remains
 the default, and existing chats keep their selected mode. This is different from
