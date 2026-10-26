@@ -2,7 +2,8 @@
 
 This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M), rather than Windows Alt menu sequences.
+VO+M), rather than Windows Alt menu sequences. On Linux, F10 opens the menu bar; Alt on its own
+doesn't, but Alt and a menu's letter does.
 
 A keyboard and screen reader friendly home for your AI chats, together in one session list.
 
@@ -23,7 +24,7 @@ as Help, Keyboard Shortcuts (F1) in the app.
 > installing an update needs two published releases, so it is first tried with 0.1.1. It has not
 > yet had a pass with NVDA. The Mac build is used with VoiceOver on Kelly's Mac, and since 0.1.2
 > the release workflow signs and notarizes it. The Linux build (AppImages for x64 and arm64) is
-> new in 0.1.7. It has been tested with Orca 51 on an MNT Pocket Reform, and with Orca 48 on Debian
+> new in 0.3.0, as a preview. It has been tested with Orca 51 on an MNT Pocket Reform, and with Orca 48 on Debian
 > 13 (arm64) in a virtual machine.
 
 The Chat Place brings Claude and Codex chats into one accessible list. Read each conversation,
@@ -944,8 +945,13 @@ desktop has it), and these, which most desktops have and the rest install in one
 - For formatted full messages (off by default on Linux; see Limitations), **WebKitGTK 4.1**:
   `sudo apt install libwebkit2gtk-4.1-0`.
 
-Anthropic makes no Claude desktop app for Linux, so the list there has the sessions you started
-by typing `claude` in a terminal and The Chat Place's own.
+Anthropic makes no Claude desktop app for Linux, so the Claude sessions listed there are the ones
+you started by typing `claude` in a terminal and The Chat Place's own. Codex and GitHub Copilot
+CLI chats are listed as on Windows and the Mac, when their previews are on in Settings.
+
+Claude Code's sign-in (Help, Claude Code Sign-in) opens a web page. Without a web browser, which
+a server install often lacks, the terminal shows only the link: open it on another computer or
+phone, or install a browser (`sudo apt install firefox-esr` on Debian).
 
 ## Updates
 
@@ -1175,6 +1181,8 @@ takes a menu's letter.
 
 On a Mac, Ctrl is the Command key, the menus are in the menu bar (VO+M) rather than on Alt, and
 Settings is in the app menu.
+On Linux, F10 opens the menu bar, as in other GTK programs; Alt on its own doesn't, but Alt and a
+menu's letter does.
 
 ## How it works
 

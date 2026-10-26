@@ -19,7 +19,8 @@ a:focus-visible { outline: 3px solid; outline-offset: 2px; }
 </style></head><body><main><h1>The Chat Place User Guide</h1>
 <p>This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M), rather than Windows Alt menu sequences.</p>
+VO+M), rather than Windows Alt menu sequences. On Linux, F10 opens the menu bar; Alt on its own
+doesn't, but Alt and a menu's letter does.</p>
 <p>The Chat Place is a keyboard and screen reader friendly home for your AI chats. Claude and
 Codex sessions share one list: read, find and export conversations, hear replies, and send
 messages in chats started here. Provider tells you which AI; Kind tells you where the session
@@ -70,7 +71,9 @@ VoiceOver Utility, General.</p>
 for an Arm PC such as the MNT Reform, put it where you keep programs, make it executable
 (<code>chmod +x</code>) and run it. Its first start adds The Chat Place to your desktop's menu. It needs FUSE
 2 to run (<code>sudo apt install libfuse2t64</code> on Debian 13 and Ubuntu 24.04), and Orca and
-speech-dispatcher for speech.</p>
+speech-dispatcher for speech.
+Claude Code's sign-in opens a web page; without a web browser, open the link the terminal shows
+on another computer or phone.</p>
 <p>If Claude Code isn't signed in, your sessions are still listed; only sending a message needs a
 sign-in. Help, Claude Code Sign-in says whether it is signed in, and offers to sign you in if not.
 The sign-in opens in its own window (Terminal, on a Mac; your terminal, on Linux), and The Chat Place checks again when

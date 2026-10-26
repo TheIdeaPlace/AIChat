@@ -22,7 +22,8 @@ def key_name(shortcut: str, platform=None) -> str:
 SHORTCUTS_PLATFORM_NOTE = (
     "This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, "
     "Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver: VO+M), "
-    "rather than Windows Alt menu sequences."
+    "rather than Windows Alt menu sequences. On Linux, F10 opens the menu bar; Alt on its own "
+    "doesn't, but Alt and a menu's letter does."
 )
 
 CODEX_SAVED_RULES_NOTE = (
