@@ -9775,7 +9775,7 @@ def test_stop_of_an_active_codex_turn_with_a_problem_does_not_attempt_reopen(fra
         runtime._problems[record.cli_session_id] = 'Synthetic approval storage failure'
         frame._on_codex_update(runtime.snapshot(record.cli_session_id))
         reopened = []
-        monkeypatch.setattr(runtime, 'reopen', lambda record: reopened.append(record))
+        monkeypatch.setattr(runtime, '_reopen', lambda record: reopened.append(record))  # reopen and recover
         frame._stop_codex_owned(record.to_info())
         assert pump(lambda: any('Stop requested' in text for text in env['feedback']))
         assert any(method == 'turn/interrupt' for method, _ in connection.calls)
@@ -9862,11 +9862,12 @@ def test_refused_new_codex_chat_says_when_the_first_message_could_not_be_kept(fr
         "No Codex chat was started, and your first message couldn't be kept. Codex reported")
 
 
-def test_saved_folder_editing_codex_chat_reopened_read_only_says_to_reload(frame, env, monkeypatch):
+def test_saved_folder_editing_codex_chat_reopened_read_only_says_to_use_stop(frame, env, monkeypatch):
     # Reopening a saved folder-editing chat runs prepare, not New Session, so
     # the refusal there says how to try again (#257).
     from types import SimpleNamespace
     from thechatplace.providers.codex_rpc import CodexTurnRejected
+    from thechatplace.ui_text import key_name
     settle(frame)
     info = SimpleNamespace(key='codex:own-x', cli_session_id='own-x')
     def refuse(action, record):
@@ -9879,7 +9880,7 @@ def test_saved_folder_editing_codex_chat_reopened_read_only_says_to_reload(frame
     frame._prepare_codex_owned(7)
     assert pump(lambda: env["feedback"] and 'read-only' in env["feedback"][-1])
     assert env["feedback"][-1].startswith("Codex reported this chat as read-only")
-    assert env["feedback"][-1].endswith('No new turn was sent. Reload this chat to try again.')
+    assert env["feedback"][-1].endswith(f'No new turn was sent. Then use Stop ({key_name("Ctrl+Period")}) to open this chat again.')
 
 
 def test_refused_new_codex_chat_without_a_message_says_only_why(frame, env, monkeypatch):

@@ -17,6 +17,25 @@ from ..own_store import OwnSession
 STOP_TO_RECHECK = 'Use Stop to recheck this chat before sending.'
 
 
+class _Problems(dict):
+    """Each chat's latched problem text, counting every change to it, so a
+    recheck can tell its own problem from the same text set again (#385)."""
+    def __init__(self):
+        super().__init__()
+        self._changes = {}
+
+    def __setitem__(self, native_id, text):
+        self._changes[native_id] = self._changes.get(native_id, 0) + 1
+        super().__setitem__(native_id, text)
+
+    def pop(self, native_id, *default):
+        self._changes[native_id] = self._changes.get(native_id, 0) + 1
+        return super().pop(native_id, *default)
+
+    def token(self, native_id):
+        return self.get(native_id), self._changes.get(native_id, 0)
+
+
 @dataclass(frozen=True)
 class CodexChatState:
     native_id: str
@@ -74,7 +93,7 @@ class CodexChatRuntime:
         self._policy_changes = {}
         self._policy_recoveries = {}
         self._pending_dispatch = {}
-        self._problems = {}
+        self._problems = _Problems()
         self._stop = threading.Event()
         self._listeners = []
         from ..provider_storage import CodexPlanStore
@@ -160,6 +179,16 @@ class CodexChatRuntime:
 
     def reopen(self, record):
         # Explicit user action only, after the caller has reconciled history.
+        return self._reopen(record)[0]
+
+    def recover(self, record):
+        """Stop's recovery: reopen, and say which check that made (#385):
+        'permissions' rechecked the saved grant after a failed change,
+        'rechecked' checked a chat still loaded here in place, and 'resumed'
+        resumed it after its previous turn was confirmed ended."""
+        return self._reopen(record)[1]
+
+    def _reopen(self, record):
         with self._lock:
             proof = self._proofs.get(record.cli_session_id)
             recovery = self._policy_recovery(record.cli_session_id, proof)
@@ -169,6 +198,7 @@ class CodexChatRuntime:
             # problem (Stop's recovery) is rechecked in place instead,
             # whether or not that problem came from a permission change.
             problem = self._problems.get(record.cli_session_id)
+            problem_token = self._problems.token(record.cli_session_id)
             loaded = bool(problem) and proof is not None and proof.connection.owns_runtime(proof)
             state = self._executor.snapshot(proof) if proof is not None and self._executor is not None else None
             if (record.cli_session_id in self._reopening
@@ -192,7 +222,7 @@ class CodexChatRuntime:
                 self._require_saved_policy(record, saved_record)
                 restored = lifecycle.recheck_saved(proof, record, empty=empty)
                 with self._lock:
-                    if (self._stop.is_set() or self._problems.get(proof.native_id) != problem
+                    if (self._stop.is_set() or self._problems.token(proof.native_id) != problem_token
                             or self._proofs.get(proof.native_id) is not proof
                             or not connection.owns_runtime(proof)
                             or executor.snapshot(proof).status not in ('idle', 'completed', 'failed', 'interrupted')):
@@ -201,8 +231,8 @@ class CodexChatRuntime:
                     self._policy_recoveries.pop(proof.native_id, None)
                     connection._accept_owned_thread(restored)
                     self._proofs[proof.native_id] = restored
-                return restored.record()
-            return self._remember(lifecycle.resume(record))
+                return restored.record(), 'permissions' if recovery else 'rechecked'
+            return self._remember(lifecycle.resume(record)), 'resumed'
         finally:
             with self._lock:
                 self._reopening.discard(record.cli_session_id)
@@ -215,13 +245,6 @@ class CodexChatRuntime:
         return (recovery is not None and recovery[0] is proof
                 and recovery[1] == self._problems.get(native_id)
                 and proof.connection.owns_runtime(proof))
-
-    def policy_recovery_pending(self, record):
-        """Whether reopening this chat would recheck its saved permissions
-        after a failed change, so Stop can say so (#385)."""
-        with self._lock:
-            proof = self._proofs.get(record.cli_session_id)
-            return proof is not None and self._policy_recovery(record.cli_session_id, proof)
 
     @staticmethod
     def _require_saved_policy(record, saved):
@@ -434,7 +457,7 @@ class CodexChatRuntime:
             raise
         except Exception:
             with self._lock:
-                self._problems[native_id] = 'Could not confirm this Codex turn. Reload the chat to check its reply.'
+                self._problems[native_id] = 'Could not confirm this Codex turn. Use Stop to recheck this chat, and check its reply before sending again.'
             raise CodexRpcError(self._problems[native_id]) from None
         finally:
             with self._lock:
@@ -707,7 +730,7 @@ class CodexChatRuntime:
                     continue
                 except Exception:
                     with self._lock:
-                        self._problems[proof.native_id] = 'Could not confirm an automatic approval. Reload this chat; the answer will not be resent.'
+                        self._problems[proof.native_id] = 'Could not confirm an automatic approval. Use Stop to recheck this chat; the answer will not be resent.'
                     continue
                 with self._lock:
                     notices = self._permission_notices.setdefault(proof.native_id, [])
@@ -797,7 +820,7 @@ class CodexChatRuntime:
                     affected = [p for p in self._proofs.values() if p.connection is connection]
                     for proof in affected:
                         self._stopping.discard(proof.native_id)
-                        self._problems[proof.native_id] = safe_reason(error) or 'Codex connection interrupted. Reload the chat to check its reply.'
+                        self._problems[proof.native_id] = safe_reason(error) or "Codex connection interrupted. Use Stop to check this chat's reply and reconnect."
                 for proof in affected:
                     self._notify(proof.native_id)
                 return

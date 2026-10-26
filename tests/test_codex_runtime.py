@@ -249,7 +249,7 @@ def test_two_chats_do_not_share_queues_and_unknown_connection_never_replays():
         c.closed = True
         wait(lambda: any(u.problem for u in updates))
         assert c.turns == 2
-        with pytest.raises(CodexRpcError, match='Reload'):
+        with pytest.raises(CodexRpcError, match='Use Stop'):
             service.send(one, 'Retry')
         assert any(u.unsent == ('Unsent',) for u in updates)
     finally:
@@ -410,7 +410,7 @@ def test_live_connection_problem_requires_reopen_then_queue_dispatch_works():
         with pytest.raises(CodexRpcError):
             service.send(record, 'Not sent')
         assert not c.closed and not service.ready(record)
-        with pytest.raises(CodexRpcError, match='Reload'):
+        with pytest.raises(CodexRpcError, match='Use Stop'):
             service.send(record, 'No replay')
         executor.start = original_start
         service.reopen(record)
@@ -430,7 +430,7 @@ def test_recorded_problem_does_not_prevent_stopping_a_verified_active_turn():
     try:
         record = service.create('/workspace', 'Owned')
         service.send(record, 'First')
-        service._problems[record.cli_session_id] = 'Could not confirm this Codex turn. Reload the chat.'
+        service._problems[record.cli_session_id] = 'Could not confirm this Codex turn. Use Stop to recheck this chat.'
         assert not service.ready(record)
         service.stop(record)
         assert ('turn/interrupt', {'threadId': record.cli_session_id, 'turnId': 'turn-1'}) in c.calls
@@ -446,10 +446,10 @@ def test_new_problem_after_context_validation_blocks_direct_send_reservation():
         context = service._context
         def changed(record, **kwargs):
             result = context(record, **kwargs)
-            service._problems[record.cli_session_id] = 'Reload this chat.'
+            service._problems[record.cli_session_id] = 'Use Stop to recheck this chat.'
             return result
         service._context = changed
-        with pytest.raises(CodexRpcError, match='Reload'):
+        with pytest.raises(CodexRpcError, match='Use Stop'):
             service.send(record, 'Must not send')
         assert c.turns == 0
     finally:

@@ -351,7 +351,7 @@ class CodexTurnExecutor:
             self._break_connection()
             if type(error) is CodexConnectionFailure:
                 raise
-            raise CodexRpcError('Codex connection interrupted. Reload chats to check their replies.') from None
+            raise CodexRpcError('Codex connection interrupted. Use Stop in each chat to check its reply.') from None
         return frozenset(changed)
 
     def _break_connection(self):

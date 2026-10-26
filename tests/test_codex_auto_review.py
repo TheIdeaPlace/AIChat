@@ -414,10 +414,8 @@ def test_unrelated_problem_after_a_saved_change_rechecks_instead_of_resuming(tmp
         runtime._problems[native] = CodexRememberedApprovalError.REASONS['kept_uncertain']
         assert connection.owns_runtime(runtime._proofs[native])
         assert not runtime.ready(saved)
-        assert not runtime.policy_recovery_pending(saved)
-        restored = runtime.reopen(saved)
-        assert restored.provider_options == saved.provider_options
-        assert runtime.ready(restored)
+        assert runtime.recover(saved) == 'rechecked'
+        assert runtime.ready(saved)
         assert not runtime.snapshot(native).problem
         assert not any(method == 'thread/resume' for method, _ in connection.calls)
         assert connection.turns == int(has_history)
@@ -453,7 +451,79 @@ def test_failed_permission_check_says_to_use_stop_once(tmp_path, monkeypatch, fa
         problem = runtime.snapshot(record.cli_session_id).problem
         assert problem.endswith('Use Stop to recheck this chat before sending.')
         assert problem.count('Use Stop') == 1 and 'reload' not in problem.lower()
-        assert runtime.policy_recovery_pending(record)
+        monkeypatch.setattr(connection, 'request', request)
+        assert runtime.recover(record) == 'permissions'
+        assert runtime.ready(record)
+    finally:
+        runtime.close()
+
+
+def loaded_chat_with_problem(tmp_path):
+    from thechatplace.providers.codex_rpc import CodexRememberedApprovalError
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    record = runtime.create(str(tmp_path), 'Synthetic chat')
+    native = record.cli_session_id
+    runtime.send(record, 'Initial synthetic turn')
+    connection.events.append(decode_event('turn/completed', {
+        'threadId': native, 'turn': {'id': 'turn-1', 'status': 'completed'}}))
+    wait(lambda: runtime.snapshot(native).outcome == 'completed')
+    connection.saved_threads.add(native)
+    problem = CodexRememberedApprovalError.REASONS['kept_uncertain']
+    with runtime._lock:
+        runtime._problems[native] = problem
+    return connection, runtime, record, problem
+
+
+@pytest.mark.parametrize('failing', ['ephemeral-start', 'thread-read'])
+def test_failed_loaded_chat_recheck_keeps_the_problem_and_can_be_retried(tmp_path, monkeypatch, failing):
+    connection, runtime, record, problem = loaded_chat_with_problem(tmp_path)
+    native = record.cli_session_id
+    try:
+        request = connection.request
+
+        def fail(method, params):
+            if ((failing == 'ephemeral-start' and method == 'thread/start' and params.get('ephemeral'))
+                    or (failing == 'thread-read' and method == 'thread/read')):
+                raise CodexRpcError('Synthetic recheck failure')
+            return request(method, params)
+
+        monkeypatch.setattr(connection, 'request', fail)
+        with pytest.raises(CodexRpcError):
+            runtime.recover(record)
+        assert runtime.snapshot(native).problem == problem
+        assert not runtime.ready(record)
+        assert native not in runtime._reopening
+        monkeypatch.setattr(connection, 'request', request)
+        assert runtime.recover(record) == 'rechecked'
+        assert runtime.ready(record) and not runtime.snapshot(native).problem
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+        assert connection.turns == 1
+    finally:
+        runtime.close()
+
+
+def test_the_same_problem_set_again_during_a_recheck_is_not_cleared(tmp_path, monkeypatch):
+    # Problem text is not identity: a second, identical problem raised while
+    # the recheck runs must survive it (#385).
+    connection, runtime, record, problem = loaded_chat_with_problem(tmp_path)
+    native = record.cli_session_id
+    try:
+        request = connection.request
+
+        def again(method, params):
+            if method == 'thread/read':
+                with runtime._lock:
+                    runtime._problems[native] = problem
+            return request(method, params)
+
+        monkeypatch.setattr(connection, 'request', again)
+        with pytest.raises(CodexRpcError, match='changed while checking'):
+            runtime.recover(record)
+        assert runtime.snapshot(native).problem == problem
+        assert not runtime.ready(record)
+        assert native not in runtime._reopening
+        assert connection.turns == 1
     finally:
         runtime.close()
 
@@ -499,14 +569,15 @@ def test_failed_save_does_not_activate_automatic_review():
     runtime = CodexChatRuntime(factory=lambda exe: connection)
     try:
         record = runtime.create('/workspace', 'Chat')
-        assert not runtime.policy_recovery_pending(record)
         change = runtime.prepare_policy(record, 'read-only', 'on-request', 'auto_review')
         runtime.finish_policy(change, False)
         assert not runtime.ready(record)
-        assert runtime.policy_recovery_pending(record)
         assert 'Use Stop' in runtime.snapshot(record.cli_session_id).problem
         with pytest.raises(CodexRpcError):
             runtime.send(record, 'Must not send')
+        assert not any(m == 'turn/start' for m, p in connection.calls)
+        assert runtime.recover(record) == 'permissions'
+        assert runtime.ready(record)
         assert not any(m == 'turn/start' for m, p in connection.calls)
     finally:
         runtime.close()

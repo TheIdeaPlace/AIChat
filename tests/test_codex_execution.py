@@ -128,7 +128,7 @@ def test_disconnect_marks_every_active_turn_unknown_and_blocks_replay():
     executor = CodexTurnExecutor(c)
     a, b = executor.start(one, 'A'), executor.start(two, 'B')
     c.closed = True
-    with pytest.raises(CodexRpcError, match='Reload'):
+    with pytest.raises(CodexRpcError, match='Use Stop'):
         executor.drain()
     assert a.status == b.status == 'unknown'
     assert a.needs_reconciliation and b.needs_reconciliation

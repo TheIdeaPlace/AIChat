@@ -178,8 +178,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   permission, a question or a plan (Ctrl+Shift+A), which ends when you answer; or its last turn
   failed, or tools were refused in it, which is saved with the session and lasts, even across a
   restart, until its next turn starts. Codex chats say needs you for permissions or questions;
-  unavailable status means live state could not be verified. An uncertain send requires reopening
-  and checking history before sending again.
+  unavailable status means live state could not be verified. After an uncertain send, use Stop
+  (Ctrl+Period) to recheck the chat, and check its history before sending again.
 - **Messages:** newest last, with focus on the newest. Each row shows "You:" or the provider's name, such as "Claude:" or "Codex:", and its
   first line, but your screen reader reads the **whole message** as you arrow onto it, as words
   (headings and list items as sentences, and each code block as what it is: "Code block, Python, 14

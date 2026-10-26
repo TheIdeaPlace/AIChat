@@ -435,7 +435,7 @@ safely are declined with a notice without disconnecting the chat; Turn Status
 keeps the notice available. Turn Status (Ctrl+Shift+T)
 reports elapsed time and the latest activity. Your messages are read back
 according to the same announcement setting used for Claude chats. If a send
-cannot be confirmed, reopen the chat to read its history before sending again.
+cannot be confirmed, use Stop (Ctrl+Period) to recheck the chat, and read its history before sending again.
 
 
 Continue Here starts a Codex copy read-only. You can select folder editing for
