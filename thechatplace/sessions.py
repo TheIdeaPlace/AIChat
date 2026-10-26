@@ -19,6 +19,7 @@ so every field is read defensively and a file that will not parse is skipped.
 from __future__ import annotations
 
 import json
+import re
 import os
 import time
 from dataclasses import dataclass, field
@@ -525,7 +526,7 @@ def load_live_status(directory: Optional[Path] = None,
     """Map of session id (both the cli id and the desktop local_ id) -> status.
 
     A pid file whose process has exited is stale and ignored, and so is one
-    whose pid Windows has since given to another process (#5): its
+    whose pid the system has since given to another process (#5): its
     ``procStart`` doesn't match when the running process started.
     """
     directory = directory or platform_paths.live_sessions_dir()
@@ -576,11 +577,15 @@ def _same_process(recorded, actual: Optional[int], started_at=None) -> bool:
     clock, its ``startedAt``) is the running process's start. True when
     neither can be compared: then the pid is all there is to go on. A
     process that isn't yours can't be the Claude Code that wrote the file."""
+    ps_start = _ps_start_time(recorded)
     recorded, started_ms = _number(recorded), _number(started_at)
-    if (recorded is None and started_ms is None) or actual is None:
+    if (recorded is None and started_ms is None and ps_start is None) or actual is None:
         return True
     if actual == platform_paths.NOT_YOURS:
         return False
+    if ps_start is not None:
+        # Linux and the Mac: ps's start time, to the second.
+        return abs(ps_start - (actual / 10_000_000 - _FILETIME_EPOCH_MS / 1000)) < 2
     if recorded is not None and _FILETIME_FROM <= recorded <= _FILETIME_TO:
         # The same clock read twice can differ in the last digits: a second
         # apart is still the same process; a reused pid started long after.
@@ -592,6 +597,29 @@ def _same_process(recorded, actual: Optional[int], started_at=None) -> bool:
         return True
     actual_ms = actual // 10_000 - _FILETIME_EPOCH_MS
     return -_STARTED_AT_SLACK_MS < started_ms - actual_ms < _STARTED_AT_SLACK_MS
+
+
+_MONTHS = {name: number for number, name in enumerate(
+    ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 1)}
+
+
+def _ps_start_time(value) -> Optional[int]:
+    """A ``procStart`` written outside Windows, as Unix time, or None if it
+    isn't one. Claude Code writes ``LC_ALL=C TZ=UTC ps -o lstart= -p <pid>``
+    there: "Mon Oct 26 16:29:20 2026", in UTC (#230). Read by hand, since
+    strptime's month names follow the app's locale."""
+    import calendar
+
+    match = re.fullmatch(r"[A-Z][a-z]{2}\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+"
+                         r"(\d{1,2}):(\d{2}):(\d{2})\s+(\d{4})", str(value or "").strip())
+    if not match or match.group(1) not in _MONTHS:
+        return None
+    month, day, hour, minute, second, year = match.groups()
+    try:
+        return calendar.timegm((int(year), _MONTHS[month], int(day), int(hour), int(minute),
+                                int(second), 0, 0, 0))
+    except (ValueError, OverflowError):
+        return None
 
 
 def _number(value) -> Optional[int]:

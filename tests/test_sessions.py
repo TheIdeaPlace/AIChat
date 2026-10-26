@@ -311,6 +311,14 @@ def test_a_reused_pid_is_not_the_session(tmp_path):
                                 started=lambda pid: None)) == {"cli-1", "cli-2", "cli-3"}
 
 
+def test_ps_start_times_are_read_in_any_locale():
+    from thechatplace.sessions import _ps_start_time
+    assert _ps_start_time("Mon Oct 26 16:29:20 2026") == 1793032160
+    assert _ps_start_time("Tue Oct  6 01:02:03 2026") == 1791248523
+    for other in ("639192376598308390", "Mon Okt 26 16:29:20 2026", "", None, 5):
+        assert _ps_start_time(other) is None
+
+
 def test_process_start_matches_for_this_process():
     import os
     import sys

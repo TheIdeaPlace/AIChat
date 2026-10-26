@@ -516,10 +516,11 @@ NOT_YOURS = -1
 
 def process_start(pid: int) -> Optional[int]:
     """When a running process started, as a Windows FILETIME (100 ns since
-    1601): what Claude Code writes as ``procStart`` in its pid files.
-    ``NOT_YOURS`` when Windows won't say (access denied), or on Linux when
-    another user owns it; None when it can't be known (a Mac, no such
-    process)."""
+    1601): what Claude Code writes as ``procStart`` in its pid files on
+    Windows (on Linux it writes ``ps``'s start time, which
+    ``sessions._same_process`` compares with this). ``NOT_YOURS`` when
+    Windows won't say (access denied), or on Linux when another user owns
+    it; None when it can't be known (a Mac, no such process)."""
     if not isinstance(pid, int) or pid <= 0:
         return None
     if sys.platform.startswith("linux"):

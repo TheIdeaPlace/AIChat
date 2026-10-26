@@ -99,6 +99,42 @@ def test_a_process_start_is_on_claude_codes_clock(tmp_path):
     assert platform_paths._linux_process_start(43, str(tmp_path)) is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX owners")
+def test_a_linux_pid_file_is_matched_to_its_process(tmp_path):
+    """Claude Code 2.1.302 on Linux and the Mac writes procStart as
+    ``LC_ALL=C TZ=UTC ps -o lstart= -p <pid>``, not a FILETIME as on
+    Windows. A pid file shaped like one (made-up values) matches the process
+    that started that second, and not one that reused its pid later."""
+    import calendar
+    import json
+    from thechatplace.sessions import load_live_status
+
+    proc, sessions = tmp_path / "proc", tmp_path / "sessions"
+    sessions.mkdir()
+    ticks = os.sysconf("SC_CLK_TCK")
+    boot = calendar.timegm((2026, 10, 26, 9, 0, 0, 0, 0, 0))
+    (proc / "stat").parent.mkdir()
+    (proc / "stat").write_text(f"cpu 1\nbtime {boot}\n")
+
+    def process(pid, seconds_after_boot):
+        (proc / str(pid)).mkdir()
+        fields = ["S"] + ["0"] * 18 + [str(int(seconds_after_boot * ticks))] + ["0"] * 10
+        (proc / str(pid) / "stat").write_text(f"{pid} (claude) " + " ".join(fields) + "\n")
+
+    def pid_file(pid, session):
+        (sessions / f"{pid}.json").write_text(json.dumps({
+            "pid": pid, "sessionId": session, "status": "busy", "kind": "interactive",
+            "procStart": "Mon Oct 26 16:29:20 2026", "startedAt": (boot + 26960) * 1000 + 900}))
+    seven_hours_29_20 = 7 * 3600 + 29 * 60 + 20
+    process(100, seven_hours_29_20 + 0.4)  # the Claude Code that wrote it
+    process(200, seven_hours_29_20 + 12)   # its pid, reused 12 seconds later
+    pid_file(100, "cli-1")
+    pid_file(200, "cli-2")
+    live = load_live_status(sessions, alive=lambda pid: True,
+                            started=lambda pid: platform_paths._linux_process_start(pid, str(proc)))
+    assert set(live) == {"cli-1"}
+
+
 # -- a built copy's children get the system's libraries ------------------------------------
 
 def test_the_bundled_library_path_isnt_passed_on(monkeypatch):
