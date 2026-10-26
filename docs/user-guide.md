@@ -23,8 +23,12 @@ OpenAI products.
 You need:
 
 - Windows 10 or 11, or a Mac with Apple silicon.
-- For Codex chats: a native Codex CLI signed in to ChatGPT, with the preview enabled in Settings.
-  Claude Code is not required.
+- For Codex chats: a native Codex CLI signed in to ChatGPT. Codex chats are listed once Codex is
+  found; Settings, Include Codex chats turns them off or on. Claude Code is not required.
+- For GitHub Copilot CLI chats (a preview): the native GitHub Copilot CLI, signed in with
+  `copilot login` to a GitHub account that has Copilot, and **Include GitHub Copilot CLI chats**
+  turned on in Settings. On Windows, install it with `winget install GitHub.Copilot`; on a Mac,
+  with `brew install copilot-cli` or GitHub's install script. An npm install isn't used.
 - For Claude chats: Claude Code, installed with its native installer and signed in to your Claude subscription.
   This is the `claude` command, using the same sign-in as the Claude desktop app. The desktop
   app's own copy of Claude Code isn't meant for other programs, so the command is needed even if
@@ -1238,29 +1242,137 @@ which version you now have. **See what's new** (Alt+W) opens that version's rele
 browser; **Close** or Escape goes back to the app. To stop it appearing, clear "Tell me when an
 update has been installed, with a link to what's new" in Settings (Ctrl+Comma).
 
-## When something isn't right
+## Troubleshooting
+
+Problems are grouped under the headings below. Each starts with what you notice, then says what
+causes it and what to do.
+
+### Sessions and the list
 
 **I don't see a session I expected.** Check View, Show Sessions: you may be showing only some
 sessions, and archived and hidden sessions aren't in All. A Find (Ctrl+F) also narrows the list;
 Escape in the list clears it. F5 refreshes the list at once. Only supported local sessions are
 listed, not the desktop app's ordinary chats.
 
-**I can't reply to a session.** Externally started chats are read-only here. Reply in their
-originating app or terminal, or use Continue Here (Ctrl+Shift+N) when available. Ctrl+O opens
-supported Claude desktop sessions; it is not an Open in Codex command.
-
-**The provider is waiting and nothing is happening.** It may need you: press Ctrl+Shift+A. Ctrl+Shift+T
-says what the turn is doing.
-
-**A turn stopped with a usage limit.** The announcement says when the limit resets.
-Ctrl+Shift+U shows which limits are used, and how much of each.
-
 **An old session's messages are gone.** Claude Code deletes old conversations after a while (its
 `cleanupPeriodDays` setting). The session can still be listed, and the messages list says its
 conversation is no longer there.
 
+### Sending and replies
+
+**I can't reply to a session.** Externally started chats are read-only here. Reply in their
+originating app or terminal, or use Continue Here (Ctrl+Shift+N) when available. Ctrl+O opens
+supported Claude desktop sessions; it is not an Open in Codex command.
+
+**The provider is waiting and nothing is happening.** It may need you: press Ctrl+Shift+A.
+Ctrl+Shift+T says what the turn is doing.
+
+**A turn stopped with a usage limit.** The announcement says when the limit resets.
+Ctrl+Shift+U shows which limits are used, and how much of each.
+
+### Speech and announcements
+
+**I don't hear announcements.** Check Settings (Ctrl+Comma) first: Silent puts announcements on
+the status bar only, and Settings also chooses whether every listed session is announced or just
+the open one. Ctrl+Shift+R repeats the last announcement. On Windows, if your screen reader is
+running but The Chat Place can't reach it, the status bar gives the reason beside the
+announcement, a notification says announcements aren't being spoken (unless notifications are
+off in Settings), and Settings shows the reason in a Speech problem box after Speaking rate.
+
+Everything spoken is also written to `speech.log` (nothing is written while Silent is chosen), in `%TEMP%\thechatplace-speak` on Windows
+and `$TMPDIR/thechatplace-speak` on a Mac: one line each, with the time, the speech engine and
+the opening words. A line means the text was handed to the speech engine, not that it was
+heard. On Windows, with a screen reader setting, a `route:` line usually follows, saying which
+screen reader or voice spoke it, or why a running screen reader didn't.
+
 **A reply is spoken twice.** If you've installed ClaudeSpeak, its hook also speaks The Chat
 Place's turns.
+
+### Claude Code
+
+**Claude Code can't be found, or is "an older npm install".** The Chat Place uses only the
+native `claude` program. An old npm install of Claude Code runs as a script, and isn't used.
+Install Claude Code with its native installer (see Before you start), or choose Help, Claude
+Code Sign-in, which offers to install it.
+
+**I'm not sure Claude Code is signed in.** Choose Help, Claude Code Sign-in. It says whether
+Claude Code is signed in, and offers to sign you in if not. If it says Claude Code is too old to
+say, run `claude update` in a terminal, then try again.
+
+**A turn says Claude Code is too old for The Chat Place.** Claude Code doesn't know an option
+The Chat Place uses. Run `claude update` in a terminal, then send again.
+
+**A turn stopped because Claude Code would have used Fable.** Claude Code was about to answer
+with Fable, which the chat didn't choose: its default model, or a fallback from the model you
+chose. Some plans bill Fable to usage credits, so The Chat Place stops the turn, usually before
+your message is sent, and puts your message back in the message box. Choose another model with
+File, Change Model, then send again.
+
+**A turn stopped because Claude would have used an API key.** Claude Code was set up to use an
+API key instead of your subscription sign-in, so The Chat Place stopped the turn before anything
+was sent. Remove that key from the environment or settings that set it, then try again.
+
+### Codex
+
+**Codex chats don't appear.** They're listed once The Chat Place finds a native Codex CLI: the
+Codex app's copy, the copy in the ChatGPT app on a Mac, or a Codex CLI you installed. In
+Settings (Ctrl+Comma), check **Include Codex chats (restart required)** (Alt+X), save and
+restart. If Codex isn't found, that option says to install the Codex app or CLI, then restart.
+Existing chats are listed even when Codex isn't signed in; only starting chats, sending and
+usage need the sign-in.
+
+**I'm not sure Codex is signed in.** Choose Help, Codex Sign-in. It says whether Codex is signed
+in to ChatGPT and, if it isn't or uses another kind of credential, offers to open `codex login`
+in its own window. Codex chats here are sent only with your ChatGPT sign-in.
+
+**A Codex chat is read-only and can't edit its folder.** On Windows, Codex can edit a folder only
+after its Windows sandbox is set up: choose Set up Agent sandbox in the Codex app, or add
+`[windows]` and `sandbox = "unelevated"` to `~/.codex/config.toml` (see Local Codex chats).
+Codex also reports read-only when your Codex settings allow only read-only, such as
+requirements an administrator set. Nothing is sent; choose read-only, or set up the sandbox and
+try again.
+
+**A Codex chat says its connection was interrupted.** Press Stop (Ctrl+Period). The Chat Place
+checks Codex's saved turn and, once it has ended, reconnects and says so. No message is resent.
+If Codex hasn't confirmed that the turn stopped, press Stop again later. Selecting the chat
+again doesn't reconnect it.
+
+### GitHub Copilot CLI
+
+**Copilot chats aren't listed, or Copilot isn't offered in New Session.** Turn on
+**Include GitHub Copilot CLI chats (preview; restart required)** in Settings (Alt+O), save and
+restart. The option appears only once Copilot CLI is installed or has saved a session on this
+computer. If the option is on and Copilot still isn't offered in New Session, The Chat Place
+hasn't found a native Copilot CLI: install it as below. New Session checks again each time.
+
+**Starting a Copilot chat says to install GitHub Copilot CLI.** The Chat Place uses only the
+native Copilot CLI: on Windows from winget (`winget install GitHub.Copilot`), on a Mac from
+Homebrew (`brew install copilot-cli`), or from GitHub's install script. A copy installed with
+npm (`npm install -g @github/copilot`) is never used. Install the native one, then restart.
+
+**Copilot CLI in a terminal says the requested model is not supported.** This is in Copilot
+CLI itself, not The Chat Place. An old npm copy of Copilot CLI can come first on your PATH, so
+typing `copilot` in a terminal runs it instead of the native one.
+An old copy's default model may be one GitHub no longer accepts, so every request fails with
+"The requested model is not supported" or "Failed to get response from the AI model". Remove
+it with `npm uninstall -g @github/copilot`, then open a new terminal: `copilot --version` should
+report the newer version. The Chat Place's own Copilot chats never use the npm copy.
+
+**Copilot isn't signed in.** Run `copilot login` in a terminal, and sign in to a GitHub account
+that has Copilot; there's no Copilot item on the Help menu. Chats started here use that
+sign-in: The Chat Place starts Copilot without token variables such as `GH_TOKEN`,
+`GITHUB_TOKEN` and `COPILOT_GITHUB_TOKEN`, so a token set for the terminal isn't used.
+
+**A Copilot chat says this version of Copilot CLI isn't supported.** Your Copilot CLI doesn't
+work the way The Chat Place expects. Update Copilot CLI, then try again; if it still says so,
+report it (see Reporting a problem).
+
+**The Chat Place won't send to a Copilot chat.** The message says why. If it couldn't confirm an
+answer was billed to GitHub Copilot, open the chat again, or restart The Chat Place if it has
+stopped sending to Copilot altogether. The other reasons (a folder's Copilot hooks, a chat used
+in Copilot CLI since you opened it, a message starting with `/`) are in Starting a Copilot chat.
+
+### Reporting a problem
 
 **Something else.** Help, Report a Bug asks what happened and shows exactly what the report
 includes before it goes anywhere: version numbers and settings, never your sessions' titles,

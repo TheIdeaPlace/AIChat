@@ -30,3 +30,5 @@ shipped.
 - [TCP-owned remembered approvals](codex-remembered-approvals.md): consent authority, matching and revocation for #307.
 
 - [GitHub Copilot CLI probe](copilot-cli-probe.md): what Copilot CLI's JSON output, saved sessions and ACP permission requests look like, and how the app could use them (#352).
+
+- [User guide review](user-guide-review.md): agreed corrections and improvements to the user guide, and decisions for Kelly, from a Claude and Codex review against 0.2.0.
