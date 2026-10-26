@@ -387,6 +387,93 @@ def test_stream_failure_during_permission_save_cannot_use_policy_recovery(tmp_pa
         runtime.close()
 
 
+@pytest.mark.parametrize('has_history', [False, True])
+def test_unrelated_problem_after_a_saved_change_rechecks_instead_of_resuming(tmp_path, has_history):
+    # A loaded thread keeps the settings it was resumed with until a turn
+    # pins new ones, so thread/resume would report the old grant and Stop
+    # would wrongly say automatic review is unavailable (#385 review). An
+    # uncertain remembered approval latches a problem without closing the
+    # connection, so the chat is still loaded and owned here.
+    from thechatplace.providers.codex_rpc import CodexRememberedApprovalError
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat')
+        native = record.cli_session_id
+        if has_history:
+            runtime.send(record, 'Initial synthetic turn')
+            connection.events.append(decode_event('turn/completed', {
+                'threadId': native, 'turn': {'id': 'turn-1', 'status': 'completed'}}))
+            wait(lambda: runtime.snapshot(native).outcome == 'completed')
+            connection.saved_threads.add(native)
+        change = runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        saved = change.record()
+        runtime.finish_policy(change, True)
+        assert runtime.ready(saved)
+        assert connection.policies[native].reviewer == 'user'  # Not yet pinned by a turn
+        runtime._problems[native] = CodexRememberedApprovalError.REASONS['kept_uncertain']
+        assert connection.owns_runtime(runtime._proofs[native])
+        assert not runtime.ready(saved)
+        assert not runtime.policy_recovery_pending(saved)
+        restored = runtime.reopen(saved)
+        assert restored.provider_options == saved.provider_options
+        assert runtime.ready(restored)
+        assert not runtime.snapshot(native).problem
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+        assert connection.turns == int(has_history)
+        # A mismatched saved grant is refused, never resumed with overrides.
+        runtime._problems[native] = 'Synthetic unrelated problem'
+        with pytest.raises(CodexRpcError, match='no longer match'):
+            runtime.reopen(record)
+        assert not runtime.ready(saved)
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('failure', ['reviewer', 'private'])
+def test_failed_permission_check_says_to_use_stop_once(tmp_path, monkeypatch, failure):
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat')
+        request = connection.request
+
+        def refuse(method, params):
+            if method == 'thread/start' and params.get('ephemeral'):
+                if failure == 'private':
+                    raise ValueError('private backend detail')
+                result = request(method, params)
+                result['approvalsReviewer'] = 'user'
+                return result
+            return request(method, params)
+
+        monkeypatch.setattr(connection, 'request', refuse)
+        with pytest.raises((CodexRpcError, ValueError)):
+            runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        problem = runtime.snapshot(record.cli_session_id).problem
+        assert problem.endswith('Use Stop to recheck this chat before sending.')
+        assert problem.count('Use Stop') == 1 and 'reload' not in problem.lower()
+        assert runtime.policy_recovery_pending(record)
+    finally:
+        runtime.close()
+
+
+def test_unrelated_problem_on_an_owned_chat_with_work_is_refused(tmp_path):
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic chat')
+        native = record.cli_session_id
+        runtime.send(record, 'Initial synthetic turn')
+        runtime._problems[native] = 'Synthetic unrelated problem'
+        with pytest.raises(CodexRpcError, match='work in progress'):
+            runtime.reopen(record)
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+        assert connection.turns == 1
+    finally:
+        runtime.close()
+
+
 def test_policy_change_waits_for_storage_and_does_not_affect_other_chats():
     connection = AutoConnection()
     runtime = CodexChatRuntime(factory=lambda exe: connection)
@@ -412,9 +499,12 @@ def test_failed_save_does_not_activate_automatic_review():
     runtime = CodexChatRuntime(factory=lambda exe: connection)
     try:
         record = runtime.create('/workspace', 'Chat')
+        assert not runtime.policy_recovery_pending(record)
         change = runtime.prepare_policy(record, 'read-only', 'on-request', 'auto_review')
         runtime.finish_policy(change, False)
         assert not runtime.ready(record)
+        assert runtime.policy_recovery_pending(record)
+        assert 'Use Stop' in runtime.snapshot(record.cli_session_id).problem
         with pytest.raises(CodexRpcError):
             runtime.send(record, 'Must not send')
         assert not any(m == 'turn/start' for m, p in connection.calls)

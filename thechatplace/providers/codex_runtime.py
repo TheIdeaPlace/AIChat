@@ -14,6 +14,8 @@ from ..codex_diagnostics import record_failure, safe_reason
 from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE
 from ..own_store import OwnSession
 
+STOP_TO_RECHECK = 'Use Stop to recheck this chat before sending.'
+
 
 @dataclass(frozen=True)
 class CodexChatState:
@@ -161,23 +163,30 @@ class CodexChatRuntime:
         with self._lock:
             proof = self._proofs.get(record.cli_session_id)
             recovery = self._policy_recovery(record.cli_session_id, proof)
+            # A thread still loaded here keeps the settings it was resumed
+            # with until a turn pins new ones, so thread/resume would report
+            # a grant changed since then as the old one. A chat with a
+            # problem (Stop's recovery) is rechecked in place instead,
+            # whether or not that problem came from a permission change.
+            problem = self._problems.get(record.cli_session_id)
+            loaded = bool(problem) and proof is not None and proof.connection.owns_runtime(proof)
             state = self._executor.snapshot(proof) if proof is not None and self._executor is not None else None
             if (record.cli_session_id in self._reopening
                     or record.cli_session_id in self._sending or record.cli_session_id in self._stopping
                     or (state is not None and state.status == 'inProgress')
-                    or (recovery and (state is None or state.status not in ('idle', 'completed', 'failed', 'interrupted')
-                                      or record.cli_session_id in self._pending_dispatch
-                                      or self._queues.get(record.cli_session_id)))):
+                    or (loaded and (state is None or state.status not in ('idle', 'completed', 'failed', 'interrupted')
+                                    or record.cli_session_id in self._pending_dispatch
+                                    or self._queues.get(record.cli_session_id)))):
                 raise CodexRpcError('This Codex chat already has work in progress')
             empty = record.cli_session_id in self._new_threads and state is not None and not state.turn_id
-            problem = self._problems.get(record.cli_session_id)
-            saved_record = self._policy_recoveries[record.cli_session_id][2] if recovery else None
+            saved_record = (self._policy_recoveries[record.cli_session_id][2] if recovery
+                            else proof.record() if loaded else None)
             self._reopening.add(record.cli_session_id)
             unsent = tuple(self._queues.pop(record.cli_session_id, ()))
         try:
             connection, executor = self._binding()
             lifecycle = CodexOwnedThreads(connection)
-            if recovery and connection.owns_runtime(proof):
+            if loaded and connection.owns_runtime(proof):
                 # Reverify the saved grant without resuming an empty
                 # rollout or relying on ignored loaded-thread overrides.
                 self._require_saved_policy(record, saved_record)
@@ -207,6 +216,13 @@ class CodexChatRuntime:
                 and recovery[1] == self._problems.get(native_id)
                 and proof.connection.owns_runtime(proof))
 
+    def policy_recovery_pending(self, record):
+        """Whether reopening this chat would recheck its saved permissions
+        after a failed change, so Stop can say so (#385)."""
+        with self._lock:
+            proof = self._proofs.get(record.cli_session_id)
+            return proof is not None and self._policy_recovery(record.cli_session_id, proof)
+
     @staticmethod
     def _require_saved_policy(record, saved):
         if (not isinstance(record, OwnSession) or record.provider != 'codex' or record.started is not True
@@ -235,7 +251,7 @@ class CodexChatRuntime:
                     or (state is not None and state.status not in ('idle', 'completed', 'failed', 'interrupted'))):
                 raise CodexRpcError('Wait until this Codex chat has no work in progress')
             if problem and proof is not None and proof.connection.owns_runtime(proof) and not self._policy_recovery(native_id, proof):
-                raise CodexRpcError('Reload this Codex chat to verify its connection and turn status')
+                raise CodexRpcError('Use Stop to recheck this Codex chat\'s connection and turn status first.')
             saved_record = replace(record, provider_options=dict(record.provider_options))
             expected = self._policy_recoveries[native_id][2] if self._policy_recovery(native_id, proof) else (
                 proof.record() if proof is not None and proof.connection.owns_runtime(proof) else saved_record)
@@ -291,12 +307,13 @@ class CodexChatRuntime:
         except Exception as error:
             with self._lock:
                 self._reopening.discard(native_id)
-                reason = safe_reason(error)
-                if isinstance(error, CodexTurnRejected) and error.code == 'sandbox_unavailable':
-                    # The chat exists here, unlike New Session, so say how to clear the latch (#257).
-                    reason += ' Use Stop to recheck this chat before sending.'
                 if self._problems.get(native_id) == problem:
-                    reason = reason or 'Could not verify changed permissions. Use Stop to recheck this chat before sending.'
+                    # The chat exists here, unlike New Session, so say how to
+                    # clear the latch (#257): Stop rechecks the saved grant,
+                    # or resumes a chat that is not loaded here.
+                    reason = safe_reason(error) or 'Could not verify changed permissions.'
+                    if STOP_TO_RECHECK not in reason:
+                        reason += ' ' + STOP_TO_RECHECK
                     self._problems[native_id] = reason
                     if proof is not None and self._proofs.get(native_id) is proof and proof.connection.owns_runtime(proof):
                         self._policy_recoveries[native_id] = (proof, reason, saved_record)
@@ -320,7 +337,7 @@ class CodexChatRuntime:
                 self._problems.pop(native_id, None)
                 self._policy_recoveries.pop(native_id, None)
             elif self._problems.get(native_id) == change.problem:
-                reason = 'Changed permissions were not saved or verified. Use Stop to recheck this chat before sending.'
+                reason = 'Changed permissions were not saved or verified. ' + STOP_TO_RECHECK
                 self._problems[native_id] = reason
                 if verified and self._proofs.get(native_id) is change.previous:
                     self._policy_recoveries[native_id] = (change.previous, reason, change.saved_record)

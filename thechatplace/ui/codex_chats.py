@@ -185,7 +185,8 @@ class CodexChats:
         def prepared(change, error):
             if error:
                 self._codex_policy_pending.discard(info.key)
-                self._feedback(change or 'Could not change Codex permissions. Wait for an idle chat or reload to check its status.')
+                self._feedback(change or 'Could not change Codex permissions. Wait for an idle chat, or use Stop '
+                               f'({key_name("Ctrl+Period")}) to check its status.')
                 after()
                 return
             proposed = change.record()
@@ -234,6 +235,9 @@ class CodexChats:
                     # A saved folder-editing chat reopened read-only: reloading
                     # it after fixing the sandbox prepares it again (#257).
                     _result += ' Reload this chat to try again.'
+                elif isinstance(_result, str) and _result.startswith(CodexTurnRejected.REASONS['auto_review_unavailable']):
+                    # Stop retries opening it, without sending anything.
+                    _result += f' Then use Stop ({key_name("Ctrl+Period")}) to open this chat again.'
                 name = provider_name(provider)
                 self._feedback(relayed + (_result or f'Could not prepare this {name} chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in {name} before restarting The Chat Place.'))
             self._update_send_state()
@@ -302,7 +306,9 @@ class CodexChats:
                 self._restore_codex_text(info.key, waiting)
             back = (f' {len(waiting)} waiting {"message is" if len(waiting) == 1 else "messages are"} '
                     'back in the message box, unsent.') if waiting else ''
-            if reconnected:
+            if reconnected == 'permissions':
+                text = f'Saved {name} permissions rechecked. You can send again. No message was sent.'
+            elif reconnected:
                 text = f'{name} chat reconnected after verifying its previous turn ended. No message was resent.'
             elif checking and waiting:
                 text = f'{name} has already answered.'
@@ -314,20 +320,25 @@ class CodexChats:
                         f'{CANCEL_GRACE_SECONDS:g} seconds, The Chat Place closes it.')
             self._feedback(text + back)
             self._update_send_state()
+        def recover():
+            # Stop is explicit intent to recover, unlike selecting a chat.
+            # Reopen checks both local reservations and native turn history
+            # before resuming, and never resends an uncertain message. A
+            # pending permission recheck is announced as one (#385).
+            rechecked = (record.provider == 'codex'
+                         and self.sessions.owned_action('policy_recovery', record))
+            self.sessions.owned_action('reopen', record)
+            return ('permissions' if rechecked else 'reconnected'), ()
         def stop_or_recover():
             try:
                 waiting = self.sessions.owned_action('stop', record)
-                if recover_idle and not self.sessions.owned_action('ready', record):
-                    self.sessions.owned_action('reopen', record)
-                    return True, ()
-                return False, (tuple(waiting) if record.provider != 'codex' and isinstance(waiting, tuple)
-                               else ())
             except CodexRpcError:
-                # Stop is explicit intent to recover, unlike selecting a chat.
-                # Reopen checks both local reservations and native turn history
-                # before resuming, and never resends an uncertain message.
-                self.sessions.owned_action('reopen', record)
-                return True, ()
+                return recover()
+            # Outside the try: a failed recheck must not run a second time.
+            if recover_idle and not self.sessions.owned_action('ready', record):
+                return recover()
+            return False, (tuple(waiting) if record.provider != 'codex' and isinstance(waiting, tuple)
+                           else ())
         self._codex_work(stop_or_recover, done)
 
     def _usage_check_slot(self, provider):

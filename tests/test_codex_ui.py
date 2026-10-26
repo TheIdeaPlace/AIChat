@@ -236,8 +236,48 @@ def test_stop_explicitly_recovers_disconnected_chat_without_sending():
     action, done = w.work[-1]
     result = action()
     done(result, False)
-    assert calls == ['stop', 'reopen']
+    assert calls == ['stop', 'policy_recovery', 'reopen']
     assert 'No message was resent' in w.said[-1]
+
+
+def idle_stop_window(recovery, reopen_error=None):
+    w = Window()
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'idle', 'turn', 'completed',
+                                                    problem='Synthetic problem')
+    calls = []
+    def action(name, record):
+        calls.append(name)
+        if name == 'stop':
+            return ()
+        if name == 'ready':
+            return False
+        if name == 'policy_recovery':
+            return recovery
+        if name == 'reopen' and reopen_error is not None:
+            raise reopen_error
+    w.sessions.owned_action = action
+    w._stop_codex_owned(w._open)
+    return w, calls
+
+
+@pytest.mark.parametrize('recovery', [False, True])
+def test_stop_says_whether_it_rechecked_saved_permissions(recovery):
+    w, calls = idle_stop_window(recovery)
+    action, done = w.work[-1]
+    done(action(), False)
+    assert calls == ['stop', 'ready', 'policy_recovery', 'reopen']
+    if recovery:
+        assert w.said[-1] == 'Saved Codex permissions rechecked. You can send again. No message was sent.'
+    else:
+        assert 'reconnected' in w.said[-1] and 'No message was resent' in w.said[-1]
+
+
+def test_failed_idle_recheck_runs_only_once():
+    from thechatplace.providers.codex_rpc import CodexRpcError
+    w, calls = idle_stop_window(True, CodexRpcError('Synthetic recheck failure'))
+    with pytest.raises(CodexRpcError):
+        w.work[-1][0]()
+    assert calls.count('reopen') == 1
 
 
 def test_stop_never_reports_recovery_when_native_state_is_unfinished():
@@ -248,12 +288,14 @@ def test_stop_never_reports_recovery_when_native_state_is_unfinished():
         calls.append(name)
         if name == 'stop':
             raise CodexRpcError('Disconnected')
+        if name == 'policy_recovery':
+            return False
         raise CodexTurnRejected('not_idle')
     w.sessions.owned_action = action
     w._stop_codex_owned(w._open)
     with pytest.raises(CodexTurnRejected):
         w.work[-1][0]()
-    assert calls == ['stop', 'reopen'] and not w.said
+    assert calls == ['stop', 'policy_recovery', 'reopen'] and not w.said
 
 
 def test_declined_request_notice_is_spoken_once_without_interrupting_or_failing_turn():

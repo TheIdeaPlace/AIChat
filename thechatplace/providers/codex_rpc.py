@@ -66,8 +66,7 @@ class CodexTurnRejected(CodexRpcError):
     """The inference request was never queued; fixed reasons are safe to report."""
     REASONS = {
         'auto_review_unavailable': ('Codex could not confirm automatic approval review. This Codex version or managed policy '
-                                  'may not allow it. No message was sent. Update Codex or choose human review; '
-                                  'reload an existing chat before sending again.'),
+                                  'may not allow it. No message was sent. Update Codex or choose human review.'),
         'chatgpt_required': 'Codex turns require ChatGPT sign-in.',
         'not_idle': 'This Codex chat is not confirmed idle. No new turn was sent.',
         'preflight_failed': 'Codex could not verify this chat before sending. No new turn was sent.',
