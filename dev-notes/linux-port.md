@@ -109,6 +109,27 @@ An AppImage doesn't install anything, so the app writes its own desktop entry
 `thechatplace://` handler. Its `Exec` is quoted only when the path needs it: `xdg-open` with no
 desktop to ask (a bare window manager) can't start a quoted program, though GIO can.
 
+## Claude Code's pid files
+
+Claude Code 2.1.302 writes `procStart` as a Windows FILETIME only on Windows (newer versions as
+`procStartFt`). On Linux and the Mac it's `LC_ALL=C TZ=UTC ps -o lstart= -p <pid>`, such as
+"Mon Oct 26 16:29:20 2026" (read from its bundled code; the Mac's pid files agree).
+`sessions._same_process` reads that by hand (strptime's month names follow the locale) and
+matches it to the second against the start `/proc` gives (`_linux_process_start`).
+
+## Codex and Copilot CLI
+
+`platform_paths` looks for both where Linux installs them: `~/.local/bin`, `/usr/local/bin`,
+Homebrew's prefix, and for Codex npm's global folders (nvm's too), where its native program is
+under `vendor/<cpu>-unknown-linux-musl/`. `/media`, `/run/media`, a user's folder in either, and
+`/mnt` aren't accepted as a Codex workspace, like a Mac's `/Volumes`.
+
+Not yet known: whether Codex's own sandbox lets it write in the project folder on a Linux
+desktop. Codex 0.164 runs commands under bubblewrap (`codex sandbox -P :workspace -C <folder>
+-- touch x` tries it without a sign-in). In Docker, bubblewrap can't make its network
+namespace, so it needs a real desktop. Ubuntu 24.04 and later restrict unprivileged user
+namespaces through AppArmor, which may stop bubblewrap there.
+
 ## Smaller things
 
 - `wx.GetActiveWindow()` on GTK returns the focused control, not its window, so "a dialog of
