@@ -40,7 +40,7 @@ class CodexRememberedApprovalError(CodexRpcError):
 
 
 #: Said after any lost connection: Stop checks the chat's turn and reconnects (#390).
-STOP_TO_RECONNECT = "Use Stop to check this chat's reply and reconnect."
+STOP_TO_RECONNECT = "Use Stop to reconnect."
 
 
 class CodexConnectionFailure(CodexRpcError):
