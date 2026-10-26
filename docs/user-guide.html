@@ -34,7 +34,7 @@ Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guid
 <p>The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
 Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products.</p>
-<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
+<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstalling">Uninstalling</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
 <p>You need:</p>
 <ul>
 <li>Windows 10 or 11, or a Mac with Apple silicon.</li>
@@ -1495,6 +1495,36 @@ either way. The status bar's update button does the same.</p>
 which version you now have. <strong>See what's new</strong> (Alt+W) opens that version's release notes in your
 browser; <strong>Close</strong> or Escape goes back to the app. To stop it appearing, clear "Tell me when an
 update has been installed, with a link to what's new" in Settings (Ctrl+Comma).</p>
+<h2 id="uninstalling">Uninstalling</h2>
+<p>Quit The Chat Place first.</p>
+<p><strong>Windows, installed copy:</strong> open Settings, Apps, Installed apps, choose The Chat Place, then
+Uninstall. That removes the program, in <code>%LOCALAPPDATA%\TheChatPlace</code>, and its Start menu entry,
+and takes away the <code>thechatplace://</code> links it set up for your Windows account (see "Links to
+chats").</p>
+<p><strong>Windows, portable copy:</strong> delete the folder you unzipped it into. The portable copy never sets
+up links, so there's nothing else to undo.</p>
+<p><strong>Mac:</strong> drag The Chat Place from Applications (or wherever you keep it) to the Trash. Its
+<code>thechatplace://</code> links are declared inside the app itself.</p>
+<p><strong>What's left behind.</strong> Uninstalling keeps your settings and records, in case you install The
+Chat Place again. To remove them too, delete these folders:</p>
+<ul>
+<li>The Chat Place's own folder: <code>%APPDATA%\TheChatPlace</code> on Windows,
+  <code>~/Library/Application Support/TheChatPlace</code> on a Mac. It holds its records of the chats started
+  here, your settings, groups, names, hidden chats, saved prompts, pasted pictures and its logs.</li>
+<li>On Windows, the formatted page's WebView2 profile, <code>%LOCALAPPDATA%\TheChatPlace WebView2</code>.</li>
+<li>Its speech folder: <code>%TEMP%\thechatplace-speak</code> on Windows, <code>$TMPDIR/thechatplace-speak</code> on a
+  Mac.</li>
+</ul>
+<p><strong>What it never removes</strong>, because none of it belongs to The Chat Place:</p>
+<ul>
+<li>Your Claude, Codex and GitHub Copilot CLI chats and settings, including the conversations of
+  chats you started here. Claude Code keeps them in the <code>.claude</code> folder in your home folder,
+  Codex in <code>.codex</code>, and Copilot CLI in <code>.copilot</code>. Claude Code, Codex and Copilot CLI themselves
+  stay installed, and so does the Claude desktop app.</li>
+<li>Exports you saved, repositories cloned with From GitHub, and worktrees made with A new
+  worktree (in the repository's <code>.claude/worktrees</code> folder). Delete them yourself if you no longer
+  want them.</li>
+</ul>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <p>Problems are grouped under the headings below. Each starts with what you notice, then says what
 causes it and what to do.</p>
