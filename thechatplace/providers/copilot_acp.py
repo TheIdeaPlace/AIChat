@@ -114,9 +114,12 @@ class AcpConnection:
                 self.close()
                 return
 
-    def request(self, method: str, params: dict, timeout: Optional[float] = REQUEST_SECONDS):
+    def request(self, method: str, params: dict, timeout: Optional[float] = REQUEST_SECONDS,
+                on_queued: Optional[Callable[[], None]] = None):
         """Send a request and wait for its result (None waits until it comes
-        or Copilot exits). Raises AcpError on an error reply or a timeout."""
+        or Copilot exits). Raises AcpError on an error reply or a timeout.
+        ``on_queued`` is called once the request is queued to be written,
+        before the wait: whatever is sent after that reaches Copilot after it."""
         done = threading.Event()
         with self._lock:
             if self._closed:
@@ -129,6 +132,8 @@ class AcpConnection:
             self._pending[request_id] = slot
         try:
             self._write({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
+            if on_queued is not None:
+                on_queued()
             if not done.wait(timeout):
                 # Only this request gives up: other chats' turns share the
                 # process. Its id is never reused, so a late answer is ignored.

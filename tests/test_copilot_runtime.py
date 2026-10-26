@@ -186,25 +186,27 @@ def test_stop_after_copilot_closes_mid_turn_cancels_nothing(make, tmp_path):
     assert not [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
 
 
-def test_stop_doesnt_warn_of_a_close_when_copilot_answers_during_the_cancel(make, tmp_path):
-    """Kelly's review of #386: Copilot answers while the cancel goes out, so
-    no timer is kept. Stop mustn't report a cancel, or the window would warn
-    that Copilot will be closed in 15 seconds when nothing will close it."""
-    runtime, _ = make("hang")
+def test_stop_doesnt_warn_of_a_close_when_copilot_answers_before_the_cancel(make, tmp_path):
+    """Kelly's review of #386: Copilot answers after Stop read the turn, but
+    before its cancel was queued. No cancel is sent and no timer kept, so
+    Stop mustn't report one: the window would warn that Copilot will be
+    closed in 15 seconds when nothing will close it. (Staged while Stop
+    answers a waiting permission request, which it does in between.)"""
+    runtime, _ = make("ask")
     chat = runtime.create(str(tmp_path))
-    runtime.send(chat, "Long job")
-    assert wait(lambda: runtime.snapshot(chat).replies)
+    runtime.send(chat, "Run it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
     connection = runtime._connection
-    real_notify = connection.notify
+    real_respond = connection.respond
 
-    def answered_meanwhile(method, params):
-        if method == "session/cancel":
-            with runtime._lock:
-                runtime._chats[chat].answered = True
-        return real_notify(method, params)
-    connection.notify = answered_meanwhile
+    def answered_meanwhile(request_id, result):
+        with runtime._lock:
+            runtime._chats[chat].answered = True
+        return real_respond(request_id, result)
+    connection.respond = answered_meanwhile
     assert runtime.stop(chat) == Stopped((), cancelled=False, answered=True)
     assert runtime._chats[chat].cancel_timer is None
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
 
 
 def test_stop_cancels_and_gives_back_waiting_messages_unsent(make, tmp_path):
@@ -569,6 +571,40 @@ def test_a_stop_copilot_ignores_ends_the_turn_by_closing_it(tmp_path):
         assert wait(lambda: runtime.snapshot(chat).outcome not in ("", "inProgress"))
         assert "didn't stop when asked" in runtime.snapshot(chat).notice
         assert not runtime.ready(chat)
+    finally:
+        runtime.close()
+
+
+def test_a_stop_as_the_prompt_goes_out_reaches_copilot_after_it(tmp_path):
+    """Kelly's review of #372: a Stop after the turn checked for one, but
+    before its prompt was written, sent the cancel first. Copilot ignores a
+    cancel with no prompt running, answered in full, and the timer then
+    closed it. The cancel now always follows the prompt."""
+    log = tmp_path / "received.jsonl"
+    env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
+               FAKE_COPILOT_LOG=str(log))
+    runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("strict", env),
+                                 sessions_dir=tmp_path / "sessions", billing_wait=0.5,
+                                 cancel_grace=0.5)
+    try:
+        chat = runtime.create(str(tmp_path))
+        connection = runtime._connection
+        real_request = connection.request
+        stops = []
+
+        def stop_first(method, params, *args, **kwargs):
+            if method == "session/prompt":
+                stops.append(runtime.stop(chat))  # after the turn's check, before the write
+            return real_request(method, params, *args, **kwargs)
+        connection.request = stop_first
+        runtime.send(chat, "Long job")
+        assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+        assert stops == [Stopped((), cancelled=True)]  # its cancel follows the prompt
+        order = [m["method"] for m in received(tmp_path)
+                 if m.get("method") in ("session/prompt", "session/cancel")]
+        assert order == ["session/prompt", "session/cancel"]
+        time.sleep(1.0)  # past the grace: Copilot stopped, so it isn't closed
+        assert runtime.ready(chat) and "didn't stop" not in runtime.snapshot(chat).notice
     finally:
         runtime.close()
 
@@ -1427,22 +1463,16 @@ def test_a_lock_that_goes_while_looking_is_skipped_and_one_unreadable_counts(tmp
 
 
 def test_no_cancel_timer_is_left_when_copilot_answers_during_stop(make, tmp_path):
-    """Copilot can answer while the cancel goes out: no timer is kept for a
-    turn that has ended (it made a test flaky)."""
+    """No timer is left for a turn that has ended (it made a test flaky).
+    The timer is kept in the same locked step that queues the cancel, so
+    Copilot's answer to the cancel always finds it, and clears it."""
     runtime, _ = make("hang")
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "Long job")
     assert wait(lambda: runtime.snapshot(chat).replies)
-    connection = runtime._connection
-    real = connection.notify
-
-    def answered_meanwhile(method, params):
-        real(method, params)
-        runtime._chats[chat].answered = True
-    connection.notify = answered_meanwhile
-    runtime.stop(chat)
-    assert runtime._chats[chat].cancel_timer is None
+    assert runtime.stop(chat).cancelled
     assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+    assert runtime._chats[chat].cancel_timer is None
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="the Windows process list")
