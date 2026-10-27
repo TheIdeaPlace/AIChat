@@ -13141,3 +13141,32 @@ def test_a_steer_already_in_the_history_goes_when_its_news_comes(frame, env, fak
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "steer_taken", text="Also update the README", data={"late": False}))
     assert frame._steered == {}
+
+
+def test_a_codex_steer_accepted_then_stopped_comes_back_if_the_history_lacks_it(frame, env):
+    # Codex can accept a steer and be interrupted before using it (#410).
+    import dataclasses
+    from thechatplace.transcript import USER, ChatMessage
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._open = info
+    frame._chat_loaded = True
+    frame._restore_codex_text = lambda key, texts: restored.extend(texts)
+    restored = []
+    frame._steer_row(info.key, "Also the docs", "waiting for Codex")
+    frame._steer_status(info.key, "Also the docs", "accepted by Codex")
+    frame._refresh_chat = lambda: None
+    frame._steers_turn_over(info.key)
+    assert not frame._drop_steers_in_history()  # no history read since: it stays
+    frame._history_reads += 1  # read after the turn ended, and it isn't there
+    assert frame._drop_steers_in_history()
+    assert restored == ["Also the docs"] and info.key not in frame._steered
+    assert "back in the reply box" in env["feedback"][-1]
+    # Had the history had it, it would simply go.
+    frame._steer_row(info.key, "And the tests", "accepted by Codex")
+    frame._steers_turn_over(info.key)
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "And the tests")]
+    frame._history_reads += 1
+    assert frame._drop_steers_in_history()
+    assert restored == ["Also the docs"]

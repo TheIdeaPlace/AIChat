@@ -54,6 +54,8 @@ class Window(CodexChats):
         self.steer_rows = getattr(self, 'steer_rows', []) + [(text, where)]
     def _steer_status(self, key, text, where):
         self.steer_rows = getattr(self, 'steer_rows', []) + [(text, where)]
+    def _steers_turn_over(self, key):
+        self.turn_over = getattr(self, 'turn_over', []) + [key]
     def _codex_work(self, action, done):
         self.work.append((action, done))
     def _feedback(self, text):
@@ -811,12 +813,13 @@ def test_a_steered_message_shows_until_its_fate_is_known(outcome):
     assert w.steer_rows[-1] == ('Also the docs', expected)
 
 
-def test_a_steer_accepted_after_the_turn_ended_leaves_no_row():
-    # Stop before Codex answered: it may never be used, so nothing would
-    # ever take an "accepted" row away.
+def test_a_steer_accepted_after_the_turn_ended_waits_for_the_history():
+    # Stop before Codex answered: it may never be used, so the next history
+    # read decides whether it shows there or comes back to the reply box.
     w = Window()
     w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn')
     w._codex_states['codex:owned'] = CodexChatState('owned', 'idle', 'turn', 'interrupted')
     w._steer_codex_owned(w.record, 'Also the docs')
     _run_work(w)
-    assert w.steer_rows[-1] == ('Also the docs', None)
+    assert w.steer_rows[-1] == ('Also the docs', 'accepted by Codex')
+    assert w.turn_over == ['codex:owned']

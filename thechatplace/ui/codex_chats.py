@@ -318,12 +318,12 @@ class CodexChats:
         def done(refused, error):
             # Accepted, it stays until the chat's history has it; otherwise
             # it's back with you, in the reply box or the queue.
-            # Accepted after the turn ended (Stop, say) may never be used:
-            # nothing would take the row away, so it goes too.
+            self._steer_status(key, text, None if error or refused else f'accepted by {name}')
             state = self._codex_states.get(key)
-            running = state is not None and state.outcome == 'inProgress'
-            self._steer_status(key, text, f'accepted by {name}'
-                               if not (error or refused) and running else None)
+            if not (error or refused) and (state is None or state.outcome != 'inProgress'):
+                # Accepted after the turn ended (Stop, say): it may never be
+                # used, so the history read next decides where it goes.
+                self._steers_turn_over(key)
             if error:
                 # Not known whether it arrived: back in the box, never resent.
                 if index is None:
@@ -490,13 +490,10 @@ class CodexChats:
             return
         previous = self._codex_states.get(key)
         self._codex_states[key] = state
-        steered = getattr(self, '_steered', {}).get(key)
-        if steered and state.outcome != 'inProgress':
-            # The turn is over: its history shows what it took in (#239).
-            # One Codex hasn't answered about yet stays until it does.
-            steered[:] = [e for e in steered if e[1] == f'waiting for {name}']
-            if not steered:
-                self._steered.pop(key, None)
+        if getattr(self, '_steered', {}).get(key) and state.outcome != 'inProgress':
+            # The turn is over. An accepted steer may not have been used
+            # (Stop): it stays until the history is read again (#410).
+            self._steers_turn_over(key)
         unsent = state.unsent
         if unsent:
             # An agent conversation's own message goes back to it (#248).

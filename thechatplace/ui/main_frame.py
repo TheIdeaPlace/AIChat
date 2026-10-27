@@ -321,9 +321,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._queued: Dict[str, List[str]] = {}
         #: Steered messages not yet in the chat's own history (#238, #239),
         #: by the key its queue uses: [text, where it is, how many of your
-        #: messages had that text when it was steered]. Shown as rows after
-        #: the messages until the history has one more.
+        #: messages had that text when it was steered, and once its turn is
+        #: over, the history read it ended at (else None)]. Shown as rows
+        #: after the messages until the history has one more.
         self._steered: Dict[str, List[list]] = {}
+        #: Chat history reads so far: a steer whose turn ended is settled by
+        #: the first read after that, not one already under way (#410).
+        self._history_reads = 0
         self._attachments: Dict[str, List[str]] = {}  # per session, for its next message
         # Search (#21): text the session list is filtered by, and the last
         # text looked for in the messages.
@@ -1930,6 +1934,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._check_context()
         self._rebuild_chat_list(focus_newest=first_load)
         self._chat_loaded = True
+        self._history_reads += 1
         if self._drop_steers_in_history():
             self._rebuild_chat_list()  # the history has a steered message now
         if self._changes_due and not first_load:
@@ -4703,7 +4708,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     def _steered_rows(self, key: str) -> List[ChatMessage]:
         """Steered messages as rows, readable like any other (#238, #239)."""
         return [ChatMessage(STEERING, text, key=f"steering:{key}:{i}", sender=where)
-                for i, (text, where, _seen) in enumerate(self._steered.get(key, ()))]
+                for i, (text, where, *_rest) in enumerate(self._steered.get(key, ()))]
 
     def _drop_steers_in_history(self) -> bool:
         """A steered message's row goes once the loaded chat's history has
@@ -4716,7 +4721,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         entries = self._steered.get(key)
         if not entries:
             return False
-        kept, earlier = [], {}
+        kept, earlier, missing = [], {}, []
         for entry in entries:
             text = entry[0]
             if entry[2] is None:
@@ -4726,8 +4731,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             # Only once it's known to be on its way (taken in, accepted):
             # the history can be catching up on an earlier message saying
             # the same thing.
-            if (self._steer_waiting(entry)
-                    or self._your_messages_saying(text) - entry[2] <= ahead):
+            if self._steer_waiting(entry):
+                kept.append(entry)
+            elif self._your_messages_saying(text) - entry[2] > ahead:
+                pass  # the history has it
+            elif entry[3] is not None and self._history_reads > entry[3]:
+                # Its turn is over and the history read since doesn't have
+                # it: accepted, then stopped before it was used (#410).
+                missing.append(text)
+            else:
                 kept.append(entry)
         if len(kept) == len(entries):
             return False
@@ -4735,7 +4747,25 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._steered[key] = kept
         else:
             self._steered.pop(key, None)
+        if missing:
+            self._restore_codex_text(key, missing)
+            name = provider_name(self._open.provider)
+            self._feedback(f"{name} accepted your steered message, but the turn ended and the "
+                           "chat's history doesn't show it. It's back in the reply box: check "
+                           "the history before sending it again.")
         return True
+
+    def _steers_turn_over(self, key: str) -> None:
+        """A runtime chat's turn is over (#239). A steer it accepted stays
+        until the history is read again: there, or back to the reply box."""
+        entries = self._steered.get(key)
+        if not entries:
+            return
+        for entry in entries:
+            if not self._steer_waiting(entry) and entry[3] is None:
+                entry[3] = self._history_reads
+        if key == self._open_steer_key():
+            self._refresh_chat()
 
     def _open_steer_key(self) -> Optional[str]:
         """The key the loaded chat's steered messages are kept under: as its
@@ -4760,7 +4790,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     def _steer_row(self, key: str, text: str, where: str) -> None:
         """Show a steered message at once, until its chat's history has it."""
         seen = self._your_messages_saying(text) if self._chat_loaded else None
-        self._steered.setdefault(key, []).append([text, where, seen])
+        self._steered.setdefault(key, []).append([text, where, seen, None])
         self._steers_changed(key)
 
     def _steer_status(self, key: str, text: str, where: Optional[str]) -> None:
