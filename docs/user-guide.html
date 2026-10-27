@@ -1649,11 +1649,13 @@ An old copy's default model may be one GitHub no longer accepts, so every reques
 "The requested model is not supported" or "Failed to get response from the AI model". Remove
 it with <code>npm uninstall -g @github/copilot</code>, then open a new terminal: <code>copilot --version</code> should
 report the newer version. The Chat Place's own Copilot chats never use the npm copy.</p>
-<p><strong>Copilot isn't signed in.</strong> Choose Help, Copilot Sign-in. It says which account Copilot CLI is
-signed in to and, if it isn't, offers to open <code>copilot login</code> in its own window; sign in to a
-GitHub account that has Copilot. Chats started here use that sign-in: The Chat Place starts
-Copilot without token variables such as <code>GH_TOKEN</code>, <code>GITHUB_TOKEN</code> and <code>COPILOT_GITHUB_TOKEN</code>,
-so a token set for the terminal isn't used.</p>
+<p><strong>Copilot isn't signed in.</strong> A Copilot chat says so when you start or open one, or send to it.
+The message it refused isn't sent again, and messages still waiting come back to the message
+box unsent. Choose Help, Copilot Sign-in. It
+says which account Copilot CLI is signed in to and, if it isn't, offers to open <code>copilot login</code>
+in its own window; sign in to a GitHub account that has Copilot. Chats started here use that
+sign-in: The Chat Place starts Copilot without token variables such as <code>GH_TOKEN</code>,
+<code>GITHUB_TOKEN</code> and <code>COPILOT_GITHUB_TOKEN</code>, so a token set for the terminal isn't used.</p>
 <p><strong>A Copilot chat says this version of Copilot CLI isn't supported.</strong> Your Copilot CLI doesn't
 work the way The Chat Place expects. Update Copilot CLI, then try again; if it still says so,
 report it (see Reporting a problem).</p>
