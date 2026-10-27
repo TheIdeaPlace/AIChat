@@ -968,6 +968,12 @@ class CopilotChatRuntime:
             not_sent = (text,)
             with self._lock:
                 chat.notice = chat.notice or "Copilot couldn't take your message, so it wasn't sent."
+        except copilot_acp.AcpAuthRequired as exc:
+            # A sign-in that stopped working: say what to do (#391). The
+            # message isn't given back, since Copilot may have recorded or
+            # even acted on it first; ones still waiting come back unsent.
+            with self._lock:
+                chat.notice = str(exc)
         except Exception:  # noqa: BLE001 - the reason shown is ours, not Copilot's
             with self._lock:
                 # A more particular reason (Stop ignored, say) is kept.

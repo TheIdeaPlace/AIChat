@@ -39,6 +39,10 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
               in use elsewhere, at once
   inuselater  the same, logged when the first prompt after session/load
               arrives (as 1.0.103 logs every session.resume)
+  signedout   never signed in: session/new, session/load and prompts all fail with
+              ACP's -32000 "Authentication required", as on a clean machine (#391)
+  expired     chats open, but each prompt is logged, then fails a second later
+              with -32000, as when a sign-in stops working mid-chat
   strict      as hang, but a session/cancel that arrives while no prompt is
               running is ignored, as real Copilot ignores one that comes
               before the prompt it was meant for
@@ -147,6 +151,11 @@ def prompt(message_id, session, text=""):
     if session in resume_pending:
         log_event(session, "session.resume", {"alreadyInUse": resume_pending.pop(session)})
     log_event(session, "user.message", {"content": "synthetic"})
+    if MODE == "expired":
+        time.sleep(1.0)  # long enough for a second message to be queued
+        send({"jsonrpc": "2.0", "id": message_id,
+              "error": {"code": -32000, "message": "Authentication required"}})
+        return
     if MODE == "twousers":
         log_event(session, "user.message", {"content": "from elsewhere"})
     if MODE == "hookran":
@@ -274,6 +283,9 @@ def main():
             send({"jsonrpc": "2.0", "id": message_id, "result": {
                 "protocolVersion": 1, "agentCapabilities": {"loadSession": True},
                 "agentInfo": {"name": name, "version": "0.0.0-synthetic"}}})
+        elif MODE == "signedout" and method in ("session/new", "session/load", "session/prompt"):
+            send({"jsonrpc": "2.0", "id": message_id,
+                  "error": {"code": -32000, "message": "Authentication required"}})
         elif method == "session/new":
             if MODE == "mute":
                 continue

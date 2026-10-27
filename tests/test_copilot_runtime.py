@@ -558,6 +558,50 @@ def test_copilot_dying_mid_turn_ends_the_turn_and_tells_idle_chats(make, tmp_pat
     assert not runtime.ready(idle)
 
 
+def test_a_copilot_that_isnt_signed_in_says_so_for_a_new_chat(make, tmp_path):
+    """Kelly's clean VM (#391): session/new fails with ACP's -32000. The
+    window is told to sign in, in our words, never Copilot's own text."""
+    runtime, _ = make("signedout")
+    with pytest.raises(CopilotChatError) as raised:
+        runtime.create(str(tmp_path))
+    assert str(raised.value) == copilot_acp.NOT_SIGNED_IN
+    assert "Help, Copilot Sign-in" in str(raised.value)
+    assert "Authentication required" not in str(raised.value)
+
+
+def test_a_copilot_that_isnt_signed_in_says_so_when_a_chat_is_opened(make, tmp_path):
+    runtime, _ = make("signedout")
+    native = "11111111-2222-3333-4444-555555555555"
+    write_workspace(tmp_path, native, "thechatplace")
+    runtime.adopt(native)
+    with pytest.raises(CopilotChatError, match="isn't signed in"):
+        runtime.prepare(native, str(tmp_path))
+
+
+def test_a_sign_in_that_stops_working_says_what_to_do(make, tmp_path):
+    """A prompt refused for want of a sign-in says to sign in. Copilot had
+    already logged it (it may even have acted), so it isn't given back, nor
+    taken for another Copilot's message; the one waiting comes back unsent."""
+    runtime, _ = make("expired")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "First")
+    assert runtime.send(chat, "Second") is True  # queued behind it
+    assert wait(lambda: runtime.snapshot(chat).outcome == "failed")
+    state = runtime.snapshot(chat)
+    assert state.notice == copilot_acp.NOT_SIGNED_IN
+    assert state.unsent == ("Second",)
+    assert not runtime._chats[chat].elsewhere
+
+
+def test_other_errors_from_copilot_keep_their_general_wording(make, tmp_path):
+    runtime, _ = make()
+    runtime.create(str(tmp_path))
+    with pytest.raises(copilot_acp.AcpError) as raised:
+        runtime._connection.request("synthetic/unknown", {})  # the fake answers -32601
+    assert not isinstance(raised.value, copilot_acp.AcpAuthRequired)
+    assert str(raised.value) == "Copilot couldn't do that."
+
+
 def test_a_stop_copilot_ignores_ends_the_turn_by_closing_it(tmp_path):
     env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"))
     runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("deaf", env),

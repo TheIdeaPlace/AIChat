@@ -1676,11 +1676,12 @@ An old copy's default model may be one GitHub no longer accepts, so every reques
 it with `npm uninstall -g @github/copilot`, then open a new terminal: `copilot --version` should
 report the newer version. The Chat Place's own Copilot chats never use the npm copy.
 
-**Copilot isn't signed in.** Choose Help, Copilot Sign-in. It says which account Copilot CLI is
-signed in to and, if it isn't, offers to open `copilot login` in its own window; sign in to a
-GitHub account that has Copilot. Chats started here use that sign-in: The Chat Place starts
-Copilot without token variables such as `GH_TOKEN`, `GITHUB_TOKEN` and `COPILOT_GITHUB_TOKEN`,
-so a token set for the terminal isn't used.
+**Copilot isn't signed in.** A Copilot chat says so when you start or open one, or send to it;
+messages still waiting come back to the message box unsent. Choose Help, Copilot Sign-in. It
+says which account Copilot CLI is signed in to and, if it isn't, offers to open `copilot login`
+in its own window; sign in to a GitHub account that has Copilot. Chats started here use that
+sign-in: The Chat Place starts Copilot without token variables such as `GH_TOKEN`,
+`GITHUB_TOKEN` and `COPILOT_GITHUB_TOKEN`, so a token set for the terminal isn't used.
 
 **A Copilot chat says this version of Copilot CLI isn't supported.** Your Copilot CLI doesn't
 work the way The Chat Place expects. Update Copilot CLI, then try again; if it still says so,
