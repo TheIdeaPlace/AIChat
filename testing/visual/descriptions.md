@@ -205,10 +205,10 @@ The same dialog as settings, 680 by 679 (25 taller), on a computer where GitHub 
 
 **What looks off:** Nothing at 100% and 150%. At 175% the settings scroll (#231), as in settings, and the Copilot check box is the one cut through at the bottom until you scroll.
 
-
 ## settings-speech-problem: Settings after an announcement wasn't spoken
 
 The same dialog as settings, 680 by 706 (52 taller), after the last announcement couldn't be spoken (#98). A read-only text box, 52 high, sits right under the Speaking rate row, in the dropdowns' column from x=151 to the right edge, reading "Last announcement not spoken: JAWS is running but refused the text." Everything below it moves down. In High Contrast Aquatic the box follows the theme: a white outline around near-black, with white text.
+
 ## new-session: File, New Session
 
 This is a 680 by 620 dialog laid out as a two-column form. The labels on the left are Folder, Work in, Branch, Title, Model, Effort (#189) and Permission mode. Every field starts at x=241, because the Branch label, "Branch (choose one, or type a new name):", is long. The Folder dropdown is 413 wide, as wide as the other fields, showing a long path highlighted in blue; "Browse..." and "From GitHub..." sit on their own row under it, lined up with the field (#178 moved them there from beside it). Work in shows "The folder as it is (not a git repository, so no worktree)". Branch and its field are greyed out. Effort's dropdown shows "Default (your Claude Code setting)", like Model's, and Permission mode shows "Auto: Claude decides what is safe to run without asking". Below the form, "About permissions:" heads a read-only box 72 tall, which shows its whole five-line explanation, effort included, with a scroll bar. "First message:" heads a large empty box (644 by 179) that takes under a third of the dialog. "Start" (default) and "Cancel" are at the bottom right.
