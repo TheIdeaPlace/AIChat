@@ -929,7 +929,7 @@ class SettingsDialog(wx.Dialog):
         # The choices share one grid, and the rate's note sits beside it, not
         # on a row of its own: that's the room the changed-lines choice (#174)
         # takes, so Settings still fits a 768-high screen without scrolling.
-        grid = wx.FlexGridSizer(rows=4, cols=2, vgap=8, hgap=8)
+        grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
         grid.Add(wx.StaticText(body, label="Speech &engine:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.engine_choice = wx.Choice(body, choices=[o.label for o in self._options])
@@ -944,6 +944,21 @@ class SettingsDialog(wx.Dialog):
         self.rate_note = wx.StaticText(body, label="")
         rate_row.Add(self.rate_note, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
         grid.Add(rate_row, 0)
+
+        # Why the last announcement wasn't spoken, while that's still so
+        # (#98): a read-only box, so Tab reaches it and a screen reader reads
+        # it, as static text under a disabled choice never is. Under the
+        # speech choices it explains, in the grid's second column.
+        from .. import speech as speech_module
+        problem = speech_module.speaker.last_problem
+        self.speech_problem = None
+        if problem:
+            self.speech_problem = wx.TextCtrl(
+                body, value=f"Last announcement {problem}.",
+                style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=dip(self, -1, 44))
+            set_accessible_name(self.speech_problem, "Speech problem")
+            grid.AddSpacer(0)
+            grid.Add(self.speech_problem, 0, wx.EXPAND)
 
         grid.Add(wx.StaticText(body, label=NOTIFY_SETTING_LABEL), 0, wx.ALIGN_CENTER_VERTICAL)
         self.notify_choice = wx.Choice(body, choices=[NOTIFY_LABELS[n] for n in NOTIFY_LEVELS])
@@ -968,19 +983,6 @@ class SettingsDialog(wx.Dialog):
         self._update_marks_name()
         grid.Add(self.marks_choice, 0)
         outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-
-        # Why the last announcement wasn't spoken, while that's still so
-        # (#98): a read-only box, so Tab reaches it and a screen reader reads
-        # it, as static text under a disabled choice never is.
-        from .. import speech as speech_module
-        problem = speech_module.speaker.last_problem
-        self.speech_problem = None
-        if problem:
-            self.speech_problem = wx.TextCtrl(
-                body, value=f"Last announcement {problem}.",
-                style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=dip(self, -1, 44))
-            set_accessible_name(self.speech_problem, "Speech problem")
-            outer.Add(self.speech_problem, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # New Session's recent folders (#215): how many, and clearing them,
         # which is asked first and then done at once, not on OK: Cancel
