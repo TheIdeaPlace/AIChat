@@ -194,7 +194,12 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Claude or Copilot changed in the selected message's turn (your latest, if none is selected), or in the
   whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
   removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a
-  time: where each change is, then "Removed:", "Added:" and "Unchanged:" lines. It's built from the
+  time: where each change is, then its lines, each starting with how it changed. Settings, "Mark
+  changed lines with" (Alt+H) chooses words ("Removed:", "Added:", "Unchanged:", the default), short
+  words ("Del", "Add", "Same"), diff symbols ("-", "+", and "=" for an unchanged line), or diff
+  symbols with changed lines, where a line and the line that replaced it read "!- old", then
+  "!+ new". Symbols are spoken only at a screen reader punctuation level that reads them. Copied
+  text is marked the same way. It's built from the
   transcript, so it works for desktop app sessions too, with no git needed. Changes made by a
   subagent Claude hands work to, and notebook edits, aren't counted yet. For Copilot chats it's
   built from Copilot's own log, whichever tool made the change, so chats started in Copilot CLI

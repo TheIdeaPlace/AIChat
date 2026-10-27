@@ -4044,6 +4044,89 @@ def test_changed_files_view_and_turn_end_summary(frame, env, monkeypatch):
     assert frame._changes_due is False
 
 
+@windows_paths
+def test_changed_files_mark_lines_as_settings_say(frame, env, monkeypatch):
+    """#174: Settings chooses how Changed Files marks each line, and the
+    list's text, which is what's copied, follows it."""
+    from thechatplace.ui.dialogs import SettingsDialog
+    patch = [{"oldStart": 3, "oldLines": 2, "newStart": 3, "newLines": 2,
+              "lines": [" keep", "-old", "+new"]}]
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [
+        user_text("Fix it"),
+        assistant_block(tool_use_block("Edit", {"file_path": "C:\\G\\Repo\\a.py"}, "t1"),
+                        "m1"),
+        tool_result("t1", "Updated.", toolUseResult={"filePath": "C:\\G\\Repo\\a.py",
+                                                     "structuredPatch": patch}),
+        assistant_block(text_block("Fixed."), "m2")])
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded)
+    details = []
+    _lists_dialog(frame, monkeypatch, lambda page: details.append(page.detail.GetValue()))
+    frame.on_changes()
+    assert details[-1].endswith("Unchanged: keep\nRemoved: old\nAdded: new")
+    for style, expected in [("short", "Same keep\nDel old\nAdd new"),
+                            ("symbols", "= keep\n- old\n+ new"),
+                            ("changed", "= keep\n!- old\n!+ new")]:
+        frame.speech.change_marks = style
+        frame.on_changes()
+        assert details[-1].endswith(expected), style
+    # The Settings choice: moving onto symbols from words says the punctuation
+    # note once, as it's chosen; between the two symbol styles, not again.
+    said = []
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options(),
+                            say=said.append)
+    try:
+        assert dialog.marks_choice.GetSelection() == 0
+        assert dialog.marks_choice.GetName() == "Mark changed lines with"
+        for index, count in [(1, 0), (2, 1), (3, 1), (0, 1), (3, 2)]:
+            dialog.marks_choice.SetSelection(index)
+            event = wx.CommandEvent(wx.wxEVT_CHOICE, dialog.marks_choice.GetId())
+            event.SetInt(index)
+            dialog.marks_choice.GetEventHandler().ProcessEvent(event)
+            assert len(said) == count, index
+        assert said[0] == ("Symbols are spoken only if your screen reader's punctuation "
+                           "level reads them.")
+    finally:
+        dialog.Destroy()
+    # Opened on a symbol style: nothing said until it's moved off and back.
+    said.clear()
+    dialog = SettingsDialog(frame, speech.SpeechSettings(change_marks="changed"),
+                            speech.default_options(), say=said.append)
+    try:
+        assert dialog.marks_choice.GetSelection() == 3
+        dialog.marks_choice.SetSelection(2)
+        dialog.marks_choice.GetEventHandler().ProcessEvent(
+            wx.CommandEvent(wx.wxEVT_CHOICE, dialog.marks_choice.GetId()))
+        assert said == []
+    finally:
+        dialog.Destroy()
+
+
+def test_settings_ok_saves_how_changed_lines_are_marked(frame, env, monkeypatch):
+    from thechatplace.ui import main_frame
+
+    class Picks(main_frame.SettingsDialog):
+        def ShowModal(self):
+            self.marks_choice.SetSelection(3)
+            return wx.ID_OK
+    monkeypatch.setattr(main_frame, "SettingsDialog", Picks)
+    frame.on_settings()
+    assert frame.speech.change_marks == "changed"
+    assert speech.SpeechSettings.load().change_marks == "changed"
+
+
+def test_change_marks_setting_round_trips(tmp_path):
+    path = tmp_path / "s.json"
+    assert speech.SpeechSettings.load(path).change_marks == "words"
+    speech.SpeechSettings(change_marks="changed").save(path)
+    assert speech.SpeechSettings.load(path).change_marks == "changed"
+    # A style this version doesn't know (or junk) reads as the default.
+    for junk in ('"emoji"', "3", "null", '["words"]'):
+        path.write_text('{"change_marks": %s}' % junk, encoding="utf-8")
+        assert speech.SpeechSettings.load(path).change_marks == "words"
+
+
 def test_changed_files_with_nothing_changed(frame, env, monkeypatch):
     add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi"),
                                                  assistant_block(text_block("Hello."), "m1")])

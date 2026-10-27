@@ -79,7 +79,7 @@ fi
 # pip's exit code isn't proof the environment works (IDT learnt this the hard
 # way): check the imports the app and the build need.
 PROBLEMS=0
-for module in wx wx.html2 markdown PyInstaller pytest; do
+for module in wx wx.html2 markdown theideaplace_appkit PyInstaller pytest; do
     if .venv/bin/python -c "import $module" 2>/dev/null; then
         echo "  ok       $module"
     else

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import wx
+from theideaplace_appkit import difftext
 
 from .. import chat_permissions, lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
@@ -868,10 +869,14 @@ class GitHubRepoDialog(wx.Dialog):
         _end_modal(self, wx.ID_CANCEL)
 
 
+#: The Changed Files styles whose marks a screen reader may not speak (#174).
+_SYMBOL_MARKS = (difftext.SYMBOLS, difftext.CHANGED)
+
+
 class SettingsDialog(wx.Dialog):
     """Announcements and speech (the Speech tab of IDT's settings, adapted)."""
 
-    def __init__(self, parent, speech: SpeechSettings, options, clear_recent=None):
+    def __init__(self, parent, speech: SpeechSettings, options, clear_recent=None, say=None):
         super().__init__(parent, title="Settings", size=dialog_size(parent, 680, 620))
         self._options = list(options)
         # Settings kept elsewhere (the session list's sort order) pass through.
@@ -921,7 +926,10 @@ class SettingsDialog(wx.Dialog):
             messages.Add(self.whole_in_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         outer.Add(messages, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        grid = wx.FlexGridSizer(rows=2, cols=2, vgap=8, hgap=8)
+        # The choices share one grid, and the rate's note sits beside it, not
+        # on a row of its own: that's the room the changed-lines choice (#174)
+        # takes, so Settings still fits a 768-high screen without scrolling.
+        grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
         grid.Add(wx.StaticText(body, label="Speech &engine:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.engine_choice = wx.Choice(body, choices=[o.label for o in self._options])
@@ -931,15 +939,16 @@ class SettingsDialog(wx.Dialog):
         self.rate_choice = wx.Choice(
             body, choices=[label.capitalize() for label in RATE_PRESET_LABELS])
         set_accessible_name(self.rate_choice, "Speaking rate")
-        grid.Add(self.rate_choice, 0)
-        outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-
+        rate_row = wx.BoxSizer(wx.HORIZONTAL)
+        rate_row.Add(self.rate_choice, 0)
         self.rate_note = wx.StaticText(body, label="")
-        outer.Add(self.rate_note, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        rate_row.Add(self.rate_note, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
+        grid.Add(rate_row, 0)
 
         # Why the last announcement wasn't spoken, while that's still so
         # (#98): a read-only box, so Tab reaches it and a screen reader reads
-        # it, as static text under a disabled choice never is.
+        # it, as static text under a disabled choice never is. Under the
+        # speech choices it explains, in the grid's second column.
         from .. import speech as speech_module
         problem = speech_module.speaker.last_problem
         self.speech_problem = None
@@ -948,18 +957,35 @@ class SettingsDialog(wx.Dialog):
                 body, value=f"Last announcement {problem}.",
                 style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=dip(self, -1, 44))
             set_accessible_name(self.speech_problem, "Speech problem")
-            outer.Add(self.speech_problem, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+            grid.AddSpacer(0)
+            grid.Add(self.speech_problem, 0, wx.EXPAND)
 
-        notify_row = wx.BoxSizer(wx.HORIZONTAL)
-        notify_row.Add(wx.StaticText(body, label=NOTIFY_SETTING_LABEL), 0,
-                       wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        grid.Add(wx.StaticText(body, label=NOTIFY_SETTING_LABEL), 0, wx.ALIGN_CENTER_VERTICAL)
         self.notify_choice = wx.Choice(body, choices=[NOTIFY_LABELS[n] for n in NOTIFY_LEVELS])
         set_accessible_name(self.notify_choice, f"{NOTIFY_SETTING_NAME}, while The Chat Place "
                                                 "isn't the active window")
         self.notify_choice.SetSelection(NOTIFY_LEVELS.index(speech.notifications)
                                         if speech.notifications in NOTIFY_LEVELS else 0)
-        notify_row.Add(self.notify_choice, 0)
-        outer.Add(notify_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        grid.Add(self.notify_choice, 0)
+
+        # How Changed Files marks each line of a change (#174). Symbols can be
+        # silent at a screen reader's lower punctuation levels, so moving the
+        # choice onto one says so, spoken as it's chosen. Only someone using a
+        # screen reader needs that, and static text would never be read to
+        # them (#98), so there's no note on screen; nor is it in the choice's
+        # name, which on Windows comes from its label, not SetName.
+        grid.Add(wx.StaticText(body, label="Mark c&hanged lines with:"), 0,
+                 wx.ALIGN_CENTER_VERTICAL)
+        self.marks_choice = wx.Choice(body, choices=[difftext.LABELS[style]
+                                                     for style in difftext.STYLES])
+        set_accessible_name(self.marks_choice, "Mark changed lines with")
+        self.marks_choice.SetSelection(difftext.STYLES.index(speech.change_marks)
+                                       if speech.change_marks in difftext.STYLES else 0)
+        self._say = say
+        self._marks_symbols = self._marks_style() in _SYMBOL_MARKS
+        self.marks_choice.Bind(wx.EVT_CHOICE, lambda e: self._on_marks_choice())
+        grid.Add(self.marks_choice, 0)
+        outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
 
         # New Session's recent folders (#215): how many, and clearing them,
         # which is asked first and then done at once, not on OK: Cancel
@@ -1101,6 +1127,19 @@ class SettingsDialog(wx.Dialog):
             self.rate_note.SetLabel("This engine uses its default rate.")
         self.Layout()
 
+    def _marks_style(self) -> str:
+        index = self.marks_choice.GetSelection()
+        return difftext.STYLES[index] if 0 <= index < len(difftext.STYLES) \
+            else difftext.DEFAULT
+
+    def _on_marks_choice(self):
+        """Say the punctuation note once on moving from words to symbols,
+        not again between the two symbol styles."""
+        symbols = self._marks_style() in _SYMBOL_MARKS
+        if symbols and not self._marks_symbols and self._say is not None:
+            self._say(difftext.SYMBOLS_NOTE)
+        self._marks_symbols = symbols
+
     def _fit_scrolling(self, body, content):
         """As tall as the settings need, up to the screen; past that they
         scroll above OK and Cancel. As in QuestionDialog, the body's minimum
@@ -1153,6 +1192,7 @@ class SettingsDialog(wx.Dialog):
                                                     else self._copilot_choice),
                                    update_installed_notice=self.update_notice.GetValue(),
                                    agent_auto_mode=self.agent_auto.GetValue(),
+                                   change_marks=self._marks_style(),
                                    recent_folder_limit=self.recent_limit.GetValue())
 
 

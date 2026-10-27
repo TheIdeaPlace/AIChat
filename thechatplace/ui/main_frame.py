@@ -2319,7 +2319,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
         def build(tab, tab_scope):
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
-                               lambda f: self._describe_changed_file(f, cwd), turn, tasks)
+                               lambda f: self._describe_changed_file(f, cwd), turn, tasks,
+                               marks=self.speech.change_marks)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
@@ -5517,7 +5518,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         previous_providers = (self.speech.includes_codex(), self.speech.copilot_enabled)
         options = self._speech_options or default_options()
         dialog = SettingsDialog(self, self.speech, options,
-                                clear_recent=self._clear_recent_folders)
+                                clear_recent=self._clear_recent_folders, say=self._feedback)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return

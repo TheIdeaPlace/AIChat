@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   680,
-  636
+  639
  ],
  "client": [
   664,
-  597
+  600
  ],
  "dpi": [
   96,
@@ -23,7 +23,7 @@
     0,
     0,
     664,
-    558
+    561
    ],
    "best": [
     644,
@@ -229,9 +229,9 @@
    "name": "Speech engine",
    "label": "",
    "rect": [
-    99,
+    151,
     251,
-    555,
+    503,
     23
    ],
    "best": [
@@ -268,7 +268,7 @@
    "name": "Speaking rate",
    "label": "",
    "rect": [
-    99,
+    151,
     282,
     68,
     23
@@ -288,8 +288,8 @@
    "name": "staticText",
    "label": "Voice and rate follow your screen reader's own settings.",
    "rect": [
-    10,
-    315,
+    229,
+    285,
     293,
     16
    ],
@@ -308,7 +308,7 @@
    "label": "Windows &notifications:",
    "rect": [
     10,
-    344,
+    316,
     122,
     16
    ],
@@ -326,8 +326,8 @@
    "name": "Windows notifications, while The Chat Place isn't the active window",
    "label": "",
    "rect": [
-    140,
-    341,
+    151,
+    313,
     335,
     23
    ],
@@ -344,10 +344,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
+   "label": "Mark c&hanged lines with:",
+   "rect": [
+    10,
+    347,
+    133,
+    16
+   ],
+   "best": [
+    133,
+    16
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Mark changed lines with",
+   "label": "",
+   "rect": [
+    151,
+    344,
+    271,
+    23
+   ],
+   "best": [
+    271,
+    23
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Words (Added, Removed, Unchanged)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
    "label": "Recent &folders New Session offers:",
    "rect": [
     10,
-    377,
+    380,
     181,
     16
    ],
@@ -366,7 +405,7 @@
    "label": "",
    "rect": [
     199,
-    374,
+    377,
     46,
     23
    ],
@@ -385,7 +424,7 @@
    "label": "C&lear Recent Folders",
    "rect": [
     253,
-    374,
+    377,
     128,
     23
    ],
@@ -404,7 +443,7 @@
    "label": "Turn on Remote &Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)",
    "rect": [
     10,
-    407,
+    410,
     624,
     30
    ],
@@ -423,7 +462,7 @@
    "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so View, Tasks shows how\nfar along it is (from the next message)",
    "rect": [
     10,
-    447,
+    450,
     620,
     30
    ],
@@ -442,7 +481,7 @@
    "label": "Include Code&x chats (restart required)",
    "rect": [
     10,
-    487,
+    490,
     219,
     15
    ],
@@ -461,7 +500,7 @@
    "label": "Let a&gent conversations hand replies across automatically",
    "rect": [
     10,
-    512,
+    515,
     325,
     15
    ],
@@ -480,7 +519,7 @@
    "label": "&Tell me when an update has been installed, with a link to what's new",
    "rect": [
     10,
-    533,
+    536,
     382,
     15
    ],
@@ -499,7 +538,7 @@
    "label": "OK",
    "rect": [
     494,
-    566,
+    569,
     75,
     23
    ],
@@ -518,7 +557,7 @@
    "label": "Cancel",
    "rect": [
     577,
-    566,
+    569,
     75,
     23
    ],

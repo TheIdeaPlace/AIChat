@@ -225,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    651
+    654
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -561,7 +561,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    636
+    639
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1065,7 +1065,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    676
+    679
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1224,6 +1224,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Three new Codex agents with automatic approval review selected"
+  },
+  "settings-speech-problem": {
+   "kind": "dialog",
+   "png": "settings-speech-problem-light-100.png",
+   "json": "settings-speech-problem-light-100.json",
+   "title": "Settings",
+   "class": "SettingsDialog",
+   "size": [
+    680,
+    706
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Settings after an announcement wasn't spoken: the reason box"
   }
  },
  "seconds": 94.1

@@ -20,6 +20,12 @@ Toolkit's do. Each replaces an existing `.venv`.
 `python -m thechatplace` works on Windows too. A copy run from source doesn't update itself; Help, Check
 for Updates says so, and names the newest release.
 
+One package comes from The Idea Place's own [app-kit](https://github.com/TheIdeaPlace/app-kit):
+`theideaplace-appkit`, which Changed Files and GHManage share (#174). `requirements.txt` pins
+it to an archive of one app-kit commit, so installing it needs no git. To take a newer app-kit,
+change that commit, then run the setup script again or `pip install -r requirements.txt`. An
+existing `.venv` made before #174 needs that too.
+
 ## Build it yourself
 
 The build scripts are in `BuildAndRelease/`, laid out as in Image Description Toolkit:

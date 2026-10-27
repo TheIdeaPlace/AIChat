@@ -334,7 +334,9 @@ session list, the messages or the reply box:
 - **Code Blocks:** each code block, by language and size, with its code to read.
 - **Links:** each link, its words and where it goes, then who wrote it and roughly when.
 - **Changed Files** (Claude and Copilot chats): each file changed, with how many lines were added
-  and removed, and its changes to read line by line. A file Copilot deleted says "deleted". This
+  and removed, and its changes to read line by line: where each change is ("Lines 12 to 20:"),
+  then its lines, marked as Settings, **Mark changed lines with** says (words at first:
+  "Added:", "Removed:", "Unchanged:"). A file Copilot deleted says "deleted". This
   works for desktop app chats and chats started in Copilot CLI too.
 - **Commands** (Claude chats): each command Claude ran: what it said it was doing, then "done",
   "failed" or "no result yet". Its full text shows the command and its output.
@@ -1309,11 +1311,20 @@ setting moves straight to it.
   Windows, VoiceOver on a Mac) or one system voice. With both JAWS and NVDA running, choosing one
   decides which is tried first.
 - **Speaking rate** (Alt+R): Default, Slow, Normal, Fast or Fastest, for a system voice. A screen
-  reader uses its own voice and rate, and the note under the rate says so.
+  reader uses its own voice and rate, and the note beside the rate says so.
 - **Speech problem** (Windows): shown only when the last announcement couldn't be spoken, saying
   why.
 - **Windows notifications** (Alt+N; on a Mac, **Notifications**): "When your sessions finish a
   turn, or any session needs you" (the default), "Only when a session needs you", or "Off".
+- **Mark changed lines with** (Alt+H): how Changed Files starts each line of a change.
+    - **Words**, the default: "Added: x", "Removed: x", "Unchanged: x".
+    - **Short words:** "Add x", "Del x", "Same x".
+    - **Diff symbols:** "+ x", "- x", and "= x" for a line that didn't change.
+    - **Diff symbols with changed lines:** as Diff symbols, but a line and the line that
+      replaced it read one after the other, "!- old" then "!+ new".
+
+  Symbols are spoken only if your screen reader's punctuation level reads them, and you hear that
+  when you move the choice onto one. Text you copy from Changed Files is marked the same way.
 - **Recent folders New Session offers** (Alt+F): how many of your recent folders New Session's
   Folder list offers, 20 at first, up to 100; 0 offers none. It counts the next time New Session
   opens.

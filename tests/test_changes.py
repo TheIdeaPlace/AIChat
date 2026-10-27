@@ -139,6 +139,30 @@ def test_a_deleted_file_says_so():
     removed = FileEdit("C:/work/spare.txt", "apply_patch", 1, [Hunk(1, 0, ["-one", "-two"])],
                        deleted=True)
     assert by_file([removed])[0].counts() == "deleted"
+    # Where its lines were, rather than "A change:" (#406).
+    assert file_text(by_file([removed])[0]).split("\n")[2:] == [
+        "Lines 1 to 2:", "Removed: one", "Removed: two"]
     created = FileEdit("C:/work/spare.txt", "apply_patch", 1, [Hunk(0, 1, ["+one"])], created=True)
     assert by_file([created, removed])[0].counts() == "created, then deleted"
     assert summary_text([created, removed]) == "Changed 1 file: spare.txt, created, then deleted."
+
+
+def test_file_text_marks_lines_in_the_style_chosen():
+    """#174: the default is unchanged; the styles come from app-kit's difftext."""
+    edit = edit_from_tool("Edit", {}, {"filePath": "a.py", "structuredPatch": PATCH}, 1)
+    changes = by_file([edit])[0]
+    assert file_text(changes, "words") == file_text(changes)
+    assert file_text(changes, "symbols").split("\n")[2:] == [
+        "Lines 10 to 13:", "= keep", "- old line", "+ new line", "+ another", "= end"]
+    assert file_text(changes, "changed").split("\n")[3:6] == [
+        "= keep", "!- old line", "!+ new line"]
+    assert file_text(changes, "no such style") == file_text(changes)
+
+
+def test_a_removed_line_starting_with_dashes_is_still_removed():
+    """Edit's fallback diff once dropped any line starting "---" or "+++"
+    as a file header, so removing a "-- comment" line counted nothing."""
+    edit = edit_from_tool("Edit", {"file_path": "q.sql", "old_string": "-- old note\nSELECT 1",
+                                   "new_string": "++ new\nSELECT 1"}, None, 1)
+    assert (edit.added, edit.removed) == (1, 1)
+    assert "Removed: -- old note" in file_text(by_file([edit])[0])

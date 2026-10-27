@@ -15,23 +15,13 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+# Shared with GHManage through app-kit (#174): the hunks, and how their lines
+# are marked when read.
+from theideaplace_appkit import difftext
+from theideaplace_appkit.difftext import Hunk
+
 #: The tools that change files.
 EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write"})
-
-
-@dataclass
-class Hunk:
-    old_start: int  # 1-based; 0 when not known
-    new_start: int
-    lines: List[str]  # each starting " ", "-" or "+"
-
-    @property
-    def added(self) -> int:
-        return sum(1 for line in self.lines if line.startswith("+"))
-
-    @property
-    def removed(self) -> int:
-        return sum(1 for line in self.lines if line.startswith("-"))
 
 
 @dataclass
@@ -193,44 +183,21 @@ def summary_text(edits: List[FileEdit], limit: int = 5) -> str:
     return f"Changed {count} file{'s' if count != 1 else ''}: {'; '.join(parts)}{more}."
 
 
-def file_text(changes: FileChanges) -> str:
-    """One file's changes, to read by line: where each change is, then
-    "Removed:", "Added:" and "Unchanged:" lines."""
+def file_text(changes: FileChanges, style: str = difftext.DEFAULT) -> str:
+    """One file's changes, to read by line: where each change is, then its
+    lines, each marked in ``style`` (a ``difftext.STYLES`` value; the
+    default reads "Removed:", "Added:" and "Unchanged:")."""
     out: List[str] = [f"{changes.path}: {changes.counts()}."]
-    for edit in changes.edits:
-        for hunk in edit.hunks:
-            out.append("")
-            out.append(_where(hunk))
-            for line in hunk.lines:
-                mark, text = line[:1], line[1:]
-                if mark == "\\":  # "\ No newline at end of file", about the line before
-                    out.append(f"Note: {text.strip()}")
-                    continue
-                word = {"+": "Added", "-": "Removed"}.get(mark, "Unchanged")
-                out.append(f"{word}: {text}" if text.strip() else f"{word}: blank line")
+    out.extend(difftext.render([h for edit in changes.edits for h in edit.hunks], style))
     return "\n".join(out)
-
-
-def _where(hunk: Hunk) -> str:
-    if not hunk.new_start:
-        return "A change:"
-    end = hunk.new_start + max(hunk.added + sum(1 for line in hunk.lines
-                                                  if line.startswith(" ")) - 1, 0)
-    if end <= hunk.new_start:
-        return f"At line {hunk.new_start}:"
-    return f"Lines {hunk.new_start} to {end}:"
 
 
 def _diff(old: str, new: str) -> List[Hunk]:
     """Hunks from two texts whose place in the file isn't known."""
-    lines = [line for line in difflib.unified_diff(_lines(old), _lines(new), lineterm="", n=1)
-             if not line.startswith(("---", "+++"))]
-    hunks: List[Hunk] = []
-    for line in lines:
-        if line.startswith("@@"):
-            hunks.append(Hunk(0, 0, []))
-        elif hunks:
-            hunks[-1].lines.append(line)
+    text = "\n".join(difflib.unified_diff(_lines(old), _lines(new), lineterm="", n=1))
+    hunks = difftext.parse_unified(text)
+    for hunk in hunks:
+        hunk.old_start = hunk.new_start = 0  # the lines of a fragment, not of the file
     return hunks
 
 
