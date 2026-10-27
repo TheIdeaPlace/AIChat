@@ -109,6 +109,10 @@ class CodexExecutionConnection(CodexLifecycleConnection):
             raise CodexSteerRefused('not_running')
 
 
+#: JSON-RPC's invalid-request code, which app-server gives a steer it refuses.
+INVALID_REQUEST = -32600
+
+
 class CodexTurnExecutor:
     """One event consumer for a connection; never reconnect or replay a prompt.
 
@@ -186,8 +190,9 @@ class CodexTurnExecutor:
 
     def steer(self, proof, text):
         """Add ``text`` to the running turn (``turn/steer``, #239): never a
-        new turn. CodexSteerRefused when nothing was sent, or Codex said no;
-        a connection failure leaves it unknown, for the caller to say."""
+        new turn. CodexSteerRefused when nothing was sent, or Codex refused it
+        as an invalid request (-32600); any other error, a timeout or a lost
+        connection leaves it unknown, for the caller to say."""
         if not self.connection.owns_runtime(proof):
             raise CodexRpcError('Codex execution requires a verified owned chat')
         if not isinstance(text, str) or not text.strip() or len(text) > 32000:
@@ -206,10 +211,17 @@ class CodexTurnExecutor:
         except (CodexTurnRejected, CodexSteerRefused, CodexConnectionFailure):
             raise
         except CodexRpcError as error:
-            if type(error) is not CodexRpcError or str(error) != 'Codex request failed':
+            answered = type(error) is CodexRpcError and str(error) == 'Codex request failed'
+            if not answered:
                 raise
-            # Codex answered with an error: it didn't take the message. Most
-            # often the turn ended as the steer went (expectedTurnId).
+            if getattr(error, 'rpc_code', None) != INVALID_REQUEST:
+                # Not a known refusal: it may have been taken. Unknown, so
+                # it is never queued or sent again on its own.
+                raise CodexRpcError('Codex did not confirm the steered message') from None
+            # Checked with app-server 0.163.0: a wrong or ended turn, empty
+            # input or no active turn is refused as an invalid request, and
+            # the text never reaches the model. Most often the turn ended as
+            # the steer went (expectedTurnId).
             with self._lock:
                 current = self._turns.get(proof.native_id)
                 ended = (current is not buffer or current.turn_id != turn_id

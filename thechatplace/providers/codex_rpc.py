@@ -521,6 +521,12 @@ class ReadOnlyCodexConnection:
                 raise ValueError("Unknown response id")
             if "error" in message and "result" not in message:
                 pending.error = CodexRpcError("Codex request failed")
+                # The JSON-RPC error code only, never the server's message:
+                # a steer refused as an invalid request (-32600) is known
+                # not to have been taken; anything else may have been (#239).
+                details = message.get("error")
+                code = details.get("code") if isinstance(details, dict) else None
+                pending.error.rpc_code = code if type(code) is int else None
             elif "error" not in message and isinstance(message.get("result"), dict):
                 pending.result = message["result"]
             else:

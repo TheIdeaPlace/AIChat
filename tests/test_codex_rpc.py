@@ -1257,3 +1257,26 @@ def test_steer_with_the_connection_lost_is_unknown_and_a_queued_one_comes_back(s
         assert service.snapshot('owned').problem
     finally:
         service.close()
+
+
+@pytest.mark.parametrize('scenario', ['owned-turn-steer-internal', 'owned-turn-steer-nocode',
+                                      'owned-turn-steer-textcode'])
+def test_a_steer_error_that_isnt_a_refusal_is_unconfirmed(server, scenario, tmp_path, monkeypatch):
+    # Only an integer -32600 proves the text wasn't taken (#239): any other
+    # error, no code, or a code that isn't an int may have come after.
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, connection = _steer_service(server, scenario, tmp_path, monkeypatch)
+    updates = []
+    service._on_update = updates.append
+    try:
+        record = service.create('/workspace', 'Synthetic steer')
+        service.send(record, 'Synthetic prompt')
+        _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
+        assert service.send(record, 'Queued one')
+        with pytest.raises(CodexRpcError, match='did not confirm') as error:
+            service.steer(record, 'Queued one', index=0)
+        assert not isinstance(error.value, CodexSteerRefused)
+        assert not service.snapshot('owned').queued  # never sent again on its own
+        assert any(u.unsent == ('Queued one',) for u in updates)
+    finally:
+        service.close()
