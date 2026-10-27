@@ -1204,7 +1204,9 @@ instead of waiting. With no turn running, Ctrl+Alt+Enter simply sends, as Ctrl+E
 - **Codex chats:** Codex is asked to take the message into the turn, and The Chat Place says
   "Steered" once Codex accepts it. If the turn has just ended, or Codex is still taking an
   earlier steered message, the message comes back to the reply box (a queued one stays queued)
-  with the reason. It is never sent as a new turn on its own.
+  with the reason. If Codex doesn't confirm it (an error, or the connection is lost), the message
+  comes back to the reply box, even a queued one, with a warning to check the chat's history
+  first, since Codex may have it. It is never sent as a new turn on its own.
 - **Copilot chats** can't take a message during a turn yet: Ctrl+Enter queues it.
 
 Turn status (Ctrl+Shift+T) and the turn status line say when a steered message hasn't been taken
