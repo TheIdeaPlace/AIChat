@@ -48,7 +48,7 @@ New-Item $Out -ItemType Directory -Force | Out-Null
 $guestPython = 'C:\Users\vmuser\AppData\Local\Programs\Python\Python312\python.exe'
 $venvPython = 'C:\vmtest\tcp-venv\Scripts\python.exe'
 # No spaces and no double quotes: Windows PowerShell drops inner quotes on the way to vmtest.
-$readyCheck = "$venvPython -c __import__('wx');__import__('markdown')"
+$readyCheck = "$venvPython -c __import__('wx');__import__('markdown');__import__('theideaplace_appkit')"
 
 function Invoke-Vm([string]$Command, [int]$Timeout = 600, [switch]$Elevated) {
     # vmtest's output goes to the screen; only the exit code comes back.

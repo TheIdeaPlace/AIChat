@@ -926,7 +926,10 @@ class SettingsDialog(wx.Dialog):
             messages.Add(self.whole_in_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         outer.Add(messages, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        grid = wx.FlexGridSizer(rows=2, cols=2, vgap=8, hgap=8)
+        # The choices share one grid, and the rate's note sits beside it, not
+        # on a row of its own: that's the room the changed-lines choice (#174)
+        # takes, so Settings still fits a 768-high screen without scrolling.
+        grid = wx.FlexGridSizer(rows=4, cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
         grid.Add(wx.StaticText(body, label="Speech &engine:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.engine_choice = wx.Choice(body, choices=[o.label for o in self._options])
@@ -936,11 +939,35 @@ class SettingsDialog(wx.Dialog):
         self.rate_choice = wx.Choice(
             body, choices=[label.capitalize() for label in RATE_PRESET_LABELS])
         set_accessible_name(self.rate_choice, "Speaking rate")
-        grid.Add(self.rate_choice, 0)
-        outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-
+        rate_row = wx.BoxSizer(wx.HORIZONTAL)
+        rate_row.Add(self.rate_choice, 0)
         self.rate_note = wx.StaticText(body, label="")
-        outer.Add(self.rate_note, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        rate_row.Add(self.rate_note, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
+        grid.Add(rate_row, 0)
+
+        grid.Add(wx.StaticText(body, label=NOTIFY_SETTING_LABEL), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.notify_choice = wx.Choice(body, choices=[NOTIFY_LABELS[n] for n in NOTIFY_LEVELS])
+        set_accessible_name(self.notify_choice, f"{NOTIFY_SETTING_NAME}, while The Chat Place "
+                                                "isn't the active window")
+        self.notify_choice.SetSelection(NOTIFY_LEVELS.index(speech.notifications)
+                                        if speech.notifications in NOTIFY_LEVELS else 0)
+        grid.Add(self.notify_choice, 0)
+
+        # How Changed Files marks each line of a change (#174). Symbols can be
+        # silent at a screen reader's lower punctuation levels, so while one is
+        # chosen the choice's name says so. Only someone using a screen reader
+        # needs that, and static text would never be read to them (#98), so
+        # there's no note on screen.
+        grid.Add(wx.StaticText(body, label="Mark c&hanged lines with:"), 0,
+                 wx.ALIGN_CENTER_VERTICAL)
+        self.marks_choice = wx.Choice(body, choices=[difftext.LABELS[style]
+                                                     for style in difftext.STYLES])
+        self.marks_choice.SetSelection(difftext.STYLES.index(speech.change_marks)
+                                       if speech.change_marks in difftext.STYLES else 0)
+        self.marks_choice.Bind(wx.EVT_CHOICE, lambda e: self._update_marks_name())
+        self._update_marks_name()
+        grid.Add(self.marks_choice, 0)
+        outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
 
         # Why the last announcement wasn't spoken, while that's still so
         # (#98): a read-only box, so Tab reaches it and a screen reader reads
@@ -954,35 +981,6 @@ class SettingsDialog(wx.Dialog):
                 style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=dip(self, -1, 44))
             set_accessible_name(self.speech_problem, "Speech problem")
             outer.Add(self.speech_problem, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-
-        notify_row = wx.BoxSizer(wx.HORIZONTAL)
-        notify_row.Add(wx.StaticText(body, label=NOTIFY_SETTING_LABEL), 0,
-                       wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        self.notify_choice = wx.Choice(body, choices=[NOTIFY_LABELS[n] for n in NOTIFY_LEVELS])
-        set_accessible_name(self.notify_choice, f"{NOTIFY_SETTING_NAME}, while The Chat Place "
-                                                "isn't the active window")
-        self.notify_choice.SetSelection(NOTIFY_LEVELS.index(speech.notifications)
-                                        if speech.notifications in NOTIFY_LEVELS else 0)
-        notify_row.Add(self.notify_choice, 0)
-        outer.Add(notify_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-
-        # How Changed Files marks each line of a change (#174). Symbols can be
-        # silent at a screen reader's lower punctuation levels, so a note says
-        # so while one is chosen, and is hidden otherwise to keep the height.
-        marks_row = wx.BoxSizer(wx.HORIZONTAL)
-        marks_row.Add(wx.StaticText(body, label="Mark c&hanged lines with:"), 0,
-                      wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        self.marks_choice = wx.Choice(body, choices=[difftext.LABELS[style]
-                                                     for style in difftext.STYLES])
-        set_accessible_name(self.marks_choice, "Mark changed lines with")
-        self.marks_choice.SetSelection(difftext.STYLES.index(speech.change_marks)
-                                       if speech.change_marks in difftext.STYLES else 0)
-        self.marks_choice.Bind(wx.EVT_CHOICE, lambda e: self._update_marks_note())
-        marks_row.Add(self.marks_choice, 0)
-        outer.Add(marks_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-        self.marks_note = wx.StaticText(body, label=difftext.SYMBOLS_NOTE)
-        outer.Add(self.marks_note, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-        self.marks_note.Show(self._marks_style() in _SYMBOL_MARKS)
 
         # New Session's recent folders (#215): how many, and clearing them,
         # which is asked first and then done at once, not on OK: Cancel
@@ -1126,12 +1124,13 @@ class SettingsDialog(wx.Dialog):
 
     def _marks_style(self) -> str:
         index = self.marks_choice.GetSelection()
-        return difftext.STYLES[index] if 0 <= index < len(difftext.STYLES)             else difftext.DEFAULT
+        return difftext.STYLES[index] if 0 <= index < len(difftext.STYLES) \
+            else difftext.DEFAULT
 
-    def _update_marks_note(self):
-        self.marks_note.Show(self._marks_style() in _SYMBOL_MARKS)
-        self._body.Layout()
-        self._body.FitInside()
+    def _update_marks_name(self):
+        symbols = self._marks_style() in _SYMBOL_MARKS
+        set_accessible_name(self.marks_choice, "Mark changed lines with" + (
+            f". {difftext.SYMBOLS_NOTE}" if symbols else ""))
 
     def _fit_scrolling(self, body, content):
         """As tall as the settings need, up to the screen; past that they

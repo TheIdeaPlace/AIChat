@@ -4071,19 +4071,39 @@ def test_changed_files_mark_lines_as_settings_say(frame, env, monkeypatch):
         frame.speech.change_marks = style
         frame.on_changes()
         assert details[-1].endswith(expected), style
-    # Chosen in Settings, and saved.
+    # The Settings choice: the punctuation note is in its name, only for symbols.
     dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
     try:
         assert dialog.marks_choice.GetSelection() == 0
-        assert dialog.marks_choice.GetName() == "Mark changed lines with"
-        assert not dialog.marks_note.IsShown()  # words are always spoken
-        dialog.marks_choice.SetSelection(2)
-        dialog._update_marks_note()
-        assert dialog.marks_note.IsShown()
-        assert "punctuation level" in dialog.marks_note.GetLabel()
-        assert dialog.get_settings().change_marks == "symbols"
+        assert dialog.marks_choice.GetName() == "Mark changed lines with"  # words are spoken
+        for index, noted in [(2, True), (3, True), (1, False)]:
+            dialog.marks_choice.SetSelection(index)
+            event = wx.CommandEvent(wx.wxEVT_CHOICE, dialog.marks_choice.GetId())
+            event.SetInt(index)
+            dialog.marks_choice.GetEventHandler().ProcessEvent(event)
+            assert ("punctuation level" in dialog.marks_choice.GetName()) is noted
     finally:
         dialog.Destroy()
+    dialog = SettingsDialog(frame, speech.SpeechSettings(change_marks="changed"),
+                            speech.default_options())
+    try:
+        assert dialog.marks_choice.GetSelection() == 3
+        assert dialog.marks_choice.GetName().startswith("Mark changed lines with. Symbols")
+    finally:
+        dialog.Destroy()
+
+
+def test_settings_ok_saves_how_changed_lines_are_marked(frame, env, monkeypatch):
+    from thechatplace.ui import main_frame
+
+    class Picks(main_frame.SettingsDialog):
+        def ShowModal(self):
+            self.marks_choice.SetSelection(3)
+            return wx.ID_OK
+    monkeypatch.setattr(main_frame, "SettingsDialog", Picks)
+    frame.on_settings()
+    assert frame.speech.change_marks == "changed"
+    assert speech.SpeechSettings.load().change_marks == "changed"
 
 
 def test_change_marks_setting_round_trips(tmp_path):

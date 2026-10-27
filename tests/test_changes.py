@@ -139,7 +139,10 @@ def test_a_deleted_file_says_so():
     removed = FileEdit("C:/work/spare.txt", "apply_patch", 1, [Hunk(1, 0, ["-one", "-two"])],
                        deleted=True)
     assert by_file([removed])[0].counts() == "deleted"
-    created = FileEdit("C:/work/spare.txt", "apply_patch", 1, [Hunk(0, 1, ["+one"])], created=True)
+    # Where its lines were, rather than "A change:" (#406).
+    assert file_text(by_file([removed])[0]).split("\n")[2:] == [
+        "Lines 1 to 2:", "Removed: one", "Removed: two"]
+    created =FileEdit("C:/work/spare.txt", "apply_patch", 1, [Hunk(0, 1, ["+one"])], created=True)
     assert by_file([created, removed])[0].counts() == "created, then deleted"
     assert summary_text([created, removed]) == "Changed 1 file: spare.txt, created, then deleted."
 
