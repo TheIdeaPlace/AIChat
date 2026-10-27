@@ -785,6 +785,9 @@ message steers that one instead of waiting. With no turn running, Ctrl+Alt+Enter
 - If the turn ends or you press Stop before the message is taken in, it comes back to the reply
   box (a queued one stays queued, or comes back with the rest when you press Stop). It's never
   lost or sent twice.
+- If Codex doesn't confirm a steered message (an error, or the connection is lost), it comes back
+  to the reply box, even a queued one, with a warning to check the chat's history first, since
+  Codex may have it. It's never sent again on its own.
 - Copilot chats can't steer yet: Ctrl+Enter queues the message.
 
 Sometimes Claude starts a command that runs in the background, such as a build or a wait for
