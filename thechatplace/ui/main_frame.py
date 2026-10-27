@@ -4753,6 +4753,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         """Show the change, only in the chat it belongs to: another chat's
         list (or its "Loading messages…") must stay as it is."""
         if key == self._open_steer_key():
+            # The history may have it already (read before this news came).
+            self._drop_steers_in_history()
             self._rebuild_chat_list()
 
     def _steer_row(self, key: str, text: str, where: str) -> None:

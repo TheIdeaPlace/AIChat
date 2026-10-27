@@ -13128,3 +13128,16 @@ def test_a_steering_row_keeps_new_messages_inserted_above_it(frame, env, fake_ru
     assert calls == []
     last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
     assert last.startswith("Steering, waiting for Claude:")
+
+
+def test_a_steer_already_in_the_history_goes_when_its_news_comes(frame, env, fake_runner):
+    # The transcript was read before steer_taken arrived: no second copy.
+    from thechatplace.transcript import USER, ChatMessage
+    _start(frame, fake_runner)
+    frame._chat_loaded = True
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "Also update the README")]
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="Also update the README", data={"late": False}))
+    assert frame._steered == {}

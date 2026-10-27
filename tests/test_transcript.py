@@ -576,3 +576,21 @@ def test_harness_prompts_taken_in_mid_turn_are_not_yours():
     shown = tr.visible(show_activity=True)
     assert [m.kind for m in shown] == ["event"]
     assert tr.turns == 0
+
+
+def test_a_message_taken_in_first_in_what_is_readable_starts_turn_one():
+    tr = parse_lines(lines(
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": "Also update the README"}),
+        assistant_block(text_block("Done.")),
+    ))
+    assert tr.turns == 1 and {m.turn for m in tr.visible()} == {1}
+
+
+def test_your_words_starting_with_some_other_tag_still_show():
+    tr = parse_lines(lines(
+        user_text("Fix the tests"),
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": '<my-widget class="x"> renders wrong'}),
+    ))
+    assert [m.kind for m in tr.visible()] == ["user", "user"]
