@@ -24,4 +24,4 @@ Set `__version__` in `thechatplace/__init__.py`, write `release-notes/v<version>
 push the tag `v<version>`. `.github/workflows/release-thechatplace.yml` builds and signs both
 platforms (the Mac job runs `MacBuilds/build_macos.sh`) and publishes one release only if both
 succeed. The signing secrets come from `The-Idea-Place-Projects/signing` (`sync-secrets.py`).
-The main README's "Build it yourself" and "Releasing" sections have the details.
+The "Build it yourself" and "Releasing" sections of [DEVELOPING.md](../DEVELOPING.md) have the details.

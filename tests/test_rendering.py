@@ -125,6 +125,29 @@ def test_markdown_as_text_reads_without_marks():
                     "(https://example.com/r), or https://example.com.\n- Bold item")
 
 
+def test_markdown_as_text_reads_a_table_row_by_row():
+    # The guide's tables, in the text box: no pipes or rules, each row with
+    # its column names, so it reads as sentences.
+    from thechatplace.ui_text import markdown_as_text
+    text = markdown_as_text("Intro.\n\n| Feature | Claude | Codex |\n|---|---|---|\n"
+                            "| **Reply** | yes | no: `Stop` |\n| Delete | yes |  |\n\nAfter.")
+    assert text == "Intro.\n\nReply: Claude yes; Codex no: Stop\nDelete: Claude yes\n\nAfter."
+
+
+def test_markdown_as_text_leaves_pipes_that_arent_a_table():
+    from thechatplace.ui_text import markdown_as_text
+    assert markdown_as_text("| not a table |\nplain line") == "| not a table |\nplain line"
+    assert markdown_as_text("| a | b |\n|:---|---:|") == ""  # a header and rule, no rows
+
+
+def test_the_user_guide_as_text_has_no_tables_left():
+    from thechatplace.platform_paths import user_guide_path
+    from thechatplace.ui_text import markdown_as_text
+    text = markdown_as_text(user_guide_path().read_text(encoding="utf-8"))
+    assert not [line for line in text.splitlines() if line.lstrip().startswith("|")]
+    assert "Copy Session Link: Claude yes; Codex no; GitHub Copilot CLI no" in text
+
+
 def test_the_user_guide_as_text_has_no_markdown_left():
     from thechatplace.platform_paths import user_guide_path
     from thechatplace.ui_text import markdown_as_text

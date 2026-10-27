@@ -214,7 +214,7 @@ def test_the_lists_pages_line_up_with_kinds_and_close(name, app, tmp_path, monke
 
 
 def test_an_interrupted_codex_chat_says_its_problem_with_one_full_stop(app, tmp_path, monkeypatch):
-    """#291: the heading read "reconcile chat history.. Codex chat." because
+    """#291: the heading read "reconnect.. Codex chat." because
     the problem ends in a full stop and the heading adds its own."""
     env = ui_probe.build_world(tmp_path, monkeypatch.setattr, formatted_view=False)
     frame = ui_probe.build_frame(env)
@@ -223,7 +223,7 @@ def test_an_interrupted_codex_chat_says_its_problem_with_one_full_stop(app, tmp_
         ui_probe.s_main_codex_interrupted(frame, env)
         frame._update_heading()
         heading = frame.session_heading.GetLabel()
-        assert "reconcile chat history. Codex chat" in heading
+        assert "Use Stop to reconnect. Codex chat" in heading
         for text in (heading, frame.messages_label.GetLabel(), frame.status_session.latest(),
                      frame.session_list.GetString(frame.session_list.GetSelection())):
             assert ".." not in text and "., " not in text and ".," not in text, text

@@ -64,7 +64,7 @@
     788
    ],
    "best": [
-    1651,
+    1661,
     129
    ],
    "depth": 1,
@@ -76,14 +76,14 @@
     "Visual probe, Claude, Scratch, idle, active just now, Chat Place session",
     "Write the release notes for 0.2, Claude, AIChat, idle, active 1 hour ago, desktop app session",
     "A session whose title goes on and on to show what a very long title does to the session list and the heading above the messages, Claude, Website, idle, active yesterday, desktop app session",
-    "Codex history preview, Codex, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history, active 2 hours ago, Chat Place session"
+    "Codex history preview, Codex, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received. Use Stop to reconnect, active 2 hours ago, Chat Place session"
    ],
    "selection": 4
   },
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history. Codex chat.",
+   "label": "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received. Use Stop to reconnect. Codex chat.",
    "rect": [
     599,
     8,
@@ -102,7 +102,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Messages in Codex history preview (on Codex):",
+   "label": "&Messages in Codex history preview (working, on Codex):",
    "rect": [
     599,
     67,
@@ -120,7 +120,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Messages in Codex history preview (on Codex)",
+   "name": "Messages in Codex history preview (working, on Codex)",
    "label": "",
    "rect": [
     601,
@@ -279,7 +279,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Codex connection interrupted: an unsupported approval or question was received; reconcile chat history.",
+   "label": "Codex connection interrupted: an unsupported approval or question was received. Use Stop to reconnect.",
    "rect": [
     599,
     727,
@@ -374,7 +374,7 @@
   {
    "class": "Control",
    "name": "Status",
-   "label": "Codex history preview: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history.",
+   "label": "Codex history preview: Codex connection interrupted: an unsupported approval or question was received. Use Stop to reconnect.",
    "rect": [
     2,
     842,
@@ -393,7 +393,7 @@
   {
    "class": "Control",
    "name": "Loaded session",
-   "label": "Codex history preview: status unavailable, Codex connection interrupted: an unsupported approval or question was received; reconcile chat history",
+   "label": "Codex history preview: status unavailable, Codex connection interrupted: an unsupported approval or question was received. Use Stop to reconnect",
    "rect": [
     717,
     842,
