@@ -266,10 +266,12 @@ class AgentChats:
                 return
             slot, title, choice = remaining[0]
             sandbox = choice.permission or "read-only"
+            reviewer = None if choice.approvals_reviewer == "user" else choice.approvals_reviewer
 
             def create():
                 return self.sessions.create_owned("codex", plan.folder, title, sandbox=sandbox,
-                                                  approval_policy="on-request")
+                                                  approval_policy=choice.approval_policy,
+                                                  approvals_reviewer=reviewer)
 
             def done(record, error):
                 if error:
