@@ -165,7 +165,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   once. References to files in the repository, such as `[main.py](src/main.py)`, aren't listed.
   Only web, email and session links open; anything else, such as a file: path, is marked "copy
   only" and says why if you try. Links in tool calls and results are listed only with Show Tool
-  Activity on. Changed files, commands and decisions are listed for Claude chats for now. Codex chats
+  Activity on. Changed files are listed for Claude and Copilot chats; commands and decisions for
+  Claude chats for now. Codex chats
   also list live tasks captured while run here; older chats and chats run elsewhere may have no
   saved list. Question cards read as
   "Claude asked: Which version?" with the options in the full text,
@@ -190,12 +191,14 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Command-result notifications use a brief summary even in Full announcements;
   Silent keeps them in the status bar.
 - **Changed Files** (Ctrl+Shift+D, View menu) opens Lists on Changed Files: the files
-  Claude changed in the selected message's turn (your latest, if none is selected), or in the
+  Claude or Copilot changed in the selected message's turn (your latest, if none is selected), or in the
   whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
   removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a
   time: where each change is, then "Removed:", "Added:" and "Unchanged:" lines. It's built from the
   transcript, so it works for desktop app sessions too, with no git needed. Changes made by a
-  subagent Claude hands work to, and notebook edits, aren't counted yet. When the loaded
+  subagent Claude hands work to, and notebook edits, aren't counted yet. For Copilot chats it's
+  built from Copilot's own log, whichever tool made the change, so chats started in Copilot CLI
+  have it too, and reading it never starts Copilot; a file Copilot deleted says "deleted". When the loaded
   session's turn ends, the announcement (at the full level) is followed by a one-line summary:
   "Changed 3 files: main_frame.py, 40 lines added, 12 removed; …".
 - **The task list.** On longer work Claude keeps a list of its steps (Claude Code's

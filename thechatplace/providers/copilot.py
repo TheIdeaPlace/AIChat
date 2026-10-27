@@ -24,6 +24,7 @@ import time
 from typing import Iterable, List, Optional, Tuple
 
 from .. import platform_paths
+from ..changes import FileEdit, Hunk, parse_git_diff
 from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, TERMINAL, WORKING, SessionInfo
 from ..transcript import (ASSISTANT, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT, USER,
                           ChatMessage, Transcript, split_jsonl)
@@ -205,6 +206,8 @@ class CopilotParser:
         self._seen: set = set()
         # requestId -> what Copilot asked to do, for a refusal's message.
         self._asked: dict = {}
+        # toolCallId -> the tool's name, for the files it changed.
+        self._tools: dict = {}
 
     def feed(self, lines: Iterable[str]) -> None:
         for line in lines:
@@ -254,6 +257,8 @@ class CopilotParser:
                 self.transcript.model = data["newModel"]
         elif kind == "tool.execution_start":
             call = _text(data.get("toolCallId"))
+            if call:
+                self._tools[call] = _text(data.get("toolName"))
             self._add(TOOL, _tool_summary(_text(data.get("toolName")),
                                           _text(data.get("toolTitle")), data.get("arguments")),
                       timestamp, f"{call}:call" if call else event_id)
@@ -264,6 +269,8 @@ class CopilotParser:
             if not output and isinstance(error, dict) and _text(error.get("message")):
                 output = f"Failed: {error['message']}"
             self._add(TOOL_RESULT, output, timestamp, f"{call}:result" if call else event_id)
+            self._file_edits(data, self._tools.pop(call, "") if call else "",
+                             f"{call or event_id}:edits" if call or event_id else "")
         elif kind == _PERMISSION_ASKED:
             request = data.get("permissionRequest")
             request = request if isinstance(request, dict) else {}
@@ -284,6 +291,58 @@ class CopilotParser:
                       timestamp, event_id)
         elif kind == "abort":
             self._add(INTERRUPTED, "Stopped before the turn finished.", timestamp, event_id)
+
+
+    def _file_edits(self, data: dict, tool: str, key: str) -> None:
+        """The files a tool call changed, for Changed Files: whichever tool
+        did it, a successful call's ``fileEdits`` (path; kind "create",
+        "edit" or "delete") with the matching section of its git-style diff
+        in ``result.detailedContent`` (probed on Copilot CLI 1.0.103)."""
+        entries = data.get("fileEdits")
+        if data.get("success") is not True or not isinstance(entries, list) or not entries:
+            return
+        if key:
+            if key in self._seen:
+                return
+            self._seen.add(key)
+        result = data.get("result") if isinstance(data.get("result"), dict) else {}
+        # A rename with no change in content, or a binary file, has no
+        # ---/+++ lines and so no section: it's listed with no lines changed.
+        sections = parse_git_diff(_text(result.get("detailedContent")))
+        by_path = {_path_key(path): hunks for path, hunks in sections}
+        for entry in entries:
+            if not isinstance(entry, dict) or not _text(entry.get("path")):
+                continue
+            path, kind = entry["path"], _text(entry.get("kind"))
+            hunks = by_path.get(_path_key(path))
+            if hunks is None and len(entries) == 1 and len(sections) == 1:
+                hunks = sections[0][1]  # one file, one diff: the same one
+            created, deleted = kind == "create", kind == "delete"
+            hunks = list(hunks or ())
+            if (created or deleted) and hunks:
+                hunks[-1] = _trimmed(hunks[-1], "+" if created else "-")
+            self.transcript.edits.append(FileEdit(
+                path, tool or "Copilot", self.transcript.turns, hunks,
+                created=created, deleted=deleted))
+
+
+def _path_key(path: str) -> str:
+    """Paths compared whatever their slashes, or case as on Windows. A
+    leading slash is dropped too: the diff's "a/" prefix may have eaten a
+    Mac's or Linux's ("a/Users/me/x" for /Users/me/x)."""
+    return os.path.normcase(os.path.normpath(path.replace("\\", "/"))).lstrip("\\/")
+
+
+def _trimmed(hunk: Hunk, mark: str) -> Hunk:
+    """Copilot's diff counts the newline that ends a file as one more, empty
+    line ("+alpha", "+beta", "+"): left in, a three-line file created would
+    show as four lines added. Only a file created or deleted whole is
+    trimmed, where that line is sure to be the last; in an edit it shows as
+    an unchanged line, which counts nothing, and a real blank line is kept."""
+    lines = list(hunk.lines)
+    if lines and lines[-1] == mark:
+        lines.pop()
+    return Hunk(hunk.old_start, hunk.new_start, lines)
 
 
 def parse_events(lines: Iterable[str]) -> Transcript:
@@ -629,7 +688,9 @@ class CopilotProvider:
         # runtime; the runtime checks again (client name, hooks, billing,
         # use elsewhere) before anything is sent. Others are read only.
         owned = self.runtime is not None and session.is_own
-        return SessionCapabilities(send=owned, approvals=owned)
+        # Changed Files is read from the log, so every Copilot chat has it,
+        # read-only ones too; reading it never starts Copilot.
+        return SessionCapabilities(send=owned, approvals=owned, changes=True)
 
     # -- owned chats (copilot_runtime) ---------------------------------------
 

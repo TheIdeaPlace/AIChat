@@ -303,8 +303,9 @@ session list, the messages or the reply box:</p>
 <ul>
 <li><strong>Code Blocks:</strong> each code block, by language and size, with its code to read.</li>
 <li><strong>Links:</strong> each link, its words and where it goes, then who wrote it and roughly when.</li>
-<li><strong>Changed Files</strong> (Claude chats): each file Claude changed, with how many lines were added and
-  removed, and its changes to read line by line. This works for desktop app chats too.</li>
+<li><strong>Changed Files</strong> (Claude and Copilot chats): each file changed, with how many lines were added
+  and removed, and its changes to read line by line. A file Copilot deleted says "deleted". This
+  works for desktop app chats and chats started in Copilot CLI too.</li>
 <li><strong>Commands</strong> (Claude chats): each command Claude ran: what it said it was doing, then "done",
   "failed" or "no result yet". Its full text shows the command and its output.</li>
 <li><strong>Decisions</strong> (Claude chats): each question Claude asked you, with your answer.</li>
@@ -569,7 +570,13 @@ whether the chat was started here:</p>
 <td>no</td>
 </tr>
 <tr>
-<td>Changed Files, Commands and Decisions in Lists</td>
+<td>Changed Files in Lists</td>
+<td>yes</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Commands and Decisions in Lists</td>
 <td>yes</td>
 <td>no</td>
 <td>no</td>

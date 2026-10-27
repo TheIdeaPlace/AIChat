@@ -12248,6 +12248,35 @@ def test_permission_notices_are_kept_apart_by_provider(frame, monkeypatch):
     frame._codex_states.clear()
 
 
+def test_a_finished_copilot_turn_says_what_it_changed(frame, monkeypatch):
+    """As after a Claude turn, the files a Copilot turn changed follow its
+    reply (#352); Codex, whose chats don't list changed files, stays quiet."""
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: None)
+    monkeypatch.setattr(frame, "_notify", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "_refresh_chat", lambda *a, **kw: None)
+    # The window asks the provider; test_copilot_provider checks Copilot's
+    # answer. Here the Copilot preview is off, so the answer is given.
+    from thechatplace.providers.base import SessionCapabilities
+    monkeypatch.setattr(frame.sessions, "capabilities", lambda info: SessionCapabilities(
+        changes=info.provider == "copilot"))
+    for provider, due in (("copilot", True), ("codex", False)):
+        native = f"{provider}-done"
+        frame.store.add(OwnSession(native, f"{provider} chat", "C:/w", provider=provider,
+                                   started=True))
+        info = SessionInfo(OWN, f"{provider}:{native}", f"{provider} chat", "C:/w", native,
+                           provider=provider)
+        monkeypatch.setattr(frame, "_open", info)
+        frame._changes_due = False
+        frame._on_owned_update(provider, CodexChatState(native, "idle", "t1", "completed"))
+        assert frame._changes_due is due, provider
+    frame._codex_states.clear()
+    frame._changes_due = False
+
+
 # -- owned GitHub Copilot CLI chats (#352) -------------------------------------
 
 

@@ -96,3 +96,49 @@ def test_a_result_read_later_than_its_call_still_counts():
     parser.feed(lines(tool_result("t1", "Updated.", toolUseResult={
         "filePath": "a.py", "structuredPatch": PATCH})))
     assert [e.path for e in parser.transcript.edits] == ["a.py"]
+
+
+def test_a_git_style_diff_is_read_file_by_file():
+    """Copilot's ``detailedContent`` (#352): one section per file, absolute
+    paths after a/ and b/, /dev/null for a file created or deleted."""
+    from thechatplace.changes import parse_git_diff
+    text = "\n".join([
+        "diff --git a/C:/work/notes.txt b/C:/work/notes.txt",
+        "index 0000000..0000000 100644",
+        "--- a/C:/work/notes.txt",
+        "+++ b/C:/work/notes.txt",
+        "@@ -1,4 +1,5 @@",
+        " alpha",
+        "-beta",
+        "+BETA",
+        "+--- not a header",
+        "",
+        "diff --git a/C:/work/extra.txt b/C:/work/extra.txt",
+        "--- a/dev/null",
+        "+++ b/C:/work/extra.txt",
+        "@@ -1,0 +1,2 @@",
+        "+hello",
+        "diff --git a/C:/work/spare.txt b/dev/null",
+        "--- a/C:/work/spare.txt",
+        "+++ b/dev/null",
+        "@@ -1,3 +0,0 @@",
+        "-one",
+    ])
+    files = parse_git_diff(text)
+    assert [path for path, _ in files] == ["C:/work/notes.txt", "C:/work/extra.txt",
+                                          "C:/work/spare.txt"]
+    notes = files[0][1]
+    assert (notes[0].old_start, notes[0].new_start) == (1, 1)
+    assert notes[0].lines == [" alpha", "-beta", "+BETA", "+--- not a header"]
+    assert files[1][1][0].lines == ["+hello"] and files[2][1][0].lines == ["-one"]
+    assert parse_git_diff("") == [] and parse_git_diff("not a diff\n+x") == []
+
+
+def test_a_deleted_file_says_so():
+    from thechatplace.changes import FileEdit, Hunk
+    removed = FileEdit("C:/work/spare.txt", "apply_patch", 1, [Hunk(1, 0, ["-one", "-two"])],
+                       deleted=True)
+    assert by_file([removed])[0].counts() == "deleted"
+    created = FileEdit("C:/work/spare.txt", "apply_patch", 1, [Hunk(0, 1, ["+one"])], created=True)
+    assert by_file([created, removed])[0].counts() == "created, then deleted"
+    assert summary_text([created, removed]) == "Changed 1 file: spare.txt, created, then deleted."
