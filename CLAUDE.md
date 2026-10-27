@@ -15,7 +15,9 @@ JAWS and NVDA is the point of the app, so every UI change has to work by keyboar
 announced for a screen reader.
 
 The README is the user-facing spec. It is long and detailed, and it lists the shortcuts, file
-locations and behaviour. Keep it in step with behaviour changes.
+locations and behaviour. Keep it in step with behaviour changes. Developer material (running
+from source, building, releasing, the source file list) is in `DEVELOPING.md`, not the README:
+keep that in step with the build and release scripts.
 
 ## Commands
 
