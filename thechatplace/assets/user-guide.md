@@ -1323,8 +1323,8 @@ setting moves straight to it.
     - **Diff symbols with changed lines:** as Diff symbols, but a line and the line that
       replaced it read one after the other, "!- old" then "!+ new".
 
-  Symbols are spoken only if your screen reader's punctuation level reads them; while one is chosen,
-  the choice says so when you Tab to it. Text you copy from Changed Files is marked the same way.
+  Symbols are spoken only if your screen reader's punctuation level reads them, and you hear that
+  when you move the choice onto one. Text you copy from Changed Files is marked the same way.
 - **Recent folders New Session offers** (Alt+F): how many of your recent folders New Session's
   Folder list offers, 20 at first, up to 100; 0 offers none. It counts the next time New Session
   opens.

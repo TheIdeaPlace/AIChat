@@ -876,7 +876,7 @@ _SYMBOL_MARKS = (difftext.SYMBOLS, difftext.CHANGED)
 class SettingsDialog(wx.Dialog):
     """Announcements and speech (the Speech tab of IDT's settings, adapted)."""
 
-    def __init__(self, parent, speech: SpeechSettings, options, clear_recent=None):
+    def __init__(self, parent, speech: SpeechSettings, options, clear_recent=None, say=None):
         super().__init__(parent, title="Settings", size=dialog_size(parent, 680, 620))
         self._options = list(options)
         # Settings kept elsewhere (the session list's sort order) pass through.
@@ -969,18 +969,21 @@ class SettingsDialog(wx.Dialog):
         grid.Add(self.notify_choice, 0)
 
         # How Changed Files marks each line of a change (#174). Symbols can be
-        # silent at a screen reader's lower punctuation levels, so while one is
-        # chosen the choice's name says so. Only someone using a screen reader
-        # needs that, and static text would never be read to them (#98), so
-        # there's no note on screen.
+        # silent at a screen reader's lower punctuation levels, so moving the
+        # choice onto one says so, spoken as it's chosen. Only someone using a
+        # screen reader needs that, and static text would never be read to
+        # them (#98), so there's no note on screen; nor is it in the choice's
+        # name, which on Windows comes from its label, not SetName.
         grid.Add(wx.StaticText(body, label="Mark c&hanged lines with:"), 0,
                  wx.ALIGN_CENTER_VERTICAL)
         self.marks_choice = wx.Choice(body, choices=[difftext.LABELS[style]
                                                      for style in difftext.STYLES])
+        set_accessible_name(self.marks_choice, "Mark changed lines with")
         self.marks_choice.SetSelection(difftext.STYLES.index(speech.change_marks)
                                        if speech.change_marks in difftext.STYLES else 0)
-        self.marks_choice.Bind(wx.EVT_CHOICE, lambda e: self._update_marks_name())
-        self._update_marks_name()
+        self._say = say
+        self._marks_symbols = self._marks_style() in _SYMBOL_MARKS
+        self.marks_choice.Bind(wx.EVT_CHOICE, lambda e: self._on_marks_choice())
         grid.Add(self.marks_choice, 0)
         outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
 
@@ -1129,10 +1132,13 @@ class SettingsDialog(wx.Dialog):
         return difftext.STYLES[index] if 0 <= index < len(difftext.STYLES) \
             else difftext.DEFAULT
 
-    def _update_marks_name(self):
+    def _on_marks_choice(self):
+        """Say the punctuation note once on moving from words to symbols,
+        not again between the two symbol styles."""
         symbols = self._marks_style() in _SYMBOL_MARKS
-        set_accessible_name(self.marks_choice, "Mark changed lines with" + (
-            f". {difftext.SYMBOLS_NOTE}" if symbols else ""))
+        if symbols and not self._marks_symbols and self._say is not None:
+            self._say(difftext.SYMBOLS_NOTE)
+        self._marks_symbols = symbols
 
     def _fit_scrolling(self, body, content):
         """As tall as the settings need, up to the screen; past that they

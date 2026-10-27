@@ -954,6 +954,20 @@ def d_settings_copilot(frame, env):
     return frame.on_settings
 
 
+def d_settings_speech_problem(frame, env):
+    """Settings after an announcement wasn't spoken (#98): the read-only box
+    under Speaking rate. Put back afterwards, so later surfaces don't show it."""
+    from thechatplace import speech
+
+    def show():
+        speech.speaker.last_problem = "not spoken: JAWS is running but refused the text"
+        try:
+            frame.on_settings()
+        finally:
+            speech.speaker.last_problem = ""
+    return show
+
+
 def d_new_session(frame, env):
     return frame.on_new_session
 
@@ -1491,6 +1505,8 @@ SURFACES = {
     "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
     "settings-copilot": ("dialog", d_settings_copilot,
                          "Settings once Copilot CLI has a session: its check box shows"),
+    "settings-speech-problem": ("dialog", d_settings_speech_problem,
+                                "Settings after an announcement wasn't spoken: the reason box"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
@@ -1575,6 +1591,7 @@ DIALOG_CLASSES = {
     "settings": "SettingsDialog",
     "settings-codex": "SettingsDialog",
     "settings-copilot": "SettingsDialog",
+    "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-auto-review": "NewSessionDialog",

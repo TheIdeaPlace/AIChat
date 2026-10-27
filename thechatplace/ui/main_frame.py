@@ -5518,7 +5518,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         previous_providers = (self.speech.includes_codex(), self.speech.copilot_enabled)
         options = self._speech_options or default_options()
         dialog = SettingsDialog(self, self.speech, options,
-                                clear_recent=self._clear_recent_folders)
+                                clear_recent=self._clear_recent_folders, say=self._feedback)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return

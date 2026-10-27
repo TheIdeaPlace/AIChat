@@ -4071,24 +4071,34 @@ def test_changed_files_mark_lines_as_settings_say(frame, env, monkeypatch):
         frame.speech.change_marks = style
         frame.on_changes()
         assert details[-1].endswith(expected), style
-    # The Settings choice: the punctuation note is in its name, only for symbols.
-    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    # The Settings choice: moving onto symbols from words says the punctuation
+    # note once, as it's chosen; between the two symbol styles, not again.
+    said = []
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options(),
+                            say=said.append)
     try:
         assert dialog.marks_choice.GetSelection() == 0
-        assert dialog.marks_choice.GetName() == "Mark changed lines with"  # words are spoken
-        for index, noted in [(2, True), (3, True), (1, False)]:
+        assert dialog.marks_choice.GetName() == "Mark changed lines with"
+        for index, count in [(1, 0), (2, 1), (3, 1), (0, 1), (3, 2)]:
             dialog.marks_choice.SetSelection(index)
             event = wx.CommandEvent(wx.wxEVT_CHOICE, dialog.marks_choice.GetId())
             event.SetInt(index)
             dialog.marks_choice.GetEventHandler().ProcessEvent(event)
-            assert ("punctuation level" in dialog.marks_choice.GetName()) is noted
+            assert len(said) == count, index
+        assert said[0] == ("Symbols are spoken only if your screen reader's punctuation "
+                           "level reads them.")
     finally:
         dialog.Destroy()
+    # Opened on a symbol style: nothing said until it's moved off and back.
+    said.clear()
     dialog = SettingsDialog(frame, speech.SpeechSettings(change_marks="changed"),
-                            speech.default_options())
+                            speech.default_options(), say=said.append)
     try:
         assert dialog.marks_choice.GetSelection() == 3
-        assert dialog.marks_choice.GetName().startswith("Mark changed lines with. Symbols")
+        dialog.marks_choice.SetSelection(2)
+        dialog.marks_choice.GetEventHandler().ProcessEvent(
+            wx.CommandEvent(wx.wxEVT_CHOICE, dialog.marks_choice.GetId()))
+        assert said == []
     finally:
         dialog.Destroy()
 
