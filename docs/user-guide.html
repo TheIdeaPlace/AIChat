@@ -34,7 +34,7 @@ Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guid
 <p>The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
 Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products.</p>
-<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstalling">Uninstalling</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
+<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#reviewing-changed-files">Reviewing changed files</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstalling">Uninstalling</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
 <p>You need:</p>
 <ul>
 <li>Windows 10 or 11, or a Mac with Apple silicon.</li>
@@ -304,10 +304,7 @@ session list, the messages or the reply box:</p>
 <li><strong>Code Blocks:</strong> each code block, by language and size, with its code to read.</li>
 <li><strong>Links:</strong> each link, its words and where it goes, then who wrote it and roughly when.</li>
 <li><strong>Changed Files</strong> (Claude and Copilot chats): each file changed, with how many lines were added
-  and removed, and its changes to read line by line: where each change is ("Lines 12 to 20:"),
-  then its lines, marked as Settings, <strong>Mark changed lines with</strong> says (words at first:
-  "Added:", "Removed:", "Unchanged:"). A file Copilot deleted says "deleted". This
-  works for desktop app chats and chats started in Copilot CLI too.</li>
+  and removed, and its changes to read line by line (see "Reviewing changed files" below).</li>
 <li><strong>Commands</strong> (Claude chats): each command Claude ran: what it said it was doing, then "done",
   "failed" or "no result yet". Its full text shows the command and its output.</li>
 <li><strong>Decisions</strong> (Claude chats): each question Claude asked you, with your answer.</li>
@@ -359,6 +356,121 @@ address is always what's opened or copied. A link in a code block or in inline c
 code". Only web, email and session links open; anything else, such as a file path, is marked
 "copy only" and says why if you try to open it. Links in tool calls and results are listed only
 with Show Tool Activity on.</p>
+<h2 id="reviewing-changed-files">Reviewing changed files</h2>
+<p>Changed Files lists each file the AI changed in a chat and lets you read each change a line at
+a time. It works for Claude and Copilot chats, including desktop app chats and chats started in
+Copilot CLI. It's built from the chat's own record, so it needs no git. Codex chats don't have it
+yet.</p>
+<h3>Opening it</h3>
+<p>Press <strong>Ctrl+Shift+D</strong> (on a Mac, Cmd+Shift+D), or choose View, Changed Files. It opens Lists on
+Changed Files, for the selected message's turn: everything from your message to the AI's reply.
+With no message selected, it shows your latest message's turn. If that turn changed nothing, it
+shows the whole chat. <strong>Show items from</strong> (Alt+S) switches between <strong>This message</strong> and <strong>The
+whole chat</strong>.</p>
+<p>When a turn in the chat you have open finishes and changed files, you hear a summary after the
+reply, at the Full announcement level; otherwise it goes to the status bar:</p>
+<section role="region" aria-label="Code block, Text, 1 line"><pre><code class="language-text">Fix the greeting: Changed 2 files: greet.py, 2 lines added, 1 removed; NOTES.md, created, 3 lines. Ctrl+Shift+D shows the changes.
+</code></pre></section>
+<h3>The file list</h3>
+<p>Each file is one row: its name, how many lines were added and removed, and its folder within the
+chat's folder. Files are in the order they were first changed.</p>
+<section role="region" aria-label="Code block, Text, 4 lines"><pre><code class="language-text">greet.py, 2 lines added, 1 removed, in src
+NOTES.md, created, 3 lines
+old-notes.txt, deleted
+settings.json, no lines changed
+</code></pre></section>
+<ul>
+<li><strong>"created"</strong> is a new file, with how many lines it has.</li>
+<li><strong>"deleted"</strong> is a file Copilot deleted.</li>
+<li><strong>"no lines changed"</strong> is a file that was written again with the same text.</li>
+</ul>
+<p><strong>Type</strong> to narrow the list by name. <strong>Ctrl+C</strong> (or Copy) copies the selected file's full path.</p>
+<h3>Reading a file's changes</h3>
+<p>Press <strong>Enter</strong> on a file to read its changes in the <strong>Details</strong> box below the list. Arrow
+through it a line at a time.</p>
+<ul>
+<li>The first line is the file's full path and its counts.</li>
+<li>Each change then starts with a blank line and where it is in the file, after the change:
+  "At line 5:" for one line, or "Lines 12 to 16:" for several.</li>
+<li>"A change:" means the place in the file wasn't recorded. That happens with some older
+    chats.</li>
+<li>For a file Copilot deleted, the lines are where they were before.</li>
+<li>Then come the change's lines, each starting with a mark that says whether it was added,
+  removed or left as it was. The unchanged lines around a change are there to show where it is.</li>
+<li>An empty line reads "blank line", after its mark, so it isn't silent.</li>
+<li>"Note: No newline at end of file" means the line before it is the last in the file, with no
+  line break after it.</li>
+</ul>
+<h3>How lines are marked</h3>
+<p>Settings (Ctrl+Comma), <strong>Mark changed lines with</strong> (Alt+H), chooses how each line starts. Every
+style gives one line for each line of the change, with the mark first. Here is the same change in
+each: a greeting function whose print line was replaced with two lines.</p>
+<p><strong>Words</strong> (the default): the plainest, and spoken at any punctuation level.</p>
+<section role="region" aria-label="Code block, Text, 9 lines"><pre><code class="language-text">C:\Projects\app\src\greet.py: 2 lines added, 1 removed.
+
+Lines 12 to 16:
+Unchanged: def greet(name):
+Removed:     print('Hello ' + name)
+Added:     message = f'Hello, {name}!'
+Added:     print(message)
+Unchanged: blank line
+Unchanged: def main():
+</code></pre></section>
+<p><strong>Short words:</strong> the same, with shorter words that are still spoken at any punctuation level.</p>
+<section role="region" aria-label="Code block, Text, 7 lines"><pre><code class="language-text">Lines 12 to 16:
+Same def greet(name):
+Del     print('Hello ' + name)
+Add     message = f'Hello, {name}!'
+Add     print(message)
+Same blank line
+Same def main():
+</code></pre></section>
+<p><strong>Diff symbols:</strong> the marks git and GitHub use, "+" for added and "-" for removed, with "=" for
+an unchanged line, where git leaves a space.</p>
+<section role="region" aria-label="Code block, Text, 7 lines"><pre><code class="language-text">Lines 12 to 16:
+= def greet(name):
+-     print('Hello ' + name)
++     message = f'Hello, {name}!'
++     print(message)
+= blank line
+= def main():
+</code></pre></section>
+<p><strong>Diff symbols with changed lines:</strong> as Diff symbols, but a removed line followed by the line
+that replaced it reads as a pair, "!-" for the old line, then "!+" for the new one. Lines with
+no partner keep "+" or "-". Here the old print line pairs with the first new line, and the second
+new line is simply added.</p>
+<section role="region" aria-label="Code block, Text, 7 lines"><pre><code class="language-text">Lines 12 to 16:
+= def greet(name):
+!-     print('Hello ' + name)
+!+     message = f'Hello, {name}!'
++     print(message)
+= blank line
+= def main():
+</code></pre></section>
+<p>When several lines are replaced, the pairs come one after another, each old line followed by
+its new one: "!- old 1", "!+ new 1", "!- old 2", "!+ new 2". So these lines aren't in the order
+the file has them, which they are in every other style.</p>
+<p>Symbols are spoken only if your screen reader's punctuation level reads them. At a lower level,
+"+", "-", "=" or "!" may be skipped, and a line can sound unchanged when it isn't. Settings says so
+when you move the choice onto a symbol style. If you'd like symbols, raise the punctuation level
+while you read changes, or use Short words.</p>
+<p>A new file is all added lines:</p>
+<section role="region" aria-label="Code block, Text, 6 lines"><pre><code class="language-text">C:\Projects\app\NOTES.md: created, 3 lines.
+
+Lines 1 to 3:
+Added: # Notes
+Added: blank line
+Added: First draft.
+</code></pre></section>
+<h3>Copying changes</h3>
+<p>Select text in the Details box and copy it as usual; it's marked in the style you chose. Ctrl+C
+in the file list copies the file's path instead.</p>
+<h3>What isn't listed</h3>
+<ul>
+<li>Files the AI changed by running a command (a script, <code>sed</code>, or <code>cat &gt; file</code>) rather than with
+  its own editing tools. For Copilot chats every change is listed, whichever tool made it.</li>
+<li>Changes made by a subagent Claude hands work to, and edits to notebooks.</li>
+</ul>
 <h2 id="kinds-of-chat">Kinds of chat</h2>
 <p>A chat's <strong>Kind</strong> says where it was started. You read every kind the same way: arrow to it and
 press <strong>Enter</strong>. What differs is where you reply.</p>
@@ -1356,6 +1468,7 @@ setting moves straight to it.</p>
 </ul>
 <p>Symbols are spoken only if your screen reader's punctuation level reads them, and you hear that
   when you move the choice onto one. Text you copy from Changed Files is marked the same way.
+  "Reviewing changed files" has an example of each.
 - <strong>Recent folders New Session offers</strong> (Alt+F): how many of your recent folders New Session's
   Folder list offers, 20 at first, up to 100; 0 offers none. It counts the next time New Session
   opens.
