@@ -2,7 +2,7 @@
 
 No window appears on screen: the frame is created hidden and destroyed at the
 end, and speech is replaced by a recorder. The real look and sound with JAWS
-and NVDA is checked by hand (see the README).
+and NVDA is checked by hand (see DEVELOPING.md).
 """
 import dataclasses
 import json
