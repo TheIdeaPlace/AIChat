@@ -39,6 +39,9 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
               in use elsewhere, at once
   inuselater  the same, logged when the first prompt after session/load
               arrives (as 1.0.103 logs every session.resume)
+  strict      as hang, but a session/cancel that arrives while no prompt is
+              running is ignored, as real Copilot ignores one that comes
+              before the prompt it was meant for
 
 Every prompt logs a user.message first, as Copilot does.
 
@@ -69,6 +72,7 @@ resume_pending = {}
 turns = [0]
 client = ["github/acp"]  # what Copilot records unless clientInfo names one
 cancelled = threading.Event()
+prompting = threading.Event()  # strict: set as a prompt is read, before its thread
 
 
 def send(message):
@@ -201,10 +205,15 @@ def prompt(message_id, session, text=""):
             {"type": "select", "id": "mode", "currentValue": AGENT},
             {"type": "select", "id": "allow_all", "currentValue": "off"}]})
         time.sleep(2.0)  # long enough for a third message to be queued
-    if MODE == "hang" or (MODE == "byokhang" and turns[0] == 1):
+    if MODE in ("hang", "strict") or (MODE == "byokhang" and turns[0] == 1):
         update(session, {"sessionUpdate": "agent_message_chunk",
                          "content": {"type": "text", "text": "Working"}})
         cancelled.wait(30)
+        if MODE == "strict":
+            # Before the answer: the next prompt is read only after it, so a
+            # cancel for that one starts from nothing, as for the first.
+            prompting.clear()
+            cancelled.clear()
         send({"jsonrpc": "2.0", "id": message_id, "result": {"stopReason": "cancelled"}})
         return
     if MODE == "ask":
@@ -297,13 +306,14 @@ def main():
             send({"jsonrpc": "2.0", "id": message_id, "result": {"configOptions": options()}})
         elif method == "session/prompt":
             text = ((params.get("prompt") or [{}])[0] or {}).get("text", "")
+            prompting.set()  # here, not in the thread: a cancel read next sees it
             threading.Thread(target=prompt, args=(message_id, params.get("sessionId"), text),
                              daemon=True).start()
         elif method == "session/close":
             open_sessions.discard(params.get("sessionId"))
             send({"jsonrpc": "2.0", "id": message_id, "result": {}})
         elif method == "session/cancel":
-            if MODE != "deaf":
+            if MODE != "deaf" and (MODE != "strict" or prompting.is_set()):
                 cancelled.set()
         elif message_id is not None:
             send({"jsonrpc": "2.0", "id": message_id, "error": {"code": -32601, "message": "no"}})

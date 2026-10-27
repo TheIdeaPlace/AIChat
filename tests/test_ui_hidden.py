@@ -12460,16 +12460,24 @@ def test_a_copilot_chat_with_no_messages_yet_is_still_opened(frame, env, monkeyp
 
 
 def test_stop_on_a_copilot_chat_with_nothing_running_says_so(frame, env, monkeypatch):
+    """Kelly's review of #386: Stop asks the runtime even when the window's
+    state says the turn is over. That state can lag: with messages queued,
+    the finished turn reaches the window before the next one's start does."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
     frame.store.add(OwnSession("cp-idle", "Idle Copilot", "C:/w", provider="copilot", started=True))
     info = SessionInfo(OWN, "copilot:cp-idle", "Idle Copilot", "C:/w", "cp-idle", provider="copilot")
-    from thechatplace.providers.copilot_runtime import CopilotChatState
     frame._codex_states[info.key] = CopilotChatState("cp-idle", "idle", "1", "completed")
     calls = []
-    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a: calls.append(a))
+
+    def owned_action(action, record, *args):
+        calls.append(action)
+        return Stopped()
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame._stop_codex_owned(info)
-    assert calls == [] and "nothing to stop" in env["feedback"][-1]
+    assert pump(lambda: calls == ["stop"] and any(
+        t == "Idle Copilot: Copilot isn't answering, so there's nothing to stop." for t in env["feedback"]))
     frame._codex_states.clear()
 
 
@@ -12616,24 +12624,84 @@ def test_a_chat_that_becomes_yours_is_named_so_even_while_in_the_list(frame, mon
 
 
 def test_stop_says_when_copilot_has_already_answered(frame, env, monkeypatch):
-    from thechatplace.providers.copilot_runtime import CopilotChatState
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
     frame.store.add(OwnSession("cp-chk", "Checking Copilot", "C:/w", provider="copilot", started=True))
     info = SessionInfo(OWN, "copilot:cp-chk", "Checking Copilot", "C:/w", "cp-chk", provider="copilot")
     calls = []
-    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a: calls.append(a))
+
+    def owned_action(action, record, *args):
+        calls.append(action)
+        return Stopped((), cancelled=False, answered=True)
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame._codex_states[info.key] = CopilotChatState("cp-chk", "working", "1", "inProgress", checking=True)
     frame._stop_codex_owned(info)
-    assert calls == [] and "already answered" in env["feedback"][-1]
+    # Neutral: the prompt also returns for a cancel, a refusal or Copilot
+    # ending, and only the checks after it say which (Kelly, #386).
+    assert pump(lambda: calls == ["stop"] and any(
+        t == "Checking Copilot: The Chat Place is checking how Copilot's turn ended, so there's nothing to stop."
+        for t in env["feedback"]))
+    frame._codex_states.clear()
+
+
+def test_stop_doesnt_say_answered_when_copilot_has_gone(frame, env, monkeypatch):
+    """The independent review of the #372 follow-ups: nothing cancelled
+    isn't the same as answered. Copilot's process may have gone mid-turn, or
+    the turn ended since the window last heard."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-gone", "Gone Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-gone", "Gone Copilot", "C:/w", "cp-gone", provider="copilot")
+    frame._codex_states[info.key] = CopilotChatState("cp-gone", "working", "1", "inProgress")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda action, record, *args: Stopped())
+    frame._stop_codex_owned(info)
+    assert pump(lambda: any("isn't answering, so there's nothing to stop" in t for t in env["feedback"]))
+    assert not any("answered" in t or "checking how" in t or "within 15 seconds" in t
+                   for t in env["feedback"])
+    # With a message back, something did happen: not "nothing to stop" (#386).
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda action, record, *args: Stopped(("Two",)))
+    frame.reply_text.SetValue("")
+    frame._stop_codex_owned(info)
+    assert pump(lambda: frame.reply_text.GetValue() == "Two" and env["feedback"][-1] == (
+        "Gone Copilot: Copilot isn't answering. 1 waiting message is back in the message box, unsent."))
+    frame._codex_states.clear()
+
+
+def test_stop_is_worded_from_what_the_runtime_saw_not_the_windows_state(frame, env, monkeypatch):
+    """Kelly's review of #372: the window's state can say Copilot has
+    answered when the next waiting message has already started. Stop then
+    cancels it, and says so, with the 15-second warning."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-race", "Racing Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-race", "Racing Copilot", "C:/w", "cp-race", provider="copilot")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    # Stale: "One" was being checked with "Two" and "Three" waiting, but
+    # "Two" has started since; the runtime cancels it and returns "Three".
+    frame._codex_states[info.key] = CopilotChatState("cp-race", "working", "1", "inProgress",
+                                                     checking=True, queued=("Two", "Three"))
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: Stopped(("Three",), cancelled=True))
+    frame.reply_text.SetValue("")
+    frame._stop_codex_owned(info)
+    assert pump(lambda: frame.reply_text.GetValue() == "Three")
+    assert pump(lambda: any("within 15 seconds" in t and "1 waiting message is back" in t
+                            for t in env["feedback"]))
+    assert not any("already answered" in t for t in env["feedback"])
     frame._codex_states.clear()
 
 
 
 def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatch):
-    """Kelly's review of #372: "nothing to stop" only when nothing waits;
-    otherwise Stop goes to the runtime, which gives the message back."""
-    from thechatplace.providers.copilot_runtime import CopilotChatState
+    """Kelly's review of #372: Stop goes to the runtime, which gives the
+    waiting message back; "nothing to stop" only when nothing came back."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
     frame.store.add(OwnSession("cp-q", "Queued Copilot", "C:/w", provider="copilot", started=True))
@@ -12646,11 +12714,11 @@ def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatc
 
     def owned_action(action, record, *args):
         calls.append(action)
-        return ("Two",) if action == "stop" else None
+        return Stopped(("Two",), cancelled=False, answered=True) if action == "stop" else None
     monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame.reply_text.SetValue("")
     frame._stop_codex_owned(info)
     assert pump(lambda: calls == ["stop"] and frame.reply_text.GetValue() == "Two")
-    assert pump(lambda: any("already answered" in t and "back in the message box" in t
-                            for t in env["feedback"]))
+    assert pump(lambda: any(t == "Queued Copilot: The Chat Place is checking how Copilot's turn ended. "
+                            "1 waiting message is back in the message box, unsent." for t in env["feedback"]))
     frame._codex_states.clear()

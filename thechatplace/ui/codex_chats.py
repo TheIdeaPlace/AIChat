@@ -294,28 +294,20 @@ class CodexChats:
         if record is None:
             return
         name = provider_name(record.provider)
-        checking = False
         state = self._codex_states.get(info.key)
         recover_idle = (record.provider == 'codex' and state is not None
                         and state.outcome in ('idle', 'completed', 'failed', 'interrupted'))
-        if record.provider != 'codex':
-            if state is not None and state.outcome != 'inProgress':
-                self._feedback(f'{record.title}: {name} isn\'t answering, so there\'s nothing to stop.')
-                return
-            checking = state is not None and getattr(state, 'checking', False)
-            if checking and not state.queued:
-                self._feedback(f'{record.title}: {name} has already answered; The Chat Place is '
-                               'checking it, so there\'s nothing to stop.')
-                return
-            # With messages waiting, Stop still goes to the runtime: that's
-            # what takes them back (it cancels nothing once Copilot has
-            # answered), so the next one isn't sent (Kelly, #372).
+        # Copilot's Stop always goes to the runtime, never decided from the
+        # window's state: that can lag behind it, as when a turn has ended and
+        # the next waiting message is starting. Stopping an idle chat costs
+        # nothing, and the message is worded from what the runtime found
+        # (Kelly, #372, #386).
         def done(result, error):
             if error:
                 self._feedback(result or f'Could not stop or recover this {name} chat. Check its state in {name}.')
                 self._update_send_state()
                 return
-            reconnected, waiting = result
+            reconnected, waiting, stopped = result
             if waiting:
                 # Copilot's stop gives back the messages still waiting; Codex
                 # gives them back through its state's unsent instead.
@@ -328,10 +320,19 @@ class CodexChats:
                 text = f'{name} chat rechecked. You can send again. No message was sent.'
             elif reconnected:
                 text = f'{name} chat reconnected after verifying its previous turn ended. No message was resent.'
-            elif checking and waiting:
-                text = f'{name} has already answered.'
             elif record.provider == 'codex':
                 text = f'Stop requested. If the turn does not finish, press Stop again to check whether {name} has ended it.'
+            elif stopped is not None and stopped.answered:
+                # Copilot's prompt has returned, which needn't be an answer: a
+                # cancel, a refusal or its process ending return it too. Only
+                # the checks after it say which, so this doesn't (Kelly, #386).
+                text = f'{record.title}: The Chat Place is checking how {name}\'s turn ended'
+                text += '.' if waiting else ', so there\'s nothing to stop.'
+            elif stopped is not None and not stopped.cancelled:
+                # The turn ended meanwhile, or Copilot's process has gone and
+                # the turn is ending with it: either way it isn't answering.
+                text = f'{record.title}: {name} isn\'t answering'
+                text += '.' if waiting else ', so there\'s nothing to stop.'
             else:
                 from ..providers.copilot_runtime import CANCEL_GRACE_SECONDS
                 text = (f'Stop requested. If {name} does not stop within '
@@ -344,19 +345,24 @@ class CodexChats:
             # before resuming, and never resends an uncertain message. Codex
             # says which check it made, so Stop announces that one (#385).
             if record.provider == 'codex':
-                return self.sessions.owned_action('recover', record) or 'resumed', ()
+                return self.sessions.owned_action('recover', record) or 'resumed', (), None
             self.sessions.owned_action('reopen', record)
-            return 'resumed', ()
+            return 'resumed', (), None
         def stop_or_recover():
             try:
-                waiting = self.sessions.owned_action('stop', record)
+                stopped = self.sessions.owned_action('stop', record)
             except CodexRpcError:
                 return recover()
             # Outside the try: a failed recheck must not run a second time.
             if recover_idle and not self.sessions.owned_action('ready', record):
                 return recover()
-            return False, (tuple(waiting) if record.provider != 'codex' and isinstance(waiting, tuple)
-                           else ())
+            if record.provider == 'codex':
+                return False, (), None
+            if hasattr(stopped, 'cancelled'):  # copilot_runtime.Stopped
+                return False, tuple(stopped.waiting), stopped
+            # A provider that gives back only the waiting messages, or
+            # nothing, is taken to have cancelled.
+            return False, (tuple(stopped) if isinstance(stopped, tuple) else ()), None
         self._codex_work(stop_or_recover, done)
 
     def _usage_check_slot(self, provider):
