@@ -623,6 +623,19 @@ def s_main_own_working(frame, env):
     fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
 
 
+def s_main_own_steering(frame, env):
+    """A message steered into the running turn and not yet taken in (#238)."""
+    _open(frame, "Visual probe")
+    frame.reply_text.SetValue("Now run the whole suite.")
+    frame.on_send()
+    frame.reply_text.SetValue("Also update the README while you're there.")
+    frame.on_steer()
+    import fake_env
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
+    frame._update_send_state()
+
+
 def s_main_attachments(frame, env):
     _open(frame, "Visual probe")
     folder = Path(env["folders"]["Scratch"])
@@ -1419,6 +1432,8 @@ SURFACES = {
                                              "messages, and a reply waiting to be handed on"),
     "main-own-working": ("window", s_main_own_working,
                          "An own session mid-turn, one more message queued and a draft typed"),
+    "main-own-steering": ("window", s_main_own_steering,
+                          "An own session mid-turn with a steered message not yet taken in"),
     "main-attachments": ("window", s_main_attachments,
                          "An own session with two files attached to the next message"),
     "main-desktop": ("window", s_main_desktop,
