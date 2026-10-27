@@ -318,7 +318,12 @@ class CodexChats:
         def done(refused, error):
             # Accepted, it stays until the chat's history has it; otherwise
             # it's back with you, in the reply box or the queue.
-            self._steer_status(key, text, None if error or refused else f'accepted by {name}')
+            # Accepted after the turn ended (Stop, say) may never be used:
+            # nothing would take the row away, so it goes too.
+            state = self._codex_states.get(key)
+            running = state is not None and state.outcome == 'inProgress'
+            self._steer_status(key, text, f'accepted by {name}'
+                               if not (error or refused) and running else None)
             if error:
                 # Not known whether it arrived: back in the box, never resent.
                 if index is None:

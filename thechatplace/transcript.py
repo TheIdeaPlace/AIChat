@@ -400,12 +400,21 @@ class TranscriptParser:
         return added
 
     def _attachment(self, record: dict) -> List[ChatMessage]:
-        """Only one kind of attachment is conversation: a message from another
-        session that arrived while Claude was working (#123)."""
+        """Two kinds of attachment are conversation: a message from another
+        session that arrived while Claude was working (#123), and your own
+        message taken in while Claude was working, which Claude Code records
+        this way rather than as a user record (a steer, #238; checked with
+        Claude Code 2.1.296, queue-operation reason absorbed_mid_turn)."""
         attachment = record.get("attachment")
         if not isinstance(attachment, dict) or attachment.get("type") != "queued_command":
             return []
         origin = attachment.get("origin")
+        if origin is None:
+            prompt = attachment.get("prompt")
+            if (attachment.get("commandMode") == "prompt" and isinstance(prompt, str)
+                    and prompt.strip()):
+                return self._user_text(prompt, record)
+            return []
         if not isinstance(origin, dict) or origin.get("kind") != "peer":
             return []
         # A subagent's report coming back to its session has the same shape

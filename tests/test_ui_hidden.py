@@ -13051,8 +13051,14 @@ def test_a_steered_message_is_a_row_until_the_chat_has_it(frame, env, fake_runne
         "steer_taken", text="Also update the README", data={"late": False}))
     last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
     assert last == "Steering, taken in by Claude: Also update the README"
+    # Read with its new status, not the old one (the spoken name is cached).
+    row = frame.chat_list.GetCount() - 1
+    if frame.speech.full_messages_in_list:
+        assert frame._message_item_text(row).startswith("Steering, taken in by Claude:")
     # The transcript now has it: the row goes, so it isn't there twice.
+    frame._chat_loaded = True
     frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "Also update the README")]
+    assert frame._drop_steers_in_history()
     frame._rebuild_chat_list()
     assert not [frame.chat_list.GetString(i) for i in range(frame.chat_list.GetCount())
                 if frame.chat_list.GetString(i).startswith("Steering")]
@@ -13066,3 +13072,32 @@ def test_steering_rows_go_when_the_turn_ends(frame, env, fake_runner):
     runner.steered = []  # taken in, as far as the runner knows
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
     assert frame._steered == {}
+
+
+def test_two_steers_saying_the_same_go_one_at_a_time(frame, env, fake_runner):
+    from thechatplace.transcript import USER, ChatMessage
+    _start(frame, fake_runner)
+    frame._chat_loaded = True
+    for _ in range(2):
+        frame.reply_text.SetValue("yes")
+        frame.on_steer()
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "yes")]
+    frame._drop_steers_in_history()
+    assert len(frame._steered["own-1"]) == 1
+
+
+def test_a_steering_row_keeps_new_messages_inserted_above_it(frame, env, fake_runner,
+                                                              monkeypatch):
+    # A tail row like a queued one: the list isn't reset under the reader.
+    from thechatplace.transcript import ASSISTANT, ChatMessage
+    _start(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    calls = []
+    monkeypatch.setattr(frame.chat_list, "Set", lambda lines: calls.append(lines))
+    frame._chat_messages = frame._chat_messages + [ChatMessage(ASSISTANT, "Working on it.",
+                                                               key="new-1")]
+    frame._rebuild_chat_list()
+    assert calls == []
+    last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
+    assert last.startswith("Steering, waiting for Claude:")

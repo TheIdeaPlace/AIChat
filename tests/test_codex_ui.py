@@ -803,8 +803,20 @@ def test_a_steered_message_shows_until_its_fate_is_known(outcome):
             raise CodexConnectionFailure('stream_closed')
         return 'turn'
     w.sessions = SimpleNamespace(owned_action=act)
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn', 'inProgress')
     w._steer_codex_owned(w.record, 'Also the docs')
     assert w.steer_rows == [('Also the docs', 'waiting for Codex')]  # at once
     _run_work(w)
     expected = 'accepted by Codex' if outcome == 'accepted' else None
     assert w.steer_rows[-1] == ('Also the docs', expected)
+
+
+def test_a_steer_accepted_after_the_turn_ended_leaves_no_row():
+    # Stop before Codex answered: it may never be used, so nothing would
+    # ever take an "accepted" row away.
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'idle', 'turn', 'interrupted')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert w.steer_rows[-1] == ('Also the docs', None)

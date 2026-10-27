@@ -184,6 +184,11 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
                    + "), in a supported desktop app or in a terminal.")
 
 
+#: Keys of the rows after the conversation: queued and steered messages, and
+#: notices. New messages go in before them (#50, #238).
+TAIL_PREFIXES = ("queued:", "steering:", "notice:")
+
+
 class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
@@ -1925,6 +1930,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._check_context()
         self._rebuild_chat_list(focus_newest=first_load)
         self._chat_loaded = True
+        if self._drop_steers_in_history():
+            self._rebuild_chat_list()  # the history has a steered message now
         if self._changes_due and not first_load:
             wx.CallAfter(self._say_changes, generation)  # after the reply
         if first_load:
@@ -2041,8 +2048,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         current = list(self.chat_list.GetStrings())
         # Queued messages (#50) are a tail after the conversation: new
         # messages go in before it, so the rows above never move.
-        old_body = [k for k in old_keys if not k.startswith(("queued:", "notice:"))]
-        body = [k for k in keys if not k.startswith(("queued:", "notice:"))]
+        old_body = [k for k in old_keys if not k.startswith(TAIL_PREFIXES)]
+        body = [k for k in keys if not k.startswith(TAIL_PREFIXES)]
         if (not focus_newest and keep_key is None and old_keys and keys
                 and body[: len(old_body)] == old_body and len(current) == len(old_keys)
                 and old_keys[: len(old_body)] == old_body):
@@ -2059,7 +2066,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     self.chat_list.Delete(tail_start)
                 if new_tail:
                     self.chat_list.Append(new_tail)
-                if selected_key is not None and selected_key.startswith(("queued:", "notice:")) \
+                if selected_key is not None and selected_key.startswith(TAIL_PREFIXES) \
                         and keys:
                     self.chat_list.SetSelection(
                         keys.index(selected_key) if selected_key in keys
@@ -2086,7 +2093,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         order = [m.key for m in self._chat_messages]
         if key not in order:
             return next((row for row in range(len(visible_keys) - 1, -1, -1)
-                         if not visible_keys[row].startswith(("queued:", "notice:"))),
+                         if not visible_keys[row].startswith(TAIL_PREFIXES)),
                         len(visible_keys) - 1)
         position = order.index(key)
         best = 0
@@ -2108,11 +2115,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if index >= len(visible) or visible[index].key != self._chat_keys[index]:
             return None  # the list and the messages are mid-update
         message = visible[index]
+        # Keyed by label too: a steering row's label says where it is, and
+        # changes while its text doesn't (#238).
         cached = self._spoken.get(message.key)
-        if cached is None or cached[0] != message.text:
+        if cached is None or cached[0] != (message.label, message.text):
             spoken = announce.spoken_markdown(message.text, describe_code=True) \
                 or message.first_line()
-            cached = (message.text, f"{message.label}: {spoken}")
+            cached = ((message.label, message.text), f"{message.label}: {spoken}")
             self._spoken[message.key] = cached
         return cached[1]
 
@@ -4692,21 +4701,43 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         return sum(1 for m in self._chat_messages if m.kind == USER and m.text.strip() == text)
 
     def _steered_rows(self, key: str) -> List[ChatMessage]:
-        """Steered messages as rows, readable like any other (#238, #239).
-        One goes once the chat's history has it."""
+        """Steered messages as rows, readable like any other (#238, #239)."""
+        return [ChatMessage(STEERING, text, key=f"steering:{key}:{i}", sender=where)
+                for i, (text, where, _seen) in enumerate(self._steered.get(key, ()))]
+
+    def _drop_steers_in_history(self) -> bool:
+        """A steered message's row goes once the loaded chat's history has
+        it: one more of your messages with its text than when it was
+        steered. Two steers saying the same go one at a time. Counted only
+        once the chat has loaded, so a message from before can't count."""
+        info = self._open
+        if info is None or not self._chat_loaded:
+            return False
+        key = info.cli_session_id if info.provider == "claude" else info.key
         entries = self._steered.get(key)
         if not entries:
-            return []
-        entries[:] = [e for e in entries if self._your_messages_saying(e[0]) <= e[2]]
-        if not entries:
+            return False
+        kept, earlier = [], {}
+        for entry in entries:
+            text = entry[0]
+            if entry[2] is None:
+                entry[2] = self._your_messages_saying(text)  # steered before it loaded
+            ahead = earlier.get(text, 0)
+            earlier[text] = ahead + 1
+            if self._your_messages_saying(text) - entry[2] <= ahead:
+                kept.append(entry)
+        if len(kept) == len(entries):
+            return False
+        if kept:
+            self._steered[key] = kept
+        else:
             self._steered.pop(key, None)
-            return []
-        return [ChatMessage(STEERING, text, key=f"steering:{key}:{i}", sender=where)
-                for i, (text, where, _seen) in enumerate(entries)]
+        return True
 
     def _steer_row(self, key: str, text: str, where: str) -> None:
         """Show a steered message at once, until its chat's history has it."""
-        self._steered.setdefault(key, []).append([text, where, self._your_messages_saying(text)])
+        seen = self._your_messages_saying(text) if self._chat_loaded else None
+        self._steered.setdefault(key, []).append([text, where, seen])
         self._rebuild_chat_list()
 
     def _steer_status(self, key: str, text: str, where: Optional[str]) -> None:
