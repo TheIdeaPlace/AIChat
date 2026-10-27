@@ -304,7 +304,9 @@ session list, the messages or the reply box:</p>
 <li><strong>Code Blocks:</strong> each code block, by language and size, with its code to read.</li>
 <li><strong>Links:</strong> each link, its words and where it goes, then who wrote it and roughly when.</li>
 <li><strong>Changed Files</strong> (Claude and Copilot chats): each file changed, with how many lines were added
-  and removed, and its changes to read line by line. A file Copilot deleted says "deleted". This
+  and removed, and its changes to read line by line: where each change is ("Lines 12 to 20:"),
+  then its lines, marked as Settings, <strong>Mark changed lines with</strong> says (words at first:
+  "Added:", "Removed:", "Unchanged:"). A file Copilot deleted says "deleted". This
   works for desktop app chats and chats started in Copilot CLI too.</li>
 <li><strong>Commands</strong> (Claude chats): each command Claude ran: what it said it was doing, then "done",
   "failed" or "no result yet". Its full text shows the command and its output.</li>
@@ -1340,26 +1342,36 @@ setting moves straight to it.</p>
   why.</li>
 <li><strong>Windows notifications</strong> (Alt+N; on a Mac, <strong>Notifications</strong>): "When your sessions finish a
   turn, or any session needs you" (the default), "Only when a session needs you", or "Off".</li>
-<li><strong>Recent folders New Session offers</strong> (Alt+F): how many of your recent folders New Session's
-  Folder list offers, 20 at first, up to 100; 0 offers none. It counts the next time New Session
-  opens.</li>
-<li><strong>Clear Recent Folders</strong> (Alt+L) asks first, with No as the default, and then clears the list
-  at once: Cancel in Settings doesn't bring it back. A folder comes back when a chat works in it
-  again.</li>
-<li><strong>Turn on Remote Control for The Chat Place's sessions</strong> (Alt+C): Claude chats started here
-  only, and off at first. It counts from each chat's next turn. File, Remote Control can set one
-  chat on or off instead (see "Remote Control").</li>
-<li><strong>Let Claude keep a task list</strong> (Alt+K): Claude chats started here only, from your next
-  message. On at first.</li>
-<li><strong>Include Codex chats (restart required)</strong> (Alt+X): on once Codex is found. Restart The Chat
-  Place for a change to count; you hear that when you press OK.</li>
-<li><strong>Include GitHub Copilot CLI chats (preview; restart required)</strong> (Alt+O): shown only once
-  Copilot CLI is installed or has saved a session on this computer. Off at first. Restart for a
-  change to count.</li>
-<li><strong>Let agent conversations hand replies across automatically</strong> (Alt+G): off at first. With it
-  on, each agent conversation can choose automatic hand-offs.</li>
-<li><strong>Tell me when an update has been installed, with a link to what's new</strong> (Alt+T). On at first.</li>
+<li><strong>Mark changed lines with</strong> (Alt+H): how Changed Files starts each line of a change.<ul>
+<li><strong>Words</strong>, the default: "Added: x", "Removed: x", "Unchanged: x".</li>
+<li><strong>Short words:</strong> "Add x", "Del x", "Same x".</li>
+<li><strong>Diff symbols:</strong> "+ x", "- x", and "= x" for a line that didn't change.</li>
+<li><strong>Diff symbols with changed lines:</strong> as Diff symbols, but a line and the line that
+  replaced it read one after the other, "!- old" then "!+ new".</li>
 </ul>
+</li>
+</ul>
+<p>Symbols are spoken only if your screen reader's punctuation level reads them; Settings says
+  so when one is chosen. Text you copy from Changed Files is marked the same way.
+- <strong>Recent folders New Session offers</strong> (Alt+F): how many of your recent folders New Session's
+  Folder list offers, 20 at first, up to 100; 0 offers none. It counts the next time New Session
+  opens.
+- <strong>Clear Recent Folders</strong> (Alt+L) asks first, with No as the default, and then clears the list
+  at once: Cancel in Settings doesn't bring it back. A folder comes back when a chat works in it
+  again.
+- <strong>Turn on Remote Control for The Chat Place's sessions</strong> (Alt+C): Claude chats started here
+  only, and off at first. It counts from each chat's next turn. File, Remote Control can set one
+  chat on or off instead (see "Remote Control").
+- <strong>Let Claude keep a task list</strong> (Alt+K): Claude chats started here only, from your next
+  message. On at first.
+- <strong>Include Codex chats (restart required)</strong> (Alt+X): on once Codex is found. Restart The Chat
+  Place for a change to count; you hear that when you press OK.
+- <strong>Include GitHub Copilot CLI chats (preview; restart required)</strong> (Alt+O): shown only once
+  Copilot CLI is installed or has saved a session on this computer. Off at first. Restart for a
+  change to count.
+- <strong>Let agent conversations hand replies across automatically</strong> (Alt+G): off at first. With it
+  on, each agent conversation can choose automatic hand-offs.
+- <strong>Tell me when an update has been installed, with a link to what's new</strong> (Alt+T). On at first.</p>
 <h2 id="usage-and-context">Usage and context</h2>
 <p><strong>Ctrl+Shift+U</strong> (View, Usage and Context) opens a list to read with the arrow keys. Ctrl+C
 copies the selected line, Copy All (Alt+A) copies every line, and Escape closes the list. The

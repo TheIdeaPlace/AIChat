@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import wx
+from theideaplace_appkit import difftext
 
 from .. import chat_permissions, lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
@@ -868,6 +869,10 @@ class GitHubRepoDialog(wx.Dialog):
         _end_modal(self, wx.ID_CANCEL)
 
 
+#: The Changed Files styles whose marks a screen reader may not speak (#174).
+_SYMBOL_MARKS = (difftext.SYMBOLS, difftext.CHANGED)
+
+
 class SettingsDialog(wx.Dialog):
     """Announcements and speech (the Speech tab of IDT's settings, adapted)."""
 
@@ -960,6 +965,24 @@ class SettingsDialog(wx.Dialog):
                                         if speech.notifications in NOTIFY_LEVELS else 0)
         notify_row.Add(self.notify_choice, 0)
         outer.Add(notify_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        # How Changed Files marks each line of a change (#174). Symbols can be
+        # silent at a screen reader's lower punctuation levels, so a note says
+        # so while one is chosen, and is hidden otherwise to keep the height.
+        marks_row = wx.BoxSizer(wx.HORIZONTAL)
+        marks_row.Add(wx.StaticText(body, label="Mark c&hanged lines with:"), 0,
+                      wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.marks_choice = wx.Choice(body, choices=[difftext.LABELS[style]
+                                                     for style in difftext.STYLES])
+        set_accessible_name(self.marks_choice, "Mark changed lines with")
+        self.marks_choice.SetSelection(difftext.STYLES.index(speech.change_marks)
+                                       if speech.change_marks in difftext.STYLES else 0)
+        self.marks_choice.Bind(wx.EVT_CHOICE, lambda e: self._update_marks_note())
+        marks_row.Add(self.marks_choice, 0)
+        outer.Add(marks_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        self.marks_note = wx.StaticText(body, label=difftext.SYMBOLS_NOTE)
+        outer.Add(self.marks_note, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        self.marks_note.Show(self._marks_style() in _SYMBOL_MARKS)
 
         # New Session's recent folders (#215): how many, and clearing them,
         # which is asked first and then done at once, not on OK: Cancel
@@ -1101,6 +1124,15 @@ class SettingsDialog(wx.Dialog):
             self.rate_note.SetLabel("This engine uses its default rate.")
         self.Layout()
 
+    def _marks_style(self) -> str:
+        index = self.marks_choice.GetSelection()
+        return difftext.STYLES[index] if 0 <= index < len(difftext.STYLES)             else difftext.DEFAULT
+
+    def _update_marks_note(self):
+        self.marks_note.Show(self._marks_style() in _SYMBOL_MARKS)
+        self._body.Layout()
+        self._body.FitInside()
+
     def _fit_scrolling(self, body, content):
         """As tall as the settings need, up to the screen; past that they
         scroll above OK and Cancel. As in QuestionDialog, the body's minimum
@@ -1153,6 +1185,7 @@ class SettingsDialog(wx.Dialog):
                                                     else self._copilot_choice),
                                    update_installed_notice=self.update_notice.GetValue(),
                                    agent_auto_mode=self.agent_auto.GetValue(),
+                                   change_marks=self._marks_style(),
                                    recent_folder_limit=self.recent_limit.GetValue())
 
 

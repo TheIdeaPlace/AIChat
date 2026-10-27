@@ -2319,7 +2319,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
         def build(tab, tab_scope):
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
-                               lambda f: self._describe_changed_file(f, cwd), turn, tasks)
+                               lambda f: self._describe_changed_file(f, cwd), turn, tasks,
+                               marks=self.speech.change_marks)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
