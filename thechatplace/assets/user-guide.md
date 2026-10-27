@@ -32,7 +32,8 @@ You need:
 - For GitHub Copilot CLI chats (a preview): the native GitHub Copilot CLI, signed in with
   `copilot login` to a GitHub account that has Copilot, and **Include GitHub Copilot CLI chats**
   turned on in Settings. On Windows, install it with `winget install GitHub.Copilot`; on a Mac,
-  with `brew install copilot-cli` or GitHub's install script. An npm install isn't used.
+  with `brew install copilot-cli` or GitHub's install script. An npm install isn't used. Help,
+  **Copilot Sign-in** says whether it's installed and signed in.
 - For Claude chats: Claude Code, installed with its native installer and signed in to your
   Claude subscription. This is the `claude` command, using the same sign-in as the Claude
   desktop app. The desktop app's own copy of Claude Code isn't meant for other programs, so the
@@ -79,6 +80,14 @@ For Codex, choose Help, **Codex Sign-in**. It says whether Codex is signed in to
 isn't, or is using another kind of credential, it offers to open `codex login` in its own window.
 Your browser shows ChatGPT's sign-in page, and The Chat Place checks again when you've finished.
 If Codex isn't installed or its status can't be read, it says what is needed.
+
+For GitHub Copilot CLI, choose Help, **Copilot Sign-in**. It says which GitHub account Copilot
+CLI is signed in to. If it isn't signed in, it offers to open `copilot login` in its own window.
+Follow its steps, which may give you a code to enter on GitHub's sign-in page, and The Chat Place
+checks again when you've finished.
+If Copilot CLI isn't installed, it gives the command to install it, and it says so when the only
+copy it finds is an npm install, which isn't used. It shows the account Copilot CLI has
+recorded; whether that sign-in still works is only known once a Copilot chat sends a message.
 
 ## Your first chat
 
@@ -1651,10 +1660,11 @@ An old copy's default model may be one GitHub no longer accepts, so every reques
 it with `npm uninstall -g @github/copilot`, then open a new terminal: `copilot --version` should
 report the newer version. The Chat Place's own Copilot chats never use the npm copy.
 
-**Copilot isn't signed in.** Run `copilot login` in a terminal, and sign in to a GitHub account
-that has Copilot; there's no Copilot item on the Help menu. Chats started here use that
-sign-in: The Chat Place starts Copilot without token variables such as `GH_TOKEN`,
-`GITHUB_TOKEN` and `COPILOT_GITHUB_TOKEN`, so a token set for the terminal isn't used.
+**Copilot isn't signed in.** Choose Help, Copilot Sign-in. It says which account Copilot CLI is
+signed in to and, if it isn't, offers to open `copilot login` in its own window; sign in to a
+GitHub account that has Copilot. Chats started here use that sign-in: The Chat Place starts
+Copilot without token variables such as `GH_TOKEN`, `GITHUB_TOKEN` and `COPILOT_GITHUB_TOKEN`,
+so a token set for the terminal isn't used.
 
 **A Copilot chat says this version of Copilot CLI isn't supported.** Your Copilot CLI doesn't
 work the way The Chat Place expects. Update Copilot CLI, then try again; if it still says so,
