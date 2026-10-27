@@ -570,7 +570,10 @@ class CodexChats:
                 # turn, where the provider can tell (Copilot's log does).
                 capabilities = getattr(self.sessions, 'capabilities', None)
                 try:
-                    if capabilities is not None and getattr(capabilities(self._open), 'changes', False):
+                    # Not for an agent conversation's member turn, which the
+                    # conversation announces by its own name (#248, #369).
+                    if (not quiet and capabilities is not None
+                            and getattr(capabilities(self._open), 'changes', False)):
                         self._changes_due = True
                 except ValueError:
                     pass  # its provider has gone: nothing to say
