@@ -1477,8 +1477,10 @@ def _start(frame, fake_runner, text="first"):
 
 def _start_steering(frame, fake_runner, text="first"):
     """_start, for a test that steers. Hub probe has no transcript here, so
-    its history is never read; Steer waits for a read (#410), which
-    test_steer_is_allowed_once_the_history_is_read covers for real."""
+    whether its history counts as known depends on whether the first read
+    lands before or after the send; Steer waits for it (#410). This makes it
+    known, and test_steer_is_allowed_once_the_history_is_read covers a real
+    read."""
     runner = _start(frame, fake_runner, text)
     frame._history_known = True
     return runner
@@ -13162,6 +13164,7 @@ def test_steering_rows_go_when_the_turn_ends(frame, env, fake_runner):
     runner = _start_steering(frame, fake_runner)
     frame.reply_text.SetValue("Also update the README")
     frame.on_steer()
+    assert frame._steered.get("own-1")  # it really was steered
     runner.steered = []  # taken in, as far as the runner knows
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
     assert frame._steered == {}
@@ -13191,6 +13194,7 @@ def test_a_steer_waiting_isnt_taken_for_an_earlier_message_saying_the_same(frame
     frame._chat_loaded = True
     frame.reply_text.SetValue("yes")
     frame.on_steer()
+    assert frame._steered.get("own-1")  # it really was steered
     frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "yes")]
     assert not frame._drop_steers_in_history()  # not taken in yet
 
@@ -13230,6 +13234,7 @@ def test_a_steer_already_in_the_history_goes_when_its_news_comes(frame, env, fak
     frame._chat_loaded = True
     frame.reply_text.SetValue("Also update the README")
     frame.on_steer()
+    assert frame._steered.get("own-1")  # it really was steered
     frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "Also update the README")]
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "steer_taken", text="Also update the README", data={"late": False}))

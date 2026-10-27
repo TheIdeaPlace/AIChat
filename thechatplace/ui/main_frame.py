@@ -4728,7 +4728,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         """A steered message's row goes once the loaded chat's history has
         it: one more of your messages with its text than when it was
         steered. Two steers saying the same go one at a time. Counted only
-        once the chat has loaded, so a message from before can't count."""
+        after a successful history read, so a failed or unread history can't
+        make one look missing."""
         key = self._open_steer_key()
         if key is None or not self._history_known:
             return False
@@ -4875,7 +4876,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return False
         if self._chat_loaded:
             # Loaded, but its history couldn't be read (or isn't there).
-            self._feedback("This chat's history couldn't be read, so it can't be steered. "
+            self._feedback("This chat's history couldn't be read yet, so it can't be steered. "
+                           "Try again in a moment, or "
                            f"{key_name('Ctrl+Enter')} queues your message for after the turn.")
         else:
             self._feedback("This chat is still loading. Steer again in a moment.")
