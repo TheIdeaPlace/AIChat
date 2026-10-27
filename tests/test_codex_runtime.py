@@ -919,6 +919,7 @@ def test_a_refused_queued_steer_goes_back_in_its_place():
         service.send(record, 'Two')
         c.steer_release.set()
         c.steer_result = CodexRpcError('Codex request failed')  # Codex said no
+        c.steer_result.rpc_code = -32600
         with pytest.raises(CodexSteerRefused) as refused:
             service.steer(record, 'Two', index=1)
         assert refused.value.code == 'refused'
@@ -938,6 +939,7 @@ def test_stop_while_a_queued_steer_waits_returns_it_with_the_queue():
         service.send(record, 'Steer me')
         service.send(record, 'Other')
         c.steer_result = CodexRpcError('Codex request failed')
+        c.steer_result.rpc_code = -32600
         with ThreadPoolExecutor(1) as pool:
             steering = pool.submit(service.steer, record, 'Steer me', index=0)
             assert c.steer_entered.wait(5)
@@ -999,5 +1001,23 @@ def test_steer_in_a_chat_with_a_problem_is_refused_with_nothing_sent():
             service.steer(record, 'Also the docs')
         assert refused.value.code == 'unavailable'
         assert not [m for m, _p in c.calls if m == 'turn/steer']
+    finally:
+        service.close()
+
+
+def test_an_unknown_steer_error_is_unconfirmed_and_never_queued_again():
+    # Only a known refusal (-32600) proves the text wasn't taken (#239).
+    service, c, updates = steer_runtime()
+    try:
+        record = service.create('/workspace', 'Owned')
+        service.send(record, 'First')
+        service.send(record, 'Steer me')
+        c.steer_release.set()
+        c.steer_result = CodexRpcError('Codex request failed')
+        c.steer_result.rpc_code = -32603  # an internal error: may have been taken
+        with pytest.raises(CodexRpcError, match='did not confirm'):
+            service.steer(record, 'Steer me', index=0)
+        assert not service.snapshot(record.cli_session_id).queued
+        assert any(u.unsent == ('Steer me',) for u in updates)
     finally:
         service.close()

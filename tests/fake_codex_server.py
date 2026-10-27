@@ -154,7 +154,7 @@ for line in sys.stdin:
                       'turn': {'id': owned_turn, 'status': 'completed'}}})
             if (not owned_active or params.get('expectedTurnId') != owned_turn
                     or set(params) != {'threadId', 'expectedTurnId', 'input'}):
-                emit({'id': request['id'], 'error': {'message': 'no active turn to steer'}})
+                emit({'id': request['id'], 'error': {'code': -32600, 'message': 'no active turn to steer'}})
             else:
                 emit({'id': request['id'], 'result': {'turnId': owned_turn}})
             continue
