@@ -196,6 +196,21 @@ def test_codex_properties_do_not_invent_claude_models_policies_or_usage():
     assert not any("% full" in line or "Claude" in line for line in result)
 
 
+def test_copilot_properties_count_the_files_it_changed():
+    """Copilot's log says which files it changed, as Claude's does (#352)."""
+    from thechatplace.changes import FileEdit
+    from thechatplace.transcript import Transcript
+
+    info = _info(source="external", provider="copilot", key="copilot:cp-a",
+                 desktop_session_id="")
+    transcript = Transcript(messages=[ChatMessage(ASSISTANT, "Reply", assistant_name="Copilot")],
+                            edits=[FileEdit("C:/w/a.txt", "apply_patch", 1, created=True),
+                                   FileEdit("C:/w/a.txt", "apply_patch", 2),
+                                   FileEdit("C:/w/b.txt", "apply_patch", 2, deleted=True)])
+    result = properties.session_properties(info, transcript, "", 0, None, 200000, now_ms=NOW_MS)
+    assert "Files changed: 2" in result
+
+
 def test_rule_check_refusal_is_distinct_from_not_checked_and_has_no_count():
     from thechatplace.properties import saved_rule_lines
     assert saved_rule_lines(pending=True) == ['Saved command rules: checking...']

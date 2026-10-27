@@ -333,8 +333,9 @@ session list, the messages or the reply box:
 
 - **Code Blocks:** each code block, by language and size, with its code to read.
 - **Links:** each link, its words and where it goes, then who wrote it and roughly when.
-- **Changed Files** (Claude chats): each file Claude changed, with how many lines were added and
-  removed, and its changes to read line by line. This works for desktop app chats too.
+- **Changed Files** (Claude and Copilot chats): each file changed, with how many lines were added
+  and removed, and its changes to read line by line. A file Copilot deleted says "deleted". This
+  works for desktop app chats and chats started in Copilot CLI too.
 - **Commands** (Claude chats): each command Claude ran: what it said it was doing, then "done",
   "failed" or "no result yet". Its full text shows the command and its output.
 - **Decisions** (Claude chats): each question Claude asked you, with your answer.
@@ -514,7 +515,8 @@ whether the chat was started here:
 | Continue Here | desktop app and terminal chats | yes | no |
 | Commands and skills (Ctrl+/) | yes | no | no |
 | Attachments | yes | no | no |
-| Changed Files, Commands and Decisions in Lists | yes | no | no |
+| Changed Files in Lists | yes | no | yes |
+| Commands and Decisions in Lists | yes | no | no |
 | Tasks in Lists | yes | chats started here | no |
 | Usage and Context | yes | yes | no |
 | Delete Session Permanently | yes | no | no |

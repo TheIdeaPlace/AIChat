@@ -130,7 +130,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"Links: {len(find_links(conversation)):,}")
         blocks = sum(len(find_code_blocks(m.text)) for m in conversation)
         lines.append(f"Code blocks: {blocks:,}")
-        if info.provider == "claude":
+        if info.provider in ("claude", "copilot"):  # the providers whose logs say (#352)
             lines.append(f"Files changed: {len(by_file(transcript.edits)):,}")
         if transcript.tasks:
             # Progress as last reported by the provider (#231, #318).

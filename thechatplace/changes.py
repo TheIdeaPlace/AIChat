@@ -1,4 +1,5 @@
-"""What Claude changed in files (#18), from the transcript alone.
+"""What Claude changed in files (#18), from the transcript alone; and what
+Copilot did, from the git-style diffs its log keeps (parse_git_diff).
 
 Claude Code records each Edit, MultiEdit and Write it makes, and the result
 it sends back carries the change as a patch ("structuredPatch": hunks of
@@ -10,8 +11,9 @@ from __future__ import annotations
 
 import difflib
 import os
+import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 #: The tools that change files.
 EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write"})
@@ -34,12 +36,14 @@ class Hunk:
 
 @dataclass
 class FileEdit:
-    """One successful Edit, MultiEdit or Write."""
+    """One successful Edit, MultiEdit or Write (or a provider's equivalent)."""
     path: str
     tool: str
     turn: int  # which of your messages it answered: 1 for the first
     hunks: List[Hunk] = field(default_factory=list)
     created: bool = False
+    #: The file was deleted (Copilot can; Claude's edit tools can't).
+    deleted: bool = False
 
     @property
     def added(self) -> int:
@@ -68,8 +72,16 @@ class FileChanges:
     def created(self) -> bool:
         return bool(self.edits) and self.edits[0].created
 
+    @property
+    def deleted(self) -> bool:
+        return bool(self.edits) and self.edits[-1].deleted
+
     def counts(self) -> str:
-        """"40 lines added, 12 removed", "created, 10 lines"."""
+        """"40 lines added, 12 removed", "created, 10 lines", "deleted"."""
+        if self.deleted:
+            # Its lines are gone, so how many were added or removed first
+            # says little; created here and deleted again says what happened.
+            return "created, then deleted" if self.created else "deleted"
         if self.created:
             lines = self.added - self.removed
             return f"created, {lines} line{'s' if lines != 1 else ''}"
@@ -118,6 +130,44 @@ def edit_from_tool(name: str, tool_input: dict, result, turn: int) -> Optional[F
     for old, new in pairs:
         edit.hunks.extend(_diff(str(old or ""), str(new or "")))
     return edit
+
+
+_HUNK = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def _diff_path(header: str) -> str:
+    """"--- a/C:/x/y.txt" -> "C:/x/y.txt"; "" for /dev/null, which Copilot
+    writes with the prefix too ("+++ b/dev/null")."""
+    path = header[4:].strip()
+    if path.startswith(("a/", "b/")):
+        path = path[2:]
+    return "" if path in ("/dev/null", "dev/null") else path
+
+
+def parse_git_diff(text: str) -> List[Tuple[str, List[Hunk]]]:
+    """Each file's path and hunks, from a git-style unified diff with one
+    section per file ("diff --git", "---", "+++", "@@ -1,4 +1,5 @@"). The
+    path is the new one, or the old one for a file deleted ("+++ /dev/null").
+    Lines that aren't part of a hunk are skipped, never guessed at."""
+    files: List[Tuple[str, List[Hunk]]] = []
+    old = new = ""
+    hunks: Optional[List[Hunk]] = None
+    for line in (text or "").replace("\r\n", "\n").split("\n"):
+        if line.startswith("diff --git "):
+            hunks, old, new = None, "", ""
+        elif line.startswith("--- ") and hunks is None:
+            old = _diff_path(line)
+        elif line.startswith("+++ ") and hunks is None:
+            new = _diff_path(line)
+            hunks = []
+            files.append((new or old, hunks))
+        elif hunks is not None and line.startswith("@@"):
+            match = _HUNK.match(line)
+            hunks.append(Hunk(int(match.group(1)) if match else 0,
+                              int(match.group(2)) if match else 0, []))
+        elif hunks and line[:1] in (" ", "+", "-", "\\"):
+            hunks[-1].lines.append(line)
+    return [(path, found) for path, found in files if path]
 
 
 def by_file(edits: List[FileEdit]) -> List[FileChanges]:

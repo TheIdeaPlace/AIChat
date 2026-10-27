@@ -566,6 +566,14 @@ class CodexChats:
                 # reject any older in-flight read before loading the new turn.
                 self._open_generation += 1
                 self._reader = None
+                # Then say what the turn changed in files, as for a Claude
+                # turn, where the provider can tell (Copilot's log does).
+                capabilities = getattr(self.sessions, 'capabilities', None)
+                try:
+                    if capabilities is not None and getattr(capabilities(self._open), 'changes', False):
+                        self._changes_due = True
+                except ValueError:
+                    pass  # its provider has gone: nothing to say
             self._open.state = state.state
             self._update_heading()
             self._update_send_state()

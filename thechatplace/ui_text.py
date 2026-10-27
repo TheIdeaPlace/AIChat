@@ -169,7 +169,7 @@ SHORTCUTS = [
         ("Ctrl+Shift+G", "New Agent Conversation: two chats, Claude or Codex, new or your own, "
                          "that pass replies to each other; you approve each hand-off, or, once "
                          "Settings allows it, let them go automatically up to a turn limit"),
-        ("Ctrl+Shift+D", "Lists, on Changed Files (Claude chats): what changed in the selected "
+        ("Ctrl+Shift+D", "Lists, on Changed Files (Claude and Copilot chats): what changed in the selected "
          "message's turn (your latest, if none is selected) or in the whole chat; Enter on a file "
          "reads its changes line by line"),
         ("Ctrl+Shift+U", "Usage and context: read the active provider's reported context and "

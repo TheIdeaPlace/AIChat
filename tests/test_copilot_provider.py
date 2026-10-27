@@ -262,7 +262,10 @@ def test_reading_only_and_routed_through_the_controller(tmp_path, monkeypatch):
     assert [s.key for s in snapshot.sessions] == [f"copilot:{ONE}"]
     session = snapshot.sessions[0]
     capabilities = controller.capabilities(session)
-    assert not any(value for name, value in vars(capabilities).items() if name != "read")
+    # Changed Files is read from the log too, so a read-only chat has it (#352).
+    assert not any(value for name, value in vars(capabilities).items()
+                   if name not in ("read", "changes"))
+    assert capabilities.changes
     assert [m.text for m in controller.read(session).messages] == ["Hi", "Ready"]
     assert in_view(session, VIEW_COPILOT) and not in_view(session, "provider:claude")
     controller.close()
@@ -434,3 +437,89 @@ def test_settings_needs_a_real_session_log_not_just_a_folder(tmp_path, monkeypat
     assert not platform_paths.copilot_has_sessions()
     write_session(tmp_path, ONE, answered_turn())
     assert platform_paths.copilot_has_sessions()
+
+
+def patched(n, call, edits, diff, success=True):
+    """A tool call that changed files, shaped like Copilot CLI 1.0.103's
+    apply_patch (#352): fileEdits with absolute paths, and a git-style diff
+    whose paths use forward slashes."""
+    return [
+        event("tool.execution_start", n, toolCallId=call, toolName="apply_patch",
+              arguments="*** Begin Patch\n*** End Patch", toolTitle="Apply patch"),
+        event("tool.execution_complete", n + 1, toolCallId=call, success=success,
+              fileEdits=[{"path": path, "kind": kind} for path, kind in edits],
+              result={"content": "Done", "detailedContent": diff}),
+    ]
+
+
+NOTES = r"C:\work\example\notes.txt"
+DIFF_CREATE = ("diff --git a/C:/work/example/notes.txt b/C:/work/example/notes.txt\n"
+               "--- a/dev/null\n+++ b/C:/work/example/notes.txt\n@@ -1,0 +1,4 @@\n"
+               "+alpha\n+beta\n+gamma\n+\n")
+DIFF_TWO = ("diff --git a/C:/work/example/notes.txt b/C:/work/example/notes.txt\n"
+            "--- a/C:/work/example/notes.txt\n+++ b/C:/work/example/notes.txt\n"
+            "@@ -1,4 +1,4 @@\n alpha\n-beta\n+BETA\n gamma\n \n\n"
+            "diff --git a/C:/work/example/spare.txt b/dev/null\n"
+            "--- a/C:/work/example/spare.txt\n+++ b/dev/null\n@@ -1,3 +0,0 @@\n-one\n-two\n-\n")
+
+
+def test_files_copilot_changed_are_read_from_its_log():
+    from thechatplace.changes import by_file
+    events = (answered_turn(0, "Make notes")
+              + patched(20, "c1", [(NOTES, "create")], DIFF_CREATE)
+              + [event("user.message", 30, content="Now tidy up")]
+              + patched(31, "c2", [(NOTES, "edit"), (r"C:\work\example\spare.txt", "delete")],
+                        DIFF_TWO)
+              + patched(40, "c3", [(r"C:\work\example\other.txt", "create")], "", success=False))
+    lines = [json.dumps(e) for e in events]
+    transcript = parse_events(lines + lines[-4:])  # a call seen twice counts once
+    edits = transcript.edits
+    assert [(e.tool, e.turn, e.created, e.deleted) for e in edits] == [
+        ("apply_patch", 1, True, False), ("apply_patch", 2, False, False),
+        ("apply_patch", 2, False, True)]
+    # The newline ending the file isn't another line: three, not four.
+    assert edits[0].hunks[0].lines == ["+alpha", "+beta", "+gamma"]
+    assert (edits[1].added, edits[1].removed) == (1, 1)
+    assert edits[2].hunks[0].lines == ["-one", "-two"]
+    files = by_file(edits)
+    assert [f.counts() for f in files] == ["created, 3 lines", "deleted"]
+    # A failed call changed nothing.
+    assert not any("other.txt" in e.path for e in edits)
+
+
+def test_a_single_file_whose_diff_names_it_differently_still_gets_its_lines():
+    """One file and one diff section: the same change, whatever the path."""
+    events = patched(0, "c1", [("notes.txt", "create")], DIFF_CREATE)
+    edit = parse_events([json.dumps(e) for e in events]).edits[0]
+    assert edit.added == 3
+
+
+def test_a_blank_line_ending_an_edit_is_kept():
+    """Only a file created or deleted whole loses Copilot's extra last
+    line; an edit's blank line of context is a real one (review of #352)."""
+    diff = ("diff --git a/C:/w/a.py b/C:/w/a.py\n--- a/C:/w/a.py\n+++ b/C:/w/a.py\n"
+            "@@ -10,4 +10,4 @@\n def f():\n-    return 1\n+    return 2\n \n")
+    edit = parse_events([json.dumps(e) for e in patched(0, "c1", [("C:/w/a.py", "edit")],
+                                                          diff)]).edits[0]
+    assert edit.hunks[0].lines == [" def f():", "-    return 1", "+    return 2", " "]
+
+
+def test_mac_paths_match_their_diff_sections():
+    """On a Mac the diff's a/ prefix meets the path's own slash
+    ("a/Users/me/…"): two files in one call still get their own lines."""
+    diff = ("diff --git a/Users/me/w/one.txt b/Users/me/w/one.txt\n--- a/dev/null\n"
+            "+++ b/Users/me/w/one.txt\n@@ -1,0 +1,2 @@\n+one\n+\n"
+            "diff --git a/Users/me/w/two.txt b/Users/me/w/two.txt\n--- a/dev/null\n"
+            "+++ b/Users/me/w/two.txt\n@@ -1,0 +1,3 @@\n+two\n+three\n+\n")
+    edits = parse_events([json.dumps(e) for e in patched(
+        0, "c1", [("/Users/me/w/one.txt", "create"), ("/Users/me/w/two.txt", "create")],
+        diff)]).edits
+    assert [(e.path, e.added) for e in edits] == [("/Users/me/w/one.txt", 1),
+                                                   ("/Users/me/w/two.txt", 2)]
+
+
+def test_a_change_without_a_call_id_is_still_listed():
+    events = patched(0, "", [("C:/w/a.txt", "create")], "")
+    events[1]["data"]["result"]["content"] = "Created"  # also listed as the tool's result
+    edits = parse_events([json.dumps(e) for e in events]).edits
+    assert [e.path for e in edits] == ["C:/w/a.txt"]
