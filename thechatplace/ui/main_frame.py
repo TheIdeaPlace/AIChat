@@ -4730,7 +4730,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         steered. Two steers saying the same go one at a time. Counted only
         once the chat has loaded, so a message from before can't count."""
         key = self._open_steer_key()
-        if key is None or not self._chat_loaded:
+        if key is None or not self._history_known:
             return False
         entries = self._steered.get(key)
         if not entries:
@@ -4873,7 +4873,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         steered message's row is counted against it (#410). The text stays."""
         if self._history_known:
             return False
-        self._feedback("This chat is still loading. Steer again in a moment.")
+        if self._chat_loaded:
+            # Loaded, but its history couldn't be read (or isn't there).
+            self._feedback("This chat's history couldn't be read, so it can't be steered. "
+                           f"{key_name('Ctrl+Enter')} queues your message for after the turn.")
+        else:
+            self._feedback("This chat is still loading. Steer again in a moment.")
         return True
 
     def _can_steer(self, info: Optional[SessionInfo]) -> bool:
@@ -4967,8 +4972,6 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         index = self._selected_queued()
         if index is None:
             return
-        if self._history_unknown():
-            return
         if runtime:
             if not self._can_steer(info):
                 self._feedback(f"{provider_name(info.provider)} can't take a message during "
@@ -4977,6 +4980,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             state = self._codex_states.get(info.key)
             record = self.store.get(info.cli_session_id, provider=info.provider)
             if state is None or record is None or not 0 <= index < len(state.queued):
+                return
+            if self._history_unknown():
                 return
             self._steer_codex_owned(record, state.queued[index], index=index)
             return
@@ -4988,6 +4993,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("The turn has ended: the queued message goes next.")
             return
         text = waiting[index]
+        if self._history_unknown():
+            return
         if not runner.steer(text):
             self._feedback("The turn is already ending: the message stays queued and goes "
                            "when it's done.")
