@@ -914,6 +914,9 @@ step and carries on with it in mind, such as "also update the README" or "use th
 file". You hear "Steering Fix the build: …", then "Fix the build has your message" once Claude
 takes it in, or "Steered Fix the build: …" once Codex accepts it. Ctrl+Alt+Enter on a queued
 message steers that one instead of waiting. With no turn running, Ctrl+Alt+Enter just sends.
+Until the chat's own history shows it, a steered message is at the end of the messages list as
+"Steering, waiting for Claude: …", and the row says where it is as that changes, such as
+"taken in by Claude" or "accepted by Codex".
 
 - If Claude had already finished its reply, you hear that reply, then that it's answering your
   message now.
