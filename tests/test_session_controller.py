@@ -245,7 +245,9 @@ def test_capabilities_do_not_grant_codex_write_access_from_ownership():
     owned_claude, owned_codex = info(), info("codex")
     assert controller.capabilities(owned_claude).send
     assert controller.capabilities(owned_claude).delete
-    assert controller.capabilities(owned_codex) == SessionCapabilities(usage=True)
+    assert controller.capabilities(owned_codex) == SessionCapabilities(usage=True, changes=True)
+    assert controller.capabilities(SessionInfo("external", "codex:outside", "External", "", "outside",
+                                               provider="codex")).changes
     assert not controller.capabilities(owned_codex).fork
     external = SessionInfo("external", "external:one", "External", "", "one")
     assert controller.capabilities(external).fork

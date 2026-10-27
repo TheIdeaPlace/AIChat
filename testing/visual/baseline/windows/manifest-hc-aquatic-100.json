@@ -39,7 +39,7 @@
    "kind": "window",
    "png": "main-own-hc-aquatic-100.png",
    "json": "main-own-hc-aquatic-100.json",
-   "title": "Visual probe — The Chat Place",
+   "title": "Visual probe â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -53,7 +53,7 @@
    "kind": "window",
    "png": "main-own-working-hc-aquatic-100.png",
    "json": "main-own-working-hc-aquatic-100.json",
-   "title": "Visual probe — The Chat Place",
+   "title": "Visual probe â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -67,7 +67,7 @@
    "kind": "window",
    "png": "main-attachments-hc-aquatic-100.png",
    "json": "main-attachments-hc-aquatic-100.json",
-   "title": "Visual probe — The Chat Place",
+   "title": "Visual probe â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -81,7 +81,7 @@
    "kind": "window",
    "png": "main-desktop-hc-aquatic-100.png",
    "json": "main-desktop-hc-aquatic-100.json",
-   "title": "Fix the flaky upload test — The Chat Place",
+   "title": "Fix the flaky upload test â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -95,7 +95,7 @@
    "kind": "window",
    "png": "main-activity-hc-aquatic-100.png",
    "json": "main-activity-hc-aquatic-100.json",
-   "title": "Fix the flaky upload test — The Chat Place",
+   "title": "Fix the flaky upload test â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -123,7 +123,7 @@
    "kind": "window",
    "png": "main-status-bar-hc-aquatic-100.png",
    "json": "main-status-bar-hc-aquatic-100.json",
-   "title": "Visual probe — The Chat Place",
+   "title": "Visual probe â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -137,7 +137,7 @@
    "kind": "window",
    "png": "main-narrow-hc-aquatic-100.png",
    "json": "main-narrow-hc-aquatic-100.json",
-   "title": "Visual probe — The Chat Place",
+   "title": "Visual probe â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     640,
@@ -543,7 +543,7 @@
    "kind": "window",
    "png": "main-compacted-hc-aquatic-100.png",
    "json": "main-compacted-hc-aquatic-100.json",
-   "title": "Visual probe — The Chat Place",
+   "title": "Visual probe â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -725,7 +725,7 @@
    "kind": "window",
    "png": "main-codex-hc-aquatic-100.png",
    "json": "main-codex-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
+   "title": "Codex history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -739,7 +739,7 @@
    "kind": "window",
    "png": "main-codex-owned-hc-aquatic-100.png",
    "json": "main-codex-owned-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
+   "title": "Codex history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -753,7 +753,7 @@
    "kind": "window",
    "png": "main-codex-interrupted-hc-aquatic-100.png",
    "json": "main-codex-interrupted-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
+   "title": "Codex history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -767,7 +767,7 @@
    "kind": "window",
    "png": "main-codex-request-declined-hc-aquatic-100.png",
    "json": "main-codex-request-declined-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
+   "title": "Codex history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -781,7 +781,7 @@
    "kind": "window",
    "png": "main-codex-context-hc-aquatic-100.png",
    "json": "main-codex-context-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
+   "title": "Codex history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -795,7 +795,7 @@
    "kind": "window",
    "png": "main-codex-filter-hc-aquatic-100.png",
    "json": "main-codex-filter-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
+   "title": "Codex history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -809,7 +809,7 @@
    "kind": "window",
    "png": "main-codex-last-message-hc-aquatic-100.png",
    "json": "main-codex-last-message-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
+   "title": "Codex history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -823,7 +823,7 @@
    "kind": "window",
    "png": "main-codex-unavailable-hc-aquatic-100.png",
    "json": "main-codex-unavailable-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
+   "title": "Codex history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -1005,7 +1005,7 @@
    "kind": "window",
    "png": "main-agents-hc-aquatic-100.png",
    "json": "main-agents-hc-aquatic-100.json",
-   "title": "Uploader fix — The Chat Place",
+   "title": "Uploader fix â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -1075,7 +1075,7 @@
    "kind": "window",
    "png": "main-copilot-hc-aquatic-100.png",
    "json": "main-copilot-hc-aquatic-100.json",
-   "title": "Copilot history preview — The Chat Place",
+   "title": "Copilot history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -1089,7 +1089,7 @@
    "kind": "window",
    "png": "main-copilot-filter-hc-aquatic-100.png",
    "json": "main-copilot-filter-hc-aquatic-100.json",
-   "title": "Copilot history preview — The Chat Place",
+   "title": "Copilot history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -1187,7 +1187,7 @@
    "kind": "window",
    "png": "main-copilot-owned-hc-aquatic-100.png",
    "json": "main-copilot-owned-hc-aquatic-100.json",
-   "title": "Copilot history preview — The Chat Place",
+   "title": "Copilot history preview â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -1201,7 +1201,7 @@
    "kind": "window",
    "png": "main-own-steering-hc-aquatic-100.png",
    "json": "main-own-steering-hc-aquatic-100.json",
-   "title": "Visual probe — The Chat Place",
+   "title": "Visual probe â€” The Chat Place",
    "class": "MainFrame",
    "size": [
     1000,
@@ -1238,6 +1238,34 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Settings after an announcement wasn't spoken: the reason box"
+  },
+  "lists-codex-files": {
+   "kind": "dialog",
+   "png": "lists-codex-files-hc-aquatic-100.png",
+   "json": "lists-codex-files-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: updates, additions, deletions and renames"
+  },
+  "lists-codex-deleted-file": {
+   "kind": "dialog",
+   "png": "lists-codex-deleted-file-hc-aquatic-100.png",
+   "json": "lists-codex-deleted-file-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: a deleted file's old line range"
   }
  },
  "seconds": 91.6

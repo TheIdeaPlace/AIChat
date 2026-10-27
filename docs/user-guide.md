@@ -333,8 +333,12 @@ session list, the messages or the reply box:
 
 - **Code Blocks:** each code block, by language and size, with its code to read.
 - **Links:** each link, its words and where it goes, then who wrote it and roughly when.
-- **Changed Files** (Claude and Copilot chats): each file changed, with how many lines were added
-  and removed, and its changes to read line by line (see "Reviewing changed files" below).
+- **Changed Files** (Claude, Codex and Copilot chats): each file changed, with how many lines were added
+  and removed, and its changes to read line by line (see "Reviewing changed files" below). A deleted file says "deleted". A renamed file
+  says "renamed", with the old path in its details; Copy copies the new path. This works for
+  desktop app chats and chats started in Codex or Copilot CLI too. Codex lists its completed file
+  changes: pending, declined and failed edits aren't counted, nor are changes made through shell
+  commands or other tools that don't report file changes.
 - **Commands** (Claude chats): each command Claude ran: what it said it was doing, then "done",
   "failed" or "no result yet". Its full text shows the command and its output.
 - **Decisions** (Claude chats): each question Claude asked you, with your answer.
@@ -392,9 +396,8 @@ with Show Tool Activity on.
 ## Reviewing changed files
 
 Changed Files lists each file the AI changed in a chat and lets you read each change a line at
-a time. It works for Claude and Copilot chats, including desktop app chats and chats started in
-Copilot CLI. It's built from the chat's own record, so it needs no git. Codex chats don't have it
-yet.
+a time. It works for Claude, Codex and Copilot chats, including desktop app chats and chats
+started in Codex or Copilot CLI. It's built from the chat's own record, so it needs no git.
 
 ### Opening it
 
@@ -420,7 +423,8 @@ chat's folder. Files are in the order they were first changed.
     settings.json, no lines changed
 
 - **"created"** is a new file, with how many lines it has.
-- **"deleted"** is a file Copilot deleted.
+- **"deleted"** is a file Codex or Copilot deleted.
+- **"renamed"** is a file moved to a new path; its details include the old path.
 - **"no lines changed"** is a file that was written again with the same text.
 
 **Type** to narrow the list by name. **Ctrl+C** (or Copy) copies the selected file's full path.
@@ -648,7 +652,7 @@ whether the chat was started here:
 | Continue Here | desktop app and terminal chats | yes | no |
 | Commands and skills (Ctrl+/) | yes | no | no |
 | Attachments | yes | no | no |
-| Changed Files in Lists | yes | no | yes |
+| Changed Files in Lists | yes | yes | yes |
 | Commands and Decisions in Lists | yes | no | no |
 | Tasks in Lists | yes | chats started here | no |
 | Usage and Context | yes | yes | no |

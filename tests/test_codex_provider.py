@@ -28,6 +28,12 @@ def history_pages(data):
                       for t in turns for item in t["items"]]}]
 
 
+def file_change(item_id="files", *, status="completed", changes=None):
+    return {"id": item_id, "type": "fileChange", "status": status, "changes": changes if changes is not None else [
+        {"path": "src/app.py", "kind": {"type": "update"},
+         "diff": "@@ -3,2 +3,3 @@\n context\n-old\n+new\n+more\n"}]}
+
+
 class Connection:
     def __init__(self, responses):
         self.responses, self.calls = [], []
@@ -136,6 +142,72 @@ def test_mcp_results_errors_and_file_diffs_are_readable():
     assert any(m.kind == TOOL_RESULT and m.text == "Documentation" for m in messages)
     assert any(m.text == "Tool failed" for m in messages)
     assert any("+new line" in m.text for m in messages)
+
+
+def test_file_changes_are_readable_by_line_with_counts_creation_deletion_and_renames():
+    from thechatplace.changes import by_file, file_text, summary_text
+    data = history()
+    data["turns"][0]["items"].append(file_change(changes=[
+        {"path": "src/app.py", "kind": {"type": "update"},
+         "diff": "--- a/src/app.py\n+++ b/src/app.py\n@@ -3,2 +3,3 @@\n context\n-old\n+new\n+more\n"},
+        {"path": "notes.txt", "kind": {"type": "add"}, "diff": "one\r\n\r\ntwo\r\n"},
+        {"path": "gone.txt", "kind": {"type": "delete"}, "diff": "old\nlast"},
+        {"path": "old.py", "kind": {"type": "update", "move_path": "new.py"}, "diff": ""},
+        {"path": "empty.txt", "kind": {"type": "add"}, "diff": ""},
+    ]))
+    edits = transcript_from_thread(data).edits
+    assert [(e.path, e.turn, e.added, e.removed) for e in edits] == [
+        ("src/app.py", 1, 2, 1), ("notes.txt", 1, 3, 0), ("gone.txt", 1, 0, 2),
+        ("new.py", 1, 0, 0), ("empty.txt", 1, 0, 0)]
+    files = by_file(edits)
+    assert "Lines 3 to 5:\nUnchanged: context\nRemoved: old\nAdded: new\nAdded: more" in file_text(files[0])
+    assert "Added: one\nAdded: blank line\nAdded: two" in file_text(files[1])
+    assert files[1].counts() == "created, 3 lines"
+    assert files[2].counts() == "deleted" and "Removed: old\nRemoved: last" in file_text(files[2])
+    assert "Lines 1 to 2:" in file_text(files[2])
+    assert files[3].counts() == "renamed" and "Renamed from: old.py" in file_text(files[3])
+    assert "empty.txt, created, 0 lines" in summary_text(edits)
+
+
+@pytest.mark.parametrize("status", ["inProgress", "failed", "declined", None, "future"])
+def test_file_changes_only_count_completed_items_even_in_an_unfinished_turn(status):
+    data = history()
+    data["turns"][0]["status"] = "failed"
+    data["turns"][0]["items"] += [file_change("made"), file_change("other", status=status)]
+    transcript = transcript_from_thread(data)
+    assert len(transcript.edits) == 1
+    assert transcript.edits[0].added == 2
+
+
+@pytest.mark.parametrize("change", [None, {}, {"path": []},
+    {"path": " ", "kind": {"type": "add"}, "diff": "text"},
+    {"path": "bad", "kind": None, "diff": "text"},
+    {"path": "bad", "kind": {"type": "unknown"}, "diff": "text"},
+    {"path": "bad", "kind": {"type": "update", "move_path": []}, "diff": ""},
+    {"path": "bad", "kind": {"type": "add"}, "diff": []}])
+def test_malformed_file_change_does_not_hide_readable_changes_or_replies(change):
+    data = history()
+    data["turns"][0]["items"] += [file_change("bad", changes=[change]), file_change("valid")]
+    transcript = transcript_from_thread(data)
+    assert [e.path for e in transcript.edits] == ["src/app.py"]
+    assert transcript.last_reply().text == "Ready"
+
+
+def test_file_changes_survive_pagination_and_refresh_with_turn_scoped_deduplication():
+    pages = paginated_pages()
+    edit = file_change()
+    pages[3]["data"].append({"turnId": "t1", "item": edit})
+    pages[4]["data"] += [{"turnId": "t1", "item": edit}, {"turnId": "t2", "item": edit}]
+    connection = Connection(pages + pages)
+    info = SessionInfo("external", "codex:one", "Build", "", "one", provider="codex")
+    reader = CodexProvider(connection).open_reader(info)
+    assert reader.refresh()
+    assert [(e.path, e.turn) for e in reader.transcript.edits] == [("src/app.py", 1), ("src/app.py", 2)]
+    reader._history_checked = 0
+    assert not reader.refresh()
+    assert len(reader.transcript.edits) == 2
+    assert [e.turn for e in reader.transcript.latest_turn_edits()] == [2]
+    assert {m for m, _ in connection.calls} == {"thread/read", "thread/turns/list", "thread/items/list"}
 
 
 def test_codex_rejects_foreign_session_before_rpc():
@@ -529,3 +601,21 @@ def test_saved_plan_stays_on_its_turn_after_a_later_turn_without_a_plan(tmp_path
         rows = lists.build(lists.TASKS, lists.SCOPE_MESSAGE, transcript.messages, message,
                            [], [], str, tasks=transcript.tasks)
         assert bool(rows) == (message.turn == 1)
+
+
+@pytest.mark.parametrize("style, removed, added", [
+    ("words", "Removed: old", "Added: new"),
+    ("short", "Del old", "Add new"),
+    ("symbols", "- old", "+ new"),
+    ("changed", "!- old", "!+ new"),
+])
+def test_codex_file_details_keep_rename_history_in_every_display_style(style, removed, added):
+    from thechatplace.changes import by_file, file_text
+    data = history()
+    item = file_change()
+    item["changes"][0]["kind"]["move_path"] = "src/renamed.py"
+    data["turns"][0]["items"].append(item)
+    changes = by_file(transcript_from_thread(data).edits)[0]
+    detail = file_text(changes, style)
+    assert "Renamed from: src/app.py" in detail
+    assert removed in detail and added in detail

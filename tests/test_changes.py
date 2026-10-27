@@ -1,4 +1,6 @@
 """What a turn changed in files (#18)."""
+import pytest
+
 from thechatplace.changes import by_file, edit_from_tool, file_text, summary_text
 from thechatplace.transcript import TranscriptParser, parse_lines
 
@@ -166,3 +168,78 @@ def test_a_removed_line_starting_with_dashes_is_still_removed():
                                    "new_string": "++ new\nSELECT 1"}, None, 1)
     assert (edit.added, edit.removed) == (1, 1)
     assert "Removed: -- old note" in file_text(by_file([edit])[0])
+
+
+def test_pathless_unified_diff_keeps_hunks_line_numbers_and_newline_notes():
+    from thechatplace.changes import parse_unified_diff
+    hunks = parse_unified_diff("@@ -10,2 +10,3 @@\r\n keep\r\n-old\r\n+new\r\n+more\r\n"
+                               "@@ -20 +21 @@\n---content\n+++content\n\\ No newline at end of file\n")
+    assert [(h.old_start, h.new_start, h.added, h.removed) for h in hunks] == [(10, 10, 2, 1), (20, 21, 1, 1)]
+    assert hunks[1].lines == ["---content", "+++content", "\\ No newline at end of file"]
+    assert parse_unified_diff("--- a/file\n+++ b/file\nnot a hunk\n+not a change") == []
+
+
+def test_renamed_file_can_have_added_or_removed_lines():
+    from thechatplace.changes import FileEdit, Hunk
+    edits = [FileEdit("new.py", "Codex", 1, [Hunk(1, 1, ["-gone"])], moved_from="old.py")]
+    assert by_file(edits)[0].counts() == "renamed, 1 line removed"
+    edits[0].hunks[0].lines.append("+new")
+    assert by_file(edits)[0].counts() == "renamed, 1 line added, 1 removed"
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("terminated", [False, True])
+def test_unified_diff_keeps_edits_after_a_context_blank_with_its_space_stripped(newline, terminated):
+    from thechatplace.changes import FileEdit, parse_unified_diff
+    diff = newline.join(["@@ -1,3 +1,3 @@", " a", "", "-b", "+c"])
+    hunks = parse_unified_diff(diff + (newline if terminated else ""))
+    assert len(hunks) == 1
+    assert (hunks[0].added, hunks[0].removed) == (1, 1)
+    assert hunks[0].lines == [" a", " ", "-b", "+c"]
+    detail = file_text(by_file([FileEdit("a.txt", "Codex", 1, hunks)])[0])
+    assert "Lines 1 to 3:" in detail
+    assert "Unchanged: blank line\nRemoved: b\nAdded: c" in detail
+
+
+@pytest.mark.parametrize("start, removed, heading", [
+    (1, ["-one", "-two", "\\ No newline at end of file"], "Lines 1 to 2:"),
+    (7, ["-one"], "At line 7:"),
+    (0, ["-one"], "A change:"),
+])
+def test_deleted_file_uses_its_recorded_old_range(start, removed, heading):
+    from thechatplace.changes import FileEdit, Hunk
+    change = by_file([FileEdit("gone.txt", "Codex", 1, [Hunk(start, 0, removed)], deleted=True)])[0]
+    assert file_text(change).split("\n")[2] == heading
+
+
+def test_delete_then_recreate_keeps_both_changes_under_the_same_path():
+    from thechatplace.changes import FileEdit, Hunk
+    edits = [FileEdit("a.txt", "Codex", 1, [Hunk(1, 0, ["-old"])], deleted=True),
+             FileEdit("a.txt", "Codex", 2, [Hunk(0, 1, ["+new", "+more"])], created=True)]
+    changes = by_file(edits)
+    assert len(changes) == 1
+    assert changes[0].counts() == "2 lines added, 1 removed"
+    detail = file_text(changes[0])
+    assert detail.index("Removed: old") < detail.index("Added: new")
+
+
+def test_edits_before_a_rename_stay_under_the_old_path():
+    from thechatplace.changes import FileEdit, Hunk
+    changes = by_file([FileEdit("old.py", "Codex", 1, [Hunk(1, 1, ["-old", "+new"])]),
+                       FileEdit("new.py", "Codex", 2, moved_from="old.py")])
+    assert [change.path for change in changes] == ["old.py", "new.py"]
+    assert [change.counts() for change in changes] == ["1 line added, 1 removed", "renamed"]
+    assert "Removed: old\nAdded: new" in file_text(changes[0])
+    assert "Renamed from: old.py" in file_text(changes[1])
+
+
+
+@pytest.mark.parametrize("separator", ["\n", "\n\n", "\n\n\n"])
+def test_unified_diff_ignores_blank_separators_after_complete_hunks(separator):
+    from thechatplace.changes import FileEdit, parse_unified_diff
+    diff = "@@ -1 +1 @@\n-a\n+b" + separator + "@@ -9 +9 @@\n-c\n+d" + separator
+    hunks = parse_unified_diff(diff)
+    assert [h.lines for h in hunks] == [["-a", "+b"], ["-c", "+d"]]
+    detail = file_text(by_file([FileEdit("a.txt", "Codex", 1, hunks)])[0])
+    assert "At line 1:" in detail and "At line 9:" in detail
+    assert "Unchanged: blank line" not in detail

@@ -666,7 +666,7 @@ def s_main_desktop(frame, env):
     _open(frame, "Fix the flaky upload test")
 
 
-def s_main_codex(frame, env):
+def s_main_codex(frame, env, *, file_changes=False):
     """Synthetic prototype only; no installed CLI/account or UI opt-in."""
     import dataclasses
     from thechatplace.providers.claude import ClaudeConversations
@@ -679,6 +679,13 @@ def s_main_codex(frame, env):
     items = [{"id": "user", "type": "userMessage", "content": [
                  {"type": "text", "text": "Explain the upload test."}]},
              {"id": "answer", "type": "agentMessage", "text": LONG_MESSAGE}]
+    if file_changes:
+        items.insert(1, {"id": "files", "type": "fileChange", "status": "completed", "changes": [
+            {"path": "upload.py", "kind": {"type": "update"},
+             "diff": "@@ -8,2 +8,3 @@\n def upload():\n-    send()\n+    wait_until_ready()\n+    send()\n"},
+            {"path": "notes.txt", "kind": {"type": "add"}, "diff": "Wait before retrying.\n"},
+            {"path": "unused.txt", "kind": {"type": "delete"}, "diff": "Old notes.\nMore old notes.\n"},
+            {"path": "old_test.py", "kind": {"type": "update", "move_path": "test_upload.py"}, "diff": ""}]})
     thread = {"id": "synthetic-codex", "name": "Codex history preview",
               "cwd": env["folders"]["Scratch"], "createdAt": updated - 600, "updatedAt": updated,
               "status": {"type": "notLoaded"}}
@@ -1277,6 +1284,25 @@ def d_changes(frame, env):
     return frame.on_changes
 
 
+def d_lists_codex_files(frame, env):
+    s_main_codex(frame, env, file_changes=True)
+    return frame.on_changes
+
+
+def d_lists_codex_deleted_file(frame, env):
+    opener = d_lists_codex_files(frame, env)
+    show = frame._show_lists
+
+    def deleted_selected(dialog):
+        page = dialog.current()
+        page.list.SetSelection(2)
+        page.show_selected()
+        return show(dialog)
+
+    frame._show_lists = deleted_selected
+    return opener
+
+
 def d_lists_commands(frame, env):
     """View, Lists on Commands (#279)."""
     from thechatplace import lists
@@ -1541,6 +1567,8 @@ SURFACES = {
     "links": ("dialog", d_links, "View, Lists: Links"),
     "find-all": ("dialog", d_find_all, "View, Find in All Sessions: the results"),
     "changes": ("dialog", d_changes, "View, Lists: Changed Files"),
+    "lists-codex-files": ("dialog", d_lists_codex_files, "Codex Changed Files: updates, additions, deletions and renames"),
+    "lists-codex-deleted-file": ("dialog", d_lists_codex_deleted_file, "Codex Changed Files: a deleted file's old line range"),
     "lists-commands": ("dialog", d_lists_commands, "View, Lists: Commands"),
     "lists-decisions": ("dialog", d_lists_decisions, "View, Lists: Decisions"),
     "lists-tasks": ("dialog", d_lists_tasks, "View, Tasks: Claude's task list"),
@@ -1624,6 +1652,8 @@ DIALOG_CLASSES = {
     "links": "ListsDialog",
     "find-all": "FindResultsDialog",
     "changes": "ListsDialog",
+    "lists-codex-files": "ListsDialog",
+    "lists-codex-deleted-file": "ListsDialog",
     "lists-commands": "ListsDialog",
     "lists-decisions": "ListsDialog",
     "lists-tasks": "ListsDialog",
