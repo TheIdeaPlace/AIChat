@@ -43,6 +43,10 @@ The layout matches main-own, and the split stays where it is: the session list i
 
 **Fixed:** The column split used to jump 110 pixels when the status text changed length, so the session list lost almost a third of its width while a turn ran; the status bar's middle text was cut mid-word (#179). The split now stays put, and text that doesn't fit ends in "...".
 
+## main-own-steering: An own session mid-turn with a steered message not yet taken in
+
+The layout matches main-own-working, with the split in the same place. The messages list has two rows, "You: Make the uploader flush before it signals." and "Claude: ## What changed" (selected), and no "Queued:" row, because a steered message goes into the turn rather than waiting. The reply box is empty with the text cursor in it. The status line under the buttons reads "1 steered message not taken in yet. Claude is working (1 minute 15 seconds)." and fits on its line. As in main-own-working, the middle part of the status bar is too short for the whole sentence, so "Visual probe: 1 steered message not taken in yet. Claude..." ends in "...". In High Contrast Aquatic the line is light text on black, like the rest of the window.
+
 ## main-attachments: An own session with two files attached to the next message
 
 This picture is the same as main-own, except that a small white list 48 tall appears under the Send/Stop/Commands/Attach Files row and the "Ready." line below it. It shows "screenshot of the error.png" (selected in blue) and "upload.log". To make room, the messages list drops to 269 tall. The attachment list has no heading of its own, so it looks like a third, unlabelled list sitting under the buttons.
