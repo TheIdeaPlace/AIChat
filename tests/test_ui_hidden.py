@@ -11855,6 +11855,94 @@ def test_agent_conversation_dialog_checks_and_result(app, monkeypatch, tmp_path)
         parent.Destroy()
 
 
+@pytest.mark.parametrize("slot", range(3))
+@pytest.mark.parametrize("sandbox, reviewer, selection", [
+    ("read-only", "user", 0), ("workspace-write", "user", 1),
+    ("read-only", "auto_review", 2), ("workspace-write", "auto_review", 3)])
+def test_agent_conversation_codex_permission_choices(env, app, monkeypatch, tmp_path,
+                                                    slot, sandbox, reviewer, selection):
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    parent = wx.Frame(None)
+    try:
+        dialog = AgentConversationDialog(parent, [], ["claude", "codex"],
+                                         folders=[str(tmp_path)], auto_allowed=True)
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        dialog.chats[slot].SetSelection(2 if slot == 2 else 1)
+        dialog._sync()
+        assert list(dialog.permissions[slot].GetStrings()) == [
+            "Read-only; asks before allowing changes",
+            "Can edit files in this folder; asks before anything else",
+            "Read-only; automatic approval review",
+            "Can edit files in this folder; automatic approval review"]
+        assert dialog.permissions[slot].GetSelection() == 0
+        dialog.permissions[slot].SetSelection(selection)
+        # Changing hand-offs must preserve the independently selected reviewer.
+        dialog.mode.SetSelection(1)
+        dialog._sync()
+        dialog._start()
+        choice = dialog.result.members[slot]
+        assert (choice.permission, choice.approval_policy, choice.approvals_reviewer) == (
+            sandbox, "on-request", reviewer)
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
+def test_agent_templates_keep_human_review(env, app, monkeypatch, tmp_path):
+    from thechatplace.agents import TEMPLATES
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    parent = wx.Frame(None)
+    try:
+        dialog = AgentConversationDialog(parent, [], ["codex"], folders=[str(tmp_path)])
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        dialog.chats[2].SetSelection(1)
+        dialog._sync()
+        for index, template in enumerate(TEMPLATES):
+            for permission in dialog.permissions:
+                permission.SetSelection(3)
+            dialog.template.SetSelection(index + 1)
+            dialog._apply_template()
+            dialog._start()
+            assert [m.permission for m in dialog.result.members] == [
+                permission[1] for permission in template.permissions] + ["read-only"]
+            assert all(m.approvals_reviewer == "user" for m in dialog.result.members)
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
+def test_agent_codex_permission_explanation_follows_new_chats(env, app, tmp_path):
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    from thechatplace.ui.permission_hosts import CODEX_REVIEW_NOTE
+    existing = [OwnSession("codex-existing", "Existing Codex", str(tmp_path),
+                           provider="codex").to_info()]
+    parent = wx.Frame(None)
+    try:
+        dialog = AgentConversationDialog(parent, existing, ["claude", "codex"],
+                                         folders=[str(tmp_path)])
+        assert dialog.codex_note.IsShown() and dialog.codex_note_label.IsShown()
+        assert dialog.codex_note.GetValue() == CODEX_REVIEW_NOTE
+        assert dialog.codex_note.GetName() == "About Codex permissions"
+        assert not dialog.codex_note.IsEditable()
+        # An existing Codex chat keeps its settings; only new ones show the explanation.
+        dialog.chats[1].SetSelection(2)
+        dialog._sync()
+        assert not dialog.codex_note.IsShown() and not dialog.codex_note_label.IsShown()
+        dialog.chats[0].SetSelection(1)
+        dialog._sync()
+        assert dialog.codex_note.IsShown()
+        dialog.chats[0].SetSelection(0)
+        dialog.chats[2].SetSelection(2)
+        dialog._sync()
+        assert dialog.codex_note.IsShown()
+        dialog.chats[2].SetSelection(0)
+        dialog._sync()
+        assert not dialog.codex_note.IsShown()
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
 def test_agent_conversation_dialog_template_and_third_agent(app, monkeypatch, tmp_path):
     """Phase 3: a template fills in roles, new chats' permissions and who
     goes first; a third agent is optional, and brings its role and

@@ -3176,14 +3176,14 @@ class AgentConversationDialog(wx.Dialog):
                          size=dialog_size(parent, 720, 760),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         from ..agents import MAX_TURN_LIMIT, TEMPLATES
-        from .permission_hosts import CODEX_MODES
+        from .permission_hosts import CODEX_REVIEW_MODES, CODEX_REVIEW_NOTE
         self.result = None
         self._templates = TEMPLATES
         self._existing = list(existing)
         self._new_kinds = list(new_kinds)
         self._auto_allowed = auto_allowed
         self._claude_modes = PERMISSION_MODES
-        self._codex_modes = CODEX_MODES
+        self._codex_modes = CODEX_REVIEW_MODES
         self._options = ([("new", kind) for kind in self._new_kinds]
                          + [("chat", info) for info in self._existing])
         labels = ([self.NEW_LABELS[kind] for kind in self._new_kinds]
@@ -3230,6 +3230,12 @@ class AgentConversationDialog(wx.Dialog):
             self.permissions.append(permission)
             self._permission_labels.append(permission_label)
             choice.Bind(wx.EVT_CHOICE, lambda e: self._sync())
+
+        self.codex_note_label = wx.StaticText(body, label="About Codex permissions:")
+        outer.Add(self.codex_note_label, 0, wx.LEFT | wx.TOP, 8)
+        self.codex_note = _read_only_text(body, CODEX_REVIEW_NOTE, "About Codex permissions",
+                                          min_height=110)
+        outer.Add(self.codex_note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
         self.folder_label = wx.StaticText(body, label="&Folder for new chats:")
         outer.Add(self.folder_label, 0, wx.LEFT | wx.TOP, 8)
@@ -3325,13 +3331,14 @@ class AgentConversationDialog(wx.Dialog):
     def _sync(self):
         """Each new chat's permission choice, the third agent's role, the
         folder, the turn limit and who can go first follow what's chosen."""
-        any_new = False
+        any_new = new_codex = False
         slots = self._slots()
         for slot in range(3):
             info, provider = self._pick(slot)
             used = slot < slots
             new = used and info is None and provider is not None
             any_new = any_new or new
+            new_codex = new_codex or (new and provider == "codex")
             permission = self.permissions[slot]
             if new:
                 labels = [label for _value, label in self._modes(provider)]
@@ -3346,6 +3353,8 @@ class AgentConversationDialog(wx.Dialog):
             if slot == 2:
                 self.roles[2].Show(used)
                 self._role_labels[2].Show(used)
+        self.codex_note_label.Show(new_codex)
+        self.codex_note.Show(new_codex)
         for control in (self.folder_label, self.folder, self.browse):
             control.Show(any_new)
         auto = self._auto_allowed and self.mode.GetSelection() == 1
@@ -3448,13 +3457,19 @@ class AgentConversationDialog(wx.Dialog):
         for slot in range(slots):
             info, provider = self._pick(slot)
             permission = ""
+            approval_policy, approvals_reviewer = "on-request", "user"
             if info is None:
                 index = max(self.permissions[slot].GetSelection(), 0)
                 value = self._modes(provider)[index][0]
-                permission = value if provider == "claude" else value[0]
+                if provider == "claude":
+                    permission = value
+                else:
+                    permission, approval_policy, approvals_reviewer = value
             members.append(SimpleNamespace(info=info, provider=provider,
                                            role=" ".join(self.roles[slot].GetValue().split()),
-                                           permission=permission))
+                                           permission=permission,
+                                           approval_policy=approval_policy,
+                                           approvals_reviewer=approvals_reviewer))
         first = self.first.GetSelection()
         to_all = first == slots
         self.result = SimpleNamespace(

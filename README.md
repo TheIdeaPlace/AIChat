@@ -18,7 +18,7 @@ Keyboard shortcuts: [a web page](https://theideaplace.github.io/AIChat/keyboard-
 [Markdown](docs/keyboard-shortcuts.md) and [plain text](docs/keyboard-shortcuts.txt): the same list
 as Help, Keyboard Shortcuts (F1) in the app.
 
-> **Status: version 0.3.0, a pre-release** (0.1.0, the first release, came out on 7 October 2026). How it
+> **Status: version 0.3.1, a pre-release** (0.1.0, the first release, came out on 7 October 2026). How it
 > has been tested is in [DEVELOPING.md](DEVELOPING.md#how-its-been-tested).
 
 The Chat Place brings Claude and Codex chats into one accessible list. Read each conversation,
@@ -629,10 +629,13 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Place's own chats, Claude and Codex (or two of either), talk to each other in one
   conversation, with you in it. Choose each agent's chat: one of yours, keeping its history,
   or a new Claude or Codex chat (with its permission, in a folder you choose), and give each
-  a role if you like ("Build the fix", "Review each change; don't edit files"). Kind of
-  conversation fills in the roles, new chats' permissions and who goes first for a builder
-  and reviewer, a second opinion, a debate, or plan and do. An optional third agent joins
-  in turn: replies go from the first to the second, the second to the third, and back, and
+  a role if you like ("Build the fix", "Review each change; don't edit files"). Each new Codex
+  chat offers four permission choices: read-only or edits in its folder, with human or
+  automatic approval review, as in New Session. Templates keep human review unless you
+  explicitly choose automatic review. Kind of conversation fills in the roles, new chats'
+  permissions and who goes first for a builder and reviewer, a second opinion, a debate,
+  or plan and do. An optional third agent joins in turn: replies go from the first to the
+  second, the second to the third, and back, and
   each agent is sent the replies it missed along with the one passed to it. Choose how
   replies go across, who answers first, and write the opening message. The conversation is
   one row in the session list (Provider "Claude + Codex", Kind "agent conversation"); its
@@ -677,11 +680,11 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
     (the setup each agent got, or the reply as it went).
   - A reply passed on ends with the files its agent changed in that turn, so a reviewer
     knows what to look at.
-  - Permissions and questions still come to you, from each agent, through Answer
-    (Ctrl+Shift+A): a message from one agent can never answer or approve anything for the
-    other. Rename (F2), Properties (Alt+Enter) and Delete (Shift+Delete) work on the row;
-    deleting it keeps both chats and their histories and puts them back in the list. A
-    member chat can't be deleted while it's in a conversation.
+  - Questions and requests needing human approval come to you, from each agent, through Answer
+    (Ctrl+Shift+A). Codex uses its selected approval reviewer. A message from one agent can
+    never answer or approve anything for the other. Rename (F2), Properties (Alt+Enter) and
+    Delete (Shift+Delete) work on the row; deleting it keeps both chats and their histories
+    and puts them back in the list. A member chat can't be deleted while it's in a conversation.
 
 ### Speech, announcements and notifications
 
