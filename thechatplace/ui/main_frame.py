@@ -4767,10 +4767,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         #239): into the running turn now, without stopping it. It stays
         queued if the turn can't take it."""
         info = self._open
-        index = self._selected_queued()
-        if info is None or index is None:
+        if info is None:
             return
-        if info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
+        runtime = info.provider in RUNTIME_PROVIDERS and self._can_edit(info)
+        if not runtime and info.provider != "claude":
+            self._require_capability("steer", info)  # says it isn't available
+            return
+        index = self._selected_queued()
+        if index is None:
+            return
+        if runtime:
             if not self._can_steer(info):
                 self._feedback(f"{provider_name(info.provider)} can't take a message during "
                                "its turn. It stays queued.")
@@ -4780,8 +4786,6 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             if state is None or record is None or not 0 <= index < len(state.queued):
                 return
             self._steer_codex_owned(record, state.queued[index], index=index)
-            return
-        if info.provider != "claude":
             return
         runner = self._runners.get(info.cli_session_id)
         waiting = self._queued.get(info.cli_session_id, [])

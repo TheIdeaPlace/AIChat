@@ -4823,10 +4823,10 @@ def test_steer_sends_into_the_running_turn_without_stopping_it(frame, env, fake_
     # Taken in: said without cutting off what's being read.
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "steer_taken", text="Also update the README", data={"late": False}))
-    assert env["spoken"][-1] == "Hub probe has your message."
+    assert env["feedback"][-1] == "Hub probe has your message."
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "steer_taken", text="And the docs", data={"late": True}))
-    assert env["spoken"][-1] == "Hub probe had finished, and is answering your message now."
+    assert env["feedback"][-1] == "Hub probe had finished, and is answering your message now."
     assert len(fake_runner.instances) == 1
 
 
