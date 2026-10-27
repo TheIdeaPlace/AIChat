@@ -1,7 +1,7 @@
 """File, Send Reply to Another Chat (#248): the window's side of relay.py.
 
 A reply in the loaded chat goes, labelled and after you've read it, to
-another of The Chat Place's own chats, of either provider, as an ordinary
+another of The Chat Place's own chats, of any provider, as an ordinary
 message. The window then goes to that chat, so its answer is the next thing
 heard, and the same key sends that answer back.
 """
@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import wx
 
 from .. import agents, relay
-from ..sessions import WORKING
+from ..sessions import RUNTIME_PROVIDERS, WORKING
 from .dialogs import RelayDialog
 
 
@@ -30,9 +30,7 @@ class RelayChats:
         if message is None:
             self._feedback(f"{info.title} has no reply to send yet.")
             return
-        # Sending into a Copilot chat isn't built yet (#369).
-        targets = relay.targets(self._snapshot.sessions, info.key,
-                                lambda chat: chat.provider != "copilot" and self._can_edit(chat),
+        targets = relay.targets(self._snapshot.sessions, info.key, self._can_edit,
                                 self._relay_partners.get(info.key))
         # A new chat of each provider that can start one (#378), after the
         # existing chats, so the chat that last sent a reply here is still
@@ -92,7 +90,7 @@ class RelayChats:
         for kind in relay.NEW_KINDS:
             if kind == "claude" and platform_paths.find_claude().path:
                 yield kind
-            elif kind == "codex" and self.sessions.can_create("codex"):
+            elif kind in RUNTIME_PROVIDERS and self.sessions.can_create(kind):
                 yield kind
 
     def _relay_joint_problem(self, info, working):
@@ -199,15 +197,16 @@ class RelayChats:
         there's no reply box for it, never dropped."""
         self._relay_partners[target.key] = source.key
         self.open_session(target)
-        if target.provider == "codex":
-            record = self.store.get(target.cli_session_id, provider="codex")
+        if target.provider in RUNTIME_PROVIDERS:
+            record = self.store.get(target.cli_session_id, provider=target.provider)
             if record is None:
                 self._relay_kept(text, f"Couldn't find {target.title} in The Chat Place's chats, "
                                        "so the message wasn't sent.")
                 return
             if target.key in self._codex_preparing:
-                # Codex must get a chat ready (reading its history first)
-                # before it takes a message; _prepare_codex_owned sends it.
+                # Codex and Copilot must get a chat ready (reading its
+                # history first) before it takes a message;
+                # _prepare_codex_owned sends it.
                 self._relay_waiting[target.key] = text
                 self._feedback(f"Getting {target.title} ready. The message goes as soon as it is.")
                 return
@@ -230,8 +229,11 @@ class RelayChats:
         titles = []
         for key in self._relay_waiting:
             info = self._current_info(key)
-            titles.append(info.title if info is not None else "a Codex chat")
-        # An agent conversation's message waiting for its Codex member (#248).
+            # Gone from the list: named by its provider, from its key.
+            titles.append(info.title if info is not None
+                          else f"a {relay.provider_name(key.partition(':')[0])} chat")
+        # An agent conversation's message waiting for its Codex or Copilot
+        # member (#248).
         waiting = getattr(self, "_agent_waiting_names", None)
         titles += waiting() if waiting is not None else []
         if not titles:
@@ -248,7 +250,7 @@ class RelayChats:
             self._feedback(f"{why} It couldn't be kept.")
 
     def _relay_prepared(self, key, record, failed) -> str:
-        """A Codex chat a message was waiting for is ready, or failed to be.
+        """A Codex or Copilot chat a message was waiting for is ready, or failed to be.
         Ready, the message goes. Failed, it goes in the chat's reply box, and
         what to say about it comes back to go before the reason."""
         text = self._relay_waiting.pop(key, None)
@@ -261,7 +263,7 @@ class RelayChats:
         return ""
 
     def _drop_waiting_relay(self, going_to=None):
-        """Leaving a Codex chat before it was ready: its message stays as
+        """Leaving a Codex or Copilot chat before it was ready: its message stays as
         that chat's draft, and you hear that it wasn't sent. Loading the same
         chat again keeps it waiting. ``going_to`` None means the chat is being
         forgotten, with no reply box to keep it in: it's copied instead."""

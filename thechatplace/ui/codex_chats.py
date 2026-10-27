@@ -337,7 +337,9 @@ class CodexChats:
             self._update_send_state()
         self._codex_work(action, done)
 
-    def _stop_codex_owned(self, info):
+    def _stop_codex_owned(self, info, take_back=None):
+        """``take_back(texts)``: an agent conversation (#369) takes back the
+        waiting messages that were its own, and returns the rest."""
         record = self.store.get(info.cli_session_id, provider=info.provider)
         if record is None:
             return
@@ -356,6 +358,8 @@ class CodexChats:
                 self._update_send_state()
                 return
             reconnected, waiting, stopped = result
+            if waiting and take_back is not None:
+                waiting = tuple(take_back(waiting))
             if waiting:
                 # Copilot's stop gives back the messages still waiting; Codex
                 # gives them back through its state's unsent instead.

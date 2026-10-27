@@ -326,6 +326,93 @@ def test_a_bad_record_is_left_out_without_hiding_the_others(tmp_path):
     assert [c.conversation_id for c in store.all()] == [good.conversation_id]
 
 
+def test_a_conversation_with_copilot_is_kept_where_older_releases_never_look(tmp_path):
+    """Releases before #369 drop a conversation with a member they don't
+    know, and their next save would lose it: it goes in a file of its own,
+    and an edit to it never rewrites the file they read."""
+    path = tmp_path / "agent-conversations.json"
+    companion = tmp_path / "provider-agent-conversations-copilot.json"
+    store = AgentConversationStore(path)
+    older = _conversation()
+    store.add(older)
+    written = path.read_bytes()
+    copilot = _conversation("claude", "copilot")
+    copilot.members[0].native_id = "claude-2"
+    store.add(copilot)
+    assert path.read_bytes() == written  # untouched
+    kept = json.loads(companion.read_text(encoding="utf-8"))
+    assert kept["version"] == 1
+    assert [c["conversation_id"] for c in kept["conversations"]] == [copilot.conversation_id]
+    copilot.paused = True
+    store.put(copilot)
+    assert path.read_bytes() == written
+    again = AgentConversationStore(path)
+    assert again.load_error == ""
+    assert {c.conversation_id for c in again.all()} == {older.conversation_id,
+                                                         copilot.conversation_id}
+    assert again.get(copilot.conversation_id).paused
+    assert again.containing("copilot", "copilot-1").conversation_id == copilot.conversation_id
+    # Gone, its file is emptied, not left holding it.
+    again.remove(copilot.conversation_id)
+    assert json.loads(companion.read_text(encoding="utf-8"))["conversations"] == []
+    assert path.read_bytes() == written
+
+
+def test_a_copilot_edit_leaves_a_main_file_it_would_tidy_alone(tmp_path):
+    """A record this release leaves out, or tidies on loading, mustn't make a
+    change to a Copilot conversation rewrite the file older releases read."""
+    path = tmp_path / "agent-conversations.json"
+    older = agents._to_dict(_conversation())
+    older["mode"] = "chaos"  # tidied to "approve" on loading
+    path.write_text(json.dumps({"version": 1, "conversations": [
+        older, {"conversation_id": "bad", "members": []}]}), encoding="utf-8")
+    written = path.read_bytes()
+    store = AgentConversationStore(path)
+    copilot = _conversation("claude", "copilot")
+    copilot.members[0].native_id = "claude-2"
+    store.add(copilot)
+    copilot.paused = True
+    store.put(copilot)
+    assert path.read_bytes() == written
+
+
+def test_an_older_store_without_the_companion_loads_unchanged(tmp_path):
+    path = tmp_path / "agent-conversations.json"
+    conversation = _conversation()
+    path.write_text(json.dumps({"version": 1, "conversations": [agents._to_dict(conversation)]}),
+                    encoding="utf-8")
+    written = path.read_bytes()
+    store = AgentConversationStore(path)
+    assert store.load_error == "" and store.all() == [conversation]
+    assert not (tmp_path / "provider-agent-conversations-copilot.json").exists()
+    assert path.read_bytes() == written
+
+
+def test_an_unreadable_companion_is_set_aside_without_losing_the_others(tmp_path):
+    path = tmp_path / "agent-conversations.json"
+    companion = tmp_path / "provider-agent-conversations-copilot.json"
+    conversation = _conversation()
+    AgentConversationStore(path).add(conversation)
+    companion.write_text("{not json", encoding="utf-8")
+    store = AgentConversationStore(path)
+    assert "moved to" in store.load_error and store.all() == [conversation]
+    assert len(list(tmp_path.glob("provider-agent-conversations-copilot.json.bad-*"))) == 1
+    companion.write_text(json.dumps({"version": 2, "conversations": []}), encoding="utf-8")
+    store = AgentConversationStore(path)
+    assert "newer version" in store.load_error
+    copilot = _conversation("claude", "copilot")
+    copilot.members[0].native_id = "claude-2"
+    with pytest.raises(OSError):
+        store.add(copilot)
+
+
+def test_copilot_is_a_member_by_name():
+    conversation = _conversation("codex", "copilot")
+    assert [m.name for m in conversation.members] == ["Codex", "Copilot"]
+    assert conversation.members[1].key == "copilot:copilot-1"
+    assert agents.address("@Copilot check this", conversation.members) == ([1], "check this")
+
+
 def test_odd_values_in_a_record_are_made_safe(tmp_path):
     raw = agents._to_dict(_conversation())
     raw.update(mode="chaos", turn_limit=-4, exchanges="many", next_index=7, briefed=[0, 5, "x"],

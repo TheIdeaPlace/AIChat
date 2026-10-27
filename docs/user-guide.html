@@ -709,7 +709,7 @@ whether the chat was started here:</p>
 <td>Usage and Context</td>
 <td>yes</td>
 <td>yes</td>
-<td>no</td>
+<td>context and premium requests used</td>
 </tr>
 <tr>
 <td>Delete Session Permanently</td>
@@ -733,7 +733,7 @@ whether the chat was started here:</p>
 <td>Agent conversations</td>
 <td>yes</td>
 <td>yes</td>
-<td>no</td>
+<td>chats started here</td>
 </tr>
 <tr>
 <td>What AI Knows About You</td>
@@ -860,9 +860,9 @@ show in full can only be denied: ask Copilot to do it in smaller steps.</p>
 <li>with a message that starts with <code>/</code>, because some of Copilot's commands turn off its
   questions.</li>
 </ul>
-<p>Continue Here, agent conversations, Change Permission Mode and Chat Permissions aren't
-available for Copilot chats yet, and Send Reply to Another Chat can send a Copilot chat's reply
-to another chat but not into a Copilot chat.</p>
+<p>Continue Here, Change Permission Mode and Chat Permissions aren't available for Copilot chats
+yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+Chat can send a reply into it.</p>
 <h2 id="starting-a-chat-and-replying">Starting a chat and replying</h2>
 <h3>A new chat</h3>
 <p>Press <strong>Ctrl+N</strong> (File, New Session). It works from anywhere in the window. Then fill in:</p>
@@ -1028,16 +1028,17 @@ pasting.</p>
 <ol>
 <li>In the chat with the reply, select it in the messages list. If a message of yours is
    selected instead, the latest reply is used.</li>
-<li>Press <strong>Ctrl+Shift+E</strong>. <strong>Send to</strong> lists your Claude and Codex chats started here, other than
-   this one. Desktop app, terminal, Copilot and hidden chats aren't offered. At the end of the
-   list are <strong>New Claude chat</strong> and <strong>New Codex chat</strong>, to start a new chat with the reply.</li>
+<li>Press <strong>Ctrl+Shift+E</strong>. <strong>Send to</strong> lists your Claude, Codex and Copilot chats started here,
+   other than this one. Desktop app, terminal and hidden chats aren't offered. At the end of the
+   list are <strong>New Claude chat</strong>, <strong>New Codex chat</strong> and <strong>New Copilot chat</strong> (each when that
+   provider can start one), to start a new chat with the reply.</li>
 <li>Below it, <strong>Message</strong> has the reply, starting with a line that says which agent wrote it and
    in which chat, so the agent reading it knows these are another agent's words, not yours.
    Change it or add your own words; Enter there starts a new line.</li>
 <li>Press <strong>Ctrl+Enter</strong> (or <strong>Enter</strong> in the list, or Send). The Chat Place goes to that chat and
    sends it, just as if you'd typed it there: you hear what was sent and where, as when you send,
-   and it's queued if that chat is working. A Codex chat that isn't ready yet gets ready first
-   ("Getting Reviewer ready"), and the message goes when it is; if you go to another chat before
+   and it's queued if that chat is working. A Codex or Copilot chat that isn't ready yet gets
+   ready first ("Getting Reviewer ready"), and the message goes when it is; if you go to another chat before
    then, it isn't sent and stays in that chat's reply box.</li>
 </ol>
 <p>To a new chat, New Session opens next, with the message as the first message, the folder of
@@ -1057,8 +1058,8 @@ you're sending may be a step on the way rather than its answer.</p>
 <p>A forwarded message is only ever a message. It can't answer a question or approve a tool for the
 other agent: those still come to you, in each chat, as they always do.</p>
 <h3>Agent conversations</h3>
-<p>An <strong>agent conversation</strong> puts two chats, Claude and Codex or two of either, in one conversation
-with you, and passes each one's replies to the other. A third chat can join, and then replies
+<p>An <strong>agent conversation</strong> puts two chats, any of Claude, Codex and Copilot or two of one, in one
+conversation with you, and passes each one's replies to the other. A third chat can join, and then replies
 go round in turn: the first agent's to the second, the second's to the third, the third's back
 to the first, and each agent is sent the replies it missed along with the one passed to it.
 It's Send Reply to Another Chat done for you, turn after turn.</p>
@@ -1077,14 +1078,18 @@ It's Send Reply to Another Chat done for you, turn after turn.</p>
 </ul>
 </li>
 <li><strong>Title:</strong> the conversation's name. Left empty, it's the opening message's first line.</li>
-<li><strong>First agent's chat</strong> and <strong>Second agent's chat:</strong> a new Claude or Codex chat, or one of
-  your chats started here, which keeps its history. A chat can be in one conversation at a time.</li>
+<li><strong>First agent's chat</strong> and <strong>Second agent's chat:</strong> a new Claude, Codex or Copilot chat, or
+  one of your chats started here, which keeps its history. New Copilot chats are offered once
+  the Copilot preview is on in Settings and Copilot CLI is installed. A chat can be in one conversation at a time.</li>
 <li><strong>Third agent's chat</strong> (optional): "No third agent" unless you choose one.</li>
 <li><strong>Role</strong> (optional) for each, such as "Build the fix" and "Review each change; don't edit
   files". Each agent is told its role and the others'.</li>
 <li><strong>New chat's permission:</strong> for a new chat, its permission mode, as in New Session.
   Codex offers four choices: read-only or edits in its folder, each with human or automatic
   approval review. Templates keep human review unless you explicitly choose automatic review.
+  Copilot has one, "Asks you before it changes files or runs commands": it asks you about each
+  edit and command, whatever the template, so a reviewer told not to edit files is trusting
+  Copilot to keep to its role, and you to refuse if it asks.
   <strong>Folder for new chats</strong> is where they work.</li>
 <li><strong>Hand-offs:</strong> approve each one, or automatic (offered once it's on in Settings), with a
   <strong>Turn limit</strong>.</li>
@@ -1102,6 +1107,7 @@ the setup each agent got, word for word, or the reply as it went. When you type 
 waiting, your words follow that line as your own message.</p>
 <p><strong>Files that changed:</strong> when an agent edits files in its turn, the reply that's passed on ends
 with a list of them, "Files Claude changed in that turn", so a reviewer knows what to look at.
+For Copilot, the list is read from Copilot's own log when its turn ends.
 The list is part of what was sent, so Enter on the relay line reads it.</p>
 <p><strong>Writing in it:</strong> what you type goes to the agent whose turn it is (Turn Status says which).
 Start with @ and a name to choose: "@Codex check the tests", or with the name and a comma, as
@@ -1120,8 +1126,9 @@ reply is set aside, and you hear so.</p>
 <li><strong>Automatic:</strong> turn on "Let agent conversations hand replies across automatically" in
   Settings, then choose Automatic in New Agent Conversation, or for a conversation with
   <strong>File, Agent Conversation Hand-offs</strong>, which can also make it say only when it stops or needs
-  you. If either provider is near a usage limit, you're asked first: every exchange uses both
-  subscriptions. Replies go across by themselves until the turn limit (6 exchanges unless you
+  you. If Claude or Codex is near a usage limit, you're asked first: every exchange uses both
+  subscriptions. Copilot doesn't say how much of your plan is left, so it can't be checked:
+  each of a Copilot agent's turns uses premium requests. Replies go across by themselves until the turn limit (6 exchanges unless you
   choose another). Approving what an agent asks, such as running its tests, doesn't stop it.
   It pauses when you refused something during a turn, or a request went unanswered: you hear
   why, and the last reply waits for Ctrl+Shift+E. It stops when a turn fails, and you hear
@@ -1141,9 +1148,10 @@ when it answers, not when the work finishes.</p>
 handed on isn't passed on, a message that hadn't gone yet comes back to the reply box, and your
 next message goes to the agent you stopped.
 <strong>Ctrl+Shift+T</strong> says what each agent is doing, how far the count has got, and who your next
-message goes to. <strong>Ctrl+Shift+U</strong> lists each agent's context and each provider's limits.</p>
+message goes to. <strong>Ctrl+Shift+U</strong> lists each agent's context and each provider's limits, and,
+for a Copilot agent, the premium requests its chat has used.</p>
 <p><strong>Safety:</strong> questions and requests needing human approval come to you through <strong>Ctrl+Shift+A</strong>.
-Codex uses the approval reviewer selected for its chat. A message from one agent goes to the
+Codex uses the approval reviewer selected for its chat; Copilot always asks you. A message from one agent goes to the
 other only as a message, labelled as another agent's words; it can never answer a question or
 approve anything. Each agent is told to take instructions only from you. Every message uses
 that agent's own subscription, so
@@ -1506,9 +1514,12 @@ status bar's context button opens it too.</p>
   how full its context is when Codex reports it; the status bar shows that too. Until Codex
   reports them, that line says "not reported on this connection yet". The Chat Place never fills
   them in with Claude's figures.</li>
+<li><strong>In a Copilot chat:</strong> how full its context is, once Copilot has answered in it since The
+  Chat Place started ("Context: not known until Copilot answers here" before that), and how
+  many premium requests the chat has used, from Copilot's own log. Copilot doesn't say how many
+  your plan has left: GitHub's Copilot settings show that. Reading it never starts Copilot.</li>
 <li><strong>In an agent conversation:</strong> each agent's context and each provider's limits.</li>
 </ul>
-<p>Copilot chats don't have Usage and Context yet.</p>
 <p>In Codex chats started here, The Chat Place also warns you, without cutting off what's being
 read:</p>
 <ul>

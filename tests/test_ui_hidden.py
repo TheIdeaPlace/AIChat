@@ -11925,6 +11925,34 @@ def test_agent_templates_keep_human_review(env, app, monkeypatch, tmp_path):
         parent.Destroy()
 
 
+def test_agent_conversation_with_a_new_copilot_chat(env, app, monkeypatch, tmp_path):
+    """#369: a new Copilot chat is offered, its one permission choice says it
+    asks before it acts, and a template doesn't change that."""
+    from thechatplace.agents import TEMPLATES
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    parent = wx.Frame(None)
+    try:
+        dialog = AgentConversationDialog(parent, [], ["claude", "codex", "copilot"],
+                                         folders=[str(tmp_path)])
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        assert dialog.chats[1].GetString(2) == "New Copilot chat"
+        dialog.chats[1].SetSelection(2)
+        dialog._sync()
+        assert dialog.permissions[1].IsShown()
+        assert list(dialog.permissions[1].GetStrings()) == [
+            "Asks you before it changes files or runs commands"]
+        assert not dialog.codex_note.IsShown()
+        dialog.template.SetSelection([t.key for t in TEMPLATES].index("build-review") + 1)
+        dialog._apply_template()
+        assert dialog.permissions[1].GetSelection() == 0
+        dialog._start()
+        copilot = dialog.result.members[1]
+        assert (copilot.info, copilot.provider, copilot.permission) == (None, "copilot", "")
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
 def test_agent_codex_permission_explanation_follows_new_chats(env, app, tmp_path):
     from thechatplace.ui.dialogs import AgentConversationDialog
     from thechatplace.ui.permission_hosts import CODEX_REVIEW_NOTE
@@ -12847,8 +12875,8 @@ def test_stop_on_a_copilot_chat_with_nothing_running_says_so(frame, env, monkeyp
     frame._codex_states.clear()
 
 
-def test_copilot_chats_arent_offered_as_reply_targets_yet(frame, monkeypatch):
-    """Sending into a Copilot chat isn't built yet (#369), so it isn't offered."""
+def test_copilot_chats_are_offered_as_reply_targets(frame, monkeypatch):
+    """A reply can go into a Copilot chat started here (#369)."""
     from thechatplace import relay
     from thechatplace.sessions import OWN, SessionInfo
     from thechatplace.ui import relay_chats
@@ -12875,8 +12903,8 @@ def test_copilot_chats_arent_offered_as_reply_targets_yet(frame, monkeypatch):
     monkeypatch.setattr(relay, "message_text", lambda message, title: "text")
     monkeypatch.setattr(relay, "describe", lambda target: target.title)
     frame.on_send_reply_to()
-    # New chats of other providers may follow (#378); the Copilot chat isn't offered.
-    assert "Claude target" in offered and "Copilot target" not in offered
+    # New chats of each provider may follow (#378).
+    assert offered[:2] == ["Copilot target", "Claude target"]
 
 
 def test_the_messages_list_keeps_its_name_while_you_are_in_it(frame, monkeypatch):

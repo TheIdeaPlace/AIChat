@@ -49,6 +49,7 @@ class Window(AgentChats):
         self._agent_last_reply, self._agent_last_heard = {}, {}
         self._agent_codex_waiting = {}
         self._agent_unconfirmed, self._agent_last_sent = set(), {}
+        self._agent_sent_texts = {}
         self._agent_codex_preparing, self._agent_answered_early = set(), set()
         self._agent_turn_files = {}
         self._agent_refused, self._agent_spoke = set(), {}
@@ -375,7 +376,7 @@ def test_stop_stops_running_members_and_the_relay(tmp_path):
     runner.cancel = lambda: setattr(runner, 'cancelled', True)
     w._runners['c1'] = runner
     stopped = []
-    w._stop_codex_owned = lambda info: stopped.append(info.cli_session_id)
+    w._stop_codex_owned = lambda info, take_back=None: stopped.append(info.cli_session_id)
     w._codex_states['codex:x1'] = CodexChatState('x1', 'working', 't', 'inProgress')
     w.send('Build it.')
     w._agent_stop(w._open)
@@ -455,7 +456,7 @@ def test_conversation_rows_take_their_place_in_the_list(tmp_path):
 def test_stop_stops_a_codex_send_in_flight_and_takes_back_claudes_queue(tmp_path):
     w = Window(tmp_path)
     stopped = []
-    w._stop_codex_owned = lambda info: stopped.append(info.cli_session_id)
+    w._stop_codex_owned = lambda info, take_back=None: stopped.append(info.cli_session_id)
     runner = SimpleNamespace(cancel=lambda: None)
     w._runners['c1'] = runner
     w._queued['c1'] = [agents.SETUP_START + '\nsetup\n' + agents.SETUP_END + '\n\nQueued words']
@@ -678,7 +679,7 @@ def test_a_new_ids_state_follows_it(tmp_path):
 
 def test_one_preparation_per_codex_member_and_nothing_left_after_stop(tmp_path):
     w = Window(tmp_path, codex_ready=False)
-    w._stop_codex_owned = lambda info: None
+    w._stop_codex_owned = lambda info, take_back=None: None
     w.send('@Codex one')
     w._agent_stop(w._open)
     assert 'codex:x1' not in w._agent_codex_waiting
@@ -1498,3 +1499,175 @@ def test_a_hand_off_that_doesnt_go_keeps_the_missed_replies(tmp_path, monkeypatc
     monkeypatch.setattr(agent_chats, 'RelayDialog', Dialog)
     w.on_agent_hand_off()
     assert w._agent_unseen[(w.cid, 1)] == [missed]
+
+
+# -- Copilot members (#369) ------------------------------------------------------------------
+
+
+def _with_copilot(w, index=1):
+    """Make member ``index`` a Copilot chat, as one started here."""
+    w.records[('copilot', 'p1')] = OwnSession('p1', 'Pilot chat', '/work', provider='copilot')
+    conversation = w.agents.get(w.cid)
+    conversation.members[index] = Member('copilot', 'p1', 'Copilot', 'Review')
+    w.agents.remove(w.cid)
+    w.agents.add(conversation)
+    return conversation
+
+
+def test_a_copilot_member_is_sent_to_through_its_runtime(tmp_path):
+    w = Window(tmp_path)
+    _with_copilot(w)
+    w.send('@Copilot review this')
+    native, text, _on_result = w.codex_sent[-1]
+    assert native == 'p1' and text.startswith(agents.SETUP_START)
+    assert text.endswith('review this') and not w.claude_sent
+    assert w._agent_awaiting[('copilot', 'p1')] == (w.cid, True)
+    # Its reply goes on to Claude, as a Codex member's would.
+    w._agent_turn_ended('copilot', 'p1', 'One bug in a.py.', False, files=('C:/w/a.py',))
+    pending = w.saved.pending
+    assert pending.text == 'One bug in a.py.' and pending.files == ('C:/w/a.py',)
+    assert 'Copilot' in agents.relay_text(w.saved, pending.from_index, pending.text, pending.files)
+
+
+def test_a_copilot_member_that_isnt_ready_is_got_ready_first(tmp_path):
+    w = Window(tmp_path, codex_ready=False)
+    _with_copilot(w)
+    w.send('@Copilot review this')
+    assert not w.codex_sent and 'copilot:p1' in w._agent_codex_waiting
+    assert w._agent_send_state(w._open) == 'Copilot is working.'
+    assert 'Copilot is getting ready.' in w._agent_status_text(w._open)
+    action, done = w.work.pop()
+    action()
+    assert w.actions[-1] == 'prepare'
+    done(None, False)
+    assert w.codex_sent[-1][0] == 'p1'
+
+
+def test_stop_takes_back_what_was_waiting_for_a_copilot_member(tmp_path):
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    w = Window(tmp_path)
+    _with_copilot(w)
+    calls = []
+    w._stop_codex_owned = lambda info, take_back=None: calls.append((info.key, take_back))
+    w._codex_states['copilot:p1'] = CopilotChatState('p1', WORKING, '1', 'inProgress')
+    w.send('@Copilot review this')
+    w.send('@Copilot and this too')  # queued behind the first
+    waiting = w._agent_last_sent[('copilot', 'p1')]
+    w.send('@Copilot later')
+    later = w._agent_last_sent[('copilot', 'p1')]
+    w._agent_stop(w._open)
+    assert [key for key, _take in calls] == ['copilot:p1']
+    assert w.feedback[-1] == 'Stopping Copilot. The relay is stopped.'
+    # Copilot's Stop gives back a message that was still waiting: the
+    # conversation's goes in its reply box, without the setup.
+    assert calls[0][1]((waiting,)) == ()
+    assert w.reply_text.GetValue() == 'and this too'
+    w._open = SimpleNamespace(key='elsewhere')  # not loaded: the clipboard
+    assert calls[0][1]((later,)) == () and w.copied[-1] == 'later'
+
+
+def test_a_new_copilot_member_is_made_with_nothing_to_choose(tmp_path):
+    w = Window(tmp_path)
+    added, created = [], []
+    w.store.add = added.append
+    w._store_write = lambda method, *a, **k: method(*a, **k) or True
+    w._agent_open = lambda conversation: None
+
+    def create(provider, folder, title, **options):
+        created.append((provider, title, options))
+        return OwnSession('new-p', title, folder, provider=provider)
+    w.sessions.create_owned = create
+    plan = SimpleNamespace(
+        title='Pair', folder=str(tmp_path), mode='approve', turn_limit=6, message='',
+        first=0, to_all=False,
+        members=[SimpleNamespace(info=None, provider='claude', role='', permission='plan'),
+                 SimpleNamespace(info=None, provider='copilot', role='', permission='',
+                                 approval_policy='on-request', approvals_reviewer='user')])
+    w._agent_create(plan)
+    assert w.feedback[-1] == 'Starting the Copilot chat for the agent conversation.'
+    while w.work:
+        action, done = w.work.pop(0)
+        done(action(), False)
+    assert created == [('copilot', 'Pair: Copilot', {})]
+    made = next(c for c in w.agents.all() if c.title == 'Pair')
+    assert [(m.provider, m.name) for m in made.members] == [('claude', 'Claude'),
+                                                            ('copilot', 'Copilot')]
+
+
+def test_a_copilot_member_that_cant_be_made_says_so(tmp_path):
+    w = Window(tmp_path)
+    w._store_write = lambda method, *a, **k: True
+    w.sessions.create_owned = lambda *a, **k: None
+    plan = SimpleNamespace(
+        title='Pair', folder=str(tmp_path), mode='approve', turn_limit=6, message='',
+        first=0, to_all=False,
+        members=[SimpleNamespace(info=None, provider='copilot', role='', permission=''),
+                 SimpleNamespace(info=None, provider='claude', role='', permission='plan')])
+    w._agent_create(plan)
+    action, done = w.work.pop()
+    done(None, True)
+    assert w.feedback[-1] == ("Couldn't start the Copilot chat for the agent conversation, so it "
+                              "wasn't started. Check Copilot sign-in.")
+
+
+def test_conversation_usage_lists_copilots_plan_line_once(tmp_path, monkeypatch):
+    from thechatplace.ui import dialogs
+    w = Window(tmp_path)
+    _with_copilot(w)
+    w._limits, w._windows, w._model_windows = None, {}, {}
+    w._copy_usage = lambda text, one: None
+    w.sessions.usage_lines = lambda info: [
+        "Context 10% full.", "Premium requests used in this chat: 3.",
+        "Copilot doesn't say how many premium requests your plan has left; GitHub's Copilot "
+        "settings show that."]
+    w._agent_member_info = lambda m: SimpleNamespace(title=w.records[m.identity].title,
+                                                     cli_session_id=m.native_id)
+    w.sessions.open_reader = lambda info: None
+    shown = []
+    w._modal = lambda dialog: shown.append(dialog)
+    monkeypatch.setattr(dialogs, 'UsageDialog', lambda parent, lines, copy: lines)
+    w.on_agent_usage()
+    action, done = w.work.pop()
+    done(action(), False)
+    lines = shown[-1]
+    assert lines[0].startswith('Claude (Builder chat): Context')
+    assert lines[1:4] == [
+        'Copilot (Pilot chat): Context 10% full.',
+        'Copilot (Pilot chat): Premium requests used in this chat: 3.',
+        "Copilot doesn't say how many premium requests your plan has left; GitHub's Copilot "
+        "settings show that."]
+    assert all(line.startswith('Claude plan: ') for line in lines[4:])
+
+
+def test_stop_leaves_what_you_queued_in_the_copilot_chat_yourself(tmp_path):
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    w = Window(tmp_path)
+    _with_copilot(w)
+    calls = []
+    w._stop_codex_owned = lambda info, take_back=None: calls.append(take_back)
+    w._codex_states['copilot:p1'] = CopilotChatState('p1', WORKING, '1', 'inProgress')
+    w.send('@Copilot review this')
+    ours = w._agent_last_sent[('copilot', 'p1')]
+    w._agent_stop(w._open)
+    # Yours goes back to the Copilot chat's own reply box; the
+    # conversation's to the conversation.
+    assert calls[0](('also check X', ours)) == ('also check X',)
+    assert w.reply_text.GetValue() == 'review this'
+
+
+def test_stop_reaches_a_copilot_member_the_window_thinks_is_idle(tmp_path):
+    """The window's state lags Copilot's runtime (Kelly, #372): a member the
+    conversation is waiting on is stopped even when it looks idle."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    w = Window(tmp_path)
+    _with_copilot(w)
+    stopped = []
+    w._stop_codex_owned = lambda info, take_back=None: stopped.append(info.key)
+    w.send('@Copilot review this')
+    w._codex_states['copilot:p1'] = CopilotChatState('p1', 'idle', '1', 'completed')
+    w._agent_stop(w._open)
+    assert stopped == ['copilot:p1']
+    # Not waited on and idle: nothing to stop.
+    stopped.clear()
+    w._agent_stop(w._open)
+    assert stopped == []

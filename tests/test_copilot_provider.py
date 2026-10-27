@@ -262,10 +262,11 @@ def test_reading_only_and_routed_through_the_controller(tmp_path, monkeypatch):
     assert [s.key for s in snapshot.sessions] == [f"copilot:{ONE}"]
     session = snapshot.sessions[0]
     capabilities = controller.capabilities(session)
-    # Changed Files is read from the log too, so a read-only chat has it (#352).
+    # Changed Files (#352) and usage (#369) are read from the log too, so a
+    # read-only chat has them.
     assert not any(value for name, value in vars(capabilities).items()
-                   if name not in ("read", "changes"))
-    assert capabilities.changes
+                   if name not in ("read", "changes", "usage"))
+    assert capabilities.changes and capabilities.usage
     assert [m.text for m in controller.read(session).messages] == ["Hi", "Ready"]
     assert in_view(session, VIEW_COPILOT) and not in_view(session, "provider:claude")
     controller.close()
@@ -523,3 +524,54 @@ def test_a_change_without_a_call_id_is_still_listed():
     events[1]["data"]["result"]["content"] = "Created"  # also listed as the tool's result
     edits = parse_events([json.dumps(e) for e in events]).edits
     assert [e.path for e in edits] == ["C:/w/a.txt"]
+
+
+# -- usage (#369) ------------------------------------------------------------------------
+
+
+def test_premium_requests_are_the_highest_count_in_the_log(tmp_path):
+    from thechatplace.providers.copilot import premium_requests
+    events = answered_turn() + [
+        event("session.usage_checkpoint", 20, totalPremiumRequests=1),
+        event("session.resume", 21, alreadyInUse=False),
+        event("session.usage_checkpoint", 22, totalPremiumRequests=3),
+        # Two Copilots in one chat can write them out of order.
+        event("session.usage_checkpoint", 23, totalPremiumRequests=2),
+        event("session.usage_checkpoint", 24, totalPremiumRequests="lots"),
+        event("session.usage_checkpoint", 25, totalPremiumRequests=True),
+    ]
+    folder = write_session(tmp_path, events=events)
+    with open(folder / "events.jsonl", "a", encoding="utf-8") as handle:
+        handle.write('{"type": "session.usage_checkpoint", broken\n')
+    assert premium_requests(folder / "events.jsonl") == 3
+    write_session(tmp_path, TWO, events=answered_turn())
+    assert premium_requests(tmp_path / TWO / "events.jsonl") is None
+
+
+def test_usage_lines_without_starting_copilot(tmp_path, monkeypatch):
+    events = answered_turn() + [event("session.usage_checkpoint", 20, totalPremiumRequests=2.5)]
+    write_session(tmp_path, events=events)
+    monkeypatch.setattr(platform_paths, "copilot_sessions_dir", lambda: tmp_path)
+    provider = CopilotProvider()
+    lines = provider.usage_lines(info_for())
+    # Started in Copilot CLI: no turn of it can run here to say.
+    assert lines == ["Context: known only for chats started in The Chat Place.",
+                     "Premium requests used in this chat: 2.5.",
+                     "Copilot doesn't say how many premium requests your plan has left; "
+                     "GitHub's Copilot settings show that."]
+    write_session(tmp_path, TWO, events=None)  # no log yet
+    assert provider.usage_lines(info_for(TWO))[1] == \
+        "Premium requests used in this chat: none recorded yet."
+    from thechatplace.sessions import OWN
+    own = SessionInfo(OWN, f"copilot:{ONE}", "t", "", ONE, provider="copilot")
+    assert provider.usage_lines(own)[0] == "Context: not known until Copilot answers here."
+
+
+def test_usage_lines_say_how_full_the_context_is_from_the_runtime(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    write_session(tmp_path, events=answered_turn())
+    monkeypatch.setattr(platform_paths, "copilot_sessions_dir", lambda: tmp_path)
+    provider = CopilotProvider()
+    provider.runtime = SimpleNamespace(
+        snapshot=lambda native: SimpleNamespace(context_used=64000, context_size=128000))
+    assert provider.usage_lines(info_for())[0] == "Context 50% full: 64,000 of 128,000 tokens."
