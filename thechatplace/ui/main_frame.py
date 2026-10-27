@@ -4729,12 +4729,6 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         kept, earlier, missing = [], {}, []
         for entry in entries:
             text = entry[0]
-            if entry[2] is None:
-                entry[2] = self._your_messages_saying(text)  # steered before it loaded
-                if entry[3] is not None:
-                    # Counted from this same read, which may already have it:
-                    # the next read decides.
-                    entry[3] = self._history_reads
             ahead = earlier.get(text, 0)
             earlier[text] = ahead + 1
             # Only once it's known to be on its way (taken in, accepted):
@@ -4805,8 +4799,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
     def _steer_row(self, key: str, text: str, where: str) -> None:
         """Show a steered message at once, until its chat's history has it."""
-        seen = self._your_messages_saying(text) if self._chat_loaded else None
-        self._steered.setdefault(key, []).append([text, where, seen, None])
+        # Steering waits for the chat to load (on_steer), so this count is
+        # of the history as it was before the message went.
+        self._steered.setdefault(key, []).append(
+            [text, where, self._your_messages_saying(text), None])
         self._steers_changed(key)
 
     def _steer_status(self, key: str, text: str, where: Optional[str]) -> None:
@@ -4881,6 +4877,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if info is None or info.provider == AGENTS or not info.is_own:
             self.on_send()
             return
+        if not self._chat_loaded:
+            # Its row is checked against the chat's history (#410).
+            self._feedback("This chat is still loading. Steer again in a moment.")
+            return
         if info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             state = self._codex_states.get(info.key)
             if state is None or state.outcome != 'inProgress':
@@ -4949,6 +4949,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         index = self._selected_queued()
         if index is None:
+            return
+        if not self._chat_loaded:
+            self._feedback("This chat is still loading. Steer again in a moment.")
             return
         if runtime:
             if not self._can_steer(info):

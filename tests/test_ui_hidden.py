@@ -1470,6 +1470,7 @@ def test_failed_download_is_reported_and_nothing_applied(frame, env, monkeypatch
 def _start(frame, fake_runner, text="first"):
     select(frame, "Hub probe")
     frame.on_open_session()
+    pump(lambda: frame._chat_loaded)  # Steer waits for the chat to load (#410)
     frame.reply_text.SetValue(text)
     frame.on_send()
     return fake_runner.instances[-1]
@@ -13271,3 +13272,32 @@ def test_an_unchanged_history_read_still_settles_an_ended_steer(frame, env, monk
     frame._steers_turn_over(info.key)
     frame._apply_chat(frame._open_generation, False, list(frame._chat_messages), 0, None)
     assert restored == ["Also the docs"]
+
+
+def test_steer_waits_for_the_chat_to_load(frame, env, fake_runner):
+    runner = _start(frame, fake_runner)
+    frame._chat_loaded = False
+    frame.reply_text.SetValue("Also the docs")
+    frame.on_steer()
+    assert frame.reply_text.GetValue() == "Also the docs"
+    assert not getattr(runner, "steered", None)
+    assert env["feedback"][-1] == "This chat is still loading. Steer again in a moment."
+
+
+def test_several_stopped_codex_steers_come_back_together(frame, env):
+    import dataclasses
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._open = info
+    frame._chat_loaded = True
+    restored = []
+    frame._restore_codex_text = lambda key, texts: restored.extend(texts)
+    frame._refresh_chat = lambda: None
+    for text in ("Also the docs", "And the tests"):
+        frame._steer_row(info.key, text, "accepted by Codex")
+    frame._steers_turn_over(info.key)
+    frame._history_reads += 1
+    assert frame._drop_steers_in_history()
+    assert restored == ["Also the docs", "And the tests"]
+    assert "accepted 2 steered messages" in env["feedback"][-1]

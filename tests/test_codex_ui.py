@@ -828,6 +828,7 @@ def test_a_steer_accepted_after_the_turn_ended_waits_for_the_history():
 def test_a_steer_accepted_into_a_turn_since_replaced_is_settled_by_the_history():
     # Stop, then a queued message's turn started before Codex's answer came.
     w = Window()
+    w._codex_finished = {('codex', 'owned', 'turn-1')}
     w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-1')
     w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-2', 'inProgress')
     w._steer_codex_owned(w.record, 'Also the docs')
@@ -838,6 +839,24 @@ def test_a_steer_accepted_into_a_turn_since_replaced_is_settled_by_the_history()
 def test_a_steer_accepted_into_the_running_turn_waits_for_it():
     w = Window()
     w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-1')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert not getattr(w, 'turn_over', [])
+
+
+def test_a_newer_turn_alone_doesnt_end_a_steer_whose_turn_isnt_known_to_be_over():
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-2')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert not getattr(w, 'turn_over', [])
+
+
+def test_no_turn_id_back_is_not_taken_for_another_turn():
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: None)
     w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
     w._steer_codex_owned(w.record, 'Also the docs')
     _run_work(w)

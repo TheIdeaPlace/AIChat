@@ -315,7 +315,8 @@ class CodexChats:
                 # ``returned``: a queued one that Stop sent back to the box.
                 return (safe_reason(exc) or f'{name} could not take it.',
                         getattr(exc, 'returned', False))
-            accepted.append(turn)
+            if turn:
+                accepted.append(turn)
             return None
 
         def done(refused, error):
@@ -323,10 +324,12 @@ class CodexChats:
             # it's back with you, in the reply box or the queue.
             self._steer_status(key, text, None if error or refused else f'accepted by {name}')
             state = self._codex_states.get(key)
+            finished = bool(accepted) and (record.provider, record.cli_session_id,
+                                           accepted[0]) in self._codex_finished
             if not (error or refused) and (state is None or state.outcome != 'inProgress'
-                                           or (accepted and state.turn_id != accepted[0])):
-                # Accepted into a turn that has ended (Stop, say), even if a
-                # queued message's turn has started since: it may never be
+                                           or finished):
+                # Accepted into a turn known to have ended (Stop, say), even if
+                # a queued message's turn has started since: it may never be
                 # used, so the history read next decides where it goes.
                 self._steers_turn_over(key)
             if error:
