@@ -49,6 +49,22 @@ which went on and ended once, with two pings and PINEAPPLE. The route checks pas
 real server (the thread's status is `active` mid-turn), and a steer after the turn ended was
 refused locally, with nothing sent.
 
+Codex then checked app-server 0.163.0 against a synthetic local model (no account, no paid
+calls):
+- While a turn waits on an approval, the thread is `{"type": "active", "activeFlags":
+  ["waitingOnApproval"]}` and the turn stays `inProgress`, so `active` is the right check.
+- A steer is accepted while an approval is pending. It doesn't answer the approval: after
+  Decline the turn went on with the steered text in the next model request; Cancel interrupted
+  the turn before the text was used.
+- A wrong or ended turn, empty input and no active turn are all refused with JSON-RPC
+  `-32600`, and the text never reaches the model. That's the only error The Chat Place treats as
+  "not sent". Any other error, a timeout or a lost connection may have come after Codex took the
+  text, so it's "not confirmed": the message goes back to the reply box with a warning, and is
+  never queued or sent again on its own.
+- `item/started` and `item/completed` with `item.type == "userMessage"` come for the steered text
+  when it enters the model's next request, not when the steer is accepted. Not used yet; it could
+  give Codex chats a "has your message" like Claude's.
+
 ## The behaviour chosen
 
 One command and key for both providers: Steer, Ctrl+Alt+Enter, from the reply box and on a

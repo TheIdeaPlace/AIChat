@@ -518,8 +518,9 @@ class CodexChatRuntime:
         """Steer (#239): ``text``, or the queued message at ``index`` (which
         must still be ``text``), into the running turn without stopping it.
         Returns the turn id Codex accepted it into. CodexSteerRefused if
-        nothing was sent or Codex said no: a queued message goes back where
-        it was. Any other failure is unknown, never retried."""
+        nothing was sent or Codex refused it as an invalid request (-32600):
+        a queued message goes back where it was. Any other error, a timeout
+        or a lost connection is unknown: never queued or sent again."""
         if not isinstance(text, str) or not text.strip() or len(text) > 32000:
             raise ValueError('Enter a message of at most 32000 characters')
         # Every check before turn/steer is written refuses: nothing was sent.
