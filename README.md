@@ -917,7 +917,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   The Chat Place checks again when it finishes. If Copilot CLI isn't installed, it gives the
   install command, and says when the only copy found is an npm install, which isn't used. When
   Copilot refuses because it isn't signed in, a chat says so and points here, instead of
-  "Copilot couldn't do that."; messages still waiting come back to the message box, unsent.
+  "Copilot couldn't do that."; the message it refused isn't sent again, and messages still
+  waiting come back to the message box, unsent.
 - **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the
   keyboard shortcuts, or as plain text (Alt+P). It's part of the app, so it works offline. It's
   edited in `thechatplace/assets/user-guide.md`; `python tools/make_docs.py` makes the copies in

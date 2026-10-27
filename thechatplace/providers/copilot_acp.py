@@ -57,6 +57,10 @@ AUTH_REQUIRED = -32000
 #: Said instead of "Copilot couldn't do that.", which gave no hint (#391).
 NOT_SIGNED_IN = ("GitHub Copilot CLI isn't signed in. Choose Help, Copilot Sign-in to sign in, "
                  "then try again.")
+#: The same, when a message was refused: it isn't given back, so say so.
+NOT_SIGNED_IN_SENT = ("GitHub Copilot CLI isn't signed in. Your message may not have reached "
+                      "Copilot, and it wasn't sent again. Choose Help, Copilot Sign-in to sign "
+                      "in, then send it again.")
 
 
 class AcpAuthRequired(AcpError):

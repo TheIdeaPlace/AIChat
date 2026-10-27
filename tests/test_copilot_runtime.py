@@ -588,7 +588,7 @@ def test_a_sign_in_that_stops_working_says_what_to_do(make, tmp_path):
     assert runtime.send(chat, "Second") is True  # queued behind it
     assert wait(lambda: runtime.snapshot(chat).outcome == "failed")
     state = runtime.snapshot(chat)
-    assert state.notice == copilot_acp.NOT_SIGNED_IN
+    assert state.notice == copilot_acp.NOT_SIGNED_IN_SENT
     assert state.unsent == ("Second",)
     assert not runtime._chats[chat].elsewhere
 
