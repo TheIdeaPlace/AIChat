@@ -52,7 +52,8 @@ import wx
 
 from ..changes import summary_text
 from ..codeblocks import find_code_blocks
-from .. import (__version__, about_you, announce, attachments, bugreport, codex_signin, signin, export, hub, links,
+from .. import (__version__, about_you, announce, attachments, bugreport, codex_signin,
+               copilot_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
@@ -583,6 +584,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                                       lambda e: self.check_for_updates(True))
         self._item(help_menu, "Claude Code &Sign-in...", lambda e: self.on_sign_in())
         self._item(help_menu, "Codex S&ign-in...", lambda e: self.on_codex_sign_in())
+        self._item(help_menu, "C&opilot Sign-in...", lambda e: self.on_copilot_sign_in())
         self._item(help_menu, "Report a &Bug...", lambda e: self.on_report_bug())
         self._item(help_menu, "&About", self.on_about, wx.ID_ABOUT)
         bar.Append(help_menu, "&Help")
@@ -6088,6 +6090,70 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._check_sign_in_after(
             process, lambda: codex_signin.check().usable,
             check=self._check_codex_sign_in)
+
+    def on_copilot_sign_in(self):
+        """Help, Copilot Sign-in (#391): whether GitHub Copilot CLI is
+        installed and signed in, and a way to sign in if it isn't. Shown
+        whether or not the Copilot preview is on: it's where you'd look
+        before turning it on."""
+        self._feedback("Checking Copilot CLI's sign-in.")
+        self._check_copilot_sign_in()
+
+    def _check_copilot_sign_in(self):
+        if self._gone():
+            return
+
+        def work():
+            try:
+                status = copilot_signin.check()
+            except Exception as exc:  # noqa: BLE001 - always answer
+                status = copilot_signin.SignIn(False, problem=str(exc) or "it failed")
+            wx.CallAfter(self._on_copilot_sign_in_result, status)
+        try:
+            self._pool.submit(work)
+        except RuntimeError:
+            pass  # closing
+
+    def _on_copilot_sign_in_result(self, status):
+        if self._gone():
+            return
+        text = copilot_signin.describe(status)
+        title = "Copilot Sign-in"
+        if status.missing or not status.known:
+            wx.MessageBox(text, title, wx.OK | wx.ICON_WARNING, self)
+            return
+        if status.signed_in:
+            wx.MessageBox(text, title, wx.OK | wx.ICON_INFORMATION, self)
+            return
+        answer = wx.MessageBox(
+            f"{text}\n\nSign in now? A window opens with Copilot's sign-in steps, which may give "
+            "you a code to enter on GitHub's sign-in page. When you've finished, The Chat Place "
+            "checks again and says so.",
+            title, wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION, self)
+        if answer != wx.YES:
+            return
+        command = copilot_signin.login_command()
+        try:
+            if command is None:
+                raise OSError("Copilot CLI wasn't found")
+            # The environment the app's own Copilot chats get, so the account
+            # signed in is theirs: no GH_TOKEN or other override can make it
+            # look signed in when they aren't (#352).
+            process = platform_paths.run_in_terminal(
+                command, "sign-in-copilot.command", "Signing in to GitHub Copilot CLI.",
+                env=platform_paths.copilot_child_environment(),
+                clear=platform_paths.COPILOT_OVERRIDE_VARS,
+                clear_prefixes=platform_paths.COPILOT_OVERRIDE_PREFIXES,
+                export=("COPILOT_HOME", "GH_HOST"))
+        except OSError as exc:
+            wx.MessageBox(f"Couldn't start the sign-in: {exc}", APP_NAME,
+                          wx.OK | wx.ICON_ERROR, self)
+            return
+        self._feedback("Signing in, in a new window. The Chat Place checks again when you've "
+                       "finished.")
+        self._check_sign_in_after(
+            process, lambda: copilot_signin.check().signed_in,
+            check=self._check_copilot_sign_in)
 
     def _check_sign_in(self, manual: bool):
         if self._gone():

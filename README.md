@@ -909,6 +909,13 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   using another credential such as an API key, it offers to run `codex login` in its own window;
   your browser shows ChatGPT's sign-in page, and The Chat Place checks again when it finishes.
   If Codex isn't installed or its status can't be read, the same item explains what is needed.
+- **Copilot Sign-in** (Help menu) says whether GitHub Copilot CLI is installed and which GitHub
+  account it's signed in to, as Copilot CLI records it in its own settings file; it never starts
+  Copilot or sends a message. If it isn't signed in, it offers to run `copilot login` in its own
+  window, with the environment the app's own Copilot chats get (no `GH_TOKEN` or other token
+  variables). Follow its steps, which may give you a code to enter on GitHub's sign-in page;
+  The Chat Place checks again when it finishes. If Copilot CLI isn't installed, it gives the install command, and says when the only
+  copy found is an npm install, which isn't used.
 - **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the
   keyboard shortcuts, or as plain text (Alt+P). It's part of the app, so it works offline. It's
   edited in `thechatplace/assets/user-guide.md`; `python tools/make_docs.py` makes the copies in

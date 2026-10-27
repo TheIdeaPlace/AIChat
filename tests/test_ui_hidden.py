@@ -4466,6 +4466,46 @@ def test_codex_sign_in_is_checked_and_offered(frame, env, monkeypatch):
     assert "Install the Codex app or CLI" in shown[-1][0]
 
 
+def test_copilot_sign_in_is_checked_and_offered(frame, env, monkeypatch):
+    """Help, Copilot Sign-in (#391), as Codex's: said when signed in, missing
+    or unknown, and offered when not, with the app's own chats' environment."""
+    from thechatplace import copilot_signin
+    from thechatplace.ui import main_frame
+    shown = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, title, style, parent=None: (
+        shown.append((text, title, style)), wx.YES)[1])
+    frame._on_copilot_sign_in_result(copilot_signin.SignIn(
+        True, True, "synthetic-user", "https://github.com"))
+    assert shown[-1][:2] == ("Copilot CLI is signed in to github.com as synthetic-user.",
+                             "Copilot Sign-in")
+    assert shown[-1][2] & wx.ICON_INFORMATION
+
+    started = []
+    monkeypatch.setattr(copilot_signin, "login_command", lambda: ["copilot", "login"])
+    monkeypatch.setenv("GH_TOKEN", "synthetic")
+
+    class Process:
+        def wait(self):
+            return 0
+    monkeypatch.setattr(main_frame.platform_paths, "run_in_terminal",
+                        lambda command, *a, **k: started.append((command, k)) or Process())
+    frame._on_copilot_sign_in_result(copilot_signin.SignIn(True))
+    assert shown[-1][0].startswith("Copilot CLI isn't signed in.")
+    assert "Sign in now?" in shown[-1][0]
+    assert started[0][0] == ["copilot", "login"]
+    assert "GH_TOKEN" not in started[0][1]["env"]
+    assert started[0][1]["clear"] == main_frame.platform_paths.COPILOT_OVERRIDE_VARS
+    assert started[0][1]["clear_prefixes"] == main_frame.platform_paths.COPILOT_OVERRIDE_PREFIXES
+    assert started[0][1]["export"] == ("COPILOT_HOME", "GH_HOST")
+
+    frame._on_copilot_sign_in_result(copilot_signin.SignIn(False, missing=True))
+    assert shown[-1][0].startswith("Copilot CLI isn't installed.")
+    assert shown[-1][2] & wx.ICON_WARNING
+    frame._on_copilot_sign_in_result(copilot_signin.SignIn(False, problem="synthetic reason"))
+    assert "synthetic reason" in shown[-1][0]
+    assert len(started) == 1  # offered only when not signed in
+
+
 def test_install_is_offered_when_claude_is_missing(frame, env, monkeypatch):
     """No claude The Chat Place can use: said at start-up, and Claude Code
     Sign-in offers to run its installer, then checks again."""
