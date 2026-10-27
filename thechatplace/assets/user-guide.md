@@ -334,10 +334,7 @@ session list, the messages or the reply box:
 - **Code Blocks:** each code block, by language and size, with its code to read.
 - **Links:** each link, its words and where it goes, then who wrote it and roughly when.
 - **Changed Files** (Claude and Copilot chats): each file changed, with how many lines were added
-  and removed, and its changes to read line by line: where each change is ("Lines 12 to 20:"),
-  then its lines, marked as Settings, **Mark changed lines with** says (words at first:
-  "Added:", "Removed:", "Unchanged:"). A file Copilot deleted says "deleted". This
-  works for desktop app chats and chats started in Copilot CLI too.
+  and removed, and its changes to read line by line (see "Reviewing changed files" below).
 - **Commands** (Claude chats): each command Claude ran: what it said it was doing, then "done",
   "failed" or "no result yet". Its full text shows the command and its output.
 - **Decisions** (Claude chats): each question Claude asked you, with your answer.
@@ -391,6 +388,140 @@ address is always what's opened or copied. A link in a code block or in inline c
 code". Only web, email and session links open; anything else, such as a file path, is marked
 "copy only" and says why if you try to open it. Links in tool calls and results are listed only
 with Show Tool Activity on.
+
+## Reviewing changed files
+
+Changed Files lists each file the AI changed in a chat and lets you read each change a line at
+a time. It works for Claude and Copilot chats, including desktop app chats and chats started in
+Copilot CLI. It's built from the chat's own record, so it needs no git. Codex chats don't have it
+yet.
+
+### Opening it
+
+Press **Ctrl+Shift+D** (on a Mac, Cmd+Shift+D), or choose View, Changed Files. It opens Lists on
+Changed Files, for the selected message's turn: everything from your message to the AI's reply.
+With no message selected, it shows your latest message's turn. If that turn changed nothing, it
+shows the whole chat. **Show items from** (Alt+S) switches between **This message** and
+**The whole chat**.
+
+When a turn in the chat you have open finishes and changed files, you hear a summary after the
+reply, at the Full announcement level; otherwise it goes to the status bar:
+
+    Fix the greeting: Changed 2 files: greet.py, 2 lines added, 1 removed; NOTES.md, created, 3 lines. Ctrl+Shift+D shows the changes.
+
+### The file list
+
+Each file is one row: its name, how many lines were added and removed, and its folder within the
+chat's folder. Files are in the order they were first changed.
+
+    greet.py, 2 lines added, 1 removed, in src
+    NOTES.md, created, 3 lines
+    old-notes.txt, deleted
+    settings.json, no lines changed
+
+- **"created"** is a new file, with how many lines it has.
+- **"deleted"** is a file Copilot deleted.
+- **"no lines changed"** is a file that was written again with the same text.
+
+**Type** to narrow the list by name. **Ctrl+C** (or Copy) copies the selected file's full path.
+
+### Reading a file's changes
+
+Press **Enter** on a file to read its changes in the **Details** box below the list. Arrow
+through it a line at a time.
+
+- The first line is the file's full path and its counts.
+- Each change then starts with a blank line and where it is in the file, after the change:
+  "At line 5:" for one line, or "Lines 12 to 16:" for several.
+  - "A change:" means the place in the file wasn't recorded. That happens with some older
+    chats.
+  - For a file Copilot deleted, the lines are where they were before.
+- Then come the change's lines, each starting with a mark that says whether it was added,
+  removed or left as it was. The unchanged lines around a change are there to show where it is.
+- An empty line reads "blank line", after its mark, so it isn't silent.
+- "Note: No newline at end of file" means the line before it is the last in the file, with no
+  line break after it.
+
+### How lines are marked
+
+Settings (Ctrl+Comma), **Mark changed lines with** (Alt+H), chooses how each line starts. Every
+style gives one line for each line of the change, with the mark first. Here is the same change in
+each: a greeting function whose print line was replaced with two lines.
+
+**Words** (the default): the plainest, and spoken at any punctuation level.
+
+    C:\Projects\app\src\greet.py: 2 lines added, 1 removed.
+
+    Lines 12 to 16:
+    Unchanged: def greet(name):
+    Removed:     print('Hello ' + name)
+    Added:     message = f'Hello, {name}!'
+    Added:     print(message)
+    Unchanged: blank line
+    Unchanged: def main():
+
+**Short words:** the same, with shorter words that are still spoken at any punctuation level.
+
+    Lines 12 to 16:
+    Same def greet(name):
+    Del     print('Hello ' + name)
+    Add     message = f'Hello, {name}!'
+    Add     print(message)
+    Same blank line
+    Same def main():
+
+**Diff symbols:** the marks git and GitHub use, "+" for added and "-" for removed, with "=" for
+an unchanged line, where git leaves a space.
+
+    Lines 12 to 16:
+    = def greet(name):
+    -     print('Hello ' + name)
+    +     message = f'Hello, {name}!'
+    +     print(message)
+    = blank line
+    = def main():
+
+**Diff symbols with changed lines:** as Diff symbols, but a removed line followed by the line
+that replaced it reads as a pair, "!-" for the old line, then "!+" for the new one. Lines with
+no partner keep "+" or "-". Here the old print line pairs with the first new line, and the second
+new line is simply added.
+
+    Lines 12 to 16:
+    = def greet(name):
+    !-     print('Hello ' + name)
+    !+     message = f'Hello, {name}!'
+    +     print(message)
+    = blank line
+    = def main():
+
+When several lines are replaced, the pairs come one after another, each old line followed by
+its new one: "!- old 1", "!+ new 1", "!- old 2", "!+ new 2". So these lines aren't in the order
+the file has them, which they are in every other style.
+
+Symbols are spoken only if your screen reader's punctuation level reads them. At a lower level,
+"+", "-", "=" or "!" may be skipped, and a line can sound unchanged when it isn't. Settings says so
+when you move the choice onto a symbol style. If you'd like symbols, raise the punctuation level
+while you read changes, or use Short words.
+
+A new file is all added lines:
+
+    C:\Projects\app\NOTES.md: created, 3 lines.
+
+    Lines 1 to 3:
+    Added: # Notes
+    Added: blank line
+    Added: First draft.
+
+### Copying changes
+
+Select text in the Details box and copy it as usual; it's marked in the style you chose. Ctrl+C
+in the file list copies the file's path instead.
+
+### What isn't listed
+
+- Files the AI changed by running a command (a script, `sed`, or `cat > file`) rather than with
+  its own editing tools. For Copilot chats every change is listed, whichever tool made it.
+- Changes made by a subagent Claude hands work to, and edits to notebooks.
 
 ## Kinds of chat
 
@@ -1325,6 +1456,7 @@ setting moves straight to it.
 
   Symbols are spoken only if your screen reader's punctuation level reads them, and you hear that
   when you move the choice onto one. Text you copy from Changed Files is marked the same way.
+  "Reviewing changed files" has an example of each.
 - **Recent folders New Session offers** (Alt+F): how many of your recent folders New Session's
   Folder list offers, 20 at first, up to 100; 0 offers none. It counts the next time New Session
   opens.
