@@ -13245,6 +13245,7 @@ def test_a_codex_steer_accepted_then_stopped_comes_back_if_the_history_lacks_it(
     info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
     frame._open = info
     frame._chat_loaded = True
+    frame._history_known = True
     frame._restore_codex_text = lambda key, texts: restored.extend(texts)
     restored = []
     frame._steer_row(info.key, "Also the docs", "waiting for Codex")
@@ -13273,6 +13274,7 @@ def test_an_unchanged_history_read_still_settles_an_ended_steer(frame, env, monk
     info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
     frame._open = info
     frame._chat_loaded = True
+    frame._history_known = True
     restored = []
     frame._restore_codex_text = lambda key, texts: restored.extend(texts)
     frame._refresh_chat = lambda: None
@@ -13300,6 +13302,7 @@ def test_several_stopped_codex_steers_come_back_together(frame, env):
     info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
     frame._open = info
     frame._chat_loaded = True
+    frame._history_known = True
     restored = []
     frame._restore_codex_text = lambda key, texts: restored.extend(texts)
     frame._refresh_chat = lambda: None
@@ -13339,8 +13342,14 @@ def test_steer_is_allowed_once_the_history_is_read(frame, env, fake_runner):
 
 def test_a_chat_whose_history_cant_be_read_says_so_rather_than_loading(frame, env,
                                                                      fake_runner):
-    runner = _start(frame, fake_runner)
-    assert pump(lambda: frame._chat_loaded)  # "No transcript found": read, but nothing
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    # Hub probe has no transcript: "No transcript found", loaded but unread.
+    assert pump(lambda: frame._chat_loaded)
+    assert not frame._history_known
+    frame.reply_text.SetValue("first")
+    frame.on_send()
+    runner = fake_runner.instances[-1]
     frame.reply_text.SetValue("Also the docs")
     frame.on_steer()
     assert "history couldn't be read" in env["feedback"][-1]
