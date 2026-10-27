@@ -48,6 +48,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+C | Copy the whole message |
 | Ctrl+Shift+C | Copy the message's last code block |
 | Ctrl+Enter on a queued message | Send it now (Claude chats): Claude stops what it's doing and answers it |
+| Ctrl+Alt+Enter on a queued message | Steer it: into the running turn now, without stopping it |
 | Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks | Lists, on Code Blocks for this message: read and copy each code block |
 | Ctrl+F, then F3 and Shift+F3 | Find a message containing some text (its whole text, not just the first line), then the next or previous one |
 | End | Newest message |
@@ -63,6 +64,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | --- | --- |
 | Ctrl+Enter | Send (Chat Place sessions only); you stay in the reply box. During a turn it queues the message and sends it when the turn ends |
 | Ctrl+Shift+Enter | Send and save as a prompt: asks for the prompt's name (its first words to start with), saves it, then sends as Ctrl+Enter does; Escape at the name neither saves nor sends |
+| Ctrl+Alt+Enter | Steer: during a turn, send the message into it without stopping it; the AI takes it in at its next step and carries on. With no turn running, it sends as Ctrl+Enter does |
 | Ctrl+Period | Stop the running turn; a queued message goes back in the reply box |
 | Ctrl+/ | Insert a Claude slash command or one of your skills (type to search); it goes at the start of the reply box |
 | Ctrl+Shift+F | Attach files or images to your next Claude message (Attach Files button, Alt+T); Delete in the attachments list removes one |

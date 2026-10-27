@@ -327,7 +327,8 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   repository names are checked before either sees them. On a Mac without Apple's Command Line
   Tools, `/usr/bin/git` isn't used, since running it asks to install them.
 - **Reply box:** for The Chat Place's own sessions, type and press Ctrl+Enter (or Send). You stay in
-  the reply box. For a desktop app or terminal session the same place holds a read-only note
+  the reply box. While a turn is running, Ctrl+Alt+Enter steers instead (see
+  [Steering a running turn](#steering-a-running-turn)). For a desktop app or terminal session the same place holds a read-only note
   saying where you reply, with Open in Claude and Continue Here as they apply.
 - **Commands and skills** (Ctrl+/, the Commands button after Stop, or File, Insert Command
   or Skill), in The Chat Place's own Claude sessions (not yet for Codex or Copilot chats): a searchable list of your skills and custom commands, then Claude Code's own
@@ -1067,6 +1068,7 @@ shows it as plain text instead.
 | Messages | Ctrl+O | Open this session in the Claude desktop app |
 | Reply box | Ctrl+Enter | Send (Chat Place sessions only); you stay in the reply box |
 | Reply box | Ctrl+Shift+Enter | Send, and save the message as a prompt (asks for its name first) |
+| Reply box | Ctrl+Alt+Enter | Steer: during a turn, send the message into it without stopping it |
 | Reply box | Ctrl+Period | Stop the running turn |
 | Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, what is still running in the background, and how far along the task list is |
 | Anywhere | Ctrl+Shift+A | Answer: a provider's permission request, a question or a supported plan |
@@ -1176,6 +1178,30 @@ instead, ahead of anything typed since, with the cursor left at the end. While o
 The Chat Place's sessions is loaded, Send and Stop are never disabled, so from the message box, Tab
 is always Send and the next Tab is always Stop. When a turn is running, Tab doesn't jump past
 Send to Stop.
+
+### Steering a running turn
+
+Steering sends a message into the turn that's running, without stopping it. The AI takes it in
+at its next step and carries on with it in mind: "also update the README", "use the other test
+file", "don't touch that folder". Type it in the reply box and press **Ctrl+Alt+Enter**
+(Cmd+Option+Return on a Mac), or choose File, Steer: Send into the Running Turn. On a queued
+message in the messages list, Ctrl+Alt+Enter (or Steer on its context menu) steers that message
+instead of waiting. With no turn running, Ctrl+Alt+Enter simply sends, as Ctrl+Enter does.
+
+- **Claude chats:** The Chat Place says "Steering" and the chat's name (reading your message back
+  as it does for Send), then "has your message" once Claude takes it in. If Claude had already
+  finished its reply, it says so and Claude answers your message straight after, in the same turn.
+  A message steered as the turn ends stays in the reply box (or stays queued), never lost or sent
+  twice. Attached files go as their paths, as for a queued message.
+- **Codex chats:** Codex is asked to take the message into the turn, and The Chat Place says
+  "Steered" once Codex accepts it. If the turn has just ended, or Codex is still taking an
+  earlier steered message, the message comes back to the reply box (a queued one stays queued)
+  with the reason. It is never sent as a new turn on its own.
+- **Copilot chats** can't take a message during a turn yet: Ctrl+Enter queues it.
+
+Turn status (Ctrl+Shift+T) and the turn status line say when a steered message hasn't been taken
+in yet. Send Now (Ctrl+Enter on a queued message) is unchanged: it stops what Claude is doing and
+answers the message instead.
 
 Every announcement is also written to `speech.log` in `%TEMP%\thechatplace-speak` (on a Mac,
 `$TMPDIR/thechatplace-speak`), one line each: the time, whether it interrupts or waits its turn,

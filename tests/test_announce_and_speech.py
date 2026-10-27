@@ -307,3 +307,18 @@ def test_legacy_settings_without_codex_key_are_automatic(tmp_path):
     path = tmp_path / "speech.json"
     path.write_text('{"announce": "full"}')
     assert SpeechSettings.load(path).codex_enabled is None
+
+
+def test_steer_texts():
+    # #238, #239: on its way (Claude), or accepted (Codex); read back per setting.
+    assert announce.steered_text("QM", "and the docs", ANNOUNCE_FULL, True) == \
+        "Steering QM: and the docs."
+    assert announce.steered_text("QM", "and the docs", ANNOUNCE_FULL, False) == \
+        "Steering QM. It takes your message at its next step."
+    assert announce.steered_text("QM", "and the docs", ANNOUNCE_FULL, True, accepted=True) == \
+        "Steered QM: and the docs."
+    assert announce.steered_text("QM", "x", ANNOUNCE_SILENT, True, accepted=True) == \
+        "Steered QM. It has your message."
+    assert announce.steer_taken_text("QM", late=False) == "QM has your message."
+    assert announce.steer_taken_text("QM", late=True) == \
+        "QM had finished, and is answering your message now."

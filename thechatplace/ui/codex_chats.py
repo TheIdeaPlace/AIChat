@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import wx
 
 from ..providers.codex_requests import QUESTIONS
-from ..providers.codex_rpc import CodexRpcError, CodexTurnRejected
+from ..providers.codex_rpc import CodexRpcError, CodexSteerRefused, CodexTurnRejected
 from ..providers.codex_runtime import STOP_TO_RECHECK
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
@@ -56,6 +56,10 @@ class CodexChats:
         if state.queued:
             count = len(state.queued)
             text += f' {count} {"message" if count == 1 else "messages"} queued.'
+        steering = len(getattr(state, 'steering', ()))
+        if steering:
+            text += (f' 1 steered message waiting for {name} to accept it.' if steering == 1
+                     else f' {steering} steered messages waiting for {name} to accept them.')
         if state.notice:
             text += ' ' + state.notice
         notices = [text for turn, _identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
@@ -288,6 +292,45 @@ class CodexChats:
             if on_result is not None:
                 on_result(queued, error)
         self._codex_work(lambda: self.sessions.owned_action('send', record, text), done)
+
+    def _steer_codex_owned(self, record, text, index=None):
+        """Steer (#239): ``text`` into the running turn, or the queued message
+        at ``index``. Said once Codex has accepted it. Refused (the turn has
+        just ended, or another steer is on its way): the text comes back to
+        the reply box, or a queued message stays queued, with why. Never sent
+        as a new turn without Kelly choosing to."""
+        key = record.to_info().key
+        name = provider_name(record.provider)
+
+        def action():
+            try:
+                if index is None:
+                    self.sessions.owned_action('steer', record, text)
+                else:
+                    self.sessions.owned_action('steer_queued', record, index, text)
+            except CodexSteerRefused as exc:
+                return safe_reason(exc) or f'{name} could not take it.'
+            return None
+
+        def done(refused, error):
+            if error:
+                # Not known whether it arrived: back in the box, never resent.
+                if index is None:
+                    self._restore_codex_text(key, (text,))
+                self._feedback(f'{name} could not confirm your message. Check the chat '
+                               'history before sending again.')
+            elif refused:
+                if index is None:
+                    self._restore_codex_text(key, (text,))
+                    self._feedback(f'{refused} Your message is back in the reply box.')
+                else:
+                    self._feedback(f'{refused} It stays queued.')
+            else:
+                self._feedback(announce.steered_text(record.title, text, self.speech.announce,
+                                                     index is None and self.speech.announce_own,
+                                                     accepted=True))
+            self._update_send_state()
+        self._codex_work(action, done)
 
     def _stop_codex_owned(self, info):
         record = self.store.get(info.cli_session_id, provider=info.provider)

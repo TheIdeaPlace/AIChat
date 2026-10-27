@@ -5,7 +5,7 @@ import threading
 import time
 
 from . import platform_paths
-from .providers.codex_rpc import CodexTurnRejected, CodexConnectionFailure, CodexRequestTimeout, CodexRememberedApprovalError
+from .providers.codex_rpc import CodexTurnRejected, CodexSteerRefused, CodexConnectionFailure, CodexRequestTimeout, CodexRememberedApprovalError
 
 _LOCK = threading.Lock()
 _LIMIT = 65536
@@ -24,7 +24,7 @@ def safe_reason(error):
         # Copilot's runtime words every reason it gives to be shown (#370).
         text = str(error)
         return text if len(text) <= 1000 and not any(ord(c) < 32 for c in text) else ''
-    if type(error) in (CodexTurnRejected, CodexConnectionFailure, CodexRequestTimeout, CodexRememberedApprovalError):
+    if type(error) in (CodexTurnRejected, CodexSteerRefused, CodexConnectionFailure, CodexRequestTimeout, CodexRememberedApprovalError):
         text = type(error).REASONS.get(error.code, '')
         if type(error) is CodexTurnRejected and error.code == 'project_rules':
             folder = getattr(error, 'rules_folder', '')

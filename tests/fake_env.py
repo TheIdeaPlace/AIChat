@@ -188,6 +188,16 @@ class FakeRunner:
         self.sent_now = getattr(self, "sent_now", []) + [prompt]
         return not getattr(self, "ended", False)
 
+    def steer(self, prompt):
+        if getattr(self, "ended", False):
+            return False
+        self.steered = getattr(self, "steered", []) + [prompt]
+        return True
+
+    @property
+    def steering(self):
+        return list(getattr(self, "steered", []))
+
     def send_follow_up(self, prompt, images=None):
         if not self.waiting_on_background:
             return False

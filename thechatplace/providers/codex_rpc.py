@@ -66,6 +66,21 @@ class CodexRequestTimeout(CodexRpcError):
         super().__init__(self.REASONS[self.code])
 
 
+class CodexSteerRefused(CodexRpcError):
+    """A steer (#239) refused before anything was sent; fixed reasons are safe to report."""
+    REASONS = {
+        'not_running': 'Codex had already finished that turn, so the message was not sent.',
+        'busy': 'Codex is still taking your last steered message, so this one was not sent. Try again in a moment.',
+        'stopping': 'This Codex turn is stopping, so the message was not sent.',
+        'changed': 'That queued message changed before it could be steered.',
+        'refused': 'Codex did not take the message into its turn, so it was not sent.',
+    }
+
+    def __init__(self, code):
+        self.code = code if code in self.REASONS else 'refused'
+        super().__init__(self.REASONS[self.code])
+
+
 class CodexTurnRejected(CodexRpcError):
     """The inference request was never queued; fixed reasons are safe to report."""
     REASONS = {

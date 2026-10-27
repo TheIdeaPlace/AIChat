@@ -2,6 +2,7 @@ import io
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,8 @@ from markers import windows_paths  # noqa: E402
 EXE = "C:\\bin\\claude.exe"
 OWN = {"aaaa-1111"}
 DESKTOP = {"dddd-2222"}
-FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+         "--replay-user-messages"]
 PROMPTS = ["--permission-prompts", "host", "--permission-prompt-tool", "stdio"]
 
 
@@ -1873,3 +1875,145 @@ def test_an_edit_tool_reports_its_file_once_it_worked():
     # A subagent's results aren't the turn's own.
     assert parser.feed(ev(type="user", parent_tool_use_id="sub", message={"content": [
         {"type": "tool_result", "tool_use_id": "t1"}]})) == []
+
+
+# -- Steer: a message into the running turn, without stopping it (#238) -------------------
+
+
+def _echo(text):
+    """A message echoed back as Claude Code takes it in (--replay-user-messages)."""
+    return ev(type="user", isReplay=True, message={"role": "user", "content": text})
+
+
+def _steer_turn(tmp_path, lines, when="tool", text="Also update the README"):
+    """A turn against a LiveProcess that steers at the first ``when`` event."""
+    process = LiveProcess(lines)
+    timers = FakeTimers()
+    events, done, box = [], threading.Event(), {}
+
+    def on_event(event):
+        events.append(event)
+        if event.kind == when and "sent" not in box:
+            box["sent"] = box["runner"].steer(text)
+            box["steering"] = box["runner"].steering
+        if event.kind in ("finished", "failed"):
+            done.set()
+    runner = TurnRunner(["claude", "-p"], str(tmp_path), "Fix the tests", on_event,
+                        popen=lambda cmd, **k: process, env={"PATH": "x"}, timer=timers)
+    box["runner"], box["timers"], box["done"] = runner, timers, done
+    runner.start()
+    return events, box, process
+
+
+TOOL = ev(type="assistant", message={"content": [
+    {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]})
+
+
+def test_a_steer_taken_mid_turn_shares_the_turns_one_result(tmp_path):
+    taken = threading.Event()
+    events, box, process = _steer_turn(tmp_path, [
+        RUNNING, INIT, _echo("Fix the tests"), TOOL, taken, _echo("Also update the README"),
+        ev(type="result", subtype="success", result="Fixed, and the README too"), IDLE])
+    deadline = time.monotonic() + 5
+    while "sent" not in box and time.monotonic() < deadline:
+        time.sleep(0.01)
+    taken.set()
+    assert box["done"].wait(5)
+    assert box["sent"] is True
+    assert box["steering"] == ["Also update the README"]
+    steered = [e for e in events if e.kind == "steer_taken"]
+    assert [(e.text, e.data["late"]) for e in steered] == [("Also update the README", False)]
+    assert events[-1].kind == "finished" and events[-1].text == "Fixed, and the README too"
+    assert box["runner"].steering == []
+    sent = process.sent()
+    # No interrupt: the work carries on.
+    assert [m["type"] for m in sent] == ["control_request", "user", "user"]
+    assert sent[2]["message"]["content"] == "Also update the README"
+    assert not [t for t in box["timers"].live_ceilings()]
+
+
+def test_a_steer_written_after_the_result_is_late_and_gets_its_own_answer(tmp_path):
+    gate = threading.Event()
+    events, box, process = _steer_turn(tmp_path, [
+        RUNNING, INIT, _echo("Fix the tests"),
+        ev(type="result", subtype="success", result="Fixed"), gate,
+        _echo("Also update the README"), RUNNING,
+        ev(type="result", subtype="success", result="README updated"), IDLE], when="never")
+    deadline = time.monotonic() + 5
+    while not box["runner"]._answered and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert box["runner"].steer("Also update the README") is True
+    gate.set()
+    assert box["done"].wait(5)
+    steered = [e for e in events if e.kind == "steer_taken"]
+    assert [(e.text, e.data["late"]) for e in steered] == [("Also update the README", True)]
+    assert events[-1].kind == "finished" and events[-1].text == "README updated"
+
+
+def test_a_steer_not_yet_taken_when_the_result_comes_is_answered_after_it(tmp_path):
+    # Written mid-turn, but Claude was already writing its reply and takes it
+    # in only after that result: the turn stays open for the second result.
+    events, box, process = _steer_turn(tmp_path, [
+        RUNNING, INIT, _echo("Fix the tests"), TOOL,
+        ev(type="result", subtype="success", result="Fixed"),
+        _echo("Also update the README"), IDLE, RUNNING,
+        ev(type="result", subtype="success", result="README updated"), IDLE])
+    assert box["done"].wait(5)
+    steered = [e for e in events if e.kind == "steer_taken"]
+    assert [(e.text, e.data["late"]) for e in steered] == [("Also update the README", True)]
+    assert events[-1].text == "README updated" and not events[-1].is_error
+
+
+def test_send_now_with_echoes_still_waits_for_the_new_answer(tmp_path):
+    events, box, process = _live_send_now_turn(tmp_path, [
+        RUNNING, INIT, _echo("Write an essay"), STOPPED, _echo("Instead, say hi"),
+        ev(type="result", subtype="success", result="hi"), IDLE])
+    assert box["done"].wait(5)
+    assert box["sent"] is True
+    assert events[-1].text == "hi" and not events[-1].is_error
+    assert not [e for e in events if e.kind == "steer_taken"]
+
+
+def test_a_result_with_nothing_taken_in_answers_nothing(tmp_path):
+    # With echoes, a result before the steer is taken in (a background
+    # agent's notification, say) doesn't count as its answer.
+    events, box, process = _steer_turn(tmp_path, [
+        RUNNING, INIT, _echo("Fix the tests"), TOOL,
+        ev(type="result", subtype="success", result="Fixed"), IDLE], when="tool")
+    assert not box["done"].wait(0.5)  # the steer is still to be answered
+    box["timers"].fire_ceilings()  # Claude Code never took it: end anyway
+    assert box["done"].wait(5)
+
+
+def test_a_steer_before_the_prompt_goes_after_it(tmp_path):
+    from thechatplace.claude_cli import INIT_REQUEST_ID
+    gate = threading.Event()
+    answer = ev(type="control_response", response={
+        "subtype": "success", "request_id": INIT_REQUEST_ID, "response": {"commands": []}})
+    events, box, process = _steer_turn(tmp_path, [
+        gate, answer, RUNNING, INIT, _echo("Fix the tests"), _echo("Also update the README"),
+        ev(type="result", subtype="success", result="Both done"), IDLE], when="never")
+    assert process.reading.wait(5)
+    assert box["runner"].steer("Also update the README") is True
+    assert box["runner"].steering == ["Also update the README"]
+    assert [m["type"] for m in process.sent()] == ["control_request"]  # initialize only
+    gate.set()
+    assert box["done"].wait(5)
+    sent = [m for m in process.sent() if m["type"] == "user"]
+    assert [m["message"]["content"] for m in sent] == ["Fix the tests", "Also update the README"]
+    assert events[-1].text == "Both done"
+
+
+def test_a_steer_after_the_turn_ended_is_refused(tmp_path):
+    events, box, _ = _steer_turn(tmp_path, [
+        RUNNING, INIT, ev(type="result", subtype="success", result="done"), IDLE],
+        when="never")
+    assert box["done"].wait(5)
+    assert box["runner"].steer("too late") is False
+    assert box["runner"].steering == []
+
+
+def test_the_echo_is_not_shown_as_anything_but_taken():
+    parser = cli.StreamParser()
+    [event] = parser.feed(_echo("hello"))
+    assert event.kind == "taken"
