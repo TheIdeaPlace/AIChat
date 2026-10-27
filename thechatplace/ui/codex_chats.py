@@ -301,20 +301,37 @@ class CodexChats:
         as a new turn without Kelly choosing to."""
         key = record.to_info().key
         name = provider_name(record.provider)
+        self._steer_row(key, text, f'waiting for {name}')
+
+        accepted = []  # the turn Codex took it into
 
         def action():
             try:
                 if index is None:
-                    self.sessions.owned_action('steer', record, text)
+                    turn = self.sessions.owned_action('steer', record, text)
                 else:
-                    self.sessions.owned_action('steer_queued', record, index, text)
+                    turn = self.sessions.owned_action('steer_queued', record, index, text)
             except (CodexSteerRefused, CodexTurnRejected) as exc:
                 # ``returned``: a queued one that Stop sent back to the box.
                 return (safe_reason(exc) or f'{name} could not take it.',
                         getattr(exc, 'returned', False))
+            if turn:
+                accepted.append(turn)
             return None
 
         def done(refused, error):
+            # Accepted, it stays until the chat's history has it; otherwise
+            # it's back with you, in the reply box or the queue.
+            self._steer_status(key, text, None if error or refused else f'accepted by {name}')
+            state = self._codex_states.get(key)
+            finished = bool(accepted) and (record.provider, record.cli_session_id,
+                                           accepted[0]) in self._codex_finished
+            if not (error or refused) and (state is None or state.outcome != 'inProgress'
+                                           or finished):
+                # Accepted into a turn known to have ended (Stop, say), even if
+                # a queued message's turn has started since: it may never be
+                # used, so the history read next decides where it goes.
+                self._steers_turn_over(key)
             if error:
                 # Not known whether it arrived: back in the box, never resent.
                 if index is None:
@@ -481,6 +498,10 @@ class CodexChats:
             return
         previous = self._codex_states.get(key)
         self._codex_states[key] = state
+        if getattr(self, '_steered', {}).get(key) and state.outcome != 'inProgress':
+            # The turn is over. An accepted steer may not have been used
+            # (Stop): it stays until the history is read again (#410).
+            self._steers_turn_over(key)
         unsent = state.unsent
         if unsent:
             # An agent conversation's own message goes back to it (#248).

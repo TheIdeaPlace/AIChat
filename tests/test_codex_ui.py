@@ -50,6 +50,12 @@ class Window(CodexChats):
         self.notified.append((args, kwargs))
     def _gone(self):
         return False
+    def _steer_row(self, key, text, where):
+        self.steer_rows = getattr(self, 'steer_rows', []) + [(text, where)]
+    def _steer_status(self, key, text, where):
+        self.steer_rows = getattr(self, 'steer_rows', []) + [(text, where)]
+    def _steers_turn_over(self, key):
+        self.turn_over = getattr(self, 'turn_over', []) + [key]
     def _codex_work(self, action, done):
         self.work.append((action, done))
     def _feedback(self, text):
@@ -785,3 +791,74 @@ def test_a_queued_steer_that_stop_sent_back_says_where_it_is():
     w._steer_codex_owned(w.record, 'Queued one', index=0)
     _run_work(w)
     assert w.said[-1].endswith('It is back in the reply box.')
+
+
+@pytest.mark.parametrize('outcome', ['accepted', 'refused', 'unconfirmed'])
+def test_a_steered_message_shows_until_its_fate_is_known(outcome):
+    from thechatplace.providers.codex_rpc import CodexSteerRefused, CodexConnectionFailure
+    w = Window()
+
+    def act(*a):
+        if outcome == 'refused':
+            raise CodexSteerRefused('not_running')
+        if outcome == 'unconfirmed':
+            raise CodexConnectionFailure('stream_closed')
+        return 'turn'
+    w.sessions = SimpleNamespace(owned_action=act)
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    assert w.steer_rows == [('Also the docs', 'waiting for Codex')]  # at once
+    _run_work(w)
+    expected = 'accepted by Codex' if outcome == 'accepted' else None
+    assert w.steer_rows[-1] == ('Also the docs', expected)
+
+
+def test_a_steer_accepted_after_the_turn_ended_waits_for_the_history():
+    # Stop before Codex answered: it may never be used, so the next history
+    # read decides whether it shows there or comes back to the reply box.
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'idle', 'turn', 'interrupted')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert w.steer_rows[-1] == ('Also the docs', 'accepted by Codex')
+    assert w.turn_over == ['codex:owned']
+
+
+def test_a_steer_accepted_into_a_turn_since_replaced_is_settled_by_the_history():
+    # The turn completed and a queued message's turn started before
+    # Codex's answer to the steer came.
+    w = Window()
+    w._codex_finished = {('codex', 'owned', 'turn-1')}
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-1')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-2', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert w.turn_over == ['codex:owned']
+
+
+def test_a_steer_accepted_into_the_running_turn_waits_for_it():
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-1')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert not getattr(w, 'turn_over', [])
+
+
+def test_a_newer_turn_alone_doesnt_end_a_steer_whose_turn_isnt_known_to_be_over():
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-2')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert not getattr(w, 'turn_over', [])
+
+
+def test_no_turn_id_back_is_not_taken_for_another_turn():
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: None)
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert not getattr(w, 'turn_over', [])

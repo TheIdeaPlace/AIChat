@@ -128,7 +128,7 @@
     323
    ],
    "best": [
-    286,
+    426,
     49
    ],
    "depth": 1,
@@ -137,7 +137,8 @@
    "problems": [],
    "items": [
     "You: Make the uploader flush before it signals.",
-    "Claude: ## What changed"
+    "Claude: ## What changed",
+    "Steering, waiting for Claude: Also update the README while you're there."
    ],
    "selection": 1
   },
