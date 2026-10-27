@@ -163,6 +163,10 @@ This is an 820 by 620 dialog. A web page fills almost all of it (796 by 534) ins
 
 ## shortcuts-plain: Keyboard Shortcuts as plain text
 
+The 2026-10-27 light and High Contrast Aquatic captures include Codex in the
+Changed Files shortcut's text. The opening viewport and layout are unchanged;
+the High Contrast scrollbar thumb shifts slightly with the new text length.
+
 This is a smaller 620 by 520 dialog. "Shortcuts:" heads a white read-only text box 588 by 402 that fills most of the dialog. It holds the same content as plain text. It opens with a five-line paragraph about the window's three parts in Tab order, ending with Provider and Kind as default session-list columns, then section names such as "Moving around:" and "Session list:" on their own lines, and each shortcut indented two spaces, as in "Ctrl+1: Go to the session list". Long lines wrap with no hanging indent, so continuation lines start at the left margin. The text is the small standard font. A single "Close" button sits at the bottom right. The 2026-10-25 run's text adds New Agent Conversation (Ctrl+Shift+G) and the agent-conversation use of Ctrl+Shift+E (#347), What AI Knows About You with Claude or Codex (Ctrl+Shift+K, #371) and Codex's approval reviewer under Change Permission Mode (Ctrl+Shift+O, #374); all of these are below the first screenful, so the light-100 and hc-aquatic-100 pictures look as before. At 175% the first screenful now shows the longer opening paragraph, five lines, so everything below it starts two lines lower. Since the user guide review (#392), the Session list section's Ctrl+Shift+L line reads "Copy Session Link (Claude chats): ..." and wraps onto three lines at 100% (two at 150% and 175%). "Ctrl+N: New Chat Place session" is gone from that section, so Ctrl+Shift+N follows Ctrl+Shift+L directly; Ctrl+N is now listed among the shortcuts that work from anywhere, below the first screenful.
 
 **What looks off:** Wrapped lines aren't indented, so they run into the next shortcut visually. The bottom line is cut through, as the box scrolls. Nothing else.
@@ -504,7 +508,45 @@ Only surfaces where a variant differs in a way worth knowing are listed. Everywh
 - **Lists in every variant:** The focused list is marked only by the thin dotted outline. In High Contrast the selected rows of focused and unfocused lists are the same aqua or rust brown, just as they are the same blue in light mode (#181).
 
 
+## lists-codex-files: View, Changed Files in a Codex chat
+
+Reviewed from light-100 and hc-aquatic-100 screenshots on 2026-10-27. The 820 by
+660 dialog is titled "Lists: Codex history preview". Show items from is set to
+This message. The six-row Kinds list (788 by 96) has Changed Files (4) selected.
+Below an empty Filter box, the 788 by 140 file list shows upload.py with two lines
+added and one removed, notes.txt created with one line, unused.txt deleted, and
+test_upload.py renamed. The first file is selected. Its 788 by 165 Details box
+shows lines 8 to 10, with Unchanged, Removed and Added prefixes. Copy and Close
+are at the lower right. No controls are clipped or overlapping in either theme.
+
+Light mode has white boxes on light grey, black text on white (21:1), and white
+selected text on blue #0078D4 (4.53:1). High Contrast Aquatic uses white text on
+#202020 (16.29:1), navy #202074 on aqua #8EE3F0 for selected rows (9.47:1), and
+white control outlines. Colours and ratios were measured from the screenshots.
+
+**What looks off:** The existing shared-list focus issue (#181) remains. Both
+Kinds and the file list have selected rows; the file list's dotted focus outline
+is orange #FF872B on blue in light mode (1.89:1). In High Contrast Aquatic it is
+#711C0F on aqua (7.68:1). There are no new layout or theme problems.
+
+## lists-codex-deleted-file: Codex Changed Files with a deletion selected
+
+Reviewed in light-100 and hc-aquatic-100 on 2026-10-27. This is the same 820 by
+660 layout as lists-codex-files, with the third row, "unused.txt, deleted",
+selected. Details says "unused.txt: deleted.", then "Lines 1 to 2:" and the two
+removed lines. Both lines fit fully in the details box. Copy remains enabled.
+No text is clipped and no controls overlap in either theme.
+
+The measured colours match lists-codex-files: black on white (21:1), white on
+blue #0078D4 (4.53:1), High Contrast white on #202020 (16.29:1), and selected
+navy #202074 on aqua #8EE3F0 (9.47:1). The existing #181 focus-outline contrast
+issue remains in light mode; there are no new layout or theme problems.
+
 ## lists-codex-tasks: View, Tasks: Codex's live plan (#318)
+
+In the 2026-10-27 light and High Contrast Aquatic pictures, Kinds now says
+"Changed Files (0)" instead of "Changed Files, not available". The comparison
+shows only that label changing; the task list, details and layout are unchanged.
 
 The 820 by 660 Lists dialog, titled "Lists: Codex history preview", uses the same
 layout as Claude's Tasks. A scope dropdown is above the six-row Kinds list (788 by
@@ -524,6 +566,9 @@ dotted outline. In light mode its #FF872B dots against #0078D4 measure 1.89:1.
 There are no new clipping, overlap or theme problems in these pictures.
 
 ## lists-codex-no-tasks: View, Tasks in an external Codex chat (#318)
+
+The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
+(0)". The task's unavailable message, disabled Copy button and layout are unchanged.
 
 The same 820 by 660 layout. Kinds says "Tasks, not available" and the list label
 says "Tasks (0)". The single selected row reads "No task list. Task lists are kept
@@ -562,6 +607,9 @@ pictures. The saved-command-rules check says it could not be checked because thi
 is the synthetic probe connection, which does not supply that unrelated API.
 
 ## lists-codex-owned-no-tasks: View, Tasks in an owned Codex chat without tasks (#323)
+
+The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
+(0)". The empty task list, details and button positions are unchanged.
 
 The same 820 by 660 dialog uses the shared empty-list wording. Kinds says
 "Tasks (0)" without an unavailable warning. The selected row in the 788 by 140

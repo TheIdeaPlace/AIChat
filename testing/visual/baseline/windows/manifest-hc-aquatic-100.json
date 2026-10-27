@@ -1238,6 +1238,34 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Settings after an announcement wasn't spoken: the reason box"
+  },
+  "lists-codex-files": {
+   "kind": "dialog",
+   "png": "lists-codex-files-hc-aquatic-100.png",
+   "json": "lists-codex-files-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: updates, additions, deletions and renames"
+  },
+  "lists-codex-deleted-file": {
+   "kind": "dialog",
+   "png": "lists-codex-deleted-file-hc-aquatic-100.png",
+   "json": "lists-codex-deleted-file-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: a deleted file's old line range"
   }
  },
  "seconds": 91.6

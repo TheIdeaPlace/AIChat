@@ -303,8 +303,12 @@ session list, the messages or the reply box:</p>
 <ul>
 <li><strong>Code Blocks:</strong> each code block, by language and size, with its code to read.</li>
 <li><strong>Links:</strong> each link, its words and where it goes, then who wrote it and roughly when.</li>
-<li><strong>Changed Files</strong> (Claude and Copilot chats): each file changed, with how many lines were added
-  and removed, and its changes to read line by line (see "Reviewing changed files" below).</li>
+<li><strong>Changed Files</strong> (Claude, Codex and Copilot chats): each file changed, with how many lines were added
+  and removed, and its changes to read line by line (see "Reviewing changed files" below). A deleted file says "deleted". A renamed file
+  says "renamed", with the old path in its details; Copy copies the new path. This works for
+  desktop app chats and chats started in Codex or Copilot CLI too. Codex lists its completed file
+  changes: pending, declined and failed edits aren't counted, nor are changes made through shell
+  commands or other tools that don't report file changes.</li>
 <li><strong>Commands</strong> (Claude chats): each command Claude ran: what it said it was doing, then "done",
   "failed" or "no result yet". Its full text shows the command and its output.</li>
 <li><strong>Decisions</strong> (Claude chats): each question Claude asked you, with your answer.</li>
@@ -358,9 +362,8 @@ code". Only web, email and session links open; anything else, such as a file pat
 with Show Tool Activity on.</p>
 <h2 id="reviewing-changed-files">Reviewing changed files</h2>
 <p>Changed Files lists each file the AI changed in a chat and lets you read each change a line at
-a time. It works for Claude and Copilot chats, including desktop app chats and chats started in
-Copilot CLI. It's built from the chat's own record, so it needs no git. Codex chats don't have it
-yet.</p>
+a time. It works for Claude, Codex and Copilot chats, including desktop app chats and chats
+started in Codex or Copilot CLI. It's built from the chat's own record, so it needs no git.</p>
 <h3>Opening it</h3>
 <p>Press <strong>Ctrl+Shift+D</strong> (on a Mac, Cmd+Shift+D), or choose View, Changed Files. It opens Lists on
 Changed Files, for the selected message's turn: everything from your message to the AI's reply.
@@ -381,7 +384,8 @@ settings.json, no lines changed
 </code></pre></section>
 <ul>
 <li><strong>"created"</strong> is a new file, with how many lines it has.</li>
-<li><strong>"deleted"</strong> is a file Copilot deleted.</li>
+<li><strong>"deleted"</strong> is a file Codex or Copilot deleted.</li>
+<li><strong>"renamed"</strong> is a file moved to a new path; its details include the old path.</li>
 <li><strong>"no lines changed"</strong> is a file that was written again with the same text.</li>
 </ul>
 <p><strong>Type</strong> to narrow the list by name. <strong>Ctrl+C</strong> (or Copy) copies the selected file's full path.</p>
@@ -686,7 +690,7 @@ whether the chat was started here:</p>
 <tr>
 <td>Changed Files in Lists</td>
 <td>yes</td>
-<td>no</td>
+<td>yes</td>
 <td>yes</td>
 </tr>
 <tr>

@@ -2959,7 +2959,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("Couldn't open the clipboard.")
 
     def on_changes(self):
-        """View, Changed Files (Ctrl+Shift+D): the files Claude or Copilot changed, on
+        """View, Changed Files (Ctrl+Shift+D): the files the AI changed, on
         the Lists dialog's Changed Files tab (#279): in the selected
         message's turn (your latest, if none is selected) if it changed any,
         else in the whole chat. From the transcript, so desktop sessions
