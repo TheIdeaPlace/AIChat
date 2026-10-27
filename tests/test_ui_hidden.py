@@ -12804,3 +12804,36 @@ def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatc
     assert pump(lambda: any(t == "Queued Copilot: The Chat Place is checking how Copilot's turn ended. "
                             "1 waiting message is back in the message box, unsent." for t in env["feedback"]))
     frame._codex_states.clear()
+
+
+def test_a_steer_never_taken_in_comes_back_when_the_turn_ends(frame, env, fake_runner):
+    # #238: Stop (or the turn ending) before Claude took it in.
+    runner = _start(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    frame.reply_text.SetValue("half typed")
+    frame.on_stop()
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("failed", text="Stopped.", is_error=True))
+    assert frame.reply_text.GetValue() == "Also update the README\n\nhalf typed"
+    assert any("steered message for Hub probe wasn't taken in" in text
+               for text in env["feedback"])
+
+
+def test_a_late_steer_says_the_reply_it_follows(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="And the docs", data={"late": True, "reply": "Fixed."}))
+    assert env["feedback"][-1] == ("Hub probe replied. Fixed. Hub probe had finished, "
+                                   "and is answering your message now.")
+
+
+def test_steer_on_a_queued_message_after_the_turn_ended_says_so(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame.reply_text.SetValue("second")
+    frame.on_send()
+    frame._runners.pop("own-1")
+    frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
+    frame.steer_queued()
+    assert env["feedback"][-1] == "The turn has ended: the queued message goes next."
+    assert frame._queued == {"own-1": ["second"]}

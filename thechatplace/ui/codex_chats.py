@@ -309,7 +309,9 @@ class CodexChats:
                 else:
                     self.sessions.owned_action('steer_queued', record, index, text)
             except (CodexSteerRefused, CodexTurnRejected) as exc:
-                return safe_reason(exc) or f'{name} could not take it.'
+                # ``returned``: a queued one that Stop sent back to the box.
+                return (safe_reason(exc) or f'{name} could not take it.',
+                        getattr(exc, 'returned', False))
             return None
 
         def done(refused, error):
@@ -320,11 +322,14 @@ class CodexChats:
                 self._feedback(f'{name} could not confirm your message. Check the chat '
                                'history before sending again.')
             elif refused:
+                reason, returned = refused
                 if index is None:
                     self._restore_codex_text(key, (text,))
-                    self._feedback(f'{refused} Your message is back in the reply box.')
+                    self._feedback(f'{reason} Your message is back in the reply box.')
+                elif returned:
+                    self._feedback(f'{reason} It is back in the reply box.')
                 else:
-                    self._feedback(f'{refused} It stays queued.')
+                    self._feedback(f'{reason} It stays queued.')
             else:
                 self._feedback(announce.steered_text(record.title, text, self.speech.announce,
                                                      index is None and self.speech.announce_own,

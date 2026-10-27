@@ -770,3 +770,18 @@ def test_steer_not_confirmed_comes_back_with_a_warning():
 def test_turn_status_mentions_a_steer_waiting_to_be_accepted():
     state = CodexChatState('owned', 'working', 'turn', 'inProgress', steering=('Also the docs',))
     assert 'steered message waiting for Codex to accept it' in Window._codex_status_text(state)
+
+
+def test_a_queued_steer_that_stop_sent_back_says_where_it_is():
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    w = Window()
+    w.reply_text.value = ''
+
+    def refuse(*a):
+        error = CodexSteerRefused('stopping')
+        error.returned = True
+        raise error
+    w.sessions = SimpleNamespace(owned_action=refuse)
+    w._steer_codex_owned(w.record, 'Queued one', index=0)
+    _run_work(w)
+    assert w.said[-1].endswith('It is back in the reply box.')

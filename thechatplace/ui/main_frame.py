@@ -4433,9 +4433,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._answered_with_background(session_id, title, event, is_open_now)
             return
         if event.kind == "steer_taken":
+            data = event.data or {}
+            said = announce.steer_taken_text(title, bool(data.get("late")))
+            # Late, the reply Claude had just finished is said first: the
+            # steered message's answer becomes the turn's (#238).
+            reply = announce.reply_text(title, data.get("reply") or "", self.speech.announce)
+            if reply:
+                said = f"{reply} {said}"
             # Background news, so it doesn't cut off what's being read.
-            self._say(announce.steer_taken_text(title, bool((event.data or {}).get("late"))),
-                      interrupt=False)
+            self._say(said, interrupt=False)
             if is_open_now:
                 self._update_send_state()
             return
@@ -4488,6 +4494,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                         p for p in waiting_now if p not in attached_back]
                     if is_open:
                         self._show_attachments()
+            # Steered but never taken in (Stop, or the turn ended first): it
+            # comes back rather than being lost (#238).
+            untaken = list(getattr(runner, "steering", ()) or ()) if runner is not None else []
+            if untaken:
+                unsent.extend(untaken)
+                note = (f"Your steered message for {title} wasn't taken in. It's back in the "
+                        "message box.")
+                self._feedback(note)
+                self._last_announcement = note
             queued = self._take_queued(session_id)
             if queued and is_open:
                 self._rebuild_chat_list()  # sent, or given back: no longer queued
@@ -4725,10 +4740,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self._feedback("Type a message first.")
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
-            if record is not None:
-                self.reply_text.SetValue("")
-                self._codex_drafts.pop(info.key, None)
-                self._steer_codex_owned(record, message)
+            if record is None:
+                self._feedback("That chat is no longer in The Chat Place's list.")
+                return
+            self.reply_text.SetValue("")
+            self._codex_drafts.pop(info.key, None)
+            self._steer_codex_owned(record, message)
             return
         if info.provider != "claude":
             self.on_send()
@@ -4789,7 +4806,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         runner = self._runners.get(info.cli_session_id)
         waiting = self._queued.get(info.cli_session_id, [])
-        if runner is None or not 0 <= index < len(waiting):
+        if not 0 <= index < len(waiting):
+            return
+        if runner is None:
+            self._feedback("The turn has ended: the queued message goes next.")
             return
         text = waiting[index]
         if not runner.steer(text):

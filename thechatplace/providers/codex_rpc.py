@@ -74,6 +74,7 @@ class CodexSteerRefused(CodexRpcError):
         'stopping': 'This Codex turn is stopping, so the message was not sent.',
         'changed': 'That queued message changed before it could be steered.',
         'refused': 'Codex did not take the message into its turn, so it was not sent.',
+        'unavailable': "This Codex chat isn't ready, so the message was not sent. Use Stop to recheck it.",
     }
 
     def __init__(self, code):

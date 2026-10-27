@@ -522,20 +522,21 @@ class CodexChatRuntime:
         it was. Any other failure is unknown, never retried."""
         if not isinstance(text, str) or not text.strip() or len(text) > 32000:
             raise ValueError('Enter a message of at most 32000 characters')
-        proof, executor = self._context(record)
+        # Every check before turn/steer is written refuses: nothing was sent.
+        try:
+            proof, executor = self._context(record)
+        except CodexRpcError:
+            raise CodexSteerRefused('unavailable') from None
         native_id = proof.native_id
         with self._lock:
-            if self._stop.is_set():
-                raise CodexRpcError('Codex chats are closing')
-            if self._problems.get(native_id):
-                raise CodexRpcError(self._problems[native_id])
+            if (self._stop.is_set() or self._problems.get(native_id)
+                    or native_id in self._reopening or self._proofs.get(native_id) is not proof
+                    or self._executor is not executor):
+                raise CodexSteerRefused('unavailable')
             if native_id in self._stopping:
                 raise CodexSteerRefused('stopping')
             if native_id in self._steering:
                 raise CodexSteerRefused('busy')
-            if (native_id in self._reopening or self._proofs.get(native_id) is not proof
-                    or self._executor is not executor):
-                raise CodexRpcError('Reopen this Codex chat before sending')
             if index is not None:
                 queue = self._queues.get(native_id, [])
                 if type(index) is not int or not 0 <= index < len(queue) or queue[index] != text:
@@ -550,8 +551,8 @@ class CodexChatRuntime:
             turn_id = executor.steer(proof, text)
             accepted = True
             return turn_id
-        except (CodexSteerRefused, CodexTurnRejected):
-            refused = True  # nothing was taken: safe to keep it queued
+        except (CodexSteerRefused, CodexTurnRejected) as error:
+            refused = error  # nothing was taken: safe to keep it queued
             raise
         except CodexConnectionFailure as error:
             with self._lock:
@@ -566,8 +567,11 @@ class CodexChatRuntime:
                             or native_id in self._problems):
                         # Maybe taken (never queue it to go again), or Stop
                         # or a lost connection returned the queue meanwhile:
-                        # it goes back to the reply box.
+                        # it goes back to the reply box, and the caller
+                        # is told so (``returned``).
                         unsent = (text,)
+                        if refused:
+                            refused.returned = True
                     else:
                         queue = self._queues.setdefault(native_id, [])
                         queue.insert(min(index, len(queue)), text)

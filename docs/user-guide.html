@@ -527,6 +527,12 @@ whether the chat was started here:</p>
 <td>no: Stop returns it</td>
 </tr>
 <tr>
+<td>Steer a running turn (Ctrl+Alt+Enter)</td>
+<td>yes</td>
+<td>yes</td>
+<td>no: queue it instead</td>
+</tr>
+<tr>
 <td>Answer requests (Ctrl+Shift+A)</td>
 <td>permissions, questions and plans</td>
 <td>permissions and questions</td>
@@ -834,6 +840,21 @@ queued message depends on the provider:</p>
   Fn+Delete).</li>
 <li><strong>Codex and Copilot:</strong> queued messages go after the reply. They can't be sent early, edited or
   removed while they wait: Stop the turn to get them back.</li>
+</ul>
+<p>To change what the AI is doing without stopping it, <strong>steer</strong> instead: type your message and
+press <strong>Ctrl+Alt+Enter</strong> (Cmd+Option+Return on a Mac), or choose File, Steer: Send into the
+Running Turn. Your message goes into the turn that's running, and the AI takes it in at its next
+step and carries on with it in mind, such as "also update the README" or "use the other test
+file". You hear "Steering Fix the build: …", then "Fix the build has your message" once Claude
+takes it in, or "Steered Fix the build: …" once Codex accepts it. Ctrl+Alt+Enter on a queued
+message steers that one instead of waiting. With no turn running, Ctrl+Alt+Enter just sends.</p>
+<ul>
+<li>If Claude had already finished its reply, you hear that reply, then that it's answering your
+  message now.</li>
+<li>If the turn ends or you press Stop before the message is taken in, it comes back to the reply
+  box (a queued one stays queued, or comes back with the rest when you press Stop). It's never
+  lost or sent twice.</li>
+<li>Copilot chats can't steer yet: Ctrl+Enter queues the message.</li>
 </ul>
 <p>Sometimes Claude starts a command that runs in the background, such as a build or a wait for
 GitHub checks, and answers while it runs. You hear the answer and what is still

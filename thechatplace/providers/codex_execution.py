@@ -194,7 +194,7 @@ class CodexTurnExecutor:
             raise ValueError('Enter a message of at most 32000 characters')
         with self._lock:
             if self._broken:
-                raise CodexRpcError('Codex connection needs to be reopened')
+                raise CodexSteerRefused('unavailable')
             buffer = self._turns.get(proof.native_id)
             if buffer is None or buffer.status != 'inProgress':
                 raise CodexSteerRefused('not_running')

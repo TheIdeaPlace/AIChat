@@ -419,13 +419,18 @@ def remote_control_line(name: str, reattach: str = "") -> bytes:
                         "request": request}, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def message_line(prompt: str, images: Optional[List[dict]] = None) -> bytes:
-    """The user's message, with any image blocks after its text (#22)."""
+def message_line(prompt: str, images: Optional[List[dict]] = None,
+                 message_id: str = "") -> bytes:
+    """The user's message, with any image blocks after its text (#22).
+    ``message_id``: its uuid, which Claude Code echoes back as it takes the
+    message in (--replay-user-messages, #238)."""
     content = prompt
     if images:
         content = ([{"type": "text", "text": prompt}] if prompt else []) + list(images)
     message = {"type": "user", "session_id": "", "parent_tool_use_id": None,
                "message": {"role": "user", "content": content}}
+    if message_id:
+        message["uuid"] = message_id
     return (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
 
 
@@ -845,7 +850,9 @@ class StreamParser:
         if etype == "user" and event.get("isReplay"):
             # One of our own messages, echoed as Claude Code takes it in
             # (--replay-user-messages). The transcript has it already.
-            return [TurnEvent("taken", session_id=self.session_id)]
+            echoed = event.get("uuid")
+            return [TurnEvent("taken", text=echoed if isinstance(echoed, str) else "",
+                              session_id=self.session_id)]
         if etype == "user" and not event.get("parent_tool_use_id") and self._edits:
             message = event.get("message")
             content = message.get("content") if isinstance(message, dict) else None
@@ -1024,9 +1031,12 @@ class TurnRunner:
         #: own just as Send Now goes can't pass for the new message's answer.
         self._unanswered = 0
         #: Each message written and not yet taken in, oldest first, as
-        #: [kind, text, late] ("prompt", "now", "steer" or "follow_up"). Claude
-        #: Code echoes each one as it takes it in (--replay-user-messages),
-        #: in order. A result answers every message taken in before it: a
+        #: [kind, text, late, uuid] ("prompt", "now", "steer" or "follow_up").
+        #: Claude Code echoes each one, with its uuid, as it takes it in
+        #: (--replay-user-messages; checked with 2.1.296, a slash command
+        #: included). Echoes are matched by uuid, so anything else echoed
+        #: can't be taken for one of ours. A result answers every message
+        #: taken in before it: a
         #: steered message taken in mid-turn shares its turn's one result,
         #: and one taken in after a result gets its own (#238). ``late``: a
         #: steer that came after Claude had answered, so it's answered next
@@ -1039,6 +1049,9 @@ class TurnRunner:
         #: True from a result until Claude Code says it's running again: a
         #: steer now is answered after, not taken into work in progress.
         self._answered = False
+        #: The latest result's reply, until it's said: a late steer's answer
+        #: replaces it as the turn's, so it's handed on with ``steer_taken``.
+        self._unsaid_reply = ""
         #: True once the turn's own message is written. Send Now or a steer
         #: before then waits in ``_waiting`` so it can't overtake it (#83).
         self._prompt_sent = False
@@ -1132,19 +1145,23 @@ class TurnRunner:
     def _write_message(self, kind: str, prompt: str, images: Optional[List[dict]] = None,
                        late: bool = False) -> bool:
         """Write a message, to be answered. Call with ``_lock`` held."""
-        ok = self._write_raw(message_line(prompt, images))
+        message_id = str(uuid.uuid4())
+        ok = self._write_raw(message_line(prompt, images, message_id))
         if ok:
             self._unanswered += 1
-            self._untaken.append([kind, prompt, late])
+            self._untaken.append([kind, prompt, late, message_id])
         return ok
 
-    def _taken(self) -> Optional[tuple]:
-        """Claude Code echoed the oldest message: it has taken it in. Its
-        (kind, text, late), or None if there was nothing to take."""
+    def _taken(self, message_id: str) -> Optional[tuple]:
+        """Claude Code echoed one of our messages: it has taken it in. Its
+        (kind, text, late, uuid), or None if the echo isn't one of ours."""
         with self._lock:
-            self._echoes = True
-            self._taken_since_result += 1
-            return tuple(self._untaken.pop(0)) if self._untaken else None
+            for index, message in enumerate(self._untaken):
+                if message[3] == message_id:
+                    self._echoes = True
+                    self._taken_since_result += 1
+                    return tuple(self._untaken.pop(index))
+            return None
 
     def _end_or_wait(self) -> str:
         """Claude Code is idle with the turn answered: end the turn by closing
@@ -1192,7 +1209,15 @@ class TurnRunner:
             # the echoes that's exact, and a result with nothing taken in (a
             # background agent's notification, say) answers nothing; without
             # them, one. Never below zero.
-            answered = self._taken_since_result if self._echoes else 1
+            if self._echoes:
+                answered = self._taken_since_result
+            else:
+                # No echoes (a Claude Code without them): a steer can't be
+                # told apart, so the result is taken to answer it too, rather
+                # than hold the turn open for an answer that may never come.
+                steers = [m for m in self._untaken if m[0] == "steer"]
+                self._untaken = [m for m in self._untaken if m[0] != "steer"]
+                answered = 1 + len(steers)
             self._taken_since_result = 0
             self._unanswered = max(0, self._unanswered - answered)
             self._answered = True
@@ -1391,6 +1416,7 @@ class TurnRunner:
                 disarm_ceiling()
                 if outcome == "started waiting":
                     said_while_waiting = True
+                    self._unsaid_reply = ""  # said now, with the background work
                     self.last_activity = ("waiting for background work: "
                                           + "; ".join(self.background_tasks))
                     self._emit(TurnEvent("waiting", text=final_event.text,
@@ -1440,13 +1466,19 @@ class TurnRunner:
                         self._emit(event)  # never a reason to send the message
                         continue
                     if event.kind == "taken":
-                        taken = self._taken()
+                        taken = self._taken(event.text)
                         if taken is not None and taken[0] == "steer":
                             self.last_activity = ("starting on your new message" if taken[2]
                                                   else "taking in your new message")
+                            # Late: the reply before it will be replaced as
+                            # the turn's by the steer's answer, so it's said
+                            # now, with the news.
+                            reply = ""
+                            if taken[2]:
+                                reply, self._unsaid_reply = self._unsaid_reply, ""
                             self._emit(TurnEvent("steer_taken", text=taken[1],
                                                  session_id=self.parser.session_id,
-                                                 data={"late": taken[2]}))
+                                                 data={"late": taken[2], "reply": reply}))
                         continue
                     # The answer, or anything else of the conversation first
                     # (an older Claude Code): the message goes now. A state
@@ -1551,6 +1583,8 @@ class TurnRunner:
                                 d for d in event.denials if d not in final.denials]
                             event.is_error = event.is_error or final.is_error
                         final = event
+                        if not event.is_error:
+                            self._unsaid_reply = event.text or ""
                         idle = states_seen and last_state == "idle"
                         if not replaced and states_seen and not idle:
                             arm_ceiling()  # idle should follow

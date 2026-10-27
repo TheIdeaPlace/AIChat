@@ -1197,9 +1197,10 @@ instead of waiting. With no turn running, Ctrl+Alt+Enter simply sends, as Ctrl+E
 
 - **Claude chats:** The Chat Place says "Steering" and the chat's name (reading your message back
   as it does for Send), then "has your message" once Claude takes it in. If Claude had already
-  finished its reply, it says so and Claude answers your message straight after, in the same turn.
-  A message steered as the turn ends stays in the reply box (or stays queued), never lost or sent
-  twice. Attached files go as their paths, as for a queued message.
+  finished its reply, that reply is read, then that Claude is answering your message, straight
+  after, in the same turn. A steered message that the turn ends (or Stop stops) before Claude
+  takes it in comes back to the reply box, never lost or sent twice. Attached files go as their
+  paths, as for a queued message.
 - **Codex chats:** Codex is asked to take the message into the turn, and The Chat Place says
   "Steered" once Codex accepts it. If the turn has just ended, or Codex is still taking an
   earlier steered message, the message comes back to the reply box (a queued one stays queued)

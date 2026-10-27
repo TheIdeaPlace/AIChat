@@ -943,8 +943,9 @@ def test_stop_while_a_queued_steer_waits_returns_it_with_the_queue():
             assert c.steer_entered.wait(5)
             assert service.stop(record) == ('Other',)
             c.steer_release.set()
-            with pytest.raises(CodexSteerRefused):
+            with pytest.raises(CodexSteerRefused) as refused:
                 steering.result(timeout=5)
+            assert refused.value.returned  # the caller says where it went
         # Never back in a queue that Stop emptied: to the reply box instead.
         assert any(u.unsent == ('Steer me',) for u in updates)
         assert not service.snapshot(record.cli_session_id).queued
@@ -982,6 +983,21 @@ def test_steer_with_no_turn_running_is_refused_without_a_request():
         with pytest.raises(CodexSteerRefused) as refused:
             service.steer(record, 'Nothing running')
         assert refused.value.code == 'not_running'
+        assert not [m for m, _p in c.calls if m == 'turn/steer']
+    finally:
+        service.close()
+
+
+def test_steer_in_a_chat_with_a_problem_is_refused_with_nothing_sent():
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, c, updates = steer_runtime()
+    try:
+        record = service.create('/workspace', 'Owned')
+        service.send(record, 'First')
+        service._problems[record.cli_session_id] = 'Codex connection interrupted.'
+        with pytest.raises(CodexSteerRefused) as refused:
+            service.steer(record, 'Also the docs')
+        assert refused.value.code == 'unavailable'
         assert not [m for m, _p in c.calls if m == 'turn/steer']
     finally:
         service.close()

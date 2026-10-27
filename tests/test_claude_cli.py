@@ -1281,8 +1281,8 @@ class LiveProcess(FakeProcess):
         super().__init__([])
         self.stdin_closed = threading.Event()
         self.reading = threading.Event()
-        queue = [x if isinstance(x, threading.Event) else (x + "\n").encode("utf-8")
-                 for x in lines]
+        queue = [x if isinstance(x, threading.Event) or callable(x)
+                 else (x + "\n").encode("utf-8") for x in lines]
         close = self.stdin.close
 
         def close_and_signal():
@@ -1299,6 +1299,8 @@ class LiveProcess(FakeProcess):
                     if isinstance(item, threading.Event):
                         assert item.wait(5)
                         continue
+                    if callable(item):
+                        return (item(process) + "\n").encode("utf-8")
                     return item
                 process.stdin_closed.wait(5)
                 return b""
@@ -1881,8 +1883,16 @@ def test_an_edit_tool_reports_its_file_once_it_worked():
 
 
 def _echo(text):
-    """A message echoed back as Claude Code takes it in (--replay-user-messages)."""
-    return ev(type="user", isReplay=True, message={"role": "user", "content": text})
+    """The message ``text`` echoed back, with the uuid it was written with,
+    as Claude Code does when it takes it in (--replay-user-messages). Made
+    when the line is read, so the message has been written by then."""
+    def line(process):
+        written = [m for m in process.sent() if m["type"] == "user"
+                   and m["message"]["content"] == text]
+        assert written, f"{text!r} was never written"
+        return ev(type="user", isReplay=True, uuid=written[-1]["uuid"],
+                  message={"role": "user", "content": text})
+    return line
 
 
 def _steer_turn(tmp_path, lines, when="tool", text="Also update the README"):
@@ -2015,5 +2025,47 @@ def test_a_steer_after_the_turn_ended_is_refused(tmp_path):
 
 def test_the_echo_is_not_shown_as_anything_but_taken():
     parser = cli.StreamParser()
-    [event] = parser.feed(_echo("hello"))
-    assert event.kind == "taken"
+    [event] = parser.feed(ev(type="user", isReplay=True, uuid="u-1",
+                             message={"role": "user", "content": "hello"}))
+    assert event.kind == "taken" and event.text == "u-1"
+
+
+def test_an_echo_that_isnt_ours_counts_for_nothing(tmp_path):
+    # Matched by uuid: an echo of something else can't answer the steer.
+    stranger = ev(type="user", isReplay=True, uuid="not-ours",
+                  message={"role": "user", "content": "Also update the README"})
+    events, box, process = _steer_turn(tmp_path, [
+        RUNNING, INIT, _echo("Fix the tests"), TOOL, stranger,
+        ev(type="result", subtype="success", result="Fixed"), IDLE])
+    assert not box["done"].wait(0.5)  # the steer is still to be answered
+    assert box["runner"].steering == ["Also update the README"]
+    assert not [e for e in events if e.kind == "steer_taken"]
+    box["timers"].fire_ceilings()
+    assert box["done"].wait(5)
+
+
+def test_a_late_steer_hands_on_the_reply_it_follows(tmp_path):
+    events, box, process = _steer_turn(tmp_path, [
+        RUNNING, INIT, _echo("Fix the tests"), TOOL,
+        ev(type="result", subtype="success", result="Fixed"),
+        _echo("Also update the README"), IDLE, RUNNING,
+        ev(type="result", subtype="success", result="README updated"), IDLE])
+    assert box["done"].wait(5)
+    [steered] = [e for e in events if e.kind == "steer_taken"]
+    assert steered.data == {"late": True, "reply": "Fixed"}
+    assert events[-1].text == "README updated"
+
+
+def test_without_echoes_a_steer_is_answered_by_the_turns_result(tmp_path):
+    # A Claude Code that doesn't echo: the turn isn't held open for ever.
+    events, box, process = _steer_turn(tmp_path, [
+        RUNNING, INIT, TOOL, ev(type="result", subtype="success", result="Both done"), IDLE])
+    assert box["done"].wait(5)
+    assert events[-1].text == "Both done"
+    assert box["runner"].steering == []
+
+
+def test_messages_carry_a_uuid_for_their_echo():
+    line = json.loads(cli.message_line("hi", message_id="abc"))
+    assert line["uuid"] == "abc"
+    assert "uuid" not in json.loads(cli.message_line("hi"))
