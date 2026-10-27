@@ -490,9 +490,9 @@ class CopilotProvider:
                 continue
             try:
                 info = self._session(Path(entry.path), entry.name, entries)
-            except (OSError, UnicodeDecodeError, ValueError):
+            except (OSError, UnicodeDecodeError, ValueError) as error:
                 snapshot.unreadable_files += 1
-                continue
+                info = self._as_last_read(entry.name, error, entries)
             if info is not None:
                 snapshot.sessions.append(info)
         with self._lock:
@@ -513,7 +513,10 @@ class CopilotProvider:
                 continue
             info = listed.get(native_id)
             if info is None and native_id in self._listed_before:
-                continue  # listed from its log before, and its folder was removed (Kelly, #372)
+                # Listed from its log before, and its log is gone. A log that
+                # couldn't be read just now is listed by collect() as it was
+                # last read, so it's never missing for that (Kelly, #372, #386).
+                continue
             if info is None:
                 # Titled from the window's record when there is one; a chat
                 # whose record couldn't be saved stays read-only, named.
@@ -523,6 +526,35 @@ class CopilotProvider:
             info.state = state.state
             if state.problem:
                 info.detail = state.problem
+
+    def _as_last_read(self, native_id: str, error: Exception, entries: dict) -> Optional[SessionInfo]:
+        """A log that's there but couldn't be read just now: Copilot may be
+        writing it (a sharing violation on Windows). Its chat is listed as last
+        read, title, times and last message included, so it doesn't drop out
+        of the list or move, and focus stays (Kelly, #372, #386). A half-written
+        file that can't be decoded yet counts too. A file that's gone, or one
+        that disagrees with its folder, isn't kept. (A log deleted while
+        Copilot still holds it open stats as a sharing violation on Windows,
+        so it's kept until Copilot lets go of it.)"""
+        if isinstance(error, FileNotFoundError) or not isinstance(error, (OSError, UnicodeDecodeError)):
+            return None
+        with self._lock:
+            entry = self._entries.get(native_id)
+        if entry is None or entry.title is None:
+            return None
+        entries[native_id] = entry  # read again once the log changes
+        state, detail = _with_detail(entry.state, entry.written_ms)
+        if self.runtime is not None and any(known == native_id for known, _ in self.runtime.known()):
+            # A chat this app runs gets its detail from the runtime: what its
+            # last read said ("waiting in Copilot", say) may be stale.
+            detail = ""
+        return self._row(native_id, entry, state, detail)
+
+    def _row(self, native_id: str, entry, state: str, detail: str) -> SessionInfo:
+        return SessionInfo(entry.source, f"{PROVIDER_ID}:{native_id}", entry.title,
+                           entry.cwd, native_id, provider=PROVIDER_ID,
+                           state=state, detail=detail, created_ms=entry.created_ms,
+                           last_activity_ms=entry.updated_ms)
 
     def _session(self, folder: Path, native_id: str, entries: dict) -> Optional[SessionInfo]:
         events = folder / EVENTS_FILE
@@ -547,10 +579,7 @@ class CopilotProvider:
             return None  # no prompt was ever sent (refused at sign-in, say)
         # The detail depends on the clock, so it's worked out every time.
         state, detail = _with_detail(entry.state, entry.written_ms)
-        return SessionInfo(entry.source, f"{PROVIDER_ID}:{native_id}", entry.title,
-                           entry.cwd, native_id, provider=PROVIDER_ID,
-                           state=state, detail=detail, created_ms=entry.created_ms,
-                           last_activity_ms=entry.updated_ms)
+        return self._row(native_id, entry, state, detail)
 
     # -- the optional Last message column -----------------------------------
 
@@ -628,8 +657,9 @@ class CopilotProvider:
     def send_owned(self, record, text: str) -> bool:
         return self.runtime.send(record.cli_session_id, text)
 
-    def stop_owned(self, record) -> tuple:
-        """The messages that were still waiting, given back unsent."""
+    def stop_owned(self, record):
+        """A ``copilot_runtime.Stopped``: the messages that were still
+        waiting, given back unsent, and what Stop found."""
         return self.runtime.stop(record.cli_session_id)
 
     def answer_owned(self, record, request, result) -> None:
