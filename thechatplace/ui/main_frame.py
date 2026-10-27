@@ -4692,11 +4692,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
     def _can_steer(self, info: Optional[SessionInfo]) -> bool:
         """Whether this chat's provider can take a message into a running turn
-        (#238, #239). Claude chats The Chat Place runs always can."""
+        (#238, #239)."""
         if info is None or not info.is_own:
             return False
-        if info.provider == "claude":
-            return True
         try:
             return bool(getattr(self.sessions.capabilities(info), "steer", False))
         except ValueError:

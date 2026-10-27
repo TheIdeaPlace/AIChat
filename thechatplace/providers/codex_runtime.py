@@ -8,7 +8,7 @@ from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_policy import CodexPolicy
 from .codex_rpc import (CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
-                        CodexRememberedApprovalError, STOP_TO_RECONNECT)
+                        CodexRememberedApprovalError, CodexSteerRefused, STOP_TO_RECONNECT)
 from .codex_permissions import CodexPermissionStore, CodexReviewStore, candidate, matches
 from .codex_tokens import CodexTokenUsage
 from ..codex_diagnostics import record_failure, safe_reason
@@ -58,6 +58,8 @@ class CodexChatState:
     plan_received: bool = False
     permission_notices: tuple = field(default=(), repr=False)
     changed_paths: tuple = field(default=(), repr=False)
+    #: A steered message Codex hasn't accepted yet (#239): at most one.
+    steering: tuple = field(default=(), repr=False)
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,12 @@ class CodexChatRuntime:
         self._policy_changes = {}
         self._policy_recoveries = {}
         self._pending_dispatch = {}
+        #: native_id -> (text, queued index or None, stops at the start): the
+        #: one steer on its way per chat (#239). A queued message being
+        #: steered is held out of its queue, and the queue waits, until
+        #: Codex answers, so it can't also go as a turn of its own.
+        self._steering = {}
+        self._stops = {}
         self._problems = _Problems()
         self._stop = threading.Event()
         self._listeners = []
@@ -480,7 +488,7 @@ class CodexChatRuntime:
             if (self._stop.is_set() or native_id in self._sending or native_id in self._stopping
                     or native_id in self._reopening or self._proofs.get(native_id) is not proof
                     or self._executor is not executor
-                    or native_id in self._problems
+                    or native_id in self._problems or native_id in self._steering
                     or not self._queues.get(native_id) or state.status != 'completed'):
                 return
             text = self._queues[native_id].pop(0)
@@ -506,6 +514,67 @@ class CodexChatRuntime:
                 self._notify(native_id, unsent=(text,))
         self._launch_queued(send_next)
 
+    def steer(self, record, text, *, index=None):
+        """Steer (#239): ``text``, or the queued message at ``index`` (which
+        must still be ``text``), into the running turn without stopping it.
+        Returns the turn id Codex accepted it into. CodexSteerRefused if
+        nothing was sent or Codex said no: a queued message goes back where
+        it was. Any other failure is unknown, never retried."""
+        if not isinstance(text, str) or not text.strip() or len(text) > 32000:
+            raise ValueError('Enter a message of at most 32000 characters')
+        proof, executor = self._context(record)
+        native_id = proof.native_id
+        with self._lock:
+            if self._stop.is_set():
+                raise CodexRpcError('Codex chats are closing')
+            if self._problems.get(native_id):
+                raise CodexRpcError(self._problems[native_id])
+            if native_id in self._stopping:
+                raise CodexSteerRefused('stopping')
+            if native_id in self._steering:
+                raise CodexSteerRefused('busy')
+            if (native_id in self._reopening or self._proofs.get(native_id) is not proof
+                    or self._executor is not executor):
+                raise CodexRpcError('Reopen this Codex chat before sending')
+            if index is not None:
+                queue = self._queues.get(native_id, [])
+                if type(index) is not int or not 0 <= index < len(queue) or queue[index] != text:
+                    raise CodexSteerRefused('changed')
+                del queue[index]
+                if not queue:
+                    del self._queues[native_id]
+            self._steering[native_id] = (text, index, self._stops.get(native_id, 0))
+        self._notify(native_id)
+        accepted = refused = False
+        try:
+            turn_id = executor.steer(proof, text)
+            accepted = True
+            return turn_id
+        except (CodexSteerRefused, CodexTurnRejected):
+            refused = True  # nothing was taken: safe to keep it queued
+            raise
+        except CodexConnectionFailure as error:
+            with self._lock:
+                self._problems[native_id] = safe_reason(error)
+            raise
+        finally:
+            unsent = ()
+            with self._lock:
+                _text, _index, stops = self._steering.pop(native_id)
+                if not accepted and index is not None:
+                    if (not refused or self._stops.get(native_id, 0) != stops
+                            or native_id in self._problems):
+                        # Maybe taken (never queue it to go again), or Stop
+                        # or a lost connection returned the queue meanwhile:
+                        # it goes back to the reply box.
+                        unsent = (text,)
+                    else:
+                        queue = self._queues.setdefault(native_id, [])
+                        queue.insert(min(index, len(queue)), text)
+            self._notify(native_id, unsent=unsent)
+            # The turn may have ended while Codex answered: the queue goes on.
+            self._advance(proof, executor)
+
     def _launch_queued(self, target):
         threading.Thread(target=target, name='codex-queued-send', daemon=True).start()
 
@@ -517,6 +586,7 @@ class CodexChatRuntime:
             if proof.native_id in self._reopening or self._proofs.get(proof.native_id) is not proof:
                 raise CodexRpcError('Reopen this Codex chat before stopping')
             repeated = proof.native_id in self._stopping and proof.native_id not in self._sending
+            self._stops[proof.native_id] = self._stops.get(proof.native_id, 0) + 1
             pending = self._pending_dispatch.pop(proof.native_id, None)
             unsent = ((pending[1],) if pending is not None else ()) + tuple(self._queues.pop(proof.native_id, ()))
             if pending is not None:
@@ -749,6 +819,7 @@ class CodexChatRuntime:
         with self._lock:
             proof, executor = self._proofs.get(native_id), self._executor
             queued = tuple(self._queues.get(native_id, ()))
+            steering = (self._steering[native_id][0],) if native_id in self._steering else ()
             problem = self._problems.get(native_id, '')
             sending = native_id in self._sending
             permission_notices = tuple(self._permission_notices.get(native_id, ()))
@@ -766,7 +837,7 @@ class CodexChatRuntime:
         return CodexChatState(native_id, status, state.turn_id, state.status,
                               state.replies, requests, queued, tuple(unsent), problem, state.file_changes,
                               state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received,
-                              permission_notices, getattr(state, 'changed_paths', ()))
+                              permission_notices, getattr(state, 'changed_paths', ()), steering)
 
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():

@@ -308,7 +308,7 @@ class CodexChats:
                     self.sessions.owned_action('steer', record, text)
                 else:
                     self.sessions.owned_action('steer_queued', record, index, text)
-            except CodexSteerRefused as exc:
+            except (CodexSteerRefused, CodexTurnRejected) as exc:
                 return safe_reason(exc) or f'{name} could not take it.'
             return None
 

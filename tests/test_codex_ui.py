@@ -708,3 +708,65 @@ def test_permission_change_after_runs_once_when_saved_and_when_already_pending(m
     w._codex_policy_pending.add(w._open.key)
     w._change_codex_permissions(w._open, after=lambda: finished.append('pending'))
     assert finished == ['saved', 'pending'] and len(w.work) == 2
+
+
+def _run_work(w, failure=None):
+    """Run the queued worker as _codex_work would: an exception is (reason, True)."""
+    from thechatplace.codex_diagnostics import safe_reason
+    action, done = w.work.pop()
+    try:
+        result, error = action(), False
+    except Exception as exc:  # noqa: BLE001 - what _codex_work does
+        result, error = safe_reason(exc) or None, True
+    done(result, error)
+
+
+def test_steer_accepted_is_said_and_the_text_is_not_restored():
+    w = Window()
+    calls = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: calls.append(a) or 'turn')
+    w.reply_text.value = ''
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert calls == [('steer', w.record, 'Also the docs')]
+    assert w.said[-1] == 'Steered My chat: Also the docs.'
+    assert w.reply_text.value == ''
+
+
+@pytest.mark.parametrize('queued', [False, True])
+def test_steer_refused_puts_the_text_back_or_keeps_it_queued(queued):
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    w = Window()
+    w.reply_text.value = ''
+
+    def refuse(*a):
+        raise CodexSteerRefused('not_running')
+    w.sessions = SimpleNamespace(owned_action=refuse)
+    w._steer_codex_owned(w.record, 'Too late', index=0 if queued else None)
+    _run_work(w)
+    reason = CodexSteerRefused.REASONS['not_running']
+    if queued:
+        assert w.said[-1] == f'{reason} It stays queued.'
+        assert w.reply_text.value == ''
+    else:
+        assert w.said[-1] == f'{reason} Your message is back in the reply box.'
+        assert w.reply_text.value == 'Too late'
+
+
+def test_steer_not_confirmed_comes_back_with_a_warning():
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    w = Window()
+    w.reply_text.value = ''
+
+    def lost(*a):
+        raise CodexConnectionFailure('stream_closed')
+    w.sessions = SimpleNamespace(owned_action=lost)
+    w._steer_codex_owned(w.record, 'Maybe sent')
+    _run_work(w)
+    assert w.reply_text.value == 'Maybe sent'
+    assert 'could not confirm' in w.said[-1]
+
+
+def test_turn_status_mentions_a_steer_waiting_to_be_accepted():
+    state = CodexChatState('owned', 'working', 'turn', 'inProgress', steering=('Also the docs',))
+    assert 'steered message waiting for Codex to accept it' in Window._codex_status_text(state)

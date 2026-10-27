@@ -471,7 +471,8 @@ class CodexProvider:
         # subscription/configuration/concurrency gates remain at execution.
         enabled = self.runtime is not None
         return SessionCapabilities(usage=True, send=enabled and session.is_own, fork=enabled,
-                                   approvals=enabled and session.is_own)
+                                   approvals=enabled and session.is_own,
+                                   steer=enabled and session.is_own)
 
     def usage_lines(self, session):
         self._check(session)
@@ -526,6 +527,12 @@ class CodexProvider:
 
     def stop_owned(self, record):
         return self.runtime.stop(record)
+
+    def steer_owned(self, record, text):
+        return self.runtime.steer(record, text)
+
+    def steer_queued_owned(self, record, index, text):
+        return self.runtime.steer(record, text, index=index)
 
     def answer_owned(self, record, request, result):
         return self.runtime.answer(record, request, result)

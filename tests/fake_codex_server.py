@@ -81,7 +81,8 @@ for line in sys.stdin:
         rows = [{'runtimeStatus': 'connected', 'tools': {}}] if scenario == 'account-route-mcp' else []
         emit({'id': request['id'], 'result': {'data': rows, 'nextCursor': None}})
         continue
-    if scenario in ('owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown', 'owned-turn-plan', 'owned-turn-kept'):
+    if scenario in ('owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown', 'owned-turn-plan', 'owned-turn-kept',
+                    'owned-turn-steer', 'owned-turn-steer-race', 'owned-turn-steer-close'):
         if method == 'account/read':
             result = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
         elif method == 'config/read':
@@ -119,7 +120,8 @@ for line in sys.stdin:
                                    {'step': 'Find the cause', 'status': 'completed'}]}})
                 emit({'method': 'turn/plan/updated', 'params': {'threadId': 'owned', 'turnId': 'turn',
                       'plan': [{'step': 'Bad state', 'status': []}]}})
-            if scenario not in ('owned-turn-hang', 'owned-turn-plan'):
+            if scenario not in ('owned-turn-hang', 'owned-turn-plan', 'owned-turn-steer',
+                                'owned-turn-steer-race', 'owned-turn-steer-close'):
                 # Shaped like codex-cli 0.162.1's command approvals (#284):
                 # environmentId and availableDecisions are always present.
                 details = {'kind': 'command', 'threadId': 'owned', 'turnId': 'turn', 'itemId': 'command',
@@ -140,6 +142,21 @@ for line in sys.stdin:
                     del details['additionalPermissions']
                 emit({'id': 'approval', 'method': 'future/unsupportedRequest' if scenario == 'owned-turn-unknown'
                       else 'item/commandExecution/requestApproval', 'params': details})
+            continue
+        elif method == 'turn/steer':
+            # Shaped like the documented app-server turn/steer (#239).
+            if scenario == 'owned-turn-steer-close':
+                sys.exit(0)  # the connection is lost as the steer goes
+            if scenario == 'owned-turn-steer-race':
+                # The turn finished just as the steer arrived.
+                owned_active = False
+                emit({'method': 'turn/completed', 'params': {'threadId': 'owned',
+                      'turn': {'id': owned_turn, 'status': 'completed'}}})
+            if (not owned_active or params.get('expectedTurnId') != owned_turn
+                    or set(params) != {'threadId', 'expectedTurnId', 'input'}):
+                emit({'id': request['id'], 'error': {'message': 'no active turn to steer'}})
+            else:
+                emit({'id': request['id'], 'result': {'turnId': owned_turn}})
             continue
         elif method == 'turn/interrupt':
             owned_active = False

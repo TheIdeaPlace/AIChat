@@ -327,7 +327,7 @@ class ReadOnlyCodexConnection:
                 if not is_chatgpt_account(account):
                     raise CodexTurnRejected('chatgpt_required')
                 self._verify_turn_route(params)
-            except CodexTurnRejected:
+            except (CodexTurnRejected, CodexSteerRefused):
                 raise
             except Exception as error:
                 code = next((code for code, message in CodexTurnRejected.REASONS.items()
