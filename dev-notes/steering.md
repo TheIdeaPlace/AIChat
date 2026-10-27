@@ -42,6 +42,13 @@ starting a new one or emitting `turn/started`, and returns `{"turnId": …}`. It
 active turn, and can't change turn settings. `turn/interrupt` is separate (Stop uses it). Nothing
 documented says when steered input reaches the model, so the UI says "Steered" on acceptance.
 
+Checked with the real app-server (codex-cli, ChatGPT sign-in, a read-only chat) through
+`CodexChatRuntime.steer`: Codex was asked to run `ping -n 8 127.0.0.1` three times. A steer sent
+during the first ping ("skip the third, end with PINEAPPLE") was accepted into the running turn,
+which went on and ended once, with two pings and PINEAPPLE. The route checks passed against the
+real server (the thread's status is `active` mid-turn), and a steer after the turn ended was
+refused locally, with nothing sent.
+
 ## The behaviour chosen
 
 One command and key for both providers: Steer, Ctrl+Alt+Enter, from the reply box and on a
