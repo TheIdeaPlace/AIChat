@@ -688,6 +688,47 @@ def test_one_preparation_per_codex_member_and_nothing_left_after_stop(tmp_path):
     assert [t.split('\n\n')[-1] for _n, t, _r in w.codex_sent] == ['two']
 
 
+@pytest.mark.parametrize('sandbox', ['read-only', 'workspace-write'])
+@pytest.mark.parametrize('reviewer', ['user', 'auto_review'])
+def test_new_codex_members_use_their_selected_permissions(tmp_path, sandbox, reviewer):
+    w = Window(tmp_path)
+    added, created = [], []
+    w.store.add = added.append
+    w._store_write = lambda method, *a, **k: method(*a, **k) or True
+    w.refresh_sessions = lambda **k: None
+    w._agent_open = lambda conversation: None
+
+    def create(provider, folder, title, **options):
+        assert provider == 'codex' and folder == str(tmp_path)
+        created.append(options)
+        return OwnSession(f'new-{len(created)}', title, folder, provider=provider,
+                          provider_options={key: value for key, value in options.items()
+                                            if value is not None})
+    w.sessions.create_owned = create
+    plan = SimpleNamespace(
+        title='Pair', folder=str(tmp_path), mode='approve', turn_limit=6, message='',
+        first=0, to_all=False,
+        members=[SimpleNamespace(info=None, provider='codex', role='', permission=sandbox,
+                                 approval_policy='on-request', approvals_reviewer=reviewer),
+                 SimpleNamespace(info=None, provider='codex', role='', permission='read-only',
+                                 approval_policy='on-request', approvals_reviewer='user')])
+    w._agent_create(plan)
+    while w.work:
+        action, done = w.work.pop(0)
+        done(action(), False)
+    assert created == [
+        {'sandbox': sandbox, 'approval_policy': 'on-request',
+         'approvals_reviewer': reviewer if reviewer != 'user' else None},
+        {'sandbox': 'read-only', 'approval_policy': 'on-request', 'approvals_reviewer': None}]
+    expected = {'sandbox': sandbox, 'approval_policy': 'on-request'}
+    if reviewer != 'user':
+        expected['approvals_reviewer'] = reviewer
+    assert [record.provider_options for record in added] == [
+        expected, {'sandbox': 'read-only', 'approval_policy': 'on-request'}]
+    made = next(c for c in w.agents.all() if c.title == 'Pair')
+    assert [m.native_id for m in made.members] == ['new-1', 'new-2']
+
+
 def test_a_failed_codex_member_leaves_no_unsaved_claude_chat(tmp_path):
     w = Window(tmp_path)
     w.store.add = lambda record: pytest.fail('nothing should be saved')
@@ -696,7 +737,8 @@ def test_a_failed_codex_member_leaves_no_unsaved_claude_chat(tmp_path):
         title='Pair', folder=str(tmp_path), mode='approve', turn_limit=6, message='Hello',
         first=0, to_all=False,
         members=[SimpleNamespace(info=None, provider='claude', role='', permission='auto'),
-                 SimpleNamespace(info=None, provider='codex', role='', permission='read-only')])
+                 SimpleNamespace(info=None, provider='codex', role='', permission='read-only',
+                                 approval_policy='on-request', approvals_reviewer='user')])
     w.sessions.create_owned = lambda *a, **k: None
     w._agent_create(plan)
     w.work.pop()[1]('Codex is not signed in.', True)

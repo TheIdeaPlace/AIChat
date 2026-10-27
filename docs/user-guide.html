@@ -926,6 +926,8 @@ It's Send Reply to Another Chat done for you, turn after turn.</p>
 <li><strong>Role</strong> (optional) for each, such as "Build the fix" and "Review each change; don't edit
   files". Each agent is told its role and the others'.</li>
 <li><strong>New chat's permission:</strong> for a new chat, its permission mode, as in New Session.
+  Codex offers four choices: read-only or edits in its folder, each with human or automatic
+  approval review. Templates keep human review unless you explicitly choose automatic review.
   <strong>Folder for new chats</strong> is where they work.</li>
 <li><strong>Hand-offs:</strong> approve each one, or automatic (offered once it's on in Settings), with a
   <strong>Turn limit</strong>.</li>
@@ -983,10 +985,11 @@ handed on isn't passed on, a message that hadn't gone yet comes back to the repl
 next message goes to the agent you stopped.
 <strong>Ctrl+Shift+T</strong> says what each agent is doing, how far the count has got, and who your next
 message goes to. <strong>Ctrl+Shift+U</strong> lists each agent's context and each provider's limits.</p>
-<p><strong>Safety:</strong> each agent asks you for permissions and answers as it always does, through
-<strong>Ctrl+Shift+A</strong>. A message from one agent goes to the other only as a message, labelled as
-another agent's words; it can never answer a question or approve anything. Each agent is told
-to take instructions only from you. Every message uses that agent's own subscription, so
+<p><strong>Safety:</strong> questions and requests needing human approval come to you through <strong>Ctrl+Shift+A</strong>.
+Codex uses the approval reviewer selected for its chat. A message from one agent goes to the
+other only as a message, labelled as another agent's words; it can never answer a question or
+approve anything. Each agent is told to take instructions only from you. Every message uses
+that agent's own subscription, so
 automatic mode spends both.</p>
 <p><strong>Rename</strong> (F2), <strong>Properties</strong> (Alt+Enter) and <strong>Delete</strong> (Shift+Delete) work on the
 conversation's row. Deleting it keeps both chats, with everything said in them, and puts them

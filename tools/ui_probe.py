@@ -595,6 +595,21 @@ def d_agent_new_three(frame, env):
     return show
 
 
+def d_agent_new_auto_review(frame, env):
+    """Explicit automatic review choices in all three Codex agent slots."""
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    folder = env["folders"]["Scratch"]
+
+    def show():
+        dialog = AgentConversationDialog(frame, [], ["codex"], folders=[folder])
+        dialog.chats[2].SetSelection(1)
+        dialog._sync()
+        for permission, selection in zip(dialog.permissions, (2, 3, 2)):
+            permission.SetSelection(selection)
+        frame._modal(dialog)
+    return show
+
+
 def d_agent_hand_off(frame, env):
     s_main_agents(frame, env)
     return frame.on_send_reply_to
@@ -1517,6 +1532,8 @@ SURFACES = {
                                          "new Codex chat"),
     "agent-new-three": ("dialog", d_agent_new_three, "New Agent Conversation with the Builder "
                                                      "and reviewer template and a third agent"),
+    "agent-new-auto-review": ("dialog", d_agent_new_auto_review,
+                              "Three new Codex agents with automatic approval review selected"),
     "agent-hand-off": ("dialog", d_agent_hand_off, "An agent conversation's hand-off "
                                                    "(Ctrl+Shift+E): a reply going to the other agent"),
     "rename": ("dialog", d_rename, "Rename Session (wx's own text entry dialog)"),
@@ -1594,6 +1611,7 @@ DIALOG_CLASSES = {
     "relay": "RelayDialog",
     "agent-new": "AgentConversationDialog",
     "agent-new-three": "AgentConversationDialog",
+    "agent-new-auto-review": "AgentConversationDialog",
     "agent-hand-off": "RelayDialog",
     "rename": "TextEntryDialog",
 }

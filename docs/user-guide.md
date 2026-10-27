@@ -870,6 +870,8 @@ It's Send Reply to Another Chat done for you, turn after turn.
 - **Role** (optional) for each, such as "Build the fix" and "Review each change; don't edit
   files". Each agent is told its role and the others'.
 - **New chat's permission:** for a new chat, its permission mode, as in New Session.
+  Codex offers four choices: read-only or edits in its folder, each with human or automatic
+  approval review. Templates keep human review unless you explicitly choose automatic review.
   **Folder for new chats** is where they work.
 - **Hand-offs:** approve each one, or automatic (offered once it's on in Settings), with a
   **Turn limit**.
@@ -934,10 +936,11 @@ next message goes to the agent you stopped.
 **Ctrl+Shift+T** says what each agent is doing, how far the count has got, and who your next
 message goes to. **Ctrl+Shift+U** lists each agent's context and each provider's limits.
 
-**Safety:** each agent asks you for permissions and answers as it always does, through
-**Ctrl+Shift+A**. A message from one agent goes to the other only as a message, labelled as
-another agent's words; it can never answer a question or approve anything. Each agent is told
-to take instructions only from you. Every message uses that agent's own subscription, so
+**Safety:** questions and requests needing human approval come to you through **Ctrl+Shift+A**.
+Codex uses the approval reviewer selected for its chat. A message from one agent goes to the
+other only as a message, labelled as another agent's words; it can never answer a question or
+approve anything. Each agent is told to take instructions only from you. Every message uses
+that agent's own subscription, so
 automatic mode spends both.
 
 **Rename** (F2), **Properties** (Alt+Enter) and **Delete** (Shift+Delete) work on the

@@ -1196,6 +1196,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "A Copilot chat started here: reply box, queued message and context"
+  },
+  "agent-new-auto-review": {
+   "kind": "dialog",
+   "png": "agent-new-auto-review-hc-aquatic-100.png",
+   "json": "agent-new-auto-review-hc-aquatic-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Three new Codex agents with automatic approval review selected"
   }
  },
  "seconds": 91.6
