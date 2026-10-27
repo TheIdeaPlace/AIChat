@@ -365,16 +365,16 @@ yet.</p>
 <p>Press <strong>Ctrl+Shift+D</strong> (on a Mac, Cmd+Shift+D), or choose View, Changed Files. It opens Lists on
 Changed Files, for the selected message's turn: everything from your message to the AI's reply.
 With no message selected, it shows your latest message's turn. If that turn changed nothing, it
-shows the whole chat. <strong>Show items from</strong> (Alt+S) switches between <strong>This message</strong> and <strong>The
-whole chat</strong>.</p>
+shows the whole chat. <strong>Show items from</strong> (Alt+S) switches between <strong>This message</strong> and
+<strong>The whole chat</strong>.</p>
 <p>When a turn in the chat you have open finishes and changed files, you hear a summary after the
 reply, at the Full announcement level; otherwise it goes to the status bar:</p>
-<section role="region" aria-label="Code block, Text, 1 line"><pre><code class="language-text">Fix the greeting: Changed 2 files: greet.py, 2 lines added, 1 removed; NOTES.md, created, 3 lines. Ctrl+Shift+D shows the changes.
+<section role="region" aria-label="Code block, 1 line"><pre><code>Fix the greeting: Changed 2 files: greet.py, 2 lines added, 1 removed; NOTES.md, created, 3 lines. Ctrl+Shift+D shows the changes.
 </code></pre></section>
 <h3>The file list</h3>
 <p>Each file is one row: its name, how many lines were added and removed, and its folder within the
 chat's folder. Files are in the order they were first changed.</p>
-<section role="region" aria-label="Code block, Text, 4 lines"><pre><code class="language-text">greet.py, 2 lines added, 1 removed, in src
+<section role="region" aria-label="Code block, 4 lines"><pre><code>greet.py, 2 lines added, 1 removed, in src
 NOTES.md, created, 3 lines
 old-notes.txt, deleted
 settings.json, no lines changed
@@ -406,7 +406,7 @@ through it a line at a time.</p>
 style gives one line for each line of the change, with the mark first. Here is the same change in
 each: a greeting function whose print line was replaced with two lines.</p>
 <p><strong>Words</strong> (the default): the plainest, and spoken at any punctuation level.</p>
-<section role="region" aria-label="Code block, Text, 9 lines"><pre><code class="language-text">C:\Projects\app\src\greet.py: 2 lines added, 1 removed.
+<section role="region" aria-label="Code block, 9 lines"><pre><code>C:\Projects\app\src\greet.py: 2 lines added, 1 removed.
 
 Lines 12 to 16:
 Unchanged: def greet(name):
@@ -417,7 +417,7 @@ Unchanged: blank line
 Unchanged: def main():
 </code></pre></section>
 <p><strong>Short words:</strong> the same, with shorter words that are still spoken at any punctuation level.</p>
-<section role="region" aria-label="Code block, Text, 7 lines"><pre><code class="language-text">Lines 12 to 16:
+<section role="region" aria-label="Code block, 7 lines"><pre><code>Lines 12 to 16:
 Same def greet(name):
 Del     print('Hello ' + name)
 Add     message = f'Hello, {name}!'
@@ -427,7 +427,7 @@ Same def main():
 </code></pre></section>
 <p><strong>Diff symbols:</strong> the marks git and GitHub use, "+" for added and "-" for removed, with "=" for
 an unchanged line, where git leaves a space.</p>
-<section role="region" aria-label="Code block, Text, 7 lines"><pre><code class="language-text">Lines 12 to 16:
+<section role="region" aria-label="Code block, 7 lines"><pre><code>Lines 12 to 16:
 = def greet(name):
 -     print('Hello ' + name)
 +     message = f'Hello, {name}!'
@@ -439,7 +439,7 @@ an unchanged line, where git leaves a space.</p>
 that replaced it reads as a pair, "!-" for the old line, then "!+" for the new one. Lines with
 no partner keep "+" or "-". Here the old print line pairs with the first new line, and the second
 new line is simply added.</p>
-<section role="region" aria-label="Code block, Text, 7 lines"><pre><code class="language-text">Lines 12 to 16:
+<section role="region" aria-label="Code block, 7 lines"><pre><code>Lines 12 to 16:
 = def greet(name):
 !-     print('Hello ' + name)
 !+     message = f'Hello, {name}!'
@@ -455,7 +455,7 @@ the file has them, which they are in every other style.</p>
 when you move the choice onto a symbol style. If you'd like symbols, raise the punctuation level
 while you read changes, or use Short words.</p>
 <p>A new file is all added lines:</p>
-<section role="region" aria-label="Code block, Text, 6 lines"><pre><code class="language-text">C:\Projects\app\NOTES.md: created, 3 lines.
+<section role="region" aria-label="Code block, 6 lines"><pre><code>C:\Projects\app\NOTES.md: created, 3 lines.
 
 Lines 1 to 3:
 Added: # Notes

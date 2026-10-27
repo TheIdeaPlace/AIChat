@@ -401,27 +401,23 @@ yet.
 Press **Ctrl+Shift+D** (on a Mac, Cmd+Shift+D), or choose View, Changed Files. It opens Lists on
 Changed Files, for the selected message's turn: everything from your message to the AI's reply.
 With no message selected, it shows your latest message's turn. If that turn changed nothing, it
-shows the whole chat. **Show items from** (Alt+S) switches between **This message** and **The
-whole chat**.
+shows the whole chat. **Show items from** (Alt+S) switches between **This message** and
+**The whole chat**.
 
 When a turn in the chat you have open finishes and changed files, you hear a summary after the
 reply, at the Full announcement level; otherwise it goes to the status bar:
 
-```text
-Fix the greeting: Changed 2 files: greet.py, 2 lines added, 1 removed; NOTES.md, created, 3 lines. Ctrl+Shift+D shows the changes.
-```
+    Fix the greeting: Changed 2 files: greet.py, 2 lines added, 1 removed; NOTES.md, created, 3 lines. Ctrl+Shift+D shows the changes.
 
 ### The file list
 
 Each file is one row: its name, how many lines were added and removed, and its folder within the
 chat's folder. Files are in the order they were first changed.
 
-```text
-greet.py, 2 lines added, 1 removed, in src
-NOTES.md, created, 3 lines
-old-notes.txt, deleted
-settings.json, no lines changed
-```
+    greet.py, 2 lines added, 1 removed, in src
+    NOTES.md, created, 3 lines
+    old-notes.txt, deleted
+    settings.json, no lines changed
 
 - **"created"** is a new file, with how many lines it has.
 - **"deleted"** is a file Copilot deleted.
@@ -454,57 +450,49 @@ each: a greeting function whose print line was replaced with two lines.
 
 **Words** (the default): the plainest, and spoken at any punctuation level.
 
-```text
-C:\Projects\app\src\greet.py: 2 lines added, 1 removed.
+    C:\Projects\app\src\greet.py: 2 lines added, 1 removed.
 
-Lines 12 to 16:
-Unchanged: def greet(name):
-Removed:     print('Hello ' + name)
-Added:     message = f'Hello, {name}!'
-Added:     print(message)
-Unchanged: blank line
-Unchanged: def main():
-```
+    Lines 12 to 16:
+    Unchanged: def greet(name):
+    Removed:     print('Hello ' + name)
+    Added:     message = f'Hello, {name}!'
+    Added:     print(message)
+    Unchanged: blank line
+    Unchanged: def main():
 
 **Short words:** the same, with shorter words that are still spoken at any punctuation level.
 
-```text
-Lines 12 to 16:
-Same def greet(name):
-Del     print('Hello ' + name)
-Add     message = f'Hello, {name}!'
-Add     print(message)
-Same blank line
-Same def main():
-```
+    Lines 12 to 16:
+    Same def greet(name):
+    Del     print('Hello ' + name)
+    Add     message = f'Hello, {name}!'
+    Add     print(message)
+    Same blank line
+    Same def main():
 
 **Diff symbols:** the marks git and GitHub use, "+" for added and "-" for removed, with "=" for
 an unchanged line, where git leaves a space.
 
-```text
-Lines 12 to 16:
-= def greet(name):
--     print('Hello ' + name)
-+     message = f'Hello, {name}!'
-+     print(message)
-= blank line
-= def main():
-```
+    Lines 12 to 16:
+    = def greet(name):
+    -     print('Hello ' + name)
+    +     message = f'Hello, {name}!'
+    +     print(message)
+    = blank line
+    = def main():
 
 **Diff symbols with changed lines:** as Diff symbols, but a removed line followed by the line
 that replaced it reads as a pair, "!-" for the old line, then "!+" for the new one. Lines with
 no partner keep "+" or "-". Here the old print line pairs with the first new line, and the second
 new line is simply added.
 
-```text
-Lines 12 to 16:
-= def greet(name):
-!-     print('Hello ' + name)
-!+     message = f'Hello, {name}!'
-+     print(message)
-= blank line
-= def main():
-```
+    Lines 12 to 16:
+    = def greet(name):
+    !-     print('Hello ' + name)
+    !+     message = f'Hello, {name}!'
+    +     print(message)
+    = blank line
+    = def main():
 
 When several lines are replaced, the pairs come one after another, each old line followed by
 its new one: "!- old 1", "!+ new 1", "!- old 2", "!+ new 2". So these lines aren't in the order
@@ -517,14 +505,12 @@ while you read changes, or use Short words.
 
 A new file is all added lines:
 
-```text
-C:\Projects\app\NOTES.md: created, 3 lines.
+    C:\Projects\app\NOTES.md: created, 3 lines.
 
-Lines 1 to 3:
-Added: # Notes
-Added: blank line
-Added: First draft.
-```
+    Lines 1 to 3:
+    Added: # Notes
+    Added: blank line
+    Added: First draft.
 
 ### Copying changes
 
