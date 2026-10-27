@@ -551,3 +551,28 @@ def test_other_queued_commands_without_an_origin_are_skipped():
                                         "prompt": "   "}),
     ))
     assert tr.visible(show_activity=True) == []
+
+
+def test_a_message_taken_in_mid_turn_stays_in_its_turn():
+    # Part of the work it joined: Changes and the task list for that turn
+    # still cover all of it (#410).
+    tr = parse_lines(lines(
+        user_text("Fix the tests"),
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": "Also update the README"}),
+        assistant_block(text_block("Done.")),
+    ))
+    assert tr.turns == 1
+    assert {m.turn for m in tr.visible()} == {1}
+
+
+def test_harness_prompts_taken_in_mid_turn_are_not_yours():
+    tr = parse_lines(lines(
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": "<ci-monitor-event>checks passed</ci-monitor-event>"}),
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": '<agent-message from="helper">report</agent-message>'}),
+    ))
+    shown = tr.visible(show_activity=True)
+    assert [m.kind for m in shown] == ["event"]
+    assert tr.turns == 0

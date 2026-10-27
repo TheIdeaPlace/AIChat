@@ -183,7 +183,7 @@ def message_properties(message: ChatMessage, position: int, total: int,
     """A message's properties; ``position`` counts from 1 in the messages
     list as shown, of ``total``."""
     text = message.text or ""
-    lines = [f"From: {message.label}"]
+    lines = [f"From: {'You' if message.kind == STEERING else message.label}"]
     moment = message_moment(message.timestamp)
     if moment is not None:
         now = now or datetime.now(moment.tzinfo)

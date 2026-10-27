@@ -250,3 +250,13 @@ def test_a_task_waiting_for_permission_is_still_in_progress(provider):
     info = _info(source=OWN, provider=provider, key=f'{provider}:cli-a', state=NEEDS_YOU)
     rows = properties.session_properties(info, transcript, '', 0, None, 0, now_ms=NOW_MS)
     assert 'Tasks: Task 1 of 1: Run the tests. 0 done.' in rows
+
+
+def test_a_steering_rows_properties_say_where_it_is():
+    from thechatplace.properties import message_properties
+    from thechatplace.transcript import STEERING, ChatMessage
+    row = ChatMessage(STEERING, "Also the docs", key="steering:own-1:0",
+                      sender="waiting for Claude")
+    lines = message_properties(row, 3, 3)
+    assert lines[0] == "From: You"
+    assert "Steered into the running turn: waiting for Claude" in lines

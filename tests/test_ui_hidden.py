@@ -13081,9 +13081,36 @@ def test_two_steers_saying_the_same_go_one_at_a_time(frame, env, fake_runner):
     for _ in range(2):
         frame.reply_text.SetValue("yes")
         frame.on_steer()
+    # Each taken-in moves on the one still waiting, not the same one twice.
+    for _ in range(2):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+            "steer_taken", text="yes", data={"late": False}))
+    assert [e[1] for e in frame._steered["own-1"]] == ["taken in by Claude"] * 2
     frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "yes")]
     frame._drop_steers_in_history()
     assert len(frame._steered["own-1"]) == 1
+
+
+def test_a_steer_waiting_isnt_taken_for_an_earlier_message_saying_the_same(frame, env,
+                                                                         fake_runner):
+    from thechatplace.transcript import USER, ChatMessage
+    _start(frame, fake_runner)
+    frame._chat_loaded = True
+    frame.reply_text.SetValue("yes")
+    frame.on_steer()
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "yes")]
+    assert not frame._drop_steers_in_history()  # not taken in yet
+
+
+def test_another_chats_steer_news_leaves_this_list_alone(frame, env, fake_runner,
+                                                       monkeypatch):
+    _start(frame, fake_runner)
+    calls = []
+    monkeypatch.setattr(frame, "_rebuild_chat_list", lambda *a, **k: calls.append(a))
+    frame._steer_row("other-chat", "Also the docs", "waiting for Claude")
+    frame._steer_status("other-chat", "Also the docs", "taken in by Claude")
+    frame._steers_ended("other-chat")
+    assert calls == []
 
 
 def test_a_steering_row_keeps_new_messages_inserted_above_it(frame, env, fake_runner,

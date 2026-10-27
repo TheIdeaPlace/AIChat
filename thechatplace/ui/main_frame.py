@@ -4710,10 +4710,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         it: one more of your messages with its text than when it was
         steered. Two steers saying the same go one at a time. Counted only
         once the chat has loaded, so a message from before can't count."""
-        info = self._open
-        if info is None or not self._chat_loaded:
+        key = self._open_steer_key()
+        if key is None or not self._chat_loaded:
             return False
-        key = info.cli_session_id if info.provider == "claude" else info.key
         entries = self._steered.get(key)
         if not entries:
             return False
@@ -4724,7 +4723,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 entry[2] = self._your_messages_saying(text)  # steered before it loaded
             ahead = earlier.get(text, 0)
             earlier[text] = ahead + 1
-            if self._your_messages_saying(text) - entry[2] <= ahead:
+            # Only once it's known to be on its way (taken in, accepted):
+            # the history can be catching up on an earlier message saying
+            # the same thing.
+            if (self._steer_waiting(entry)
+                    or self._your_messages_saying(text) - entry[2] <= ahead):
                 kept.append(entry)
         if len(kept) == len(entries):
             return False
@@ -4734,32 +4737,51 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._steered.pop(key, None)
         return True
 
+    def _open_steer_key(self) -> Optional[str]:
+        """The key the loaded chat's steered messages are kept under: as its
+        queue's (Claude's session id, or a runtime chat's own key)."""
+        info = self._open
+        if info is None:
+            return None
+        return info.cli_session_id if info.provider == "claude" else info.key
+
+    @staticmethod
+    def _steer_waiting(entry: list) -> bool:
+        return entry[1].startswith("waiting for")
+
+    def _steers_changed(self, key: str) -> None:
+        """Show the change, only in the chat it belongs to: another chat's
+        list (or its "Loading messages…") must stay as it is."""
+        if key == self._open_steer_key():
+            self._rebuild_chat_list()
+
     def _steer_row(self, key: str, text: str, where: str) -> None:
         """Show a steered message at once, until its chat's history has it."""
         seen = self._your_messages_saying(text) if self._chat_loaded else None
         self._steered.setdefault(key, []).append([text, where, seen])
-        self._rebuild_chat_list()
+        self._steers_changed(key)
 
     def _steer_status(self, key: str, text: str, where: Optional[str]) -> None:
         """Say where a steered message is now, or (``where`` None) drop its
-        row: it came back to you, or the history has it."""
+        row: it came back to you, or the history has it. With two saying the
+        same, it's the one still waiting that moves on, or goes."""
         entries = self._steered.get(key, [])
-        for entry in entries:
-            if entry[0] == text:
-                if where is None:
-                    entries.remove(entry)
-                else:
-                    entry[1] = where
-                break
+        same = [e for e in entries if e[0] == text]
+        entry = next((e for e in same if self._steer_waiting(e)), same[0] if same else None)
+        if entry is not None:
+            if where is None:
+                entries.remove(entry)
+            else:
+                entry[1] = where
         if not entries:
             self._steered.pop(key, None)
-        self._rebuild_chat_list()
+        self._steers_changed(key)
 
     def _steers_ended(self, key: str) -> None:
         """The turn is over: its history shows what it took in, and any it
         didn't came back to you, so the rows go."""
         if self._steered.pop(key, None) is not None:
-            self._rebuild_chat_list()
+            self._steers_changed(key)
 
     def _selected_queued(self) -> Optional[int]:
         """Which queued message is selected in the messages list, if one is."""
