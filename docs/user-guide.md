@@ -82,8 +82,9 @@ Your browser shows ChatGPT's sign-in page, and The Chat Place checks again when 
 If Codex isn't installed or its status can't be read, it says what is needed.
 
 For GitHub Copilot CLI, choose Help, **Copilot Sign-in**. It says which GitHub account Copilot
-CLI is signed in to. If it isn't signed in, it offers to open `copilot login` in its own window:
-your browser shows GitHub's sign-in page, and The Chat Place checks again when you've finished.
+CLI is signed in to. If it isn't signed in, it offers to open `copilot login` in its own window.
+Follow its steps, which may give you a code to enter on GitHub's sign-in page, and The Chat Place
+checks again when you've finished.
 If Copilot CLI isn't installed, it gives the command to install it, and it says so when the only
 copy it finds is an npm install, which isn't used. It shows the account Copilot CLI has
 recorded; whether that sign-in still works is only known once a Copilot chat sends a message.

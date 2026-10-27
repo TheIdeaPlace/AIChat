@@ -64,6 +64,16 @@ def _read_config(path: Path) -> dict:
 
 
 def check(executable: Optional[str] = None, home: Optional[Path] = None, which=None) -> SignIn:
+    """Never raises: anything unexpected is "can't tell", so the Help item
+    and the recheck after signing in (on a thread of its own) always get an
+    answer."""
+    try:
+        return _check(executable, home, which)
+    except Exception:  # noqa: BLE001 - an odd config.json must not end the check
+        return SignIn(False, problem="Copilot CLI's settings file isn't in the expected form")
+
+
+def _check(executable: Optional[str], home: Optional[Path], which) -> SignIn:
     executable = executable or platform_paths.find_copilot()
     if not executable:
         unusable = _unusable_copilot(which)
@@ -91,10 +101,16 @@ def check(executable: Optional[str] = None, home: Optional[Path] = None, which=N
     host = host.strip() if isinstance(host, str) and host.strip() else GITHUB
     # The last account is only signed in while Copilot still lists it: a
     # sign-out may leave lastLoggedInUser behind.
+    # GitHub treats logins and hosts as case-insensitive.
     users = data.get("loggedInUsers")
+    if users is not None and not isinstance(users, list):
+        return SignIn(False, problem=f"Copilot CLI's settings file ({path}) "
+                                     "isn't in the expected form")
     if isinstance(users, list) and not any(
-            isinstance(entry, dict) and entry.get("login") == login
-            and _host_name(entry.get("host") or GITHUB) == _host_name(host)
+            isinstance(entry, dict) and isinstance(entry.get("login"), str)
+            and entry["login"].strip().casefold() == login.casefold()
+            and _host_name(entry.get("host") if isinstance(entry.get("host"), str) else GITHUB)
+            == _host_name(host)
             for entry in users):
         return SignIn(True)
     return SignIn(True, signed_in=True, login=login, host=host)
@@ -106,7 +122,7 @@ def _looks_like_npm(path: str) -> bool:
 
 
 def _host_name(host: str) -> str:
-    return host.split("://", 1)[-1].rstrip("/")
+    return host.split("://", 1)[-1].rstrip("/").casefold()
 
 
 def describe(status: SignIn) -> str:
@@ -122,11 +138,15 @@ def describe(status: SignIn) -> str:
     if not status.known:
         return f"Couldn't tell whether Copilot CLI is signed in: {status.problem}."
     if status.signed_in:
-        return f"Copilot CLI is signed in to {_host_name(status.host)} as {status.login}."
-    # Provisional (#391): what a chat gets when Copilot isn't signed in is
-    # still to be seen on a clean machine.
+        return (f"Copilot CLI is signed in to {status.host.split('://', 1)[-1].rstrip('/')} "
+                f"as {status.login}.")
+    # Seen on a machine nobody had signed in to (#391): config.json then has
+    # no loggedInUsers, and Copilot refuses session/new with "Authentication
+    # required". Copilot also falls back to the GitHub CLI's (gh) sign-in,
+    # which config.json doesn't record, so say that too.
     return ("Copilot CLI isn't signed in. Copilot chats can still be read, but starting one "
-            "or sending a message needs you to sign in to GitHub.")
+            "or sending a message needs you to sign in to GitHub. If you've signed in with "
+            "the GitHub CLI (gh), Copilot may use that instead.")
 
 
 def login_command(executable: Optional[str] = None) -> Optional[List[str]]:

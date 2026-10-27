@@ -5986,8 +5986,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             wx.MessageBox(text, title, wx.OK | wx.ICON_INFORMATION, self)
             return
         answer = wx.MessageBox(
-            f"{text}\n\nSign in now? A window opens, and your browser shows GitHub's sign-in "
-            "page. When you've finished, The Chat Place checks again and says so.",
+            f"{text}\n\nSign in now? A window opens with Copilot's sign-in steps, which may give "
+            "you a code to enter on GitHub's sign-in page. When you've finished, The Chat Place "
+            "checks again and says so.",
             title, wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION, self)
         if answer != wx.YES:
             return

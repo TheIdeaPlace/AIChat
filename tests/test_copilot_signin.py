@@ -119,3 +119,42 @@ def test_the_install_command_suits_the_computer(monkeypatch):
 
 def test_login_command():
     assert copilot_signin.login_command("copilot") == ["copilot", "login"]
+
+
+def test_an_odd_config_is_cant_tell_rather_than_an_error(tmp_path):
+    """A host that isn't text, or JSON nested too deeply to read, must still
+    give an answer: the recheck after signing in runs on a thread of its own
+    and would otherwise end silently (#397)."""
+    write_config(tmp_path, {
+        "loggedInUsers": [{"host": 5, "login": "synthetic-user"}],
+        "lastLoggedInUser": {"host": "https://github.com", "login": "synthetic-user"}})
+    status = copilot_signin.check("copilot", home=tmp_path)
+    assert status.signed_in  # a host that isn't text counts as github.com, as a missing one does
+    (tmp_path / "config.json").write_text("[" * 100_000 + "]" * 100_000, encoding="utf-8")
+    status = copilot_signin.check("copilot", home=tmp_path)
+    assert not status.known and status.problem
+
+
+def test_logged_in_users_that_isnt_a_list_is_cant_tell(tmp_path):
+    write_config(tmp_path, {
+        "loggedInUsers": {"login": "synthetic-user"},
+        "lastLoggedInUser": {"host": "https://github.com", "login": "synthetic-user"}})
+    status = copilot_signin.check("copilot", home=tmp_path)
+    assert not status.known
+
+
+def test_logins_and_hosts_match_whatever_their_case(tmp_path):
+    write_config(tmp_path, {
+        "loggedInUsers": [{"host": "https://GitHub.com/", "login": "Synthetic-User"}],
+        "lastLoggedInUser": {"host": "https://github.com", "login": "synthetic-user"}})
+    status = copilot_signin.check("copilot", home=tmp_path)
+    assert status.signed_in
+    assert copilot_signin.describe(status) == (
+        "Copilot CLI is signed in to github.com as synthetic-user.")
+
+
+def test_not_signed_in_mentions_the_github_cli(tmp_path):
+    """Copilot also uses the GitHub CLI's sign-in, which config.json doesn't
+    record (seen on a machine nobody had signed in to, #391)."""
+    status = copilot_signin.check("copilot", home=tmp_path)
+    assert "GitHub CLI (gh)" in copilot_signin.describe(status)

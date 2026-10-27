@@ -912,8 +912,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   account it's signed in to, as Copilot CLI records it in its own settings file; it never starts
   Copilot or sends a message. If it isn't signed in, it offers to run `copilot login` in its own
   window, with the environment the app's own Copilot chats get (no `GH_TOKEN` or other token
-  variables); your browser shows GitHub's sign-in page, and The Chat Place checks again when it
-  finishes. If Copilot CLI isn't installed, it gives the install command, and says when the only
+  variables). Follow its steps, which may give you a code to enter on GitHub's sign-in page;
+  The Chat Place checks again when it finishes. If Copilot CLI isn't installed, it gives the install command, and says when the only
   copy found is an npm install, which isn't used.
 - **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the
   keyboard shortcuts, or as plain text (Alt+P). It's part of the app, so it works offline. It's
