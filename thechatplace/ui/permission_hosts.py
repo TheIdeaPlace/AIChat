@@ -11,13 +11,13 @@ from .. import chat_permissions, claude_settings, codex_saved_rules
 from ..claude_cli import PERMISSION_MODES, normalize_permission_mode
 from ..sessions import NEEDS_YOU, WORKING
 
-#: Codex's choices in Change Permission Mode, and how they read.
+#: Codex's sandbox choices, also used by agent-conversation templates.
 CODEX_MODES = [(('read-only', 'on-request'), 'Read-only; asks before allowing changes'),
                (('workspace-write', 'on-request'),
                 'Can edit files in this folder; asks before anything else')]
 
-# Keep agent-conversation templates' sandbox choices separate: selecting a
-# template must not opt someone into automatic review (#358).
+# Human review comes first so agent-conversation templates choose it for
+# either sandbox; automatic review is an explicit choice (#358).
 CODEX_REVIEW_MODES = [(value + ('user',), label) for value, label in CODEX_MODES] + [
     (('read-only', 'on-request', 'auto_review'), 'Read-only; automatic approval review'),
     (('workspace-write', 'on-request', 'auto_review'), 'Can edit files in this folder; automatic approval review')]

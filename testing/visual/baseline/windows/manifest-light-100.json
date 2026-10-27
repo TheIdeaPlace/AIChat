@@ -1210,6 +1210,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "An own session mid-turn with a steered message not yet taken in"
+  },
+  "agent-new-auto-review": {
+   "kind": "dialog",
+   "png": "agent-new-auto-review-light-100.png",
+   "json": "agent-new-auto-review-light-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Three new Codex agents with automatic approval review selected"
   }
  },
  "seconds": 94.1
