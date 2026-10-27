@@ -519,3 +519,10 @@ def test_unchanged_and_touched_transcripts_do_not_reparse_or_reopen_repeatedly(t
     assert not reader.refresh() and reader._parser is parser
     assert len(opens) == 1
     assert not reader.refresh() and len(opens) == 1
+
+
+def test_a_steering_row_says_where_the_message_is():
+    from thechatplace.transcript import STEERING, TAIL_KINDS, ChatMessage
+    row = ChatMessage(STEERING, "Also the docs", sender="waiting for Claude")
+    assert row.list_line() == "Steering, waiting for Claude: Also the docs"
+    assert STEERING in TAIL_KINDS

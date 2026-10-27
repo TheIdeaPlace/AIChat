@@ -64,8 +64,12 @@ PEER = "peer"
 #: Not from the transcript: a message of yours waiting for the turn to end
 #: (#50), shown at the end of the messages list.
 QUEUED = "queued"
+#: Not from the transcript either: a message you steered into the running
+#: turn (#238, #239), shown at the end of the messages list until the chat's
+#: own history has it. ``ChatMessage.sender`` says where it is.
+STEERING = "steering"
 PERMISSION_NOTICE = "permission_notice"
-TAIL_KINDS = frozenset({QUEUED, PERMISSION_NOTICE})
+TAIL_KINDS = frozenset({QUEUED, STEERING, PERMISSION_NOTICE})
 TOOL_RESULT = "tool_result"
 CONTEXT = "context"
 EVENT = "event"
@@ -89,6 +93,7 @@ LABELS = {
     TOOL: "Tool",
     PEER: "From another session",
     QUEUED: "Queued",
+    STEERING: "Steering",
     PERMISSION_NOTICE: "The Chat Place",
     TOOL_RESULT: "Tool result",
     CONTEXT: "Context",
@@ -133,6 +138,8 @@ class ChatMessage:
     def label(self) -> str:
         if self.kind == PEER and self.sender:
             return f"From {self.sender}"
+        if self.kind == STEERING and self.sender:
+            return f"Steering, {self.sender}"
         if self.kind == USER and self.sender:
             # In an agent conversation (#248): who your words went to.
             return f"You, to {self.sender}"

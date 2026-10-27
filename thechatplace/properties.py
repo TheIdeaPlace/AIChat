@@ -19,7 +19,8 @@ from .codeblocks import find_code_blocks
 from .export import message_moment
 from .message_links import find_links
 from .sessions import STATUS_UNAVAILABLE, WORKING, NEEDS_YOU, SessionInfo, how_long_ago, state_with_detail
-from .transcript import ASSISTANT, PERMISSION_NOTICE, QUEUED, TAIL_KINDS, TOOL, USER, ChatMessage, Transcript
+from .transcript import (ASSISTANT, PERMISSION_NOTICE, QUEUED, STEERING, TAIL_KINDS, TOOL, USER,
+                         ChatMessage, Transcript)
 from . import tasklist, usage
 from .ui_text import codex_effort_label
 
@@ -198,6 +199,8 @@ def message_properties(message: ChatMessage, position: int, total: int,
     lines.append(f"Code blocks: {len(find_code_blocks(text)):,}")
     if message.kind == QUEUED:
         lines.append("Queued: yes, sent when Claude's turn ends")
+    elif message.kind == STEERING:
+        lines.append(f"Steered into the running turn: {message.sender or 'yes'}")
     elif message.kind == PERMISSION_NOTICE:
         lines.append("Allowed by The Chat Place, for a rule kept with this chat")
     elif message.key:  # a queued row's key is the app's own, not Claude Code's

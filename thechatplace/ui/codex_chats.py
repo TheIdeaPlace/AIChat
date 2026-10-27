@@ -301,6 +301,7 @@ class CodexChats:
         as a new turn without Kelly choosing to."""
         key = record.to_info().key
         name = provider_name(record.provider)
+        self._steer_row(key, text, f'waiting for {name}')
 
         def action():
             try:
@@ -315,6 +316,9 @@ class CodexChats:
             return None
 
         def done(refused, error):
+            # Accepted, it stays until the chat's history has it; otherwise
+            # it's back with you, in the reply box or the queue.
+            self._steer_status(key, text, None if error or refused else f'accepted by {name}')
             if error:
                 # Not known whether it arrived: back in the box, never resent.
                 if index is None:
@@ -481,6 +485,13 @@ class CodexChats:
             return
         previous = self._codex_states.get(key)
         self._codex_states[key] = state
+        steered = getattr(self, '_steered', {}).get(key)
+        if steered and state.outcome != 'inProgress':
+            # The turn is over: its history shows what it took in (#239).
+            # One Codex hasn't answered about yet stays until it does.
+            steered[:] = [e for e in steered if e[1] == f'waiting for {name}']
+            if not steered:
+                self._steered.pop(key, None)
         unsent = state.unsent
         if unsent:
             # An agent conversation's own message goes back to it (#248).

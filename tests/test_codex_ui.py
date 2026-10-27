@@ -50,6 +50,10 @@ class Window(CodexChats):
         self.notified.append((args, kwargs))
     def _gone(self):
         return False
+    def _steer_row(self, key, text, where):
+        self.steer_rows = getattr(self, 'steer_rows', []) + [(text, where)]
+    def _steer_status(self, key, text, where):
+        self.steer_rows = getattr(self, 'steer_rows', []) + [(text, where)]
     def _codex_work(self, action, done):
         self.work.append((action, done))
     def _feedback(self, text):
@@ -785,3 +789,22 @@ def test_a_queued_steer_that_stop_sent_back_says_where_it_is():
     w._steer_codex_owned(w.record, 'Queued one', index=0)
     _run_work(w)
     assert w.said[-1].endswith('It is back in the reply box.')
+
+
+@pytest.mark.parametrize('outcome', ['accepted', 'refused', 'unconfirmed'])
+def test_a_steered_message_shows_until_its_fate_is_known(outcome):
+    from thechatplace.providers.codex_rpc import CodexSteerRefused, CodexConnectionFailure
+    w = Window()
+
+    def act(*a):
+        if outcome == 'refused':
+            raise CodexSteerRefused('not_running')
+        if outcome == 'unconfirmed':
+            raise CodexConnectionFailure('stream_closed')
+        return 'turn'
+    w.sessions = SimpleNamespace(owned_action=act)
+    w._steer_codex_owned(w.record, 'Also the docs')
+    assert w.steer_rows == [('Also the docs', 'waiting for Codex')]  # at once
+    _run_work(w)
+    expected = 'accepted by Codex' if outcome == 'accepted' else None
+    assert w.steer_rows[-1] == ('Also the docs', expected)

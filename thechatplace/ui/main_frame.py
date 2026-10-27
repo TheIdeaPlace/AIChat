@@ -85,7 +85,8 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
-                          PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, TAIL_KINDS, TOOL, TOOL_RESULT, ChatMessage,
+                          PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, STEERING, TAIL_KINDS, TOOL, TOOL_RESULT, USER,
+                          ChatMessage,
                           clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
@@ -313,6 +314,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._drafts: Dict[str, str] = {}  # unsent reply text, per session
         # Sent during a turn, in order; they go together when it ends (#50).
         self._queued: Dict[str, List[str]] = {}
+        #: Steered messages not yet in the chat's own history (#238, #239),
+        #: by the key its queue uses: [text, where it is, how many of your
+        #: messages had that text when it was steered]. Shown as rows after
+        #: the messages until the history has one more.
+        self._steered: Dict[str, List[list]] = {}
         self._attachments: Dict[str, List[str]] = {}  # per session, for its next message
         # Search (#21): text the session list is filtered by, and the last
         # text looked for in the messages.
@@ -4337,7 +4343,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self._agent_rename_member("claude", session_id, reported)
                 self._runners[reported] = self._runners.pop(session_id)
                 self._denials[reported] = self._denials.pop(session_id, [])
-                for per_session in (self._drafts, self._queued, self._pending,
+                for per_session in (self._drafts, self._queued, self._steered, self._pending,
                                     self._said_problems):
                     if session_id in per_session:
                         per_session[reported] = per_session.pop(session_id)
@@ -4435,6 +4441,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         if event.kind == "steer_taken":
             data = event.data or {}
+            self._steer_status(session_id, event.text, "taken in by Claude")
             said = announce.steer_taken_text(title, bool(data.get("late")))
             # Late, the reply Claude had just finished is said first: the
             # steered message's answer becomes the turn's (#238).
@@ -4495,6 +4502,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                         p for p in waiting_now if p not in attached_back]
                     if is_open:
                         self._show_attachments()
+            self._steers_ended(session_id)
             # Steered but never taken in (Stop, or the turn ended first): it
             # comes back rather than being lost (#238).
             untaken = list(getattr(runner, "steering", ()) or ()) if runner is not None else []
@@ -4669,12 +4677,58 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 return []
             notices = [ChatMessage(PERMISSION_NOTICE, text, key=f"notice:{info.key}:{turn}:{identity}")
                        for turn, identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
-            return notices + [ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
-                              for i, text in enumerate(state.queued)]
+            return notices + self._steered_rows(info.key) + [
+                ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
+                for i, text in enumerate(state.queued)]
         if info is None or not info.is_own or info.provider != "claude":
             return []
-        return [ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")
-                for i, text in enumerate(self._queued.get(info.cli_session_id, []))]
+        return self._steered_rows(info.cli_session_id) + [
+            ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")
+            for i, text in enumerate(self._queued.get(info.cli_session_id, []))]
+
+    def _your_messages_saying(self, text: str) -> int:
+        """How many of your messages in the loaded chat say ``text``."""
+        text = text.strip()
+        return sum(1 for m in self._chat_messages if m.kind == USER and m.text.strip() == text)
+
+    def _steered_rows(self, key: str) -> List[ChatMessage]:
+        """Steered messages as rows, readable like any other (#238, #239).
+        One goes once the chat's history has it."""
+        entries = self._steered.get(key)
+        if not entries:
+            return []
+        entries[:] = [e for e in entries if self._your_messages_saying(e[0]) <= e[2]]
+        if not entries:
+            self._steered.pop(key, None)
+            return []
+        return [ChatMessage(STEERING, text, key=f"steering:{key}:{i}", sender=where)
+                for i, (text, where, _seen) in enumerate(entries)]
+
+    def _steer_row(self, key: str, text: str, where: str) -> None:
+        """Show a steered message at once, until its chat's history has it."""
+        self._steered.setdefault(key, []).append([text, where, self._your_messages_saying(text)])
+        self._rebuild_chat_list()
+
+    def _steer_status(self, key: str, text: str, where: Optional[str]) -> None:
+        """Say where a steered message is now, or (``where`` None) drop its
+        row: it came back to you, or the history has it."""
+        entries = self._steered.get(key, [])
+        for entry in entries:
+            if entry[0] == text:
+                if where is None:
+                    entries.remove(entry)
+                else:
+                    entry[1] = where
+                break
+        if not entries:
+            self._steered.pop(key, None)
+        self._rebuild_chat_list()
+
+    def _steers_ended(self, key: str) -> None:
+        """The turn is over: its history shows what it took in, and any it
+        didn't came back to you, so the rows go."""
+        if self._steered.pop(key, None) is not None:
+            self._rebuild_chat_list()
 
     def _selected_queued(self) -> Optional[int]:
         """Which queued message is selected in the messages list, if one is."""
@@ -4775,6 +4829,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._drafts.pop(session_id, None)
         if attached:
             self._clear_attachments(session_id)
+        self._steer_row(session_id, text, "waiting for Claude")
         self._update_send_state()
         self._feedback(announce.steered_text(info.title, message, self.speech.announce,
                                              self.speech.announce_own))
@@ -4820,7 +4875,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         del waiting[index]
         if not waiting:
             self._queued.pop(info.cli_session_id, None)
-        self._rebuild_chat_list()
+        self._steer_row(info.cli_session_id, text, "waiting for Claude")
         self._update_send_state()
         # It was read back when it was queued.
         self._feedback(announce.steered_text(info.title, text, self.speech.announce, False))

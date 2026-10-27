@@ -13037,3 +13037,32 @@ def test_steer_on_a_queued_message_after_the_turn_ended_says_so(frame, env, fake
     frame.steer_queued()
     assert env["feedback"][-1] == "The turn has ended: the queued message goes next."
     assert frame._queued == {"own-1": ["second"]}
+
+
+def test_a_steered_message_is_a_row_until_the_chat_has_it(frame, env, fake_runner):
+    # Readable once sent, like a queued message (#238).
+    from thechatplace.transcript import USER, ChatMessage
+    _start(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
+    assert last == "Steering, waiting for Claude: Also update the README"
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="Also update the README", data={"late": False}))
+    last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
+    assert last == "Steering, taken in by Claude: Also update the README"
+    # The transcript now has it: the row goes, so it isn't there twice.
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "Also update the README")]
+    frame._rebuild_chat_list()
+    assert not [frame.chat_list.GetString(i) for i in range(frame.chat_list.GetCount())
+                if frame.chat_list.GetString(i).startswith("Steering")]
+    assert frame._steered == {}
+
+
+def test_steering_rows_go_when_the_turn_ends(frame, env, fake_runner):
+    runner = _start(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    runner.steered = []  # taken in, as far as the runner knows
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert frame._steered == {}
