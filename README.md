@@ -917,8 +917,11 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Copilot or sends a message. If it isn't signed in, it offers to run `copilot login` in its own
   window, with the environment the app's own Copilot chats get (no `GH_TOKEN` or other token
   variables). Follow its steps, which may give you a code to enter on GitHub's sign-in page;
-  The Chat Place checks again when it finishes. If Copilot CLI isn't installed, it gives the install command, and says when the only
-  copy found is an npm install, which isn't used.
+  The Chat Place checks again when it finishes. If Copilot CLI isn't installed, it gives the
+  install command, and says when the only copy found is an npm install, which isn't used. When
+  Copilot refuses because it isn't signed in, a chat says so and points here, instead of
+  "Copilot couldn't do that."; the message it refused isn't sent again, and messages still
+  waiting come back to the message box, unsent.
 - **User Guide** (Help menu, Alt+H, G) shows the user guide as a page, read by heading like the
   keyboard shortcuts, or as plain text (Alt+P). It's part of the app, so it works offline. It's
   edited in `thechatplace/assets/user-guide.md`; `python tools/make_docs.py` makes the copies in
@@ -1207,7 +1210,9 @@ instead of waiting. With no turn running, Ctrl+Alt+Enter simply sends, as Ctrl+E
 - **Codex chats:** Codex is asked to take the message into the turn, and The Chat Place says
   "Steered" once Codex accepts it. If the turn has just ended, or Codex is still taking an
   earlier steered message, the message comes back to the reply box (a queued one stays queued)
-  with the reason. It is never sent as a new turn on its own.
+  with the reason. If Codex doesn't confirm it (an error, or the connection is lost), the message
+  comes back to the reply box, even a queued one, with a warning to check the chat's history
+  first, since Codex may have it. It is never sent as a new turn on its own.
 - **Copilot chats** can't take a message during a turn yet: Ctrl+Enter queues it.
 
 Turn status (Ctrl+Shift+T) and the turn status line say when a steered message hasn't been taken
