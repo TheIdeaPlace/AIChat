@@ -303,16 +303,19 @@ class CodexChats:
         name = provider_name(record.provider)
         self._steer_row(key, text, f'waiting for {name}')
 
+        accepted = []  # the turn Codex took it into
+
         def action():
             try:
                 if index is None:
-                    self.sessions.owned_action('steer', record, text)
+                    turn = self.sessions.owned_action('steer', record, text)
                 else:
-                    self.sessions.owned_action('steer_queued', record, index, text)
+                    turn = self.sessions.owned_action('steer_queued', record, index, text)
             except (CodexSteerRefused, CodexTurnRejected) as exc:
                 # ``returned``: a queued one that Stop sent back to the box.
                 return (safe_reason(exc) or f'{name} could not take it.',
                         getattr(exc, 'returned', False))
+            accepted.append(turn)
             return None
 
         def done(refused, error):
@@ -320,8 +323,10 @@ class CodexChats:
             # it's back with you, in the reply box or the queue.
             self._steer_status(key, text, None if error or refused else f'accepted by {name}')
             state = self._codex_states.get(key)
-            if not (error or refused) and (state is None or state.outcome != 'inProgress'):
-                # Accepted after the turn ended (Stop, say): it may never be
+            if not (error or refused) and (state is None or state.outcome != 'inProgress'
+                                           or (accepted and state.turn_id != accepted[0])):
+                # Accepted into a turn that has ended (Stop, say), even if a
+                # queued message's turn has started since: it may never be
                 # used, so the history read next decides where it goes.
                 self._steers_turn_over(key)
             if error:

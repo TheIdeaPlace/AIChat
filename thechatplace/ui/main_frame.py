@@ -1924,6 +1924,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if first_load:
             self._edits_said = len(self._chat_edits)  # what's there is old news
         if not changed and not first_load:
+            # A read that found nothing new still counts: a steer whose turn
+            # ended is settled by it (#410).
+            self._history_reads += 1
+            if self._drop_steers_in_history():
+                self._rebuild_chat_list()
             if self._changes_due:
                 self._say_changes(generation)
             return
@@ -4726,6 +4731,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             text = entry[0]
             if entry[2] is None:
                 entry[2] = self._your_messages_saying(text)  # steered before it loaded
+                if entry[3] is not None:
+                    # Counted from this same read, which may already have it:
+                    # the next read decides.
+                    entry[3] = self._history_reads
             ahead = earlier.get(text, 0)
             earlier[text] = ahead + 1
             # Only once it's known to be on its way (taken in, accepted):
@@ -4750,9 +4759,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if missing:
             self._restore_codex_text(key, missing)
             name = provider_name(self._open.provider)
-            self._feedback(f"{name} accepted your steered message, but the turn ended and the "
-                           "chat's history doesn't show it. It's back in the reply box: check "
-                           "the history before sending it again.")
+            if len(missing) == 1:
+                self._feedback(f"{name} accepted your steered message, but the turn ended and "
+                               "the chat's history doesn't show it. It's back in the reply box: "
+                               "check the history before sending it again.")
+            else:
+                self._feedback(f"{name} accepted {len(missing)} steered messages, but the turn "
+                               "ended and the chat's history doesn't show them. They're back in "
+                               "the reply box: check the history before sending them again.")
         return True
 
     def _steers_turn_over(self, key: str) -> None:
@@ -4761,10 +4775,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         entries = self._steered.get(key)
         if not entries:
             return
+        marked = False
         for entry in entries:
             if not self._steer_waiting(entry) and entry[3] is None:
                 entry[3] = self._history_reads
-        if key == self._open_steer_key():
+                marked = True
+        if marked and key == self._open_steer_key():
             self._refresh_chat()
 
     def _open_steer_key(self) -> Optional[str]:

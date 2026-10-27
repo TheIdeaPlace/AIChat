@@ -13170,3 +13170,20 @@ def test_a_codex_steer_accepted_then_stopped_comes_back_if_the_history_lacks_it(
     frame._history_reads += 1
     assert frame._drop_steers_in_history()
     assert restored == ["Also the docs"]
+
+
+def test_an_unchanged_history_read_still_settles_an_ended_steer(frame, env, monkeypatch):
+    # The read after Stop often finds nothing new: it must still count.
+    import dataclasses
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._open = info
+    frame._chat_loaded = True
+    restored = []
+    frame._restore_codex_text = lambda key, texts: restored.extend(texts)
+    frame._refresh_chat = lambda: None
+    frame._steer_row(info.key, "Also the docs", "accepted by Codex")
+    frame._steers_turn_over(info.key)
+    frame._apply_chat(frame._open_generation, False, list(frame._chat_messages), 0, None)
+    assert restored == ["Also the docs"]

@@ -823,3 +823,22 @@ def test_a_steer_accepted_after_the_turn_ended_waits_for_the_history():
     _run_work(w)
     assert w.steer_rows[-1] == ('Also the docs', 'accepted by Codex')
     assert w.turn_over == ['codex:owned']
+
+
+def test_a_steer_accepted_into_a_turn_since_replaced_is_settled_by_the_history():
+    # Stop, then a queued message's turn started before Codex's answer came.
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-1')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-2', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert w.turn_over == ['codex:owned']
+
+
+def test_a_steer_accepted_into_the_running_turn_waits_for_it():
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-1')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert not getattr(w, 'turn_over', [])
