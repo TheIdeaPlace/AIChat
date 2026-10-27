@@ -826,7 +826,8 @@ def test_a_steer_accepted_after_the_turn_ended_waits_for_the_history():
 
 
 def test_a_steer_accepted_into_a_turn_since_replaced_is_settled_by_the_history():
-    # Stop, then a queued message's turn started before Codex's answer came.
+    # The turn completed and a queued message's turn started before
+    # Codex's answer to the steer came.
     w = Window()
     w._codex_finished = {('codex', 'owned', 'turn-1')}
     w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-1')

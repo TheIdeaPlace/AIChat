@@ -312,6 +312,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._chat_refresh_pending = False
         self._chat_messages: List[ChatMessage] = []
         self._chat_loaded = False
+        #: The loaded chat's history has been read successfully, or is known
+        #: to be empty: a steered message's row is counted against it, so
+        #: Steer waits for this (#410). The session-id rename keeps it: the
+        #: history is the same.
+        self._history_known = False
         self._compaction_notices = {}
         self._compaction_tokens = {}
         self._command_speech = {}
@@ -1539,6 +1544,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._changes_due = False
         self._spoken.clear()
         self._chat_loaded = False
+        self._history_known = False
         self._announce_load = True
         if info.is_own and info.unread:
             self._store_write(self.store.update, info.cli_session_id,
@@ -1604,6 +1610,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._reader = None
         self._chat_messages = []
         self._chat_keys = []
+        self._history_known = False
         self.SetTitle(APP_NAME)
         self._show_no_session()
 
@@ -1821,6 +1828,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     "No messages yet. The first message didn't reach Claude; send it again "
                     "from the reply box.")
             self._chat_loaded = False  # keep looking until it appears
+            self._history_known = True  # nothing in it yet
         elif info.is_own:
             line = ("No transcript found for this session. Claude Code may not have "
                     "saved it, or it was deleted.")
@@ -1909,6 +1917,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self._chat_loaded = True
             return
         first_load = not self._chat_loaded
+        self._history_known = True
         if edits is not None:
             self._chat_edits, self._chat_turns = edits, turns
         if commands is not None:
@@ -4859,6 +4868,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._feedback("Queued message removed. " + (
             f"{len(waiting)} still queued." if waiting else "Nothing is queued now."))
 
+    def _history_unknown(self) -> bool:
+        """True, and said, while the chat's history hasn't been read: a
+        steered message's row is counted against it (#410). The text stays."""
+        if self._history_known:
+            return False
+        self._feedback("This chat is still loading. Steer again in a moment.")
+        return True
+
     def _can_steer(self, info: Optional[SessionInfo]) -> bool:
         """Whether this chat's provider can take a message into a running turn
         (#238, #239)."""
@@ -4877,10 +4894,6 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if info is None or info.provider == AGENTS or not info.is_own:
             self.on_send()
             return
-        if not self._chat_loaded:
-            # Its row is checked against the chat's history (#410).
-            self._feedback("This chat is still loading. Steer again in a moment.")
-            return
         if info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             state = self._codex_states.get(info.key)
             if state is None or state.outcome != 'inProgress':
@@ -4898,6 +4911,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is None:
                 self._feedback("That chat is no longer in The Chat Place's list.")
+                return
+            if self._history_unknown():
                 return
             self.reply_text.SetValue("")
             self._codex_drafts.pop(info.key, None)
@@ -4919,6 +4934,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if not message and not attached:
             self._feedback("Type a message first.")
             self.reply_text.SetFocus()
+            return
+        if self._history_unknown():
             return
         # Attachments go as @"path", as a queued message's do.
         text, _images = attachments.build(message, attached, images_inline=False)
@@ -4950,8 +4967,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         index = self._selected_queued()
         if index is None:
             return
-        if not self._chat_loaded:
-            self._feedback("This chat is still loading. Steer again in a moment.")
+        if self._history_unknown():
             return
         if runtime:
             if not self._can_steer(info):

@@ -1470,7 +1470,7 @@ def test_failed_download_is_reported_and_nothing_applied(frame, env, monkeypatch
 def _start(frame, fake_runner, text="first"):
     select(frame, "Hub probe")
     frame.on_open_session()
-    pump(lambda: frame._chat_loaded)  # Steer waits for the chat to load (#410)
+    pump(lambda: frame._history_known)  # Steer waits for the history (#410)
     frame.reply_text.SetValue(text)
     frame.on_send()
     return fake_runner.instances[-1]
@@ -13276,7 +13276,7 @@ def test_an_unchanged_history_read_still_settles_an_ended_steer(frame, env, monk
 
 def test_steer_waits_for_the_chat_to_load(frame, env, fake_runner):
     runner = _start(frame, fake_runner)
-    frame._chat_loaded = False
+    frame._history_known = False
     frame.reply_text.SetValue("Also the docs")
     frame.on_steer()
     assert frame.reply_text.GetValue() == "Also the docs"
@@ -13301,3 +13301,14 @@ def test_several_stopped_codex_steers_come_back_together(frame, env):
     assert frame._drop_steers_in_history()
     assert restored == ["Also the docs", "And the tests"]
     assert "accepted 2 steered messages" in env["feedback"][-1]
+
+
+def test_steer_with_no_turn_running_sends_even_before_the_history_is_read(frame, env,
+                                                                          fake_runner):
+    # Never "still loading" instead of a plain Send (a chat that never loads).
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame._history_known = False
+    frame.reply_text.SetValue("hello")
+    frame.on_steer()
+    assert len(fake_runner.instances) == 1 and fake_runner.instances[0].prompt == "hello"
