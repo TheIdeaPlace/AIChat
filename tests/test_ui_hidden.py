@@ -9455,6 +9455,10 @@ def test_codex_commands_never_reach_claude_with_colliding_id(frame, monkeypatch,
     if handler == 'on_usage':
         assert pump(lambda: calls)
         assert len(calls) == 1 and 'Could not read Codex usage' in calls[0]
+    elif handler == 'on_changes':
+        # Codex supports this read-only command now, but this fixture hasn't
+        # loaded a chat. It still must not reach the colliding Claude runner.
+        assert calls == ["The messages are still loading."]
     else:
         assert len(calls) == 1 and "isn't available for Codex" in calls[0]
     assert frame.store.get(owned.cli_session_id).title == owned.title
@@ -12419,9 +12423,10 @@ def test_permission_notices_are_kept_apart_by_provider(frame, monkeypatch):
     frame._codex_states.clear()
 
 
-def test_a_finished_copilot_turn_says_what_it_changed(frame, monkeypatch):
-    """As after a Claude turn, the files a Copilot turn changed follow its
-    reply (#352); Codex, whose chats don't list changed files, stays quiet."""
+@pytest.mark.parametrize("provider", ["codex", "copilot"])
+@pytest.mark.parametrize("supported", [False, True])
+def test_a_finished_provider_turn_says_what_it_changed_when_supported(frame, monkeypatch, provider, supported):
+    """Files follow the reply when the provider can report changes."""
     from thechatplace.providers.codex_runtime import CodexChatState
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
@@ -12429,23 +12434,102 @@ def test_a_finished_copilot_turn_says_what_it_changed(frame, monkeypatch):
     monkeypatch.setattr(frame, "_notify", lambda *a, **kw: None)
     monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
     monkeypatch.setattr(frame, "_refresh_chat", lambda *a, **kw: None)
-    # The window asks the provider; test_copilot_provider checks Copilot's
-    # answer. Here the Copilot preview is off, so the answer is given.
+    # Provider tests check the actual capabilities; here exercise both answers.
     from thechatplace.providers.base import SessionCapabilities
     monkeypatch.setattr(frame.sessions, "capabilities", lambda info: SessionCapabilities(
-        changes=info.provider == "copilot"))
-    for provider, due in (("copilot", True), ("codex", False)):
-        native = f"{provider}-done"
-        frame.store.add(OwnSession(native, f"{provider} chat", "C:/w", provider=provider,
-                                   started=True))
-        info = SessionInfo(OWN, f"{provider}:{native}", f"{provider} chat", "C:/w", native,
-                           provider=provider)
-        monkeypatch.setattr(frame, "_open", info)
-        frame._changes_due = False
-        frame._on_owned_update(provider, CodexChatState(native, "idle", "t1", "completed"))
-        assert frame._changes_due is due, provider
+        changes=supported))
+    native = f"{provider}-done"
+    frame.store.add(OwnSession(native, f"{provider} chat", "C:/w", provider=provider,
+                               started=True))
+    info = SessionInfo(OWN, f"{provider}:{native}", f"{provider} chat", "C:/w", native,
+                       provider=provider)
+    monkeypatch.setattr(frame, "_open", info)
+    frame._changes_due = False
+    frame._on_owned_update(provider, CodexChatState(native, "idle", "t1", "completed"))
+    assert frame._changes_due is supported
     frame._codex_states.clear()
     frame._changes_due = False
+
+
+@pytest.mark.parametrize("owned", [False, True])
+def test_codex_changed_files_use_the_shared_viewer_scopes_and_copy(frame, env, monkeypatch, owned):
+    from thechatplace import lists
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.session_controller import SessionController
+    from thechatplace.sessions import SessionInfo, OWN
+    from test_codex_provider import Connection, file_change, history, history_pages
+
+    settle(frame)
+    data = history()
+    data["turns"][0]["items"].append(file_change())
+    data["turns"].append({"id": "turn-2", "items": [
+        {"id": "u2", "type": "userMessage", "content": [{"type": "text", "text": "Now the docs"}]},
+        file_change("docs", changes=[{"path": "README.md", "kind": {"type": "add"}, "diff": "Hello\n"}]),
+        file_change("declined", status="declined"),
+        {"id": "a2", "type": "agentMessage", "text": "Documented."}]})
+    pages = history_pages(data)
+
+    class HistoryConnection(Connection):
+        def request(self, method, params):
+            if method == "thread/read" and not self.responses:
+                return pages[0]
+            return super().request(method, params)
+
+    frame.sessions = SessionController([CodexProvider(HistoryConnection(pages))])
+    info = SessionInfo(OWN if owned else "external", "codex:one", "Codex files", "/example", "one", provider="codex")
+    frame.open_session(info)
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+    assert len(frame._chat_edits) == 2
+    assert info.key not in frame.tool_activity
+    seen = _lists_dialog(frame, monkeypatch, lambda page: page.copy_selected())
+    frame.on_changes()
+    assert (seen["category"], seen["scope"]) == ("files", "message")
+    assert seen["rows"] == ["README.md, created, 1 line"]
+    assert "Added: Hello" in seen["detail"] and env["copied"][-1] == "README.md"
+    frame.chat_list.SetSelection(0)
+    frame.on_changes()
+    assert seen["scope"] == "message" and len(seen["rows"]) == 1
+    assert "Removed: old\nAdded: new\nAdded: more" in seen["detail"]
+    frame.on_lists(lists.FILES, lists.SCOPE_CHAT)
+    assert len(seen["rows"]) == 2
+    # Opening existing history never announces its edits as new changes.
+    assert not any("Changed 2 files" in text for text in env["spoken"] + env["feedback"])
+
+
+def test_codex_completion_refresh_announces_only_new_file_changes_once(frame, env, monkeypatch):
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.session_controller import SessionController
+    from test_codex_provider import file_change, history, history_pages
+
+    settle(frame)
+    data = history()
+    data["turns"][0]["items"].append(file_change())
+
+    class Connection:
+        def request(self, method, params):
+            return history_pages(data)[{"thread/read": 0, "thread/turns/list": 1, "thread/items/list": 2}[method]]
+
+    frame.sessions = SessionController([CodexProvider(Connection())])
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "_check_codex_usage", lambda *a: None)
+    record = OwnSession("one", "Codex files", "/example", provider="codex", started=True)
+    frame.store.add(record)
+    frame.open_session(record.to_info())
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+    assert frame._edits_said == 1
+    data["turns"].append({"id": "turn-2", "items": [
+        file_change("docs", changes=[{"path": "README.md", "kind": {"type": "add"}, "diff": "Hello\n"}]),
+        {"id": "reply", "type": "agentMessage", "text": "Documented."}]})
+    state = CodexChatState("one", "idle", "turn-2", "completed", replies=(("reply", "Documented."),))
+    frame._on_owned_update("codex", state)
+    expected = key_name("Codex files: Changed 1 file: README.md, created, 1 line. Ctrl+Shift+D shows the changes.")
+    assert pump(lambda: expected in env["feedback"])
+    frame._on_owned_update("codex", state)
+    assert pump(lambda: not frame._reader_busy)
+    assert env["feedback"].count(expected) == 1
+    assert not any("Changed 2 files" in text for text in env["feedback"])
+    frame._codex_states.clear()
 
 
 # -- owned GitHub Copilot CLI chats (#352) -------------------------------------

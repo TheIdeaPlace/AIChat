@@ -165,7 +165,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   once. References to files in the repository, such as `[main.py](src/main.py)`, aren't listed.
   Only web, email and session links open; anything else, such as a file: path, is marked "copy
   only" and says why if you try. Links in tool calls and results are listed only with Show Tool
-  Activity on. Changed files are listed for Claude and Copilot chats; commands and decisions for
+  Activity on. Changed files are listed for Claude, Codex and Copilot chats; commands and decisions for
   Claude chats for now. Codex chats
   also list live tasks captured while run here; older chats and chats run elsewhere may have no
   saved list. Question cards read as
@@ -191,7 +191,7 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   Command-result notifications use a brief summary even in Full announcements;
   Silent keeps them in the status bar.
 - **Changed Files** (Ctrl+Shift+D, View menu) opens Lists on Changed Files: the files
-  Claude or Copilot changed in the selected message's turn (your latest, if none is selected), or in the
+  Claude, Codex or Copilot changed in the selected message's turn (your latest, if none is selected), or in the
   whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
   removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a
   time: where each change is, then its lines, each starting with how it changed. Settings, "Mark
@@ -203,7 +203,11 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
   transcript, so it works for desktop app sessions too, with no git needed. Changes made by a
   subagent Claude hands work to, and notebook edits, aren't counted yet. For Copilot chats it's
   built from Copilot's own log, whichever tool made the change, so chats started in Copilot CLI
-  have it too, and reading it never starts Copilot; a file Copilot deleted says "deleted". When the loaded
+  have it too, and reading it never starts Copilot; a deleted file says "deleted". For Codex,
+  it uses completed file changes from Codex's own history, including chats started outside The Chat Place.
+  Renames say "renamed" and show the old path in the details; Copy copies the new path.
+  Pending, declined and failed edits aren't counted. Changes made through shell commands or other
+  tools that don't report file changes aren't counted either. When the loaded
   session's turn ends, the announcement (at the full level) is followed by a one-line summary:
   "Changed 3 files: main_frame.py, 40 lines added, 12 removed; …".
 - **The task list.** On longer work Claude keeps a list of its steps (Claude Code's

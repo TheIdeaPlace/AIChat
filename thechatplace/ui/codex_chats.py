@@ -567,7 +567,7 @@ class CodexChats:
                 self._open_generation += 1
                 self._reader = None
                 # Then say what the turn changed in files, as for a Claude
-                # turn, where the provider can tell (Copilot's log does).
+                # turn, where the provider can tell.
                 capabilities = getattr(self.sessions, 'capabilities', None)
                 try:
                     # Not for an agent conversation's member turn, which the

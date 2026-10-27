@@ -1,5 +1,4 @@
-"""What Claude changed in files (#18), from the transcript alone; and what
-Copilot did, from the git-style diffs its log keeps (parse_git_diff).
+"""What the providers changed in files, from their recorded changes alone.
 
 Claude Code records each Edit, MultiEdit and Write it makes, and the result
 it sends back carries the change as a patch ("structuredPatch": hunks of
@@ -32,8 +31,10 @@ class FileEdit:
     turn: int  # which of your messages it answered: 1 for the first
     hunks: List[Hunk] = field(default_factory=list)
     created: bool = False
-    #: The file was deleted (Copilot can; Claude's edit tools can't).
+    #: The file was deleted (Codex and Copilot can; Claude's edit tools can't).
     deleted: bool = False
+    #: The old path when a provider renamed the file.
+    moved_from: str = ""
 
     @property
     def added(self) -> int:
@@ -67,7 +68,7 @@ class FileChanges:
         return bool(self.edits) and self.edits[-1].deleted
 
     def counts(self) -> str:
-        """"40 lines added, 12 removed", "created, 10 lines", "deleted"."""
+        """"40 lines added, 12 removed", "created, 10 lines", "deleted", "renamed"."""
         if self.deleted:
             # Its lines are gone, so how many were added or removed first
             # says little; created here and deleted again says what happened.
@@ -75,11 +76,11 @@ class FileChanges:
         if self.created:
             lines = self.added - self.removed
             return f"created, {lines} line{'s' if lines != 1 else ''}"
-        parts = []
+        parts = ["renamed"] if any(e.moved_from for e in self.edits) else []
         if self.added:
             parts.append(f"{self.added} line{'s' if self.added != 1 else ''} added")
         if self.removed:
-            word = "removed" if parts else \
+            word = "removed" if self.added else \
                 f"line{'s' if self.removed != 1 else ''} removed"
             parts.append(f"{self.removed} {word}")
         return ", ".join(parts) or "no lines changed"
@@ -123,6 +124,15 @@ def edit_from_tool(name: str, tool_input: dict, result, turn: int) -> Optional[F
 
 
 _HUNK = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def parse_unified_diff(text: str) -> List[Hunk]:
+    """Single-file hunks, including Codex's pathless diffs.
+
+    The shared parser uses header counts to keep stripped blank context
+    lines while ignoring blank separators between or after hunks.
+    """
+    return difftext.parse_unified(text)
 
 
 def _diff_path(header: str) -> str:
@@ -188,7 +198,10 @@ def file_text(changes: FileChanges, style: str = difftext.DEFAULT) -> str:
     lines, each marked in ``style`` (a ``difftext.STYLES`` value; the
     default reads "Removed:", "Added:" and "Unchanged:")."""
     out: List[str] = [f"{changes.path}: {changes.counts()}."]
-    out.extend(difftext.render([h for edit in changes.edits for h in edit.hunks], style))
+    for edit in changes.edits:
+        if edit.moved_from:
+            out.append(f"Renamed from: {edit.moved_from}")
+        out.extend(difftext.render(edit.hunks, style))
     return "\n".join(out)
 
 
