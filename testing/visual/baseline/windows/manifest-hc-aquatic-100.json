@@ -1196,6 +1196,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "A Copilot chat started here: reply box, queued message and context"
+  },
+  "main-own-steering": {
+   "kind": "window",
+   "png": "main-own-steering-hc-aquatic-100.png",
+   "json": "main-own-steering-hc-aquatic-100.json",
+   "title": "Visual probe — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "An own session mid-turn with a steered message not yet taken in"
   }
  },
  "seconds": 91.6

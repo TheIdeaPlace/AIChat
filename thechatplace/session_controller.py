@@ -204,7 +204,7 @@ class SessionController:
         return self._provider(source).fork_owned(source, title, **options)
 
     def owned_action(self, action, record, *args):
-        if action not in ("prepare", "reopen", "send", "stop", "answer", "ready", "prepare_policy", "finish_policy",
+        if action not in ("prepare", "reopen", "send", "steer", "steer_queued", "stop", "answer", "ready", "prepare_policy", "finish_policy",
                           "chat_rule_candidate", "allow_for_chat", "chat_rules", "remove_chat_rule", "review_history",
                           "recover"):
             raise ValueError("Unsupported owned chat action")

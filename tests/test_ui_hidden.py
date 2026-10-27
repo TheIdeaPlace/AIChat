@@ -4797,6 +4797,88 @@ def test_send_now_takes_a_queued_message_into_the_running_turn(frame, env, fake_
     assert frame._queued == {"own-1": ["second"]}
 
 
+def _steer_key(frame, monkeypatch, focus):
+    """Ctrl+Alt+Enter (Cmd+Option+Return) with ``focus`` focused."""
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: focus))
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(wx.WXK_RETURN)
+    event.SetControlDown(True)
+    event.SetAltDown(True)
+    frame._on_char_hook(event)
+
+
+def test_steer_sends_into_the_running_turn_without_stopping_it(frame, env, fake_runner,
+                                                               monkeypatch):
+    runner = _start(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    _steer_key(frame, monkeypatch, frame.reply_text)
+    assert runner.steered == ["Also update the README"]
+    assert not getattr(runner, "sent_now", None)  # nothing stopped
+    assert frame._queued == {}
+    assert frame.reply_text.GetValue() == ""
+    assert env["feedback"][-1].startswith("Steering Hub probe")
+    assert frame.turn_status.GetLabel().startswith("1 steered message not taken in yet. ")
+    frame.on_turn_status()
+    assert "1 steered message not taken in yet." in env["feedback"][-1]
+    # Taken in: said without cutting off what's being read.
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="Also update the README", data={"late": False}))
+    assert env["feedback"][-1] == "Hub probe has your message."
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="And the docs", data={"late": True}))
+    assert env["feedback"][-1] == "Hub probe had finished, and is answering your message now."
+    assert len(fake_runner.instances) == 1
+
+
+def test_steer_with_no_turn_running_is_a_plain_send(frame, env, fake_runner, monkeypatch):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("hello")
+    _steer_key(frame, monkeypatch, frame.reply_text)
+    assert len(fake_runner.instances) == 1
+    assert fake_runner.instances[0].prompt == "hello"
+
+
+def test_steer_into_a_turn_that_just_ended_keeps_the_text(frame, env, fake_runner):
+    runner = _start(frame, fake_runner)
+    runner.ended = True
+    frame.reply_text.SetValue("too late")
+    frame.on_steer()
+    assert frame.reply_text.GetValue() == "too late"
+    assert env["feedback"][-1].startswith("The turn has just ended.")
+    assert frame._queued == {}
+
+
+def test_steer_on_a_queued_message_takes_it_into_the_turn(frame, env, fake_runner,
+                                                          monkeypatch):
+    runner = _start(frame, fake_runner)
+    for text in ("second", "third"):
+        frame.reply_text.SetValue(text)
+        frame.on_send()
+    frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)  # "Queued: third"
+    menu = frame._message_menu()
+    labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
+    assert "Send Now" in labels and "Steer" in labels
+    menu.Destroy()
+    _steer_key(frame, monkeypatch, frame.chat_list)
+    assert runner.steered == ["third"]
+    assert not getattr(runner, "sent_now", None)
+    assert frame._queued == {"own-1": ["second"]}
+    # Read back when it was queued, so not again.
+    assert env["feedback"][-1] == "Steering Hub probe. It takes your message at its next step."
+    runner.ended = True
+    frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
+    frame.steer_queued()
+    assert frame._queued == {"own-1": ["second"]}
+    assert env["feedback"][-1].startswith("The turn is already ending")
+
+
+def test_steer_is_on_the_file_menu_with_its_key(frame):
+    bar = frame.GetMenuBar()
+    labels = [item.GetItemLabelText() for item in bar.GetMenu(bar.FindMenu("File")).GetMenuItems()]
+    assert any(label.startswith("Steer: Send into the Running Turn (") for label in labels)
+
+
 # VoiceOver names (macOS). wx's SetName never reaches VoiceOver, so without
 # ui/mac_a11y.py every edit box, list and choice was read with no label.
 
@@ -9264,7 +9346,7 @@ def test_properties_dialog_is_named_for_screen_readers(frame):
 @pytest.mark.parametrize("handler", ["on_send", "on_stop", "on_continue_here",
     "on_remote_control", "on_other_machines", "on_usage", "on_changes", "on_copy_session_link",
     "on_delete_permanently", "on_attach_files", "on_insert_command", "on_turn_status",
-    "remove_queued", "send_queued_now", "edit_queued"])
+    "remove_queued", "send_queued_now", "edit_queued", "on_steer", "steer_queued"])
 def test_codex_commands_never_reach_claude_with_colliding_id(frame, monkeypatch, handler):
     from types import SimpleNamespace
     from thechatplace.providers.claude import ClaudeConversations
@@ -12722,3 +12804,36 @@ def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatc
     assert pump(lambda: any(t == "Queued Copilot: The Chat Place is checking how Copilot's turn ended. "
                             "1 waiting message is back in the message box, unsent." for t in env["feedback"]))
     frame._codex_states.clear()
+
+
+def test_a_steer_never_taken_in_comes_back_when_the_turn_ends(frame, env, fake_runner):
+    # #238: Stop (or the turn ending) before Claude took it in.
+    runner = _start(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    frame.reply_text.SetValue("half typed")
+    frame.on_stop()
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("failed", text="Stopped.", is_error=True))
+    assert frame.reply_text.GetValue() == "Also update the README\n\nhalf typed"
+    assert any("steered message for Hub probe wasn't taken in" in text
+               for text in env["feedback"])
+
+
+def test_a_late_steer_says_the_reply_it_follows(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="And the docs", data={"late": True, "reply": "Fixed."}))
+    assert env["feedback"][-1] == ("Hub probe replied. Fixed. Hub probe had finished, "
+                                   "and is answering your message now.")
+
+
+def test_steer_on_a_queued_message_after_the_turn_ended_says_so(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame.reply_text.SetValue("second")
+    frame.on_send()
+    frame._runners.pop("own-1")
+    frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
+    frame.steer_queued()
+    assert env["feedback"][-1] == "The turn has ended: the queued message goes next."
+    assert frame._queued == {"own-1": ["second"]}

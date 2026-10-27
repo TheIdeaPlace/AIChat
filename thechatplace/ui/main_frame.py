@@ -510,6 +510,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         keys = key_name("Ctrl+Shift+Enter")
         self._item(session, f"Send and Save as Prompt... ({keys})",
                    lambda e: self.on_send_and_save())
+        # Steer (#238, #239): a reply-box key too, so in the label only.
+        self._item(session, f"Steer: Send into the Running Turn ({key_name('Ctrl+Alt+Enter')})",
+                   lambda e: self.on_steer())
         session.AppendSeparator()
         self._item(session, "Add to &Group...\tCtrl+G", lambda e: self.on_add_to_group())
         self._item(session, "Remove from Gro&up...", lambda e: self.on_remove_from_group())
@@ -2199,8 +2202,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         copy = menu.Append(wx.ID_ANY, "&Copy Message\tCtrl+C")
         message = self._selected_message()
         if (message is not None and message.kind == QUEUED
+                and self._open is not None and self._open.provider in RUNTIME_PROVIDERS
+                and self._can_steer(self._open)):
+            steer = menu.Append(wx.ID_ANY, "S&teer\tCtrl+Alt+Enter")
+            menu.Bind(wx.EVT_MENU, lambda e: self.steer_queued(), steer)
+            menu.AppendSeparator()
+        if (message is not None and message.kind == QUEUED
                 and self._open is not None and self._open.provider == "claude"):
             now = menu.Append(wx.ID_ANY, "Send &Now\tCtrl+Enter")
+            steer = menu.Append(wx.ID_ANY, "S&teer\tCtrl+Alt+Enter")
+            menu.Bind(wx.EVT_MENU, lambda e: self.steer_queued(), steer)
             edit = menu.Append(wx.ID_ANY, "&Edit Queued Message")
             remove = menu.Append(wx.ID_ANY, "&Remove Queued Message\tDelete")
             menu.Bind(wx.EVT_MENU, lambda e: self.send_queued_now(), now)
@@ -2819,6 +2830,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                      f"{name} is working." if state is not None and state.state == WORKING else "Ready.")
             if state is not None and state.queued:
                 label += " " + self._queued_words(len(state.queued))
+            if state is not None and getattr(state, "steering", ()):
+                label += " " + self._steering_words(len(state.steering)).strip()
             # Only when it changes, as for Claude: this runs on every tick,
             # and each new label is a name change JAWS shows again in braille
             # over the message you're on ("Messages in …" and part of it).
@@ -2848,6 +2861,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 if waiting_count:
                     # What's queued first: it's yours, and the news (#59).
                     label = f"{self._queued_words(waiting_count)} {label}"
+                steering = self._steering_words(len(getattr(runner, "steering", ())))
+                if steering:
+                    label = steering + label  # yours too (#238)
             else:
                 label = "Ready."
             # One line: a question's own line breaks would hide the rest of
@@ -3381,6 +3397,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     def _queued_words(count: int) -> str:
         return "1 message queued." if count == 1 else f"{count} messages queued."
 
+    @staticmethod
+    def _steering_words(count: int) -> str:
+        """Steered messages not yet taken in (#238), for turn status."""
+        if not count:
+            return ""
+        return ("1 steered message not taken in yet. " if count == 1
+                else f"{count} steered messages not taken in yet. ")
+
     def _own_for_setting(self, what: str, info: Optional[SessionInfo] = None):
         """The selected session (or ``info``) and its stored record, for a
         File, Change item; None (and why, said) for a session whose ``what``
@@ -3598,6 +3622,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if runner is not None:
             count = len(self._queued.get(info.cli_session_id, []))
             waiting = f"{self._queued_words(count)} " if count else ""
+            waiting += self._steering_words(len(getattr(runner, "steering", ())))
             self._feedback(f"{info.title}: {waiting}Claude has been working for "
                            f"{describe_elapsed(runner.elapsed())}, last {runner.last_activity}.{tasks}")
             return
@@ -4407,6 +4432,19 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if event.kind == "waiting":
             self._answered_with_background(session_id, title, event, is_open_now)
             return
+        if event.kind == "steer_taken":
+            data = event.data or {}
+            said = announce.steer_taken_text(title, bool(data.get("late")))
+            # Late, the reply Claude had just finished is said first: the
+            # steered message's answer becomes the turn's (#238).
+            reply = announce.reply_text(title, data.get("reply") or "", self.speech.announce)
+            if reply:
+                said = f"{reply} {said}"
+            # Background news, so it doesn't cut off what's being read.
+            self._say(said, interrupt=False)
+            if is_open_now:
+                self._update_send_state()
+            return
         if event.kind in ("finished", "failed"):
             command_state = self._command_speech_state(session_id)
             active_runner = self._runners.get(session_id)
@@ -4456,6 +4494,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                         p for p in waiting_now if p not in attached_back]
                     if is_open:
                         self._show_attachments()
+            # Steered but never taken in (Stop, or the turn ended first): it
+            # comes back rather than being lost (#238).
+            untaken = list(getattr(runner, "steering", ()) or ()) if runner is not None else []
+            if untaken:
+                unsent.extend(untaken)
+                note = (f"Your steered message for {title} wasn't taken in. It's back in the "
+                        "message box.")
+                self._feedback(note)
+                self._last_announcement = note
             queued = self._take_queued(session_id)
             if queued and is_open:
                 self._rebuild_chat_list()  # sent, or given back: no longer queued
@@ -4659,6 +4706,123 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._update_send_state()
         self._feedback("Queued message removed. " + (
             f"{len(waiting)} still queued." if waiting else "Nothing is queued now."))
+
+    def _can_steer(self, info: Optional[SessionInfo]) -> bool:
+        """Whether this chat's provider can take a message into a running turn
+        (#238, #239)."""
+        if info is None or not info.is_own:
+            return False
+        try:
+            return bool(getattr(self.sessions.capabilities(info), "steer", False))
+        except ValueError:
+            return False
+
+    def on_steer(self):
+        """Steer (Ctrl+Alt+Enter, #238, #239): send the reply box's message
+        into the running turn without stopping it; the AI takes it in at its
+        next step and carries on. With no turn running, it's a plain Send."""
+        info = self._open
+        if info is None or info.provider == AGENTS or not info.is_own:
+            self.on_send()
+            return
+        if info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
+            state = self._codex_states.get(info.key)
+            if state is None or state.outcome != 'inProgress':
+                self.on_send()  # nothing running to steer
+                return
+            name = provider_name(info.provider)
+            if not self._can_steer(info):
+                self._feedback(f"{name} can't take a message during its turn. "
+                               f"{key_name('Ctrl+Enter')} queues it for after.")
+                return
+            message = self.reply_text.GetValue().strip()
+            if not message:
+                self._feedback("Type a message first.")
+                return
+            record = self.store.get(info.cli_session_id, provider=info.provider)
+            if record is None:
+                self._feedback("That chat is no longer in The Chat Place's list.")
+                return
+            self.reply_text.SetValue("")
+            self._codex_drafts.pop(info.key, None)
+            self._steer_codex_owned(record, message)
+            return
+        if info.provider != "claude":
+            self.on_send()
+            return
+        session_id = info.cli_session_id
+        runner = self._runners.get(session_id)
+        if runner is None:
+            self.on_send()
+            return
+        if runner.cancelled:
+            self._feedback("Still stopping. Send again in a moment.")
+            return
+        message = self.reply_text.GetValue().strip()
+        attached = list(self._attachments.get(session_id, []))
+        if not message and not attached:
+            self._feedback("Type a message first.")
+            self.reply_text.SetFocus()
+            return
+        # Attachments go as @"path", as a queued message's do.
+        text, _images = attachments.build(message, attached, images_inline=False)
+        if not runner.steer(text):
+            self._feedback(f"The turn has just ended. {key_name('Ctrl+Enter')} sends your "
+                           "message.")
+            return
+        self.reply_text.SetValue("")
+        self._drafts.pop(session_id, None)
+        if attached:
+            self._clear_attachments(session_id)
+        self._update_send_state()
+        self._feedback(announce.steered_text(info.title, message, self.speech.announce,
+                                             self.speech.announce_own))
+        self.reply_text.SetFocus()
+
+    def steer_queued(self):
+        """Steer the selected queued message (Ctrl+Alt+Enter on it, #238,
+        #239): into the running turn now, without stopping it. It stays
+        queued if the turn can't take it."""
+        info = self._open
+        if info is None:
+            return
+        runtime = info.provider in RUNTIME_PROVIDERS and self._can_edit(info)
+        if not runtime and info.provider != "claude":
+            self._require_capability("steer", info)  # says it isn't available
+            return
+        index = self._selected_queued()
+        if index is None:
+            return
+        if runtime:
+            if not self._can_steer(info):
+                self._feedback(f"{provider_name(info.provider)} can't take a message during "
+                               "its turn. It stays queued.")
+                return
+            state = self._codex_states.get(info.key)
+            record = self.store.get(info.cli_session_id, provider=info.provider)
+            if state is None or record is None or not 0 <= index < len(state.queued):
+                return
+            self._steer_codex_owned(record, state.queued[index], index=index)
+            return
+        runner = self._runners.get(info.cli_session_id)
+        waiting = self._queued.get(info.cli_session_id, [])
+        if not 0 <= index < len(waiting):
+            return
+        if runner is None:
+            self._feedback("The turn has ended: the queued message goes next.")
+            return
+        text = waiting[index]
+        if not runner.steer(text):
+            self._feedback("The turn is already ending: the message stays queued and goes "
+                           "when it's done.")
+            return
+        del waiting[index]
+        if not waiting:
+            self._queued.pop(info.cli_session_id, None)
+        self._rebuild_chat_list()
+        self._update_send_state()
+        # It was read back when it was queued.
+        self._feedback(announce.steered_text(info.title, text, self.speech.announce, False))
 
     def send_queued_now(self):
         """Send the selected queued message now: Claude stops what it's doing
@@ -6151,6 +6315,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._is_in_session_view(focus)
 
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            if ctrl and event.AltDown() and not event.ShiftDown():
+                # Steer (#238, #239). Checked first, so it can never become
+                # a plain Send (Ctrl+Enter) or Properties (Alt+Enter).
+                if focus is self.reply_text:
+                    self.on_steer()
+                    return
+                if focus is self.chat_list and self._selected_queued() is not None:
+                    self.steer_queued()
+                    return
             if event.AltDown() and not ctrl and not event.ShiftDown():
                 # Properties (#214). Here rather than left to the menu's
                 # accelerator: this hook runs first, and Enter in the
