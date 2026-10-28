@@ -1760,3 +1760,112 @@ def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypat
     provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
     assert [info.cli_session_id for info in provider.collect().sessions] == [chat]
     runtime.stop(chat)
+
+
+# -- Kelly's follow-ups (#405) ------------------------------------------------------
+
+
+def test_stopping_again_doesnt_put_the_forced_close_off(make, tmp_path):
+    """A second Stop while the first cancel is pending sends nothing more and
+    keeps the first timer, so pressing Stop again can't keep Copilot open.
+    A Copilot that ignores the cancel ("deaf"), so the turn is still going
+    when the second Stop comes, however slow the machine."""
+    env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
+               FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
+    runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("deaf", env),
+                                 sessions_dir=tmp_path / "sessions", billing_wait=0.5,
+                                 cancel_grace=1.5)
+    try:
+        chat = runtime.create(str(tmp_path))
+        runtime.send(chat, "Long job")
+        assert wait(lambda: runtime.snapshot(chat).replies)
+        assert runtime.stop(chat).cancelled
+        timer = runtime._chats[chat].cancel_timer
+        assert timer is not None
+        assert runtime.stop(chat).cancelled
+        assert runtime._chats[chat].cancel_timer is timer
+        cancels = [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
+        assert len(cancels) == 1
+        # The first Stop's clock still runs out, and closes it.
+        assert wait(lambda: "didn't stop when asked" in runtime.snapshot(chat).notice)
+    finally:
+        runtime.close()
+
+
+def test_a_stop_before_the_turn_sends_warns_of_no_close(make, tmp_path):
+    """Stopped before the turn decided to send, the message comes back
+    unsent: nothing is cancelled, and no close is threatened."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    real_run, stops = runtime._run_turn, []
+
+    def stop_then_run(chat_, connection, text):
+        stops.append(runtime.stop(chat))
+        real_run(chat_, connection, text)
+    runtime._run_turn = stop_then_run
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted"
+                and not runtime._chats[chat].busy)
+    assert stops == [Stopped((), cancelled=False, before_sending=True)]
+    assert runtime.snapshot(chat).unsent == ("Hello",)
+    assert not [m for m in received(tmp_path)
+                if m.get("method") in ("session/prompt", "session/cancel")]
+
+
+def test_a_cancel_that_cant_go_out_isnt_reported_as_sent(make, tmp_path):
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+
+    def closed(method, params):
+        raise copilot_acp.AcpError("Copilot is closing.")
+    runtime._connection.notify = closed
+    stopped = runtime.stop(chat)
+    assert not stopped.cancelled and not stopped.answered
+    assert runtime._chats[chat].cancel_timer is None
+
+
+def test_a_stop_between_the_prompts_write_and_its_queuing_cancels_after_it(tmp_path):
+    """The prompt is written, but the turn hasn't yet heard it's queued: the
+    Stop leaves the cancel to the turn, which sends it after the prompt."""
+    env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
+               FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
+    runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("strict", env),
+                                 sessions_dir=tmp_path / "sessions", billing_wait=0.5,
+                                 cancel_grace=0.5)
+    try:
+        chat = runtime.create(str(tmp_path))
+        connection = runtime._connection
+        real_request, stops = connection.request, []
+
+        def stop_once_written(method, params, *args, on_queued=None, **kwargs):
+            def queued():
+                if method == "session/prompt":
+                    stops.append(runtime.stop(chat))  # written, not yet queued here
+                if on_queued is not None:
+                    on_queued()
+            return real_request(method, params, *args, on_queued=queued, **kwargs)
+        connection.request = stop_once_written
+        runtime.send(chat, "Long job")
+        assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+        assert stops == [Stopped((), cancelled=True)]
+        order = [m["method"] for m in received(tmp_path)
+                 if m.get("method") in ("session/prompt", "session/cancel")]
+        assert order == ["session/prompt", "session/cancel"]
+        time.sleep(1.0)  # past the grace: Copilot stopped, so it isn't closed
+        assert runtime.ready(chat) and "didn't stop" not in runtime.snapshot(chat).notice
+    finally:
+        runtime.close()
+
+
+def test_a_prompt_refused_before_copilot_logs_it_isnt_use_elsewhere(make, tmp_path):
+    """Refused with -32000 before Copilot wrote its user.message (#400): no
+    message of ours is in the log, which mustn't look like another Copilot."""
+    runtime, _ = make("refused")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "First")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "failed"
+                and not runtime._chats[chat].busy)
+    assert runtime.snapshot(chat).notice == copilot_acp.NOT_SIGNED_IN_SENT
+    assert not runtime._chats[chat].elsewhere

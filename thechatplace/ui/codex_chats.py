@@ -397,9 +397,14 @@ class CodexChats:
                 # the checks after it say which, so this doesn't (Kelly, #386).
                 text = f'{record.title}: The Chat Place is checking how {name}\'s turn ended'
                 text += '.' if waiting else ', so there\'s nothing to stop.'
+            elif stopped is not None and getattr(stopped, 'before_sending', False):
+                # Stopped before its message went: that message comes back
+                # unsent with the turn's end, which says where (#405).
+                text = f'{record.title}: Stopped before your message went to {name}.'
             elif stopped is not None and not stopped.cancelled:
                 # The turn ended meanwhile, or Copilot's process has gone and
-                # the turn is ending with it: either way it isn't answering.
+                # the turn is ending with it (a cancel that couldn't go out,
+                # #405): either way it isn't answering.
                 text = f'{record.title}: {name} isn\'t answering'
                 text += '.' if waiting else ', so there\'s nothing to stop.'
             else:
