@@ -1266,6 +1266,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Codex Changed Files: a deleted file's old line range"
+  },
+  "agent-new-copilot": {
+   "kind": "dialog",
+   "png": "agent-new-copilot-hc-aquatic-100.png",
+   "json": "agent-new-copilot-hc-aquatic-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Agent Conversation with a new Claude chat and a new Copilot chat"
   }
  },
  "seconds": 91.6

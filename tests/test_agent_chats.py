@@ -1671,3 +1671,96 @@ def test_stop_reaches_a_copilot_member_the_window_thinks_is_idle(tmp_path):
     stopped.clear()
     w._agent_stop(w._open)
     assert stopped == []
+
+
+def test_a_message_copilot_gives_back_after_stop_goes_to_the_conversation(tmp_path):
+    """Stopped just as the conversation's next message was starting: Stop no
+    longer awaits the member, and the runtime gives the message back as
+    unsent. It goes back to the conversation, not the member chat's draft
+    (#412 review)."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    w = Window(tmp_path)
+    _with_copilot(w)
+    w._stop_codex_owned = lambda info, take_back=None: None
+    w._codex_states['copilot:p1'] = CopilotChatState('p1', WORKING, '1', 'inProgress')
+    w.send('@Copilot review this')
+    ours = w._agent_last_sent[('copilot', 'p1')]
+    w._agent_stop(w._open)
+    assert ('copilot', 'p1') not in w._agent_awaiting
+    assert w._agent_unsent('copilot', 'p1', ('mine', ours)) == ('mine',)
+    assert w.reply_text.GetValue() == 'review this'
+
+
+def test_a_taken_back_first_message_sends_the_setup_again(tmp_path):
+    """The first message carries the setup: taken back by Stop, it never
+    reached the member, so the next message carries it again."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    w = Window(tmp_path)
+    _with_copilot(w)
+    calls = []
+    w._stop_codex_owned = lambda info, take_back=None: calls.append(take_back)
+    w._codex_states['copilot:p1'] = CopilotChatState('p1', WORKING, '1', 'inProgress')
+    w.send('@Copilot review this')
+    first = w._agent_last_sent[('copilot', 'p1')]
+    assert agents.SETUP_END in first and 1 in w.saved.briefed
+    w._agent_stop(w._open)
+    assert calls[0]((first,)) == ()
+    assert 1 not in w.agents.get(w.cid).briefed
+    w.send('@Copilot review this')
+    assert w.codex_sent[-1][1].startswith(agents.SETUP_START)
+
+
+def test_a_claude_members_queued_first_message_sends_the_setup_again(tmp_path):
+    w = Window(tmp_path)
+    w._runners['c1'] = SimpleNamespace(cancel=lambda: None)
+    w.send('@Claude build it')
+    first = w._agent_last_sent[('claude', 'c1')]
+    assert agents.SETUP_END in first and 0 in w.saved.briefed
+    w._queued['c1'] = [first]
+    w._agent_stop(w._open)
+    assert w.reply_text.GetValue() == 'build it'
+    assert 0 not in w.agents.get(w.cid).briefed
+
+
+def test_take_back_with_no_clipboard_leaves_the_missed_replies_alone(tmp_path):
+    """Neither the reply box nor the clipboard: the texts go whole to the
+    member chat's own reply box, so the replies they carry aren't also kept
+    to be sent again (#412 review)."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    w = Window(tmp_path)
+    conversation = _with_copilot(w)
+    calls = []
+    w._stop_codex_owned = lambda info, take_back=None: calls.append(take_back)
+    w._codex_states['copilot:p1'] = CopilotChatState('p1', WORKING, '1', 'inProgress')
+    missed = agents.relay_text(conversation, 0, 'Built it.', missed=True)
+    w._agent_unseen[(w.cid, 1)] = [missed]
+    w.send('@Copilot review this')
+    ours = w._agent_last_sent[('copilot', 'p1')]
+    assert missed in ours and (w.cid, 1) not in w._agent_unseen
+    w._agent_stop(w._open)
+    w._open = SimpleNamespace(key='elsewhere')
+    w._copy_text = lambda text: False
+    assert calls[0]((ours,)) == (ours,)
+    assert (w.cid, 1) not in w._agent_unseen
+    assert ours in w._agent_sent_texts[('copilot', 'p1')]
+
+
+def test_a_finished_turn_forgets_the_conversations_sent_texts(tmp_path):
+    """After a turn ends, the same words queued in the member chat yourself
+    are yours, and Stop leaves them there."""
+    w = Window(tmp_path)
+    _with_copilot(w)
+    w.send('@Copilot review this')
+    assert w._agent_sent_texts[('copilot', 'p1')]
+    w._agent_turn_ended('copilot', 'p1', 'Looks fine.', False)
+    assert ('copilot', 'p1') not in w._agent_sent_texts
+
+
+def test_a_message_still_on_its_way_stays_the_conversations(tmp_path):
+    """Sent just as the last turn ended: it's still the conversation's."""
+    w = Window(tmp_path)
+    _with_copilot(w)
+    w.send('@Copilot review this')
+    w._codex_send_pending['copilot:p1'] = 1
+    w._agent_turn_ended('copilot', 'p1', 'Looks fine.', False)
+    assert w._agent_sent_texts[('copilot', 'p1')]

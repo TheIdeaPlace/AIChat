@@ -570,10 +570,12 @@ class CodexChats:
                 self._notify(key, f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
                              text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
-        if state.unsent:
+        if unsent:
             # Queue this after interrupting error/reply speech, so the news
             # about recovered text is not immediately cut off by that speech.
-            count = len(state.unsent)
+            # Only what came back here: an agent conversation's own message
+            # went back to the conversation, which said so.
+            count = len(unsent)
             destination = 'reply box' if loaded else f'draft for {record.title}'
             self._feedback(f'{count} unsent message' + ('s are' if count != 1 else ' is')
                            + f' back in the {destination}.')

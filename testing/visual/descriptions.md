@@ -461,6 +461,12 @@ A 720 by 760 dialog titled "New Agent Conversation". From the top: "Kind of conv
 
 **At 175%:** the controls are taller than the screen allows, so they scroll above Start and Cancel, which stay in view; the opening message box is below the fold until you scroll, as in Settings.
 
+## agent-new-copilot: New Agent Conversation with a new Claude chat and a new Copilot chat (#369, #412)
+
+The same 720 by 760 dialog, with "Your own roles" focused at the top and an empty title. The first agent is a new Claude chat with an empty role and "Auto: Claude decides what is safe to run without asking". The second agent's chat reads "New Copilot chat", with an empty role, and its permission dropdown reads "Asks you before it changes files or runs commands", the only item, which fits in the 671-pixel dropdown. Then "No third agent". There's no "About Codex permissions" box, so Folder, Hand-offs, Who goes first and the top of the opening message all show above the fold; Start and Cancel stay at the bottom right. Light uses black text on light grey (#000000/#F0F0F0, 18.43:1); High Contrast Aquatic uses white on near-black (#FFFFFF/#202020, 16.29:1), with an aqua Start button. Both have the dotted focus outline and underlined access keys, and neither has layout problems flagged.
+
+**What looks off:** Nothing.
+
 ## agent-new-auto-review: Three new Codex chats with automatic approval review
 
 The same 720 by 760 dialog, with "Your own roles" focused at the top, an empty title and three new Codex chats with empty roles. The first and third permission dropdowns read "Read-only; automatic approval review"; the second reads "Can edit files in this folder; automatic approval review". Each dropdown is 671 by 23 pixels and its selected text fits. Under the third permission, "About Codex permissions:" heads a 671 by 110 read-only box containing the complete explanation in three lines, as in agent-new. Folder's label is at the bottom of the scrolling view, with its dropdown, Hand-offs, Who goes first and the opening message below the fold. The folder and everything after it moved down 134 pixels. Start and Cancel remain at the bottom right. Both variants keep the dotted focus outline and follow their theme. Measured label contrast is 18.43:1 in light (#000000/#F0F0F0) and 16.29:1 in Aquatic (#FFFFFF/#202020); neither has layout problems flagged.

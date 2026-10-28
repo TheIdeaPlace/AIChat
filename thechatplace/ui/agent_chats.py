@@ -654,11 +654,20 @@ class AgentChats:
         the texts left for the member chat's own reply box: the
         conversation's goes back to the conversation instead."""
         texts = tuple(texts)
-        sent = self._agent_last_sent.get((provider, native_id))
-        if sent is None or (texts and sent not in texts):
-            return texts
         awaited = self._agent_awaiting.get((provider, native_id))
         if awaited is None:
+            # Stopped just as the conversation's next message was starting:
+            # Stop no longer awaits the member, and the runtime gives the
+            # message back here rather than in what its Stop returned. The
+            # conversation's own texts still go back to it (#412 review).
+            conversation = self.agents.containing(provider, native_id)
+            index = (conversation.member_index(provider, native_id)
+                     if conversation is not None else None)
+            if index is None or not texts:
+                return texts
+            return self._agent_take_back(conversation.conversation_id, index, texts)
+        sent = self._agent_last_sent.get((provider, native_id))
+        if sent is None or (texts and sent not in texts):
             return texts
         conversation = self.agents.get(awaited[0])
         kept = self._agent_take_unsent(provider, native_id, sent)
@@ -711,6 +720,14 @@ class AgentChats:
                 gathered += [f for f in files if f not in gathered]
             return
         awaited = self._agent_awaiting.pop(identity, None)
+        # Nothing of the conversation's waits for it now: a text you queue in
+        # the member chat yourself later, even in the same words, is yours.
+        # Unless one is still on its way to the member, sent just as this
+        # turn ended (#412 review).
+        on_its_way = f"{provider}:{native_id}"
+        if (on_its_way not in self._codex_send_pending
+                and on_its_way not in self._agent_codex_waiting):
+            self._agent_sent_texts.pop(identity, None)
         files = tuple(dict.fromkeys(list(self._agent_turn_files.pop(identity, ())) + list(files)))
         asked = identity in self._agent_asked
         was_refused = identity in self._agent_refused
@@ -907,6 +924,9 @@ class AgentChats:
                     stopped_at.append(index)
                     queued = self._take_queued(member.native_id)
                     if queued:
+                        if agents.SETUP_END in queued:
+                            # The setup never reached it: it goes again.
+                            self._agent_unbrief(conversation, index)
                         body = queued.partition(agents.SETUP_END)[2].strip() or queued
                         taken_back.append(self._agent_keep_unseen(
                             conversation.conversation_id, index, body))
@@ -968,23 +988,34 @@ class AgentChats:
         rest = tuple(text for text in texts if text not in sent)
         if not ours:
             return rest
-        for text in ours:
-            sent.remove(text)
+        unseen_key = (conversation_id, index)
+        unseen_before = self._agent_unseen.get(unseen_key)
         bodies = [self._agent_keep_unseen(conversation_id, index,
                                           text.partition(agents.SETUP_END)[2].strip() or text)
                   for text in ours]
         joined = "\n\n".join(body for body in bodies if body)
-        if not joined:
-            return rest
-        if self._agent_is_open(conversation):
+        if joined and self._agent_is_open(conversation):
             current = self.reply_text.GetValue()
             self.reply_text.SetValue(joined + ("\n\n" + current if current.strip() else ""))
             self._feedback("A message that hadn't gone yet is back in the reply box.")
-        elif self._copy_text(joined):
+        elif joined and self._copy_text(joined):
             self._feedback(f"{conversation.title}: a message that hadn't gone yet is copied to "
                            "the clipboard.")
-        else:
+        elif joined:
+            # Neither worked: the texts go whole to the member chat's own
+            # reply box, so the replies they carry mustn't also wait to be
+            # sent again (#412 review).
+            if unseen_before is None:
+                self._agent_unseen.pop(unseen_key, None)
+            else:
+                self._agent_unseen[unseen_key] = unseen_before
             return tuple(texts)
+        for text in ours:
+            sent.remove(text)
+        if any(agents.SETUP_END in text for text in ours):
+            # The setup never reached it: it goes again with the next message.
+            self._agent_unbrief(conversation, index)
+            self._agent_save(conversation, touch=False)
         return rest
 
     def _agent_status_text(self, info) -> str:
