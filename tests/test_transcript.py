@@ -519,3 +519,78 @@ def test_unchanged_and_touched_transcripts_do_not_reparse_or_reopen_repeatedly(t
     assert not reader.refresh() and reader._parser is parser
     assert len(opens) == 1
     assert not reader.refresh() and len(opens) == 1
+
+
+def test_a_steering_row_says_where_the_message_is():
+    from thechatplace.transcript import STEERING, TAIL_KINDS, ChatMessage
+    row = ChatMessage(STEERING, "Also the docs", sender="waiting for Claude")
+    assert row.list_line() == "Steering, waiting for Claude: Also the docs"
+    assert STEERING in TAIL_KINDS
+
+
+def test_a_message_taken_in_mid_turn_is_yours():
+    # How Claude Code 2.1.296 records a steer taken in at the next step
+    # (#238): no user record, only this attachment, in its place.
+    tr = parse_lines(lines(
+        user_text("Fix the tests"),
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": "Also update the README",
+                                        "source_uuid": "s-1", "delivery_id": "d-1"}),
+        assistant_block(text_block("Done, README too.")),
+    ))
+    assert [m.list_line() for m in tr.visible()] == [
+        "You: Fix the tests", "You: Also update the README", "Claude: Done, README too."]
+
+
+def test_other_queued_commands_without_an_origin_are_skipped():
+    tr = parse_lines(lines(
+        other("attachment", attachment={"type": "queued_command",
+                                        "commandMode": "task-notification",
+                                        "prompt": "<task-notification>done</task-notification>"}),
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": "   "}),
+    ))
+    assert tr.visible(show_activity=True) == []
+
+
+def test_a_message_taken_in_mid_turn_stays_in_its_turn():
+    # Part of the work it joined: Changes and the task list for that turn
+    # still cover all of it (#410).
+    tr = parse_lines(lines(
+        user_text("Fix the tests"),
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": "Also update the README"}),
+        assistant_block(text_block("Done.")),
+    ))
+    assert tr.turns == 1
+    assert {m.turn for m in tr.visible()} == {1}
+
+
+def test_harness_prompts_taken_in_mid_turn_are_not_yours():
+    tr = parse_lines(lines(
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": "<ci-monitor-event>checks passed</ci-monitor-event>"}),
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": '<agent-message from="helper">report</agent-message>'}),
+    ))
+    shown = tr.visible(show_activity=True)
+    assert [m.kind for m in shown] == ["event"]
+    assert tr.turns == 0
+
+
+def test_a_message_taken_in_first_in_what_is_readable_starts_turn_one():
+    tr = parse_lines(lines(
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": "Also update the README"}),
+        assistant_block(text_block("Done.")),
+    ))
+    assert tr.turns == 1 and {m.turn for m in tr.visible()} == {1}
+
+
+def test_your_words_starting_with_some_other_tag_still_show():
+    tr = parse_lines(lines(
+        user_text("Fix the tests"),
+        other("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                        "prompt": '<my-widget class="x"> renders wrong'}),
+    ))
+    assert [m.kind for m in tr.visible()] == ["user", "user"]

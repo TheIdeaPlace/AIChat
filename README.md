@@ -1236,8 +1236,10 @@ instead of waiting. With no turn running, Ctrl+Alt+Enter simply sends, as Ctrl+E
   first, since Codex may have it. It is never sent as a new turn on its own.
 - **Copilot chats** can't take a message during a turn yet: Ctrl+Enter queues it.
 
-Turn status (Ctrl+Shift+T) and the turn status line say when a steered message hasn't been taken
-in yet. Send Now (Ctrl+Enter on a queued message) is unchanged: it stops what Claude is doing and
+A steered message is at the end of the messages list at once, as "Steering, waiting for Claude:
+…" (or Codex), and the row says where it is as that changes ("taken in by Claude", "accepted by
+Codex"), until the chat's own history shows it in its place. Turn status (Ctrl+Shift+T) and the
+turn status line say when a steered message hasn't been taken in yet. Send Now (Ctrl+Enter on a queued message) is unchanged: it stops what Claude is doing and
 answers the message instead.
 
 Every announcement is also written to `speech.log` in `%TEMP%\thechatplace-speak` (on a Mac,

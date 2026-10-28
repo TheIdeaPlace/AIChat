@@ -1475,6 +1475,17 @@ def _start(frame, fake_runner, text="first"):
     return fake_runner.instances[-1]
 
 
+def _start_steering(frame, fake_runner, text="first"):
+    """_start, for a test that steers. Hub probe has no transcript here, so
+    whether its history counts as known depends on whether the first read
+    lands before or after the send; Steer waits for it (#410). This makes it
+    known, and test_steer_is_allowed_once_the_history_is_read covers a real
+    read."""
+    runner = _start(frame, fake_runner, text)
+    frame._history_known = True
+    return runner
+
+
 def test_send_during_a_turn_queues_and_goes_when_it_ends(frame, env, fake_runner):
     _start(frame, fake_runner)
     frame.reply_text.SetValue("second")
@@ -4892,7 +4903,7 @@ def _steer_key(frame, monkeypatch, focus):
 
 def test_steer_sends_into_the_running_turn_without_stopping_it(frame, env, fake_runner,
                                                                monkeypatch):
-    runner = _start(frame, fake_runner)
+    runner = _start_steering(frame, fake_runner)
     frame.reply_text.SetValue("Also update the README")
     _steer_key(frame, monkeypatch, frame.reply_text)
     assert runner.steered == ["Also update the README"]
@@ -4923,7 +4934,7 @@ def test_steer_with_no_turn_running_is_a_plain_send(frame, env, fake_runner, mon
 
 
 def test_steer_into_a_turn_that_just_ended_keeps_the_text(frame, env, fake_runner):
-    runner = _start(frame, fake_runner)
+    runner = _start_steering(frame, fake_runner)
     runner.ended = True
     frame.reply_text.SetValue("too late")
     frame.on_steer()
@@ -4934,7 +4945,7 @@ def test_steer_into_a_turn_that_just_ended_keeps_the_text(frame, env, fake_runne
 
 def test_steer_on_a_queued_message_takes_it_into_the_turn(frame, env, fake_runner,
                                                           monkeypatch):
-    runner = _start(frame, fake_runner)
+    runner = _start_steering(frame, fake_runner)
     for text in ("second", "third"):
         frame.reply_text.SetValue(text)
         frame.on_send()
@@ -13120,7 +13131,7 @@ def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatc
 
 def test_a_steer_never_taken_in_comes_back_when_the_turn_ends(frame, env, fake_runner):
     # #238: Stop (or the turn ending) before Claude took it in.
-    runner = _start(frame, fake_runner)
+    runner = _start_steering(frame, fake_runner)
     frame.reply_text.SetValue("Also update the README")
     frame.on_steer()
     frame.reply_text.SetValue("half typed")
@@ -13133,7 +13144,7 @@ def test_a_steer_never_taken_in_comes_back_when_the_turn_ends(frame, env, fake_r
 
 
 def test_a_late_steer_says_the_reply_it_follows(frame, env, fake_runner):
-    _start(frame, fake_runner)
+    _start_steering(frame, fake_runner)
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "steer_taken", text="And the docs", data={"late": True, "reply": "Fixed."}))
     assert env["feedback"][-1] == ("Hub probe replied. Fixed. Hub probe had finished, "
@@ -13141,7 +13152,7 @@ def test_a_late_steer_says_the_reply_it_follows(frame, env, fake_runner):
 
 
 def test_steer_on_a_queued_message_after_the_turn_ended_says_so(frame, env, fake_runner):
-    _start(frame, fake_runner)
+    _start_steering(frame, fake_runner)
     frame.reply_text.SetValue("second")
     frame.on_send()
     frame._runners.pop("own-1")
@@ -13149,3 +13160,231 @@ def test_steer_on_a_queued_message_after_the_turn_ended_says_so(frame, env, fake
     frame.steer_queued()
     assert env["feedback"][-1] == "The turn has ended: the queued message goes next."
     assert frame._queued == {"own-1": ["second"]}
+
+
+def test_a_steered_message_is_a_row_until_the_chat_has_it(frame, env, fake_runner):
+    # Readable once sent, like a queued message (#238).
+    from thechatplace.transcript import USER, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
+    assert last == "Steering, waiting for Claude: Also update the README"
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="Also update the README", data={"late": False}))
+    last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
+    assert last == "Steering, taken in by Claude: Also update the README"
+    # Read with its new status, not the old one (the spoken name is cached).
+    row = frame.chat_list.GetCount() - 1
+    if frame.speech.full_messages_in_list:
+        assert frame._message_item_text(row).startswith("Steering, taken in by Claude:")
+    # The transcript now has it: the row goes, so it isn't there twice.
+    frame._chat_loaded = True
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "Also update the README")]
+    assert frame._drop_steers_in_history()
+    frame._rebuild_chat_list()
+    assert not [frame.chat_list.GetString(i) for i in range(frame.chat_list.GetCount())
+                if frame.chat_list.GetString(i).startswith("Steering")]
+    assert frame._steered == {}
+
+
+def test_steering_rows_go_when_the_turn_ends(frame, env, fake_runner):
+    runner = _start_steering(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    assert frame._steered.get("own-1")  # it really was steered
+    runner.steered = []  # taken in, as far as the runner knows
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert frame._steered == {}
+
+
+def test_two_steers_saying_the_same_go_one_at_a_time(frame, env, fake_runner):
+    from thechatplace.transcript import USER, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame._chat_loaded = True
+    for _ in range(2):
+        frame.reply_text.SetValue("yes")
+        frame.on_steer()
+    # Each taken-in moves on the one still waiting, not the same one twice.
+    for _ in range(2):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+            "steer_taken", text="yes", data={"late": False}))
+    assert [e[1] for e in frame._steered["own-1"]] == ["taken in by Claude"] * 2
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "yes")]
+    frame._drop_steers_in_history()
+    assert len(frame._steered["own-1"]) == 1
+
+
+def test_a_steer_waiting_isnt_taken_for_an_earlier_message_saying_the_same(frame, env,
+                                                                         fake_runner):
+    from thechatplace.transcript import USER, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame._chat_loaded = True
+    frame.reply_text.SetValue("yes")
+    frame.on_steer()
+    assert frame._steered.get("own-1")  # it really was steered
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "yes")]
+    assert not frame._drop_steers_in_history()  # not taken in yet
+
+
+def test_another_chats_steer_news_leaves_this_list_alone(frame, env, fake_runner,
+                                                       monkeypatch):
+    _start_steering(frame, fake_runner)
+    calls = []
+    monkeypatch.setattr(frame, "_rebuild_chat_list", lambda *a, **k: calls.append(a))
+    frame._steer_row("other-chat", "Also the docs", "waiting for Claude")
+    frame._steer_status("other-chat", "Also the docs", "taken in by Claude")
+    frame._steers_ended("other-chat")
+    assert calls == []
+
+
+def test_a_steering_row_keeps_new_messages_inserted_above_it(frame, env, fake_runner,
+                                                              monkeypatch):
+    # A tail row like a queued one: the list isn't reset under the reader.
+    from thechatplace.transcript import ASSISTANT, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    calls = []
+    monkeypatch.setattr(frame.chat_list, "Set", lambda lines: calls.append(lines))
+    frame._chat_messages = frame._chat_messages + [ChatMessage(ASSISTANT, "Working on it.",
+                                                               key="new-1")]
+    frame._rebuild_chat_list()
+    assert calls == []
+    last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
+    assert last.startswith("Steering, waiting for Claude:")
+
+
+def test_a_steer_already_in_the_history_goes_when_its_news_comes(frame, env, fake_runner):
+    # The transcript was read before steer_taken arrived: no second copy.
+    from thechatplace.transcript import USER, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame._chat_loaded = True
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    assert frame._steered.get("own-1")  # it really was steered
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "Also update the README")]
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="Also update the README", data={"late": False}))
+    assert frame._steered == {}
+
+
+def test_a_codex_steer_accepted_then_stopped_comes_back_if_the_history_lacks_it(frame, env):
+    # Codex can accept a steer and be interrupted before using it (#410).
+    import dataclasses
+    from thechatplace.transcript import USER, ChatMessage
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._open = info
+    frame._chat_loaded = True
+    frame._history_known = True
+    frame._restore_codex_text = lambda key, texts: restored.extend(texts)
+    restored = []
+    frame._steer_row(info.key, "Also the docs", "waiting for Codex")
+    frame._steer_status(info.key, "Also the docs", "accepted by Codex")
+    frame._refresh_chat = lambda: None
+    frame._steers_turn_over(info.key)
+    assert not frame._drop_steers_in_history()  # no history read since: it stays
+    frame._history_reads += 1  # read after the turn ended, and it isn't there
+    assert frame._drop_steers_in_history()
+    assert restored == ["Also the docs"] and info.key not in frame._steered
+    assert "back in the reply box" in env["feedback"][-1]
+    # Had the history had it, it would simply go.
+    frame._steer_row(info.key, "And the tests", "accepted by Codex")
+    frame._steers_turn_over(info.key)
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "And the tests")]
+    frame._history_reads += 1
+    assert frame._drop_steers_in_history()
+    assert restored == ["Also the docs"]
+
+
+def test_an_unchanged_history_read_still_settles_an_ended_steer(frame, env, monkeypatch):
+    # The read after Stop often finds nothing new: it must still count.
+    import dataclasses
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._open = info
+    frame._chat_loaded = True
+    frame._history_known = True
+    restored = []
+    frame._restore_codex_text = lambda key, texts: restored.extend(texts)
+    frame._refresh_chat = lambda: None
+    frame._steer_row(info.key, "Also the docs", "accepted by Codex")
+    frame._steers_turn_over(info.key)
+    frame._apply_chat(frame._open_generation, False, list(frame._chat_messages), 0, None)
+    assert restored == ["Also the docs"]
+
+
+def test_steer_waits_for_the_chat_to_load(frame, env, fake_runner):
+    runner = _start_steering(frame, fake_runner)
+    frame._history_known = False
+    frame._chat_loaded = False
+    frame.reply_text.SetValue("Also the docs")
+    frame.on_steer()
+    assert frame.reply_text.GetValue() == "Also the docs"
+    assert not getattr(runner, "steered", None)
+    assert env["feedback"][-1] == "This chat is still loading. Steer again in a moment."
+
+
+def test_several_stopped_codex_steers_come_back_together(frame, env):
+    import dataclasses
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._open = info
+    frame._chat_loaded = True
+    frame._history_known = True
+    restored = []
+    frame._restore_codex_text = lambda key, texts: restored.extend(texts)
+    frame._refresh_chat = lambda: None
+    for text in ("Also the docs", "And the tests"):
+        frame._steer_row(info.key, text, "accepted by Codex")
+    frame._steers_turn_over(info.key)
+    frame._history_reads += 1
+    assert frame._drop_steers_in_history()
+    assert restored == ["Also the docs", "And the tests"]
+    assert "accepted 2 steered messages" in env["feedback"][-1]
+
+
+def test_steer_with_no_turn_running_sends_even_before_the_history_is_read(frame, env,
+                                                                          fake_runner):
+    # Never "still loading" instead of a plain Send (a chat that never loads).
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame._history_known = False
+    frame.reply_text.SetValue("hello")
+    frame.on_steer()
+    assert len(fake_runner.instances) == 1 and fake_runner.instances[0].prompt == "hello"
+
+
+def test_steer_is_allowed_once_the_history_is_read(frame, env, fake_runner):
+    from records import user_text
+    add_transcript(env, "C:\\G\\Scratch", "own-1", [user_text("Earlier message")])
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    assert pump(lambda: frame._history_known)
+    frame.reply_text.SetValue("first")
+    frame.on_send()
+    runner = fake_runner.instances[-1]
+    frame.reply_text.SetValue("Also the docs")
+    frame.on_steer()
+    assert runner.steered == ["Also the docs"]
+
+
+def test_a_chat_whose_history_cant_be_read_says_so_rather_than_loading(frame, env,
+                                                                     fake_runner):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    # Hub probe has no transcript: "No transcript found", loaded but unread.
+    assert pump(lambda: frame._chat_loaded)
+    assert not frame._history_known
+    frame.reply_text.SetValue("first")
+    frame.on_send()
+    runner = fake_runner.instances[-1]
+    frame.reply_text.SetValue("Also the docs")
+    frame.on_steer()
+    assert "history couldn't be read" in env["feedback"][-1]
+    assert frame.reply_text.GetValue() == "Also the docs"
+    assert not getattr(runner, "steered", None)
