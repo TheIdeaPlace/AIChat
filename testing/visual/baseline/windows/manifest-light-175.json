@@ -309,7 +309,7 @@
    "class": "QuestionDialog",
    "size": [
     1225,
-    594
+    859
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -939,7 +939,7 @@
    "class": "QuestionDialog",
    "size": [
     1225,
-    396
+    661
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1140,6 +1140,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Continue a possibly active Codex chat with explicit runtime policy"
+  },
+  "question-preview": {
+   "kind": "dialog",
+   "png": "question-preview-light-175.png",
+   "json": "question-preview-light-175.json",
+   "title": "Claude asks: Visual probe",
+   "class": "QuestionDialog",
+   "size": [
+    1225,
+    903
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Claude asks about text it wrote just before, with an option's preview"
   }
  },
  "seconds": 94.1

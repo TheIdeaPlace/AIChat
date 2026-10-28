@@ -3,11 +3,11 @@
  "class": "QuestionDialog",
  "size": [
   700,
-  377
+  537
  ],
  "client": [
   684,
-  338
+  498
  ],
  "dpi": [
   96,
@@ -16,12 +16,51 @@
  "content_scale": 1.0,
  "controls": [
   {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Question:",
+   "rect": [
+    8,
+    8,
+    52,
+    16
+   ],
+   "best": [
+    52,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Question",
+   "label": "Branch: Which name should the release branch use?\r\nChecks: Which checks should run first?",
+   "rect": [
+    10,
+    34,
+    668,
+    120
+   ],
+   "best": [
+    127,
+    120
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Branch: Which name should the release branch use?\nChecks: Which checks should run first?"
+  },
+  {
    "class": "ScrolledWindow",
    "name": "panel",
    "label": "panel",
    "rect": [
     4,
-    4,
+    164,
     676,
     291
    ],
@@ -40,7 +79,7 @@
    "label": "Branch: Which name should the release branch use?",
    "rect": [
     10,
-    10,
+    170,
     664,
     122
    ],
@@ -49,7 +88,7 @@
     23
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -59,7 +98,7 @@
    "label": "release/0.2: Matches the last release",
    "rect": [
     19,
-    31,
+    191,
     209,
     15
    ],
@@ -68,7 +107,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -78,7 +117,7 @@
    "label": "v0.2-prep: Shorter",
    "rect": [
     19,
-    54,
+    214,
     116,
     15
    ],
@@ -87,7 +126,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -97,7 +136,7 @@
    "label": "Other (type below)",
    "rect": [
     19,
-    77,
+    237,
     121,
     15
    ],
@@ -106,7 +145,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -116,7 +155,7 @@
    "label": "",
    "rect": [
     21,
-    102,
+    262,
     646,
     23
    ],
@@ -125,7 +164,7 @@
     23
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": [],
    "value": ""
@@ -136,7 +175,7 @@
    "label": "Checks: Which checks should run first?",
    "rect": [
     10,
-    144,
+    304,
     664,
     145
    ],
@@ -145,7 +184,7 @@
     23
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -155,7 +194,7 @@
    "label": "Unit tests",
    "rect": [
     19,
-    165,
+    325,
     71,
     15
    ],
@@ -164,7 +203,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -174,7 +213,7 @@
    "label": "Smoke test",
    "rect": [
     19,
-    188,
+    348,
     80,
     15
    ],
@@ -183,7 +222,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -193,7 +232,7 @@
    "label": "Lint",
    "rect": [
     19,
-    211,
+    371,
     42,
     15
    ],
@@ -202,7 +241,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -212,7 +251,7 @@
    "label": "Other (type below)",
    "rect": [
     19,
-    234,
+    394,
     121,
     15
    ],
@@ -221,7 +260,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -231,7 +270,7 @@
    "label": "",
    "rect": [
     21,
-    259,
+    419,
     646,
     23
    ],
@@ -240,7 +279,7 @@
     23
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": [],
    "value": ""
@@ -251,7 +290,7 @@
    "label": "&Send Answers",
    "rect": [
     389,
-    307,
+    467,
     94,
     23
    ],
@@ -270,7 +309,7 @@
    "label": "&Don't Answer",
    "rect": [
     489,
-    307,
+    467,
     92,
     23
    ],
@@ -289,7 +328,7 @@
    "label": "Answer &Later",
    "rect": [
     587,
-    307,
+    467,
     89,
     23
    ],
