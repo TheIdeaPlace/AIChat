@@ -1146,6 +1146,29 @@ def d_question(frame, env):
     return frame.on_answer
 
 
+def d_question_preview(frame, env):
+    """#415: text Claude wrote before asking, and options with previews."""
+    import fake_env
+    from thechatplace.claude_cli import TurnEvent
+    _open(frame, "Visual probe")
+    frame._pending.clear()
+    frame._runners["own-1"] = fake_env.FakeRunner([], "", "", None)
+    for kind, text in [("text", "Here's the announcement for the release:"),
+                       ("text", "The Chat Place 0.3.2 is out. Copilot chats can join agent "
+                                "conversations, and Changed Files works for Codex chats."),
+                       ("tool", "AskUserQuestion")]:
+        frame._on_turn_event({"id": "own-1"}, "Visual probe", TurnEvent(kind, text=text))
+    _waiting(frame, _request("AskUserQuestion", {"questions": [
+        {"header": "Mastodon", "question": "Post this announcement to Mastodon?",
+         "options": [{"label": "Post it", "description": "Post it publicly",
+                      "preview": "The Chat Place 0.3.2 is out. Copilot chats can join agent "
+                                 "conversations, and Changed Files works for Codex chats.\n\n"
+                                 "https://github.com/TheIdeaPlace/AIChat/releases/tag/v0.3.2"},
+                     {"label": "Change it", "description": "Say what to change"},
+                     {"label": "Don't post"}]}]}, "q2"))
+    return frame.on_answer
+
+
 def d_codex_permission(frame, env):
     from thechatplace.providers.codex_requests import CodexRequest, COMMAND
     from thechatplace.ui.dialogs import CodexPermissionDialog
@@ -1574,6 +1597,8 @@ SURFACES = {
     "codex-files": ("dialog", d_codex_files, "Codex file changes to review before allowing"),
     "codex-question": ("dialog", d_codex_question, "Codex choices and a masked secret answer"),
     "question": ("dialog", d_question, "Claude asks questions (one choice and several choices)"),
+    "question-preview": ("dialog", d_question_preview,
+                         "Claude asks about text it wrote just before, with an option's preview"),
     "plan": ("dialog", d_plan, "Claude's plan to approve"),
     "manage-groups": ("dialog", d_manage_groups, "File, Manage Groups"),
     "command-picker": ("dialog", d_command_picker, "Insert Command or Skill"),
@@ -1661,6 +1686,7 @@ DIALOG_CLASSES = {
     "codex-files": "CodexPermissionDialog",
     "codex-question": "QuestionDialog",
     "question": "QuestionDialog",
+    "question-preview": "QuestionDialog",
     "plan": "PlanDialog",
     "manage-groups": "ManageGroupsDialog",
     "command-picker": "CommandPickerDialog",

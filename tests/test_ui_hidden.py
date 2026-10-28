@@ -2304,6 +2304,73 @@ def test_question_answers_go_back_to_claude(frame, env, monkeypatch):
     assert env["feedback"][-1] == "Answer sent."
 
 
+def test_a_question_carries_what_claude_wrote_just_before_asking(frame, env):
+    """#415: the draft Claude asks about is in its text before the question.
+    Only the text since its last other tool goes with it; AskUserQuestion's
+    own tool event comes before the question and doesn't clear it."""
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame._runners["own-1"] = FakeRunner([], "", "", None)
+
+    def turn(kind, text="", request=None):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(kind, text=text,
+                                                                     request=request))
+    turn("text", "Reading the notes.")
+    turn("tool", "Bash")
+    turn("text", "Here's the post:")
+    turn("text", "The Chat Place 0.3.2 is out.")
+    turn("tool", "AskUserQuestion")
+    question = _request("q1", "AskUserQuestion", {"questions": [{"question": "Post it?"}]})
+    turn("permission", question.summary(), question)
+    assert question.said == "Here's the post:\n\nThe Chat Place 0.3.2 is out."
+    # A new turn starts with nothing said.
+    turn("finished", "Done.")
+    frame._runners["own-1"] = FakeRunner([], "", "", None)
+    turn("started")
+    later = _request("q2", "AskUserQuestion", {"questions": [{"question": "Again?"}]})
+    turn("permission", later.summary(), later)
+    assert later.said == ""
+
+
+def test_question_dialog_opens_on_the_question_and_shows_previews(frame):
+    """#415: a read-only Question box first, with what was said before the
+    question and each question in full; a Preview box for the option you're on."""
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import QuestionDialog
+    request = SimpleNamespace(said="Here's the post:\n\nThe Chat Place 0.3.2 is out.",
+                              questions=lambda: [
+        {"header": "Mastodon", "question": "Post this?",
+         "options": [{"label": "Post it", "preview": "The Chat Place 0.3.2 is out."},
+                     {"label": "Don't post"}]},
+        {"header": "When", "question": "Now or later?", "options": [{"label": "Now"}]}])
+    dialog = QuestionDialog(frame, "Probe", request)
+    try:
+        assert dialog.question_text.GetValue() == (
+            "Here's the post:\n\nThe Chat Place 0.3.2 is out.\n\n"
+            "Mastodon: Post this?\nWhen: Now or later?")
+        assert dialog.question_text.HasFlag(wx.TE_READONLY)
+        assert dialog.question_text.HasFlag(wx.TE_MULTILINE)
+        # Starts on the first option's preview; follows the option you're on.
+        (_kind, (post, dont, other), _text), _when = dialog._controls
+        assert dialog.preview_text.GetValue() == "The Chat Place 0.3.2 is out."
+        dialog._show_preview(dont)
+        assert dialog.preview_text.GetValue() == "Don't post has no preview."
+        dialog._show_preview(post)
+        assert dialog.preview_text.GetValue() == "The Chat Place 0.3.2 is out."
+        # In Tab order: the question, the options, then the preview.
+        order = list(dialog.GetChildren())
+        assert order.index(dialog.question_text) < order.index(dialog.preview_text)
+    finally:
+        dialog.Destroy()
+    # No previews, no Preview box; no text before it, just the questions.
+    plain = QuestionDialog(frame, "Probe", _Questions())
+    try:
+        assert plain.preview_text is None
+        assert plain.question_text.GetValue().startswith("One: First?\nTwo: Second?")
+    finally:
+        plain.Destroy()
+
+
 def test_turn_end_clears_waiting_and_a_late_answer_says_so(frame, env, monkeypatch):
     from thechatplace.claude_cli import allow_response
     runner = _waiting_turn(frame, _request())

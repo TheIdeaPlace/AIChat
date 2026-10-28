@@ -259,6 +259,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         #: The latest messages the conversation sent each member, so a Stop
         #: that gives waiting ones back can tell its own from yours (#369).
         self._agent_sent_texts: Dict[tuple, list] = {}
+        #: Per running Claude chat: the text it wrote since its last tool,
+        #: and whether a tool has come since, so a question can show what
+        #: Claude said just before asking it (#415).
+        self._turn_said: Dict[str, tuple] = {}
         self._agent_codex_preparing: set = set()
         self._agent_answered_early: set = set()
         #: The files each member's running turn has edited (phase 3).
@@ -4350,10 +4354,24 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._store_write(self.store.update, session_id, state=IDLE, detail="",
                           last_activity_ms=int(time.time() * 1000))
 
+    def _note_turn_text(self, session_id: str, event: TurnEvent) -> None:
+        """Keep what Claude wrote since its last tool (#415). AskUserQuestion
+        is a tool too, and its tool event comes before the question, so a
+        tool only marks the text as finished: the next text starts again."""
+        if event.kind in ("started", "finished", "failed"):
+            self._turn_said.pop(session_id, None)
+        elif event.kind == "tool":
+            texts, _closed = self._turn_said.get(session_id, ([], False))
+            self._turn_said[session_id] = (texts, True)
+        elif event.kind == "text" and event.text.strip():
+            texts, closed = self._turn_said.get(session_id, ([], False))
+            self._turn_said[session_id] = (([] if closed else texts) + [event.text.strip()], False)
+
     def _on_turn_event(self, holder, title, event: TurnEvent):
         if self._gone():
             return
         session_id = holder["id"]
+        self._note_turn_text(session_id, event)
         if event.kind == "started":
             reported = event.session_id
             if reported and reported != session_id and session_id in self._runners:
@@ -4448,6 +4466,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self.refresh_sessions()
             return
         if event.kind == "permission" and event.request is not None:
+            if event.request.is_question:
+                # What Claude wrote just before asking goes with the
+                # question: often it's what the question is about (#415).
+                event.request.said = "\n\n".join(self._turn_said.get(session_id, ([], False))[0])
             self._agent_member_asked("claude", session_id)
             if session_id not in self._runners:
                 return  # the turn already ended; nothing is waiting
