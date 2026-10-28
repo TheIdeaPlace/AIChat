@@ -354,7 +354,9 @@ class CodexChats:
             self._update_send_state()
         self._codex_work(action, done)
 
-    def _stop_codex_owned(self, info):
+    def _stop_codex_owned(self, info, take_back=None):
+        """``take_back(texts)``: an agent conversation (#369) takes back the
+        waiting messages that were its own, and returns the rest."""
         record = self.store.get(info.cli_session_id, provider=info.provider)
         if record is None:
             return
@@ -373,6 +375,8 @@ class CodexChats:
                 self._update_send_state()
                 return
             reconnected, waiting, stopped = result
+            if waiting and take_back is not None:
+                waiting = tuple(take_back(waiting))
             if waiting:
                 # Copilot's stop gives back the messages still waiting; Codex
                 # gives them back through its state's unsent instead.
@@ -566,10 +570,12 @@ class CodexChats:
                 self._notify(key, f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
                              text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
-        if state.unsent:
+        if unsent:
             # Queue this after interrupting error/reply speech, so the news
             # about recovered text is not immediately cut off by that speech.
-            count = len(state.unsent)
+            # Only what came back here: an agent conversation's own message
+            # went back to the conversation, which said so.
+            count = len(unsent)
             destination = 'reply box' if loaded else f'draft for {record.title}'
             self._feedback(f'{count} unsent message' + ('s are' if count != 1 else ' is')
                            + f' back in the {destination}.')

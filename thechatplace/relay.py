@@ -85,8 +85,9 @@ def too_long(provider: str, text: str) -> Optional[str]:
 
 # -- a new chat, or an agent conversation (#378) -----------------------------------------
 
-#: The providers a reply can start a new chat of, in the order offered.
-NEW_KINDS = ("claude", "codex")
+#: The providers a reply can start a new chat of, in the order offered,
+#: and that can be in an agent conversation (Copilot since #369).
+NEW_KINDS = ("claude", "codex", "copilot")
 
 
 def new_target_label(provider: str) -> str:
@@ -129,9 +130,9 @@ def joint_problem(source: SessionInfo, *, can_edit: bool, in_conversation: bool,
     if blocked:
         return Problem("agent conversations can't be saved", blocked)
     if source.is_own and can_edit and source.provider not in NEW_KINDS:
-        # Started here, but its provider can't be in one yet (Copilot, #369).
+        # Started here, but its provider can't be in one.
         return Problem("this chat can't be in one",
-                       "agent conversations are for Claude and Codex chats")
+                       "agent conversations are for Claude, Codex and Copilot chats")
     if not source.is_own or source.provider not in NEW_KINDS or not can_edit:
         return Problem("this chat wasn't started here",
                        f"{source.title} wasn't started in The Chat Place")
@@ -151,7 +152,7 @@ def joint_target_problem(target: SessionInfo, in_conversation: bool,
     unrelated reply would be taken as its answer."""
     if target.provider not in NEW_KINDS:
         return Problem("that chat can't join one",
-                       "agent conversations are for Claude and Codex chats")
+                       "agent conversations are for Claude, Codex and Copilot chats")
     if in_conversation:
         return Problem("that chat is already in one",
                        f"{target.title} is already in an agent conversation")

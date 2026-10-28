@@ -162,12 +162,13 @@ SHORTCUTS = [
                          "a message, through Claude in the loaded Chat Place session (it needs "
                          "Remote Control on)"),
         ("Ctrl+Shift+E", "Send Reply to Another Chat: the selected reply (or the latest one) "
-                         "goes to another Chat Place chat, Claude or Codex, or a new one, labelled with who "
-                         "wrote it; read and change it first, then Enter sends and you go to "
-                         "that chat. In an agent conversation, hands the waiting reply to the "
-                         "other agent"),
-        ("Ctrl+Shift+G", "New Agent Conversation: two chats, Claude or Codex, new or your own, "
-                         "that pass replies to each other; you approve each hand-off, or, once "
+                         "goes to another Chat Place chat, Claude, Codex or Copilot, or a new "
+                         "one, labelled with who wrote it; read and change it first, then Enter "
+                         "sends and you go to that chat. In an agent conversation, hands the "
+                         "waiting reply to the other agent"),
+        ("Ctrl+Shift+G", "New Agent Conversation: two chats, Claude, Codex or Copilot, new or "
+                         "your own, that pass replies to each other; you approve each hand-off, "
+                         "or, once "
                          "Settings allows it, let them go automatically up to a turn limit"),
         ("Ctrl+Shift+D", "Lists, on Changed Files (Claude, Codex and Copilot chats): what changed in the selected "
          "message's turn (your latest, if none is selected) or in the whole chat; Enter on a file "

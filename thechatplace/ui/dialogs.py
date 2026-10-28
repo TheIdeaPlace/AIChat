@@ -3160,12 +3160,17 @@ class AgentConversationDialog(wx.Dialog):
     """File, New Agent Conversation (#248): what kind of conversation (a
     template fills in roles, permissions and who goes first, or your own);
     two chats, and an optional third, each an existing one of The Chat
-    Place's own or a new Claude or Codex chat, with a role each; how
+    Place's own or a new Claude, Codex or Copilot chat, with a role each; how
     hand-offs go; who answers first; and the opening message. Ctrl+Enter
     starts it from anywhere, as Send does in the reply box. ``result`` holds
     what was chosen once Start is pressed."""
 
-    NEW_LABELS = {"claude": "New Claude chat", "codex": "New Codex chat"}
+    NEW_LABELS = {"claude": "New Claude chat", "codex": "New Codex chat",
+                  "copilot": "New Copilot chat"}
+    #: A new Copilot chat has nothing to choose (#369): it always asks
+    #: before it acts, and the runtime makes sure it still does (#364). The
+    #: one choice says so where the others' permission would be.
+    COPILOT_MODES = (("ask", "Asks you before it changes files or runs commands"),)
     NO_THIRD = "No third agent"
     SLOT_NAMES = ("First agent", "Second agent", "Third agent")
     #: Each agent's labels, with access keys no other control here uses.
@@ -3332,7 +3337,8 @@ class AgentConversationDialog(wx.Dialog):
             self.chats[slot].SetSelection(0)
 
     def _modes(self, provider):
-        return self._claude_modes if provider == "claude" else self._codex_modes
+        return (self._claude_modes if provider == "claude"
+                else self.COPILOT_MODES if provider == "copilot" else self._codex_modes)
 
     def _sync(self):
         """Each new chat's permission choice, the third agent's role, the
@@ -3392,7 +3398,7 @@ class AgentConversationDialog(wx.Dialog):
         that agent; a third agent with a template is read-only, being given
         no part in it; otherwise the first choice, as in New Session."""
         template = self._template()
-        if template is None:
+        if template is None or provider == "copilot":
             return 0
         claude_mode, codex_sandbox = (template.permissions[slot]
                                       if slot < len(template.permissions)
@@ -3469,7 +3475,7 @@ class AgentConversationDialog(wx.Dialog):
                 value = self._modes(provider)[index][0]
                 if provider == "claude":
                     permission = value
-                else:
+                elif provider == "codex":
                     permission, approval_policy, approvals_reviewer = value
             members.append(SimpleNamespace(info=info, provider=provider,
                                            role=" ".join(self.roles[slot].GetValue().split()),

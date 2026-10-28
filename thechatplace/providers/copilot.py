@@ -690,7 +690,9 @@ class CopilotProvider:
         owned = self.runtime is not None and session.is_own
         # Changed Files is read from the log, so every Copilot chat has it,
         # read-only ones too; reading it never starts Copilot.
-        return SessionCapabilities(send=owned, approvals=owned, changes=True)
+        # Usage (#369) is read from the log and the runtime's state, so it
+        # never starts Copilot either.
+        return SessionCapabilities(send=owned, approvals=owned, changes=True, usage=True)
 
     # -- owned chats (copilot_runtime) ---------------------------------------
 
@@ -741,6 +743,35 @@ class CopilotProvider:
         path = self._events_path(session.cli_session_id)
         return CopilotReader(path) if path.is_file() else None
 
+    def usage_lines(self, session: SessionInfo) -> List[str]:
+        """Usage and Context (Ctrl+Shift+U, #369): how full the context is,
+        as Copilot last said in a turn run here, and the premium requests
+        the chat has used, from its log. Copilot doesn't say what's left of
+        the plan's allowance, so nothing here can warn about a limit."""
+        self._check(session)
+        state = self.runtime.snapshot(session.cli_session_id) if self.runtime is not None else None
+        if state is not None and state.context_size > 0:
+            share = min(1.0, state.context_used / state.context_size)
+            lines = [f"Context {round(share * 100)}% full: {state.context_used:,} of "
+                     f"{state.context_size:,} tokens."]
+        elif session.is_own:
+            lines = ["Context: not known until Copilot answers here."]
+        else:
+            # Started in Copilot CLI or another app: only a turn run here
+            # says how full it is, and none can run in a chat like this.
+            lines = ["Context: known only for chats started in The Chat Place."]
+        try:
+            used = premium_requests(self._events_path(session.cli_session_id))
+        except OSError:
+            used = None
+        if used is None:
+            lines.append("Premium requests used in this chat: none recorded yet.")
+        else:
+            lines.append(f"Premium requests used in this chat: {used:,g}.")
+        lines.append("Copilot doesn't say how many premium requests your plan has left; "
+                     "GitHub's Copilot settings show that.")
+        return lines
+
     def last_reply(self, session: SessionInfo) -> str:
         self._check(session)
         try:
@@ -749,6 +780,29 @@ class CopilotProvider:
             return ""
         reply = transcript.last_reply()
         return reply.text if reply else ""
+
+
+def premium_requests(path: Path) -> Optional[float]:
+    """The premium requests a chat has used, from its log's
+    session.usage_checkpoint events, or None if it has none. Copilot carries
+    the count on when a chat is reopened; two Copilots in one chat can write
+    them out of order, so it's the highest."""
+    found = None
+    with open(path, "rb") as handle:
+        for raw in handle:
+            if b"session.usage_checkpoint" not in raw:
+                continue
+            try:
+                event = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                continue
+            data = event.get("data") if isinstance(event, dict) else None
+            value = data.get("totalPremiumRequests") if isinstance(data, dict) else None
+            if (event.get("type") == "session.usage_checkpoint"
+                    and isinstance(value, (int, float)) and not isinstance(value, bool)
+                    and value >= 0 and (found is None or value > found)):
+                found = value
+    return found
 
 
 def _read_head(path: Path, max_bytes: Optional[int] = None) -> Tuple[List[str], bool]:

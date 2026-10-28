@@ -106,9 +106,11 @@ def test_the_label_comes_off_only_while_it_is_unchanged():
 @pytest.mark.parametrize("source, kwargs, expected", [
     (_chat("c1", "Builder"), {}, None),
     (_chat("c1", "Builder", source=DESKTOP), {}, "Builder wasn't started in The Chat Place"),
-    # Started here, but Copilot can't be in one yet (#369): said so, not "not started here".
-    (_chat("c1", "Builder", provider="copilot"), {},
-     "agent conversations are for Claude and Codex chats"),
+    # Copilot can be in one since #369.
+    (_chat("c1", "Builder", provider="copilot"), {}, None),
+    # Started here, but its provider can't be in one: said so, not "not started here".
+    (_chat("c1", "Builder", provider="gemini"), {},
+     "agent conversations are for Claude, Codex and Copilot chats"),
     (_chat("c1", "Builder"), {"can_edit": False}, "Builder wasn't started in The Chat Place"),
     (_chat("c1", "Builder"), {"in_conversation": True},
      "Builder is already in an agent conversation"),
@@ -132,8 +134,9 @@ def test_why_a_target_cant_join_one():
     # Working, its turn would end inside the conversation as if it answered.
     assert relay.joint_target_problem(reviewer, False, working=True) == relay.Problem(
         "that chat is still working", "Reviewer is still working; wait until it has finished")
-    assert relay.joint_target_problem(_chat("copilot:x", "Pilot", "copilot"), False).full == \
-        "agent conversations are for Claude and Codex chats"
+    assert relay.joint_target_problem(_chat("copilot:x", "Pilot", "copilot"), False) is None
+    assert relay.joint_target_problem(_chat("gemini:x", "Gem", "gemini"), False).full == \
+        "agent conversations are for Claude, Codex and Copilot chats"
 
 
 @pytest.mark.parametrize("sent, expected", [

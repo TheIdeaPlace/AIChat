@@ -585,9 +585,12 @@ Place won't send to Copilot:
 - with a message starting with `/`, since Copilot's commands include ones that turn off its
   questions.
 
-Continue Here, agent conversations, Change Permission Mode and Chat Permissions aren't
-available for Copilot chats yet, and Send Reply to Another Chat can send a Copilot chat's reply
-to another chat but not into a Copilot chat. A chat started here is kept in The Chat
+Continue Here, Change Permission Mode and Chat Permissions aren't available for Copilot chats
+yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+Chat can send a reply into it. Usage and Context (Ctrl+Shift+U) says how full a Copilot chat's
+context is (once Copilot has answered in it here) and how many premium requests the chat has
+used, from its log; Copilot doesn't say how many your plan has left, so check that in GitHub's
+Copilot settings. A chat started here is kept in The Chat
 Place's own list in `provider-sessions-copilot.json`, beside `sessions.json`. A chat that's answering says working, even while Copilot runs a command, and is
 announced once when its answer is finished. After 10 minutes with no activity it adds "no
 activity from Copilot for 10 minutes", and after 2 hours it's shown as status unavailable (Copilot
@@ -600,16 +603,17 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   what one agent said to another, for example so Codex can review what Claude built, or so
   Claude can answer Codex's review. It sends the selected reply in the messages list, or the
   latest one if a message of yours is selected. Choose the chat it goes to: any of The Chat
-  Place's own chats, Claude or Codex, other than this one (desktop app, terminal and hidden
-  chats aren't offered), or, at the end of the list, New Claude chat or New Codex chat. A new
+  Place's own chats, Claude, Codex or Copilot, other than this one (desktop app, terminal and
+  hidden chats aren't offered), or, at the end of the list, New Claude chat, New Codex chat or
+  New Copilot chat (Copilot only with its preview on in Settings). A new
   chat opens New Session with the message as its first message, the folder of the chat the
   reply came from, and the title "Forwarded from" that chat; choose its permission and model
   there, then start it. The message starts with a line saying which agent wrote it and in
   which chat, so the agent reading it knows these are another agent's words, not yours. Read
   it and change or add to it in the Message box (Enter there starts a new line), then press
   Ctrl+Enter, or Enter in the list, to send it. The Chat Place goes to that chat and sends it
-  as if you'd typed it: queued if that chat is working, and after Codex has got the chat ready
-  if it wasn't (going to another chat before then leaves it unsent, in that chat's reply box).
+  as if you'd typed it: queued if that chat is working, and after Codex or Copilot has got the
+  chat ready if it wasn't (going to another chat before then leaves it unsent, in that chat's reply box).
   If it can't be sent, it's left in that chat's reply box. While the chat it comes from is
   still working, the dialog's title says so: the reply may be a step on the way. The chat it
   came from is first in the list next time, so sending the answer back is Ctrl+Shift+E then
@@ -630,13 +634,16 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 ### Agent conversations
 
 - **Agent conversations (File, New Agent Conversation, Ctrl+Shift+G).** Two of The Chat
-  Place's own chats, Claude and Codex (or two of either), talk to each other in one
-  conversation, with you in it. Choose each agent's chat: one of yours, keeping its history,
-  or a new Claude or Codex chat (with its permission, in a folder you choose), and give each
-  a role if you like ("Build the fix", "Review each change; don't edit files"). Each new Codex
-  chat offers four permission choices: read-only or edits in its folder, with human or
-  automatic approval review, as in New Session. Templates keep human review unless you
-  explicitly choose automatic review. Kind of conversation fills in the roles, new chats'
+  Place's own chats, any of Claude, Codex and Copilot (or two of one), talk to each other in
+  one conversation, with you in it. Choose each agent's chat: one of yours, keeping its
+  history, or a new Claude, Codex or Copilot chat (with its permission, in a folder you
+  choose; Copilot only with its preview on in Settings), and give each a role if you like
+  ("Build the fix", "Review each change; don't edit files"). Each new Codex chat offers four
+  permission choices: read-only or edits in its folder, with human or automatic approval
+  review, as in New Session. Templates keep human review unless you explicitly choose
+  automatic review. A new Copilot chat has one choice, "Asks you before it changes files or
+  runs commands": Copilot asks you about each edit and command, so a reviewer's role ("don't
+  edit files") is up to it to keep, and to you when it asks. Kind of conversation fills in the roles, new chats'
   permissions and who goes first for a builder and reviewer, a second opinion, a debate,
   or plan and do. An optional third agent joins in turn: replies go from the first to the
   second, the second to the third, and back, and
@@ -676,16 +683,18 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
     the agent you stopped. **Turn Status**
     (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
     to. **Usage and Context** (Ctrl+Shift+U) lists each agent's context and each provider's
-    limits.
+    limits (for a Copilot agent, the premium requests its chat has used).
   - The relay also stops when the agents are only thanking each other. File, Agent
     Conversation Hand-offs can make automatic mode say only when it stops or needs you, and
-    asks first if either provider is near a usage limit.
+    asks first if Claude or Codex is near a usage limit. Copilot doesn't say how much of its
+    allowance is left, so automatic hand-offs with a Copilot agent can't be checked: each of
+    its turns uses premium requests from your plan.
   - The relay's own lines are one line each in the list; Enter reads exactly what was sent
     (the setup each agent got, or the reply as it went).
   - A reply passed on ends with the files its agent changed in that turn, so a reviewer
-    knows what to look at.
+    knows what to look at. For Copilot, these are read from its log when the turn ends.
   - Questions and requests needing human approval come to you, from each agent, through Answer
-    (Ctrl+Shift+A). Codex uses its selected approval reviewer. A message from one agent can
+    (Ctrl+Shift+A). Codex uses its selected approval reviewer; Copilot always asks you. A message from one agent can
     never answer or approve anything for the other. Rename (F2), Properties (Alt+Enter) and
     Delete (Shift+Delete) work on the row; deleting it keeps both chats and their histories
     and puts them back in the list. A member chat can't be deleted while it's in a conversation.
@@ -1070,7 +1079,7 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+P | Prompts: use, add, edit, reorder or delete your saved prompts |
 | Anywhere | Ctrl+Shift+F | Attach files or images to the next message |
 | Anywhere | Ctrl+Shift+M | Other machines: list your sessions on other computers and message one |
-| Anywhere | Ctrl+Shift+E | Send Reply to Another Chat: pass the selected (or latest) reply to another Chat Place chat, Claude or Codex, or a new one; in an agent conversation, hand the waiting reply on |
+| Anywhere | Ctrl+Shift+E | Send Reply to Another Chat: pass the selected (or latest) reply to another Chat Place chat, Claude, Codex or Copilot, or a new one; in an agent conversation, hand the waiting reply on |
 | Anywhere | Ctrl+Shift+G | New Agent Conversation: two chats that pass replies to each other |
 | Anywhere | Ctrl+Shift+I | Lists: code blocks, links, changed files, commands, decisions and tasks, for this message or the whole chat |
 | Anywhere | Ctrl+Shift+D | Lists, on Changed Files: each change to read by line |

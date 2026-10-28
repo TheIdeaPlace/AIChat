@@ -527,6 +527,37 @@ def test_a_file_edit_request_shows_its_diff(make, tmp_path, mode):
     assert runtime.snapshot(chat).replies[-1][1] == "Written"
 
 
+def test_the_files_a_turn_changed_come_with_its_end(make, tmp_path):
+    """An agent conversation passes them on with the reply (#369), read from
+    the turn's own stretch of the log, so a later turn starts with none."""
+    runtime, _ = make("edit")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Make a.txt")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    runtime.answer(chat, runtime.snapshot(chat).requests[0].request_id, ALLOW_ONCE)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    assert runtime.snapshot(chat).changed_paths == ("C:/synthetic/a.txt",)
+    runtime.send(chat, "Make it again")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert runtime.snapshot(chat).changed_paths == ()
+    runtime.answer(chat, runtime.snapshot(chat).requests[0].request_id, REJECT)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    assert runtime.snapshot(chat).changed_paths == ()
+
+
+def test_only_a_successful_tools_file_edits_count():
+    from thechatplace.providers.copilot_runtime import _edited_paths
+    events = [("tool.execution_complete", {"success": True, "fileEdits": [
+                  {"path": "a.py", "kind": "edit"}, {"path": "b.py"}, "odd", {"path": 3}]}),
+              ("tool.execution_complete", {"success": False, "fileEdits": [{"path": "c.py"}]}),
+              ("tool.execution_complete", {"success": True, "fileEdits": [{"path": "a.py"}]}),
+              ("tool.execution_complete", {"success": True, "fileEdits": "x"}),
+              ("hook.start", {"success": True, "fileEdits": [{"path": "d.py"}]})]
+    assert _edited_paths(events) == ("a.py", "b.py")
+
+
 def test_copilot_asking_for_files_or_a_terminal_is_refused(make, tmp_path):
     runtime, _ = make("clientreq")
     chat = runtime.create(str(tmp_path))

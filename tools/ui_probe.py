@@ -610,6 +610,21 @@ def d_agent_new_auto_review(frame, env):
     return show
 
 
+def d_agent_new_copilot(frame, env):
+    """A new Copilot chat as the second agent (#369): its one permission
+    choice says it asks before it acts."""
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    folder = env["folders"]["Scratch"]
+
+    def show():
+        dialog = AgentConversationDialog(frame, [], ["claude", "codex", "copilot"],
+                                         folders=[folder])
+        dialog.chats[1].SetSelection(2)
+        dialog._sync()
+        frame._modal(dialog)
+    return show
+
+
 def d_agent_hand_off(frame, env):
     s_main_agents(frame, env)
     return frame.on_send_reply_to
@@ -1593,6 +1608,8 @@ SURFACES = {
                                                      "and reviewer template and a third agent"),
     "agent-new-auto-review": ("dialog", d_agent_new_auto_review,
                               "Three new Codex agents with automatic approval review selected"),
+    "agent-new-copilot": ("dialog", d_agent_new_copilot,
+                          "New Agent Conversation with a new Claude chat and a new Copilot chat"),
     "agent-hand-off": ("dialog", d_agent_hand_off, "An agent conversation's hand-off "
                                                    "(Ctrl+Shift+E): a reply going to the other agent"),
     "rename": ("dialog", d_rename, "Rename Session (wx's own text entry dialog)"),
@@ -1673,6 +1690,7 @@ DIALOG_CLASSES = {
     "relay": "RelayDialog",
     "agent-new": "AgentConversationDialog",
     "agent-new-three": "AgentConversationDialog",
+    "agent-new-copilot": "AgentConversationDialog",
     "agent-new-auto-review": "AgentConversationDialog",
     "agent-hand-off": "RelayDialog",
     "rename": "TextEntryDialog",

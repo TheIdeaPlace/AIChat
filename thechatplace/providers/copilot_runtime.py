@@ -414,6 +414,23 @@ def _prompts(events) -> int:
                for kind, data_ in events)
 
 
+def _edited_paths(events) -> tuple:
+    """The files ``events`` show a tool changing, in order, once each: a
+    successful tool.execution_complete's ``fileEdits`` paths, as Changed
+    Files reads them (copilot.CopilotParser). For an agent conversation's
+    hand-off (#369)."""
+    paths = []
+    for kind, data_ in events:
+        entries = data_.get("fileEdits") if kind == "tool.execution_complete" else None
+        if data_.get("success") is not True or not isinstance(entries, list):
+            continue
+        for entry in entries:
+            path = _text(entry.get("path"), 1000) if isinstance(entry, dict) else ""
+            if path and path not in paths:
+                paths.append(path)
+    return tuple(paths)
+
+
 def _hook_ran(events) -> bool:
     """Whether an approving hook (copilot_hooks) ran, from hook.start events."""
     return any(kind == "hook.start" and isinstance(data_.get("hookType"), str)
@@ -541,6 +558,8 @@ class _Chat:
         self.answered = False
         self.turns = 0
         self.replies: List[list] = []
+        #: The files the last turn changed, from its stretch of the log.
+        self.changed_paths: tuple = ()
         self.reply_open = False
         self.requests: Dict[object, CopilotRequest] = {}
         self.queue: List[str] = []
@@ -915,6 +934,7 @@ class CopilotChatRuntime:
         chat.started_at = time.monotonic()
         chat.reply_open = False
         chat.replies = []  # this turn's replies, as Codex's state has
+        chat.changed_paths = ()
         chat.unsent = ()
         # Billing is checked on what this turn adds to the log, never on an
         # earlier turn's record.
@@ -996,11 +1016,12 @@ class CopilotChatRuntime:
         # What else this turn's stretch of the log shows: another Copilot
         # using the chat at the same time, or a hook answering for the person.
         events_path = self._events(chat.native_id)
-        log_end, hook_ran, hooks = chat.log_end, False, ""
+        log_end, hook_ran, hooks, changed = chat.log_end, False, "", ()
         finished, following = None, None
         try:
             log_end = _whole_lines_end(events_path)  # first: nothing after it goes unread
-            events = log_events(events_path, chat.log_offset, _ELSEWHERE_EVENTS + ("hook.start",),
+            events = log_events(events_path, chat.log_offset,
+                                _ELSEWHERE_EVENTS + ("hook.start", "tool.execution_complete"),
                                 log_end)
             # Copilot writes a reopened chat's session.resume when its first
             # prompt arrives, so this app's own reopening shows here too; one
@@ -1011,6 +1032,7 @@ class CopilotChatRuntime:
                          # Ours is one of them, unless it never reached Copilot.
                          or _prompts(events) > (0 if not_sent else 1))
             hook_ran = _hook_ran(events)
+            changed = _edited_paths(events)
             hooks = self._hooks_refusal(chat.cwd)
             # Before a queued message goes: is another Copilot holding the chat
             # now? And a log shorter than the last check means it was replaced.
@@ -1021,6 +1043,7 @@ class CopilotChatRuntime:
         chat.delivering.acquire()  # released once the finished turn is handed over
         with self._lock:
             chat.log_end = log_end
+            chat.changed_paths = changed
             if elsewhere:
                 chat.elsewhere = True
             if hook_ran:
@@ -1318,6 +1341,7 @@ class CopilotChatRuntime:
             problem=chat.problem, started_at=chat.started_at, activity=chat.activity,
             notice=chat.notice, context_used=chat.context[0], context_size=chat.context[1],
             context_epoch=chat.context_epoch, checking=chat.busy and chat.answered,
+            changed_paths=chat.changed_paths,
             token_usage=(ContextReport(min(1.0, chat.context[0] / chat.context[1]), chat.context[1])
                          if chat.context[1] > 0 and chat.context[0] >= 0 else None))
 

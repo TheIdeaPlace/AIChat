@@ -16,7 +16,8 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
   curmode     mid-turn, reports (current_mode_update) a switch to autopilot
   byok2       the first turn is billed to Copilot, later ones to another provider
   edit        each prompt asks to create a file, shaped like Copilot 1.0.103's
-              real request (rawInput.fileName and rawInput.diff)
+              real request (rawInput.fileName and rawInput.diff); allowed, the
+              log gets the tool's fileEdits, as Copilot logs them
   editcontent the same, with the diff in ACP's toolCall.content instead
   clientreq   each prompt first asks the client to read a file and to make a
               terminal, then answers; FAKE_COPILOT_LOG gets the replies
@@ -171,6 +172,10 @@ def prompt(message_id, session, text=""):
             call["content"] = [{"type": "diff", "path": "C:/synthetic/a.txt",
                                 "oldText": "", "newText": "hello"}]
         chosen = ask(session, call)
+        if chosen == "allow_once":
+            log_event(session, "tool.execution_complete", {
+                "toolCallId": "call-e", "success": True,
+                "fileEdits": [{"path": "C:/synthetic/a.txt", "kind": "create"}]})
         update(session, {"sessionUpdate": "agent_message_chunk", "content": {
             "type": "text", "text": "Written" if chosen == "allow_once" else "Not written"}})
         log_usage(session)

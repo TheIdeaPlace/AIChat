@@ -256,6 +256,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._agent_codex_waiting: Dict[str, list] = {}
         self._agent_unconfirmed: set = set()
         self._agent_last_sent: Dict[tuple, str] = {}
+        #: The latest messages the conversation sent each member, so a Stop
+        #: that gives waiting ones back can tell its own from yours (#369).
+        self._agent_sent_texts: Dict[tuple, list] = {}
         self._agent_codex_preparing: set = set()
         self._agent_answered_early: set = set()
         #: The files each member's running turn has edited (phase 3).
