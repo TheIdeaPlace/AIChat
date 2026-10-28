@@ -639,8 +639,12 @@ class CodexChats:
             questions = [dict(id=q.question_id, header=q.header, question=q.text,
                               options=[dict(label=l, description=d) for l, d in q.options],
                               isOther=q.allow_other, isSecret=q.secret) for q in request.questions]
+            # What it wrote in this turn before asking goes with the
+            # question (#415).
+            said = next((text for reply_id, text in reversed(state.replies)
+                         if reply_id != 'display-limit'), '')
             dialog = QuestionDialog(self, info.title, SimpleNamespace(questions=lambda: questions),
-                                    provider=provider_name(info.provider))
+                                    provider=provider_name(info.provider), said=said)
         else:
             detail = dict(state.file_changes).get(request.item_id, '')
             dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule,

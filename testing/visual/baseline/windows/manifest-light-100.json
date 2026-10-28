@@ -309,7 +309,7 @@
    "class": "QuestionDialog",
    "size": [
     700,
-    377
+    537
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -659,7 +659,7 @@
    "class": "QuestionDialog",
    "size": [
     700,
-    254
+    414
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1280,6 +1280,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "New Agent Conversation with a new Claude chat and a new Copilot chat"
+  },
+  "question-preview": {
+   "kind": "dialog",
+   "png": "question-preview-light-100.png",
+   "json": "question-preview-light-100.json",
+   "title": "Claude asks: Visual probe",
+   "class": "QuestionDialog",
+   "size": [
+    700,
+    555
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Claude asks about text it wrote just before, with an option's preview"
   }
  },
  "seconds": 94.1

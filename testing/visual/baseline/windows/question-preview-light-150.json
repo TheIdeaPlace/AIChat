@@ -1,0 +1,289 @@
+{
+ "title": "Claude asks: Visual probe",
+ "class": "QuestionDialog",
+ "size": [
+  1050,
+  788
+ ],
+ "client": [
+  1028,
+  732
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Question:",
+   "rect": [
+    8,
+    8,
+    77,
+    26
+   ],
+   "best": [
+    77,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Question",
+   "label": "Here's the announcement for the release:\r\n\r\nThe Chat Place 0.3.2 is out. Copilot chats can join agent conversations, and Changed Files works for Codex chats.\r\n\r\nMastodon: Post this announcement to Mastodon?",
+   "rect": [
+    10,
+    44,
+    1012,
+    180
+   ],
+   "best": [
+    191,
+    258
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Here's the announcement for the release:\n\nThe Chat Place 0.3.2 is out. Copilot chats can join agent conversations, and Changed Files works for Codex chats.\n\nMastodon: Post this announcement to Mastodon?"
+  },
+  {
+   "class": "ScrolledWindow",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    4,
+    234,
+    1020,
+    220
+   ],
+   "best": [
+    441,
+    25
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "Mastodon: Post this announcement to Mastodon?",
+   "rect": [
+    10,
+    240,
+    1008,
+    208
+   ],
+   "best": [
+    429,
+    33
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Post it: Post it publicly",
+   "rect": [
+    22,
+    271,
+    211,
+    25
+   ],
+   "best": [
+    211,
+    25
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Change it: Say what to change",
+   "rect": [
+    22,
+    304,
+    275,
+    25
+   ],
+   "best": [
+    275,
+    25
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Don't post",
+   "rect": [
+    22,
+    337,
+    121,
+    25
+   ],
+   "best": [
+    121,
+    25
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Other (type below)",
+   "rect": [
+    22,
+    370,
+    184,
+    25
+   ],
+   "best": [
+    184,
+    25
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Mastodon: your own answer",
+   "label": "",
+   "rect": [
+    24,
+    405,
+    984,
+    33
+   ],
+   "best": [
+    165,
+    33
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Pre&view:",
+   "rect": [
+    8,
+    458,
+    65,
+    26
+   ],
+   "best": [
+    65,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Preview of Post it",
+   "label": "",
+   "rect": [
+    10,
+    494,
+    1012,
+    180
+   ],
+   "best": [
+    191,
+    258
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The Chat Place 0.3.2 is out. Copilot chats can join agent conversations, and Changed Files works for Codex chats.\n\nhttps://github.com/TheIdeaPlace/AIChat/releases/tag/v0.3.2"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Send Answers",
+   "rect": [
+    590,
+    688,
+    144,
+    36
+   ],
+   "best": [
+    144,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Don't Answer",
+   "rect": [
+    740,
+    688,
+    140,
+    36
+   ],
+   "best": [
+    140,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    886,
+    688,
+    134,
+    36
+   ],
+   "best": [
+    134,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

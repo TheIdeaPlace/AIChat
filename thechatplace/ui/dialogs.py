@@ -1943,16 +1943,32 @@ class QuestionDialog(wx.Dialog):
     """Claude's questions (AskUserQuestion), one group per question: the
     options as radio buttons (check boxes when several may be chosen), each
     with its description, and Other with a text box. Send Answers is the
-    default button."""
+    default button.
 
-    def __init__(self, parent, session_title: str, request, provider="Claude"):
-        super().__init__(parent, title=f"{provider} asks: {session_title}", size=dialog_size(parent, 700, 560),
+    It opens on a read-only box, as a permission request does, with what
+    the chat wrote just before asking (``said``, often what the question is
+    about: a draft to approve) and each question in full, to read by line.
+    Options that carry a preview show it in a second read-only box as each
+    is reached (#415)."""
+
+    def __init__(self, parent, session_title: str, request, provider="Claude", said=None):
+        super().__init__(parent, title=f"{provider} asks: {session_title}", size=dialog_size(parent, 700, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._questions = request.questions()
         self._answer_key = "id" if provider == "Codex" else "question"
         self._controls = []  # per question: (kind, [controls], other text)
+        self._previews = {}  # option control -> its preview
+        self.preview_text = None
         outer = wx.BoxSizer(wx.VERTICAL)
-        panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
+        said = str(getattr(request, "said", "") or "") if said is None else str(said or "")
+        lines = [f"{question.get('header') or f'Question {number}'}: {question['question']}"
+                 for number, question in enumerate(self._questions, start=1)]
+        outer.Add(wx.StaticText(self, label="&Question:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        self.question_text = _read_only_text(
+            self, "\n\n".join(part for part in (said.strip(), "\n".join(lines)) if part),
+            "Question", min_height=120)
+        outer.Add(self.question_text, 0, wx.EXPAND | wx.ALL, 8)
+        panel = self.questions_panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
         panel.SetScrollRate(0, 20)
         sizer = wx.BoxSizer(wx.VERTICAL)
         first = None
@@ -1982,6 +1998,14 @@ class QuestionDialog(wx.Dialog):
                         control = wx.RadioButton(parent_window, label=text, style=style)
                         control.SetValue(False)
                     control._hub_label = label
+                    preview = option.get("preview")
+                    if isinstance(preview, str) and preview.strip():
+                        self._previews[control] = preview
+                    control.Bind(wx.EVT_SET_FOCUS, self._on_option_focus)
+                    # A choice made by the arrow keys too: on a Mac, focus
+                    # moved by move_in_radio_group may not send SET_FOCUS.
+                    control.Bind(wx.EVT_CHECKBOX if multi else wx.EVT_RADIOBUTTON,
+                                 self._on_option_focus)
                     controls.append(control)
                     box.Add(control, 0, wx.ALL, 4)
                     first = first or control
@@ -1993,6 +2017,7 @@ class QuestionDialog(wx.Dialog):
                                            style=0 if controls else wx.RB_GROUP)
                     other.SetValue(False)
                 other._hub_label = OTHER
+                other.Bind(wx.EVT_SET_FOCUS, self._on_option_focus)
                 controls.append(other)
                 box.Add(other, 0, wx.ALL, 4)
                 other_text = wx.TextCtrl(parent_window, style=wx.TE_PASSWORD if question.get("isSecret") else 0)
@@ -2010,6 +2035,13 @@ class QuestionDialog(wx.Dialog):
                 first = first or other
         panel.SetSizer(sizer)
         outer.Add(panel, 1, wx.EXPAND | wx.ALL, 4)
+        if self._previews:
+            # After the questions in Tab order, and only when an option has
+            # one: the preview of the option you're on (#415).
+            outer.Add(wx.StaticText(self, label="Pre&view:"), 0, wx.LEFT | wx.RIGHT, 8)
+            self.preview_text = _read_only_text(self, "", "Preview", min_height=120)
+            outer.Add(self.preview_text, 0, wx.EXPAND | wx.ALL, 8)
+            self._show_preview(first)
 
         row = wx.BoxSizer(wx.HORIZONTAL)
         send = wx.Button(self, wx.ID_OK, "&Send Answers")
@@ -2037,11 +2069,11 @@ class QuestionDialog(wx.Dialog):
         send.Bind(wx.EVT_BUTTON, self._on_send)
         decline.Bind(wx.EVT_BUTTON, self._on_decline)
         self._first = first
-        if first is not None:
-            # Set as the dialog starts, before it's shown: wx would otherwise
-            # give the focus to the last group first, and a screen reader
-            # would begin reading the wrong question.
-            self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
+        # Set as the dialog starts, before it's shown: wx would otherwise
+        # give the focus to the last group first, and a screen reader would
+        # begin reading the wrong question. It starts on the question's own
+        # text, as a permission request does (#415).
+        self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
         if wx.Platform == "__WXMAC__":
             # On a Mac the arrow keys did nothing in a group of radio buttons,
             # and Tab treats the group as one stop, so only the first option
@@ -2050,7 +2082,23 @@ class QuestionDialog(wx.Dialog):
 
     def _on_init_dialog(self, event):
         event.Skip()
-        self._first.SetFocus()
+        self.question_text.SetFocus()
+
+    def _on_option_focus(self, event):
+        event.Skip()
+        self._show_preview(event.GetEventObject())
+
+    def _show_preview(self, control):
+        """The preview box shows the preview of ``control``'s option, and is
+        named for it, so a screen reader says whose preview it is."""
+        if self.preview_text is None or control is None:
+            return
+        label = getattr(control, "_hub_label", "")
+        preview = self._previews.get(control)
+        self.preview_text.SetValue(preview if preview is not None
+                                   else f"{label} has no preview.")
+        self.preview_text.SetInsertionPoint(0)
+        set_accessible_name(self.preview_text, f"Preview of {label}")
 
     def _on_char_hook(self, event):
         step = RADIO_ARROW_STEPS.get(event.GetKeyCode())

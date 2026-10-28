@@ -393,8 +393,11 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     chat's own folder, with any tool. The Chat Place never keeps a whole drive or share. When
     Claude Code suggests no rule, only a switch to accepting edits, Allow for This Chat switches
     the chat's mode instead.
-  - **Questions:** each question is a group of options with their descriptions, with Other
-    and a box to type your own answer; Send Answers, or Don't Answer.
+  - **Questions:** a read-only Question box first, where focus starts, with what the chat wrote
+    just before asking and each question in full; then each question as a group of options
+    with their descriptions, with Other and a box to type your own answer; a Preview box when
+    an option has a preview, showing the one for the option you're on (#415); Send Answers, or
+    Don't Answer.
   - **Plan:** the plan to read (Read Formatted shows it as a page, by heading), then **Approve**, choosing the mode to carry on in (accept
     edits, auto or manual), or **Keep Planning** with what to change, which is the default.
 

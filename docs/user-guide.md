@@ -1149,8 +1149,11 @@ What each provider offers:
 - **Claude, a permission:** **Allow** (this request only), **Allow for This Chat** (keep a rule so
   it doesn't ask again in this chat; shown when Claude Code suggests one, and named in full) or
   **Deny**, the default, with a reason Claude reads if you like.
-- **Claude, a question:** each question is a group of choices, with Other and a box for your own
-  answer. Send Answers, or Don't Answer.
+- **Claude, a question:** it opens on the Question box, to read by line: what Claude wrote just
+  before asking (often the thing it's asking about, such as a draft to approve), then each
+  question in full. Below it, each question is a group of choices, with Other and a box for your
+  own answer. When a choice comes with a preview, the Preview box after the questions shows the
+  preview of the choice you're on. Send Answers, or Don't Answer.
 - **Claude, a plan:** read it (Read Formatted shows it as a page, by heading), then **Approve**,
   choosing how Claude carries on, or **Keep Planning**, the default, with what to change.
 - **Codex, a permission:** the request shows the command, its folder and Codex's reason, and a
@@ -1166,7 +1169,8 @@ What each provider offers:
   **Allow for This Chat** remembers your approval for this chat (see "For a Codex chat"
   below).
 - **Codex, a question:** the question shows which provider is asking, and a secret answer stays
-  hidden as you type it.
+  hidden as you type it. The Question box starts with what Codex wrote in this turn before
+  asking, as for Claude. Copilot's questions work the same way.
 - **Copilot:** the whole command or change, with **Allow Once** and **Deny**, the default.
   Nothing is allowed for later.
 

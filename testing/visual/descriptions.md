@@ -245,9 +245,15 @@ This is a 700 by 540 dialog. "Request:" heads a large read-only box (668 by 367,
 
 ## question: Claude asks questions (one choice and several choices)
 
-This is a 700 by 377 dialog. The first framed group, titled "Branch: Which name should the release branch use?", holds three radio buttons, "release/0.2: Matches the last release" (chosen, with the focus outline), "v0.2-prep: Shorter" and "Other (type below)", with a full-width text box below them. The second framed group, "Checks: Which checks should run first?", holds four unticked check boxes (Unit tests, Smoke test, Lint, Other (type below)) and its own text box. The two groups fill the top 290 pixels, and "Send Answers" (default), "Don't Answer" and "Answer Later" sit 18 pixels below them at the bottom right.
+This is a 700 by 537 dialog. At the top, "Question:" labels a read-only box 671 pixels wide and 120 tall, with the focus (a caret at its start). It holds both questions in full, one per line: "Branch: Which name should the release branch use?" and "Checks: Which checks should run first?" (#415). Below it, the first framed group, titled "Branch: Which name should the release branch use?", holds three radio buttons, "release/0.2: Matches the last release", "v0.2-prep: Shorter" and "Other (type below)", with a full-width text box below them. The second framed group, "Checks: Which checks should run first?", holds four unticked check boxes (Unit tests, Smoke test, Lint, Other (type below)) and its own text box. "Send Answers" (default), "Don't Answer" and "Answer Later" sit at the bottom right. Label contrast is measured at 18.43:1 in light (#000000/#F0F0F0), 16.29:1 in High Contrast Aquatic (#FFFFFF/#202020) and 15.65:1 in Desert (#202020/#FFFAEF).
 
-**What looks off:** Nothing. The dialog is now just tall enough for its two groups, with no empty band above the buttons.
+**What looks off:** Nothing. The Question box has room to spare for two short questions; it's sized for the text a chat writes before asking. At 175% it stays inside the dialog, with the buttons in view.
+
+## question-preview: Claude asks about text it wrote just before, with an option's preview (#415)
+
+A 700 by 555 dialog titled "Claude asks: Visual probe". The Question box at the top, with the focus, shows what Claude wrote before asking: "Here's the announcement for the release:", a blank line, the one-paragraph announcement, a blank line, then "Mastodon: Post this announcement to Mastodon?". One framed group follows with "Post it: Post it publicly", "Change it: Say what to change", "Don't post" and "Other (type below)" with its text box. Then "Preview:" (V underlined) labels a second read-only box, 120 pixels tall, showing Post it's preview: the announcement, a blank line and the release link. Send Answers (default), Don't Answer and Answer Later are at the bottom right. In High Contrast Aquatic both boxes have white text on near-black with white outlines, and the group box is outlined in white; in Desert they're dark on cream. At 175% everything scales up and still fits, with the buttons in view. Contrast is as in question.
+
+**What looks off:** Nothing. Long text wraps inside each box rather than widening the dialog.
 
 ## plan: Claude's plan to approve
 
@@ -407,7 +413,7 @@ The same dialog, showing a file change: "Create notes.txt", "File:" and the file
 
 ## codex-question: Codex asks questions
 
-A 700 by 254 dialog titled "Codex asks: Codex preview". A framed group "Checks: Which checks should run?" holds two radio buttons, "Unit tests" (chosen, focus outline) and "Smoke test". A second group, "Secret: Enter the test secret.", holds one radio button, "Other (type below)", and an empty one-line box under it. "Send Answers" (default), "Decline and Stop Turn" and "Answer Later" are at the bottom right.
+A 700 by 414 dialog titled "Codex asks: Codex preview". The Question box (#415) is at the top, with the focus, holding "Checks: Which checks should run?" and "Secret: Enter the test secret." on two lines; nothing was written before asking in this probe. A framed group "Checks: Which checks should run?" holds two radio buttons, "Unit tests" and "Smoke test". A second group, "Secret: Enter the test secret.", holds one radio button, "Other (type below)", and an empty one-line box under it. "Send Answers" (default), "Decline and Stop Turn" and "Answer Later" are at the bottom right. Everything below the Question box moved down 160 pixels.
 
 **What looks off:** The secret question shows its box under a lone "Other (type below)" choice, which looks like a choice question with one option. Nothing is cut off.
 
