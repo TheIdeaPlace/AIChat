@@ -4360,7 +4360,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         tool only marks the text as finished: the next text starts again."""
         if event.kind in ("started", "finished", "failed"):
             self._turn_said.pop(session_id, None)
-        elif event.kind == "tool":
+        elif event.kind in ("tool", "waiting", "steer_taken"):
+            # So does a pause for background work, or a steered message.
             texts, _closed = self._turn_said.get(session_id, ([], False))
             self._turn_said[session_id] = (texts, True)
         elif event.kind == "text" and event.text.strip():

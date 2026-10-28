@@ -641,7 +641,8 @@ class CodexChats:
                               isOther=q.allow_other, isSecret=q.secret) for q in request.questions]
             # What it wrote in this turn before asking goes with the
             # question (#415).
-            said = state.replies[-1][1] if state.replies else ''
+            said = next((text for reply_id, text in reversed(state.replies)
+                         if reply_id != 'display-limit'), '')
             dialog = QuestionDialog(self, info.title, SimpleNamespace(questions=lambda: questions),
                                     provider=provider_name(info.provider), said=said)
         else:

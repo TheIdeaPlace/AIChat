@@ -1965,10 +1965,10 @@ class QuestionDialog(wx.Dialog):
                  for number, question in enumerate(self._questions, start=1)]
         outer.Add(wx.StaticText(self, label="&Question:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
         self.question_text = _read_only_text(
-            self, "\n\n".join(([said.strip()] if said.strip() else []) + ["\n".join(lines)]),
+            self, "\n\n".join(part for part in (said.strip(), "\n".join(lines)) if part),
             "Question", min_height=120)
         outer.Add(self.question_text, 0, wx.EXPAND | wx.ALL, 8)
-        panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
+        panel = self.questions_panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
         panel.SetScrollRate(0, 20)
         sizer = wx.BoxSizer(wx.VERTICAL)
         first = None
@@ -2002,6 +2002,10 @@ class QuestionDialog(wx.Dialog):
                     if isinstance(preview, str) and preview.strip():
                         self._previews[control] = preview
                     control.Bind(wx.EVT_SET_FOCUS, self._on_option_focus)
+                    # A choice made by the arrow keys too: on a Mac, focus
+                    # moved by move_in_radio_group may not send SET_FOCUS.
+                    control.Bind(wx.EVT_CHECKBOX if multi else wx.EVT_RADIOBUTTON,
+                                 self._on_option_focus)
                     controls.append(control)
                     box.Add(control, 0, wx.ALL, 4)
                     first = first or control

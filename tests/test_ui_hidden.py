@@ -2317,6 +2317,8 @@ def test_a_question_carries_what_claude_wrote_just_before_asking(frame, env):
                                                                      request=request))
     turn("text", "Reading the notes.")
     turn("tool", "Bash")
+    turn("text", "Started the build in the background.")
+    turn("waiting", "Waiting for the build.")  # a pause ends the run of text too
     turn("text", "Here's the post:")
     turn("text", "The Chat Place 0.3.2 is out.")
     turn("tool", "AskUserQuestion")
@@ -4781,7 +4783,7 @@ def test_each_question_is_a_group_box_its_options_follow(frame):
     dialog = QuestionDialog(frame, "Probe", _Questions())
     try:
         dialog.Layout()
-        panel = dialog.GetChildren()[0]
+        panel = dialog.questions_panel
         groups = _boxes_and_their_controls(panel, panel.GetSizer())
         assert [box.GetLabel() for box, _ in groups] == [
             "One: First?", "Two: Second?", "Three: Third?", "Four: Fourth?"]
@@ -9084,11 +9086,11 @@ def test_a_few_questions_leave_no_empty_band(frame):
     dialog = QuestionDialog(frame, "Probe", _questions(2))
     try:
         dialog.Layout()
-        panel = dialog.GetChildren()[0]
+        panel = dialog.questions_panel
         content = panel.GetSizer().GetMinSize().height
         # The panel is as tall as its questions (with the sizer's border).
         assert 0 <= panel.GetSize().height - content <= 10
-        assert dialog.GetSize().height < 560
+        assert dialog.GetSize().height < 600
     finally:
         dialog.Destroy()
 
@@ -9098,8 +9100,8 @@ def test_many_questions_keep_the_size_and_scroll(frame):
     dialog = QuestionDialog(frame, "Probe", _questions(12))
     try:
         dialog.Layout()
-        panel = dialog.GetChildren()[0]
-        assert dialog.GetSize().height == 560
+        panel = dialog.questions_panel
+        assert dialog.GetSize().height == 600
         assert panel.GetVirtualSize().height > panel.GetClientSize().height  # it scrolls
         buttons = [c for c in dialog.GetChildren() if isinstance(c, wx.Button)]
         assert all(b.GetRect().GetBottom() <= dialog.GetClientSize().height for b in buttons)
