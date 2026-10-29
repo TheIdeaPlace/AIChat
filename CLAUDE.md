@@ -24,7 +24,7 @@ keep that in step with the build and release scripts.
 ```
 ./macsetup.sh  |  winsetup.bat  |  ./linuxsetup.sh   # make .venv from requirements-build.txt (replaces an existing one)
 .venv/bin/python -m thechatplace                   # run from source (Windows: .venv\Scripts\pythonw TheChatPlace.pyw)
-.venv/bin/python -m pytest -q tests                # what CI runs, on Windows and macOS
+.venv/bin/python -m pytest -q tests                # what CI runs, on Windows, macOS and Linux (under xvfb-run)
 .venv/bin/python -m pytest tests/test_claude_cli.py -k resume   # one file / one test
 BuildAndRelease/MacBuilds/build_macos.sh           # tests, app, Velopack osx feed, .dmg; signed if the keychain has a Developer ID
 BuildAndRelease\WinBuilds\build_windows.cmd         # Windows: tests, app, Velopack installer and feed (always unsigned)
@@ -73,8 +73,8 @@ if Windows and macOS succeed (the Windows installer, portable zip and `windows` 
 `.dmg` and `osx` feed), with the AppImages and `linux-x64` / `linux-arm64` feeds of each Linux build
 that succeeded. Linux is non-blocking until it has a release or two behind it; the updater passes
 over a release without its platform's feed (`updater.latest_published_version`).
-Versions below 1.0 publish as pre-releases. Both platforms update through Velopack
-(`updater.CHANNEL`). Velopack calls every Mac app portable, so the portable check is Windows-only
+Versions below 1.0 publish as pre-releases. Every platform updates through Velopack
+(`updater.CHANNEL`: `windows`, `osx`, `linux-x64`, `linux-arm64`). Velopack calls every Mac app portable, so the portable check is Windows-only
 (`updater.PORTABLE_COPIES_EXIST`); applying it on a Mac silently stops all Mac updates.
 
 Only Kelly can release or sign: tags are admin-only by ruleset, releases are immutable, and every

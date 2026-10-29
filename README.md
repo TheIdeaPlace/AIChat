@@ -1050,7 +1050,7 @@ phone, or install a browser (`sudo apt install firefox-esr` on Debian).
 
 **Uninstalling.** On Windows, uninstall the installed copy from Settings, Apps, Installed apps (Apps & features on Windows 10);
 delete the portable copy's folder. On a Mac, drag The Chat Place to the Trash. On Linux, delete
-the AppImage. Your settings and
+the AppImage and its desktop entry, `~/.local/share/applications/thechatplace.desktop`. Your settings and
 records stay in `%APPDATA%\TheChatPlace` (on a Mac, `~/Library/Application Support/TheChatPlace`;
 on Linux, `~/.config/TheChatPlace`)
 until you delete them, and your Claude, Codex and Copilot chats are never removed. The user

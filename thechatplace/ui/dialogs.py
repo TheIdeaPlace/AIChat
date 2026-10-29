@@ -2585,13 +2585,17 @@ class LinesDialog(wx.Dialog):
         row.Add(close, 0)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
-        # Where the frame takes more than ``room`` allows for it, widen by
-        # what the list still lacks: GTK's client-side decorations and shadow
-        # take 52 pixels with Adwaita, and left the longest line 13 short (#230).
-        self.Layout()
-        lacking = self.list.GetBestSize().width - self.list.GetSize().width
-        if lacking > 0:
-            self.SetSize((min(width + lacking, screen - SCREEN_MARGIN), self.GetSize().height))
+        # Linux: GTK's client-side decorations and shadow take more than
+        # ``room`` allows for the frame (52 pixels with Adwaita), which left
+        # the longest line 13 short, so widen by what the list still lacks
+        # (#230). Not elsewhere: a Windows list box's best width has three
+        # characters' slack, so it would widen dialogs that already fit.
+        if gtk_a11y.IS_LINUX:
+            self.Layout()
+            lacking = self.list.GetBestSize().width - self.list.GetSize().width
+            if lacking > 0:
+                self.SetSize((min(width + lacking, screen - SCREEN_MARGIN),
+                              self.GetSize().height))
         self.SetEscapeId(wx.ID_CANCEL)
         # A char hook, as the main window's Ctrl+C on the messages list:
         # it's the path Cmd+C takes on macOS too.
