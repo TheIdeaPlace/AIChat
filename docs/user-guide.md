@@ -1746,9 +1746,11 @@ Chat Place again. To remove them too, delete these folders, the main things it l
   conversations, remembered Codex approvals and its logs.
 - On Windows, the formatted page's WebView2 profile, `%LOCALAPPDATA%\TheChatPlace WebView2`.
 - Its speech folder: `%TEMP%\thechatplace-speak` on Windows, `$TMPDIR/thechatplace-speak` on a
-  Mac, `$XDG_RUNTIME_DIR/thechatplace-speak` on Linux (emptied when you log out). Its speech scripts also keep small logs in `claude-speak` (and, on Windows,
-  `claude-speak-nvda`) in the same temporary folder. ClaudeSpeak uses those folders too, so keep
-  them if you use ClaudeSpeak.
+  Mac, `$XDG_RUNTIME_DIR/thechatplace-speak` on Linux (emptied when you log out; without a
+  runtime folder, `/tmp/thechatplace-speak-` and your user number). On Windows and the Mac its
+  speech scripts also keep small logs in `claude-speak` (and, on Windows, `claude-speak-nvda`) in
+  the same temporary folder. ClaudeSpeak uses those folders too, so keep them if you use
+  ClaudeSpeak. On Linux the speech script's log is in the speech folder itself.
 
 **What it never removes**, because none of it belongs to The Chat Place:
 

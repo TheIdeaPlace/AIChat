@@ -38,12 +38,14 @@ No wx imports here: the module is used by the wx app but testable without it.
 """
 from __future__ import annotations
 
+import atexit
 import itertools
 import json
 import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -609,8 +611,9 @@ class Speaker:
 
     @property
     def workdir(self) -> Path:
-        if not IS_LINUX:
-            # Windows' %TEMP% and the Mac's $TMPDIR are the user's own.
+        if not IS_LINUX or not hasattr(os, "getuid"):
+            # Windows' %TEMP% and the Mac's $TMPDIR are the user's own. (The
+            # getuid check is for tests on Windows that stand in for Linux.)
             path = Path(tempfile.gettempdir()) / "thechatplace-speak"
             path.mkdir(parents=True, exist_ok=True)
             return path
@@ -952,27 +955,40 @@ def _linux_speech_dir() -> Path:
     user to speak owned it, everyone else's speech failed, and anyone who
     made it first could read the announcements, which are chat replies
     (#230). The session's runtime folder is the user's alone (0700) and is
-    emptied at logout; without one, a folder of the user's id, refused if
-    someone else made it."""
+    emptied at logout; without one, a folder of the user's id in /tmp. That
+    one must be a real folder of the user's: anything else there (someone
+    else's folder, or a link they planted to send the files elsewhere) is
+    passed over for a private folder of this run's."""
     runtime = os.environ.get("XDG_RUNTIME_DIR", "")
     if runtime and os.path.isdir(runtime) and os.access(runtime, os.W_OK):
         path = Path(runtime) / "thechatplace-speak"
     else:
         path = Path(tempfile.gettempdir()) / f"thechatplace-speak-{os.getuid()}"
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    info = path.stat()
-    if info.st_uid != os.getuid():
-        # Someone else's: a fresh folder of our own instead, for this run.
-        global _PRIVATE_SPEECH_DIR
-        if _PRIVATE_SPEECH_DIR is None:
-            _PRIVATE_SPEECH_DIR = Path(tempfile.mkdtemp(prefix="thechatplace-speak-"))
-        return _PRIVATE_SPEECH_DIR
-    if info.st_mode & 0o077:
-        path.chmod(0o700)
-    return path
+    try:
+        try:
+            os.mkdir(path, 0o700)
+        except FileExistsError:
+            pass
+        info = os.lstat(path)  # the link itself, never what it points to
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+            return _private_speech_dir()
+        if info.st_mode & 0o077:
+            os.chmod(path, 0o700)
+        return path
+    except OSError:
+        return _private_speech_dir()
 
 
 _PRIVATE_SPEECH_DIR: Optional[Path] = None
+
+
+def _private_speech_dir() -> Path:
+    """A folder of this run's alone, removed when the app ends."""
+    global _PRIVATE_SPEECH_DIR
+    if _PRIVATE_SPEECH_DIR is None:
+        _PRIVATE_SPEECH_DIR = Path(tempfile.mkdtemp(prefix="thechatplace-speak-"))
+        atexit.register(shutil.rmtree, _PRIVATE_SPEECH_DIR, ignore_errors=True)
+    return _PRIVATE_SPEECH_DIR
 
 
 def _cancel_speech_dispatcher(wait: bool = False) -> None:

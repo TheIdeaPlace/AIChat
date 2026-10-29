@@ -214,6 +214,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         # update item says it.
         self._update_available = ""
         self._menu_open = False  # a menu is open: no dialog over it (#141)
+        self._menus_open = 0  # Linux: how many, submenus included (#230)
         self.speech = SpeechSettings.load()
         self._codex_states = {}
         self._codex_drafts = {}
@@ -5865,7 +5866,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
     def _on_menu_open_close(self, event, is_open: bool):
         event.Skip()
-        self._menu_open = is_open
+        if gtk_a11y.IS_LINUX:
+            # GTK sends an open and a close for each menu, submenus too, and
+            # a submenu's close could come while its menu is still open. A
+            # count keeps one menu closing from looking like all of them
+            # closing, which would let Escape reach the window again (#230).
+            self._menus_open = max(0, self._menus_open + (1 if is_open else -1))
+            self._menu_open = self._menus_open > 0
+        else:
+            self._menu_open = is_open
 
     def _set_update_available(self, version: str):
         """Help's update item names the version running, or the newer one

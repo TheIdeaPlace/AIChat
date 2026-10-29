@@ -46,16 +46,21 @@ from typing import List, Optional
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 
-#: Orca's debug log line for each string it speaks.
-_SPOKEN = re.compile(r"SPEECH OUTPUT: '(.*)' \{")
+#: Orca's debug log line for each string it speaks: the text in quotes, then
+#: the voice (50) or nothing (older), and the next line's time. The text can
+#: run over several lines (a message with line breaks).
+_SPOKEN = re.compile(r"SPEECH OUTPUT: '(.*?)'(?:[ \t][^\n]*)?(?:\n(?=\d\d:\d\d:\d\d)|\n?\Z)",
+                     re.S)
 #: Orca echoing a key you pressed: not what the app said.
 _KEY_ECHO = {"tab", "escape", "return", "enter", "down", "up", "left", "right", "space",
              "left control", "right control", "left alt", "right alt", "left shift",
              "right shift", "f1", "f10", "home", "end"}
 #: Quiet this long after a key, and its speech is taken as finished.
 SETTLE = 1.2
-#: The longest a step waits for speech to start and finish.
-STEP_TIMEOUT = 10.0
+#: The longest a step waits for what it expects to be said.
+STEP_TIMEOUT = 15.0
+#: The first step waits for the app to start, which a slow runner takes a while over.
+START_TIMEOUT = 60.0
 
 
 @dataclass
@@ -90,6 +95,13 @@ STEPS = [
     Step("Alt alone, the menu bar", ["alt"], expect=["File", "menu"]),
     Step("menu closed again, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Into a submenu and back out: Escape must still close the menu, not go
+    # back to the session list (#230).
+    Step("View menu", ["alt+v"], expect=["Go to Sessions"]),
+    Step("Sort Sessions submenu", ["o"], expect=["radio menu item"]),
+    Step("back to View", ["Left"], expect=["Sort Sessions"]),
+    Step("View closed, back in the messages", ["Escape"], expect=["Messages in Visual probe"],
+         refuse=["Session list"]),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
@@ -144,16 +156,19 @@ class OrcaLog:
             text = log.read().decode("utf-8", "replace")
         return [m.group(1) for m in _SPOKEN.finditer(text)]
 
-    def wait_quiet(self, timeout: float = STEP_TIMEOUT, settle: float = SETTLE) -> List[str]:
-        """Speech since the mark, once Orca has said something and gone quiet
-        for ``settle`` seconds, or at ``timeout``."""
+    def wait_quiet(self, done, timeout: float = STEP_TIMEOUT,
+                   settle: float = SETTLE) -> List[str]:
+        """Speech since the mark, once ``done(speech)`` and Orca has been quiet
+        for ``settle`` seconds, or at ``timeout``. Waiting for what a step
+        expects, rather than for the first quiet, lets a slow runner take its
+        time without the speech landing in the next step."""
         end = time.time() + timeout
         seen, quiet_since = [], time.time()
         while time.time() < end:
             now = self.since_mark()
             if len(now) != len(seen):
                 seen, quiet_since = now, time.time()
-            elif time.time() - quiet_since >= settle and (seen or time.time() - quiet_since >= 3):
+            elif time.time() - quiet_since >= settle and done(seen):
                 break
             time.sleep(0.1)
         return seen
@@ -229,12 +244,21 @@ def _found(needle: str, spoken: List[str]) -> bool:
 
 def run_steps(log: OrcaLog, steps: List[Step], dbus: bool, record: bool) -> List[dict]:
     results = []
-    for step in steps:
-        log.mark()
-        press(step.keys)
-        spoken = log.wait_quiet()
-        said = [s for s in spoken if s.casefold().rstrip(".") not in _KEY_ECHO]
+    for index, step in enumerate(steps):
         expect = step.expect + (step.expect_dbus if dbus else [])
+
+        def done(spoken, expect=expect):
+            said = [s for s in spoken if s.casefold().rstrip(".") not in _KEY_ECHO]
+            if expect and not record:
+                return all(_found(e, said) for e in expect)
+            return bool(spoken)
+        if step.keys:
+            log.mark()
+        # The first step's speech is the app starting, from the mark made
+        # before it was started.
+        press(step.keys)
+        spoken = log.wait_quiet(done, timeout=START_TIMEOUT if index == 0 else STEP_TIMEOUT)
+        said = [s for s in spoken if s.casefold().rstrip(".") not in _KEY_ECHO]
         missing = [] if record else [e for e in expect if not _found(e, said)]
         refused = [] if record else [r for r in step.refuse if _found(r, said)]
         results.append({"step": step.name, "keys": step.keys, "spoken": said, "heard": spoken,

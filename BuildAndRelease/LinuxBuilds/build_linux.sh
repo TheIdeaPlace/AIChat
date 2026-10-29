@@ -90,20 +90,26 @@ window_test() {
     HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
         APPIMAGE_EXTRACT_AND_RUN=1 GDK_BACKEND=x11 \
         timeout 180 xvfb-run -a -s "-screen 0 1920x1080x24" bash -c '
-            "$1" > "$2/app.log" 2>&1 &
+            # A group of its own, so stopping it stops the app the AppImage
+            # runtime started too, not only the runtime.
+            setsid "$1" > "$2/app.log" 2>&1 &
             app=$!
+            stop() { kill -- "-$app" 2> /dev/null || kill "$app" 2> /dev/null; }
             for _ in $(seq 90); do
                 if xdotool search --name "The Chat Place" > /dev/null 2>&1; then
-                    kill "$app"; exit 0
+                    stop; exit 0
                 fi
                 kill -0 "$app" 2> /dev/null || exit 2
                 sleep 1
             done
-            kill "$app"; exit 1' _ "$1" "$home" || status=$?
+            stop; exit 3' _ "$1" "$home" || status=$?
     case $status in
         0) echo "  window: opened" ;;
-        2) tail -40 "$home/app.log"; fail "the AppImage quit before its window opened." ;;
-        *) tail -40 "$home/app.log"; fail "the AppImage's window didn't open within 90 seconds." ;;
+        2) tail -40 "$home/app.log" || true; fail "the AppImage quit before its window opened." ;;
+        3) tail -40 "$home/app.log" || true
+           fail "the AppImage's window didn't open within 90 seconds." ;;
+        *) tail -40 "$home/app.log" || true
+           fail "the window check couldn't run (xvfb-run or timeout exited with $status)." ;;
     esac
 }
 

@@ -3060,6 +3060,23 @@ def test_an_open_menu_keeps_escape_on_linux(frame, monkeypatch):
     assert moved == [True, True]
 
 
+def test_a_menu_is_still_open_after_its_submenu_closes_on_linux(frame, monkeypatch):
+    """GTK sends an open and a close for each submenu too: one menu closing
+    mustn't look like all of them closing, or Escape reaches the window
+    while a menu is still open (#230)."""
+    from thechatplace.ui import gtk_a11y
+    monkeypatch.setattr(gtk_a11y, "IS_LINUX", True)
+
+    class Event:
+        def Skip(self):
+            pass
+    for is_open, expect in ((True, True), (True, True), (False, True), (False, False),
+                            (False, False)):  # an extra close can't go below none
+        frame._on_menu_open_close(Event(), is_open)
+        assert frame._menu_open is expect
+    assert frame._menus_open == 0
+
+
 def test_ctrl_9_goes_to_the_status_bar(frame, monkeypatch):
     focused = []
     monkeypatch.setattr(frame.status_text, "SetFocus", lambda: focused.append(True))

@@ -266,6 +266,22 @@ def test_a_speech_folder_someone_else_made_isnt_used(tmp_path, monkeypatch):
     assert speech.Speaker().workdir == path  # the same one for the rest of the run
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX links")
+def test_a_link_planted_as_the_speech_folder_isnt_followed(tmp_path, monkeypatch):
+    """A link in /tmp pointing at a folder of yours would have had the
+    announcements written, and old files swept, there."""
+    monkeypatch.setattr(speech, "IS_LINUX", True)
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setattr(speech.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(speech, "_PRIVATE_SPEECH_DIR", None)
+    yours = tmp_path / "your-files"
+    yours.mkdir(mode=0o755)
+    (tmp_path / f"thechatplace-speak-{os.getuid()}").symlink_to(yours)
+    path = speech.Speaker().workdir
+    assert path.resolve() != yours.resolve()
+    assert stat.S_IMODE(yours.stat().st_mode) == 0o755  # not made 0700 either
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="runs the bash script")
 def test_a_line_starting_like_a_command_is_spoken_not_run(tmp_path):
     """``spd-say -e`` sends a line starting with ``!-!`` to speech-dispatcher

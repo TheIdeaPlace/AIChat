@@ -40,6 +40,7 @@ done
 # gives the keyboard focus to nothing, and Orca says nothing.
 if command -v openbox >/dev/null 2>&1; then openbox --sm-disable >/dev/null 2>&1 & fi
 sleep 1
-gsettings set org.gnome.desktop.a11y.applications screen-reader-enabled true 2>/dev/null
-gsettings set org.gnome.desktop.interface toolkit-accessibility true 2>/dev/null
+# No gsettings here: with a fresh settings folder they'd only reach a store
+# that forgets them, and nothing needs them. Orca is started directly, and
+# GTK 3 loads its accessibility bridge whenever the bus is there.
 "$@"
