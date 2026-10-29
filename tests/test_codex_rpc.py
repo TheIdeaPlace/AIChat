@@ -1089,6 +1089,43 @@ def test_windows_order_puts_cli_installs_before_app_managed_copies(tmp_path, mon
     assert platform_paths.find_codex(which=lambda _: str(npm)) == str(npm)
 
 
+def test_linux_candidates_find_codex_outside_the_desktops_path(tmp_path, monkeypatch):
+    """An app started from the desktop's menu doesn't get what the shell's
+    profile adds to PATH: ~/.local/bin, and nvm's Node for an npm install,
+    whose bin/codex is a Node script that's never run."""
+    import platform
+    monkeypatch.setattr(platform_paths.sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    candidates = platform_paths.codex_native_candidates()
+    assert tmp_path / ".local/bin/codex" in candidates
+    assert Path("/usr/local/bin/codex") in candidates
+    assert tmp_path / ".codex/packages/standalone/current/bin/codex" in candidates
+    assert candidates[-1] == tmp_path / ".codex/packages/app-server-daemon/current/bin/codex"
+    node = tmp_path / ".nvm/versions/node/v22.11.0"
+    native = node / ("lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/"
+                     "vendor/aarch64-unknown-linux-musl/codex/codex")
+    native.parent.mkdir(parents=True)
+    native.write_bytes(b"\x7fELF synthetic")
+    native.chmod(0o755)
+    shim = node / "bin/codex"
+    shim.parent.mkdir(parents=True)
+    shim.write_text("#!/usr/bin/env node\n")
+    shim.chmod(0o755)
+    candidates = [p for p in platform_paths.codex_native_candidates() if p.is_relative_to(tmp_path)]
+    assert platform_paths.find_codex(which=lambda _: str(shim),
+                                     native_candidates=candidates) == str(native)
+
+
+def test_linux_copilot_candidates_include_the_install_scripts_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(platform_paths.sys, "platform", "linux")
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    candidates = platform_paths.copilot_native_candidates()
+    assert candidates[0] == tmp_path / ".local/bin/copilot"
+    assert Path("/usr/local/bin/copilot") in candidates
+
+
 def test_mac_candidates_include_codex_packages(tmp_path, monkeypatch):
     monkeypatch.setattr(platform_paths.sys, "platform", "darwin")
     monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)

@@ -1,8 +1,12 @@
 name: Release The Chat Place
 
-# A tag like v0.1.0 tests and builds The Chat Place for Windows and macOS side by side, and
-# publishes one GitHub release with both, as Image Description Toolkit's release.yml does, and only
-# if both builds succeed: a release without one of them is worse than none.
+# A tag like v0.1.0 tests and builds The Chat Place for Windows, macOS and Linux side by side, and
+# publishes one GitHub release with all of them, as Image Description Toolkit's release.yml does, and
+# only if the Windows and Mac builds succeed: a release without one of them is worse than none.
+# Linux is new, so for now a Linux build that fails doesn't hold the release up: it goes out without
+# that processor's AppImage and feed, and Linux copies stay on the release before (the updater
+# passes over a release without their feed). Once Linux has a release or two behind it, it becomes
+# required like the others (#230).
 #
 #   windows  PyInstaller, signed with Azure Artifact Signing; the Velopack installer, portable
 #            zip and update feed; every signature checked.
@@ -10,6 +14,9 @@ name: Release The Chat Place
 #            certificate, packed by Velopack (so it updates itself, as GHManage's does) and
 #            notarized; the osx update feed; TheChatPlace-macos-arm64.dmg, notarized. Secrets:
 #            MACOS_* and NOTARY_*, set from The-Idea-Place-Projects/signing (sync-secrets.py).
+#   linux    BuildAndRelease/LinuxBuilds/build_linux.sh, once on x64 and once on arm64: the app on
+#            Ubuntu 24.04's wxPython, TheChatPlace-linux-<arch>.AppImage (Velopack's, so it updates
+#            itself) and the linux-<arch> update feed. Linux apps aren't signed.
 #   publish  the release (tags only).
 #
 #   (bump __version__ in thechatplace/__init__.py and add
@@ -26,8 +33,8 @@ name: Release The Chat Place
 # (lessons.md): sign the program first, then `vpk pack --azureTrustedSignFile` signs Setup, the
 # updater and the launcher stub, and skips the program it finds already signed. On the Mac,
 # sign inside-out first, then `vpk pack --signDisableDeep` signs only its UpdateMac and the bundle.
-# The Chat Place publishes on two Velopack channels, "windows" and "osx" (releases.<channel>.json),
-# the ones updater.CHANNEL reads on each platform.
+# The Chat Place publishes on four Velopack channels, "windows", "osx", "linux-x64" and "linux-arm64"
+# (releases.<channel>.json), the ones updater.CHANNEL reads on each platform.
 
 on:
   push:
@@ -384,25 +391,123 @@ jobs:
           rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/certificate.p12"
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
 
+  linux:
+    name: Linux (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            os: ubuntu-24.04
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    # The oldest Linux the AppImage runs on is the one it's built on (glibc 2.39): Ubuntu 24.04,
+    # Debian 13, Fedora 40 and later.
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    # Nothing here signs or publishes, so it needs neither the release's write access nor an
+    # OIDC token while it runs apt, pip and the tests.
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      CHANNEL: linux-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Ubuntu's own Python and wxPython (PyPI has no Linux wheels), and what the build needs:
+      # objdump and the Python shared library for PyInstaller, mksquashfs for vpk, Xvfb for the
+      # window tests.
+      - name: Install
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            python3-venv python3-wxgtk4.0 python3-wxgtk-webview4.0 libpython3.12 \
+            binutils squashfs-tools xvfb xauth at-spi2-core
+
+      # As on the Mac: the release notes and the tag's version are checked by the Windows job.
+      - name: Version
+        run: |
+          if [ "$PUBLISH" = "true" ]; then /usr/bin/python3 tools/check_version.py "$GITHUB_REF_NAME"; fi
+          echo "VERSION=$(/usr/bin/python3 tools/check_version.py)" >> "$GITHUB_ENV"
+
+      # setup-dotnet v6.0.0, for vpk (net10.0), as on the Mac.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk --version 1.2.161
+
+      # As on Windows and the Mac: the previous release's packages for this channel let vpk build a
+      # delta, and its full package goes up with this release. None before the first Linux release.
+      - name: Download the previous release's packages
+        if: env.PUBLISH == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isDraft \
+            --jq '[.[] | select(.isDraft | not) | .tagName | select(startswith("v"))] | .[0] // empty')
+          if [ -z "$prev" ]; then echo "No earlier release."; exit 0; fi
+          echo "Previous release: $prev"
+          vpk download http --url "https://github.com/$GITHUB_REPOSITORY/releases/download/$prev/" \
+            --channel "$CHANNEL" --outputDir releases
+
+      # Tests, the app and its smoke tests, Velopack's AppImage and its smoke test: the same script
+      # as a local build. TCP_PYTHON makes .venv from Ubuntu's Python, which has its wxPython.
+      - name: Build
+        env:
+          TCP_PYTHON: /usr/bin/python3
+          TCP_KEEP_RELEASES: '1'
+        run: BuildAndRelease/LinuxBuilds/build_linux.sh
+
+      - name: Keep the build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: thechatplace-linux-${{ matrix.arch }}-${{ env.VERSION }}
+          path: |
+            releases/TheChatPlace-linux-${{ matrix.arch }}.AppImage
+            releases/TheChatPlace-*-linux-${{ matrix.arch }}-*.nupkg
+            releases/releases.linux-${{ matrix.arch }}.json
+            releases/assets.linux-${{ matrix.arch }}.json
+            releases/RELEASES-linux-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Publish the release
-    needs: [windows, macos]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos, linux]
+    # Waits for Linux, but publishes whatever it made (see the top). !cancelled(), not always():
+    # a run cancelled while Linux is still building must not go on to publish.
+    if: >-
+      !cancelled() && startsWith(github.ref, 'refs/tags/v')
+      && needs.windows.result == 'success' && needs.macos.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      # Both jobs' files, from this run (download-artifact v4.3.0).
+      # Every job's files, from this run (download-artifact v4.3.0): Windows' and the Mac's
+      # signed builds, and Linux's, which aren't signed.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: thechatplace-*-signed
           path: releases
           merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        continue-on-error: true  # no Linux build succeeded
+        with:
+          pattern: thechatplace-linux-*
+          path: releases
+          merge-multiple: true
 
       # Each platform's feed files (releases.<channel>.json, assets.<channel>.json,
       # RELEASES-<channel>) and full packages are what installed copies update from, so they go
-      # up with the Windows installer and portable zip and the Mac disk image. Before 1.0 a
-      # release is a pre-release; the updater includes pre-releases.
+      # up with the Windows installer and portable zip, the Mac disk image and the Linux
+      # AppImages. Before 1.0 a release is a pre-release; the updater includes pre-releases.
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -413,7 +518,19 @@ jobs:
           ls -l releases
           shopt -s nullglob
           assets=()
-          for channel in windows osx; do
+          channels=(windows osx)
+          files=(TheChatPlace-windows-Setup.exe TheChatPlace-windows-Portable.zip
+                 TheChatPlace-macos-arm64.dmg)
+          # A Linux build is kept only after its AppImage passed its smoke test, so its files are
+          # all there or none are.
+          for arch in x64 arm64; do
+            if [ -f "releases/TheChatPlace-linux-$arch.AppImage" ]; then
+              channels+=("linux-$arch"); files+=("TheChatPlace-linux-$arch.AppImage")
+            else
+              echo "::warning::The Linux $arch build failed; the release goes out without it."
+            fi
+          done
+          for channel in "${channels[@]}"; do
             packages=(releases/TheChatPlace-*-$channel-*.nupkg)
             if [ ! -f "releases/TheChatPlace-$VERSION-$channel-full.nupkg" ]; then
               echo "::error::TheChatPlace-$VERSION-$channel-full.nupkg is missing."; exit 1
@@ -424,8 +541,7 @@ jobs:
               assets+=("releases/$name")
             done
           done
-          for name in TheChatPlace-windows-Setup.exe TheChatPlace-windows-Portable.zip \
-                      TheChatPlace-macos-arm64.dmg; do
+          for name in "${files[@]}"; do
             if [ ! -f "releases/$name" ]; then echo "::error::$name is missing."; exit 1; fi
             assets+=("releases/$name")
           done

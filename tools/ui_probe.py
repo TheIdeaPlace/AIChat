@@ -52,6 +52,7 @@ from thechatplace import platform_paths  # noqa: E402
 
 IS_WINDOWS = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
 
 #: How long a window must stay open before it's photographed, so its first
 #: paint (and a list's first selection) has happened.
@@ -233,6 +234,39 @@ def _capture_mac(window, path: Path) -> str:
     return "screencapture"
 
 
+def _capture_gtk(window, path: Path) -> str:
+    """Linux: GTK draws the window into a picture (``gtk_widget_draw``), so
+    another window on top of it, or none of it being on screen yet, doesn't
+    matter, as it would for a copy of the screen. The window manager's
+    frame isn't part of it."""
+    gtk = ctypes.CDLL("libgtk-3.so.0")
+    cairo = ctypes.CDLL("libcairo.so.2")
+    vp = ctypes.c_void_p
+    gtk.gtk_widget_get_allocated_width.argtypes = [vp]
+    gtk.gtk_widget_get_allocated_height.argtypes = [vp]
+    gtk.gtk_widget_draw.argtypes = [vp, vp]
+    cairo.cairo_image_surface_create.restype = vp
+    cairo.cairo_image_surface_create.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    cairo.cairo_create.restype = vp
+    cairo.cairo_create.argtypes = [vp]
+    cairo.cairo_surface_write_to_png.argtypes = [vp, ctypes.c_char_p]
+    cairo.cairo_destroy.argtypes = [vp]
+    cairo.cairo_surface_destroy.argtypes = [vp]
+    widget = vp(int(window.GetGtkWidget()))
+    width = gtk.gtk_widget_get_allocated_width(widget)
+    height = gtk.gtk_widget_get_allocated_height(widget)
+    surface = cairo.cairo_image_surface_create(0, width, height)  # CAIRO_FORMAT_ARGB32
+    context = cairo.cairo_create(surface)
+    try:
+        gtk.gtk_widget_draw(widget, context)
+        if cairo.cairo_surface_write_to_png(surface, str(path).encode()) != 0:
+            raise RuntimeError(f"couldn't save {path}")
+    finally:
+        cairo.cairo_destroy(context)
+        cairo.cairo_surface_destroy(surface)
+    return "gtk_widget_draw"
+
+
 def capture(window: wx.TopLevelWindow, path: Path) -> str:
     """Save a PNG of ``window`` to ``path``; returns how it was taken."""
     window.Refresh()
@@ -240,6 +274,8 @@ def capture(window: wx.TopLevelWindow, path: Path) -> str:
     _pump(0.1)
     if IS_MAC:
         method = _capture_mac(window, path)
+    elif IS_LINUX:
+        method = _capture_gtk(window, path)
     else:
         if IS_WINDOWS:
             bitmap, method = _capture_windows(window)
@@ -1843,15 +1879,40 @@ def photograph_dialog(opener, out: Path, stem: str) -> dict:
     return result
 
 
+def _orca_audit(window, out: Path, stem: str) -> dict:
+    """Linux: what Orca finds in the window (tools/atspi_audit.py). It asks
+    this process over D-Bus, so it runs as a separate process while this one
+    keeps answering, rather than one this process waits on."""
+    result_path = out / f"{stem}-orca.json"
+    result_path.unlink(missing_ok=True)
+    # Debian's own python3, whose PyGObject the app's virtual environment may not have.
+    python = shutil.which("python3") or sys.executable
+    process = subprocess.Popen([python, str(HERE / "atspi_audit.py"), window.GetTitle(),
+                                "--json", str(result_path)])
+    end = time.time() + 30
+    while process.poll() is None and time.time() < end:
+        _pump(0.05)
+    if process.poll() is None:
+        process.kill()
+        return {"error": "the audit didn't finish", "controls": [], "unnamed": []}
+    try:
+        return json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"error": f"no audit: {exc}", "controls": [], "unnamed": []}
+
+
 def _save(window, out: Path, stem: str) -> dict:
     png = out / f"{stem}.png"
     method = capture(window, png)
     info = describe(window)
     info["capture"] = method
+    if IS_LINUX and os.environ.get("TCP_PROBE_ORCA") == "1":
+        info["orca"] = _orca_audit(window, out, stem)
     (out / f"{stem}.json").write_text(json.dumps(info, indent=1, ensure_ascii=False),
                                       encoding="utf-8")
     problems = [f"{c['class']} {c['label'] or c['name']!r}: {p}"
                 for c in info["controls"] for p in c["problems"]]
+    problems += [f"Orca: a {c['role']} with no name" for c in info.get("orca", {}).get("unnamed", [])]
     return {"png": png.name, "json": f"{stem}.json", "title": info["title"],
             "class": info["class"], "size": info["size"], "capture": method,
             "problems": problems}
@@ -2049,6 +2110,7 @@ def main(argv=None) -> int:
     # As the app does, so the probe photographs it as people see it (#185).
     from thechatplace import platform_paths
     platform_paths.make_dpi_aware()
+    platform_paths.set_program_name()  # Linux: the name the Orca audit looks for
     app = wx.App(False)  # noqa: F841
     return run(args.out, args.tag, args.surface or list(SURFACES), args.size)
 

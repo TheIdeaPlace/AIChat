@@ -26,7 +26,8 @@ OpenAI products.
 
 You need:
 
-- Windows 10 or 11, or a Mac with Apple silicon.
+- Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
+  new as Ubuntu 24.04, Debian 13 or Fedora 40, with Orca for speech.
 - For Codex chats: a native Codex CLI signed in to ChatGPT. Codex chats are listed once Codex is
   found; Settings, Include Codex chats turns them off or on. Claude Code is not required.
 - For GitHub Copilot CLI chats (a preview): the native GitHub Copilot CLI, signed in with
@@ -43,7 +44,7 @@ You need:
 For Claude chats, install Claude Code by running its installer in a terminal, then run `claude`
 once to sign in:
 
-- Mac (Terminal): `curl -fsSL https://claude.ai/install.sh | bash`
+- Mac (Terminal) and Linux: `curl -fsSL https://claude.ai/install.sh | bash`
 - Windows (PowerShell): `irm https://claude.ai/install.ps1 | iex`
 - Windows (Command Prompt):
   `curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd`
@@ -70,9 +71,16 @@ Applications. The first time it speaks through VoiceOver, macOS asks whether The
 control VoiceOver: allow it, and turn on "Allow VoiceOver to be controlled with AppleScript" in
 VoiceOver Utility, General.
 
+**Linux** (a preview): download `TheChatPlace-linux-x64.AppImage`, or
+`TheChatPlace-linux-arm64.AppImage` for an Arm PC such as the MNT Reform, put it where you keep
+programs, make it executable (`chmod +x`) and run it. Its first start adds The Chat Place to your
+desktop's menu. It needs FUSE 2 to run (`sudo apt install libfuse2t64` on Debian 13 and Ubuntu
+24.04), and Orca and speech-dispatcher for speech. Claude Code's sign-in opens a web page; without
+a web browser, open the link the terminal shows on another computer or phone.
+
 If Claude Code isn't signed in, your chats are still listed; only sending a message needs a
 sign-in. Help, Claude Code Sign-in says whether it is signed in, and offers to sign you in if not.
-The sign-in opens in its own window (Terminal, on a Mac), and The Chat Place checks again when
+The sign-in opens in its own window (Terminal, on a Mac; your terminal, on Linux), and The Chat Place checks again when
 you've finished. If it can't tell, it says why, for example that Claude Code is too old to ask:
 running `claude update` in a terminal fixes that.
 
@@ -151,6 +159,13 @@ This guide gives the Windows keys. On a Mac:
   the forward Delete key, Fn+Delete. Each place this guide mentions Delete says which Mac key
   works there.
 
+### On Linux
+
+The keys are the Windows ones: Ctrl+N, Alt for the menus (F10 works too), and the Menu key or
+Shift+F10 for a context menu.
+Orca reads a message's first line and then the rest of it as you arrow through the messages. Orca
+before version 50 doesn't say a list's name as you move into it; Orca's Where Am I says it.
+
 ## Reading a chat
 
 ### Finding it in the list
@@ -206,7 +221,10 @@ mode moves by heading (H), table (T), list (L) and code block (each code block i
 JAWS, D in NVDA). Links open in your browser. **Read as Plain Text** (Alt+P) shows the message in
 a plain text box instead, to read by line, word and character. Escape closes either one and puts
 you back on the same message. On Windows the formatted page needs Microsoft's Edge WebView2
-runtime, which comes with Windows 11; without it, Enter opens the plain text box.
+runtime, which comes with Windows 11; without it, Enter opens the plain text box. On Linux,
+Enter opens the plain text box unless you turn on the formatted page in Settings, Reading
+messages; it needs WebKitGTK, and Orca 48 moved through its headings but didn't read it line by
+line.
 
 On a Mac the page works the same way. VoiceOver's rotor (VO+U) lists its headings, tables, links
 and landmarks, VO+Command+H moves by heading, and with Quick Nav on, H, T and L work as above.
@@ -1429,10 +1447,16 @@ If your screen reader is running but The Chat Place can't reach it, a Windows no
 announcements aren't being spoken, the status bar gives the reason beside the announcement, and
 Settings shows it in a Speech problem box after Speaking rate.
 
+On Linux, **Automatic** speaks through Orca, in Orca's voice and rate. Orca 49 and later take
+every announcement, whatever window you're in. Orca 48 and earlier take them while you're in The
+Chat Place; while you're in another window, speech-dispatcher speaks them, the speech server
+Orca uses too, which never talks over Orca. Without Orca, Automatic is a speech-dispatcher
+voice, and Settings chooses the voice and rate.
+
 When you're in another window, The Chat Place can show a notification: when one of the chats
 started here finishes a turn, fails or needs you, when the chat you have loaded finishes, or when
 a desktop app chat starts needing you. Choosing the notification brings The Chat Place forward
-with that chat loaded. Settings, Windows notifications (on a Mac, Notifications) chooses every
+with that chat loaded. Settings, Windows notifications (on a Mac and on Linux, Notifications) chooses every
 finished turn (the default), only when a chat needs you, or off. While you're in The Chat Place,
 the announcement is enough and no notification is shown.
 
@@ -1589,7 +1613,9 @@ The Chat Place knows."
 **Where links work.** On Windows, the installed copy of The Chat Place sets up
 `thechatplace://` links for your Windows account when it's installed and each time it starts,
 and uninstalling it removes them. The portable copy doesn't, so links open the installed copy
-if you have one. On a Mac, links work once The Chat Place is in Applications. A link copied on
+if you have one. On a Mac, links work once The Chat Place is in Applications. On Linux, the
+AppImage sets up links when it starts; if you move the AppImage, start it once from its new
+place. A link copied on
 one computer opens the chat only on that computer.
 
 ## Remote Control
@@ -1708,11 +1734,14 @@ up links, so there's nothing else to undo.
 **Mac:** drag The Chat Place from Applications (or wherever you keep it) to the Trash. Its
 `thechatplace://` links are declared inside the app itself.
 
+**Linux:** delete the AppImage, and the desktop menu entry it made,
+`~/.local/share/applications/thechatplace.desktop`, which also holds its `thechatplace://` links.
+
 **What's left behind.** Uninstalling keeps your settings and records, in case you install The
 Chat Place again. To remove them too, delete these folders, the main things it leaves:
 
 - The Chat Place's own folder: `%APPDATA%\TheChatPlace` on Windows,
-  `~/Library/Application Support/TheChatPlace` on a Mac. It holds its records of the chats started
+  `~/Library/Application Support/TheChatPlace` on a Mac, `~/.config/TheChatPlace` on Linux. It holds its records of the chats started
   here, your settings, groups, names, hidden chats, saved prompts, pasted pictures, agent
   conversations, remembered Codex approvals and its logs.
 - On Windows, the formatted page's WebView2 profile, `%LOCALAPPDATA%\TheChatPlace WebView2`.

@@ -15,7 +15,9 @@ voice (#98). When a screen reader is running, a Windows voice never speaks
 over it. Windows voices, and VoiceOver and ``say`` on macOS, go through
 ClaudeSpeak's engine scripts (TheWorkBench repo), bundled verbatim (IDT's
 copy, with its middle-of-the-scale default rates):
-``thechatplace/speech/speak-engine.ps1`` and ``speak-engine.sh``. This module
+``thechatplace/speech/speak-engine.ps1`` and ``speak-engine.sh``. On Linux,
+Orca is called from this process by ``orca.py``, and the system voice is
+speech-dispatcher, through ``speak-engine-linux.sh``. This module
 is the harness around them — settings, engine/voice enumeration, the
 detached speaker process, and interruption by killing the previous speaker
 before starting the next (the same process model ClaudeSpeak uses for its
@@ -24,7 +26,7 @@ Claude Code hook).
 Design rules inherited from that investigation, kept on purpose:
 
 * **Screen-reader routes never set voice or rate.** The user already chose
-  those in JAWS/NVDA/VoiceOver; overriding them is an accessibility defect,
+  those in JAWS/NVDA/VoiceOver/Orca; overriding them is an accessibility defect,
   not a feature.
 * **Speech never blocks and never raises.** The speaker is a detached hidden
   process; a failure leaves at most ``last-route.log`` in the temp dir.
@@ -40,6 +42,7 @@ import itertools
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -99,6 +102,8 @@ RATE_PRESETS = {
     "onecore": {"slow": 1.0, "normal": 3.0, "fast": 4.5, "fastest": 6.0},
     "sapi": {"slow": -5, "normal": 0, "fast": 5, "fastest": 10},
     "say": {"slow": 120, "normal": 175, "fast": 300, "fastest": 450},
+    # speech-dispatcher's own scale, -100 to 100 around the voice's default.
+    "speechd": {"slow": -40, "normal": 0, "fast": 40, "fastest": 80},
 }
 
 RATE_PRESET_LABELS = ["default", "slow", "normal", "fast", "fastest"]
@@ -114,7 +119,7 @@ NOTIFY_LABELS = {
     NOTIFY_OFF: "Off",
 }
 
-_SCREEN_READER_ENGINES = {"auto", "jaws", "nvda", "voiceover"}
+_SCREEN_READER_ENGINES = {"auto", "jaws", "nvda", "voiceover", "orca"}
 #: Seconds a JAWS or NVDA call may take before the screen reader is treated
 #: as not answering. Both take the text in well under a tenth of a second.
 SCREEN_READER_TIMEOUT = 3.0
@@ -126,13 +131,22 @@ SCREEN_READER_FIRST_TIMEOUT = 15.0
 NOT_ANSWERING = "not spoken: the screen reader isn't answering"
 #: The engine settings that speak through JAWS or NVDA from this process (#98).
 _WINDOWS_SCREEN_READER_ENGINES = {"auto", "jaws", "nvda"}
+#: The engine settings that speak through Orca from this process (Linux).
+_LINUX_SCREEN_READER_ENGINES = {"auto", "orca"}
+IS_LINUX = sys.platform.startswith("linux")
+#: Full messages open as a formatted page unless you choose plain text. Not
+#: on Linux: Orca 48 with WebKitGTK read a page's headings but not its lines
+#: when tested, and the plain text box reads by line, word and character.
+FORMATTED_BY_DEFAULT = not IS_LINUX
+#: What speaks when no screen reader takes an announcement, for the log.
+SYSTEM_VOICE = "a Windows voice" if sys.platform == "win32" else "a system voice"
 
 
 @dataclass
 class SpeechOption:
     """One selectable entry for the Speech settings tab."""
 
-    engine: str  # auto | jaws | nvda | onecore | sapi | voiceover | say
+    engine: str  # auto | jaws | nvda | onecore | sapi | voiceover | say | orca | speechd
     voice: str  # match string for voice engines, "" otherwise
     label: str  # what the picker shows
 
@@ -162,8 +176,9 @@ class SpeechSettings:
     voice: str = ""
     rate_preset: str = "default"
     #: Read Full Message opens a formatted page (headings, lists, tables) when
-    #: Edge WebView2 is there, rather than the plain text box (issue #190).
-    formatted_messages: bool = True
+    #: Edge WebView2 (or on Linux WebKitGTK) is there, rather than the plain
+    #: text box (issue #190).
+    formatted_messages: bool = FORMATTED_BY_DEFAULT
     #: How the session list is sorted (View, Sort Sessions): a value from
     #: ``sessions.SORT_VALUES``. Kept here so the choice survives a restart.
     session_order: str = "status"
@@ -243,7 +258,7 @@ class SpeechSettings:
         settings.voice = str(raw.get("voice", ""))
         preset = str(raw.get("rate_preset", "default"))
         settings.rate_preset = preset if preset in RATE_PRESET_LABELS else "default"
-        settings.formatted_messages = bool(raw.get("formatted_messages", True))
+        settings.formatted_messages = bool(raw.get("formatted_messages", FORMATTED_BY_DEFAULT))
         from .sessions import SORT_STATUS, SORT_VALUES
         order = str(raw.get("session_order", SORT_STATUS))
         settings.session_order = order if order in SORT_VALUES else SORT_STATUS
@@ -304,6 +319,15 @@ class SpeechSettings:
 # ---------------------------------------------------------------------------
 
 
+def engine_script_names() -> List[str]:
+    """The speech scripts this platform runs, which a build must carry."""
+    if sys.platform == "win32":
+        return ["speak-engine.ps1", "speak-voices.ps1"]
+    if IS_LINUX:
+        return ["speak-engine-linux.sh"]
+    return ["speak-engine.sh", "speak-voices.sh"]
+
+
 def _script_dir() -> Path:
     if getattr(sys, "frozen", False):
         # `Path(x) or fallback` never reaches the fallback: Path("") is
@@ -343,6 +367,11 @@ def default_options() -> List[SpeechOption]:
         options += [
             SpeechOption("voiceover", "", "VoiceOver"),
             SpeechOption("say", "", "macOS system voice (default)"),
+        ]
+    elif IS_LINUX:
+        options += [
+            SpeechOption("orca", "", "Orca screen reader"),
+            SpeechOption("speechd", "", "speech-dispatcher voice (default)"),
         ]
     return options
 
@@ -400,13 +429,42 @@ def _parse_mac_voices(raw: str) -> List[SpeechOption]:
     return options
 
 
+def _voice_language() -> str:
+    """The two-letter language voices are offered in: the user's own
+    (``LANG``), or English when it's unset or "C"."""
+    for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(name, "")
+        if value:  # the first one set decides, as it does for the system
+            if value in ("C", "POSIX") or value.startswith("C."):
+                return "en"
+            return value[:2].lower()
+    return "en"
+
+
+def _parse_speechd_voices(raw: str, language: str = "en") -> List[SpeechOption]:
+    """Voices out of ``spd-say -L``: a NAME LANGUAGE VARIANT table. Only the
+    user's language, and no "+Variant" voices: espeak-ng alone lists over a
+    thousand."""
+    options: List[SpeechOption] = []
+    for line in raw.splitlines():
+        match = re.match(r"^\s*(.+?)\s{2,}([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*)\s+(\S+)\s*$", line)
+        if not match or match.group(1) == "NAME":
+            continue
+        name, locale = match.group(1).strip(), match.group(2)
+        if not locale.lower().startswith(language) or "+" in name:
+            continue
+        options.append(SpeechOption("speechd", name, f"{name} ({locale}) — speech-dispatcher voice"))
+    return options
+
+
 def list_speech_options(timeout: float = 25.0) -> List[SpeechOption]:
     """Probe this machine for speech routes. Falls back to defaults on error.
 
     Windows runs the bundled ClaudeSpeak probe (JAWS COM registration, NVDA
     controller DLL with a PE-architecture check, OneCore and SAPI voice
     lists). macOS asks ``say`` directly and checks for VoiceOver — no shell
-    probe, so there is no jq dependency for enumeration.
+    probe, so there is no jq dependency for enumeration. Linux asks
+    speech-dispatcher (``spd-say -L``).
     """
     try:
         if sys.platform == "win32":
@@ -431,6 +489,13 @@ def list_speech_options(timeout: float = 25.0) -> List[SpeechOption]:
             )
             if result.returncode == 0:
                 options.extend(_parse_mac_voices(result.stdout))
+            return options
+        elif IS_LINUX:
+            options = default_options()
+            result = subprocess.run(["spd-say", "-L"], capture_output=True, text=True,
+                                    timeout=timeout)
+            if result.returncode == 0:
+                options.extend(_parse_speechd_voices(result.stdout, _voice_language()))
             return options
     except Exception:
         # A failed probe (no PowerShell, timeout, malformed JSON) must
@@ -506,6 +571,14 @@ class Speaker:
         self._lock = threading.Lock()
         self._queue: "deque[tuple]" = deque()
         self._running: List[subprocess.Popen] = []
+        #: Linux: speech-dispatcher must cancel what the killed voice left.
+        self._cancel_owed = False
+        #: Linux: the voice now speaking does so with Orca running (Orca 48
+        #: and earlier, from another window). Then nothing is cancelled:
+        #: speech-dispatcher's cancel would cut Orca off too, and Orca's
+        #: own next words cut off this "text"-priority voice anyway.
+        self._voice_beside_orca = False
+        self._beside_orca = False  # the same, for the utterance being started
         self._worker: Optional[threading.Thread] = None
         self._generation = 0
         #: Called on the speech thread with a one-line reason when a screen
@@ -518,11 +591,20 @@ class Speaker:
         self.last_problem = ""
         self._reader_call: Optional[threading.Thread] = None
         self._readers_warm = False
+        #: Linux: ``(text, interrupt) -> bool``, which the window sets so
+        #: Orca can be reached through it while it's active (orca.py).
+        self.window_announcer: Optional[Callable[[str, bool], bool]] = None
 
     def _readers(self):
         if self._screen_readers is None:
-            from .screen_readers import ScreenReaders
-            self._screen_readers = ScreenReaders()
+            if IS_LINUX:
+                from .orca import Orca
+                self._screen_readers = Orca()
+            else:
+                from .screen_readers import ScreenReaders
+                self._screen_readers = ScreenReaders()
+        if hasattr(self._screen_readers, "window_announcer"):
+            self._screen_readers.window_announcer = self.window_announcer
         return self._screen_readers
 
     @property
@@ -544,6 +626,11 @@ class Speaker:
                 "/bin/bash", str(script_dir / "speak-engine.sh"),
                 "--path", str(text_file), "--config", str(config_file),
             ]
+        if IS_LINUX:
+            return [
+                "/bin/bash", str(script_dir / "speak-engine-linux.sh"),
+                "--path", str(text_file), "--config", str(config_file),
+            ]
         return None
 
     def speak(self, text: str, settings: SpeechSettings, interrupt: bool = True) -> bool:
@@ -558,7 +645,13 @@ class Speaker:
         if not spoken:
             return False
         if interrupt:
-            self.stop()
+            self._stop(cancel_now=False)
+        queued = self._queue_utterance(spoken, settings, interrupt)
+        if not queued:
+            self._cancel_if_owed()
+        return queued
+
+    def _queue_utterance(self, spoken: str, settings: SpeechSettings, interrupt: bool) -> bool:
         try:
             # One file pair per utterance: two utterances close together
             # must not overwrite each other's text before it is read. The
@@ -579,6 +672,12 @@ class Speaker:
                 # Windows voice and can't reach for a screen reader itself.
                 request = (spoken, settings.engine, interrupt)
                 engine, voice, rate = "onecore", "", None
+            elif IS_LINUX and settings.engine in _LINUX_SCREEN_READER_ENGINES:
+                # Orca is called from this process; the script is the
+                # speech-dispatcher voice for when it isn't running or
+                # can't take the text.
+                request = (spoken, settings.engine, interrupt)
+                engine, voice, rate = "speechd", "", None
             config_file.write_text(
                 json.dumps(
                     {
@@ -616,6 +715,12 @@ class Speaker:
                     return
                 command, request = self._queue.popleft()
                 generation = self._generation
+                cancel, self._cancel_owed = self._cancel_owed, False
+            if cancel:
+                # Before this utterance reaches Orca or speech-dispatcher,
+                # so the cancel can't land on it.
+                _cancel_speech_dispatcher(wait=True)
+            self._beside_orca = False  # _to_screen_reader sets it
             if request is not None:
                 if generation != self._generation:
                     continue  # stop() ran after it left the queue
@@ -642,6 +747,7 @@ class Speaker:
                     _kill_quietly(process)
                     continue
                 self._running.append(process)
+                self._voice_beside_orca = self._beside_orca
             # No timeout: a system voice reading a long reply at the "Full"
             # level can take minutes, and cutting it off mid-sentence is worse
             # than waiting. stop() (an interrupting announcement, or closing
@@ -670,10 +776,16 @@ class Speaker:
             self._settle(failure, problem=failure)
             return True
         if outcome is None:
-            self._settle("screen readers couldn't be checked, so a Windows voice")
+            self._settle(f"screen readers couldn't be checked, so {SYSTEM_VOICE}")
             return False
         if not outcome.running:
-            self._settle("no screen reader running, so a Windows voice")
+            self._settle(f"no screen reader running, so {SYSTEM_VOICE}")
+            return False
+        if getattr(outcome, "voice_allowed", False):
+            # Linux: Orca couldn't take it, and speech-dispatcher, which
+            # speaks one message at a time, may (orca.py).
+            self._beside_orca = True
+            self._settle(outcome.describe())
             return False
         self._settle(outcome.describe(),
                      problem=outcome.describe() if outcome.unreachable else "")
@@ -752,16 +864,36 @@ class Speaker:
         """Empty the queue and kill every engine process. Never raises.
 
         Stops system-voice audio immediately (the synthesizer lives in those
-        processes). Speech already queued inside JAWS/NVDA/VoiceOver keeps
-        their own silence key as the off switch — same behaviour as
+        processes). Speech already queued inside JAWS/NVDA/VoiceOver/Orca
+        keeps their own silence key as the off switch — same behaviour as
         ClaudeSpeak.
         """
+        self._stop(cancel_now=True)
+
+    def _stop(self, cancel_now: bool) -> None:
+        """``stop``. Linux: killing ``spd-say`` leaves the text with
+        speech-dispatcher, so it's told to cancel, but only when The Chat
+        Place's own voice was speaking, and Orca wasn't running beside it:
+        speech-dispatcher's cancel stops every client's speech, Orca's too.
+        An interrupting announcement leaves the cancel to the speech thread
+        (``cancel_now=False``), which makes it before the next utterance,
+        never after."""
         with self._lock:
             self._generation += 1
             self._queue.clear()
             running, self._running = self._running, []
+            if running and IS_LINUX and not self._voice_beside_orca:
+                self._cancel_owed = True
         for process in running:
             _kill_quietly(process)
+        if cancel_now:
+            self._cancel_if_owed()
+
+    def _cancel_if_owed(self) -> None:
+        with self._lock:
+            cancel, self._cancel_owed = self._cancel_owed, False
+        if cancel:
+            _cancel_speech_dispatcher()
 
     def _log(self, text: str, settings: SpeechSettings, interrupt: bool) -> None:
         """One line per utterance in ``speech.log`` beside the engine files.
@@ -809,6 +941,24 @@ class Speaker:
                     pass
         except OSError:
             pass
+
+
+def _cancel_speech_dispatcher(wait: bool = False) -> None:
+    """Linux: killing ``spd-say`` doesn't stop text speech-dispatcher already
+    has, so it's told to cancel. Never raises. ``wait`` (the speech thread
+    only) waits up to 2 s for it; otherwise it doesn't wait."""
+    tool = shutil.which("spd-say")
+    if not tool:
+        return
+    try:
+        if wait:
+            subprocess.run([tool, "-C"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=2)
+        else:
+            subprocess.Popen([tool, "-C"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def _kill_quietly(process) -> None:
