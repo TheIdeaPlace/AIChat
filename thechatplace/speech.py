@@ -573,6 +573,12 @@ class Speaker:
         self._running: List[subprocess.Popen] = []
         #: Linux: speech-dispatcher must cancel what the killed voice left.
         self._cancel_owed = False
+        #: Linux: the voice now speaking does so with Orca running (Orca 48
+        #: and earlier, from another window). Then nothing is cancelled:
+        #: speech-dispatcher's cancel would cut Orca off too, and Orca's
+        #: own next words cut off this "text"-priority voice anyway.
+        self._voice_beside_orca = False
+        self._beside_orca = False  # the same, for the utterance being started
         self._worker: Optional[threading.Thread] = None
         self._generation = 0
         #: Called on the speech thread with a one-line reason when a screen
@@ -714,6 +720,7 @@ class Speaker:
                 # Before this utterance reaches Orca or speech-dispatcher,
                 # so the cancel can't land on it.
                 _cancel_speech_dispatcher(wait=True)
+            self._beside_orca = False  # _to_screen_reader sets it
             if request is not None:
                 if generation != self._generation:
                     continue  # stop() ran after it left the queue
@@ -740,6 +747,7 @@ class Speaker:
                     _kill_quietly(process)
                     continue
                 self._running.append(process)
+                self._voice_beside_orca = self._beside_orca
             # No timeout: a system voice reading a long reply at the "Full"
             # level can take minutes, and cutting it off mid-sentence is worse
             # than waiting. stop() (an interrupting announcement, or closing
@@ -776,6 +784,7 @@ class Speaker:
         if getattr(outcome, "voice_allowed", False):
             # Linux: Orca couldn't take it, and speech-dispatcher, which
             # speaks one message at a time, may (orca.py).
+            self._beside_orca = True
             self._settle(outcome.describe())
             return False
         self._settle(outcome.describe(),
@@ -864,15 +873,16 @@ class Speaker:
     def _stop(self, cancel_now: bool) -> None:
         """``stop``. Linux: killing ``spd-say`` leaves the text with
         speech-dispatcher, so it's told to cancel, but only when The Chat
-        Place's own voice was speaking: speech-dispatcher's cancel stops
-        every client's speech, Orca's too. An interrupting announcement
-        leaves the cancel to the speech thread (``cancel_now=False``), which
-        makes it before the next utterance, never after."""
+        Place's own voice was speaking, and Orca wasn't running beside it:
+        speech-dispatcher's cancel stops every client's speech, Orca's too.
+        An interrupting announcement leaves the cancel to the speech thread
+        (``cancel_now=False``), which makes it before the next utterance,
+        never after."""
         with self._lock:
             self._generation += 1
             self._queue.clear()
             running, self._running = self._running, []
-            if running and IS_LINUX:
+            if running and IS_LINUX and not self._voice_beside_orca:
                 self._cancel_owed = True
         for process in running:
             _kill_quietly(process)

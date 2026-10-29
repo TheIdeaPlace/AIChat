@@ -210,6 +210,38 @@ def test_speech_dispatcher_isnt_cancelled_when_orca_spoke_last(tmp_path, monkeyp
     assert cancels == [] and FakeEngine.started == []
 
 
+def test_speech_dispatcher_isnt_cancelled_when_its_voice_spoke_beside_orca(
+        tmp_path, monkeypatch, cancels):
+    """Orca 48 and earlier, from another window: Orca is running but can't
+    take the text, so The Chat Place's own voice speaks it. Cutting that
+    voice off mustn't cancel speech-dispatcher, which would cut Orca off too,
+    say while it reads the row you just moved to (#230)."""
+    monkeypatch.setattr(speech, "IS_LINUX", True)
+    readers = FakeReaders(OrcaOutcome(running=["orca"], problem="not the active window"))
+    s = make(tmp_path, monkeypatch, readers)
+    s.speak("one", SpeechSettings(engine="orca"), interrupt=False)
+    assert wait_until(lambda: len(FakeEngine.started) == 1)
+    assert FakeEngine.started[0].waiting.wait(5)
+    s.speak("two", SpeechSettings(engine="orca"), interrupt=True)
+    assert FakeEngine.started[0].killed
+    assert wait_until(lambda: len(FakeEngine.started) == 2)
+    assert FakeEngine.started[1].waiting.wait(5)
+    s.stop()
+    assert cancels == []
+
+
+def test_speech_dispatcher_is_cancelled_when_its_voice_spoke_without_orca(
+        tmp_path, monkeypatch, cancels):
+    """With Orca not running, the only speech to cancel is The Chat Place's."""
+    monkeypatch.setattr(speech, "IS_LINUX", True)
+    s = make(tmp_path, monkeypatch, FakeReaders(OrcaOutcome()))
+    s.speak("one", SpeechSettings(engine="orca"), interrupt=False)
+    assert wait_until(lambda: len(FakeEngine.started) == 1)
+    assert FakeEngine.started[0].waiting.wait(5)
+    s.stop()
+    assert cancels == [1]
+
+
 def test_stop_kills_every_running_engine(tmp_path, monkeypatch):
     s = make(tmp_path, monkeypatch)
     s.speak("one", SpeechSettings(), interrupt=False)
