@@ -111,10 +111,14 @@ fi
 
 # ------------------------------------------------------------------ tests ----
 # The window tests need a display; a build without one gets a virtual one.
+# GDK_BACKEND=x11 keeps GTK on it: a build over ssh while the same user is
+# logged in to a Wayland desktop otherwise finds that desktop's wayland-0,
+# and wx sees no screen at all (#230).
 echo ""
 echo "Running the tests..."
 if [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
-    xvfb-run -a -s "-screen 0 1920x1080x24" "$PY" -m pytest -q tests || fail "the tests."
+    GDK_BACKEND=x11 xvfb-run -a -s "-screen 0 1920x1080x24" "$PY" -m pytest -q tests \
+        || fail "the tests."
 else
     "$PY" -m pytest -q tests || fail "the tests."
 fi

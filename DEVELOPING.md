@@ -23,7 +23,8 @@ wxPython publishes no Linux wheels, and building it takes an hour or more (longe
 board), so on Linux `.venv` uses your distribution's: `linuxsetup.sh` makes it with
 `--system-site-packages` from the system's Python, and says what to install first if it's missing
 (`sudo apt install python3-venv python3-wxgtk4.0 python3-wxgtk-webview4.0` on Debian and Ubuntu).
-The window tests need a display; without one, run them under `xvfb-run -a`.
+The window tests need a display; without one, run them under `GDK_BACKEND=x11 xvfb-run -a` (the
+`GDK_BACKEND` keeps GTK off a Wayland desktop you're logged in to elsewhere).
 
 `python -m thechatplace` works on Windows too. A copy run from source doesn't update itself; Help, Check
 for Updates says so, and names the newest release.
