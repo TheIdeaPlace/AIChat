@@ -183,6 +183,12 @@ WebView2 formatted view), `usage.py`, `changes.py`, `codeblocks.py`, `attachment
   (`spoken`/`feedback` recorders), clipboard, sign-in, `fetch_commands`, `open_url` and the
   formatted view. New UI tests should use its `env` fixture (from `tests/fake_env.py`) so no test
   touches real `%APPDATA%`, real `claude`, or speaks aloud.
+- **Linux is never tested by hand for a release** (Kelly's rule). CI's non-blocking `Orca (Linux)`
+  job runs real Orca headless (`tools/linux_a11y_session.sh`): `tools/orca_speech.sh` checks what
+  Orca says for each key step, and `tools/orca_names.py` fails on any unnamed control in the probe's
+  Orca audit. A change to a keyboard path (focus, menus, dialogs, Escape) adds or updates a step in
+  `STEPS` in `tools/orca_speech.py`. To run it on the Ubuntu VM, use the `tcptest` user (Orca runs
+  one copy per user). DEVELOPING.md's "How it's been tested" has the details.
 
 ## Visual check (#155)
 

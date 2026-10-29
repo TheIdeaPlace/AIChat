@@ -420,13 +420,13 @@ jobs:
 
       # Ubuntu's own Python and wxPython (PyPI has no Linux wheels), and what the build needs:
       # objdump and the Python shared library for PyInstaller, mksquashfs for vpk, Xvfb for the
-      # window tests.
+      # window tests, and xdotool to see the AppImage open its window.
       - name: Install
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
             python3-venv python3-wxgtk4.0 python3-wxgtk-webview4.0 libpython3.12 \
-            binutils squashfs-tools xvfb xauth at-spi2-core
+            binutils squashfs-tools xvfb xauth at-spi2-core xdotool
 
       # As on the Mac: the release notes and the tag's version are checked by the Windows job.
       - name: Version

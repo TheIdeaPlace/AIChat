@@ -1102,11 +1102,11 @@ def d_copilot_files(frame, env):
 
 
 def d_codex_mode(frame, env):
-    from thechatplace.ui.dialogs import codex_permission_prompt
+    from thechatplace.ui.dialogs import codex_permission_prompt, single_choice_dialog
     from thechatplace.ui.permission_hosts import CODEX_REVIEW_MODES
     title = 'Review saved command rules for a deliberately long synthetic chat title'
     folder = str(Path(env['folders']['Scratch']) / 'long-synthetic-project-folder' / 'nested-folder-for-permission-review')
-    dialog = wx.SingleChoiceDialog(frame, codex_permission_prompt(frame, title, folder),
+    dialog = single_choice_dialog(frame, codex_permission_prompt(frame, title, folder),
         'Change Permission Mode', [label for value, label in CODEX_REVIEW_MODES])
     dialog.SetSelection(3)
     return lambda: frame._modal(dialog)

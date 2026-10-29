@@ -1727,9 +1727,11 @@ Chat Place again. To remove them too, delete these folders, the main things it l
   conversations, remembered Codex approvals and its logs.</li>
 <li>On Windows, the formatted page's WebView2 profile, <code>%LOCALAPPDATA%\TheChatPlace WebView2</code>.</li>
 <li>Its speech folder: <code>%TEMP%\thechatplace-speak</code> on Windows, <code>$TMPDIR/thechatplace-speak</code> on a
-  Mac. Its speech scripts also keep small logs in <code>claude-speak</code> (and, on Windows,
-  <code>claude-speak-nvda</code>) in the same temporary folder. ClaudeSpeak uses those folders too, so keep
-  them if you use ClaudeSpeak.</li>
+  Mac, <code>$XDG_RUNTIME_DIR/thechatplace-speak</code> on Linux (emptied when you log out; without a
+  runtime folder, <code>/tmp/thechatplace-speak-</code> and your user number). On Windows and the Mac its
+  speech scripts also keep small logs in <code>claude-speak</code> (and, on Windows, <code>claude-speak-nvda</code>) in
+  the same temporary folder. ClaudeSpeak uses those folders too, so keep them if you use
+  ClaudeSpeak. On Linux the speech script's log is in the speech folder itself.</li>
 </ul>
 <p><strong>What it never removes</strong>, because none of it belongs to The Chat Place:</p>
 <ul>
@@ -1768,7 +1770,8 @@ running but The Chat Place can't reach it, the status bar gives the reason besid
 announcement, a notification says announcements aren't being spoken (unless notifications are
 off in Settings), and Settings shows the reason in a Speech problem box after Speaking rate.</p>
 <p>Everything spoken is also written to <code>speech.log</code> (nothing is written while Silent is chosen),
-in <code>%TEMP%\thechatplace-speak</code> on Windows and <code>$TMPDIR/thechatplace-speak</code> on a Mac: one line
+in <code>%TEMP%\thechatplace-speak</code> on Windows, <code>$TMPDIR/thechatplace-speak</code> on a Mac and
+<code>$XDG_RUNTIME_DIR/thechatplace-speak</code> on Linux: one line
 each, with the time, the speech engine and the opening words. A line means the text was handed
 to the speech engine, not that it was heard. On Windows, with a screen reader setting, a <code>route:</code>
 line usually follows, saying which screen reader or voice spoke it, or why a running screen
@@ -1857,8 +1860,8 @@ support@theideaplace.net.</p>
 <li>The Chat Place keeps its own settings and records on Windows in <code>%APPDATA%\TheChatPlace</code>, on a
   Mac in <code>~/Library/Application Support/TheChatPlace</code>.</li>
 <li>It also writes a few things of its own elsewhere:<ul>
-<li>its speech files and <code>speech.log</code>, in <code>%TEMP%\thechatplace-speak</code> on Windows and
-  <code>$TMPDIR/thechatplace-speak</code> on a Mac;</li>
+<li>its speech files and <code>speech.log</code>, in <code>%TEMP%\thechatplace-speak</code> on Windows,
+  <code>$TMPDIR/thechatplace-speak</code> on a Mac and <code>$XDG_RUNTIME_DIR/thechatplace-speak</code> on Linux;</li>
 <li>on Windows, the formatted page's WebView2 profile, in
   <code>%LOCALAPPDATA%\TheChatPlace WebView2</code>;</li>
 <li>on Windows, the installed copy sets up <code>thechatplace://</code> links for your Windows account

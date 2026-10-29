@@ -3033,6 +3033,50 @@ def test_arrows_move_between_status_bar_parts(frame, monkeypatch):
     assert frame._current_pane() == frame.PANE_STATUS
 
 
+def test_an_open_menu_keeps_escape_on_linux(frame, monkeypatch):
+    """GTK gives the window a key before its open menu bar: Escape, meant to
+    close the menu, went back to the session list and left the menu open
+    (#230, found by tools/orca_speech.py). Elsewhere the menu takes the keys
+    itself and the window never sees them, so nothing changes there."""
+    from thechatplace.ui import gtk_a11y
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    moved = []
+    monkeypatch.setattr(frame, "focus_sessions", lambda *a, **k: moved.append(True))
+
+    def escape():
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_ESCAPE)
+        frame._on_char_hook(event)
+        return event
+    monkeypatch.setattr(gtk_a11y, "IS_LINUX", True)
+    monkeypatch.setattr(frame, "_menu_open", True)
+    assert escape().GetSkipped() and moved == []
+    monkeypatch.setattr(frame, "_menu_open", False)
+    escape()
+    assert moved == [True]  # with no menu open, Escape goes back as before
+    monkeypatch.setattr(gtk_a11y, "IS_LINUX", False)
+    monkeypatch.setattr(frame, "_menu_open", True)
+    escape()
+    assert moved == [True, True]
+
+
+def test_a_menu_is_still_open_after_its_submenu_closes_on_linux(frame, monkeypatch):
+    """GTK sends an open and a close for each submenu too: one menu closing
+    mustn't look like all of them closing, or Escape reaches the window
+    while a menu is still open (#230)."""
+    from thechatplace.ui import gtk_a11y
+    monkeypatch.setattr(gtk_a11y, "IS_LINUX", True)
+
+    class Event:
+        def Skip(self):
+            pass
+    for is_open, expect in ((True, True), (True, True), (False, True), (False, False),
+                            (False, False)):  # an extra close can't go below none
+        frame._on_menu_open_close(Event(), is_open)
+        assert frame._menu_open is expect
+    assert frame._menus_open == 0
+
+
 def test_ctrl_9_goes_to_the_status_bar(frame, monkeypatch):
     focused = []
     monkeypatch.setattr(frame.status_text, "SetFocus", lambda: focused.append(True))

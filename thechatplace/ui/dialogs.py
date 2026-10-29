@@ -54,6 +54,19 @@ PERMISSION_NOTE = (
     "Effort change them later."))
 
 
+def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:
+    """wx's own single-choice list, which screen readers handle well. On
+    Linux its list has no name of its own (Windows takes the label before
+    it), and Orca reached "a table with no name" (#230, found by the Orca
+    audit in tools/ui_probe.py), so there it takes the dialog's title."""
+    dialog = wx.SingleChoiceDialog(parent, prompt, title, choices)
+    if gtk_a11y.IS_LINUX:
+        for child in dialog.GetChildren():
+            if isinstance(child, wx.ListBox):
+                set_accessible_name(child, title)
+    return dialog
+
+
 def codex_permission_prompt(parent, title, folder):
     """Wrap only the native picker's prompt, using its actual GUI font (#257)."""
     from wx.lib.wordwrap import wordwrap

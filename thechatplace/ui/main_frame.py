@@ -110,7 +110,8 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, ChatP
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
-                      formatted_view_available, press_focused_button_on_a_mac)
+                      formatted_view_available, press_focused_button_on_a_mac,
+                      single_choice_dialog)
 
 APP_NAME = "The Chat Place"
 LIST_REFRESH_MS = 5000
@@ -213,6 +214,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         # update item says it.
         self._update_available = ""
         self._menu_open = False  # a menu is open: no dialog over it (#141)
+        self._menus_open = 0  # Linux: how many, submenus included (#230)
         self.speech = SpeechSettings.load()
         self._codex_states = {}
         self._codex_drafts = {}
@@ -5563,7 +5565,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         readers handle well). The chosen index, or None."""
         # Over the dialog it was chosen from (Chat Permissions' Change, #329),
         # so closing it returns there rather than to the disabled window.
-        dialog = wx.SingleChoiceDialog(self._open_modal() or self, prompt, title, choices)
+        dialog = single_choice_dialog(self._open_modal() or self, prompt, title, choices)
         if selection is not None:
             dialog.SetSelection(selection)  # on the current choice, not the first
         try:
@@ -5864,7 +5866,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
     def _on_menu_open_close(self, event, is_open: bool):
         event.Skip()
-        self._menu_open = is_open
+        if gtk_a11y.IS_LINUX:
+            # GTK sends an open and a close for each menu, submenus too, and
+            # a submenu's close could come while its menu is still open. A
+            # count keeps one menu closing from looking like all of them
+            # closing, which would let Escape reach the window again (#230).
+            self._menus_open = max(0, self._menus_open + (1 if is_open else -1))
+            self._menu_open = self._menus_open > 0
+        else:
+            self._menu_open = is_open
 
     def _set_update_available(self, version: str):
         """Help's update item names the version running, or the newer one
@@ -6556,6 +6566,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     # ------------------------------------------------------------- keyboard
 
     def _on_char_hook(self, event: wx.KeyEvent):
+        if self._menu_open and gtk_a11y.IS_LINUX:
+            # A menu has the keyboard. On Windows it never gets here, but
+            # GTK passes the window its keys first: Escape, meant to close
+            # the menu bar, went back to the session list instead and the
+            # menu bar stayed open (#230, found by tools/orca_speech.py).
+            event.Skip()
+            return
         key = event.GetKeyCode()
         focus = wx.Window.FindFocus()
         ctrl = event.ControlDown()

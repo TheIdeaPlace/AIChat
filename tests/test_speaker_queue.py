@@ -77,6 +77,8 @@ class FakeReaders:
 def make(tmp_path, monkeypatch, readers=None):
     FakeEngine.started = []
     monkeypatch.setattr(speech.tempfile, "gettempdir", lambda: str(tmp_path))
+    # Linux keeps the speech folder in the session's runtime folder (#230).
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
     monkeypatch.setattr(Speaker, "_command",
                         lambda self, t, c: ["engine", "-Path", str(t), "-ConfigPath", str(c)])
     return Speaker(popen=FakeEngine, screen_readers=readers or FakeReaders())
