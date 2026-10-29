@@ -196,6 +196,21 @@ def test_codex_properties_do_not_invent_claude_models_policies_or_usage():
     assert not any("% full" in line or "Claude" in line for line in result)
 
 
+def test_copilot_properties_count_the_files_it_changed():
+    """Copilot's log says which files it changed, as Claude's does (#352)."""
+    from thechatplace.changes import FileEdit
+    from thechatplace.transcript import Transcript
+
+    info = _info(source="external", provider="copilot", key="copilot:cp-a",
+                 desktop_session_id="")
+    transcript = Transcript(messages=[ChatMessage(ASSISTANT, "Reply", assistant_name="Copilot")],
+                            edits=[FileEdit("C:/w/a.txt", "apply_patch", 1, created=True),
+                                   FileEdit("C:/w/a.txt", "apply_patch", 2),
+                                   FileEdit("C:/w/b.txt", "apply_patch", 2, deleted=True)])
+    result = properties.session_properties(info, transcript, "", 0, None, 200000, now_ms=NOW_MS)
+    assert "Files changed: 2" in result
+
+
 def test_rule_check_refusal_is_distinct_from_not_checked_and_has_no_count():
     from thechatplace.properties import saved_rule_lines
     assert saved_rule_lines(pending=True) == ['Saved command rules: checking...']
@@ -212,10 +227,10 @@ def test_a_codex_chat_whose_state_is_not_known_says_unavailable_once():
     result = properties.session_properties(info, None, "", 0, None, 0, now_ms=NOW_MS)
     assert "Status: Unavailable" in result
     assert not any("Status unavailable" in line for line in result)
-    info.detail = "Codex connection interrupted: the stream closed; reconcile chat history."
+    info.detail = "Codex connection interrupted: the stream closed. Use Stop to reconnect."
     result = properties.session_properties(info, None, "", 0, None, 0, now_ms=NOW_MS)
-    assert ("Status: Unavailable: Codex connection interrupted: the stream closed; "
-            "reconcile chat history") in result
+    assert ("Status: Unavailable: Codex connection interrupted: the stream closed. "
+            "Use Stop to reconnect") in result
 
 
 def test_other_states_still_read_as_before():
@@ -235,3 +250,13 @@ def test_a_task_waiting_for_permission_is_still_in_progress(provider):
     info = _info(source=OWN, provider=provider, key=f'{provider}:cli-a', state=NEEDS_YOU)
     rows = properties.session_properties(info, transcript, '', 0, None, 0, now_ms=NOW_MS)
     assert 'Tasks: Task 1 of 1: Run the tests. 0 done.' in rows
+
+
+def test_a_steering_rows_properties_say_where_it_is():
+    from thechatplace.properties import message_properties
+    from thechatplace.transcript import STEERING, ChatMessage
+    row = ChatMessage(STEERING, "Also the docs", key="steering:own-1:0",
+                      sender="waiting for Claude")
+    lines = message_properties(row, 3, 3)
+    assert lines[0] == "From: You"
+    assert "Steered into the running turn: waiting for Claude" in lines

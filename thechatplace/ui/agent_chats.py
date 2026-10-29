@@ -10,8 +10,10 @@ itself in automatic mode, up to the turn limit.
 Every message goes through each member's own send path, as if you'd typed it
 in that chat, so nothing here can answer a question or approve a tool: those
 still come to you through Answer (Ctrl+Shift+A). Sends, replies and stops
-reach this module from the Claude turn handler and the Codex update handler
-(main_frame.py, codex_chats.py), which keep everything else they do.
+reach this module from the Claude turn handler and the update handler of the
+providers with a runtime, Codex and Copilot (main_frame.py, codex_chats.py),
+which keep everything else they do. Names with "codex" in them here date
+from before Copilot could be a member (#369), and cover both.
 """
 import time
 
@@ -21,13 +23,20 @@ from .. import agents, announce
 from ..agents import AGENTS, MODE_APPROVE, MODE_AUTO, AgentConversation, Member, Pending
 from ..claude_cli import describe_elapsed, new_session_id
 from ..own_store import OwnSession
-from ..sessions import NEEDS_YOU, WORKING
+from ..sessions import NEEDS_YOU, RUNTIME_PROVIDERS, WORKING
 from ..ui_text import key_name
 from .dialogs import AgentConversationDialog, RelayDialog
 
 
 #: The first of Codex's account usage lines (codex_usage.usage_lines).
 CODEX_ACCOUNT_LINE = "Codex account usage is shared"
+#: Copilot's line about the plan's allowance (copilot.usage_lines).
+COPILOT_PLAN_LINE = "Copilot doesn't say how many premium requests"
+#: For each runtime provider, the first of its usage lines that are about
+#: the account, not the chat (listed once in a conversation's usage, not
+#: under each member), and how they're labelled there.
+ACCOUNT_LINES = {"codex": (CODEX_ACCOUNT_LINE, "Codex account: "),
+                 "copilot": (COPILOT_PLAN_LINE, "")}
 
 
 class AgentChats:
@@ -57,7 +66,8 @@ class AgentChats:
             index = conversation.member_index(provider, old_id)
             conversation.members[index].native_id = new_id
             self._agent_save(conversation)
-        for table in (self._agent_awaiting, self._agent_last_reply, self._agent_last_sent):
+        for table in (self._agent_awaiting, self._agent_last_reply, self._agent_last_sent,
+                      self._agent_sent_texts):
             if (provider, old_id) in table:
                 table[(provider, new_id)] = table.pop((provider, old_id))
         for found in (self._agent_asked, self._agent_unconfirmed, self._agent_refused,
@@ -77,7 +87,8 @@ class AgentChats:
             to = conversation.members[pending.to_index].name
             return f"{frm}'s reply is waiting to go to {to}. {key_name('Ctrl+Shift+E')} hands it on."
         for member in conversation.members:
-            state = self._codex_states.get(member.key) if member.provider == "codex" else None
+            state = (self._codex_states.get(member.key)
+                     if member.provider in RUNTIME_PROVIDERS else None)
             if (member.provider == "claude" and self._pending.get(member.native_id)) or (
                     state is not None and state.requests):
                 return (f"{member.name} is waiting for you. "
@@ -86,7 +97,7 @@ class AgentChats:
         for member in conversation.members:
             if member.provider == "claude" and member.native_id in self._runners:
                 working.append(member.name)
-            elif member.provider == "codex":
+            elif member.provider in RUNTIME_PROVIDERS:
                 state = self._codex_states.get(member.key)
                 if member.key in self._agent_codex_waiting or (
                         state is not None and (state.outcome == "inProgress"
@@ -115,7 +126,7 @@ class AgentChats:
         return sort_sessions(rows, self.speech.session_order)
 
     def _agent_waiting_names(self):
-        """Conversations with a message waiting for a Codex member to be
+        """Conversations with a message waiting for a Codex or Copilot member to be
         ready, for quitting and updating to name (they'd lose it)."""
         names = []
         for cid, index, _text in self._agent_codex_waiting_items():
@@ -169,20 +180,16 @@ class AgentChats:
         for record in sorted(self.store.all(provider=None),
                              key=lambda r: -(r.last_activity_ms or r.created_ms)):
             info = record.to_info()
-            if record.identity in taken or record.provider not in ("claude", "codex"):
+            if record.identity in taken or record.provider not in agents.MEMBER_PROVIDERS:
                 continue
             if not self._can_edit(info):
                 continue
             existing.append(info)
-        new_kinds = []
-        if self._agent_can_start("claude"):
-            new_kinds.append("claude")
-        if self.sessions.can_create("codex"):
-            new_kinds.append("codex")
+        new_kinds = [kind for kind in agents.MEMBER_PROVIDERS if self._agent_can_start(kind)]
         if len(existing) + 2 * len(new_kinds) < 2 or (not new_kinds and len(existing) < 2):
             wx.MessageBox("An agent conversation needs two of The Chat Place's own chats, and "
                           "there aren't two free to use. Start one with File, New Session, or "
-                          "make sure Claude Code or Codex is installed.",
+                          "make sure Claude Code, Codex or GitHub Copilot CLI is installed.",
                           "New Agent Conversation", wx.OK | wx.ICON_INFORMATION, self)
             return
         folders = []
@@ -211,13 +218,15 @@ class AgentChats:
             self._agent_create(plan)
 
     def _agent_can_start(self, provider) -> bool:
+        if provider in RUNTIME_PROVIDERS:
+            return self.sessions.can_create(provider)
         from .. import platform_paths
         return provider == "claude" and bool(platform_paths.find_claude().path)
 
     def _agent_create(self, plan):
         """Make any new member chats, then the conversation, then send the
-        opening message. A Codex chat is made on a worker, as New Session
-        makes one; nothing is saved until every member exists."""
+        opening message. A Codex or Copilot chat is made on a worker, as New
+        Session makes one; nothing is saved until every member exists."""
         members, records = [], []
         pending_codex = []
         names = agents.member_names([Member(c.provider, str(slot), "")
@@ -265,16 +274,24 @@ class AgentChats:
                 finish()
                 return
             slot, title, choice = remaining[0]
-            sandbox = choice.permission or "read-only"
+            provider, name = choice.provider, agents.provider_name(choice.provider)
+            options = {}
+            if provider == "codex":
+                # Copilot has no permission choice: it always asks before it
+                # acts, and the runtime makes sure it still does (#364).
+                options = dict(sandbox=choice.permission or "read-only",
+                               approval_policy=choice.approval_policy,
+                               approvals_reviewer=(None if choice.approvals_reviewer == "user"
+                                                   else choice.approvals_reviewer))
 
             def create():
-                return self.sessions.create_owned("codex", plan.folder, title, sandbox=sandbox,
-                                                  approval_policy="on-request")
+                return self.sessions.create_owned(provider, plan.folder, title, **options)
 
             def done(record, error):
                 if error:
                     # New Claude chats aren't saved until every member exists,
-                    # so only Codex chats already made are left behind.
+                    # so only Codex and Copilot chats already made are left
+                    # behind.
                     kept = ""
                     if plan.message.strip() and self._copy_text(plan.message):
                         kept = " Your opening message is copied to the clipboard."
@@ -282,21 +299,25 @@ class AgentChats:
                             f"{'was' if len(made_codex) == 1 else 'were'} made and "
                             f"{'stays' if len(made_codex) == 1 else 'stay'} in the list."
                             if made_codex else "")
-                    self._feedback("Couldn't start the Codex chat for the agent conversation, so "
-                                   "it wasn't started. " + (record or "Check Codex sign-in.")
+                    self._feedback(f"Couldn't start the {name} chat for the agent conversation, "
+                                   "so it wasn't started. " + (record or f"Check {name} sign-in.")
                                    + kept + left)
                     self.refresh_sessions()
                     return
                 if not self._store_write(self.store.add, record):
                     return
-                members[slot] = Member("codex", record.cli_session_id, "", choice.role)
+                members[slot] = Member(provider, record.cli_session_id, "", choice.role)
                 made_codex.append(record.title)
                 make_codex(remaining[1:])
             self._codex_work(create, done)
 
         made_codex = []
         if pending_codex:
-            self._feedback("Starting the Codex chat for the agent conversation.")
+            starting = agents.join_names(dict.fromkeys(
+                agents.provider_name(choice.provider) for _slot, _title, choice in pending_codex))
+            self._feedback(f"Starting the {starting} "
+                           f"{'chat' if len(pending_codex) == 1 else 'chats'} for the agent "
+                           "conversation.")
         make_codex(pending_codex)
 
     def _agent_open(self, conversation):
@@ -420,6 +441,9 @@ class AgentChats:
             self._agent_turn_files.pop(identity, None)
         self._agent_awaiting[identity] = (conversation.conversation_id, relay)
         self._agent_last_sent[identity] = message
+        sent = self._agent_sent_texts.setdefault(identity, [])
+        sent.append(message)
+        del sent[:-20]  # more than ever wait at once
         if index not in conversation.briefed:
             # Until its first turn ends well, a failure takes "briefed" back,
             # so the setup goes again with the next message.
@@ -430,8 +454,8 @@ class AgentChats:
                 self._agent_keep_unseen(conversation.conversation_id, index, text)
                 self._agent_note(conversation, f"Couldn't send to {member.name}.")
                 return False
-        elif member.provider == "codex":
-            record = self.store.get(member.native_id, provider="codex")
+        elif member.provider in RUNTIME_PROVIDERS:
+            record = self.store.get(member.native_id, provider=member.provider)
             self._agent_send_codex(conversation.conversation_id, index, record, message)
         else:
             self._agent_awaiting.pop(identity, None)
@@ -456,8 +480,9 @@ class AgentChats:
         return body
 
     def _agent_send_codex(self, conversation_id, index, record, message):
-        """A Codex member must be ready (its thread resumed here) before it
-        takes a message; one that isn't is got ready first, on a worker."""
+        """A Codex or Copilot member must be ready (its chat opened here)
+        before it takes a message; one that isn't is got ready first, on a
+        worker."""
         key = record.to_info().key
 
         def result(queued, error):
@@ -496,7 +521,7 @@ class AgentChats:
         self.refresh_sessions()
 
     def _agent_forget_waiting(self, conversation_id):
-        """Stop or Delete: its messages waiting for a Codex member don't go.
+        """Stop or Delete: its messages waiting for a Codex or Copilot member don't go.
         A preparation already running finishes, and sends nothing of these."""
         for key in list(self._agent_codex_waiting):
             items = [item for item in self._agent_codex_waiting[key]
@@ -629,11 +654,20 @@ class AgentChats:
         the texts left for the member chat's own reply box: the
         conversation's goes back to the conversation instead."""
         texts = tuple(texts)
-        sent = self._agent_last_sent.get((provider, native_id))
-        if sent is None or (texts and sent not in texts):
-            return texts
         awaited = self._agent_awaiting.get((provider, native_id))
         if awaited is None:
+            # Stopped just as the conversation's next message was starting:
+            # Stop no longer awaits the member, and the runtime gives the
+            # message back here rather than in what its Stop returned. The
+            # conversation's own texts still go back to it (#412 review).
+            conversation = self.agents.containing(provider, native_id)
+            index = (conversation.member_index(provider, native_id)
+                     if conversation is not None else None)
+            if index is None or not texts:
+                return texts
+            return self._agent_take_back(conversation.conversation_id, index, texts)
+        sent = self._agent_last_sent.get((provider, native_id))
+        if sent is None or (texts and sent not in texts):
             return texts
         conversation = self.agents.get(awaited[0])
         kept = self._agent_take_unsent(provider, native_id, sent)
@@ -686,6 +720,14 @@ class AgentChats:
                 gathered += [f for f in files if f not in gathered]
             return
         awaited = self._agent_awaiting.pop(identity, None)
+        # Nothing of the conversation's waits for it now: a text you queue in
+        # the member chat yourself later, even in the same words, is yours.
+        # Unless one is still on its way to the member, sent just as this
+        # turn ended (#412 review).
+        on_its_way = f"{provider}:{native_id}"
+        if (on_its_way not in self._codex_send_pending
+                and on_its_way not in self._agent_codex_waiting):
+            self._agent_sent_texts.pop(identity, None)
         files = tuple(dict.fromkeys(list(self._agent_turn_files.pop(identity, ())) + list(files)))
         asked = identity in self._agent_asked
         was_refused = identity in self._agent_refused
@@ -870,7 +912,7 @@ class AgentChats:
             return
         stopped, taken_back, stopped_at = [], [], []
         for index, member in enumerate(conversation.members):
-            self._agent_awaiting.pop(member.identity, None)
+            awaited = self._agent_awaiting.pop(member.identity, None) is not None
             member_info = self._agent_member_info(member)
             if member_info is None:
                 continue
@@ -882,15 +924,29 @@ class AgentChats:
                     stopped_at.append(index)
                     queued = self._take_queued(member.native_id)
                     if queued:
+                        if agents.SETUP_END in queued:
+                            # The setup never reached it: it goes again.
+                            self._agent_unbrief(conversation, index)
                         body = queued.partition(agents.SETUP_END)[2].strip() or queued
                         taken_back.append(self._agent_keep_unseen(
                             conversation.conversation_id, index, body))
-            elif member.provider == "codex":
+            elif member.provider in RUNTIME_PROVIDERS:
                 state = self._codex_states.get(member_info.key)
-                if (member_info.key in self._codex_send_pending
+                # The window's state can lag Copilot's runtime (a turn ended
+                # and the conversation's next message is just starting), so a
+                # Copilot member the conversation is waiting on, or with
+                # messages queued, is stopped anyway: the runtime says what
+                # it found (Kelly, #372, #386).
+                lagging = member.provider == "copilot" and (
+                    awaited or (state is not None and bool(state.queued)))
+                if (member_info.key in self._codex_send_pending or lagging
                         or (state is not None and (state.outcome == "inProgress"
                                                    or state.state == WORKING))):
-                    self._stop_codex_owned(member_info)
+                    # Copilot's Stop gives back the messages still waiting
+                    # for it: the conversation's come back to it, not to the
+                    # member chat's own reply box.
+                    self._stop_codex_owned(member_info, take_back=lambda texts, index=index: (
+                        self._agent_take_back(conversation.conversation_id, index, texts)))
                     stopped.append(member.name)
                     stopped_at.append(index)
         self._agent_forget_waiting(conversation.conversation_id)
@@ -917,6 +973,50 @@ class AgentChats:
                                      + ("\n\n" + current if current.strip() else ""))
             said += " A message that hadn't gone yet is back in the reply box."
         self._feedback(said)
+
+    def _agent_take_back(self, conversation_id, index, texts):
+        """A Stop gave back ``texts`` that were waiting for member ``index``
+        (Copilot's, after the Stop was said): the conversation's own go back
+        in its reply box, or on the clipboard. Returns the rest, such as one
+        you queued in the member chat yourself, for that chat's own reply
+        box, and all of them if neither works."""
+        conversation = self.agents.get(conversation_id)
+        if conversation is None or not texts:
+            return tuple(texts)
+        sent = self._agent_sent_texts.get(conversation.members[index].identity, [])
+        ours = [text for text in texts if text in sent]
+        rest = tuple(text for text in texts if text not in sent)
+        if not ours:
+            return rest
+        unseen_key = (conversation_id, index)
+        unseen_before = self._agent_unseen.get(unseen_key)
+        bodies = [self._agent_keep_unseen(conversation_id, index,
+                                          text.partition(agents.SETUP_END)[2].strip() or text)
+                  for text in ours]
+        joined = "\n\n".join(body for body in bodies if body)
+        if joined and self._agent_is_open(conversation):
+            current = self.reply_text.GetValue()
+            self.reply_text.SetValue(joined + ("\n\n" + current if current.strip() else ""))
+            self._feedback("A message that hadn't gone yet is back in the reply box.")
+        elif joined and self._copy_text(joined):
+            self._feedback(f"{conversation.title}: a message that hadn't gone yet is copied to "
+                           "the clipboard.")
+        elif joined:
+            # Neither worked: the texts go whole to the member chat's own
+            # reply box, so the replies they carry mustn't also wait to be
+            # sent again (#412 review).
+            if unseen_before is None:
+                self._agent_unseen.pop(unseen_key, None)
+            else:
+                self._agent_unseen[unseen_key] = unseen_before
+            return tuple(texts)
+        for text in ours:
+            sent.remove(text)
+        if any(agents.SETUP_END in text for text in ours):
+            # The setup never reached it: it goes again with the next message.
+            self._agent_unbrief(conversation, index)
+            self._agent_save(conversation, touch=False)
+        return rest
 
     def _agent_status_text(self, info) -> str:
         conversation = self._agent_conversation(info)
@@ -1058,7 +1158,7 @@ class AgentChats:
     def on_agent_usage(self):
         """Ctrl+Shift+U in a conversation: each member's context, and each
         provider's plan limits, in one list. Read on a worker (a Claude
-        member's transcript, Codex's usage report)."""
+        member's transcript, Codex's usage report, Copilot's log)."""
         conversation = self._agent_conversation()
         if conversation is None:
             return
@@ -1072,7 +1172,7 @@ class AgentChats:
 
         def read():
             from .. import usage
-            lines, account = [], []
+            lines, account = [], {}
             for member, info in members:
                 if info is None:
                     lines.append(f"{member.name}: its chat is gone.")
@@ -1095,18 +1195,21 @@ class AgentChats:
                         pass
                     lines.append(f"{prefix}: {usage.context_text(tokens, window)}")
                 else:
+                    name = agents.provider_name(member.provider)
                     try:
                         found = list(self.sessions.usage_lines(info))
                     except Exception:  # noqa: BLE001
-                        found = ["Codex usage couldn't be read. Check Codex sign-in."]
+                        found = [f"{name} usage couldn't be read. Check {name} sign-in."]
                     # The account's limits come after the chat's context,
                     # and are shared: listed once, not under each member.
+                    marker, label = ACCOUNT_LINES.get(member.provider, (None, ""))
                     shared = next((i for i, line in enumerate(found)
-                                   if line.startswith(CODEX_ACCOUNT_LINE)), len(found))
+                                   if marker and line.startswith(marker)), len(found))
                     lines += [f"{prefix}: {line}" for line in found[:shared]]
-                    if not account:
-                        account = found[shared:]
-            lines += [f"Codex account: {line}" for line in account]
+                    if not account.get(member.provider):
+                        account[member.provider] = [label + line for line in found[shared:]]
+            for found in account.values():
+                lines += found
             if any(m.provider == "claude" for m, _i in members):
                 lines += [f"Claude plan: {line}" for line in usage.limit_lines(limits)]
             return lines
@@ -1203,7 +1306,8 @@ class AgentChats:
         if answer != wx.YES:
             return
         for member in conversation.members:
-            for table in (self._agent_awaiting, self._agent_last_reply, self._agent_last_sent):
+            for table in (self._agent_awaiting, self._agent_last_reply, self._agent_last_sent,
+                      self._agent_sent_texts):
                 table.pop(member.identity, None)
             self._agent_asked.discard(member.identity)
             self._agent_unconfirmed.discard(member.identity)

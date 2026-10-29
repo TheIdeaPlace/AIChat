@@ -5,7 +5,8 @@ from dataclasses import dataclass, field, replace
 from .codex_events import CodexTurnBuffer, CodexTokenUsageEvent, CodexEvent, _text
 from .codex_tokens import CodexTokenUsage
 from .codex_owned import CodexLifecycleConnection
-from .codex_rpc import CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent
+from .codex_rpc import (CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
+                        CodexSteerRefused)
 from .codex_requests import CodexRequest, CodexRequestResolved, CodexRequestDeclined, QUESTIONS
 
 
@@ -28,7 +29,7 @@ class CodexTurnState:
 
 
 class CodexExecutionConnection(CodexLifecycleConnection):
-    METHODS = CodexLifecycleConnection.METHODS | {'turn/start', 'turn/interrupt'}
+    METHODS = CodexLifecycleConnection.METHODS | {'turn/start', 'turn/steer', 'turn/interrupt'}
 
     def __init__(self, *args, **kwargs):
         self._runtime_lock = threading.Lock()
@@ -60,6 +61,9 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         if proof is None or not self.owns_runtime(proof):
             raise CodexRpcError('Codex execution requires a verified owned chat')
         proof.policy.verify_workspace(proof.cwd)
+        if 'expectedTurnId' in params:
+            self._verify_steer_route(proof, params)
+            return
         expected = {'threadId': proof.native_id, 'cwd': proof.cwd, 'model': proof.model,
                     'approvalPolicy': proof.policy.approval, 'approvalsReviewer': proof.policy.reviewer,
                     'sandboxPolicy': proof.policy.turn_policy()}
@@ -67,12 +71,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
             expected['effort'] = proof.effort
         if set(params) != set(expected) | {'input'} or any(params[k] != v for k, v in expected.items()):
             raise CodexRpcError('Codex turn options do not match the owned chat')
-        inputs = params['input']
-        if (not isinstance(inputs, list) or len(inputs) != 1 or not isinstance(inputs[0], dict)
-                or set(inputs[0]) != {'type', 'text'} or inputs[0]['type'] != 'text'
-                or not isinstance(inputs[0]['text'], str) or not inputs[0]['text'].strip()
-                or len(inputs[0]['text']) > 32000):
-            raise CodexRpcError('Codex text input is invalid')
+        self._verify_text_input(params['input'])
         super()._verify_turn_route(params)
         metadata = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False})
         thread = metadata.get('thread')
@@ -80,6 +79,38 @@ class CodexExecutionConnection(CodexLifecycleConnection):
                 or not isinstance(thread.get('status'), dict)
                 or thread['status'].get('type') != 'idle'):
             raise CodexTurnRejected('not_idle')
+
+
+    @staticmethod
+    def _verify_text_input(inputs):
+        if (not isinstance(inputs, list) or len(inputs) != 1 or not isinstance(inputs[0], dict)
+                or set(inputs[0]) != {'type', 'text'} or inputs[0]['type'] != 'text'
+                or not isinstance(inputs[0]['text'], str) or not inputs[0]['text'].strip()
+                or len(inputs[0]['text']) > 32000):
+            raise CodexRpcError('Codex text input is invalid')
+
+    def _verify_steer_route(self, proof, params):
+        """turn/steer (#239): only text into the chat's own active turn. It
+        carries no turn options (it can't change them), so the billing route
+        is checked against the chat's own folder, and the thread must be
+        active rather than idle."""
+        turn_id = params.get('expectedTurnId')
+        if (set(params) != {'threadId', 'expectedTurnId', 'input'}
+                or not isinstance(turn_id, str) or not turn_id.strip()):
+            raise CodexRpcError('Codex turn options do not match the owned chat')
+        self._verify_text_input(params['input'])
+        # Pinned to the owned chat's folder; the copy is never sent.
+        super()._verify_turn_route({**params, 'cwd': proof.cwd})
+        metadata = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False})
+        thread = metadata.get('thread')
+        if (not isinstance(thread, dict) or thread.get('id') != proof.native_id
+                or not isinstance(thread.get('status'), dict)
+                or thread['status'].get('type') != 'active'):
+            raise CodexSteerRefused('not_running')
+
+
+#: JSON-RPC's invalid-request code, which app-server gives a steer it refuses.
+INVALID_REQUEST = -32600
 
 
 class CodexTurnExecutor:
@@ -154,7 +185,51 @@ class CodexTurnExecutor:
             # A timeout may mean the prompt was accepted. Keep the reservation:
             # another click must not silently duplicate it.
             self._break_connection()
-            raise CodexRpcError('Could not confirm this Codex turn. Reopen the chat before sending again.') from None
+            # Internal: safe_reason hides this text; the runtime says what to do.
+            raise CodexRpcError('Could not confirm this Codex turn. Use Stop to recheck this chat before sending again.') from None
+
+    def steer(self, proof, text):
+        """Add ``text`` to the running turn (``turn/steer``, #239): never a
+        new turn. CodexSteerRefused when nothing was sent, or Codex refused it
+        as an invalid request (-32600); any other error, a timeout or a lost
+        connection leaves it unknown, for the caller to say."""
+        if not self.connection.owns_runtime(proof):
+            raise CodexRpcError('Codex execution requires a verified owned chat')
+        if not isinstance(text, str) or not text.strip() or len(text) > 32000:
+            raise ValueError('Enter a message of at most 32000 characters')
+        with self._lock:
+            if self._broken:
+                raise CodexSteerRefused('unavailable')
+            buffer = self._turns.get(proof.native_id)
+            if buffer is None or buffer.status != 'inProgress':
+                raise CodexSteerRefused('not_running')
+            turn_id = buffer.turn_id
+        try:
+            result = self.connection.request('turn/steer', {
+                'threadId': proof.native_id, 'expectedTurnId': turn_id,
+                'input': [{'type': 'text', 'text': text}]})
+        except (CodexTurnRejected, CodexSteerRefused, CodexConnectionFailure):
+            raise
+        except CodexRpcError as error:
+            answered = type(error) is CodexRpcError and str(error) == 'Codex request failed'
+            if not answered:
+                raise
+            if getattr(error, 'rpc_code', None) != INVALID_REQUEST:
+                # Not a known refusal: it may have been taken. Unknown, so
+                # it is never queued or sent again on its own.
+                raise CodexRpcError('Codex did not confirm the steered message') from None
+            # Checked with app-server 0.163.0: a wrong or ended turn, empty
+            # input or no active turn is refused as an invalid request, and
+            # the text never reaches the model. Most often the turn ended as
+            # the steer went (expectedTurnId).
+            with self._lock:
+                current = self._turns.get(proof.native_id)
+                ended = (current is not buffer or current.turn_id != turn_id
+                         or current.status != 'inProgress')
+            raise CodexSteerRefused('not_running' if ended else 'refused') from None
+        if result.get('turnId') != turn_id:
+            raise CodexRpcError('Codex did not confirm the steered message')
+        return turn_id
 
     def interrupt(self, proof):
         if not self.connection.owns_runtime(proof):
@@ -351,7 +426,8 @@ class CodexTurnExecutor:
             self._break_connection()
             if type(error) is CodexConnectionFailure:
                 raise
-            raise CodexRpcError('Codex connection interrupted. Reload chats to check their replies.') from None
+            # Internal: safe_reason hides this text; the runtime says what to do.
+            raise CodexRpcError('Codex connection interrupted. Use Stop in each chat to check its reply.') from None
         return frozenset(changed)
 
     def _break_connection(self):

@@ -8,8 +8,10 @@ record, in its own companion file that older releases never read.
 
 What this module decides, so it can be tested without a window:
 
-- the record and its store (``agent-conversations.json``, written atomically,
-  an unreadable file set aside rather than overwritten);
+- the record and its store (``agent-conversations.json``, and
+  ``provider-agent-conversations-copilot.json`` for those with a Copilot
+  member; written atomically, an unreadable file set aside rather than
+  overwritten);
 - the text each agent is sent: a one-time setup, your words, and the other
   agent's reply with a label saying who wrote it;
 - who a message is for ("@Codex ..." addresses one member);
@@ -64,7 +66,17 @@ SETUP_END = "[End of setup]"
 #: Words that address every member: "@all review this".
 ALL_NAMES = ("all", "both", "everyone")
 
-_PROVIDER_NAMES = {"claude": "Claude", "codex": "Codex"}
+#: The providers a member can be, by the name the conversation calls it.
+#: Copilot joined in #369, once its chats could run in the window (#352).
+_PROVIDER_NAMES = {"claude": "Claude", "codex": "Codex", "copilot": "Copilot"}
+#: A conversation with a member of one of these is kept in a companion file
+#: of its own: releases before #369 drop a conversation with a member they
+#: don't know, and their next save would lose it (as own_store keeps
+#: Copilot's chats out of provider-sessions.json).
+SEPARATE_PROVIDERS = ("copilot",)
+#: The providers a member can be, in the order New Agent Conversation
+#: offers a new chat of each.
+MEMBER_PROVIDERS = tuple(_PROVIDER_NAMES)
 
 
 def provider_name(provider: str) -> str:
@@ -845,9 +857,13 @@ def _to_dict(conversation: AgentConversation) -> dict:
 
 
 class AgentConversationStore:
-    """``agent-conversations.json`` in The Chat Place's data folder. A file
-    that can't be read is moved aside (and said), never written over; a
-    single bad record is left out without hiding the others."""
+    """``agent-conversations.json`` in The Chat Place's data folder, and a
+    companion file for each of SEPARATE_PROVIDERS that only conversations
+    with such a member go in. A file that can't be read is moved aside (and
+    said), never written over; a single bad record is left out without
+    hiding the others. Only a file whose contents changed is written, so an
+    edit to a Copilot conversation never rewrites the file an older release
+    may have changed meanwhile."""
 
     VERSION = 1
 
@@ -856,27 +872,41 @@ class AgentConversationStore:
             from .platform_paths import app_data_dir
             path = app_data_dir() / "agent-conversations.json"
         self.path = Path(path)
+        #: provider -> its companion file.
+        self._separate = {name: self.path.with_name(
+            f"provider-{self.path.stem}-{name}{self.path.suffix}") for name in SEPARATE_PROVIDERS}
         self.load_error = ""
         self._save_blocked = False
         self._items: Dict[str, AgentConversation] = {}
+        #: What each file held when read or last written, to write only
+        #: the ones that change.
+        self._written: Dict[Path, list] = {}
         self.load()
 
     def load(self) -> None:
         self._items, self.load_error, self._save_blocked = {}, "", False
+        self._written = {}
+        for path in (self.path, *self._separate.values()):
+            self._load_file(path)
+            if self._save_blocked:
+                return
+
+    def _load_file(self, path: Path) -> None:
         try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            raw = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
+            self._written[path] = []
             return
         except OSError as exc:
-            self.load_error = (f"Couldn't read the agent conversations ({self.path}): {exc}. "
+            self.load_error = (f"Couldn't read the agent conversations ({path}): {exc}. "
                                "Changes won't be saved.")
             self._save_blocked = True
             return
         except ValueError:
-            self._set_aside("couldn't be read")
+            self._set_aside(path, "couldn't be read")
             return
         if not isinstance(raw, dict) or not isinstance(raw.get("conversations"), list):
-            self._set_aside("isn't in the expected format")
+            self._set_aside(path, "isn't in the expected format")
             return
         if raw.get("version") != self.VERSION:
             # A newer release's file: read nothing rather than lose its data.
@@ -884,16 +914,23 @@ class AgentConversationStore:
                                "Chat Place. They're left as they are.")
             self._save_blocked = True
             return
+        loaded = []
         for item in raw["conversations"]:
             conversation = _conversation_from(item)
             if conversation is not None and conversation.conversation_id not in self._items:
                 self._items[conversation.conversation_id] = conversation
+                loaded.append(_to_dict(conversation))
+        # As this release would write what it read, not the file's own words:
+        # a record left out or tidied on loading mustn't make an edit to
+        # another file's conversation rewrite this one.
+        self._written[path] = loaded
 
-    def _set_aside(self, why: str) -> None:
+    def _set_aside(self, path: Path, why: str) -> None:
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        backup = self.path.with_name(f"{self.path.name}.bad-{stamp}")
+        backup = path.with_name(f"{path.name}.bad-{stamp}")
         try:
-            os.replace(self.path, backup)
+            os.replace(path, backup)
+            self._written[path] = []
             self.load_error = (f"The agent conversations file {why}. It was moved to "
                                f"{backup.name}, and the member chats are back in the list.")
         except OSError as exc:
@@ -901,12 +938,26 @@ class AgentConversationStore:
                                f"aside ({exc}). Changes won't be saved.")
             self._save_blocked = True
 
+    def _file_for(self, conversation: AgentConversation) -> Path:
+        for member in conversation.members:
+            if member.provider in self._separate:
+                return self._separate[member.provider]
+        return self.path
+
     def save(self) -> None:
         if self._save_blocked:
             raise OSError(f"Changes cannot be saved: {self.load_error}")
         from .provider_storage import atomic_write_json
-        atomic_write_json(self.path, {"version": self.VERSION, "conversations": [
-            _to_dict(c) for c in self._items.values()]})
+        files: Dict[Path, list] = {path: [] for path in (self.path, *self._separate.values())}
+        for conversation in self._items.values():
+            files[self._file_for(conversation)].append(_to_dict(conversation))
+        for path, conversations in files.items():
+            # A missing file was read as empty, so it's only made when
+            # there's something to put in it.
+            if conversations == self._written.get(path):
+                continue
+            atomic_write_json(path, {"version": self.VERSION, "conversations": conversations})
+            self._written[path] = conversations
 
     # Every read hands out a copy, and a change is saved with put(), which
     # replaces the record whole: a background reader never sees a record

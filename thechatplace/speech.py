@@ -219,6 +219,9 @@ class SpeechSettings:
     #: Agent conversations (#248): replies may go across by themselves only
     #: once this is on. Each conversation chooses its own turn limit.
     agent_auto_mode: bool = False
+    #: How Changed Files marks each line of a change (#174): a value from
+    #: app-kit's ``difftext.STYLES``.
+    change_marks: str = "words"
 
     def includes_codex(self) -> bool:
         """Only a found native CLI enables discovery, even with an explicit on."""
@@ -289,6 +292,9 @@ class SpeechSettings:
         limit = raw.get("recent_folder_limit", RECENT_LIMIT)
         settings.recent_folder_limit = limit if isinstance(limit, int) \
             and not isinstance(limit, bool) and 0 <= limit <= RECENT_MAX else RECENT_LIMIT
+        from theideaplace_appkit.difftext import DEFAULT as MARKS_DEFAULT, STYLES as MARKS
+        marks = raw.get("change_marks", MARKS_DEFAULT)
+        settings.change_marks = marks if marks in MARKS else MARKS_DEFAULT
         return settings
 
     #: True when settings.json was there but couldn't be read, so these are

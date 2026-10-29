@@ -79,10 +79,10 @@ jobs:
       SIGN: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.sign) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'sign-build')) }}
       CHANNEL: windows
     steps:
-      # Every action is pinned to a release commit, like thechatplace-tests.yml: checkout v4.4.0,
-      # setup-python v5.6.0, azure/login v3.1.0, artifact-signing-action v2.0.0, upload-artifact v4.6.2.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      # Every action is pinned to a release commit, like thechatplace-tests.yml: checkout v7.0.1,
+      # setup-python v7.1.0, azure/login v3.1.0, artifact-signing-action v2.0.0, upload-artifact v7.0.2.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
           cache: pip
@@ -231,7 +231,7 @@ jobs:
           if ($bad) { throw "$bad program(s) aren't validly signed." }
 
       - name: Keep the build
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: thechatplace-windows-${{ env.VERSION }}-${{ env.SIGN == 'true' && 'signed' || 'unsigned' }}
           path: |
@@ -258,8 +258,8 @@ jobs:
       SIGN: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.sign) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'sign-build')) }}
       HAVE_SECRETS: ${{ secrets.MACOS_CERTIFICATE_P12 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.NOTARY_KEY_P8 != '' && secrets.NOTARY_KEY_ID != '' && secrets.NOTARY_ISSUER_ID != '' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
           cache: pip
@@ -370,7 +370,7 @@ jobs:
           hdiutil detach "$MNT"
 
       - name: Keep the build
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: thechatplace-macos-${{ env.VERSION }}-${{ env.SIGN == 'true' && 'signed' || 'unsigned' }}
           # The .pkg and portable zip vpk also makes aren't published: the .pkg would need a
@@ -405,6 +405,10 @@ jobs:
     # Debian 13, Fedora 40 and later.
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    # Nothing here signs or publishes, so it needs neither the release's write access nor an
+    # OIDC token while it runs apt, pip and the tests.
+    permissions:
+      contents: read
     defaults:
       run:
         shell: bash
@@ -412,7 +416,7 @@ jobs:
       PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') }}
       CHANNEL: linux-${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # Ubuntu's own Python and wxPython (PyPI has no Linux wheels), and what the build needs:
       # objdump and the Python shared library for PyInstaller, mksquashfs for vpk, Xvfb for the
@@ -462,7 +466,7 @@ jobs:
         run: BuildAndRelease/LinuxBuilds/build_linux.sh
 
       - name: Keep the build
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: thechatplace-linux-${{ matrix.arch }}-${{ env.VERSION }}
           path: |
@@ -477,13 +481,14 @@ jobs:
   publish:
     name: Publish the release
     needs: [windows, macos, linux]
-    # Waits for Linux, but publishes whatever it made (see the top).
+    # Waits for Linux, but publishes whatever it made (see the top). !cancelled(), not always():
+    # a run cancelled while Linux is still building must not go on to publish.
     if: >-
-      always() && startsWith(github.ref, 'refs/tags/v')
+      !cancelled() && startsWith(github.ref, 'refs/tags/v')
       && needs.windows.result == 'success' && needs.macos.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # Every job's files, from this run (download-artifact v4.3.0): Windows' and the Mac's
       # signed builds, and Linux's, which aren't signed.

@@ -15,6 +15,7 @@ from typing import Protocol
 from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE, TERMINAL, SessionInfo
 from ..transcript import ASSISTANT, ERROR, PLAN, TOOL, TOOL_RESULT, USER, ChatMessage, Transcript
 from ..ui_text import last_message_line
+from ..changes import FileEdit, Hunk, parse_unified_diff
 from .base import Snapshot
 from .codex_connection import ManagedCodexConnection
 from .codex_models import read_models
@@ -42,6 +43,40 @@ def _timestamp(value) -> str:
         return datetime.fromtimestamp(value, timezone.utc).isoformat()
     except (ValueError, OverflowError, OSError):
         return ""
+
+
+def _file_edits(item: dict, turn: int):
+    """Only completed fileChange items describe edits that were made.
+
+    Updates carry unified hunks; additions and deletions carry the whole
+    content. Read app-server's records, never the file's current contents or
+    a working-tree diff, which could include somebody else's work.
+    """
+    if item.get("status") != "completed":
+        return
+    for change in item["changes"]:
+        if not isinstance(change, dict):
+            continue
+        path, diff, kind = change.get("path"), change.get("diff"), change.get("kind")
+        if (not isinstance(path, str) or not path.strip() or not isinstance(diff, str)
+                or not isinstance(kind, dict) or kind.get("type") not in ("add", "delete", "update")):
+            continue
+        operation = kind["type"]
+        moved = kind.get("move_path") if operation == "update" else None
+        if moved is not None and (not isinstance(moved, str) or not moved.strip()):
+            continue
+        if operation == "update":
+            hunks = parse_unified_diff(diff)
+        else:
+            content = diff.replace("\r\n", "\n")
+            lines = content.removesuffix("\n").split("\n") if content else []
+            mark = "+" if operation == "add" else "-"
+            hunks = [Hunk(0 if operation == "add" else 1,
+                          1 if operation == "add" else 0,
+                          [mark + line for line in lines])] if lines else []
+        yield FileEdit(moved or path, "Codex", turn, hunks,
+                       created=operation == "add", deleted=operation == "delete",
+                       moved_from=path if moved else "")
 
 
 def session_from_thread(thread: dict, archived: bool) -> SessionInfo:
@@ -135,6 +170,7 @@ def transcript_from_thread(thread: dict) -> Transcript:
                     continue
                 text = "\n".join(_text(c.get("path")) + "\n" + _text(c.get("diff"))
                                  for c in changes if isinstance(c, dict))
+                transcript.edits.extend(_file_edits(item, transcript.turns))
                 message_kind = TOOL
             elif kind == "mcpToolCall":
                 text = f'{_text(item.get("server"))}: {_text(item.get("tool"))}'
@@ -470,8 +506,9 @@ class CodexProvider:
         # Persisted ownership alone cannot send: runtime proofs and fresh
         # subscription/configuration/concurrency gates remain at execution.
         enabled = self.runtime is not None
-        return SessionCapabilities(usage=True, send=enabled and session.is_own, fork=enabled,
-                                   approvals=enabled and session.is_own)
+        return SessionCapabilities(usage=True, changes=True, send=enabled and session.is_own, fork=enabled,
+                                   approvals=enabled and session.is_own,
+                                   steer=enabled and session.is_own)
 
     def usage_lines(self, session):
         self._check(session)
@@ -515,6 +552,9 @@ class CodexProvider:
     def reopen_owned(self, record):
         return self.runtime.reopen(record)
 
+    def recover_owned(self, record):
+        return self.runtime.recover(record)
+
     def prepare_owned(self, record):
         return self.runtime.prepare(record)
 
@@ -523,6 +563,12 @@ class CodexProvider:
 
     def stop_owned(self, record):
         return self.runtime.stop(record)
+
+    def steer_owned(self, record, text):
+        return self.runtime.steer(record, text)
+
+    def steer_queued_owned(self, record, index, text):
+        return self.runtime.steer(record, text, index=index)
 
     def answer_owned(self, record, request, result):
         return self.runtime.answer(record, request, result)

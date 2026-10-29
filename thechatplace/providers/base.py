@@ -70,6 +70,8 @@ class SessionCapabilities:
     share_link: bool = False
     options: bool = False
     approvals: bool = False
+    #: A message into a running turn without stopping it (#238, #239).
+    steer: bool = False
 
 
 class ConversationReader(Protocol):

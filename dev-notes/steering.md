@@ -1,0 +1,74 @@
+# Steering a running turn (#238, #239)
+
+What was checked before building Steer, and how the turn knows what happened.
+
+## Claude: `claude -p` stream-json, Claude Code 2.1.296
+
+Run headless as The Chat Place runs it (`--input-format stream-json --output-format stream-json`,
+`--permission-prompts host`), with a prompt that makes three `sleep 6` Bash calls one after
+another. A user message written to stdin during the turn, **with no `interrupt` before it**:
+
+- **Written during a tool call:** Claude took it in after that tool call finished, followed it
+  ("skip the third command"), and the turn ended with **one** result covering both messages.
+  This is real steering, not queueing.
+- **Written while Claude was writing its final reply** (a no-tools prompt): no step came to take
+  it in at, so Claude finished the reply (result 1), then answered the message as its own turn in
+  the same process (result 2).
+
+From the result count alone the two can't be told apart, and the turn's bookkeeping (a result
+per message, from Send Now, #83) would wait for ever for the second result in the first case.
+
+`--replay-user-messages` settles it: Claude Code echoes each message from stdin
+(`{"type": "user", "isReplay": true, …}`) at the moment it takes it in, in order. Observed:
+
+| Case | Order of events |
+|---|---|
+| Steer during a tool call | echo(prompt), tool, echo(steer), tool, result |
+| Steer during the final reply | echo(prompt), result, echo(steer), result |
+| Send Now (interrupt, then message) | echo(prompt), tool, result (error_during_execution), echo(message), result |
+
+So `TurnRunner` counts **a result as answering every message taken in since the last result**.
+With no echoes at all (an older Claude Code, a test fake) it falls back to one result per message.
+A steer still untaken when a result comes is marked late. Its `steer_taken` event says so, and
+the UI says "had finished, and is answering your message now".
+
+The echo isn't shown: the transcript has the message, in the place Claude took it in.
+
+## Codex: app-server `turn/steer`
+
+Documented at the app-server's "Steer an active turn": `turn/steer` with `threadId`,
+`expectedTurnId` (must match the active turn) and `input` appends to the running turn without
+starting a new one or emitting `turn/started`, and returns `{"turnId": …}`. It fails with no
+active turn, and can't change turn settings. `turn/interrupt` is separate (Stop uses it). Nothing
+documented says when steered input reaches the model, so the UI says "Steered" on acceptance.
+
+Checked with the real app-server (codex-cli, ChatGPT sign-in, a read-only chat) through
+`CodexChatRuntime.steer`: Codex was asked to run `ping -n 8 127.0.0.1` three times. A steer sent
+during the first ping ("skip the third, end with PINEAPPLE") was accepted into the running turn,
+which went on and ended once, with two pings and PINEAPPLE. The route checks passed against the
+real server (the thread's status is `active` mid-turn), and a steer after the turn ended was
+refused locally, with nothing sent.
+
+Codex then checked app-server 0.163.0 against a synthetic local model (no account, no paid
+calls):
+- While a turn waits on an approval, the thread is `{"type": "active", "activeFlags":
+  ["waitingOnApproval"]}` and the turn stays `inProgress`, so `active` is the right check.
+- A steer is accepted while an approval is pending. It doesn't answer the approval: after
+  Decline the turn went on with the steered text in the next model request; Cancel interrupted
+  the turn before the text was used.
+- A wrong or ended turn, empty input and no active turn are all refused with JSON-RPC
+  `-32600`, and the text never reaches the model. That's the only error The Chat Place treats as
+  "not sent". Any other error, a timeout or a lost connection may have come after Codex took the
+  text, so it's "not confirmed": the message goes back to the reply box with a warning, and is
+  never queued or sent again on its own.
+- `item/started` and `item/completed` with `item.type == "userMessage"` come for the steered text
+  when it enters the model's next request, not when the steer is accepted. Not used yet; it could
+  give Codex chats a "has your message" like Claude's.
+
+## The behaviour chosen
+
+One command and key for both providers: Steer, Ctrl+Alt+Enter, from the reply box and on a
+queued message, checked before Ctrl+Enter so it can't become a plain Send. With no turn running
+it's Send. A steer that can't be delivered comes back to the reply box (or stays queued) with the
+reason; it's never sent twice, and a Codex steer is never turned into a new turn on its own.
+Copilot chats don't steer yet.

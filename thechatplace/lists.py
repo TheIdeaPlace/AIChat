@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Sequence
 
+from theideaplace_appkit.difftext import DEFAULT as DEFAULT_MARKS
+
 from . import tasklist
 from .tasklist import TaskStep
 from .changes import FileEdit, by_file, file_text
@@ -132,9 +134,9 @@ def link_items(messages: Sequence[ChatMessage], selected: Optional[ChatMessage],
 
 
 def file_items(edits: Iterable[FileEdit], turn: Optional[int],
-               describe: Callable) -> List[ListItem]:
+               describe: Callable, marks: str = DEFAULT_MARKS) -> List[ListItem]:
     chosen = [e for e in edits if turn is None or e.turn == turn]
-    return [ListItem(row=describe(changes), detail=file_text(changes),
+    return [ListItem(row=describe(changes), detail=file_text(changes, marks),
                      copy_text=changes.path, copy_what="the file's path",
                      detail_name=f"Changes to {changes.path}")
             for changes in by_file(chosen)]
@@ -223,11 +225,13 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
           selected: Optional[ChatMessage], edits: Iterable[FileEdit],
           commands: Iterable[ToolCommand], describe_file: Callable,
           turn: Optional[int] = None,
-          tasks: Sequence[TaskStep] = ()) -> List[ListItem]:
+          tasks: Sequence[TaskStep] = (),
+          marks: str = DEFAULT_MARKS) -> List[ListItem]:
     """One kind's items. ``messages`` are the messages as the list shows them;
     ``selected`` is the message "This message" means (None: there's none),
     and ``turn`` its turn when that isn't its own (a queued message, not yet
-    in a turn, means the latest)."""
+    in a turn, means the latest). ``marks`` is how a changed file's lines
+    are marked (Settings, #174)."""
     if scope == SCOPE_MESSAGE:
         if selected is None:
             return []
@@ -239,7 +243,7 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
     if category == LINKS:
         return link_items(messages, selected, scope)
     if category == FILES:
-        return file_items(edits, turn, describe_file)
+        return file_items(edits, turn, describe_file, marks)
     if category == COMMANDS:
         return command_items(commands, turn)
     if category == DECISIONS:

@@ -68,10 +68,9 @@ SHORTCUTS = [
     ("Session list", [
         ("Enter", "Load that session and move to its messages"),
         ("Ctrl+O", "Open the selected session in the Claude desktop app"),
-        ("Ctrl+Shift+L", "Copy Session Link: Enter copies a Markdown link that opens the "
-                         "session in The Chat Place; the list also has the bare link, and "
+        ("Ctrl+Shift+L", "Copy Session Link (Claude chats): Enter copies a Markdown link that "
+                         "opens the session in The Chat Place; the list also has the bare link, and "
                          "where they apply its Open in Claude link and claude.ai address"),
-        ("Ctrl+N", "New Chat Place session"),
         ("Ctrl+Shift+N", "Continue the selected desktop app or terminal session here, as a "
                          "copy you can reply to (the original isn't changed)"),
         ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes or Codex file access and approval reviewer for the "
@@ -87,7 +86,8 @@ SHORTCUTS = [
                      "by folder; the choice is remembered"),
         ("Alt+V, H", "Show Sessions: all, needs you or working, needs you, working, with a "
                      "new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote "
-                     "Control, Claude chats, Codex chats, ungrouped (in no group), archived, or one of your groups"),
+                     "Control, ungrouped (in no group), Claude chats, Codex chats, GitHub "
+                     "Copilot chats, archived, hidden, or one of your groups"),
         ("Alt+V, E", "Session List Columns: choose what each session's line says and in "
                      "what order, such as status first; in the dialog, Enter adds, Delete "
                      "removes, and Alt+Up, Alt+Down, Alt+Home and Alt+End move"),
@@ -98,15 +98,16 @@ SHORTCUTS = [
         ("Applications key / Shift+F10", "The session's menu: load, provider-specific actions, copy "
                                          "its link, rename, Remote Control, groups, export, "
                                          "hide or delete"),
-        ("Alt+F, O", "Remote Control: reach the selected session from claude.ai and your "
-                     "phone (a desktop app session can be continued here with it on)"),
+        ("Alt+F, O", "Remote Control (Claude chats): reach the selected session from "
+                     "claude.ai and your phone (a desktop app session can be continued here "
+                     "with it on)"),
         ("Ctrl+G", "Add the selected session to a group (or a new one); File, Remove "
                    "from Group and Manage Groups are on the File menu"),
         ("Delete", "Hide the selected session; View, Show Sessions, Hidden lists hidden "
                    "sessions, and File, Bring Back Session returns one"),
-        ("Shift+Delete", "Delete one of The Chat Place's own sessions permanently, "
-                         "transcript and all, after you confirm (desktop app and terminal "
-                         "sessions can only be hidden)"),
+        ("Shift+Delete", "Delete a Claude chat started here permanently, transcript and "
+                         "all, after you confirm (other chats can only be hidden); on an agent "
+                         "conversation, delete the conversation and keep its chats"),
         ("Ctrl+F", "Show only sessions whose title, folder or what they need contains some "
                    "text; Escape in the list shows them all again"),
     ]),
@@ -118,15 +119,16 @@ SHORTCUTS = [
         ("Ctrl+Shift+C", "Copy the message's last code block"),
         ("Ctrl+Enter on a queued message", "Send it now (Claude chats): Claude stops what it's doing and "
                                            "answers it"),
+        ("Ctrl+Alt+Enter on a queued message", "Steer it: into the running turn now, without "
+                                               "stopping it"),
         ("Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks",
          "Lists, on Code Blocks for this message: read and copy each code block"),
         ("Ctrl+F, then F3 and Shift+F3", "Find a message containing some text (its whole "
                                          "text, not just the first line), then the next or "
                                          "previous one"),
         ("End", "Newest message"),
-        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands, decisions and Claude's "
-                         "tasks, for "
-                         "this message or the whole chat; it opens on the kind you used last, and "
+        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands, decisions and "
+                         "tasks, for this message or the whole chat; it opens on the kind you used last, and "
                          "the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down "
                          "and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a "
                          "Mac, and Control+Tab on Windows); Enter reads an item in full "
@@ -138,7 +140,7 @@ SHORTCUTS = [
         ("Ctrl+Shift+J", "Lists, on Tasks for the whole chat: the task list, each step "
                          "with whether it's to do, in progress or done"),
         ("Ctrl+T", "Show or hide tool activity in the loaded session"),
-        ("Ctrl+O", "Open this session in the Claude desktop app"),
+        ("Ctrl+O", "Open the loaded session in the Claude desktop app"),
     ]),
     ("Reply box", [
         ("Ctrl+Enter", "Send (Chat Place sessions only); you stay in the reply box. "
@@ -146,6 +148,9 @@ SHORTCUTS = [
         ("Ctrl+Shift+Enter", "Send and save as a prompt: asks for the prompt's name (its "
                              "first words to start with), saves it, then sends as Ctrl+Enter "
                              "does; Escape at the name neither saves nor sends"),
+        ("Ctrl+Alt+Enter", "Steer: during a turn, send the message into it without stopping "
+                           "it; the AI takes it in at its next step and carries on. With no "
+                           "turn running, it sends as Ctrl+Enter does"),
         ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box"),
         ("Ctrl+/", "Insert a Claude slash command or one of your skills (type to search); it goes at "
                    "the start of the reply box"),
@@ -157,14 +162,15 @@ SHORTCUTS = [
                          "a message, through Claude in the loaded Chat Place session (it needs "
                          "Remote Control on)"),
         ("Ctrl+Shift+E", "Send Reply to Another Chat: the selected reply (or the latest one) "
-                         "goes to another Chat Place chat, Claude or Codex, or a new one, labelled with who "
-                         "wrote it; read and change it first, then Enter sends and you go to "
-                         "that chat. In an agent conversation, hands the waiting reply to the "
-                         "other agent"),
-        ("Ctrl+Shift+G", "New Agent Conversation: two chats, Claude or Codex, new or your own, "
-                         "that pass replies to each other; you approve each hand-off, or, once "
+                         "goes to another Chat Place chat, Claude, Codex or Copilot, or a new "
+                         "one, labelled with who wrote it; read and change it first, then Enter "
+                         "sends and you go to that chat. In an agent conversation, hands the "
+                         "waiting reply to the other agent"),
+        ("Ctrl+Shift+G", "New Agent Conversation: two chats, Claude, Codex or Copilot, new or "
+                         "your own, that pass replies to each other; you approve each hand-off, "
+                         "or, once "
                          "Settings allows it, let them go automatically up to a turn limit"),
-        ("Ctrl+Shift+D", "Lists, on Changed Files (Claude chats): what changed in the selected "
+        ("Ctrl+Shift+D", "Lists, on Changed Files (Claude, Codex and Copilot chats): what changed in the selected "
          "message's turn (your latest, if none is selected) or in the whole chat; Enter on a file "
          "reads its changes line by line"),
         ("Ctrl+Shift+U", "Usage and context: read the active provider's reported context and "
@@ -177,6 +183,7 @@ SHORTCUTS = [
         ("Ctrl+Shift+S", "Find in All Sessions: search the messages of every session in the "
                          "list; Enter on a result loads that session on that message. Pressed "
                          "again while it searches, it stops"),
+        ("Ctrl+N", "New Session: start a chat here, from anywhere in the window"),
         ("Ctrl+Shift+A", "Answer: approve or deny a tool, answer the provider's questions, or "
                          "approve its plan (the loaded session first, then another chat "
                          "waiting for an answer). Escape in the dialog answers later"),
@@ -190,7 +197,7 @@ SHORTCUTS = [
                       "Option+Return on a Mac"),
         ("F1", "This list of shortcuts"),
         ("Alt+H, G", "The user guide, read by heading"),
-        ("Ctrl+Comma", "Settings (announcements and speech)"),
+        ("Ctrl+Comma", "Settings: announcements, speech, notifications and more"),
         ("Ctrl+Shift+R", "Repeat the last announcement"),
         ("Alt+F4", "Quit"),
     ]),
@@ -207,12 +214,49 @@ def markdown_as_text(text: str) -> str:
     """A document's Markdown as plain text, for the text box (#104): Read as
     Plain Text, and the only view on a Mac. Headings lose their #s, bold and
     code lose their marks, and a link reads "text (address)", so a screen
-    reader doesn't read out stars and brackets."""
+    reader doesn't read out stars and brackets. A table becomes one line per
+    row, "First cell: Header value; Header value", rather than pipes."""
+    text = _tables_as_text(text)
     text = _HEADING.sub("", text)
     text = _LINK.sub(lambda m: m.group(1) if m.group(1) == m.group(2)
                      else f"{m.group(1)} ({m.group(2)})", text)
     text = _EMPHASIS.sub(r"\2", text)
     return _CODE.sub(r"\1", text)
+
+
+def _table_cells(line: str) -> List[str]:
+    line = line.strip()
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|"):
+        line = line[:-1]
+    return [cell.strip() for cell in line.split("|")]
+
+
+def _tables_as_text(text: str) -> str:
+    """Each Markdown table (a header row, then a |---| rule) as readable
+    lines: the header row and the rule go, and each body row reads its first
+    cell, then each other cell after its column's name. Lines that only look
+    like a table, with no rule under the first, are left as they are."""
+    lines = text.split("\n")
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if (line.lstrip().startswith("|") and i + 1 < len(lines)
+                and _TABLE_RULE.fullmatch(lines[i + 1])):
+            headers = _table_cells(line)
+            i += 2
+            while i < len(lines) and lines[i].lstrip().startswith("|"):
+                cells = _table_cells(lines[i])
+                rest = [f"{headers[n]} {cell}" if n < len(headers) and headers[n] else cell
+                        for n, cell in enumerate(cells[1:], start=1) if cell]
+                out.append(cells[0] + (": " + "; ".join(rest) if rest else ""))
+                i += 1
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
 
 
 #: About how long the session list's Last message column is (#146): enough

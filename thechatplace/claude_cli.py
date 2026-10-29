@@ -256,8 +256,11 @@ def _common_flags(permission_mode: str, model: str = "",
     permission_mode = normalize_permission_mode(permission_mode)
     if permission_mode not in PERMISSION_MODE_VALUES:
         raise ValueError(f"Unknown permission mode: {permission_mode!r}")
+    # --replay-user-messages: Claude Code echoes each message as it takes it
+    # in, which is how a turn knows whether a steered message joined the work
+    # in progress or is being answered after it (#238).
     flags = ["-p", "--input-format", "stream-json", "--output-format", "stream-json",
-             "--verbose", "--permission-mode", permission_mode,
+             "--verbose", "--replay-user-messages", "--permission-mode", permission_mode,
              "--permission-prompts", "host", "--permission-prompt-tool", "stdio"]
     if model:
         if not is_safe_model(model):
@@ -416,13 +419,18 @@ def remote_control_line(name: str, reattach: str = "") -> bytes:
                         "request": request}, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def message_line(prompt: str, images: Optional[List[dict]] = None) -> bytes:
-    """The user's message, with any image blocks after its text (#22)."""
+def message_line(prompt: str, images: Optional[List[dict]] = None,
+                 message_id: str = "") -> bytes:
+    """The user's message, with any image blocks after its text (#22).
+    ``message_id``: its uuid, which Claude Code echoes back as it takes the
+    message in (--replay-user-messages, #238)."""
     content = prompt
     if images:
         content = ([{"type": "text", "text": prompt}] if prompt else []) + list(images)
     message = {"type": "user", "session_id": "", "parent_tool_use_id": None,
                "message": {"role": "user", "content": content}}
+    if message_id:
+        message["uuid"] = message_id
     return (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
 
 
@@ -483,6 +491,9 @@ class PermissionRequest:
     description: str = ""
     suggestions: list = field(default_factory=list)
     tool_use_id: str = ""
+    #: For a question: what Claude wrote just before asking it, which the
+    #: answer dialog shows (#415). Filled in by the window, not Claude Code.
+    said: str = ""
 
     @property
     def is_question(self) -> bool:
@@ -839,6 +850,12 @@ class StreamParser:
                         events.append(TurnEvent("tool", text=name,
                                                 detail=f"{name}: {target}" if target else name))
             return events
+        if etype == "user" and event.get("isReplay"):
+            # One of our own messages, echoed as Claude Code takes it in
+            # (--replay-user-messages). The transcript has it already.
+            echoed = event.get("uuid")
+            return [TurnEvent("taken", text=echoed if isinstance(echoed, str) else "",
+                              session_id=self.session_id)]
         if etype == "user" and not event.get("parent_tool_use_id") and self._edits:
             message = event.get("message")
             content = message.get("content") if isinstance(message, dict) else None
@@ -1016,10 +1033,32 @@ class TurnRunner:
         #: turn isn't over. A count, not a flag, so that work finishing on its
         #: own just as Send Now goes can't pass for the new message's answer.
         self._unanswered = 0
-        #: True once the turn's own message is written. Send Now before then
-        #: waits in ``_send_now_waiting`` so it can't overtake it (#83).
+        #: Each message written and not yet taken in, oldest first, as
+        #: [kind, text, late, uuid] ("prompt", "now", "steer" or "follow_up").
+        #: Claude Code echoes each one, with its uuid, as it takes it in
+        #: (--replay-user-messages; checked with 2.1.296, a slash command
+        #: included). Echoes are matched by uuid, so anything else echoed
+        #: can't be taken for one of ours. A result answers every message
+        #: taken in before it: a
+        #: steered message taken in mid-turn shares its turn's one result,
+        #: and one taken in after a result gets its own (#238). ``late``: a
+        #: steer that came after Claude had answered, so it's answered next
+        #: rather than joining the work.
+        self._untaken: List[list] = []
+        self._taken_since_result = 0
+        #: True once any echo has come. Until then (a Claude Code without
+        #: the echo, or a test's fake), each result answers one message.
+        self._echoes = False
+        #: True from a result until Claude Code says it's running again: a
+        #: steer now is answered after, not taken into work in progress.
+        self._answered = False
+        #: The latest result's reply, until it's said: a late steer's answer
+        #: replaces it as the turn's, so it's handed on with ``steer_taken``.
+        self._unsaid_reply = ""
+        #: True once the turn's own message is written. Send Now or a steer
+        #: before then waits in ``_waiting`` so it can't overtake it (#83).
         self._prompt_sent = False
-        self._send_now_waiting: List[str] = []
+        self._waiting: List[tuple] = []
         #: Stopped by The Chat Place before Claude answered (an API key or an
         #: unchosen Fable): the message goes back to the reply box.
         self.stopped_before_answer = False
@@ -1055,7 +1094,7 @@ class TurnRunner:
             if not self._prompt_sent:
                 # Still waiting for initialize's answer: the turn's own
                 # message goes first, then this one (``_send_prompt``).
-                self._send_now_waiting.append(prompt)
+                self._waiting.append(("now", prompt))
                 ok = True
             else:
                 ok = self._write_send_now(prompt)
@@ -1071,12 +1110,61 @@ class TurnRunner:
             if (not self._stdin_open or self._cancelled or self.stopped_before_answer
                     or not self.waiting_on_background):
                 return False
-            ok = self._write_raw(message_line(prompt, images))
+            ok = self._write_message("follow_up", prompt, images)
             if ok:
-                self._unanswered += 1
                 self.waiting_on_background = False
                 self.last_activity = "starting on your new message"
             return ok
+
+    def steer(self, prompt: str) -> bool:
+        """Send a message into the running turn without stopping it (#238).
+        Checked with Claude Code 2.1.296: Claude takes it in at its next step
+        (after the tool call it's on) and carries on, and the turn ends with
+        one result. If Claude is already writing its last reply, it answers
+        the message straight after, in this same process. A ``steer_taken``
+        event says which happened. False if the turn is over."""
+        with self._lock:
+            if not self._stdin_open or self._cancelled or self.stopped_before_answer:
+                return False
+            if not self._prompt_sent:
+                self._waiting.append(("steer", prompt))
+                return True
+            late = self._answered or self.waiting_on_background
+            ok = self._write_message("steer", prompt, late=late)
+            if ok and self.waiting_on_background:
+                # Claude was idle, waiting on background work: nothing to
+                # join, so it's simply the next message (#161).
+                self.waiting_on_background = False
+                self.last_activity = "starting on your new message"
+            return ok
+
+    @property
+    def steering(self) -> List[str]:
+        """Steered messages Claude hasn't taken in yet, for turn status."""
+        with self._lock:
+            return [m[1] for m in self._untaken if m[0] == "steer"] + [
+                prompt for kind, prompt in self._waiting if kind == "steer"]
+
+    def _write_message(self, kind: str, prompt: str, images: Optional[List[dict]] = None,
+                       late: bool = False) -> bool:
+        """Write a message, to be answered. Call with ``_lock`` held."""
+        message_id = str(uuid.uuid4())
+        ok = self._write_raw(message_line(prompt, images, message_id))
+        if ok:
+            self._unanswered += 1
+            self._untaken.append([kind, prompt, late, message_id])
+        return ok
+
+    def _taken(self, message_id: str) -> Optional[tuple]:
+        """Claude Code echoed one of our messages: it has taken it in. Its
+        (kind, text, late, uuid), or None if the echo isn't one of ours."""
+        with self._lock:
+            for index, message in enumerate(self._untaken):
+                if message[3] == message_id:
+                    self._echoes = True
+                    self._taken_since_result += 1
+                    return tuple(self._untaken.pop(index))
+            return None
 
     def _end_or_wait(self) -> str:
         """Claude Code is idle with the turn answered: end the turn by closing
@@ -1099,31 +1187,46 @@ class TurnRunner:
         ok = self._write_line({"type": "control_request",
                                "request_id": f"thechatplace-interrupt-{uuid.uuid4().hex[:8]}",
                                "request": {"subtype": "interrupt"}})
-        ok = ok and self._write_raw(message_line(prompt))
-        if ok:
-            # Until it's answered, the turn isn't over, idle or not.
-            self._unanswered += 1
-        return ok
+        # Until it's answered, the turn isn't over, idle or not.
+        return ok and self._write_message("now", prompt)
 
     def _send_prompt(self) -> None:
-        """Write the turn's own message, then any Send Now that came while it
-        waited. Called once."""
+        """Write the turn's own message, then any Send Now or steer that came
+        while it waited, in order. Called once."""
         with self._lock:
             self._prompt_sent = True
-            if self._write_raw(message_line(self.prompt, self.images)):
-                self._unanswered += 1
-            waiting, self._send_now_waiting = self._send_now_waiting, []
-            for prompt in waiting:
-                self._write_send_now(prompt)
+            self._write_message("prompt", self.prompt, self.images)
+            waiting, self._waiting = self._waiting, []
+            for kind, prompt in waiting:
+                if kind == "now":
+                    self._write_send_now(prompt)
+                else:
+                    self._write_message(kind, prompt)
 
     def _result_came(self) -> bool:
         """Count a result against the oldest unanswered message. True if a
         later message is still to be answered, so this result was for work
         Send Now replaced."""
         with self._lock:
-            # A result with nothing unanswered (a background agent's
-            # notification, say) answers nothing.
-            self._unanswered = max(0, self._unanswered - 1)
+            # A result answers the messages taken in since the last one. With
+            # the echoes that's exact, and a result with nothing taken in (a
+            # background agent's notification, say) answers nothing; without
+            # them, one. Never below zero.
+            if self._echoes:
+                answered = self._taken_since_result
+            else:
+                # No echoes (a Claude Code without them): a steer can't be
+                # told apart, so the result is taken to answer it too, rather
+                # than hold the turn open for an answer that may never come.
+                steers = [m for m in self._untaken if m[0] == "steer"]
+                self._untaken = [m for m in self._untaken if m[0] != "steer"]
+                answered = 1 + len(steers)
+            self._taken_since_result = 0
+            self._unanswered = max(0, self._unanswered - answered)
+            self._answered = True
+            for message in self._untaken:
+                if message[0] == "steer":
+                    message[2] = True  # answered after this result, not in it
             return self._unanswered > 0
 
     def _close_stdin_if_answered(self) -> bool:
@@ -1316,6 +1419,7 @@ class TurnRunner:
                 disarm_ceiling()
                 if outcome == "started waiting":
                     said_while_waiting = True
+                    self._unsaid_reply = ""  # said now, with the background work
                     self.last_activity = ("waiting for background work: "
                                           + "; ".join(self.background_tasks))
                     self._emit(TurnEvent("waiting", text=final_event.text,
@@ -1363,6 +1467,21 @@ class TurnRunner:
                                 break
                     if event.kind == "remote_control":
                         self._emit(event)  # never a reason to send the message
+                        continue
+                    if event.kind == "taken":
+                        taken = self._taken(event.text)
+                        if taken is not None and taken[0] == "steer":
+                            self.last_activity = ("starting on your new message" if taken[2]
+                                                  else "taking in your new message")
+                            # Late: the reply before it will be replaced as
+                            # the turn's by the steer's answer, so it's said
+                            # now, with the news.
+                            reply = ""
+                            if taken[2]:
+                                reply, self._unsaid_reply = self._unsaid_reply, ""
+                            self._emit(TurnEvent("steer_taken", text=taken[1],
+                                                 session_id=self.parser.session_id,
+                                                 data={"late": taken[2], "reply": reply}))
                         continue
                     # The answer, or anything else of the conversation first
                     # (an older Claude Code): the message goes now. A state
@@ -1430,6 +1549,7 @@ class TurnRunner:
                         elif event.text == "running" and final is not None:
                             with self._lock:
                                 self.waiting_on_background = False
+                                self._answered = False
                             # Read without the lock on purpose: a Send Now
                             # landing just after only meets the ceiling that
                             # checks again before closing.
@@ -1466,6 +1586,8 @@ class TurnRunner:
                                 d for d in event.denials if d not in final.denials]
                             event.is_error = event.is_error or final.is_error
                         final = event
+                        if not event.is_error:
+                            self._unsaid_reply = event.text or ""
                         idle = states_seen and last_state == "idle"
                         if not replaced and states_seen and not idle:
                             arm_ceiling()  # idle should follow

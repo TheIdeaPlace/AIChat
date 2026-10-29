@@ -11,7 +11,8 @@ from types import SimpleNamespace
 import wx
 
 from ..providers.codex_requests import QUESTIONS
-from ..providers.codex_rpc import CodexRpcError, CodexTurnRejected
+from ..providers.codex_rpc import CodexRpcError, CodexSteerRefused, CodexTurnRejected
+from ..providers.codex_runtime import STOP_TO_RECHECK
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
 from .. import announce
@@ -39,7 +40,7 @@ class CodexChats:
         if state.problem:
             return state.problem
         if state.state == STATUS_UNAVAILABLE:
-            return f'{name} status is unavailable. Reload this chat to check its history.'
+            return f'{name} status is unavailable. Use Stop ({key_name("Ctrl+Period")}) to recheck this chat.'
         if state.requests:
             text = f'{name} is waiting for you. {key_name("Ctrl+Shift+A")} answers.'
             if state.activity:
@@ -55,6 +56,10 @@ class CodexChats:
         if state.queued:
             count = len(state.queued)
             text += f' {count} {"message" if count == 1 else "messages"} queued.'
+        steering = len(getattr(state, 'steering', ()))
+        if steering:
+            text += (f' 1 steered message waiting for {name} to accept it.' if steering == 1
+                     else f' {steering} steered messages waiting for {name} to accept them.')
         if state.notice:
             text += ' ' + state.notice
         notices = [text for turn, _identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
@@ -98,13 +103,14 @@ class CodexChats:
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
     def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None,
-                            approval_policy=None, made=None, joint=False, provider='codex'):
+                            approval_policy=None, made=None, joint=False, provider='codex', approvals_reviewer=None):
         """A new owned chat with a runtime provider (Codex's name is history:
         Copilot comes here too, #352). ``made(info, message)`` hears of the
         new chat (#378); with ``joint`` it sends the message, as an agent
         conversation's."""
         options = {key: value for key, value in (('model', model), ('effort', effort),
-                   ('sandbox', sandbox), ('approval_policy', approval_policy)) if value}
+                   ('sandbox', sandbox), ('approval_policy', approval_policy),
+                   ('approvals_reviewer', approvals_reviewer)) if value}
         name = provider_name(provider)
         def create():
             return (self.sessions.fork_owned(source, title, **options) if source is not None
@@ -179,12 +185,26 @@ class CodexChats:
         if len(selected) == 2:
             selected += ('user',)
         before_cwd, before_options = record.cwd, dict(record.provider_options)
+        earlier = self._codex_states.get(info.key)
+        earlier_problem = earlier.problem if earlier is not None else ''
         self._codex_policy_pending.add(info.key)
         self._feedback('Verifying Codex permissions.')
+        def failure(fallback):
+            # The runtime's update for a latched problem arrives first (both
+            # come through wx.CallAfter, in order) but is not spoken while the
+            # change is pending; say it once here, ending with what Stop does.
+            # A problem from before this change is not replayed for a refusal.
+            self._codex_policy_pending.discard(info.key)
+            state = self._codex_states.get(info.key)
+            problem = state.problem if state is not None else ''
+            text = problem if problem and problem != earlier_problem else fallback
+            if problem and 'use stop' not in text.lower():
+                text += ' ' + STOP_TO_RECHECK
+            self._feedback(text)
         def prepared(change, error):
             if error:
-                self._codex_policy_pending.discard(info.key)
-                self._feedback(change or 'Could not change Codex permissions. Wait for an idle chat or reload to check its status.')
+                failure(change or 'Could not change Codex permissions. Wait for an idle chat, or use Stop '
+                        f'({key_name("Ctrl+Period")}) to check its status.')
                 after()
                 return
             proposed = change.record()
@@ -192,13 +212,15 @@ class CodexChats:
                                       cwd=proposed.cwd, provider_options=proposed.provider_options)
             if not saved:
                 # Store.update mutates its record before writing. A failed
-                # save must not make Reload use an unpersisted broader grant.
+                # save must not make Stop use an unpersisted broader grant.
                 record.cwd, record.provider_options = before_cwd, before_options
             def finished(_result, failed):
-                self._codex_policy_pending.discard(info.key)
-                if failed or not saved:
-                    self._feedback('Changed Codex permissions could not be saved or confirmed. Reload before sending.')
+                state = self._codex_states.get(info.key)
+                # A problem that arrived meanwhile also stops the new mode.
+                if failed or not saved or (state is not None and state.problem):
+                    failure('Changed Codex permissions could not be saved or confirmed. Use Stop to recheck the saved permissions before sending.')
                 else:
+                    self._codex_policy_pending.discard(info.key)
                     label = next(label for value, label in choices if value == selected)
                     self._feedback(f'Codex permissions for {info.title}: {label}.')
                 self._update_send_state()
@@ -229,10 +251,13 @@ class CodexChats:
             relay = getattr(self, '_relay_prepared', None)
             relayed = relay(key, record, error) if relay is not None else ''
             if error:
-                if isinstance(_result, str) and _result.startswith(CodexTurnRejected.REASONS['sandbox_unavailable']):
-                    # A saved folder-editing chat reopened read-only: reloading
-                    # it after fixing the sandbox prepares it again (#257).
-                    _result += ' Reload this chat to try again.'
+                if isinstance(_result, str) and _result.startswith(
+                        (CodexTurnRejected.REASONS['sandbox_unavailable'],
+                         CodexTurnRejected.REASONS['auto_review_unavailable'])):
+                    # A saved chat whose sandbox or automatic review could
+                    # not be confirmed: once that is fixed, Stop opens it
+                    # again without sending anything (#257) (#390).
+                    _result += f' Once that\'s fixed, use Stop ({key_name("Ctrl+Period")}) to open this chat again.'
                 name = provider_name(provider)
                 self._feedback(relayed + (_result or f'Could not prepare this {name} chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in {name} before restarting The Chat Place.'))
             self._update_send_state()
@@ -268,60 +293,145 @@ class CodexChats:
                 on_result(queued, error)
         self._codex_work(lambda: self.sessions.owned_action('send', record, text), done)
 
-    def _stop_codex_owned(self, info):
+    def _steer_codex_owned(self, record, text, index=None):
+        """Steer (#239): ``text`` into the running turn, or the queued message
+        at ``index``. Said once Codex has accepted it. Refused (the turn has
+        just ended, or another steer is on its way): the text comes back to
+        the reply box, or a queued message stays queued, with why. Never sent
+        as a new turn without Kelly choosing to."""
+        key = record.to_info().key
+        name = provider_name(record.provider)
+        self._steer_row(key, text, f'waiting for {name}')
+
+        accepted = []  # the turn Codex took it into
+
+        def action():
+            try:
+                if index is None:
+                    turn = self.sessions.owned_action('steer', record, text)
+                else:
+                    turn = self.sessions.owned_action('steer_queued', record, index, text)
+            except (CodexSteerRefused, CodexTurnRejected) as exc:
+                # ``returned``: a queued one that Stop sent back to the box.
+                return (safe_reason(exc) or f'{name} could not take it.',
+                        getattr(exc, 'returned', False))
+            if turn:
+                accepted.append(turn)
+            return None
+
+        def done(refused, error):
+            # Accepted, it stays until the chat's history has it; otherwise
+            # it's back with you, in the reply box or the queue.
+            self._steer_status(key, text, None if error or refused else f'accepted by {name}')
+            state = self._codex_states.get(key)
+            finished = bool(accepted) and (record.provider, record.cli_session_id,
+                                           accepted[0]) in self._codex_finished
+            if not (error or refused) and (state is None or state.outcome != 'inProgress'
+                                           or finished):
+                # Accepted into a turn known to have ended (Stop, say), even if
+                # a queued message's turn has started since: it may never be
+                # used, so the history read next decides where it goes.
+                self._steers_turn_over(key)
+            if error:
+                # Not known whether it arrived: back in the box, never resent.
+                if index is None:
+                    self._restore_codex_text(key, (text,))
+                self._feedback(f'{name} could not confirm your message. Check the chat '
+                               'history before sending again.')
+            elif refused:
+                reason, returned = refused
+                if index is None:
+                    self._restore_codex_text(key, (text,))
+                    self._feedback(f'{reason} Your message is back in the reply box.')
+                elif returned:
+                    self._feedback(f'{reason} It is back in the reply box.')
+                else:
+                    self._feedback(f'{reason} It stays queued.')
+            else:
+                self._feedback(announce.steered_text(record.title, text, self.speech.announce,
+                                                     index is None and self.speech.announce_own,
+                                                     accepted=True))
+            self._update_send_state()
+        self._codex_work(action, done)
+
+    def _stop_codex_owned(self, info, take_back=None):
+        """``take_back(texts)``: an agent conversation (#369) takes back the
+        waiting messages that were its own, and returns the rest."""
         record = self.store.get(info.cli_session_id, provider=info.provider)
         if record is None:
             return
         name = provider_name(record.provider)
-        checking = False
-        if record.provider != 'codex':
-            state = self._codex_states.get(info.key)
-            if state is not None and state.outcome != 'inProgress':
-                self._feedback(f'{record.title}: {name} isn\'t answering, so there\'s nothing to stop.')
-                return
-            checking = state is not None and getattr(state, 'checking', False)
-            if checking and not state.queued:
-                self._feedback(f'{record.title}: {name} has already answered; The Chat Place is '
-                               'checking it, so there\'s nothing to stop.')
-                return
-            # With messages waiting, Stop still goes to the runtime: that's
-            # what takes them back (it cancels nothing once Copilot has
-            # answered), so the next one isn't sent (Kelly, #372).
+        state = self._codex_states.get(info.key)
+        recover_idle = (record.provider == 'codex' and state is not None
+                        and state.outcome in ('idle', 'completed', 'failed', 'interrupted'))
+        # Copilot's Stop always goes to the runtime, never decided from the
+        # window's state: that can lag behind it, as when a turn has ended and
+        # the next waiting message is starting. Stopping an idle chat costs
+        # nothing, and the message is worded from what the runtime found
+        # (Kelly, #372, #386).
         def done(result, error):
             if error:
                 self._feedback(result or f'Could not stop or recover this {name} chat. Check its state in {name}.')
                 self._update_send_state()
                 return
-            reconnected, waiting = result
+            reconnected, waiting, stopped = result
+            if waiting and take_back is not None:
+                waiting = tuple(take_back(waiting))
             if waiting:
                 # Copilot's stop gives back the messages still waiting; Codex
                 # gives them back through its state's unsent instead.
                 self._restore_codex_text(info.key, waiting)
             back = (f' {len(waiting)} waiting {"message is" if len(waiting) == 1 else "messages are"} '
                     'back in the message box, unsent.') if waiting else ''
-            if reconnected:
+            if reconnected == 'permissions':
+                text = f'Saved {name} permissions rechecked. You can send again. No message was sent.'
+            elif reconnected == 'rechecked':
+                text = f'{name} chat rechecked. You can send again. No message was sent.'
+            elif reconnected:
                 text = f'{name} chat reconnected after verifying its previous turn ended. No message was resent.'
-            elif checking and waiting:
-                text = f'{name} has already answered.'
             elif record.provider == 'codex':
                 text = f'Stop requested. If the turn does not finish, press Stop again to check whether {name} has ended it.'
+            elif stopped is not None and stopped.answered:
+                # Copilot's prompt has returned, which needn't be an answer: a
+                # cancel, a refusal or its process ending return it too. Only
+                # the checks after it say which, so this doesn't (Kelly, #386).
+                text = f'{record.title}: The Chat Place is checking how {name}\'s turn ended'
+                text += '.' if waiting else ', so there\'s nothing to stop.'
+            elif stopped is not None and not stopped.cancelled:
+                # The turn ended meanwhile, or Copilot's process has gone and
+                # the turn is ending with it: either way it isn't answering.
+                text = f'{record.title}: {name} isn\'t answering'
+                text += '.' if waiting else ', so there\'s nothing to stop.'
             else:
                 from ..providers.copilot_runtime import CANCEL_GRACE_SECONDS
                 text = (f'Stop requested. If {name} does not stop within '
                         f'{CANCEL_GRACE_SECONDS:g} seconds, The Chat Place closes it.')
             self._feedback(text + back)
             self._update_send_state()
+        def recover():
+            # Stop is explicit intent to recover, unlike selecting a chat.
+            # Reopen checks both local reservations and native turn history
+            # before resuming, and never resends an uncertain message. Codex
+            # says which check it made, so Stop announces that one (#385).
+            if record.provider == 'codex':
+                return self.sessions.owned_action('recover', record) or 'resumed', (), None
+            self.sessions.owned_action('reopen', record)
+            return 'resumed', (), None
         def stop_or_recover():
             try:
-                waiting = self.sessions.owned_action('stop', record)
-                return False, (tuple(waiting) if record.provider != 'codex' and isinstance(waiting, tuple)
-                               else ())
+                stopped = self.sessions.owned_action('stop', record)
             except CodexRpcError:
-                # Stop is explicit intent to recover, unlike selecting a chat.
-                # Reopen checks both local reservations and native turn history
-                # before resuming, and never resends an uncertain message.
-                self.sessions.owned_action('reopen', record)
-                return True, ()
+                return recover()
+            # Outside the try: a failed recheck must not run a second time.
+            if recover_idle and not self.sessions.owned_action('ready', record):
+                return recover()
+            if record.provider == 'codex':
+                return False, (), None
+            if hasattr(stopped, 'cancelled'):  # copilot_runtime.Stopped
+                return False, tuple(stopped.waiting), stopped
+            # A provider that gives back only the waiting messages, or
+            # nothing, is taken to have cancelled.
+            return False, (tuple(stopped) if isinstance(stopped, tuple) else ()), None
         self._codex_work(stop_or_recover, done)
 
     def _usage_check_slot(self, provider):
@@ -392,6 +502,10 @@ class CodexChats:
             return
         previous = self._codex_states.get(key)
         self._codex_states[key] = state
+        if getattr(self, '_steered', {}).get(key) and state.outcome != 'inProgress':
+            # The turn is over. An accepted steer may not have been used
+            # (Stop): it stays until the history is read again (#410).
+            self._steers_turn_over(key)
         unsent = state.unsent
         if unsent:
             # An agent conversation's own message goes back to it (#248).
@@ -416,7 +530,9 @@ class CodexChats:
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
                 and (previous is None or previous.turn_id != state.turn_id)):
             self._status(f'{record.title}: {name} is working.')
-        if state.problem and (previous is None or previous.problem != state.problem):
+        if (state.problem and (previous is None or previous.problem != state.problem)
+                and key not in getattr(self, '_codex_policy_pending', ())):
+            # A pending permission change says its own failure once (#385).
             self._say(f'{record.title}: {state.problem}', interrupt=False)
         if state.notice and (previous is None or previous.notice != state.notice):
             self._say(f'{record.title}: {state.notice}', interrupt=False)
@@ -454,10 +570,12 @@ class CodexChats:
                 self._notify(key, f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
                              text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
-        if state.unsent:
+        if unsent:
             # Queue this after interrupting error/reply speech, so the news
             # about recovered text is not immediately cut off by that speech.
-            count = len(state.unsent)
+            # Only what came back here: an agent conversation's own message
+            # went back to the conversation, which said so.
+            count = len(unsent)
             destination = 'reply box' if loaded else f'draft for {record.title}'
             self._feedback(f'{count} unsent message' + ('s are' if count != 1 else ' is')
                            + f' back in the {destination}.')
@@ -475,6 +593,17 @@ class CodexChats:
                 # reject any older in-flight read before loading the new turn.
                 self._open_generation += 1
                 self._reader = None
+                # Then say what the turn changed in files, as for a Claude
+                # turn, where the provider can tell.
+                capabilities = getattr(self.sessions, 'capabilities', None)
+                try:
+                    # Not for an agent conversation's member turn, which the
+                    # conversation announces by its own name (#248, #369).
+                    if (not quiet and capabilities is not None
+                            and getattr(capabilities(self._open), 'changes', False)):
+                        self._changes_due = True
+                except ValueError:
+                    pass  # its provider has gone: nothing to say
             self._open.state = state.state
             self._update_heading()
             self._update_send_state()
@@ -510,8 +639,12 @@ class CodexChats:
             questions = [dict(id=q.question_id, header=q.header, question=q.text,
                               options=[dict(label=l, description=d) for l, d in q.options],
                               isOther=q.allow_other, isSecret=q.secret) for q in request.questions]
+            # What it wrote in this turn before asking goes with the
+            # question (#415).
+            said = next((text for reply_id, text in reversed(state.replies)
+                         if reply_id != 'display-limit'), '')
             dialog = QuestionDialog(self, info.title, SimpleNamespace(questions=lambda: questions),
-                                    provider=provider_name(info.provider))
+                                    provider=provider_name(info.provider), said=said)
         else:
             detail = dict(state.file_changes).get(request.item_id, '')
             dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule,

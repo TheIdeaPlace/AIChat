@@ -631,6 +631,36 @@ def d_agent_new_three(frame, env):
     return show
 
 
+def d_agent_new_auto_review(frame, env):
+    """Explicit automatic review choices in all three Codex agent slots."""
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    folder = env["folders"]["Scratch"]
+
+    def show():
+        dialog = AgentConversationDialog(frame, [], ["codex"], folders=[folder])
+        dialog.chats[2].SetSelection(1)
+        dialog._sync()
+        for permission, selection in zip(dialog.permissions, (2, 3, 2)):
+            permission.SetSelection(selection)
+        frame._modal(dialog)
+    return show
+
+
+def d_agent_new_copilot(frame, env):
+    """A new Copilot chat as the second agent (#369): its one permission
+    choice says it asks before it acts."""
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    folder = env["folders"]["Scratch"]
+
+    def show():
+        dialog = AgentConversationDialog(frame, [], ["claude", "codex", "copilot"],
+                                         folders=[folder])
+        dialog.chats[1].SetSelection(2)
+        dialog._sync()
+        frame._modal(dialog)
+    return show
+
+
 def d_agent_hand_off(frame, env):
     s_main_agents(frame, env)
     return frame.on_send_reply_to
@@ -659,6 +689,19 @@ def s_main_own_working(frame, env):
     fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
 
 
+def s_main_own_steering(frame, env):
+    """A message steered into the running turn and not yet taken in (#238)."""
+    _open(frame, "Visual probe")
+    frame.reply_text.SetValue("Now run the whole suite.")
+    frame.on_send()
+    frame.reply_text.SetValue("Also update the README while you're there.")
+    frame.on_steer()
+    import fake_env
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
+    frame._update_send_state()
+
+
 def s_main_attachments(frame, env):
     _open(frame, "Visual probe")
     folder = Path(env["folders"]["Scratch"])
@@ -674,7 +717,7 @@ def s_main_desktop(frame, env):
     _open(frame, "Fix the flaky upload test")
 
 
-def s_main_codex(frame, env):
+def s_main_codex(frame, env, *, file_changes=False):
     """Synthetic prototype only; no installed CLI/account or UI opt-in."""
     import dataclasses
     from thechatplace.providers.claude import ClaudeConversations
@@ -687,6 +730,13 @@ def s_main_codex(frame, env):
     items = [{"id": "user", "type": "userMessage", "content": [
                  {"type": "text", "text": "Explain the upload test."}]},
              {"id": "answer", "type": "agentMessage", "text": LONG_MESSAGE}]
+    if file_changes:
+        items.insert(1, {"id": "files", "type": "fileChange", "status": "completed", "changes": [
+            {"path": "upload.py", "kind": {"type": "update"},
+             "diff": "@@ -8,2 +8,3 @@\n def upload():\n-    send()\n+    wait_until_ready()\n+    send()\n"},
+            {"path": "notes.txt", "kind": {"type": "add"}, "diff": "Wait before retrying.\n"},
+            {"path": "unused.txt", "kind": {"type": "delete"}, "diff": "Old notes.\nMore old notes.\n"},
+            {"path": "old_test.py", "kind": {"type": "update", "move_path": "test_upload.py"}, "diff": ""}]})
     thread = {"id": "synthetic-codex", "name": "Codex history preview",
               "cwd": env["folders"]["Scratch"], "createdAt": updated - 600, "updatedAt": updated,
               "status": {"type": "notLoaded"}}
@@ -962,6 +1012,20 @@ def d_settings_copilot(frame, env):
     return frame.on_settings
 
 
+def d_settings_speech_problem(frame, env):
+    """Settings after an announcement wasn't spoken (#98): the read-only box
+    under Speaking rate. Put back afterwards, so later surfaces don't show it."""
+    from thechatplace import speech
+
+    def show():
+        speech.speaker.last_problem = "not spoken: JAWS is running but refused the text"
+        try:
+            frame.on_settings()
+        finally:
+            speech.speaker.last_problem = ""
+    return show
+
+
 def d_new_session(frame, env):
     return frame.on_new_session
 
@@ -1118,6 +1182,29 @@ def d_question(frame, env):
     return frame.on_answer
 
 
+def d_question_preview(frame, env):
+    """#415: text Claude wrote before asking, and options with previews."""
+    import fake_env
+    from thechatplace.claude_cli import TurnEvent
+    _open(frame, "Visual probe")
+    frame._pending.clear()
+    frame._runners["own-1"] = fake_env.FakeRunner([], "", "", None)
+    for kind, text in [("text", "Here's the announcement for the release:"),
+                       ("text", "The Chat Place 0.3.2 is out. Copilot chats can join agent "
+                                "conversations, and Changed Files works for Codex chats."),
+                       ("tool", "AskUserQuestion")]:
+        frame._on_turn_event({"id": "own-1"}, "Visual probe", TurnEvent(kind, text=text))
+    _waiting(frame, _request("AskUserQuestion", {"questions": [
+        {"header": "Mastodon", "question": "Post this announcement to Mastodon?",
+         "options": [{"label": "Post it", "description": "Post it publicly",
+                      "preview": "The Chat Place 0.3.2 is out. Copilot chats can join agent "
+                                 "conversations, and Changed Files works for Codex chats.\n\n"
+                                 "https://github.com/TheIdeaPlace/AIChat/releases/tag/v0.3.2"},
+                     {"label": "Change it", "description": "Say what to change"},
+                     {"label": "Don't post"}]}]}, "q2"))
+    return frame.on_answer
+
+
 def d_codex_permission(frame, env):
     from thechatplace.providers.codex_requests import CodexRequest, COMMAND
     from thechatplace.ui.dialogs import CodexPermissionDialog
@@ -1269,6 +1356,25 @@ def d_find_all(frame, env):
 def d_changes(frame, env):
     _open(frame, "Visual probe")
     return frame.on_changes
+
+
+def d_lists_codex_files(frame, env):
+    s_main_codex(frame, env, file_changes=True)
+    return frame.on_changes
+
+
+def d_lists_codex_deleted_file(frame, env):
+    opener = d_lists_codex_files(frame, env)
+    show = frame._show_lists
+
+    def deleted_selected(dialog):
+        page = dialog.current()
+        page.list.SetSelection(2)
+        page.show_selected()
+        return show(dialog)
+
+    frame._show_lists = deleted_selected
+    return opener
 
 
 def d_lists_commands(frame, env):
@@ -1455,6 +1561,8 @@ SURFACES = {
                                              "messages, and a reply waiting to be handed on"),
     "main-own-working": ("window", s_main_own_working,
                          "An own session mid-turn, one more message queued and a draft typed"),
+    "main-own-steering": ("window", s_main_own_steering,
+                          "An own session mid-turn with a steered message not yet taken in"),
     "main-attachments": ("window", s_main_attachments,
                          "An own session with two files attached to the next message"),
     "main-desktop": ("window", s_main_desktop,
@@ -1497,6 +1605,8 @@ SURFACES = {
     "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
     "settings-copilot": ("dialog", d_settings_copilot,
                          "Settings once Copilot CLI has a session: its check box shows"),
+    "settings-speech-problem": ("dialog", d_settings_speech_problem,
+                                "Settings after an announcement wasn't spoken: the reason box"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
@@ -1523,6 +1633,8 @@ SURFACES = {
     "codex-files": ("dialog", d_codex_files, "Codex file changes to review before allowing"),
     "codex-question": ("dialog", d_codex_question, "Codex choices and a masked secret answer"),
     "question": ("dialog", d_question, "Claude asks questions (one choice and several choices)"),
+    "question-preview": ("dialog", d_question_preview,
+                         "Claude asks about text it wrote just before, with an option's preview"),
     "plan": ("dialog", d_plan, "Claude's plan to approve"),
     "manage-groups": ("dialog", d_manage_groups, "File, Manage Groups"),
     "command-picker": ("dialog", d_command_picker, "Insert Command or Skill"),
@@ -1531,6 +1643,8 @@ SURFACES = {
     "links": ("dialog", d_links, "View, Lists: Links"),
     "find-all": ("dialog", d_find_all, "View, Find in All Sessions: the results"),
     "changes": ("dialog", d_changes, "View, Lists: Changed Files"),
+    "lists-codex-files": ("dialog", d_lists_codex_files, "Codex Changed Files: updates, additions, deletions and renames"),
+    "lists-codex-deleted-file": ("dialog", d_lists_codex_deleted_file, "Codex Changed Files: a deleted file's old line range"),
     "lists-commands": ("dialog", d_lists_commands, "View, Lists: Commands"),
     "lists-decisions": ("dialog", d_lists_decisions, "View, Lists: Decisions"),
     "lists-tasks": ("dialog", d_lists_tasks, "View, Tasks: Claude's task list"),
@@ -1553,6 +1667,10 @@ SURFACES = {
                                          "new Codex chat"),
     "agent-new-three": ("dialog", d_agent_new_three, "New Agent Conversation with the Builder "
                                                      "and reviewer template and a third agent"),
+    "agent-new-auto-review": ("dialog", d_agent_new_auto_review,
+                              "Three new Codex agents with automatic approval review selected"),
+    "agent-new-copilot": ("dialog", d_agent_new_copilot,
+                          "New Agent Conversation with a new Claude chat and a new Copilot chat"),
     "agent-hand-off": ("dialog", d_agent_hand_off, "An agent conversation's hand-off "
                                                    "(Ctrl+Shift+E): a reply going to the other agent"),
     "rename": ("dialog", d_rename, "Rename Session (wx's own text entry dialog)"),
@@ -1579,6 +1697,7 @@ DIALOG_CLASSES = {
     "settings": "SettingsDialog",
     "settings-codex": "SettingsDialog",
     "settings-copilot": "SettingsDialog",
+    "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-auto-review": "NewSessionDialog",
@@ -1603,6 +1722,7 @@ DIALOG_CLASSES = {
     "codex-files": "CodexPermissionDialog",
     "codex-question": "QuestionDialog",
     "question": "QuestionDialog",
+    "question-preview": "QuestionDialog",
     "plan": "PlanDialog",
     "manage-groups": "ManageGroupsDialog",
     "command-picker": "CommandPickerDialog",
@@ -1611,6 +1731,8 @@ DIALOG_CLASSES = {
     "links": "ListsDialog",
     "find-all": "FindResultsDialog",
     "changes": "ListsDialog",
+    "lists-codex-files": "ListsDialog",
+    "lists-codex-deleted-file": "ListsDialog",
     "lists-commands": "ListsDialog",
     "lists-decisions": "ListsDialog",
     "lists-tasks": "ListsDialog",
@@ -1630,6 +1752,8 @@ DIALOG_CLASSES = {
     "relay": "RelayDialog",
     "agent-new": "AgentConversationDialog",
     "agent-new-three": "AgentConversationDialog",
+    "agent-new-copilot": "AgentConversationDialog",
+    "agent-new-auto-review": "AgentConversationDialog",
     "agent-hand-off": "RelayDialog",
     "rename": "TextEntryDialog",
 }

@@ -250,6 +250,22 @@ opening; anything another Copilot added since means the chat must be opened agai
 in this app's Copilot and loads it afresh. Checked end to end: refused after the terminal reply,
 reopened, and answered again.
 
+## Changed Files (probed 2026-10-27, Copilot CLI 1.0.103)
+
+A throwaway `copilot -p` run in a scratch folder, file tools only (`--allow-tool=write
+--deny-tool=shell`), created two files, edited one, deleted the other, then changed two files in
+one patch. Only GPT models were available on the account; Claude models in Copilot weren't
+tested. Every edit was an `apply_patch` call, but nothing below depends on the tool:
+
+- `tool.execution_complete` of a call that changed files has `fileEdits: [{path, kind}]`, one per
+  file, with an absolute path and `kind` `create`, `edit` or `delete`, plus `success`.
+- `result.detailedContent` is a git-style diff, one `diff --git` section per file; paths are the
+  same absolute ones with forward slashes (`a/C:/…`), and `/dev/null` for a created or deleted
+  file. `toolTelemetry.metrics.linesAdded`/`linesRemoved` total the call, not each file.
+- The diff counts the newline ending a file as one more, empty line: three lines created show as
+  `+alpha`, `+beta`, `+gamma`, `+` (`@@ -1,0 +1,4 @@`). The reader drops that last empty line.
+- `session.shutdown` has `codeChanges.filesModified` for the whole session; not used.
+
 ## Next, in rough order
 
 Ideas from the first listening test, kept here so they aren't lost:

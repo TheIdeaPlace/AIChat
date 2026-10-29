@@ -225,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    651
+    654
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -309,7 +309,7 @@
    "class": "QuestionDialog",
    "size": [
     700,
-    377
+    537
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -561,7 +561,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    636
+    639
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -659,7 +659,7 @@
    "class": "QuestionDialog",
    "size": [
     700,
-    254
+    414
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1065,7 +1065,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    676
+    679
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1196,6 +1196,104 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "A Copilot chat started here: reply box, queued message and context"
+  },
+  "main-own-steering": {
+   "kind": "window",
+   "png": "main-own-steering-light-100.png",
+   "json": "main-own-steering-light-100.json",
+   "title": "Visual probe — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "An own session mid-turn with a steered message not yet taken in"
+  },
+  "agent-new-auto-review": {
+   "kind": "dialog",
+   "png": "agent-new-auto-review-light-100.png",
+   "json": "agent-new-auto-review-light-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Three new Codex agents with automatic approval review selected"
+  },
+  "settings-speech-problem": {
+   "kind": "dialog",
+   "png": "settings-speech-problem-light-100.png",
+   "json": "settings-speech-problem-light-100.json",
+   "title": "Settings",
+   "class": "SettingsDialog",
+   "size": [
+    680,
+    706
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Settings after an announcement wasn't spoken: the reason box"
+  },
+  "lists-codex-files": {
+   "kind": "dialog",
+   "png": "lists-codex-files-light-100.png",
+   "json": "lists-codex-files-light-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: updates, additions, deletions and renames"
+  },
+  "lists-codex-deleted-file": {
+   "kind": "dialog",
+   "png": "lists-codex-deleted-file-light-100.png",
+   "json": "lists-codex-deleted-file-light-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: a deleted file's old line range"
+  },
+  "agent-new-copilot": {
+   "kind": "dialog",
+   "png": "agent-new-copilot-light-100.png",
+   "json": "agent-new-copilot-light-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Agent Conversation with a new Claude chat and a new Copilot chat"
+  },
+  "question-preview": {
+   "kind": "dialog",
+   "png": "question-preview-light-100.png",
+   "json": "question-preview-light-100.json",
+   "title": "Claude asks: Visual probe",
+   "class": "QuestionDialog",
+   "size": [
+    700,
+    555
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Claude asks about text it wrote just before, with an option's preview"
   }
  },
  "seconds": 94.1

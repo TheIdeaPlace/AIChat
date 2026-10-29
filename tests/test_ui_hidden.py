@@ -2,7 +2,7 @@
 
 No window appears on screen: the frame is created hidden and destroyed at the
 end, and speech is replaced by a recorder. The real look and sound with JAWS
-and NVDA is checked by hand (see the README).
+and NVDA is checked by hand (see DEVELOPING.md).
 """
 import dataclasses
 import json
@@ -1475,6 +1475,17 @@ def _start(frame, fake_runner, text="first"):
     return fake_runner.instances[-1]
 
 
+def _start_steering(frame, fake_runner, text="first"):
+    """_start, for a test that steers. Hub probe has no transcript here, so
+    whether its history counts as known depends on whether the first read
+    lands before or after the send; Steer waits for it (#410). This makes it
+    known, and test_steer_is_allowed_once_the_history_is_read covers a real
+    read."""
+    runner = _start(frame, fake_runner, text)
+    frame._history_known = True
+    return runner
+
+
 def test_send_during_a_turn_queues_and_goes_when_it_ends(frame, env, fake_runner):
     _start(frame, fake_runner)
     frame.reply_text.SetValue("second")
@@ -2293,6 +2304,75 @@ def test_question_answers_go_back_to_claude(frame, env, monkeypatch):
     assert env["feedback"][-1] == "Answer sent."
 
 
+def test_a_question_carries_what_claude_wrote_just_before_asking(frame, env):
+    """#415: the draft Claude asks about is in its text before the question.
+    Only the text since its last other tool goes with it; AskUserQuestion's
+    own tool event comes before the question and doesn't clear it."""
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame._runners["own-1"] = FakeRunner([], "", "", None)
+
+    def turn(kind, text="", request=None):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(kind, text=text,
+                                                                     request=request))
+    turn("text", "Reading the notes.")
+    turn("tool", "Bash")
+    turn("text", "Started the build in the background.")
+    turn("waiting", "Waiting for the build.")  # a pause ends the run of text too
+    turn("text", "Here's the post:")
+    turn("text", "The Chat Place 0.3.2 is out.")
+    turn("tool", "AskUserQuestion")
+    question = _request("q1", "AskUserQuestion", {"questions": [{"question": "Post it?"}]})
+    turn("permission", question.summary(), question)
+    assert question.said == "Here's the post:\n\nThe Chat Place 0.3.2 is out."
+    # A new turn starts with nothing said.
+    turn("finished", "Done.")
+    frame._runners["own-1"] = FakeRunner([], "", "", None)
+    turn("started")
+    later = _request("q2", "AskUserQuestion", {"questions": [{"question": "Again?"}]})
+    turn("permission", later.summary(), later)
+    assert later.said == ""
+
+
+def test_question_dialog_opens_on_the_question_and_shows_previews(frame):
+    """#415: a read-only Question box first, with what was said before the
+    question and each question in full; a Preview box for the option you're on."""
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import QuestionDialog
+    request = SimpleNamespace(said="Here's the post:\n\nThe Chat Place 0.3.2 is out.",
+                              questions=lambda: [
+        {"header": "Mastodon", "question": "Post this?",
+         "options": [{"label": "Post it", "preview": "The Chat Place 0.3.2 is out."},
+                     {"label": "Don't post"}]},
+        {"header": "When", "question": "Now or later?", "options": [{"label": "Now"}]}])
+    dialog = QuestionDialog(frame, "Probe", request)
+    try:
+        assert dialog.question_text.GetValue() == (
+            "Here's the post:\n\nThe Chat Place 0.3.2 is out.\n\n"
+            "Mastodon: Post this?\nWhen: Now or later?")
+        assert dialog.question_text.HasFlag(wx.TE_READONLY)
+        assert dialog.question_text.HasFlag(wx.TE_MULTILINE)
+        # Starts on the first option's preview; follows the option you're on.
+        (_kind, (post, dont, other), _text), _when = dialog._controls
+        assert dialog.preview_text.GetValue() == "The Chat Place 0.3.2 is out."
+        dialog._show_preview(dont)
+        assert dialog.preview_text.GetValue() == "Don't post has no preview."
+        dialog._show_preview(post)
+        assert dialog.preview_text.GetValue() == "The Chat Place 0.3.2 is out."
+        # In Tab order: the question, the options, then the preview.
+        order = list(dialog.GetChildren())
+        assert order.index(dialog.question_text) < order.index(dialog.preview_text)
+    finally:
+        dialog.Destroy()
+    # No previews, no Preview box; no text before it, just the questions.
+    plain = QuestionDialog(frame, "Probe", _Questions())
+    try:
+        assert plain.preview_text is None
+        assert plain.question_text.GetValue().startswith("One: First?\nTwo: Second?")
+    finally:
+        plain.Destroy()
+
+
 def test_turn_end_clears_waiting_and_a_late_answer_says_so(frame, env, monkeypatch):
     from thechatplace.claude_cli import allow_response
     runner = _waiting_turn(frame, _request())
@@ -2703,7 +2783,7 @@ def test_help_user_guide_shows_the_guide_page_or_the_text_box(frame, env, monkey
     frame.on_user_guide()
     assert shown[0][0] == "User Guide"
     assert "<h1>The Chat Place User Guide</h1>" in shown[0][1]
-    assert ">Answering permissions and questions</h2>" in shown[0][1] and texts == []
+    assert ">Permissions and questions</h2>" in shown[0][1] and texts == []
     _fake_viewer(monkeypatch, ID_PLAIN_TEXT)
     frame.on_user_guide()
     assert len(texts) == 1 and isinstance(texts[0], MessageDialog)
@@ -4045,6 +4125,89 @@ def test_changed_files_view_and_turn_end_summary(frame, env, monkeypatch):
     assert frame._changes_due is False
 
 
+@windows_paths
+def test_changed_files_mark_lines_as_settings_say(frame, env, monkeypatch):
+    """#174: Settings chooses how Changed Files marks each line, and the
+    list's text, which is what's copied, follows it."""
+    from thechatplace.ui.dialogs import SettingsDialog
+    patch = [{"oldStart": 3, "oldLines": 2, "newStart": 3, "newLines": 2,
+              "lines": [" keep", "-old", "+new"]}]
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [
+        user_text("Fix it"),
+        assistant_block(tool_use_block("Edit", {"file_path": "C:\\G\\Repo\\a.py"}, "t1"),
+                        "m1"),
+        tool_result("t1", "Updated.", toolUseResult={"filePath": "C:\\G\\Repo\\a.py",
+                                                     "structuredPatch": patch}),
+        assistant_block(text_block("Fixed."), "m2")])
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded)
+    details = []
+    _lists_dialog(frame, monkeypatch, lambda page: details.append(page.detail.GetValue()))
+    frame.on_changes()
+    assert details[-1].endswith("Unchanged: keep\nRemoved: old\nAdded: new")
+    for style, expected in [("short", "Same keep\nDel old\nAdd new"),
+                            ("symbols", "= keep\n- old\n+ new"),
+                            ("changed", "= keep\n!- old\n!+ new")]:
+        frame.speech.change_marks = style
+        frame.on_changes()
+        assert details[-1].endswith(expected), style
+    # The Settings choice: moving onto symbols from words says the punctuation
+    # note once, as it's chosen; between the two symbol styles, not again.
+    said = []
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options(),
+                            say=said.append)
+    try:
+        assert dialog.marks_choice.GetSelection() == 0
+        assert dialog.marks_choice.GetName() == "Mark changed lines with"
+        for index, count in [(1, 0), (2, 1), (3, 1), (0, 1), (3, 2)]:
+            dialog.marks_choice.SetSelection(index)
+            event = wx.CommandEvent(wx.wxEVT_CHOICE, dialog.marks_choice.GetId())
+            event.SetInt(index)
+            dialog.marks_choice.GetEventHandler().ProcessEvent(event)
+            assert len(said) == count, index
+        assert said[0] == ("Symbols are spoken only if your screen reader's punctuation "
+                           "level reads them.")
+    finally:
+        dialog.Destroy()
+    # Opened on a symbol style: nothing said until it's moved off and back.
+    said.clear()
+    dialog = SettingsDialog(frame, speech.SpeechSettings(change_marks="changed"),
+                            speech.default_options(), say=said.append)
+    try:
+        assert dialog.marks_choice.GetSelection() == 3
+        dialog.marks_choice.SetSelection(2)
+        dialog.marks_choice.GetEventHandler().ProcessEvent(
+            wx.CommandEvent(wx.wxEVT_CHOICE, dialog.marks_choice.GetId()))
+        assert said == []
+    finally:
+        dialog.Destroy()
+
+
+def test_settings_ok_saves_how_changed_lines_are_marked(frame, env, monkeypatch):
+    from thechatplace.ui import main_frame
+
+    class Picks(main_frame.SettingsDialog):
+        def ShowModal(self):
+            self.marks_choice.SetSelection(3)
+            return wx.ID_OK
+    monkeypatch.setattr(main_frame, "SettingsDialog", Picks)
+    frame.on_settings()
+    assert frame.speech.change_marks == "changed"
+    assert speech.SpeechSettings.load().change_marks == "changed"
+
+
+def test_change_marks_setting_round_trips(tmp_path):
+    path = tmp_path / "s.json"
+    assert speech.SpeechSettings.load(path).change_marks == "words"
+    speech.SpeechSettings(change_marks="changed").save(path)
+    assert speech.SpeechSettings.load(path).change_marks == "changed"
+    # A style this version doesn't know (or junk) reads as the default.
+    for junk in ('"emoji"', "3", "null", '["words"]'):
+        path.write_text('{"change_marks": %s}' % junk, encoding="utf-8")
+        assert speech.SpeechSettings.load(path).change_marks == "words"
+
+
 def test_changed_files_with_nothing_changed(frame, env, monkeypatch):
     add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hi"),
                                                  assistant_block(text_block("Hello."), "m1")])
@@ -4467,6 +4630,46 @@ def test_codex_sign_in_is_checked_and_offered(frame, env, monkeypatch):
     assert "Install the Codex app or CLI" in shown[-1][0]
 
 
+def test_copilot_sign_in_is_checked_and_offered(frame, env, monkeypatch):
+    """Help, Copilot Sign-in (#391), as Codex's: said when signed in, missing
+    or unknown, and offered when not, with the app's own chats' environment."""
+    from thechatplace import copilot_signin
+    from thechatplace.ui import main_frame
+    shown = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, title, style, parent=None: (
+        shown.append((text, title, style)), wx.YES)[1])
+    frame._on_copilot_sign_in_result(copilot_signin.SignIn(
+        True, True, "synthetic-user", "https://github.com"))
+    assert shown[-1][:2] == ("Copilot CLI is signed in to github.com as synthetic-user.",
+                             "Copilot Sign-in")
+    assert shown[-1][2] & wx.ICON_INFORMATION
+
+    started = []
+    monkeypatch.setattr(copilot_signin, "login_command", lambda: ["copilot", "login"])
+    monkeypatch.setenv("GH_TOKEN", "synthetic")
+
+    class Process:
+        def wait(self):
+            return 0
+    monkeypatch.setattr(main_frame.platform_paths, "run_in_terminal",
+                        lambda command, *a, **k: started.append((command, k)) or Process())
+    frame._on_copilot_sign_in_result(copilot_signin.SignIn(True))
+    assert shown[-1][0].startswith("Copilot CLI isn't signed in.")
+    assert "Sign in now?" in shown[-1][0]
+    assert started[0][0] == ["copilot", "login"]
+    assert "GH_TOKEN" not in started[0][1]["env"]
+    assert started[0][1]["clear"] == main_frame.platform_paths.COPILOT_OVERRIDE_VARS
+    assert started[0][1]["clear_prefixes"] == main_frame.platform_paths.COPILOT_OVERRIDE_PREFIXES
+    assert started[0][1]["export"] == ("COPILOT_HOME", "GH_HOST")
+
+    frame._on_copilot_sign_in_result(copilot_signin.SignIn(False, missing=True))
+    assert shown[-1][0].startswith("Copilot CLI isn't installed.")
+    assert shown[-1][2] & wx.ICON_WARNING
+    frame._on_copilot_sign_in_result(copilot_signin.SignIn(False, problem="synthetic reason"))
+    assert "synthetic reason" in shown[-1][0]
+    assert len(started) == 1  # offered only when not signed in
+
+
 def test_install_is_offered_when_claude_is_missing(frame, env, monkeypatch):
     """No claude The Chat Place can use: said at start-up, and Claude Code
     Sign-in offers to run its installer, then checks again."""
@@ -4584,7 +4787,7 @@ def test_each_question_is_a_group_box_its_options_follow(frame):
     dialog = QuestionDialog(frame, "Probe", _Questions())
     try:
         dialog.Layout()
-        panel = dialog.GetChildren()[0]
+        panel = dialog.questions_panel
         groups = _boxes_and_their_controls(panel, panel.GetSizer())
         assert [box.GetLabel() for box, _ in groups] == [
             "One: First?", "Two: Second?", "Three: Third?", "Four: Fourth?"]
@@ -4759,6 +4962,88 @@ def test_send_now_takes_a_queued_message_into_the_running_turn(frame, env, fake_
     frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
     frame.send_queued_now()
     assert frame._queued == {"own-1": ["second"]}
+
+
+def _steer_key(frame, monkeypatch, focus):
+    """Ctrl+Alt+Enter (Cmd+Option+Return) with ``focus`` focused."""
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: focus))
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(wx.WXK_RETURN)
+    event.SetControlDown(True)
+    event.SetAltDown(True)
+    frame._on_char_hook(event)
+
+
+def test_steer_sends_into_the_running_turn_without_stopping_it(frame, env, fake_runner,
+                                                               monkeypatch):
+    runner = _start_steering(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    _steer_key(frame, monkeypatch, frame.reply_text)
+    assert runner.steered == ["Also update the README"]
+    assert not getattr(runner, "sent_now", None)  # nothing stopped
+    assert frame._queued == {}
+    assert frame.reply_text.GetValue() == ""
+    assert env["feedback"][-1].startswith("Steering Hub probe")
+    assert frame.turn_status.GetLabel().startswith("1 steered message not taken in yet. ")
+    frame.on_turn_status()
+    assert "1 steered message not taken in yet." in env["feedback"][-1]
+    # Taken in: said without cutting off what's being read.
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="Also update the README", data={"late": False}))
+    assert env["feedback"][-1] == "Hub probe has your message."
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="And the docs", data={"late": True}))
+    assert env["feedback"][-1] == "Hub probe had finished, and is answering your message now."
+    assert len(fake_runner.instances) == 1
+
+
+def test_steer_with_no_turn_running_is_a_plain_send(frame, env, fake_runner, monkeypatch):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("hello")
+    _steer_key(frame, monkeypatch, frame.reply_text)
+    assert len(fake_runner.instances) == 1
+    assert fake_runner.instances[0].prompt == "hello"
+
+
+def test_steer_into_a_turn_that_just_ended_keeps_the_text(frame, env, fake_runner):
+    runner = _start_steering(frame, fake_runner)
+    runner.ended = True
+    frame.reply_text.SetValue("too late")
+    frame.on_steer()
+    assert frame.reply_text.GetValue() == "too late"
+    assert env["feedback"][-1].startswith("The turn has just ended.")
+    assert frame._queued == {}
+
+
+def test_steer_on_a_queued_message_takes_it_into_the_turn(frame, env, fake_runner,
+                                                          monkeypatch):
+    runner = _start_steering(frame, fake_runner)
+    for text in ("second", "third"):
+        frame.reply_text.SetValue(text)
+        frame.on_send()
+    frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)  # "Queued: third"
+    menu = frame._message_menu()
+    labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
+    assert "Send Now" in labels and "Steer" in labels
+    menu.Destroy()
+    _steer_key(frame, monkeypatch, frame.chat_list)
+    assert runner.steered == ["third"]
+    assert not getattr(runner, "sent_now", None)
+    assert frame._queued == {"own-1": ["second"]}
+    # Read back when it was queued, so not again.
+    assert env["feedback"][-1] == "Steering Hub probe. It takes your message at its next step."
+    runner.ended = True
+    frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
+    frame.steer_queued()
+    assert frame._queued == {"own-1": ["second"]}
+    assert env["feedback"][-1].startswith("The turn is already ending")
+
+
+def test_steer_is_on_the_file_menu_with_its_key(frame):
+    bar = frame.GetMenuBar()
+    labels = [item.GetItemLabelText() for item in bar.GetMenu(bar.FindMenu("File")).GetMenuItems()]
+    assert any(label.startswith("Steer: Send into the Running Turn (") for label in labels)
 
 
 # VoiceOver names (macOS). wx's SetName never reaches VoiceOver, so without
@@ -8809,11 +9094,11 @@ def test_a_few_questions_leave_no_empty_band(frame):
     dialog = QuestionDialog(frame, "Probe", _questions(2))
     try:
         dialog.Layout()
-        panel = dialog.GetChildren()[0]
+        panel = dialog.questions_panel
         content = panel.GetSizer().GetMinSize().height
         # The panel is as tall as its questions (with the sizer's border).
         assert 0 <= panel.GetSize().height - content <= 10
-        assert dialog.GetSize().height < 560
+        assert dialog.GetSize().height < 600
     finally:
         dialog.Destroy()
 
@@ -8823,8 +9108,8 @@ def test_many_questions_keep_the_size_and_scroll(frame):
     dialog = QuestionDialog(frame, "Probe", _questions(12))
     try:
         dialog.Layout()
-        panel = dialog.GetChildren()[0]
-        assert dialog.GetSize().height == 560
+        panel = dialog.questions_panel
+        assert dialog.GetSize().height == 600
         assert panel.GetVirtualSize().height > panel.GetClientSize().height  # it scrolls
         buttons = [c for c in dialog.GetChildren() if isinstance(c, wx.Button)]
         assert all(b.GetRect().GetBottom() <= dialog.GetClientSize().height for b in buttons)
@@ -9232,7 +9517,7 @@ def test_properties_dialog_is_named_for_screen_readers(frame):
 @pytest.mark.parametrize("handler", ["on_send", "on_stop", "on_continue_here",
     "on_remote_control", "on_other_machines", "on_usage", "on_changes", "on_copy_session_link",
     "on_delete_permanently", "on_attach_files", "on_insert_command", "on_turn_status",
-    "remove_queued", "send_queued_now", "edit_queued"])
+    "remove_queued", "send_queued_now", "edit_queued", "on_steer", "steer_queued"])
 def test_codex_commands_never_reach_claude_with_colliding_id(frame, monkeypatch, handler):
     from types import SimpleNamespace
     from thechatplace.providers.claude import ClaudeConversations
@@ -9258,6 +9543,10 @@ def test_codex_commands_never_reach_claude_with_colliding_id(frame, monkeypatch,
     if handler == 'on_usage':
         assert pump(lambda: calls)
         assert len(calls) == 1 and 'Could not read Codex usage' in calls[0]
+    elif handler == 'on_changes':
+        # Codex supports this read-only command now, but this fixture hasn't
+        # loaded a chat. It still must not reach the colliding Claude runner.
+        assert calls == ["The messages are still loading."]
     else:
         assert len(calls) == 1 and "isn't available for Codex" in calls[0]
     assert frame.store.get(owned.cli_session_id).title == owned.title
@@ -9716,6 +10005,83 @@ def test_new_owned_codex_chat_can_send_before_history_is_available(frame):
         runtime.close()
 
 
+@pytest.mark.parametrize('reselect', [False, True])
+def test_stop_recovers_an_empty_codex_chat_after_permission_save_fails(frame, env, tmp_path, reselect):
+    from test_codex_auto_review import SavedHistoryConnection
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.session_controller import SessionController
+
+    settle(frame)
+    other = frame._snapshot.sessions[0]
+    connection = SavedHistoryConnection()
+    request = connection.request
+
+    def discovery(method, params):
+        if method == 'thread/list':
+            return {'data': [], 'nextCursor': None}
+        return request(method, params)
+
+    connection.request = discovery
+    runtime = CodexChatRuntime(lambda state: wx.CallAfter(frame._on_codex_update, state),
+                               factory=lambda exe: connection)
+    frame.sessions = SessionController([ClaudeConversations(), CodexProvider(connection, runtime=runtime)])
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic recovery chat')
+        frame.store.add(record)
+        frame.open_session(record.to_info())
+        assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+        change = runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
+        runtime.finish_policy(change, False)
+        assert not runtime.ready(record)
+        if reselect:
+            frame.open_session(other)
+            assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+            frame.open_session(record.to_info())
+            assert pump(lambda: frame._chat_loaded and not frame._reader_busy and not frame._codex_preparing)
+        frame.on_stop()
+        assert pump(lambda: runtime.ready(record) and any('permissions rechecked' in text for text in env['feedback']))
+        assert not any('reconnected' in text for text in env['feedback'])
+        frame.reply_text.SetValue('Deliberate message after failed-save recovery')
+        frame.on_send()
+        assert pump(lambda: connection.turns == 1 and not frame._codex_send_pending)
+        turns = [params for method, params in connection.calls if method == 'turn/start']
+        assert turns[0]['approvalsReviewer'] == 'user'
+        assert turns[0]['sandboxPolicy']['type'] == 'readOnly'
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+        assert frame.store.get(record.cli_session_id, provider='codex').provider_options == record.provider_options
+    finally:
+        runtime.close()
+
+
+def test_stop_of_an_active_codex_turn_with_a_problem_does_not_attempt_reopen(frame, env, monkeypatch, tmp_path):
+    from test_codex_auto_review import SavedHistoryConnection
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    from thechatplace.session_controller import SessionController
+
+    settle(frame)
+    connection = SavedHistoryConnection()
+    runtime = CodexChatRuntime(factory=lambda exe: connection)
+    frame.sessions = SessionController([CodexProvider(connection, runtime=runtime)])
+    try:
+        record = runtime.create(str(tmp_path), 'Synthetic active chat')
+        frame.store.add(record)
+        runtime.send(record, 'Initial synthetic turn')
+        runtime._problems[record.cli_session_id] = 'Synthetic approval storage failure'
+        frame._on_codex_update(runtime.snapshot(record.cli_session_id))
+        reopened = []
+        monkeypatch.setattr(runtime, '_reopen', lambda record: reopened.append(record))  # reopen and recover
+        frame._stop_codex_owned(record.to_info())
+        assert pump(lambda: any('Stop requested' in text for text in env['feedback']))
+        assert any(method == 'turn/interrupt' for method, _ in connection.calls)
+        assert reopened == []
+        assert not runtime.ready(record)
+    finally:
+        runtime.close()
+
+
 def refuse_codex_creation(frame, monkeypatch):
     from thechatplace.providers.codex_rpc import CodexTurnRejected
     def refuse(*args, **options):
@@ -9793,11 +10159,12 @@ def test_refused_new_codex_chat_says_when_the_first_message_could_not_be_kept(fr
         "No Codex chat was started, and your first message couldn't be kept. Codex reported")
 
 
-def test_saved_folder_editing_codex_chat_reopened_read_only_says_to_reload(frame, env, monkeypatch):
+def test_saved_folder_editing_codex_chat_reopened_read_only_says_to_use_stop(frame, env, monkeypatch):
     # Reopening a saved folder-editing chat runs prepare, not New Session, so
     # the refusal there says how to try again (#257).
     from types import SimpleNamespace
     from thechatplace.providers.codex_rpc import CodexTurnRejected
+    from thechatplace.ui_text import key_name
     settle(frame)
     info = SimpleNamespace(key='codex:own-x', cli_session_id='own-x')
     def refuse(action, record):
@@ -9810,7 +10177,7 @@ def test_saved_folder_editing_codex_chat_reopened_read_only_says_to_reload(frame
     frame._prepare_codex_owned(7)
     assert pump(lambda: env["feedback"] and 'read-only' in env["feedback"][-1])
     assert env["feedback"][-1].startswith("Codex reported this chat as read-only")
-    assert env["feedback"][-1].endswith('No new turn was sent. Reload this chat to try again.')
+    assert env["feedback"][-1].endswith(f'No new turn was sent. Once that\'s fixed, use Stop ({key_name("Ctrl+Period")}) to open this chat again.')
 
 
 def test_refused_new_codex_chat_without_a_message_says_only_why(frame, env, monkeypatch):
@@ -9998,7 +10365,9 @@ def test_codex_model_catalog_failure_and_late_callback_are_safe(frame):
     callbacks[0](_synthetic_codex_models(), False)  # cannot resurrect a cancelled native dialog
 
 
-def test_codex_create_and_fork_forward_selected_options_through_controller(frame, monkeypatch):
+@pytest.mark.parametrize('sandbox', ['read-only', 'workspace-write'])
+@pytest.mark.parametrize('reviewer', ['user', 'auto_review'])
+def test_codex_create_and_fork_forward_selected_options_through_controller(frame, monkeypatch, sandbox, reviewer):
     from thechatplace.providers.codex import CodexProvider
     from thechatplace.providers.claude import ClaudeConversations
     from thechatplace.session_controller import SessionController
@@ -10015,10 +10384,11 @@ def test_codex_create_and_fork_forward_selected_options_through_controller(frame
     frame.sessions = SessionController([ClaudeConversations(), CodexProvider(object(), runtime=Runtime())])
     monkeypatch.setattr(frame, '_codex_work', lambda action, done: action())
     source = SessionInfo('external', 'codex:source', 'Source', '/', 'source', provider='codex')
-    frame._create_codex_owned('/', 'Synthetic', '', model='synthetic-one', effort='future-effort')
-    frame._create_codex_owned('/', 'Synthetic', '', source=source, model='synthetic-two', effort='high')
-    assert calls == [('create', {'model': 'synthetic-one', 'effort': 'future-effort'}),
-                     ('fork', {'model': 'synthetic-two', 'effort': 'high'})]
+    policy = {'sandbox': sandbox, 'approval_policy': 'on-request', 'approvals_reviewer': reviewer}
+    frame._create_codex_owned('/', 'Synthetic', '', model='synthetic-one', effort='future-effort', **policy)
+    frame._create_codex_owned('/', 'Synthetic', '', source=source, model='synthetic-two', effort='high', **policy)
+    assert calls == [('create', {'model': 'synthetic-one', 'effort': 'future-effort', **policy}),
+                     ('fork', {'model': 'synthetic-two', 'effort': 'high', **policy})]
 
 
 @pytest.mark.parametrize('continuing', [False, True])
@@ -11587,6 +11957,122 @@ def test_agent_conversation_dialog_checks_and_result(app, monkeypatch, tmp_path)
         parent.Destroy()
 
 
+@pytest.mark.parametrize("slot", range(3))
+@pytest.mark.parametrize("sandbox, reviewer, selection", [
+    ("read-only", "user", 0), ("workspace-write", "user", 1),
+    ("read-only", "auto_review", 2), ("workspace-write", "auto_review", 3)])
+def test_agent_conversation_codex_permission_choices(env, app, monkeypatch, tmp_path,
+                                                    slot, sandbox, reviewer, selection):
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    parent = wx.Frame(None)
+    try:
+        dialog = AgentConversationDialog(parent, [], ["claude", "codex"],
+                                         folders=[str(tmp_path)], auto_allowed=True)
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        dialog.chats[slot].SetSelection(2 if slot == 2 else 1)
+        dialog._sync()
+        assert list(dialog.permissions[slot].GetStrings()) == [
+            "Read-only; asks before allowing changes",
+            "Can edit files in this folder; asks before anything else",
+            "Read-only; automatic approval review",
+            "Can edit files in this folder; automatic approval review"]
+        assert dialog.permissions[slot].GetSelection() == 0
+        dialog.permissions[slot].SetSelection(selection)
+        # Changing hand-offs must preserve the independently selected reviewer.
+        dialog.mode.SetSelection(1)
+        dialog._sync()
+        dialog._start()
+        choice = dialog.result.members[slot]
+        assert (choice.permission, choice.approval_policy, choice.approvals_reviewer) == (
+            sandbox, "on-request", reviewer)
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
+def test_agent_templates_keep_human_review(env, app, monkeypatch, tmp_path):
+    from thechatplace.agents import TEMPLATES
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    parent = wx.Frame(None)
+    try:
+        dialog = AgentConversationDialog(parent, [], ["codex"], folders=[str(tmp_path)])
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        dialog.chats[2].SetSelection(1)
+        dialog._sync()
+        for index, template in enumerate(TEMPLATES):
+            for permission in dialog.permissions:
+                permission.SetSelection(3)
+            dialog.template.SetSelection(index + 1)
+            dialog._apply_template()
+            dialog._start()
+            assert [m.permission for m in dialog.result.members] == [
+                permission[1] for permission in template.permissions] + ["read-only"]
+            assert all(m.approvals_reviewer == "user" for m in dialog.result.members)
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
+def test_agent_conversation_with_a_new_copilot_chat(env, app, monkeypatch, tmp_path):
+    """#369: a new Copilot chat is offered, its one permission choice says it
+    asks before it acts, and a template doesn't change that."""
+    from thechatplace.agents import TEMPLATES
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    parent = wx.Frame(None)
+    try:
+        dialog = AgentConversationDialog(parent, [], ["claude", "codex", "copilot"],
+                                         folders=[str(tmp_path)])
+        monkeypatch.setattr(dialog, "EndModal", lambda code: None)
+        assert dialog.chats[1].GetString(2) == "New Copilot chat"
+        dialog.chats[1].SetSelection(2)
+        dialog._sync()
+        assert dialog.permissions[1].IsShown()
+        assert list(dialog.permissions[1].GetStrings()) == [
+            "Asks you before it changes files or runs commands"]
+        assert not dialog.codex_note.IsShown()
+        dialog.template.SetSelection([t.key for t in TEMPLATES].index("build-review") + 1)
+        dialog._apply_template()
+        assert dialog.permissions[1].GetSelection() == 0
+        dialog._start()
+        copilot = dialog.result.members[1]
+        assert (copilot.info, copilot.provider, copilot.permission) == (None, "copilot", "")
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
+def test_agent_codex_permission_explanation_follows_new_chats(env, app, tmp_path):
+    from thechatplace.ui.dialogs import AgentConversationDialog
+    from thechatplace.ui.permission_hosts import CODEX_REVIEW_NOTE
+    existing = [OwnSession("codex-existing", "Existing Codex", str(tmp_path),
+                           provider="codex").to_info()]
+    parent = wx.Frame(None)
+    try:
+        dialog = AgentConversationDialog(parent, existing, ["claude", "codex"],
+                                         folders=[str(tmp_path)])
+        assert dialog.codex_note.IsShown() and dialog.codex_note_label.IsShown()
+        assert dialog.codex_note.GetValue() == CODEX_REVIEW_NOTE
+        assert dialog.codex_note.GetName() == "About Codex permissions"
+        assert not dialog.codex_note.IsEditable()
+        # An existing Codex chat keeps its settings; only new ones show the explanation.
+        dialog.chats[1].SetSelection(2)
+        dialog._sync()
+        assert not dialog.codex_note.IsShown() and not dialog.codex_note_label.IsShown()
+        dialog.chats[0].SetSelection(1)
+        dialog._sync()
+        assert dialog.codex_note.IsShown()
+        dialog.chats[0].SetSelection(0)
+        dialog.chats[2].SetSelection(2)
+        dialog._sync()
+        assert dialog.codex_note.IsShown()
+        dialog.chats[2].SetSelection(0)
+        dialog._sync()
+        assert not dialog.codex_note.IsShown()
+        dialog.Destroy()
+    finally:
+        parent.Destroy()
+
+
 def test_agent_conversation_dialog_template_and_third_agent(app, monkeypatch, tmp_path):
     """Phase 3: a template fills in roles, new chats' permissions and who
     goes first; a third agent is optional, and brings its role and
@@ -12053,6 +12539,115 @@ def test_permission_notices_are_kept_apart_by_provider(frame, monkeypatch):
     frame._codex_states.clear()
 
 
+@pytest.mark.parametrize("provider", ["codex", "copilot"])
+@pytest.mark.parametrize("supported", [False, True])
+def test_a_finished_provider_turn_says_what_it_changed_when_supported(frame, monkeypatch, provider, supported):
+    """Files follow the reply when the provider can report changes."""
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: None)
+    monkeypatch.setattr(frame, "_notify", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "_refresh_chat", lambda *a, **kw: None)
+    # Provider tests check the actual capabilities; here exercise both answers.
+    from thechatplace.providers.base import SessionCapabilities
+    monkeypatch.setattr(frame.sessions, "capabilities", lambda info: SessionCapabilities(
+        changes=supported))
+    native = f"{provider}-done"
+    frame.store.add(OwnSession(native, f"{provider} chat", "C:/w", provider=provider,
+                               started=True))
+    info = SessionInfo(OWN, f"{provider}:{native}", f"{provider} chat", "C:/w", native,
+                       provider=provider)
+    monkeypatch.setattr(frame, "_open", info)
+    frame._changes_due = False
+    frame._on_owned_update(provider, CodexChatState(native, "idle", "t1", "completed"))
+    assert frame._changes_due is supported
+    frame._codex_states.clear()
+    frame._changes_due = False
+
+
+@pytest.mark.parametrize("owned", [False, True])
+def test_codex_changed_files_use_the_shared_viewer_scopes_and_copy(frame, env, monkeypatch, owned):
+    from thechatplace import lists
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.session_controller import SessionController
+    from thechatplace.sessions import SessionInfo, OWN
+    from test_codex_provider import Connection, file_change, history, history_pages
+
+    settle(frame)
+    data = history()
+    data["turns"][0]["items"].append(file_change())
+    data["turns"].append({"id": "turn-2", "items": [
+        {"id": "u2", "type": "userMessage", "content": [{"type": "text", "text": "Now the docs"}]},
+        file_change("docs", changes=[{"path": "README.md", "kind": {"type": "add"}, "diff": "Hello\n"}]),
+        file_change("declined", status="declined"),
+        {"id": "a2", "type": "agentMessage", "text": "Documented."}]})
+    pages = history_pages(data)
+
+    class HistoryConnection(Connection):
+        def request(self, method, params):
+            if method == "thread/read" and not self.responses:
+                return pages[0]
+            return super().request(method, params)
+
+    frame.sessions = SessionController([CodexProvider(HistoryConnection(pages))])
+    info = SessionInfo(OWN if owned else "external", "codex:one", "Codex files", "/example", "one", provider="codex")
+    frame.open_session(info)
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+    assert len(frame._chat_edits) == 2
+    assert info.key not in frame.tool_activity
+    seen = _lists_dialog(frame, monkeypatch, lambda page: page.copy_selected())
+    frame.on_changes()
+    assert (seen["category"], seen["scope"]) == ("files", "message")
+    assert seen["rows"] == ["README.md, created, 1 line"]
+    assert "Added: Hello" in seen["detail"] and env["copied"][-1] == "README.md"
+    frame.chat_list.SetSelection(0)
+    frame.on_changes()
+    assert seen["scope"] == "message" and len(seen["rows"]) == 1
+    assert "Removed: old\nAdded: new\nAdded: more" in seen["detail"]
+    frame.on_lists(lists.FILES, lists.SCOPE_CHAT)
+    assert len(seen["rows"]) == 2
+    # Opening existing history never announces its edits as new changes.
+    assert not any("Changed 2 files" in text for text in env["spoken"] + env["feedback"])
+
+
+def test_codex_completion_refresh_announces_only_new_file_changes_once(frame, env, monkeypatch):
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.session_controller import SessionController
+    from test_codex_provider import file_change, history, history_pages
+
+    settle(frame)
+    data = history()
+    data["turns"][0]["items"].append(file_change())
+
+    class Connection:
+        def request(self, method, params):
+            return history_pages(data)[{"thread/read": 0, "thread/turns/list": 1, "thread/items/list": 2}[method]]
+
+    frame.sessions = SessionController([CodexProvider(Connection())])
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "_check_codex_usage", lambda *a: None)
+    record = OwnSession("one", "Codex files", "/example", provider="codex", started=True)
+    frame.store.add(record)
+    frame.open_session(record.to_info())
+    assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+    assert frame._edits_said == 1
+    data["turns"].append({"id": "turn-2", "items": [
+        file_change("docs", changes=[{"path": "README.md", "kind": {"type": "add"}, "diff": "Hello\n"}]),
+        {"id": "reply", "type": "agentMessage", "text": "Documented."}]})
+    state = CodexChatState("one", "idle", "turn-2", "completed", replies=(("reply", "Documented."),))
+    frame._on_owned_update("codex", state)
+    expected = key_name("Codex files: Changed 1 file: README.md, created, 1 line. Ctrl+Shift+D shows the changes.")
+    assert pump(lambda: expected in env["feedback"])
+    frame._on_owned_update("codex", state)
+    assert pump(lambda: not frame._reader_busy)
+    assert env["feedback"].count(expected) == 1
+    assert not any("Changed 2 files" in text for text in env["feedback"])
+    frame._codex_states.clear()
+
+
 # -- owned GitHub Copilot CLI chats (#352) -------------------------------------
 
 
@@ -12347,21 +12942,29 @@ def test_a_copilot_chat_with_no_messages_yet_is_still_opened(frame, env, monkeyp
 
 
 def test_stop_on_a_copilot_chat_with_nothing_running_says_so(frame, env, monkeypatch):
+    """Kelly's review of #386: Stop asks the runtime even when the window's
+    state says the turn is over. That state can lag: with messages queued,
+    the finished turn reaches the window before the next one's start does."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
     frame.store.add(OwnSession("cp-idle", "Idle Copilot", "C:/w", provider="copilot", started=True))
     info = SessionInfo(OWN, "copilot:cp-idle", "Idle Copilot", "C:/w", "cp-idle", provider="copilot")
-    from thechatplace.providers.copilot_runtime import CopilotChatState
     frame._codex_states[info.key] = CopilotChatState("cp-idle", "idle", "1", "completed")
     calls = []
-    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a: calls.append(a))
+
+    def owned_action(action, record, *args):
+        calls.append(action)
+        return Stopped()
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame._stop_codex_owned(info)
-    assert calls == [] and "nothing to stop" in env["feedback"][-1]
+    assert pump(lambda: calls == ["stop"] and any(
+        t == "Idle Copilot: Copilot isn't answering, so there's nothing to stop." for t in env["feedback"]))
     frame._codex_states.clear()
 
 
-def test_copilot_chats_arent_offered_as_reply_targets_yet(frame, monkeypatch):
-    """Sending into a Copilot chat isn't built yet (#369), so it isn't offered."""
+def test_copilot_chats_are_offered_as_reply_targets(frame, monkeypatch):
+    """A reply can go into a Copilot chat started here (#369)."""
     from thechatplace import relay
     from thechatplace.sessions import OWN, SessionInfo
     from thechatplace.ui import relay_chats
@@ -12388,8 +12991,8 @@ def test_copilot_chats_arent_offered_as_reply_targets_yet(frame, monkeypatch):
     monkeypatch.setattr(relay, "message_text", lambda message, title: "text")
     monkeypatch.setattr(relay, "describe", lambda target: target.title)
     frame.on_send_reply_to()
-    # New chats of other providers may follow (#378); the Copilot chat isn't offered.
-    assert "Claude target" in offered and "Copilot target" not in offered
+    # New chats of each provider may follow (#378).
+    assert offered[:2] == ["Copilot target", "Claude target"]
 
 
 def test_the_messages_list_keeps_its_name_while_you_are_in_it(frame, monkeypatch):
@@ -12503,24 +13106,84 @@ def test_a_chat_that_becomes_yours_is_named_so_even_while_in_the_list(frame, mon
 
 
 def test_stop_says_when_copilot_has_already_answered(frame, env, monkeypatch):
-    from thechatplace.providers.copilot_runtime import CopilotChatState
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
     frame.store.add(OwnSession("cp-chk", "Checking Copilot", "C:/w", provider="copilot", started=True))
     info = SessionInfo(OWN, "copilot:cp-chk", "Checking Copilot", "C:/w", "cp-chk", provider="copilot")
     calls = []
-    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a: calls.append(a))
+
+    def owned_action(action, record, *args):
+        calls.append(action)
+        return Stopped((), cancelled=False, answered=True)
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame._codex_states[info.key] = CopilotChatState("cp-chk", "working", "1", "inProgress", checking=True)
     frame._stop_codex_owned(info)
-    assert calls == [] and "already answered" in env["feedback"][-1]
+    # Neutral: the prompt also returns for a cancel, a refusal or Copilot
+    # ending, and only the checks after it say which (Kelly, #386).
+    assert pump(lambda: calls == ["stop"] and any(
+        t == "Checking Copilot: The Chat Place is checking how Copilot's turn ended, so there's nothing to stop."
+        for t in env["feedback"]))
+    frame._codex_states.clear()
+
+
+def test_stop_doesnt_say_answered_when_copilot_has_gone(frame, env, monkeypatch):
+    """The independent review of the #372 follow-ups: nothing cancelled
+    isn't the same as answered. Copilot's process may have gone mid-turn, or
+    the turn ended since the window last heard."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-gone", "Gone Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-gone", "Gone Copilot", "C:/w", "cp-gone", provider="copilot")
+    frame._codex_states[info.key] = CopilotChatState("cp-gone", "working", "1", "inProgress")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda action, record, *args: Stopped())
+    frame._stop_codex_owned(info)
+    assert pump(lambda: any("isn't answering, so there's nothing to stop" in t for t in env["feedback"]))
+    assert not any("answered" in t or "checking how" in t or "within 15 seconds" in t
+                   for t in env["feedback"])
+    # With a message back, something did happen: not "nothing to stop" (#386).
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda action, record, *args: Stopped(("Two",)))
+    frame.reply_text.SetValue("")
+    frame._stop_codex_owned(info)
+    assert pump(lambda: frame.reply_text.GetValue() == "Two" and env["feedback"][-1] == (
+        "Gone Copilot: Copilot isn't answering. 1 waiting message is back in the message box, unsent."))
+    frame._codex_states.clear()
+
+
+def test_stop_is_worded_from_what_the_runtime_saw_not_the_windows_state(frame, env, monkeypatch):
+    """Kelly's review of #372: the window's state can say Copilot has
+    answered when the next waiting message has already started. Stop then
+    cancels it, and says so, with the 15-second warning."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-race", "Racing Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-race", "Racing Copilot", "C:/w", "cp-race", provider="copilot")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    # Stale: "One" was being checked with "Two" and "Three" waiting, but
+    # "Two" has started since; the runtime cancels it and returns "Three".
+    frame._codex_states[info.key] = CopilotChatState("cp-race", "working", "1", "inProgress",
+                                                     checking=True, queued=("Two", "Three"))
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: Stopped(("Three",), cancelled=True))
+    frame.reply_text.SetValue("")
+    frame._stop_codex_owned(info)
+    assert pump(lambda: frame.reply_text.GetValue() == "Three")
+    assert pump(lambda: any("within 15 seconds" in t and "1 waiting message is back" in t
+                            for t in env["feedback"]))
+    assert not any("already answered" in t for t in env["feedback"])
     frame._codex_states.clear()
 
 
 
 def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatch):
-    """Kelly's review of #372: "nothing to stop" only when nothing waits;
-    otherwise Stop goes to the runtime, which gives the message back."""
-    from thechatplace.providers.copilot_runtime import CopilotChatState
+    """Kelly's review of #372: Stop goes to the runtime, which gives the
+    waiting message back; "nothing to stop" only when nothing came back."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
     frame.store.add(OwnSession("cp-q", "Queued Copilot", "C:/w", provider="copilot", started=True))
@@ -12533,11 +13196,272 @@ def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatc
 
     def owned_action(action, record, *args):
         calls.append(action)
-        return ("Two",) if action == "stop" else None
+        return Stopped(("Two",), cancelled=False, answered=True) if action == "stop" else None
     monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame.reply_text.SetValue("")
     frame._stop_codex_owned(info)
     assert pump(lambda: calls == ["stop"] and frame.reply_text.GetValue() == "Two")
-    assert pump(lambda: any("already answered" in t and "back in the message box" in t
-                            for t in env["feedback"]))
+    assert pump(lambda: any(t == "Queued Copilot: The Chat Place is checking how Copilot's turn ended. "
+                            "1 waiting message is back in the message box, unsent." for t in env["feedback"]))
     frame._codex_states.clear()
+
+
+def test_a_steer_never_taken_in_comes_back_when_the_turn_ends(frame, env, fake_runner):
+    # #238: Stop (or the turn ending) before Claude took it in.
+    runner = _start_steering(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    frame.reply_text.SetValue("half typed")
+    frame.on_stop()
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("failed", text="Stopped.", is_error=True))
+    assert frame.reply_text.GetValue() == "Also update the README\n\nhalf typed"
+    assert any("steered message for Hub probe wasn't taken in" in text
+               for text in env["feedback"])
+
+
+def test_a_late_steer_says_the_reply_it_follows(frame, env, fake_runner):
+    _start_steering(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="And the docs", data={"late": True, "reply": "Fixed."}))
+    assert env["feedback"][-1] == ("Hub probe replied. Fixed. Hub probe had finished, "
+                                   "and is answering your message now.")
+
+
+def test_steer_on_a_queued_message_after_the_turn_ended_says_so(frame, env, fake_runner):
+    _start_steering(frame, fake_runner)
+    frame.reply_text.SetValue("second")
+    frame.on_send()
+    frame._runners.pop("own-1")
+    frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
+    frame.steer_queued()
+    assert env["feedback"][-1] == "The turn has ended: the queued message goes next."
+    assert frame._queued == {"own-1": ["second"]}
+
+
+def test_a_steered_message_is_a_row_until_the_chat_has_it(frame, env, fake_runner):
+    # Readable once sent, like a queued message (#238).
+    from thechatplace.transcript import USER, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
+    assert last == "Steering, waiting for Claude: Also update the README"
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="Also update the README", data={"late": False}))
+    last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
+    assert last == "Steering, taken in by Claude: Also update the README"
+    # Read with its new status, not the old one (the spoken name is cached).
+    row = frame.chat_list.GetCount() - 1
+    if frame.speech.full_messages_in_list:
+        assert frame._message_item_text(row).startswith("Steering, taken in by Claude:")
+    # The transcript now has it: the row goes, so it isn't there twice.
+    frame._chat_loaded = True
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "Also update the README")]
+    assert frame._drop_steers_in_history()
+    frame._rebuild_chat_list()
+    assert not [frame.chat_list.GetString(i) for i in range(frame.chat_list.GetCount())
+                if frame.chat_list.GetString(i).startswith("Steering")]
+    assert frame._steered == {}
+
+
+def test_steering_rows_go_when_the_turn_ends(frame, env, fake_runner):
+    runner = _start_steering(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    assert frame._steered.get("own-1")  # it really was steered
+    runner.steered = []  # taken in, as far as the runner knows
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert frame._steered == {}
+
+
+def test_two_steers_saying_the_same_go_one_at_a_time(frame, env, fake_runner):
+    from thechatplace.transcript import USER, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame._chat_loaded = True
+    for _ in range(2):
+        frame.reply_text.SetValue("yes")
+        frame.on_steer()
+    # Each taken-in moves on the one still waiting, not the same one twice.
+    for _ in range(2):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+            "steer_taken", text="yes", data={"late": False}))
+    assert [e[1] for e in frame._steered["own-1"]] == ["taken in by Claude"] * 2
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "yes")]
+    frame._drop_steers_in_history()
+    assert len(frame._steered["own-1"]) == 1
+
+
+def test_a_steer_waiting_isnt_taken_for_an_earlier_message_saying_the_same(frame, env,
+                                                                         fake_runner):
+    from thechatplace.transcript import USER, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame._chat_loaded = True
+    frame.reply_text.SetValue("yes")
+    frame.on_steer()
+    assert frame._steered.get("own-1")  # it really was steered
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "yes")]
+    assert not frame._drop_steers_in_history()  # not taken in yet
+
+
+def test_another_chats_steer_news_leaves_this_list_alone(frame, env, fake_runner,
+                                                       monkeypatch):
+    _start_steering(frame, fake_runner)
+    calls = []
+    monkeypatch.setattr(frame, "_rebuild_chat_list", lambda *a, **k: calls.append(a))
+    frame._steer_row("other-chat", "Also the docs", "waiting for Claude")
+    frame._steer_status("other-chat", "Also the docs", "taken in by Claude")
+    frame._steers_ended("other-chat")
+    assert calls == []
+
+
+def test_a_steering_row_keeps_new_messages_inserted_above_it(frame, env, fake_runner,
+                                                              monkeypatch):
+    # A tail row like a queued one: the list isn't reset under the reader.
+    from thechatplace.transcript import ASSISTANT, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    calls = []
+    monkeypatch.setattr(frame.chat_list, "Set", lambda lines: calls.append(lines))
+    frame._chat_messages = frame._chat_messages + [ChatMessage(ASSISTANT, "Working on it.",
+                                                               key="new-1")]
+    frame._rebuild_chat_list()
+    assert calls == []
+    last = frame.chat_list.GetString(frame.chat_list.GetCount() - 1)
+    assert last.startswith("Steering, waiting for Claude:")
+
+
+def test_a_steer_already_in_the_history_goes_when_its_news_comes(frame, env, fake_runner):
+    # The transcript was read before steer_taken arrived: no second copy.
+    from thechatplace.transcript import USER, ChatMessage
+    _start_steering(frame, fake_runner)
+    frame._chat_loaded = True
+    frame.reply_text.SetValue("Also update the README")
+    frame.on_steer()
+    assert frame._steered.get("own-1")  # it really was steered
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "Also update the README")]
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "steer_taken", text="Also update the README", data={"late": False}))
+    assert frame._steered == {}
+
+
+def test_a_codex_steer_accepted_then_stopped_comes_back_if_the_history_lacks_it(frame, env):
+    # Codex can accept a steer and be interrupted before using it (#410).
+    import dataclasses
+    from thechatplace.transcript import USER, ChatMessage
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._open = info
+    frame._chat_loaded = True
+    frame._history_known = True
+    frame._restore_codex_text = lambda key, texts: restored.extend(texts)
+    restored = []
+    frame._steer_row(info.key, "Also the docs", "waiting for Codex")
+    frame._steer_status(info.key, "Also the docs", "accepted by Codex")
+    frame._refresh_chat = lambda: None
+    frame._steers_turn_over(info.key)
+    assert not frame._drop_steers_in_history()  # no history read since: it stays
+    frame._history_reads += 1  # read after the turn ended, and it isn't there
+    assert frame._drop_steers_in_history()
+    assert restored == ["Also the docs"] and info.key not in frame._steered
+    assert "back in the reply box" in env["feedback"][-1]
+    # Had the history had it, it would simply go.
+    frame._steer_row(info.key, "And the tests", "accepted by Codex")
+    frame._steers_turn_over(info.key)
+    frame._chat_messages = frame._chat_messages + [ChatMessage(USER, "And the tests")]
+    frame._history_reads += 1
+    assert frame._drop_steers_in_history()
+    assert restored == ["Also the docs"]
+
+
+def test_an_unchanged_history_read_still_settles_an_ended_steer(frame, env, monkeypatch):
+    # The read after Stop often finds nothing new: it must still count.
+    import dataclasses
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._open = info
+    frame._chat_loaded = True
+    frame._history_known = True
+    restored = []
+    frame._restore_codex_text = lambda key, texts: restored.extend(texts)
+    frame._refresh_chat = lambda: None
+    frame._steer_row(info.key, "Also the docs", "accepted by Codex")
+    frame._steers_turn_over(info.key)
+    frame._apply_chat(frame._open_generation, False, list(frame._chat_messages), 0, None)
+    assert restored == ["Also the docs"]
+
+
+def test_steer_waits_for_the_chat_to_load(frame, env, fake_runner):
+    runner = _start_steering(frame, fake_runner)
+    frame._history_known = False
+    frame._chat_loaded = False
+    frame.reply_text.SetValue("Also the docs")
+    frame.on_steer()
+    assert frame.reply_text.GetValue() == "Also the docs"
+    assert not getattr(runner, "steered", None)
+    assert env["feedback"][-1] == "This chat is still loading. Steer again in a moment."
+
+
+def test_several_stopped_codex_steers_come_back_together(frame, env):
+    import dataclasses
+    settle(frame)
+    owned = next(s for s in frame._snapshot.sessions if s.is_own)
+    info = dataclasses.replace(owned, provider="codex", key=f"codex:{owned.cli_session_id}")
+    frame._open = info
+    frame._chat_loaded = True
+    frame._history_known = True
+    restored = []
+    frame._restore_codex_text = lambda key, texts: restored.extend(texts)
+    frame._refresh_chat = lambda: None
+    for text in ("Also the docs", "And the tests"):
+        frame._steer_row(info.key, text, "accepted by Codex")
+    frame._steers_turn_over(info.key)
+    frame._history_reads += 1
+    assert frame._drop_steers_in_history()
+    assert restored == ["Also the docs", "And the tests"]
+    assert "accepted 2 steered messages" in env["feedback"][-1]
+
+
+def test_steer_with_no_turn_running_sends_even_before_the_history_is_read(frame, env,
+                                                                          fake_runner):
+    # Never "still loading" instead of a plain Send (a chat that never loads).
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame._history_known = False
+    frame.reply_text.SetValue("hello")
+    frame.on_steer()
+    assert len(fake_runner.instances) == 1 and fake_runner.instances[0].prompt == "hello"
+
+
+def test_steer_is_allowed_once_the_history_is_read(frame, env, fake_runner):
+    from records import user_text
+    add_transcript(env, "C:\\G\\Scratch", "own-1", [user_text("Earlier message")])
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    assert pump(lambda: frame._history_known)
+    frame.reply_text.SetValue("first")
+    frame.on_send()
+    runner = fake_runner.instances[-1]
+    frame.reply_text.SetValue("Also the docs")
+    frame.on_steer()
+    assert runner.steered == ["Also the docs"]
+
+
+def test_a_chat_whose_history_cant_be_read_says_so_rather_than_loading(frame, env,
+                                                                     fake_runner):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    # Hub probe has no transcript: "No transcript found", loaded but unread.
+    assert pump(lambda: frame._chat_loaded)
+    assert not frame._history_known
+    frame.reply_text.SetValue("first")
+    frame.on_send()
+    runner = fake_runner.instances[-1]
+    frame.reply_text.SetValue("Also the docs")
+    frame.on_steer()
+    assert "history couldn't be read" in env["feedback"][-1]
+    assert frame.reply_text.GetValue() == "Also the docs"
+    assert not getattr(runner, "steered", None)

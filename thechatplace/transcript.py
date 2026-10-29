@@ -64,8 +64,12 @@ PEER = "peer"
 #: Not from the transcript: a message of yours waiting for the turn to end
 #: (#50), shown at the end of the messages list.
 QUEUED = "queued"
+#: Not from the transcript either: a message you steered into the running
+#: turn (#238, #239), shown at the end of the messages list until the chat's
+#: own history has it. ``ChatMessage.sender`` says where it is.
+STEERING = "steering"
 PERMISSION_NOTICE = "permission_notice"
-TAIL_KINDS = frozenset({QUEUED, PERMISSION_NOTICE})
+TAIL_KINDS = frozenset({QUEUED, STEERING, PERMISSION_NOTICE})
 TOOL_RESULT = "tool_result"
 CONTEXT = "context"
 EVENT = "event"
@@ -89,6 +93,7 @@ LABELS = {
     TOOL: "Tool",
     PEER: "From another session",
     QUEUED: "Queued",
+    STEERING: "Steering",
     PERMISSION_NOTICE: "The Chat Place",
     TOOL_RESULT: "Tool result",
     CONTEXT: "Context",
@@ -133,6 +138,8 @@ class ChatMessage:
     def label(self) -> str:
         if self.kind == PEER and self.sender:
             return f"From {self.sender}"
+        if self.kind == STEERING and self.sender:
+            return f"Steering, {self.sender}"
         if self.kind == USER and self.sender:
             # In an agent conversation (#248): who your words went to.
             return f"You, to {self.sender}"
@@ -226,6 +233,10 @@ class Transcript:
 # ---------------------------------------------------------------------------
 
 _HARNESS_TAG = re.compile(r"^\s*<([A-Za-z][A-Za-z0-9_-]*)>")
+#: Messages Claude Code itself puts in a session's queue, never yours. Named,
+#: so words of yours that start with some other tag still show.
+_TAGGED_HARNESS = re.compile(
+    r"^\s*<(agent-message|cross-session-message|task-notification|teammate-message)[\s>]")
 _SYSTEM_REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
 _ANY_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9_-]*>")
 _INTERRUPT = re.compile(r"^\[Request interrupted by user[^\]]*\]", re.IGNORECASE)
@@ -393,12 +404,27 @@ class TranscriptParser:
         return added
 
     def _attachment(self, record: dict) -> List[ChatMessage]:
-        """Only one kind of attachment is conversation: a message from another
-        session that arrived while Claude was working (#123)."""
+        """Two kinds of attachment are conversation: a message from another
+        session that arrived while Claude was working (#123), and your own
+        message taken in while Claude was working, which Claude Code records
+        this way rather than as a user record (a steer, #238; checked with
+        Claude Code 2.1.296, queue-operation reason absorbed_mid_turn)."""
         attachment = record.get("attachment")
         if not isinstance(attachment, dict) or attachment.get("type") != "queued_command":
             return []
         origin = attachment.get("origin")
+        if origin is None:
+            prompt = attachment.get("prompt")
+            if (attachment.get("commandMode") != "prompt" or not isinstance(prompt, str)
+                    or not prompt.strip() or _TAGGED_HARNESS.match(prompt)):
+                # A harness message with attributes (<agent-message from=…>,
+                # say) is never yours; a bare <ci-monitor-event> becomes an
+                # Event in _user_text.
+                return []
+            # Part of the turn it joined, not a turn of its own: Changes and
+            # the task list for that turn still cover all its work. First in
+            # what's readable (after compaction, say), it starts turn 1.
+            return self._user_text(prompt, record, new_turn=self.transcript.turns == 0)
         if not isinstance(origin, dict) or origin.get("kind") != "peer":
             return []
         # A subagent's report coming back to its session has the same shape
@@ -429,7 +455,7 @@ class TranscriptParser:
         item.sender = " ".join(sender.split()) or "another session"
         return [item]
 
-    def _user_text(self, text: str, record: dict) -> List[ChatMessage]:
+    def _user_text(self, text: str, record: dict, new_turn: bool = True) -> List[ChatMessage]:
         peer = _cross_session(text)
         if peer is not None:
             # Another session's message started this turn. It counts as a
@@ -458,7 +484,8 @@ class TranscriptParser:
             return []
         if _INTERRUPT.match(text):
             return [self._add(INTERRUPTED, "You stopped Claude.", record)]
-        self.transcript.turns += 1
+        if new_turn:
+            self.transcript.turns += 1
         return [self._add(USER, text, record)]
 
     def _tool_result(self, block: dict, record: dict) -> ChatMessage:

@@ -19,7 +19,8 @@ from .codeblocks import find_code_blocks
 from .export import message_moment
 from .message_links import find_links
 from .sessions import STATUS_UNAVAILABLE, WORKING, NEEDS_YOU, SessionInfo, how_long_ago, state_with_detail
-from .transcript import ASSISTANT, PERMISSION_NOTICE, QUEUED, TAIL_KINDS, TOOL, USER, ChatMessage, Transcript
+from .transcript import (ASSISTANT, PERMISSION_NOTICE, QUEUED, STEERING, TAIL_KINDS, TOOL, USER,
+                         ChatMessage, Transcript)
 from . import tasklist, usage
 from .ui_text import codex_effort_label
 
@@ -130,7 +131,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"Links: {len(find_links(conversation)):,}")
         blocks = sum(len(find_code_blocks(m.text)) for m in conversation)
         lines.append(f"Code blocks: {blocks:,}")
-        if info.provider == "claude":
+        if info.provider in ("claude", "copilot"):  # the providers whose logs say (#352)
             lines.append(f"Files changed: {len(by_file(transcript.edits)):,}")
         if transcript.tasks:
             # Progress as last reported by the provider (#231, #318).
@@ -182,7 +183,7 @@ def message_properties(message: ChatMessage, position: int, total: int,
     """A message's properties; ``position`` counts from 1 in the messages
     list as shown, of ``total``."""
     text = message.text or ""
-    lines = [f"From: {message.label}"]
+    lines = [f"From: {'You' if message.kind == STEERING else message.label}"]
     moment = message_moment(message.timestamp)
     if moment is not None:
         now = now or datetime.now(moment.tzinfo)
@@ -198,6 +199,8 @@ def message_properties(message: ChatMessage, position: int, total: int,
     lines.append(f"Code blocks: {len(find_code_blocks(text)):,}")
     if message.kind == QUEUED:
         lines.append("Queued: yes, sent when Claude's turn ends")
+    elif message.kind == STEERING:
+        lines.append(f"Steered into the running turn: {message.sender or 'yes'}")
     elif message.kind == PERMISSION_NOTICE:
         lines.append("Allowed by The Chat Place, for a rule kept with this chat")
     elif message.key:  # a queued row's key is the app's own, not Claude Code's

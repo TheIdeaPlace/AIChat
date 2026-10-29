@@ -16,7 +16,8 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
   curmode     mid-turn, reports (current_mode_update) a switch to autopilot
   byok2       the first turn is billed to Copilot, later ones to another provider
   edit        each prompt asks to create a file, shaped like Copilot 1.0.103's
-              real request (rawInput.fileName and rawInput.diff)
+              real request (rawInput.fileName and rawInput.diff); allowed, the
+              log gets the tool's fileEdits, as Copilot logs them
   editcontent the same, with the diff in ACP's toolCall.content instead
   clientreq   each prompt first asks the client to read a file and to make a
               terminal, then answers; FAKE_COPILOT_LOG gets the replies
@@ -39,6 +40,13 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
               in use elsewhere, at once
   inuselater  the same, logged when the first prompt after session/load
               arrives (as 1.0.103 logs every session.resume)
+  signedout   never signed in: session/new, session/load and prompts all fail with
+              ACP's -32000 "Authentication required", as on a clean machine (#391)
+  expired     chats open, but each prompt is logged, then fails a second later
+              with -32000, as when a sign-in stops working mid-chat
+  strict      as hang, but a session/cancel that arrives while no prompt is
+              running is ignored, as real Copilot ignores one that comes
+              before the prompt it was meant for
 
 Every prompt logs a user.message first, as Copilot does.
 
@@ -69,6 +77,7 @@ resume_pending = {}
 turns = [0]
 client = ["github/acp"]  # what Copilot records unless clientInfo names one
 cancelled = threading.Event()
+prompting = threading.Event()  # strict: set as a prompt is read, before its thread
 
 
 def send(message):
@@ -143,6 +152,11 @@ def prompt(message_id, session, text=""):
     if session in resume_pending:
         log_event(session, "session.resume", {"alreadyInUse": resume_pending.pop(session)})
     log_event(session, "user.message", {"content": "synthetic"})
+    if MODE == "expired":
+        time.sleep(1.0)  # long enough for a second message to be queued
+        send({"jsonrpc": "2.0", "id": message_id,
+              "error": {"code": -32000, "message": "Authentication required"}})
+        return
     if MODE == "twousers":
         log_event(session, "user.message", {"content": "from elsewhere"})
     if MODE == "hookran":
@@ -158,6 +172,10 @@ def prompt(message_id, session, text=""):
             call["content"] = [{"type": "diff", "path": "C:/synthetic/a.txt",
                                 "oldText": "", "newText": "hello"}]
         chosen = ask(session, call)
+        if chosen == "allow_once":
+            log_event(session, "tool.execution_complete", {
+                "toolCallId": "call-e", "success": True,
+                "fileEdits": [{"path": "C:/synthetic/a.txt", "kind": "create"}]})
         update(session, {"sessionUpdate": "agent_message_chunk", "content": {
             "type": "text", "text": "Written" if chosen == "allow_once" else "Not written"}})
         log_usage(session)
@@ -201,10 +219,15 @@ def prompt(message_id, session, text=""):
             {"type": "select", "id": "mode", "currentValue": AGENT},
             {"type": "select", "id": "allow_all", "currentValue": "off"}]})
         time.sleep(2.0)  # long enough for a third message to be queued
-    if MODE == "hang" or (MODE == "byokhang" and turns[0] == 1):
+    if MODE in ("hang", "strict") or (MODE == "byokhang" and turns[0] == 1):
         update(session, {"sessionUpdate": "agent_message_chunk",
                          "content": {"type": "text", "text": "Working"}})
         cancelled.wait(30)
+        if MODE == "strict":
+            # Before the answer: the next prompt is read only after it, so a
+            # cancel for that one starts from nothing, as for the first.
+            prompting.clear()
+            cancelled.clear()
         send({"jsonrpc": "2.0", "id": message_id, "result": {"stopReason": "cancelled"}})
         return
     if MODE == "ask":
@@ -265,6 +288,9 @@ def main():
             send({"jsonrpc": "2.0", "id": message_id, "result": {
                 "protocolVersion": 1, "agentCapabilities": {"loadSession": True},
                 "agentInfo": {"name": name, "version": "0.0.0-synthetic"}}})
+        elif MODE == "signedout" and method in ("session/new", "session/load", "session/prompt"):
+            send({"jsonrpc": "2.0", "id": message_id,
+                  "error": {"code": -32000, "message": "Authentication required"}})
         elif method == "session/new":
             if MODE == "mute":
                 continue
@@ -297,13 +323,14 @@ def main():
             send({"jsonrpc": "2.0", "id": message_id, "result": {"configOptions": options()}})
         elif method == "session/prompt":
             text = ((params.get("prompt") or [{}])[0] or {}).get("text", "")
+            prompting.set()  # here, not in the thread: a cancel read next sees it
             threading.Thread(target=prompt, args=(message_id, params.get("sessionId"), text),
                              daemon=True).start()
         elif method == "session/close":
             open_sessions.discard(params.get("sessionId"))
             send({"jsonrpc": "2.0", "id": message_id, "result": {}})
         elif method == "session/cancel":
-            if MODE != "deaf":
+            if MODE != "deaf" and (MODE != "strict" or prompting.is_set()):
                 cancelled.set()
         elif message_id is not None:
             send({"jsonrpc": "2.0", "id": message_id, "error": {"code": -32601, "message": "no"}})

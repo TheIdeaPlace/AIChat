@@ -1,4 +1,4 @@
-"""What Claude changed in files (#18), from the transcript alone.
+"""What the providers changed in files, from their recorded changes alone.
 
 Claude Code records each Edit, MultiEdit and Write it makes, and the result
 it sends back carries the change as a patch ("structuredPatch": hunks of
@@ -10,36 +10,31 @@ from __future__ import annotations
 
 import difflib
 import os
+import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+
+# Shared with GHManage through app-kit (#174): the hunks, and how their lines
+# are marked when read.
+from theideaplace_appkit import difftext
+from theideaplace_appkit.difftext import Hunk
 
 #: The tools that change files.
 EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write"})
 
 
 @dataclass
-class Hunk:
-    old_start: int  # 1-based; 0 when not known
-    new_start: int
-    lines: List[str]  # each starting " ", "-" or "+"
-
-    @property
-    def added(self) -> int:
-        return sum(1 for line in self.lines if line.startswith("+"))
-
-    @property
-    def removed(self) -> int:
-        return sum(1 for line in self.lines if line.startswith("-"))
-
-
-@dataclass
 class FileEdit:
-    """One successful Edit, MultiEdit or Write."""
+    """One successful Edit, MultiEdit or Write (or a provider's equivalent)."""
     path: str
     tool: str
     turn: int  # which of your messages it answered: 1 for the first
     hunks: List[Hunk] = field(default_factory=list)
     created: bool = False
+    #: The file was deleted (Codex and Copilot can; Claude's edit tools can't).
+    deleted: bool = False
+    #: The old path when a provider renamed the file.
+    moved_from: str = ""
 
     @property
     def added(self) -> int:
@@ -68,16 +63,24 @@ class FileChanges:
     def created(self) -> bool:
         return bool(self.edits) and self.edits[0].created
 
+    @property
+    def deleted(self) -> bool:
+        return bool(self.edits) and self.edits[-1].deleted
+
     def counts(self) -> str:
-        """"40 lines added, 12 removed", "created, 10 lines"."""
+        """"40 lines added, 12 removed", "created, 10 lines", "deleted", "renamed"."""
+        if self.deleted:
+            # Its lines are gone, so how many were added or removed first
+            # says little; created here and deleted again says what happened.
+            return "created, then deleted" if self.created else "deleted"
         if self.created:
             lines = self.added - self.removed
             return f"created, {lines} line{'s' if lines != 1 else ''}"
-        parts = []
+        parts = ["renamed"] if any(e.moved_from for e in self.edits) else []
         if self.added:
             parts.append(f"{self.added} line{'s' if self.added != 1 else ''} added")
         if self.removed:
-            word = "removed" if parts else \
+            word = "removed" if self.added else \
                 f"line{'s' if self.removed != 1 else ''} removed"
             parts.append(f"{self.removed} {word}")
         return ", ".join(parts) or "no lines changed"
@@ -120,6 +123,53 @@ def edit_from_tool(name: str, tool_input: dict, result, turn: int) -> Optional[F
     return edit
 
 
+_HUNK = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def parse_unified_diff(text: str) -> List[Hunk]:
+    """Single-file hunks, including Codex's pathless diffs.
+
+    The shared parser uses header counts to keep stripped blank context
+    lines while ignoring blank separators between or after hunks.
+    """
+    return difftext.parse_unified(text)
+
+
+def _diff_path(header: str) -> str:
+    """"--- a/C:/x/y.txt" -> "C:/x/y.txt"; "" for /dev/null, which Copilot
+    writes with the prefix too ("+++ b/dev/null")."""
+    path = header[4:].strip()
+    if path.startswith(("a/", "b/")):
+        path = path[2:]
+    return "" if path in ("/dev/null", "dev/null") else path
+
+
+def parse_git_diff(text: str) -> List[Tuple[str, List[Hunk]]]:
+    """Each file's path and hunks, from a git-style unified diff with one
+    section per file ("diff --git", "---", "+++", "@@ -1,4 +1,5 @@"). The
+    path is the new one, or the old one for a file deleted ("+++ /dev/null").
+    Lines that aren't part of a hunk are skipped, never guessed at."""
+    files: List[Tuple[str, List[Hunk]]] = []
+    old = new = ""
+    hunks: Optional[List[Hunk]] = None
+    for line in (text or "").replace("\r\n", "\n").split("\n"):
+        if line.startswith("diff --git "):
+            hunks, old, new = None, "", ""
+        elif line.startswith("--- ") and hunks is None:
+            old = _diff_path(line)
+        elif line.startswith("+++ ") and hunks is None:
+            new = _diff_path(line)
+            hunks = []
+            files.append((new or old, hunks))
+        elif hunks is not None and line.startswith("@@"):
+            match = _HUNK.match(line)
+            hunks.append(Hunk(int(match.group(1)) if match else 0,
+                              int(match.group(2)) if match else 0, []))
+        elif hunks and line[:1] in (" ", "+", "-", "\\"):
+            hunks[-1].lines.append(line)
+    return [(path, found) for path, found in files if path]
+
+
 def by_file(edits: List[FileEdit]) -> List[FileChanges]:
     """The edits grouped by file, files in the order first changed."""
     files: Dict[str, FileChanges] = {}
@@ -143,44 +193,24 @@ def summary_text(edits: List[FileEdit], limit: int = 5) -> str:
     return f"Changed {count} file{'s' if count != 1 else ''}: {'; '.join(parts)}{more}."
 
 
-def file_text(changes: FileChanges) -> str:
-    """One file's changes, to read by line: where each change is, then
-    "Removed:", "Added:" and "Unchanged:" lines."""
+def file_text(changes: FileChanges, style: str = difftext.DEFAULT) -> str:
+    """One file's changes, to read by line: where each change is, then its
+    lines, each marked in ``style`` (a ``difftext.STYLES`` value; the
+    default reads "Removed:", "Added:" and "Unchanged:")."""
     out: List[str] = [f"{changes.path}: {changes.counts()}."]
     for edit in changes.edits:
-        for hunk in edit.hunks:
-            out.append("")
-            out.append(_where(hunk))
-            for line in hunk.lines:
-                mark, text = line[:1], line[1:]
-                if mark == "\\":  # "\ No newline at end of file", about the line before
-                    out.append(f"Note: {text.strip()}")
-                    continue
-                word = {"+": "Added", "-": "Removed"}.get(mark, "Unchanged")
-                out.append(f"{word}: {text}" if text.strip() else f"{word}: blank line")
+        if edit.moved_from:
+            out.append(f"Renamed from: {edit.moved_from}")
+        out.extend(difftext.render(edit.hunks, style))
     return "\n".join(out)
-
-
-def _where(hunk: Hunk) -> str:
-    if not hunk.new_start:
-        return "A change:"
-    end = hunk.new_start + max(hunk.added + sum(1 for line in hunk.lines
-                                                  if line.startswith(" ")) - 1, 0)
-    if end <= hunk.new_start:
-        return f"At line {hunk.new_start}:"
-    return f"Lines {hunk.new_start} to {end}:"
 
 
 def _diff(old: str, new: str) -> List[Hunk]:
     """Hunks from two texts whose place in the file isn't known."""
-    lines = [line for line in difflib.unified_diff(_lines(old), _lines(new), lineterm="", n=1)
-             if not line.startswith(("---", "+++"))]
-    hunks: List[Hunk] = []
-    for line in lines:
-        if line.startswith("@@"):
-            hunks.append(Hunk(0, 0, []))
-        elif hunks:
-            hunks[-1].lines.append(line)
+    text = "\n".join(difflib.unified_diff(_lines(old), _lines(new), lineterm="", n=1))
+    hunks = difftext.parse_unified(text)
+    for hunk in hunks:
+        hunk.old_start = hunk.new_start = 0  # the lines of a fragment, not of the file
     return hunks
 
 

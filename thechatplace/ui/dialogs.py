@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import wx
+from theideaplace_appkit import difftext
 
 from .. import chat_permissions, lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
@@ -868,10 +869,14 @@ class GitHubRepoDialog(wx.Dialog):
         _end_modal(self, wx.ID_CANCEL)
 
 
+#: The Changed Files styles whose marks a screen reader may not speak (#174).
+_SYMBOL_MARKS = (difftext.SYMBOLS, difftext.CHANGED)
+
+
 class SettingsDialog(wx.Dialog):
     """Announcements and speech (the Speech tab of IDT's settings, adapted)."""
 
-    def __init__(self, parent, speech: SpeechSettings, options, clear_recent=None):
+    def __init__(self, parent, speech: SpeechSettings, options, clear_recent=None, say=None):
         super().__init__(parent, title="Settings", size=dialog_size(parent, 680, 620))
         self._options = list(options)
         # Settings kept elsewhere (the session list's sort order) pass through.
@@ -930,7 +935,10 @@ class SettingsDialog(wx.Dialog):
             messages.Add(self.whole_in_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         outer.Add(messages, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        grid = wx.FlexGridSizer(rows=2, cols=2, vgap=8, hgap=8)
+        # The choices share one grid, and the rate's note sits beside it, not
+        # on a row of its own: that's the room the changed-lines choice (#174)
+        # takes, so Settings still fits a 768-high screen without scrolling.
+        grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
         grid.Add(wx.StaticText(body, label="Speech &engine:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.engine_choice = wx.Choice(body, choices=[o.label for o in self._options])
@@ -940,15 +948,16 @@ class SettingsDialog(wx.Dialog):
         self.rate_choice = wx.Choice(
             body, choices=[label.capitalize() for label in RATE_PRESET_LABELS])
         set_accessible_name(self.rate_choice, "Speaking rate")
-        grid.Add(self.rate_choice, 0)
-        outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-
+        rate_row = wx.BoxSizer(wx.HORIZONTAL)
+        rate_row.Add(self.rate_choice, 0)
         self.rate_note = wx.StaticText(body, label="")
-        outer.Add(self.rate_note, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        rate_row.Add(self.rate_note, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
+        grid.Add(rate_row, 0)
 
         # Why the last announcement wasn't spoken, while that's still so
         # (#98): a read-only box, so Tab reaches it and a screen reader reads
-        # it, as static text under a disabled choice never is.
+        # it, as static text under a disabled choice never is. Under the
+        # speech choices it explains, in the grid's second column.
         from .. import speech as speech_module
         problem = speech_module.speaker.last_problem
         self.speech_problem = None
@@ -957,18 +966,35 @@ class SettingsDialog(wx.Dialog):
                 body, value=f"Last announcement {problem}.",
                 style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=dip(self, -1, 44))
             set_accessible_name(self.speech_problem, "Speech problem")
-            outer.Add(self.speech_problem, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+            grid.AddSpacer(0)
+            grid.Add(self.speech_problem, 0, wx.EXPAND)
 
-        notify_row = wx.BoxSizer(wx.HORIZONTAL)
-        notify_row.Add(wx.StaticText(body, label=NOTIFY_SETTING_LABEL), 0,
-                       wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        grid.Add(wx.StaticText(body, label=NOTIFY_SETTING_LABEL), 0, wx.ALIGN_CENTER_VERTICAL)
         self.notify_choice = wx.Choice(body, choices=[NOTIFY_LABELS[n] for n in NOTIFY_LEVELS])
         set_accessible_name(self.notify_choice, f"{NOTIFY_SETTING_NAME}, while The Chat Place "
                                                 "isn't the active window")
         self.notify_choice.SetSelection(NOTIFY_LEVELS.index(speech.notifications)
                                         if speech.notifications in NOTIFY_LEVELS else 0)
-        notify_row.Add(self.notify_choice, 0)
-        outer.Add(notify_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        grid.Add(self.notify_choice, 0)
+
+        # How Changed Files marks each line of a change (#174). Symbols can be
+        # silent at a screen reader's lower punctuation levels, so moving the
+        # choice onto one says so, spoken as it's chosen. Only someone using a
+        # screen reader needs that, and static text would never be read to
+        # them (#98), so there's no note on screen; nor is it in the choice's
+        # name, which on Windows comes from its label, not SetName.
+        grid.Add(wx.StaticText(body, label="Mark c&hanged lines with:"), 0,
+                 wx.ALIGN_CENTER_VERTICAL)
+        self.marks_choice = wx.Choice(body, choices=[difftext.LABELS[style]
+                                                     for style in difftext.STYLES])
+        set_accessible_name(self.marks_choice, "Mark changed lines with")
+        self.marks_choice.SetSelection(difftext.STYLES.index(speech.change_marks)
+                                       if speech.change_marks in difftext.STYLES else 0)
+        self._say = say
+        self._marks_symbols = self._marks_style() in _SYMBOL_MARKS
+        self.marks_choice.Bind(wx.EVT_CHOICE, lambda e: self._on_marks_choice())
+        grid.Add(self.marks_choice, 0)
+        outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
 
         # New Session's recent folders (#215): how many, and clearing them,
         # which is asked first and then done at once, not on OK: Cancel
@@ -1110,6 +1136,19 @@ class SettingsDialog(wx.Dialog):
             self.rate_note.SetLabel("This engine uses its default rate.")
         self.Layout()
 
+    def _marks_style(self) -> str:
+        index = self.marks_choice.GetSelection()
+        return difftext.STYLES[index] if 0 <= index < len(difftext.STYLES) \
+            else difftext.DEFAULT
+
+    def _on_marks_choice(self):
+        """Say the punctuation note once on moving from words to symbols,
+        not again between the two symbol styles."""
+        symbols = self._marks_style() in _SYMBOL_MARKS
+        if symbols and not self._marks_symbols and self._say is not None:
+            self._say(difftext.SYMBOLS_NOTE)
+        self._marks_symbols = symbols
+
     def _fit_scrolling(self, body, content):
         """As tall as the settings need, up to the screen; past that they
         scroll above OK and Cancel. As in QuestionDialog, the body's minimum
@@ -1162,6 +1201,7 @@ class SettingsDialog(wx.Dialog):
                                                     else self._copilot_choice),
                                    update_installed_notice=self.update_notice.GetValue(),
                                    agent_auto_mode=self.agent_auto.GetValue(),
+                                   change_marks=self._marks_style(),
                                    recent_folder_limit=self.recent_limit.GetValue())
 
 
@@ -1951,16 +1991,32 @@ class QuestionDialog(wx.Dialog):
     """Claude's questions (AskUserQuestion), one group per question: the
     options as radio buttons (check boxes when several may be chosen), each
     with its description, and Other with a text box. Send Answers is the
-    default button."""
+    default button.
 
-    def __init__(self, parent, session_title: str, request, provider="Claude"):
-        super().__init__(parent, title=f"{provider} asks: {session_title}", size=dialog_size(parent, 700, 560),
+    It opens on a read-only box, as a permission request does, with what
+    the chat wrote just before asking (``said``, often what the question is
+    about: a draft to approve) and each question in full, to read by line.
+    Options that carry a preview show it in a second read-only box as each
+    is reached (#415)."""
+
+    def __init__(self, parent, session_title: str, request, provider="Claude", said=None):
+        super().__init__(parent, title=f"{provider} asks: {session_title}", size=dialog_size(parent, 700, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._questions = request.questions()
         self._answer_key = "id" if provider == "Codex" else "question"
         self._controls = []  # per question: (kind, [controls], other text)
+        self._previews = {}  # option control -> its preview
+        self.preview_text = None
         outer = wx.BoxSizer(wx.VERTICAL)
-        panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
+        said = str(getattr(request, "said", "") or "") if said is None else str(said or "")
+        lines = [f"{question.get('header') or f'Question {number}'}: {question['question']}"
+                 for number, question in enumerate(self._questions, start=1)]
+        outer.Add(wx.StaticText(self, label="&Question:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        self.question_text = _read_only_text(
+            self, "\n\n".join(part for part in (said.strip(), "\n".join(lines)) if part),
+            "Question", min_height=120)
+        outer.Add(self.question_text, 0, wx.EXPAND | wx.ALL, 8)
+        panel = self.questions_panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
         panel.SetScrollRate(0, 20)
         sizer = wx.BoxSizer(wx.VERTICAL)
         first = None
@@ -1990,6 +2046,14 @@ class QuestionDialog(wx.Dialog):
                         control = wx.RadioButton(parent_window, label=text, style=style)
                         control.SetValue(False)
                     control._hub_label = label
+                    preview = option.get("preview")
+                    if isinstance(preview, str) and preview.strip():
+                        self._previews[control] = preview
+                    control.Bind(wx.EVT_SET_FOCUS, self._on_option_focus)
+                    # A choice made by the arrow keys too: on a Mac, focus
+                    # moved by move_in_radio_group may not send SET_FOCUS.
+                    control.Bind(wx.EVT_CHECKBOX if multi else wx.EVT_RADIOBUTTON,
+                                 self._on_option_focus)
                     controls.append(control)
                     box.Add(control, 0, wx.ALL, 4)
                     first = first or control
@@ -2001,6 +2065,7 @@ class QuestionDialog(wx.Dialog):
                                            style=0 if controls else wx.RB_GROUP)
                     other.SetValue(False)
                 other._hub_label = OTHER
+                other.Bind(wx.EVT_SET_FOCUS, self._on_option_focus)
                 controls.append(other)
                 box.Add(other, 0, wx.ALL, 4)
                 other_text = wx.TextCtrl(parent_window, style=wx.TE_PASSWORD if question.get("isSecret") else 0)
@@ -2018,6 +2083,13 @@ class QuestionDialog(wx.Dialog):
                 first = first or other
         panel.SetSizer(sizer)
         outer.Add(panel, 1, wx.EXPAND | wx.ALL, 4)
+        if self._previews:
+            # After the questions in Tab order, and only when an option has
+            # one: the preview of the option you're on (#415).
+            outer.Add(wx.StaticText(self, label="Pre&view:"), 0, wx.LEFT | wx.RIGHT, 8)
+            self.preview_text = _read_only_text(self, "", "Preview", min_height=120)
+            outer.Add(self.preview_text, 0, wx.EXPAND | wx.ALL, 8)
+            self._show_preview(first)
 
         row = wx.BoxSizer(wx.HORIZONTAL)
         send = wx.Button(self, wx.ID_OK, "&Send Answers")
@@ -2045,11 +2117,11 @@ class QuestionDialog(wx.Dialog):
         send.Bind(wx.EVT_BUTTON, self._on_send)
         decline.Bind(wx.EVT_BUTTON, self._on_decline)
         self._first = first
-        if first is not None:
-            # Set as the dialog starts, before it's shown: wx would otherwise
-            # give the focus to the last group first, and a screen reader
-            # would begin reading the wrong question.
-            self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
+        # Set as the dialog starts, before it's shown: wx would otherwise
+        # give the focus to the last group first, and a screen reader would
+        # begin reading the wrong question. It starts on the question's own
+        # text, as a permission request does (#415).
+        self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
         if wx.Platform == "__WXMAC__":
             # On a Mac the arrow keys did nothing in a group of radio buttons,
             # and Tab treats the group as one stop, so only the first option
@@ -2058,7 +2130,23 @@ class QuestionDialog(wx.Dialog):
 
     def _on_init_dialog(self, event):
         event.Skip()
-        self._first.SetFocus()
+        self.question_text.SetFocus()
+
+    def _on_option_focus(self, event):
+        event.Skip()
+        self._show_preview(event.GetEventObject())
+
+    def _show_preview(self, control):
+        """The preview box shows the preview of ``control``'s option, and is
+        named for it, so a screen reader says whose preview it is."""
+        if self.preview_text is None or control is None:
+            return
+        label = getattr(control, "_hub_label", "")
+        preview = self._previews.get(control)
+        self.preview_text.SetValue(preview if preview is not None
+                                   else f"{label} has no preview.")
+        self.preview_text.SetInsertionPoint(0)
+        set_accessible_name(self.preview_text, f"Preview of {label}")
 
     def _on_char_hook(self, event):
         step = RADIO_ARROW_STEPS.get(event.GetKeyCode())
@@ -3168,12 +3256,17 @@ class AgentConversationDialog(wx.Dialog):
     """File, New Agent Conversation (#248): what kind of conversation (a
     template fills in roles, permissions and who goes first, or your own);
     two chats, and an optional third, each an existing one of The Chat
-    Place's own or a new Claude or Codex chat, with a role each; how
+    Place's own or a new Claude, Codex or Copilot chat, with a role each; how
     hand-offs go; who answers first; and the opening message. Ctrl+Enter
     starts it from anywhere, as Send does in the reply box. ``result`` holds
     what was chosen once Start is pressed."""
 
-    NEW_LABELS = {"claude": "New Claude chat", "codex": "New Codex chat"}
+    NEW_LABELS = {"claude": "New Claude chat", "codex": "New Codex chat",
+                  "copilot": "New Copilot chat"}
+    #: A new Copilot chat has nothing to choose (#369): it always asks
+    #: before it acts, and the runtime makes sure it still does (#364). The
+    #: one choice says so where the others' permission would be.
+    COPILOT_MODES = (("ask", "Asks you before it changes files or runs commands"),)
     NO_THIRD = "No third agent"
     SLOT_NAMES = ("First agent", "Second agent", "Third agent")
     #: Each agent's labels, with access keys no other control here uses.
@@ -3190,14 +3283,14 @@ class AgentConversationDialog(wx.Dialog):
                          size=dialog_size(parent, 720, 760),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         from ..agents import MAX_TURN_LIMIT, TEMPLATES
-        from .permission_hosts import CODEX_MODES
+        from .permission_hosts import CODEX_REVIEW_MODES, CODEX_REVIEW_NOTE
         self.result = None
         self._templates = TEMPLATES
         self._existing = list(existing)
         self._new_kinds = list(new_kinds)
         self._auto_allowed = auto_allowed
         self._claude_modes = PERMISSION_MODES
-        self._codex_modes = CODEX_MODES
+        self._codex_modes = CODEX_REVIEW_MODES
         self._options = ([("new", kind) for kind in self._new_kinds]
                          + [("chat", info) for info in self._existing])
         labels = ([self.NEW_LABELS[kind] for kind in self._new_kinds]
@@ -3244,6 +3337,12 @@ class AgentConversationDialog(wx.Dialog):
             self.permissions.append(permission)
             self._permission_labels.append(permission_label)
             choice.Bind(wx.EVT_CHOICE, lambda e: self._sync())
+
+        self.codex_note_label = wx.StaticText(body, label="About Codex permissions:")
+        outer.Add(self.codex_note_label, 0, wx.LEFT | wx.TOP, 8)
+        self.codex_note = _read_only_text(body, CODEX_REVIEW_NOTE, "About Codex permissions",
+                                          min_height=110)
+        outer.Add(self.codex_note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
         self.folder_label = wx.StaticText(body, label="&Folder for new chats:")
         outer.Add(self.folder_label, 0, wx.LEFT | wx.TOP, 8)
@@ -3334,18 +3433,20 @@ class AgentConversationDialog(wx.Dialog):
             self.chats[slot].SetSelection(0)
 
     def _modes(self, provider):
-        return self._claude_modes if provider == "claude" else self._codex_modes
+        return (self._claude_modes if provider == "claude"
+                else self.COPILOT_MODES if provider == "copilot" else self._codex_modes)
 
     def _sync(self):
         """Each new chat's permission choice, the third agent's role, the
         folder, the turn limit and who can go first follow what's chosen."""
-        any_new = False
+        any_new = new_codex = False
         slots = self._slots()
         for slot in range(3):
             info, provider = self._pick(slot)
             used = slot < slots
             new = used and info is None and provider is not None
             any_new = any_new or new
+            new_codex = new_codex or (new and provider == "codex")
             permission = self.permissions[slot]
             if new:
                 labels = [label for _value, label in self._modes(provider)]
@@ -3360,6 +3461,8 @@ class AgentConversationDialog(wx.Dialog):
             if slot == 2:
                 self.roles[2].Show(used)
                 self._role_labels[2].Show(used)
+        self.codex_note_label.Show(new_codex)
+        self.codex_note.Show(new_codex)
         for control in (self.folder_label, self.folder, self.browse):
             control.Show(any_new)
         auto = self._auto_allowed and self.mode.GetSelection() == 1
@@ -3391,7 +3494,7 @@ class AgentConversationDialog(wx.Dialog):
         that agent; a third agent with a template is read-only, being given
         no part in it; otherwise the first choice, as in New Session."""
         template = self._template()
-        if template is None:
+        if template is None or provider == "copilot":
             return 0
         claude_mode, codex_sandbox = (template.permissions[slot]
                                       if slot < len(template.permissions)
@@ -3462,13 +3565,19 @@ class AgentConversationDialog(wx.Dialog):
         for slot in range(slots):
             info, provider = self._pick(slot)
             permission = ""
+            approval_policy, approvals_reviewer = "on-request", "user"
             if info is None:
                 index = max(self.permissions[slot].GetSelection(), 0)
                 value = self._modes(provider)[index][0]
-                permission = value if provider == "claude" else value[0]
+                if provider == "claude":
+                    permission = value
+                elif provider == "codex":
+                    permission, approval_policy, approvals_reviewer = value
             members.append(SimpleNamespace(info=info, provider=provider,
                                            role=" ".join(self.roles[slot].GetValue().split()),
-                                           permission=permission))
+                                           permission=permission,
+                                           approval_policy=approval_policy,
+                                           approvals_reviewer=approvals_reviewer))
         first = self.first.GetSelection()
         to_all = first == slots
         self.result = SimpleNamespace(

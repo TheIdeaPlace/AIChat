@@ -41,3 +41,60 @@ Validation on the reconciled code, including main's About You work (#371):
 The release-note conflict with #371 was resolved by retaining both entries.
 Generated documentation includes both changes. Other open Copilot work was not
 included or modified.
+
+Permission-change regression, verified with installed codex-cli 0.163.0:
+`thread/resume` on an already loaded thread returns its existing sandbox and
+reviewer, ignoring the requested overrides. An empty persistent thread cannot
+be resumed before its first turn has saved history, either. Permission changes
+now keep the owned thread loaded, verify the requested policy in an ephemeral
+thread without inference, and pin that policy on the owned chat's next
+`turn/start`. The ephemeral check never receives an executable ownership proof.
+The existing persistence barrier still prevents sends before the change is saved.
+
+Live regression validation switched one synthetic chat through folder editing
+with automatic review, read-only with human review, folder editing with human
+review, and read-only with automatic review. Each mode completed a tiny text
+turn; the first change happened before any message. Reloading the saved record
+into a fresh runtime preserved automatic review and completed another turn.
+The synthetic chat was archived afterward. The window's creation helper also
+forwards the reviewer again, fixing the missing-argument error in New Session
+and Continue Here. No user's chat content was used in regression fixtures.
+
+The full local suite passed (3,134 passed, 7 skipped). A final recovery case
+also verifies that an unloaded chat can select read-only when its saved editing
+mode is no longer available; all 189 ownership, runtime, execution, approval and
+automatic-review tests pass with that case included. Hidden-window tests cover
+all four creation/fork permission choices and the permission-change command.
+
+The VM visual run completed at `%TEMP%/tcp-ui-probe/20261025-225332` for New
+Session, Continue Here, Change Permission Mode and User Guide, in light-100 and
+hc-aquatic-100. All eight screenshots were opened and reviewed, with no layout
+flags. Comparison against the baselines reports 0 changed, 8 unchanged and no
+new, missing or failed surfaces. No baseline or visual description changed.
+
+Independent review follow-up (#385): policy preparation now retains the current
+owner until persistence succeeds. Failed verification or saving retains a
+separate snapshot of the saved grant, including when preparation first had to
+load an idle chat. Stop explicitly rechecks that saved grant without resuming a
+loaded thread or sending a message. The check verifies account, route, model,
+reviewer, workspace, rules, native idle/history state and the owned thread's
+tool inventory. A replaced problem, unknown turn or lost owner cannot use this
+recovery path. Empty chats retain their empty history route so switching away
+and returning does not try to read a nonexistent rollout.
+
+Regression coverage includes failed saves before the first message, saved
+settings awaiting their first turn, unloaded chats, failed ephemeral checks,
+and saved settings whose owner was lost during reconnection. Hidden-window
+tests exercise Stop recovery through the controller, switching away and back,
+and stopping an active turn with an unrelated problem without attempting resume.
+The full-suite run passed 3,170 tests with 7 skips; final targeted validation
+passed 223 backend tests and 9 focused hidden-window tests. The independent
+reviewer reran these focused checks and reported no remaining findings.
+
+The follow-up visual run is `%TEMP%/tcp-ui-probe/20261026-081608`: Codex status
+unavailable, Change Permission Mode and User Guide in light-100 and
+hc-aquatic-100. Both reviewers opened all six images. Comparison reports
+0 changed, 6 unchanged and no new, missing or failed surfaces; no layout flags.
+Sampled black text on white is 21:1 and white on the High Contrast #202020
+background is 16.29:1. No baselines changed. Live inference, native speech and
+macOS execution were not repeated for this recovery-only follow-up.

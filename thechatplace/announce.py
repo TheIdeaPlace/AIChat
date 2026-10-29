@@ -205,6 +205,26 @@ def queued_text(title: str, message: str, level: str, read_back: bool,
     return f"{head} {title}: {words}"
 
 
+def steered_text(title: str, message: str, level: str, read_back: bool,
+                 accepted: bool = False) -> str:
+    """Confirmation that Kelly's message went into the running turn without
+    stopping it (#238, #239). ``accepted``: the provider has said it has it
+    (Codex); otherwise it's on its way, taken in at the next step (Claude)."""
+    words = _own_words(message, level, read_back)
+    if words is None:
+        return (f"Steered {title}. It has your message." if accepted
+                else f"Steering {title}. It takes your message at its next step.")
+    return f"{'Steered' if accepted else 'Steering'} {title}: {words}"
+
+
+def steer_taken_text(title: str, late: bool) -> str:
+    """Claude took a steered message in: into the work, or (``late``) after
+    it had already answered, so it's answering it now."""
+    if late:
+        return f"{title} had finished, and is answering your message now."
+    return f"{title} has your message."
+
+
 def background_text(tasks) -> str:
     """What a session left running when it answered (#161): the turn stays
     open for it, and Claude carries on when it finishes."""

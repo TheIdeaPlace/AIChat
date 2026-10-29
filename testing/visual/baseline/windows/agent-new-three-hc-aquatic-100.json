@@ -337,7 +337,7 @@
     23
    ],
    "best": [
-    303,
+    311,
     23
    ],
    "depth": 1,
@@ -466,10 +466,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Folder for new chats:",
+   "label": "About Codex permissions:",
    "rect": [
     8,
     525,
+    139,
+    16
+   ],
+   "best": [
+    139,
+    16
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About Codex permissions",
+   "label": "Automatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricted access. Human review remains available. Network access and access to temporary folders outside this folder require approval. The Chat Place overrides these boundaries for this chat only; saved Codex rules still apply.",
+   "rect": [
+    10,
+    543,
+    671,
+    110
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Automatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricted access. Human review remains available. Network access and access to temporary folders outside this folder require approval. The Chat Place overrides these boundaries for this chat only; saved Codex rules still apply."
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Folder for new chats:",
+   "rect": [
+    8,
+    659,
     111,
     16
    ],
@@ -488,7 +527,7 @@
    "label": "",
    "rect": [
     8,
-    541,
+    675,
     590,
     23
    ],
@@ -507,7 +546,7 @@
    "label": "&Browse...",
    "rect": [
     604,
-    541,
+    675,
     75,
     23
    ],
@@ -526,7 +565,7 @@
    "label": "&Hand-offs:",
    "rect": [
     8,
-    572,
+    706,
     58,
     16
    ],
@@ -545,7 +584,7 @@
    "label": "",
    "rect": [
     8,
-    588,
+    722,
     671,
     23
    ],
@@ -565,7 +604,7 @@
    "label": "Who goes f&irst:",
    "rect": [
     8,
-    619,
+    753,
     80,
     16
    ],
@@ -584,7 +623,7 @@
    "label": "",
    "rect": [
     8,
-    635,
+    769,
     671,
     23
    ],
@@ -604,7 +643,7 @@
    "label": "Opening &message (Enter starts a new line; Ctrl+Enter starts the conversation):",
    "rect": [
     8,
-    666,
+    800,
     406,
     16
    ],
@@ -623,7 +662,7 @@
    "label": "",
    "rect": [
     10,
-    684,
+    818,
     671,
     120
    ],

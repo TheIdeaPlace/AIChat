@@ -34,22 +34,21 @@ a:focus-visible { outline: 3px solid; outline-offset: 2px; }
 <table aria-labelledby="group2"><thead><tr><th scope="col">Keys</th><th scope="col">What it does</th></tr></thead><tbody>
 <tr><th scope="row">Enter</th><td>Load that session and move to its messages</td></tr>
 <tr><th scope="row">Ctrl+O</th><td>Open the selected session in the Claude desktop app</td></tr>
-<tr><th scope="row">Ctrl+Shift+L</th><td>Copy Session Link: Enter copies a Markdown link that opens the session in The Chat Place; the list also has the bare link, and where they apply its Open in Claude link and claude.ai address</td></tr>
-<tr><th scope="row">Ctrl+N</th><td>New Chat Place session</td></tr>
+<tr><th scope="row">Ctrl+Shift+L</th><td>Copy Session Link (Claude chats): Enter copies a Markdown link that opens the session in The Chat Place; the list also has the bare link, and where they apply its Open in Claude link and claude.ai address</td></tr>
 <tr><th scope="row">Ctrl+Shift+N</th><td>Continue the selected desktop app or terminal session here, as a copy you can reply to (the original isn&#x27;t changed)</td></tr>
 <tr><th scope="row">Ctrl+Shift+O</th><td>Change Permission Mode: Claude permission modes or Codex file access and approval reviewer for the selected (or loaded) Chat Place session, from its next turn (File, Change Effort and Change Model are beside it)</td></tr>
 <tr><th scope="row">Ctrl+Shift+H</th><td>Chat Permissions: the selected (or loaded) Chat Place chat&#x27;s permission mode, and, for a Claude chat, the commands and tools it may use without asking (Delete or Remove takes one back, and Remove All takes them all) and the rules from Claude Code&#x27;s own settings for its folder</td></tr>
 <tr><th scope="row">F5</th><td>Refresh the list now and put it back in order (it also refreshes itself every few seconds, without moving rows while you&#x27;re in it)</td></tr>
 <tr><th scope="row">Alt+V, O</th><td>Sort Sessions: by status, newest first, oldest first, by title or by folder; the choice is remembered</td></tr>
-<tr><th scope="row">Alt+V, H</th><td>Show Sessions: all, needs you or working, needs you, working, with a new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote Control, Claude chats, Codex chats, ungrouped (in no group), archived, or one of your groups</td></tr>
+<tr><th scope="row">Alt+V, H</th><td>Show Sessions: all, needs you or working, needs you, working, with a new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote Control, ungrouped (in no group), Claude chats, Codex chats, GitHub Copilot chats, archived, hidden, or one of your groups</td></tr>
 <tr><th scope="row">Alt+V, E</th><td>Session List Columns: choose what each session&#x27;s line says and in what order, such as status first; in the dialog, Enter adds, Delete removes, and Alt+Up, Alt+Down, Alt+Home and Alt+End move</td></tr>
 <tr><th scope="row">Ctrl+E</th><td>Export the selected (or loaded) session as Markdown, a web page or plain text</td></tr>
 <tr><th scope="row">F2</th><td>Rename the selected session (a desktop app or terminal session&#x27;s new name shows only in The Chat Place)</td></tr>
 <tr><th scope="row">Applications key / Shift+F10</th><td>The session&#x27;s menu: load, provider-specific actions, copy its link, rename, Remote Control, groups, export, hide or delete</td></tr>
-<tr><th scope="row">Alt+F, O</th><td>Remote Control: reach the selected session from claude.ai and your phone (a desktop app session can be continued here with it on)</td></tr>
+<tr><th scope="row">Alt+F, O</th><td>Remote Control (Claude chats): reach the selected session from claude.ai and your phone (a desktop app session can be continued here with it on)</td></tr>
 <tr><th scope="row">Ctrl+G</th><td>Add the selected session to a group (or a new one); File, Remove from Group and Manage Groups are on the File menu</td></tr>
 <tr><th scope="row">Delete</th><td>Hide the selected session; View, Show Sessions, Hidden lists hidden sessions, and File, Bring Back Session returns one</td></tr>
-<tr><th scope="row">Shift+Delete</th><td>Delete one of The Chat Place&#x27;s own sessions permanently, transcript and all, after you confirm (desktop app and terminal sessions can only be hidden)</td></tr>
+<tr><th scope="row">Shift+Delete</th><td>Delete a Claude chat started here permanently, transcript and all, after you confirm (other chats can only be hidden); on an agent conversation, delete the conversation and keep its chats</td></tr>
 <tr><th scope="row">Ctrl+F</th><td>Show only sessions whose title, folder or what they need contains some text; Escape in the list shows them all again</td></tr>
 </tbody></table>
 <h2 id="group3">Messages</h2>
@@ -58,40 +57,43 @@ a:focus-visible { outline: 3px solid; outline-offset: 2px; }
 <tr><th scope="row">Ctrl+C</th><td>Copy the whole message</td></tr>
 <tr><th scope="row">Ctrl+Shift+C</th><td>Copy the message&#x27;s last code block</td></tr>
 <tr><th scope="row">Ctrl+Enter on a queued message</th><td>Send it now (Claude chats): Claude stops what it&#x27;s doing and answers it</td></tr>
+<tr><th scope="row">Ctrl+Alt+Enter on a queued message</th><td>Steer it: into the running turn now, without stopping it</td></tr>
 <tr><th scope="row">Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks</th><td>Lists, on Code Blocks for this message: read and copy each code block</td></tr>
 <tr><th scope="row">Ctrl+F, then F3 and Shift+F3</th><td>Find a message containing some text (its whole text, not just the first line), then the next or previous one</td></tr>
 <tr><th scope="row">End</th><td>Newest message</td></tr>
-<tr><th scope="row">Ctrl+Shift+I</th><td>Lists: code blocks, links, changed files, commands, decisions and Claude&#x27;s tasks, for this message or the whole chat; it opens on the kind you used last, and the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a Mac, and Control+Tab on Windows); Enter reads an item in full (a link opens), Ctrl+C copies, typing narrows the list (also from the session list and the reply box)</td></tr>
+<tr><th scope="row">Ctrl+Shift+I</th><td>Lists: code blocks, links, changed files, commands, decisions and tasks, for this message or the whole chat; it opens on the kind you used last, and the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a Mac, and Control+Tab on Windows); Enter reads an item in full (a link opens), Ctrl+C copies, typing narrows the list (also from the session list and the reply box)</td></tr>
 <tr><th scope="row">Ctrl+L</th><td>Lists, on Links for the whole chat: Enter opens a link in your browser, Ctrl+C copies its address (also from the session list and the reply box)</td></tr>
 <tr><th scope="row">Ctrl+Shift+J</th><td>Lists, on Tasks for the whole chat: the task list, each step with whether it&#x27;s to do, in progress or done</td></tr>
 <tr><th scope="row">Ctrl+T</th><td>Show or hide tool activity in the loaded session</td></tr>
-<tr><th scope="row">Ctrl+O</th><td>Open this session in the Claude desktop app</td></tr>
+<tr><th scope="row">Ctrl+O</th><td>Open the loaded session in the Claude desktop app</td></tr>
 </tbody></table>
 <h2 id="group4">Reply box</h2>
 <table aria-labelledby="group4"><thead><tr><th scope="col">Keys</th><th scope="col">What it does</th></tr></thead><tbody>
 <tr><th scope="row">Ctrl+Enter</th><td>Send (Chat Place sessions only); you stay in the reply box. During a turn it queues the message and sends it when the turn ends</td></tr>
 <tr><th scope="row">Ctrl+Shift+Enter</th><td>Send and save as a prompt: asks for the prompt&#x27;s name (its first words to start with), saves it, then sends as Ctrl+Enter does; Escape at the name neither saves nor sends</td></tr>
+<tr><th scope="row">Ctrl+Alt+Enter</th><td>Steer: during a turn, send the message into it without stopping it; the AI takes it in at its next step and carries on. With no turn running, it sends as Ctrl+Enter does</td></tr>
 <tr><th scope="row">Ctrl+Period</th><td>Stop the running turn; a queued message goes back in the reply box</td></tr>
 <tr><th scope="row">Ctrl+/</th><td>Insert a Claude slash command or one of your skills (type to search); it goes at the start of the reply box</td></tr>
 <tr><th scope="row">Ctrl+Shift+F</th><td>Attach files or images to your next Claude message (Attach Files button, Alt+T); Delete in the attachments list removes one</td></tr>
 <tr><th scope="row">Ctrl+V with a picture copied</th><td>Attach the picture to a Claude message (a screenshot from Win+Shift+S, say)</td></tr>
 <tr><th scope="row">Ctrl+Shift+M</th><td>Other machines: list your sessions on other computers and send one a message, through Claude in the loaded Chat Place session (it needs Remote Control on)</td></tr>
-<tr><th scope="row">Ctrl+Shift+E</th><td>Send Reply to Another Chat: the selected reply (or the latest one) goes to another Chat Place chat, Claude or Codex, or a new one, labelled with who wrote it; read and change it first, then Enter sends and you go to that chat. In an agent conversation, hands the waiting reply to the other agent</td></tr>
-<tr><th scope="row">Ctrl+Shift+G</th><td>New Agent Conversation: two chats, Claude or Codex, new or your own, that pass replies to each other; you approve each hand-off, or, once Settings allows it, let them go automatically up to a turn limit</td></tr>
-<tr><th scope="row">Ctrl+Shift+D</th><td>Lists, on Changed Files (Claude chats): what changed in the selected message&#x27;s turn (your latest, if none is selected) or in the whole chat; Enter on a file reads its changes line by line</td></tr>
+<tr><th scope="row">Ctrl+Shift+E</th><td>Send Reply to Another Chat: the selected reply (or the latest one) goes to another Chat Place chat, Claude, Codex or Copilot, or a new one, labelled with who wrote it; read and change it first, then Enter sends and you go to that chat. In an agent conversation, hands the waiting reply to the other agent</td></tr>
+<tr><th scope="row">Ctrl+Shift+G</th><td>New Agent Conversation: two chats, Claude, Codex or Copilot, new or your own, that pass replies to each other; you approve each hand-off, or, once Settings allows it, let them go automatically up to a turn limit</td></tr>
+<tr><th scope="row">Ctrl+Shift+D</th><td>Lists, on Changed Files (Claude, Codex and Copilot chats): what changed in the selected message&#x27;s turn (your latest, if none is selected) or in the whole chat; Enter on a file reads its changes line by line</td></tr>
 <tr><th scope="row">Ctrl+Shift+U</th><td>Usage and context: read the active provider&#x27;s reported context and account allowances and reset times; Ctrl+C copies a line</td></tr>
 <tr><th scope="row">Ctrl+Shift+T</th><td>Turn status: how long the provider has been working, on what, what is still running in the background, whether a message is queued, and how far along the task list is</td></tr>
 </tbody></table>
 <h2 id="group5">Anywhere</h2>
 <table aria-labelledby="group5"><thead><tr><th scope="col">Keys</th><th scope="col">What it does</th></tr></thead><tbody>
 <tr><th scope="row">Ctrl+Shift+S</th><td>Find in All Sessions: search the messages of every session in the list; Enter on a result loads that session on that message. Pressed again while it searches, it stops</td></tr>
+<tr><th scope="row">Ctrl+N</th><td>New Session: start a chat here, from anywhere in the window</td></tr>
 <tr><th scope="row">Ctrl+Shift+A</th><td>Answer: approve or deny a tool, answer the provider&#x27;s questions, or approve its plan (the loaded session first, then another chat waiting for an answer). Escape in the dialog answers later</td></tr>
 <tr><th scope="row">Ctrl+Shift+K</th><td>What AI knows about you: choose Claude or Codex, then read local instructions, memories, skills and settings, or open them in your editor</td></tr>
 <tr><th scope="row">Ctrl+Shift+P</th><td>Prompts: your saved prompts, to use (Enter puts one in the reply box), add, edit, reorder or delete</td></tr>
 <tr><th scope="row">Alt+Enter</th><td>Properties: what can be known about the selected session (or, in the messages, the selected message), one line each; Ctrl+C copies a line. Option+Return on a Mac</td></tr>
 <tr><th scope="row">F1</th><td>This list of shortcuts</td></tr>
 <tr><th scope="row">Alt+H, G</th><td>The user guide, read by heading</td></tr>
-<tr><th scope="row">Ctrl+Comma</th><td>Settings (announcements and speech)</td></tr>
+<tr><th scope="row">Ctrl+Comma</th><td>Settings: announcements, speech, notifications and more</td></tr>
 <tr><th scope="row">Ctrl+Shift+R</th><td>Repeat the last announcement</td></tr>
 <tr><th scope="row">Alt+F4</th><td>Quit</td></tr>
 </tbody></table></main></body></html>

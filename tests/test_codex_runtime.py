@@ -44,6 +44,9 @@ class Connection:
             return {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
         if method == 'mcpServerStatus/list':
             return {'data': [], 'nextCursor': None}
+        if method == 'model/list':
+            from test_codex_models import model
+            return {'data': [model('gpt-default')]}
         if method == 'config/read':
             return {'config': {}, 'layers': [{'name': {'type': 'project',
                 'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]}
@@ -53,7 +56,9 @@ class Connection:
             return {'data': []}
         if method in ('thread/start', 'thread/fork'):
             self.created += 1
-            return response(f'owned-{self.created}')
+            result = response(f'owned-{self.created}')
+            result['thread']['ephemeral'] = params.get('ephemeral', False)
+            return result
         if method == 'thread/resume':
             return response(params['threadId'])
         if method == 'turn/start':
@@ -244,7 +249,7 @@ def test_two_chats_do_not_share_queues_and_unknown_connection_never_replays():
         c.closed = True
         wait(lambda: any(u.problem for u in updates))
         assert c.turns == 2
-        with pytest.raises(CodexRpcError, match='Reload'):
+        with pytest.raises(CodexRpcError, match='Use Stop'):
             service.send(one, 'Retry')
         assert any(u.unsent == ('Unsent',) for u in updates)
     finally:
@@ -405,7 +410,7 @@ def test_live_connection_problem_requires_reopen_then_queue_dispatch_works():
         with pytest.raises(CodexRpcError):
             service.send(record, 'Not sent')
         assert not c.closed and not service.ready(record)
-        with pytest.raises(CodexRpcError, match='Reload'):
+        with pytest.raises(CodexRpcError, match='Use Stop'):
             service.send(record, 'No replay')
         executor.start = original_start
         service.reopen(record)
@@ -425,7 +430,7 @@ def test_recorded_problem_does_not_prevent_stopping_a_verified_active_turn():
     try:
         record = service.create('/workspace', 'Owned')
         service.send(record, 'First')
-        service._problems[record.cli_session_id] = 'Could not confirm this Codex turn. Reload the chat.'
+        service._problems[record.cli_session_id] = 'Could not confirm this Codex turn. Use Stop to recheck this chat.'
         assert not service.ready(record)
         service.stop(record)
         assert ('turn/interrupt', {'threadId': record.cli_session_id, 'turnId': 'turn-1'}) in c.calls
@@ -441,10 +446,10 @@ def test_new_problem_after_context_validation_blocks_direct_send_reservation():
         context = service._context
         def changed(record, **kwargs):
             result = context(record, **kwargs)
-            service._problems[record.cli_session_id] = 'Reload this chat.'
+            service._problems[record.cli_session_id] = 'Use Stop to recheck this chat.'
             return result
         service._context = changed
-        with pytest.raises(CodexRpcError, match='Reload'):
+        with pytest.raises(CodexRpcError, match='Use Stop'):
             service.send(record, 'Must not send')
         assert c.turns == 0
     finally:
@@ -474,6 +479,10 @@ def test_permission_change_blocks_sends_until_saved_and_verified(tmp_path):
         with pytest.raises(CodexRpcError):
             service.send(record, 'Must not run before save')
         proposed = change.record()
+        assert proposed.cli_session_id == record.cli_session_id
+        assert not any(method == 'thread/resume' for method, _ in connection.calls)
+        assert any(method == 'thread/start' and params.get('ephemeral')
+                   for method, params in connection.calls)
         assert proposed.provider_options['workspace_root'] == str(tmp_path.resolve())
         assert record.provider_options['sandbox'] == 'read-only'
         service.finish_policy(change, True)
@@ -497,6 +506,48 @@ def test_failed_policy_save_requires_explicit_reload_of_old_permissions(tmp_path
         restored = service.reopen(record)
         assert restored.provider_options['sandbox'] == 'read-only'
         assert service.ready(restored)
+        assert not any(method == 'turn/start' for method, _ in connection.calls)
+    finally:
+        service.close()
+
+
+def test_permission_check_cannot_retarget_the_requested_workspace(tmp_path, monkeypatch):
+    from thechatplace.providers.codex_owned import CodexOwnedThreads
+    service, connection, record = policy_runtime(tmp_path)
+    other = tmp_path / 'different-project'
+    other.mkdir()
+    start = CodexOwnedThreads.start
+    def retargeted(lifecycle, cwd, title, **options):
+        return start(lifecycle, str(other), title, **options)
+    monkeypatch.setattr(CodexOwnedThreads, 'start', retargeted)
+    try:
+        with pytest.raises(CodexRpcError, match='workspace scope'):
+            service.prepare_policy(record, 'workspace-write', 'on-request')
+        assert not service.ready(record)
+        assert not any(method == 'turn/start' for method, _ in connection.calls)
+        assert connection.proofs[record.cli_session_id].policy.sandbox == 'read-only'
+    finally:
+        service.close()
+
+
+def test_unloaded_chat_can_change_to_readonly_when_its_saved_edit_mode_is_unavailable(tmp_path, monkeypatch):
+    service, connection, record = policy_runtime(tmp_path)
+    record.provider_options.update(sandbox='workspace-write', workspace_root=str(tmp_path.resolve()))
+    service._proofs.clear()
+    connection.proofs.clear()
+    request = connection.request
+    def unavailable(method, params):
+        if method == 'thread/resume' and params['sandbox'] == 'workspace-write':
+            raise CodexRpcError('Previous editing mode is unavailable')
+        return request(method, params)
+    monkeypatch.setattr(connection, 'request', unavailable)
+    try:
+        change = service.prepare_policy(record, 'read-only', 'on-request')
+        service.finish_policy(change, True)
+        restored = change.record()
+        assert service.ready(restored)
+        assert restored.provider_options['sandbox'] == 'read-only'
+        assert restored.cli_session_id == record.cli_session_id
         assert not any(method == 'turn/start' for method, _ in connection.calls)
     finally:
         service.close()
@@ -542,7 +593,7 @@ def test_permission_change_to_downgraded_sandbox_blocks_with_the_sandbox_reason(
 
         def downgraded(method, params):
             result = request(method, params)
-            if method == 'thread/resume':
+            if method == 'thread/start' and params.get('ephemeral'):
                 result = dict(result, sandbox={'type': 'readOnly', 'networkAccess': False})
             return result
         monkeypatch.setattr(connection, 'request', downgraded)
@@ -552,7 +603,7 @@ def test_permission_change_to_downgraded_sandbox_blocks_with_the_sandbox_reason(
         assert not service.ready(record)
         assert 'Windows sandbox' in service._problems[record.cli_session_id]
         assert 'usually means' in service._problems[record.cli_session_id]
-        assert service._problems[record.cli_session_id].endswith('Reload this chat before sending.')
+        assert service._problems[record.cli_session_id].endswith('Use Stop to recheck this chat before sending.')
         assert 'reload' not in str(refused.value).lower()
     finally:
         service.close()
@@ -789,5 +840,184 @@ def test_plan_save_failure_does_not_cancel_turn_or_other_chat(tmp_path, monkeypa
         assert service.snapshot(one.cli_session_id).outcome == 'inProgress'
         assert service.snapshot(two.cli_session_id).outcome == 'inProgress'
         assert not service.snapshot(one.cli_session_id).problem
+    finally:
+        service.close()
+
+
+# -- Steer (#239) ------------------------------------------------------------------------
+
+
+class SteerConnection(Connection):
+    """turn/steer held at ``steer_entered`` until ``steer_release``, then
+    answered with ``steer_result`` (a dict) or raised (an exception)."""
+
+    def __init__(self):
+        super().__init__()
+        self.steer_entered, self.steer_release = threading.Event(), threading.Event()
+        self.steer_result = None
+
+    def request(self, method, params):
+        if method == 'turn/steer':
+            self.calls.append((method, params))
+            self.steer_entered.set()
+            assert self.steer_release.wait(5)
+            if isinstance(self.steer_result, Exception):
+                raise self.steer_result
+            return self.steer_result or {'turnId': params['expectedTurnId']}
+        return super().request(method, params)
+
+
+def steer_runtime():
+    connection = SteerConnection()
+    updates = []
+    service = CodexChatRuntime(updates.append, factory=lambda exe: connection)
+    return service, connection, updates
+
+
+def test_one_steer_at_a_time_and_the_queue_waits_for_it():
+    from concurrent.futures import ThreadPoolExecutor
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, c, updates = steer_runtime()
+    try:
+        record = service.create('/workspace', 'Owned')
+        service.send(record, 'First')
+        assert service.send(record, 'Steer me')
+        assert service.send(record, 'Then me')
+        with ThreadPoolExecutor(1) as pool:
+            steering = pool.submit(service.steer, record, 'Steer me', index=0)
+            assert c.steer_entered.wait(5)
+            state = service.snapshot(record.cli_session_id)
+            assert state.steering == ('Steer me',) and state.queued == ('Then me',)
+            with pytest.raises(CodexSteerRefused) as refused:
+                service.steer(record, 'Another')
+            assert refused.value.code == 'busy'
+            # The turn ends while Codex answers: the queue must not move yet.
+            c.events.append(CodexEvent('turn_completed', record.cli_session_id, 'turn-1',
+                                       status='completed'))
+            wait(lambda: service.snapshot(record.cli_session_id).outcome == 'completed')
+            time.sleep(.2)
+            assert c.turns == 1
+            c.steer_release.set()
+            assert steering.result(timeout=5) == 'turn-1'
+        # Accepted, so it's gone; the rest of the queue goes on as usual.
+        wait(lambda: c.turns == 2)
+        assert [p['input'][0]['text'] for m, p in c.calls if m == 'turn/start'] == ['First', 'Then me']
+        assert [p['expectedTurnId'] for m, p in c.calls if m == 'turn/steer'] == ['turn-1']
+        assert not service.snapshot(record.cli_session_id).steering
+    finally:
+        c.steer_release.set()
+        service.close()
+
+
+def test_a_refused_queued_steer_goes_back_in_its_place():
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, c, updates = steer_runtime()
+    try:
+        record = service.create('/workspace', 'Owned')
+        service.send(record, 'First')
+        service.send(record, 'One')
+        service.send(record, 'Two')
+        c.steer_release.set()
+        c.steer_result = CodexRpcError('Codex request failed')  # Codex said no
+        c.steer_result.rpc_code = -32600
+        with pytest.raises(CodexSteerRefused) as refused:
+            service.steer(record, 'Two', index=1)
+        assert refused.value.code == 'refused'
+        assert service.snapshot(record.cli_session_id).queued == ('One', 'Two')
+        assert not service.snapshot(record.cli_session_id).problem
+    finally:
+        service.close()
+
+
+def test_stop_while_a_queued_steer_waits_returns_it_with_the_queue():
+    from concurrent.futures import ThreadPoolExecutor
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, c, updates = steer_runtime()
+    try:
+        record = service.create('/workspace', 'Owned')
+        service.send(record, 'First')
+        service.send(record, 'Steer me')
+        service.send(record, 'Other')
+        c.steer_result = CodexRpcError('Codex request failed')
+        c.steer_result.rpc_code = -32600
+        with ThreadPoolExecutor(1) as pool:
+            steering = pool.submit(service.steer, record, 'Steer me', index=0)
+            assert c.steer_entered.wait(5)
+            assert service.stop(record) == ('Other',)
+            c.steer_release.set()
+            with pytest.raises(CodexSteerRefused) as refused:
+                steering.result(timeout=5)
+            assert refused.value.returned  # the caller says where it went
+        # Never back in a queue that Stop emptied: to the reply box instead.
+        assert any(u.unsent == ('Steer me',) for u in updates)
+        assert not service.snapshot(record.cli_session_id).queued
+    finally:
+        c.steer_release.set()
+        service.close()
+
+
+def test_an_unconfirmed_steer_is_never_queued_to_go_again():
+    service, c, updates = steer_runtime()
+    try:
+        record = service.create('/workspace', 'Owned')
+        service.send(record, 'First')
+        service.send(record, 'Steer me')
+        c.steer_release.set()
+        c.steer_result = {'turnId': 'some-other-turn'}
+        with pytest.raises(CodexRpcError, match='did not confirm'):
+            service.steer(record, 'Steer me', index=0)
+        assert not service.snapshot(record.cli_session_id).queued
+        assert any(u.unsent == ('Steer me',) for u in updates)
+        c.events.append(CodexEvent('turn_completed', record.cli_session_id, 'turn-1',
+                                   status='completed'))
+        wait(lambda: service.snapshot(record.cli_session_id).outcome == 'completed')
+        time.sleep(.2)
+        assert c.turns == 1  # nothing sent it again as a turn
+    finally:
+        service.close()
+
+
+def test_steer_with_no_turn_running_is_refused_without_a_request():
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, c, updates = steer_runtime()
+    try:
+        record = service.create('/workspace', 'Owned')
+        with pytest.raises(CodexSteerRefused) as refused:
+            service.steer(record, 'Nothing running')
+        assert refused.value.code == 'not_running'
+        assert not [m for m, _p in c.calls if m == 'turn/steer']
+    finally:
+        service.close()
+
+
+def test_steer_in_a_chat_with_a_problem_is_refused_with_nothing_sent():
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, c, updates = steer_runtime()
+    try:
+        record = service.create('/workspace', 'Owned')
+        service.send(record, 'First')
+        service._problems[record.cli_session_id] = 'Codex connection interrupted.'
+        with pytest.raises(CodexSteerRefused) as refused:
+            service.steer(record, 'Also the docs')
+        assert refused.value.code == 'unavailable'
+        assert not [m for m, _p in c.calls if m == 'turn/steer']
+    finally:
+        service.close()
+
+
+def test_an_unknown_steer_error_is_unconfirmed_and_never_queued_again():
+    # Only a known refusal (-32600) proves the text wasn't taken (#239).
+    service, c, updates = steer_runtime()
+    try:
+        record = service.create('/workspace', 'Owned')
+        service.send(record, 'First')
+        service.send(record, 'Steer me')
+        c.steer_release.set()
+        c.steer_result = CodexRpcError('Codex request failed')
+        c.steer_result.rpc_code = -32603  # an internal error: may have been taken
+        with pytest.raises(CodexRpcError, match='did not confirm'):
+            service.steer(record, 'Steer me', index=0)
+        assert not service.snapshot(record.cli_session_id).queued
+        assert any(u.unsent == ('Steer me',) for u in updates)
     finally:
         service.close()

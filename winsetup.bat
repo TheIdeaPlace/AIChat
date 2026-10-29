@@ -66,7 +66,7 @@ if errorlevel 1 goto :pip_failed
 
 REM pip's exit code isn't proof the environment works: check the imports.
 set "PROBLEMS=0"
-for %%m in (wx wx.html2 markdown velopack truststore PyInstaller pytest) do (
+for %%m in (wx wx.html2 markdown theideaplace_appkit velopack truststore PyInstaller pytest) do (
     "%PY%" -c "import %%m" >nul 2>nul && echo   ok       %%m || (echo   MISSING  %%m & set /a PROBLEMS+=1 >nul)
 )
 

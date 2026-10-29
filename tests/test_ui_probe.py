@@ -107,6 +107,17 @@ def test_surfaces_show_their_made_up_content(opened, tmp_path, monkeypatch):
         assert "2 hours ago" in row
     finally:
         ui_probe.close_frame(frame)
+    env, frame = world("codex-files")
+    try:
+        ui_probe.d_lists_codex_files(frame, env)
+        files = lists.file_items(frame._chat_edits, None,
+                                 lambda changes: changes.counts())
+        assert [item.row for item in files] == ["2 lines added, 1 removed", "created, 1 line", "deleted", "renamed"]
+        assert "Added:     wait_until_ready()" in files[0].detail
+        assert "Lines 1 to 2:\nRemoved: Old notes.\nRemoved: More old notes." in files[2].detail
+        assert "Renamed from: old_test.py" in files[3].detail
+    finally:
+        ui_probe.close_frame(frame)
     env, frame = world("owned")
     try:
         ui_probe.s_main_codex_owned(frame, env)

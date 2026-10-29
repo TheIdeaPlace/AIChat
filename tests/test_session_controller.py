@@ -245,7 +245,9 @@ def test_capabilities_do_not_grant_codex_write_access_from_ownership():
     owned_claude, owned_codex = info(), info("codex")
     assert controller.capabilities(owned_claude).send
     assert controller.capabilities(owned_claude).delete
-    assert controller.capabilities(owned_codex) == SessionCapabilities(usage=True)
+    assert controller.capabilities(owned_codex) == SessionCapabilities(usage=True, changes=True)
+    assert controller.capabilities(SessionInfo("external", "codex:outside", "External", "", "outside",
+                                               provider="codex")).changes
     assert not controller.capabilities(owned_codex).fork
     external = SessionInfo("external", "external:one", "External", "", "one")
     assert controller.capabilities(external).fork
@@ -355,3 +357,33 @@ def test_last_reply_routes_colliding_ids_and_unknown_find_is_counted():
                       read_history=lambda: controller.read(info('missing')))]
     results = search_sessions(targets, 'reply')
     assert results.unreadable == 1 and not results.matches
+
+
+def test_steer_is_offered_for_owned_chats_only_and_routed_to_the_runtime():
+    # #238, #239: a capability, never inferred from ownership by the window.
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.own_store import OwnSession
+
+    class NeverConnect:
+        def request(self, *args):
+            raise AssertionError("Capabilities must not perform RPC")
+
+    class Runtime:
+        calls = []
+
+        def steer(self, record, text, index=None):
+            self.calls.append((record.cli_session_id, text, index))
+            return "turn-1"
+
+    runtime = Runtime()
+    controller = SessionController([ClaudeConversations(),
+                                    CodexProvider(NeverConnect(), runtime=runtime)])
+    assert controller.capabilities(info()).steer
+    assert controller.capabilities(info("codex")).steer
+    external = SessionInfo("external", "external:one", "External", "", "one")
+    assert not controller.capabilities(external).steer
+    record = OwnSession("one", "Owned", "/w", provider="codex")
+    assert controller.owned_action("steer", record, "Also the docs") == "turn-1"
+    assert controller.owned_action("steer_queued", record, 2, "Queued") == "turn-1"
+    assert runtime.calls == [("one", "Also the docs", None), ("one", "Queued", 2)]
+    controller.close()

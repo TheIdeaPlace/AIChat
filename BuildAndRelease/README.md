@@ -31,5 +31,7 @@ the last build without rebuilding, double-click `create_dmg.command`: it uses th
 Set `__version__` in `thechatplace/__init__.py`, write `release-notes/v<version>.md`, commit, and
 push the tag `v<version>`. `.github/workflows/release-thechatplace.yml` builds every platform,
 signing Windows and the Mac (the Mac job runs `MacBuilds/build_macos.sh`, the Linux jobs
-`LinuxBuilds/build_linux.sh` on x64 and arm64), and publishes one release only if all succeed. The signing secrets come from `The-Idea-Place-Projects/signing` (`sync-secrets.py`).
-The main README's "Build it yourself" and "Releasing" sections have the details.
+`LinuxBuilds/build_linux.sh` on x64 and arm64). It publishes one release once Windows and the
+Mac succeed, with the AppImage and feed of each Linux build that succeeded: a Linux failure
+doesn't hold up the others. The signing secrets come from `The-Idea-Place-Projects/signing` (`sync-secrets.py`).
+The "Build it yourself" and "Releasing" sections of [DEVELOPING.md](../DEVELOPING.md) have the details.

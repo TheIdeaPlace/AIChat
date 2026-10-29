@@ -15,6 +15,7 @@ shipped.
 | Note | Issue |
 |---|---|
 | [codex-auto-review.md](codex-auto-review.md): per-chat reviewer verification, independent review fixes and validation limits | #358, #374 |
+| [steering.md](steering.md): what `claude -p` does with a message mid-turn, how `--replay-user-messages` tells the cases apart, and Codex's `turn/steer` | #238, #239 |
 | [speech-routing.md](speech-routing.md): how The Chat Place chooses what speaks, why NVDA users hear a Windows voice, and the options for fixing it | #98 |
 | [linux-port.md](linux-port.md): Linux and Orca: naming controls through ATK, reading message rows, which way announcements reach Orca, the formatted page, and what the AppImage keeps of the system's libraries | Linux port |
 
@@ -31,3 +32,5 @@ shipped.
 - [TCP-owned remembered approvals](codex-remembered-approvals.md): consent authority, matching and revocation for #307.
 
 - [GitHub Copilot CLI probe](copilot-cli-probe.md): what Copilot CLI's JSON output, saved sessions and ACP permission requests look like, and how the app could use them (#352).
+
+- [User guide review](user-guide-review.md): agreed corrections and improvements to the user guide, and decisions for Kelly, from a Claude and Codex review against 0.2.0.

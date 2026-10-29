@@ -24,6 +24,7 @@ import time
 from typing import Iterable, List, Optional, Tuple
 
 from .. import platform_paths
+from ..changes import FileEdit, Hunk, parse_git_diff
 from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, TERMINAL, WORKING, SessionInfo
 from ..transcript import (ASSISTANT, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT, USER,
                           ChatMessage, Transcript, split_jsonl)
@@ -205,6 +206,8 @@ class CopilotParser:
         self._seen: set = set()
         # requestId -> what Copilot asked to do, for a refusal's message.
         self._asked: dict = {}
+        # toolCallId -> the tool's name, for the files it changed.
+        self._tools: dict = {}
 
     def feed(self, lines: Iterable[str]) -> None:
         for line in lines:
@@ -254,6 +257,8 @@ class CopilotParser:
                 self.transcript.model = data["newModel"]
         elif kind == "tool.execution_start":
             call = _text(data.get("toolCallId"))
+            if call:
+                self._tools[call] = _text(data.get("toolName"))
             self._add(TOOL, _tool_summary(_text(data.get("toolName")),
                                           _text(data.get("toolTitle")), data.get("arguments")),
                       timestamp, f"{call}:call" if call else event_id)
@@ -264,6 +269,8 @@ class CopilotParser:
             if not output and isinstance(error, dict) and _text(error.get("message")):
                 output = f"Failed: {error['message']}"
             self._add(TOOL_RESULT, output, timestamp, f"{call}:result" if call else event_id)
+            self._file_edits(data, self._tools.pop(call, "") if call else "",
+                             f"{call or event_id}:edits" if call or event_id else "")
         elif kind == _PERMISSION_ASKED:
             request = data.get("permissionRequest")
             request = request if isinstance(request, dict) else {}
@@ -284,6 +291,58 @@ class CopilotParser:
                       timestamp, event_id)
         elif kind == "abort":
             self._add(INTERRUPTED, "Stopped before the turn finished.", timestamp, event_id)
+
+
+    def _file_edits(self, data: dict, tool: str, key: str) -> None:
+        """The files a tool call changed, for Changed Files: whichever tool
+        did it, a successful call's ``fileEdits`` (path; kind "create",
+        "edit" or "delete") with the matching section of its git-style diff
+        in ``result.detailedContent`` (probed on Copilot CLI 1.0.103)."""
+        entries = data.get("fileEdits")
+        if data.get("success") is not True or not isinstance(entries, list) or not entries:
+            return
+        if key:
+            if key in self._seen:
+                return
+            self._seen.add(key)
+        result = data.get("result") if isinstance(data.get("result"), dict) else {}
+        # A rename with no change in content, or a binary file, has no
+        # ---/+++ lines and so no section: it's listed with no lines changed.
+        sections = parse_git_diff(_text(result.get("detailedContent")))
+        by_path = {_path_key(path): hunks for path, hunks in sections}
+        for entry in entries:
+            if not isinstance(entry, dict) or not _text(entry.get("path")):
+                continue
+            path, kind = entry["path"], _text(entry.get("kind"))
+            hunks = by_path.get(_path_key(path))
+            if hunks is None and len(entries) == 1 and len(sections) == 1:
+                hunks = sections[0][1]  # one file, one diff: the same one
+            created, deleted = kind == "create", kind == "delete"
+            hunks = list(hunks or ())
+            if (created or deleted) and hunks:
+                hunks[-1] = _trimmed(hunks[-1], "+" if created else "-")
+            self.transcript.edits.append(FileEdit(
+                path, tool or "Copilot", self.transcript.turns, hunks,
+                created=created, deleted=deleted))
+
+
+def _path_key(path: str) -> str:
+    """Paths compared whatever their slashes, or case as on Windows. A
+    leading slash is dropped too: the diff's "a/" prefix may have eaten a
+    Mac's or Linux's ("a/Users/me/x" for /Users/me/x)."""
+    return os.path.normcase(os.path.normpath(path.replace("\\", "/"))).lstrip("\\/")
+
+
+def _trimmed(hunk: Hunk, mark: str) -> Hunk:
+    """Copilot's diff counts the newline that ends a file as one more, empty
+    line ("+alpha", "+beta", "+"): left in, a three-line file created would
+    show as four lines added. Only a file created or deleted whole is
+    trimmed, where that line is sure to be the last; in an edit it shows as
+    an unchanged line, which counts nothing, and a real blank line is kept."""
+    lines = list(hunk.lines)
+    if lines and lines[-1] == mark:
+        lines.pop()
+    return Hunk(hunk.old_start, hunk.new_start, lines)
 
 
 def parse_events(lines: Iterable[str]) -> Transcript:
@@ -490,9 +549,9 @@ class CopilotProvider:
                 continue
             try:
                 info = self._session(Path(entry.path), entry.name, entries)
-            except (OSError, UnicodeDecodeError, ValueError):
+            except (OSError, UnicodeDecodeError, ValueError) as error:
                 snapshot.unreadable_files += 1
-                continue
+                info = self._as_last_read(entry.name, error, entries)
             if info is not None:
                 snapshot.sessions.append(info)
         with self._lock:
@@ -513,7 +572,10 @@ class CopilotProvider:
                 continue
             info = listed.get(native_id)
             if info is None and native_id in self._listed_before:
-                continue  # listed from its log before, and its folder was removed (Kelly, #372)
+                # Listed from its log before, and its log is gone. A log that
+                # couldn't be read just now is listed by collect() as it was
+                # last read, so it's never missing for that (Kelly, #372, #386).
+                continue
             if info is None:
                 # Titled from the window's record when there is one; a chat
                 # whose record couldn't be saved stays read-only, named.
@@ -523,6 +585,35 @@ class CopilotProvider:
             info.state = state.state
             if state.problem:
                 info.detail = state.problem
+
+    def _as_last_read(self, native_id: str, error: Exception, entries: dict) -> Optional[SessionInfo]:
+        """A log that's there but couldn't be read just now: Copilot may be
+        writing it (a sharing violation on Windows). Its chat is listed as last
+        read, title, times and last message included, so it doesn't drop out
+        of the list or move, and focus stays (Kelly, #372, #386). A half-written
+        file that can't be decoded yet counts too. A file that's gone, or one
+        that disagrees with its folder, isn't kept. (A log deleted while
+        Copilot still holds it open stats as a sharing violation on Windows,
+        so it's kept until Copilot lets go of it.)"""
+        if isinstance(error, FileNotFoundError) or not isinstance(error, (OSError, UnicodeDecodeError)):
+            return None
+        with self._lock:
+            entry = self._entries.get(native_id)
+        if entry is None or entry.title is None:
+            return None
+        entries[native_id] = entry  # read again once the log changes
+        state, detail = _with_detail(entry.state, entry.written_ms)
+        if self.runtime is not None and any(known == native_id for known, _ in self.runtime.known()):
+            # A chat this app runs gets its detail from the runtime: what its
+            # last read said ("waiting in Copilot", say) may be stale.
+            detail = ""
+        return self._row(native_id, entry, state, detail)
+
+    def _row(self, native_id: str, entry, state: str, detail: str) -> SessionInfo:
+        return SessionInfo(entry.source, f"{PROVIDER_ID}:{native_id}", entry.title,
+                           entry.cwd, native_id, provider=PROVIDER_ID,
+                           state=state, detail=detail, created_ms=entry.created_ms,
+                           last_activity_ms=entry.updated_ms)
 
     def _session(self, folder: Path, native_id: str, entries: dict) -> Optional[SessionInfo]:
         events = folder / EVENTS_FILE
@@ -547,10 +638,7 @@ class CopilotProvider:
             return None  # no prompt was ever sent (refused at sign-in, say)
         # The detail depends on the clock, so it's worked out every time.
         state, detail = _with_detail(entry.state, entry.written_ms)
-        return SessionInfo(entry.source, f"{PROVIDER_ID}:{native_id}", entry.title,
-                           entry.cwd, native_id, provider=PROVIDER_ID,
-                           state=state, detail=detail, created_ms=entry.created_ms,
-                           last_activity_ms=entry.updated_ms)
+        return self._row(native_id, entry, state, detail)
 
     # -- the optional Last message column -----------------------------------
 
@@ -600,7 +688,11 @@ class CopilotProvider:
         # runtime; the runtime checks again (client name, hooks, billing,
         # use elsewhere) before anything is sent. Others are read only.
         owned = self.runtime is not None and session.is_own
-        return SessionCapabilities(send=owned, approvals=owned)
+        # Changed Files is read from the log, so every Copilot chat has it,
+        # read-only ones too; reading it never starts Copilot.
+        # Usage (#369) is read from the log and the runtime's state, so it
+        # never starts Copilot either.
+        return SessionCapabilities(send=owned, approvals=owned, changes=True, usage=True)
 
     # -- owned chats (copilot_runtime) ---------------------------------------
 
@@ -628,8 +720,9 @@ class CopilotProvider:
     def send_owned(self, record, text: str) -> bool:
         return self.runtime.send(record.cli_session_id, text)
 
-    def stop_owned(self, record) -> tuple:
-        """The messages that were still waiting, given back unsent."""
+    def stop_owned(self, record):
+        """A ``copilot_runtime.Stopped``: the messages that were still
+        waiting, given back unsent, and what Stop found."""
         return self.runtime.stop(record.cli_session_id)
 
     def answer_owned(self, record, request, result) -> None:
@@ -650,6 +743,35 @@ class CopilotProvider:
         path = self._events_path(session.cli_session_id)
         return CopilotReader(path) if path.is_file() else None
 
+    def usage_lines(self, session: SessionInfo) -> List[str]:
+        """Usage and Context (Ctrl+Shift+U, #369): how full the context is,
+        as Copilot last said in a turn run here, and the premium requests
+        the chat has used, from its log. Copilot doesn't say what's left of
+        the plan's allowance, so nothing here can warn about a limit."""
+        self._check(session)
+        state = self.runtime.snapshot(session.cli_session_id) if self.runtime is not None else None
+        if state is not None and state.context_size > 0:
+            share = min(1.0, state.context_used / state.context_size)
+            lines = [f"Context {round(share * 100)}% full: {state.context_used:,} of "
+                     f"{state.context_size:,} tokens."]
+        elif session.is_own:
+            lines = ["Context: not known until Copilot answers here."]
+        else:
+            # Started in Copilot CLI or another app: only a turn run here
+            # says how full it is, and none can run in a chat like this.
+            lines = ["Context: known only for chats started in The Chat Place."]
+        try:
+            used = premium_requests(self._events_path(session.cli_session_id))
+        except OSError:
+            used = None
+        if used is None:
+            lines.append("Premium requests used in this chat: none recorded yet.")
+        else:
+            lines.append(f"Premium requests used in this chat: {used:,g}.")
+        lines.append("Copilot doesn't say how many premium requests your plan has left; "
+                     "GitHub's Copilot settings show that.")
+        return lines
+
     def last_reply(self, session: SessionInfo) -> str:
         self._check(session)
         try:
@@ -658,6 +780,29 @@ class CopilotProvider:
             return ""
         reply = transcript.last_reply()
         return reply.text if reply else ""
+
+
+def premium_requests(path: Path) -> Optional[float]:
+    """The premium requests a chat has used, from its log's
+    session.usage_checkpoint events, or None if it has none. Copilot carries
+    the count on when a chat is reopened; two Copilots in one chat can write
+    them out of order, so it's the highest."""
+    found = None
+    with open(path, "rb") as handle:
+        for raw in handle:
+            if b"session.usage_checkpoint" not in raw:
+                continue
+            try:
+                event = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                continue
+            data = event.get("data") if isinstance(event, dict) else None
+            value = data.get("totalPremiumRequests") if isinstance(data, dict) else None
+            if (event.get("type") == "session.usage_checkpoint"
+                    and isinstance(value, (int, float)) and not isinstance(value, bool)
+                    and value >= 0 and (found is None or value > found)):
+                found = value
+    return found
 
 
 def _read_head(path: Path, max_bytes: Optional[int] = None) -> Tuple[List[str], bool]:

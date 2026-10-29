@@ -641,7 +641,7 @@ def test_opt_in_stream_disconnects_rather_than_losing_or_misrouting_events(serve
             connection.request("thread/read", {"mode": mode})
         assert connection.closed
         assert connection._events.qsize() <= connection.MAX_EVENTS
-        with pytest.raises(CodexRpcError, match="reconcile"):
+        with pytest.raises(CodexRpcError, match="Use Stop"):
             connection.pop_event()
 
 
@@ -1170,5 +1170,150 @@ def test_live_plan_real_stdio_survives_bursts_and_stop_and_is_saved(server, tmp_
         turn_id, tasks = CodexPlanStore().load('owned')
         assert turn_id == 'turn' and tasks == state.tasks
         assert not CodexPlanStore().load('foreign')[1]
+    finally:
+        service.close()
+
+
+def test_every_connection_failure_says_to_use_stop_in_plain_words():
+    # These become the chat's latched problem, so each says what to do (#390).
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    for code, text in CodexConnectionFailure.REASONS.items():
+        assert 'Use Stop' in text, code
+        assert 'reconcile' not in text.lower(), code
+        assert str(CodexConnectionFailure(code)) == text
+
+
+# -- Steer (#239): turn/steer into the running turn, over real stdio ------------------------
+
+
+def _steer_service(server, scenario, tmp_path, monkeypatch):
+    from thechatplace.providers.codex_execution import CodexExecutionConnection
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    start, _ = server
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: tmp_path / 'errors.log')
+    connection = CodexExecutionConnection(scenario, start=start, initialize=False)
+    return CodexChatRuntime(factory=lambda exe: connection), connection
+
+
+def _wait(predicate):
+    import time
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(.01)
+    assert predicate()
+
+
+def test_steer_goes_into_the_running_turn_and_never_starts_one(server, tmp_path, monkeypatch):
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, connection = _steer_service(server, 'owned-turn-steer', tmp_path, monkeypatch)
+    try:
+        record = service.create('/workspace', 'Synthetic steer')
+        service.send(record, 'Synthetic prompt')
+        _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
+        sent = connection._next_id
+        assert service.steer(record, 'Also the docs') == 'turn'
+        assert service.snapshot('owned').outcome == 'inProgress'  # not stopped
+        assert not service.snapshot('owned').steering
+        # A queued message steered: out of the queue only once accepted.
+        assert service.send(record, 'Queued one')
+        assert service.steer(record, 'Queued one', index=0) == 'turn'
+        assert not service.snapshot('owned').queued
+        # The checks ran again before each steer (account, route), and no
+        # turn/start went: two turn/steer requests only.
+        assert connection._next_id > sent + 2
+        with pytest.raises(CodexSteerRefused) as refused:
+            service.steer(record, 'Gone', index=0)  # nothing queued now
+        assert refused.value.code == 'changed'
+        service.stop(record)
+        _wait(lambda: service.snapshot('owned').outcome == 'interrupted')
+        with pytest.raises(CodexSteerRefused) as refused:
+            service.steer(record, 'Too late')
+        assert refused.value.code == 'not_running'
+    finally:
+        service.close()
+
+
+def test_steer_with_the_wrong_turn_is_refused_by_codex(server, tmp_path, monkeypatch):
+    service, connection = _steer_service(server, 'owned-turn-steer', tmp_path, monkeypatch)
+    try:
+        record = service.create('/workspace', 'Synthetic steer')
+        service.send(record, 'Synthetic prompt')
+        _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
+        with pytest.raises(CodexRpcError, match='Codex request failed'):
+            connection.request('turn/steer', {'threadId': 'owned', 'expectedTurnId': 'other',
+                                              'input': [{'type': 'text', 'text': 'x'}]})
+        # Turn options can't ride along with a steer.
+        with pytest.raises(CodexRpcError):
+            connection.request('turn/steer', {'threadId': 'owned', 'expectedTurnId': 'turn',
+                                              'model': 'other',
+                                              'input': [{'type': 'text', 'text': 'x'}]})
+        assert not connection.closed
+    finally:
+        service.close()
+
+
+def test_steer_racing_the_turns_end_is_refused_and_a_queued_one_stays_queued(server, tmp_path,
+                                                                             monkeypatch):
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, connection = _steer_service(server, 'owned-turn-steer-race', tmp_path, monkeypatch)
+    try:
+        record = service.create('/workspace', 'Synthetic steer')
+        service.send(record, 'Synthetic prompt')
+        _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
+        assert service.send(record, 'Queued one')
+        with pytest.raises(CodexSteerRefused) as refused:
+            service.steer(record, 'Queued one', index=0)
+        assert refused.value.code in ('not_running', 'refused')
+        assert not service.snapshot('owned').problem
+        # Back in its queue, it goes as the next turn once the turn has ended,
+        # exactly once: as if it had never been steered.
+        _wait(lambda: not service.snapshot('owned').queued
+              and service.snapshot('owned').outcome == 'inProgress')
+    finally:
+        service.close()
+
+
+def test_steer_with_the_connection_lost_is_unknown_and_a_queued_one_comes_back(server, tmp_path,
+                                                                                monkeypatch):
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    service, connection = _steer_service(server, 'owned-turn-steer-close', tmp_path, monkeypatch)
+    updates = []
+    service._on_update = updates.append
+    try:
+        record = service.create('/workspace', 'Synthetic steer')
+        service.send(record, 'Synthetic prompt')
+        _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
+        assert service.send(record, 'Queued one')
+        with pytest.raises(CodexConnectionFailure):
+            service.steer(record, 'Queued one', index=0)
+        # Maybe taken: never queued to go again, but back to the reply box.
+        assert any(u.unsent == ('Queued one',) for u in updates)
+        assert not service.snapshot('owned').queued
+        assert service.snapshot('owned').problem
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize('scenario', ['owned-turn-steer-internal', 'owned-turn-steer-nocode',
+                                      'owned-turn-steer-textcode'])
+def test_a_steer_error_that_isnt_a_refusal_is_unconfirmed(server, scenario, tmp_path, monkeypatch):
+    # Only an integer -32600 proves the text wasn't taken (#239): any other
+    # error, no code, or a code that isn't an int may have come after.
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    service, connection = _steer_service(server, scenario, tmp_path, monkeypatch)
+    updates = []
+    service._on_update = updates.append
+    try:
+        record = service.create('/workspace', 'Synthetic steer')
+        service.send(record, 'Synthetic prompt')
+        _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
+        assert service.send(record, 'Queued one')
+        with pytest.raises(CodexRpcError, match='did not confirm') as error:
+            service.steer(record, 'Queued one', index=0)
+        assert not isinstance(error.value, CodexSteerRefused)
+        assert not service.snapshot('owned').queued  # never sent again on its own
+        assert any(u.unsent == ('Queued one',) for u in updates)
     finally:
         service.close()

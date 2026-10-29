@@ -43,6 +43,10 @@ The layout matches main-own, and the split stays where it is: the session list i
 
 **Fixed:** The column split used to jump 110 pixels when the status text changed length, so the session list lost almost a third of its width while a turn ran; the status bar's middle text was cut mid-word (#179). The split now stays put, and text that doesn't fit ends in "...".
 
+## main-own-steering: An own session mid-turn with a steered message not yet taken in
+
+The layout matches main-own-working, with the split in the same place. The messages list has three rows: "You: Make the uploader flush before it signals.", "Claude: ## What changed" (selected), and, at the end where a queued message would be, "Steering, waiting for Claude: Also update the README while you're there." in the same plain text as the rows above it. There's no "Queued:" row, because a steered message goes into the turn rather than waiting. The reply box is empty with the text cursor in it. The status line under the buttons reads "1 steered message not taken in yet. Claude is working (1 minute 15 seconds)." and fits on its line. As in main-own-working, the middle part of the status bar is too short for the whole sentence, so "Visual probe: 1 steered message not taken in yet. Claude..." ends in "...". In High Contrast Aquatic the line is light text on black, like the rest of the window.
+
 ## main-attachments: An own session with two files attached to the next message
 
 This picture is the same as main-own, except that a small white list 48 tall appears under the Send/Stop/Commands/Attach Files row and the "Ready." line below it. It shows "screenshot of the error.png" (selected in blue) and "upload.log". To make room, the messages list drops to 269 tall. The attachment list has no heading of its own, so it looks like a third, unlabelled list sitting under the buttons.
@@ -99,7 +103,7 @@ Like main-own. The chat's row has moved to second place in the session list and 
 
 ## main-codex-interrupted: A Codex chat whose connection was interrupted
 
-The owned chat after Codex sent a request the app can't answer. The heading wraps onto two lines: "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received; reconcile chat history. Codex chat.", with one full stop after "history". The session row and the status bar say the same, cut with "...". The line under the buttons reads "Codex connection interrupted: an unsupported approval or question was received; reconcile chat history." The messages are the two history rows; the queued message is gone.
+The owned chat after Codex sent a request the app can't answer. The heading wraps onto two lines: "Codex history preview, Scratch, status unavailable: Codex connection interrupted: an unsupported approval or question was received. Use Stop to reconnect. Codex chat.", with one full stop after "reconnect". The session row and the status bar say the same, cut with "...". The line under the buttons shows whole at every size: "Codex connection interrupted: an unsupported approval or question was received. Use Stop to reconnect." The Messages label reads "Messages in Codex history preview (working, on Codex):", because a state change isn't put on the label while the messages list has focus (#372). The messages are the two history rows; the queued message is gone.
 
 **What looks off:** Nothing.
 
@@ -159,13 +163,17 @@ This is an 820 by 620 dialog. A web page fills almost all of it (796 by 534) ins
 
 ## shortcuts-plain: Keyboard Shortcuts as plain text
 
-This is a smaller 620 by 520 dialog. "Shortcuts:" heads a white read-only text box 588 by 402 that fills most of the dialog. It holds the same content as plain text. It opens with a five-line paragraph about the window's three parts in Tab order, ending with Provider and Kind as default session-list columns, then section names such as "Moving around:" and "Session list:" on their own lines, and each shortcut indented two spaces, as in "Ctrl+1: Go to the session list". Long lines wrap with no hanging indent, so continuation lines start at the left margin. The text is the small standard font. A single "Close" button sits at the bottom right. The 2026-10-25 run's text adds New Agent Conversation (Ctrl+Shift+G) and the agent-conversation use of Ctrl+Shift+E (#347), What AI Knows About You with Claude or Codex (Ctrl+Shift+K, #371) and Codex's approval reviewer under Change Permission Mode (Ctrl+Shift+O, #374); all of these are below the first screenful, so the light-100 and hc-aquatic-100 pictures look as before. At 175% the first screenful now shows the longer opening paragraph, five lines, so everything below it starts two lines lower.
+The 2026-10-27 light and High Contrast Aquatic captures include Codex in the
+Changed Files shortcut's text. The opening viewport and layout are unchanged;
+the High Contrast scrollbar thumb shifts slightly with the new text length.
+
+This is a smaller 620 by 520 dialog. "Shortcuts:" heads a white read-only text box 588 by 402 that fills most of the dialog. It holds the same content as plain text. It opens with a five-line paragraph about the window's three parts in Tab order, ending with Provider and Kind as default session-list columns, then section names such as "Moving around:" and "Session list:" on their own lines, and each shortcut indented two spaces, as in "Ctrl+1: Go to the session list". Long lines wrap with no hanging indent, so continuation lines start at the left margin. The text is the small standard font. A single "Close" button sits at the bottom right. The 2026-10-25 run's text adds New Agent Conversation (Ctrl+Shift+G) and the agent-conversation use of Ctrl+Shift+E (#347), What AI Knows About You with Claude or Codex (Ctrl+Shift+K, #371) and Codex's approval reviewer under Change Permission Mode (Ctrl+Shift+O, #374); all of these are below the first screenful, so the light-100 and hc-aquatic-100 pictures look as before. At 175% the first screenful now shows the longer opening paragraph, five lines, so everything below it starts two lines lower. Since the user guide review (#392), the Session list section's Ctrl+Shift+L line reads "Copy Session Link (Claude chats): ..." and wraps onto three lines at 100% (two at 150% and 175%). "Ctrl+N: New Chat Place session" is gone from that section, so Ctrl+Shift+N follows Ctrl+Shift+L directly; Ctrl+N is now listed among the shortcuts that work from anywhere, below the first screenful.
 
 **What looks off:** Wrapped lines aren't indented, so they run into the next shortcut visually. The bottom line is cut through, as the box scrolls. Nothing else.
 
 ## user-guide: Help, User Guide (formatted page)
 
-This dialog is laid out exactly like shortcuts-page, 820 by 620, with the web page filling the dialog and "Read as Plain Text" and "Close" at the bottom right. The page starts with a large bold heading, "The Chat Place User Guide", then four paragraphs: Windows and Mac key names, what the app is (Claude and Codex sessions in one list; Provider and Kind; more providers planned), how the guide is arranged, and the independence line naming Anthropic and OpenAI. A bold "Before you start" heading is at the bottom of the view. The scroll thumb is short, showing that the page is long. In High Contrast Aquatic the page is near-black (#202020) with white text (16.3:1).
+This dialog is laid out exactly like shortcuts-page, 820 by 620, with the web page filling the dialog and "Read as Plain Text" and "Close" at the bottom right. The page starts with a large bold heading, "The Chat Place User Guide", then five paragraphs: Windows and Mac key names; what the app is (Claude, Codex and GitHub Copilot CLI chats in one list, with **Provider** and **Kind** in bold, more providers planned, and a pointer to the "What works for each provider" table); that the app's menus say "session" where the guide says "chat"; how the guide is arranged, ending with its glossary; and the independence line naming Anthropic and OpenAI, whose second line is cut through by the bottom of the view, as the page scrolls. Since the user guide review (#392) no heading after the title is in view at 100%, 150% or 175%; the earlier picture had "Before you start" at the bottom. The scroll thumb is short, showing that the page is long. In dark-100 the page is dark grey (#1e1e1e) with light grey text (#e8e8e8, 13.6:1). In High Contrast Aquatic the page is near-black (#202020) with white text (16.3:1); in Desert, cream (#fffaef) with dark grey text (#3d3d3d, 10.4:1).
 
 **What looks off:** Nothing.
 
@@ -183,23 +191,27 @@ This is a 720 by 520 dialog titled "Message: Claude" (it was "Message from Claud
 
 ## settings: Settings
 
-This is a 680 by 651 dialog (550 in 0.1.6; the Codex check box added 40, the task-list check box another 40, #231, and the agent conversations check box 21, #248). At the top, a framed group, "Announcements", runs the full width with three radio buttons: "Full: read the whole reply" (chosen, with the focus outline), "Summary: the session's name and the reply's first sentence" and "Silent: status bar only". Below it are two ticked check boxes, then a second framed group, "Reading messages", with two more ticked boxes. Then come label-and-dropdown rows. "Speech engine" has a dropdown 555 wide, "Automatic (your screen reader, or a system voice when none is running)". "Speaking rate" has a small greyed-out "Default" dropdown, followed on its own line by the note "Voice and rate follow your screen reader's own settings." "Windows notifications" has a dropdown 335 wide, "When your sessions finish a turn, or any session needs you". Under it, "Recent folders New Session offers:" has a small number box showing 20 and a "Clear Recent Folders" button beside it (#215). Five check boxes follow. The Remote Control one (unticked) wraps its label onto two lines (624 by 30): "Turn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices." and "Their conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)". Under it, the ticked "Let Claude keep a task list in The Chat Place's sessions, as it does in the desktop app, so View, Tasks shows how far along it is (from the next message)" wraps onto two lines, with its access key K underlined (#231). Under that, the unticked "Include Codex chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then restart." also wraps onto two lines, with "restart." alone on the second. Next, the unticked "Let agent conversations hand replies across automatically" fits one line, with a little less space under it than the others (6 pixels, so Settings still fits a 768-high screen). It lines up at x=10 with the other check boxes; until #368 it sat 4 pixels further left. The last, "Tell me when an update has been installed, with a link to what's new", is ticked. "OK" (blue-outlined, the default) and "Cancel" sit at the bottom right, 8 pixels above the dialog's bottom edge.
+This is a 680 by 654 dialog (550 in 0.1.6; the Codex check box added 40, the task-list check box another 40, #231, the agent conversations check box 21, #248, and the changed-lines choice 3, #174). At the top, a framed group, "Announcements", runs the full width with three radio buttons: "Full: read the whole reply" (chosen, with the focus outline), "Summary: the session's name and the reply's first sentence" and "Silent: status bar only". Below it are two ticked check boxes, then a second framed group, "Reading messages", with two more ticked boxes. Then come four label-and-dropdown rows in one grid, their labels in a column at the left and their dropdowns lined up at x=151. "Speech engine" has a dropdown to the right edge, "Automatic (your screen reader, or a system voice when none is running)". "Speaking rate" has a small greyed-out "Default" dropdown with the note "Voice and rate follow your screen reader's own settings." beside it on the same line (it had a line of its own before #174). "Windows notifications" has a dropdown 335 wide, "When your sessions finish a turn, or any session needs you". "Mark changed lines with", its H underlined, has a dropdown about 270 wide showing "Words (Added, Removed, Unchanged)" (#174). Under it, "Recent folders New Session offers:" has a small number box showing 20 and a "Clear Recent Folders" button beside it (#215). Five check boxes follow. The Remote Control one (unticked) wraps its label onto two lines (624 by 30): "Turn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices." and "Their conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)". Under it, the ticked "Let Claude keep a task list in The Chat Place's sessions, as it does in the desktop app, so View, Tasks shows how far along it is (from the next message)" wraps onto two lines, with its access key K underlined (#231). Under that, the unticked "Include Codex chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then restart." also wraps onto two lines, with "restart." alone on the second. Next, the unticked "Let agent conversations hand replies across automatically" fits one line, with a little less space under it than the others (6 pixels, so Settings still fits a 768-high screen). It lines up at x=10 with the other check boxes; until #368 it sat 4 pixels further left. The last, "Tell me when an update has been installed, with a link to what's new", is ticked. "OK" (blue-outlined, the default) and "Cancel" sit at the bottom right, 8 pixels above the dialog's bottom edge.
 
-**What looks off:** The dropdown widths are uneven (555, 68 and 335), and the Windows notifications dropdown starts at x=140 while the two above it start at x=99. The whole dialog now fits its contents, with no empty band below the buttons.
+**What looks off:** The four dropdowns all start at x=151 since #174, but their widths are uneven (503, 68, 335 and 271). The number box on the Recent folders row, outside that grid, starts at x=199, so it doesn't line up with the dropdowns above it. The whole dialog fits its contents, with no empty band below the buttons.
 
 **At 150% and 175%:** everything is in view at 150% (1020 by 895). At 175% (1190 by 996) the settings are taller than the screen, so they scroll above OK and Cancel (#231): a scroll bar runs down the right of the settings, the wrapped check box labels break short of it, and the last check box is half in view at the bottom until you scroll. OK and Cancel are their full size below it.
 
 ## settings-codex: Settings with Codex automatically included
 
-The same dialog, 680 by 636, on a computer where Codex is found. The Codex check box is ticked and its label is one line, "Include Codex chats (restart required)", so the dialog is 15 pixels shorter than settings and everything below the check box moves up. Below it come the unticked agent conversations check box and the ticked update notice, as in settings (the baseline was 615 high before the agent check box; taken again for #368). In High Contrast Aquatic both Settings pictures follow the theme: near-black background (#202020), white text (16.3:1), white group frames and check boxes, and OK filled light aqua.
+The same dialog, 680 by 639, on a computer where Codex is found. The Codex check box is ticked and its label is one line, "Include Codex chats (restart required)", so the dialog is 15 pixels shorter than settings and everything below the check box moves up. Below it come the unticked agent conversations check box and the ticked update notice, as in settings (the baseline was 615 high before the agent check box; taken again for #368). In High Contrast Aquatic both Settings pictures follow the theme: near-black background (#202020), white text (16.3:1), white group frames and check boxes, and OK filled light aqua.
 
 **What looks off:** Nothing.
 
 ## settings-copilot: Settings once Copilot CLI has a session
 
-The same dialog as settings, 680 by 676 (25 taller), on a computer where GitHub Copilot CLI has saved a session (#352, #355). A new unticked check box, "Include GitHub Copilot CLI chats (preview; restart required)" (it said "read-only" before #372), fits on one line (343 wide) between the Codex check box and the agent conversations one, with its access key O underlined. Every check box below the Reading messages group starts at x=10. In High Contrast Aquatic and Desert it follows the theme like the rest of Settings, and dark-100 looks the same as light-100 (#177).
+The same dialog as settings, 680 by 679 (25 taller), on a computer where GitHub Copilot CLI has saved a session (#352, #355). A new unticked check box, "Include GitHub Copilot CLI chats (preview; restart required)" (it said "read-only" before #372), fits on one line (343 wide) between the Codex check box and the agent conversations one, with its access key O underlined. Every check box below the Reading messages group starts at x=10. In High Contrast Aquatic and Desert it follows the theme like the rest of Settings, and dark-100 looks the same as light-100 (#177).
 
 **What looks off:** Nothing at 100% and 150%. At 175% the settings scroll (#231), as in settings, and the Copilot check box is the one cut through at the bottom until you scroll.
+
+## settings-speech-problem: Settings after an announcement wasn't spoken
+
+The same dialog as settings, 680 by 706 (52 taller), after the last announcement couldn't be spoken (#98). A read-only text box, 52 high, sits right under the Speaking rate row, in the dropdowns' column from x=151 to the right edge, reading "Last announcement not spoken: JAWS is running but refused the text." Everything below it moves down. In High Contrast Aquatic the box follows the theme: a white outline around near-black, with white text.
 
 ## new-session: File, New Session
 
@@ -233,9 +245,15 @@ This is a 700 by 540 dialog. "Request:" heads a large read-only box (668 by 367,
 
 ## question: Claude asks questions (one choice and several choices)
 
-This is a 700 by 377 dialog. The first framed group, titled "Branch: Which name should the release branch use?", holds three radio buttons, "release/0.2: Matches the last release" (chosen, with the focus outline), "v0.2-prep: Shorter" and "Other (type below)", with a full-width text box below them. The second framed group, "Checks: Which checks should run first?", holds four unticked check boxes (Unit tests, Smoke test, Lint, Other (type below)) and its own text box. The two groups fill the top 290 pixels, and "Send Answers" (default), "Don't Answer" and "Answer Later" sit 18 pixels below them at the bottom right.
+This is a 700 by 537 dialog. At the top, "Question:" labels a read-only box 671 pixels wide and 120 tall, with the focus (a caret at its start). It holds both questions in full, one per line: "Branch: Which name should the release branch use?" and "Checks: Which checks should run first?" (#415). Below it, the first framed group, titled "Branch: Which name should the release branch use?", holds three radio buttons, "release/0.2: Matches the last release", "v0.2-prep: Shorter" and "Other (type below)", with a full-width text box below them. The second framed group, "Checks: Which checks should run first?", holds four unticked check boxes (Unit tests, Smoke test, Lint, Other (type below)) and its own text box. "Send Answers" (default), "Don't Answer" and "Answer Later" sit at the bottom right. Label contrast is measured at 18.43:1 in light (#000000/#F0F0F0), 16.29:1 in High Contrast Aquatic (#FFFFFF/#202020) and 15.65:1 in Desert (#202020/#FFFAEF).
 
-**What looks off:** Nothing. The dialog is now just tall enough for its two groups, with no empty band above the buttons.
+**What looks off:** Nothing. The Question box has room to spare for two short questions; it's sized for the text a chat writes before asking. At 175% it stays inside the dialog, with the buttons in view.
+
+## question-preview: Claude asks about text it wrote just before, with an option's preview (#415)
+
+A 700 by 555 dialog titled "Claude asks: Visual probe". The Question box at the top, with the focus, shows what Claude wrote before asking: "Here's the announcement for the release:", a blank line, the one-paragraph announcement, a blank line, then "Mastodon: Post this announcement to Mastodon?". One framed group follows with "Post it: Post it publicly", "Change it: Say what to change", "Don't post" and "Other (type below)" with its text box. Then "Preview:" (V underlined) labels a second read-only box, 120 pixels tall, showing Post it's preview: the announcement, a blank line and the release link. Send Answers (default), Don't Answer and Answer Later are at the bottom right. In High Contrast Aquatic both boxes have white text on near-black with white outlines, and the group box is outlined in white; in Desert they're dark on cream. At 175% everything scales up and still fits, with the buttons in view. Contrast is as in question.
+
+**What looks off:** Nothing. Long text wraps inside each box rather than widening the dialog.
 
 ## plan: Claude's plan to approve
 
@@ -395,7 +413,7 @@ The same dialog, showing a file change: "Create notes.txt", "File:" and the file
 
 ## codex-question: Codex asks questions
 
-A 700 by 254 dialog titled "Codex asks: Codex preview". A framed group "Checks: Which checks should run?" holds two radio buttons, "Unit tests" (chosen, focus outline) and "Smoke test". A second group, "Secret: Enter the test secret.", holds one radio button, "Other (type below)", and an empty one-line box under it. "Send Answers" (default), "Decline and Stop Turn" and "Answer Later" are at the bottom right.
+A 700 by 414 dialog titled "Codex asks: Codex preview". The Question box (#415) is at the top, with the focus, holding "Checks: Which checks should run?" and "Secret: Enter the test secret." on two lines; nothing was written before asking in this probe. A framed group "Checks: Which checks should run?" holds two radio buttons, "Unit tests" and "Smoke test". A second group, "Secret: Enter the test secret.", holds one radio button, "Other (type below)", and an empty one-line box under it. "Send Answers" (default), "Decline and Stop Turn" and "Answer Later" are at the bottom right. Everything below the Question box moved down 160 pixels.
 
 **What looks off:** The secret question shows its box under a lone "Other (type below)" choice, which looks like a choice question with one option. Nothing is cut off.
 
@@ -443,15 +461,25 @@ The main window with the agent conversation "Uploader fix" loaded. Its row in th
 
 ## agent-new: File, New Agent Conversation (#248)
 
-A 720 by 760 dialog titled "New Agent Conversation". From the top: "Kind of conversation:" with a dropdown showing "Your own roles" (focused); "Title:" with an empty box; "First agent's chat:" with a dropdown showing "New Claude chat"; "First agent's role (optional), such as Build the fix:" with an empty box; "First agent's new chat permission:" with "Auto: Claude decides what is safe to run without asking"; "Second agent's chat:" with "New Codex chat"; "Second agent's role (optional), such as Review each change:"; "Second agent's new chat permission:" with "Read-only; asks before allowing changes"; "Third agent's chat (optional):" with "No third agent"; "Folder for new chats:" with an editable dropdown and a "Browse..." button beside it; "Hand-offs:" with "Approve each hand-off: you pass each reply on (type, or Ctrl+Shift+E)"; "Who goes first:" with "First agent"; and "Opening message (Enter starts a new line; Ctrl+Enter starts the conversation):" over a large multi-line box that fills the rest. "Start" (default) and "Cancel" are at the bottom right. Each label's access key is underlined, and none repeats. Measured contrast 18:1 or more in light, 16:1 in High Contrast.
+A 720 by 760 dialog titled "New Agent Conversation". From the top: "Kind of conversation:" showing "Your own roles" with a dotted focus outline; an empty Title box; a new Claude first agent with an empty role and Auto permission; a new Codex second agent with an empty role and "Read-only; asks before allowing changes"; and "No third agent". "About Codex permissions:" now follows the agent choices, above a read-only box 671 by 110 pixels. Its three lines explain automatic review, that it can deny requests, human review, network and outside-folder temporary access requiring approval, and the chat-only override with saved rules still applying. The whole explanation is visible. Folder and Browse follow, then Hand-offs set to approving each hand-off. The Who goes first label sits at the bottom of the scrolling view; its dropdown and the opening message are below the fold. Start and Cancel stay at the bottom right. The new label and box move the folder and everything after it down 134 pixels. Light uses black text on light grey (#000000/#F0F0F0, 18.43:1); High Contrast Aquatic uses white text and control outlines on near-black (#FFFFFF/#202020, 16.29:1), with an aqua Start button. Both variants have no layout problems flagged.
 
 **What looks off:** Nothing. When an existing chat is chosen, its permission row and (with no new chat) the folder row disappear, and the rows below move up.
 
 **At 175%:** the controls are taller than the screen allows, so they scroll above Start and Cancel, which stay in view; the opening message box is below the fold until you scroll, as in Settings.
 
+## agent-new-copilot: New Agent Conversation with a new Claude chat and a new Copilot chat (#369, #412)
+
+The same 720 by 760 dialog, with "Your own roles" focused at the top and an empty title. The first agent is a new Claude chat with an empty role and "Auto: Claude decides what is safe to run without asking". The second agent's chat reads "New Copilot chat", with an empty role, and its permission dropdown reads "Asks you before it changes files or runs commands", the only item, which fits in the 671-pixel dropdown. Then "No third agent". There's no "About Codex permissions" box, so Folder, Hand-offs, Who goes first and the top of the opening message all show above the fold; Start and Cancel stay at the bottom right. Light uses black text on light grey (#000000/#F0F0F0, 18.43:1); High Contrast Aquatic uses white on near-black (#FFFFFF/#202020, 16.29:1), with an aqua Start button. Both have the dotted focus outline and underlined access keys, and neither has layout problems flagged.
+
+**What looks off:** Nothing.
+
+## agent-new-auto-review: Three new Codex chats with automatic approval review
+
+The same 720 by 760 dialog, with "Your own roles" focused at the top, an empty title and three new Codex chats with empty roles. The first and third permission dropdowns read "Read-only; automatic approval review"; the second reads "Can edit files in this folder; automatic approval review". Each dropdown is 671 by 23 pixels and its selected text fits. Under the third permission, "About Codex permissions:" heads a 671 by 110 read-only box containing the complete explanation in three lines, as in agent-new. Folder's label is at the bottom of the scrolling view, with its dropdown, Hand-offs, Who goes first and the opening message below the fold. The folder and everything after it moved down 134 pixels. Start and Cancel remain at the bottom right. Both variants keep the dotted focus outline and follow their theme. Measured label contrast is 18.43:1 in light (#000000/#F0F0F0) and 16.29:1 in Aquatic (#FFFFFF/#202020); neither has layout problems flagged.
+
 ## agent-new-three: New Agent Conversation with the Builder and reviewer template and a third agent (#248)
 
-The same dialog, filled in by the "Builder and reviewer" kind and with a third agent. "Kind of conversation:" shows "Builder and reviewer: One agent builds; the other reviews each change without editing, and the builder fixes what it finds." The first agent is a new Claude chat with the role "Build what the user asks, then pass your work on for review. Fix what the reviewer finds." and permission "Accept edits: file edits allowed; Claude asks before commands that need approval". The second is a new Codex chat with the role "Review each change the builder makes. List problems by severity. Don't edit files." and "Read-only; asks before allowing changes". "Third agent's chat (optional):" shows "New Claude chat", with "Third agent's role (optional), such as Check the facts:" holding "Check the facts" and "Third agent's new chat permission:" showing "Plan: Claude plans but does not change anything". Below come the folder, "Hand-offs:", and "Who goes first:" with "Everyone (their replies aren't passed on)"; the opening message box is below the fold, and the body scrolls above Start and Cancel. Each label's access key is underlined, and none repeats.
+The same dialog, filled in by "Builder and reviewer" and with a third agent. The first agent is a new Claude chat with the builder role and Accept edits permission. The second is a new Codex chat with the reviewer role and "Read-only; asks before allowing changes". The third is a new Claude chat with "Check the facts" and Plan permission. After that permission, "About Codex permissions:" now heads the same 671 by 110 read-only explanation box as in agent-new; the whole paragraph is visible in three lines. Folder's label sits at the bottom of the scrolling view; the folder dropdown, Hand-offs, Who goes first and the opening message are below the fold. They moved down 134 pixels. Start and Cancel stay at the bottom right. Each access key is underlined, the template has a dotted focus outline, and neither variant has layout problems flagged. Measured label contrast is 18.43:1 in light (#000000/#F0F0F0) and 16.29:1 in High Contrast Aquatic (#FFFFFF/#202020).
 
 **What looks off:** Nothing. The kind's description runs to the dropdown's right edge at 100%; it's read in full by the screen reader.
 
@@ -492,7 +520,45 @@ Only surfaces where a variant differs in a way worth knowing are listed. Everywh
 - **Lists in every variant:** The focused list is marked only by the thin dotted outline. In High Contrast the selected rows of focused and unfocused lists are the same aqua or rust brown, just as they are the same blue in light mode (#181).
 
 
+## lists-codex-files: View, Changed Files in a Codex chat
+
+Reviewed from light-100 and hc-aquatic-100 screenshots on 2026-10-27. The 820 by
+660 dialog is titled "Lists: Codex history preview". Show items from is set to
+This message. The six-row Kinds list (788 by 96) has Changed Files (4) selected.
+Below an empty Filter box, the 788 by 140 file list shows upload.py with two lines
+added and one removed, notes.txt created with one line, unused.txt deleted, and
+test_upload.py renamed. The first file is selected. Its 788 by 165 Details box
+shows lines 8 to 10, with Unchanged, Removed and Added prefixes. Copy and Close
+are at the lower right. No controls are clipped or overlapping in either theme.
+
+Light mode has white boxes on light grey, black text on white (21:1), and white
+selected text on blue #0078D4 (4.53:1). High Contrast Aquatic uses white text on
+#202020 (16.29:1), navy #202074 on aqua #8EE3F0 for selected rows (9.47:1), and
+white control outlines. Colours and ratios were measured from the screenshots.
+
+**What looks off:** The existing shared-list focus issue (#181) remains. Both
+Kinds and the file list have selected rows; the file list's dotted focus outline
+is orange #FF872B on blue in light mode (1.89:1). In High Contrast Aquatic it is
+#711C0F on aqua (7.68:1). There are no new layout or theme problems.
+
+## lists-codex-deleted-file: Codex Changed Files with a deletion selected
+
+Reviewed in light-100 and hc-aquatic-100 on 2026-10-27. This is the same 820 by
+660 layout as lists-codex-files, with the third row, "unused.txt, deleted",
+selected. Details says "unused.txt: deleted.", then "Lines 1 to 2:" and the two
+removed lines. Both lines fit fully in the details box. Copy remains enabled.
+No text is clipped and no controls overlap in either theme.
+
+The measured colours match lists-codex-files: black on white (21:1), white on
+blue #0078D4 (4.53:1), High Contrast white on #202020 (16.29:1), and selected
+navy #202074 on aqua #8EE3F0 (9.47:1). The existing #181 focus-outline contrast
+issue remains in light mode; there are no new layout or theme problems.
+
 ## lists-codex-tasks: View, Tasks: Codex's live plan (#318)
+
+In the 2026-10-27 light and High Contrast Aquatic pictures, Kinds now says
+"Changed Files (0)" instead of "Changed Files, not available". The comparison
+shows only that label changing; the task list, details and layout are unchanged.
 
 The 820 by 660 Lists dialog, titled "Lists: Codex history preview", uses the same
 layout as Claude's Tasks. A scope dropdown is above the six-row Kinds list (788 by
@@ -512,6 +578,9 @@ dotted outline. In light mode its #FF872B dots against #0078D4 measure 1.89:1.
 There are no new clipping, overlap or theme problems in these pictures.
 
 ## lists-codex-no-tasks: View, Tasks in an external Codex chat (#318)
+
+The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
+(0)". The task's unavailable message, disabled Copy button and layout are unchanged.
 
 The same 820 by 660 layout. Kinds says "Tasks, not available" and the list label
 says "Tasks (0)". The single selected row reads "No task list. Task lists are kept
@@ -550,6 +619,9 @@ pictures. The saved-command-rules check says it could not be checked because thi
 is the synthetic probe connection, which does not supply that unrelated API.
 
 ## lists-codex-owned-no-tasks: View, Tasks in an owned Codex chat without tasks (#323)
+
+The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
+(0)". The empty task list, details and button positions are unchanged.
 
 The same 820 by 660 dialog uses the shared empty-list wording. Kinds says
 "Tasks (0)" without an unavailable warning. The selected row in the 788 by 140

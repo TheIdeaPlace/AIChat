@@ -52,7 +52,8 @@ import wx
 
 from ..changes import summary_text
 from ..codeblocks import find_code_blocks
-from .. import (__version__, about_you, announce, attachments, bugreport, codex_signin, signin, export, hub, links,
+from .. import (__version__, about_you, announce, attachments, bugreport, codex_signin,
+               copilot_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
@@ -84,7 +85,8 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
-                          PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, TAIL_KINDS, TOOL, TOOL_RESULT, ChatMessage,
+                          PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, STEERING, TAIL_KINDS, TOOL, TOOL_RESULT, USER,
+                          ChatMessage,
                           clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
@@ -183,6 +185,11 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
                    + "), in a supported desktop app or in a terminal.")
 
 
+#: Keys of the rows after the conversation: queued and steered messages, and
+#: notices. New messages go in before them (#50, #238).
+TAIL_PREFIXES = ("queued:", "steering:", "notice:")
+
+
 class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
@@ -250,6 +257,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._agent_codex_waiting: Dict[str, list] = {}
         self._agent_unconfirmed: set = set()
         self._agent_last_sent: Dict[tuple, str] = {}
+        #: The latest messages the conversation sent each member, so a Stop
+        #: that gives waiting ones back can tell its own from yours (#369).
+        self._agent_sent_texts: Dict[tuple, list] = {}
+        #: Per running Claude chat: the text it wrote since its last tool,
+        #: and whether a tool has come since, so a question can show what
+        #: Claude said just before asking it (#415).
+        self._turn_said: Dict[str, tuple] = {}
         self._agent_codex_preparing: set = set()
         self._agent_answered_early: set = set()
         #: The files each member's running turn has edited (phase 3).
@@ -312,6 +326,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._chat_refresh_pending = False
         self._chat_messages: List[ChatMessage] = []
         self._chat_loaded = False
+        #: The loaded chat's history has been read successfully, or is known
+        #: to be empty: a steered message's row is counted against it, so
+        #: Steer waits for this (#410). The session-id rename keeps it: the
+        #: history is the same.
+        self._history_known = False
         self._compaction_notices = {}
         self._compaction_tokens = {}
         self._command_speech = {}
@@ -319,6 +338,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._drafts: Dict[str, str] = {}  # unsent reply text, per session
         # Sent during a turn, in order; they go together when it ends (#50).
         self._queued: Dict[str, List[str]] = {}
+        #: Steered messages not yet in the chat's own history (#238, #239),
+        #: by the key its queue uses: [text, where it is, how many of your
+        #: messages had that text when it was steered, and once its turn is
+        #: over, the history read it ended at (else None)]. Shown as rows
+        #: after the messages until the history has one more.
+        self._steered: Dict[str, List[list]] = {}
+        #: Chat history reads so far: a steer whose turn ended is settled by
+        #: the first read after that, not one already under way (#410).
+        self._history_reads = 0
         self._attachments: Dict[str, List[str]] = {}  # per session, for its next message
         # Search (#21): text the session list is filtered by, and the last
         # text looked for in the messages.
@@ -516,6 +544,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         keys = key_name("Ctrl+Shift+Enter")
         self._item(session, f"Send and Save as Prompt... ({keys})",
                    lambda e: self.on_send_and_save())
+        # Steer (#238, #239): a reply-box key too, so in the label only.
+        self._item(session, f"Steer: Send into the Running Turn ({key_name('Ctrl+Alt+Enter')})",
+                   lambda e: self.on_steer())
         session.AppendSeparator()
         self._item(session, "Add to &Group...\tCtrl+G", lambda e: self.on_add_to_group())
         self._item(session, "Remove from Gro&up...", lambda e: self.on_remove_from_group())
@@ -587,6 +618,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                                       lambda e: self.check_for_updates(True))
         self._item(help_menu, "Claude Code &Sign-in...", lambda e: self.on_sign_in())
         self._item(help_menu, "Codex S&ign-in...", lambda e: self.on_codex_sign_in())
+        self._item(help_menu, "C&opilot Sign-in...", lambda e: self.on_copilot_sign_in())
         self._item(help_menu, "Report a &Bug...", lambda e: self.on_report_bug())
         self._item(help_menu, "&About", self.on_about, wx.ID_ABOUT)
         bar.Append(help_menu, "&Help")
@@ -1526,6 +1558,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._changes_due = False
         self._spoken.clear()
         self._chat_loaded = False
+        self._history_known = False
         self._announce_load = True
         if info.is_own and info.unread:
             self._store_write(self.store.update, info.cli_session_id,
@@ -1591,6 +1624,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._reader = None
         self._chat_messages = []
         self._chat_keys = []
+        self._history_known = False
         self.SetTitle(APP_NAME)
         self._show_no_session()
 
@@ -1808,6 +1842,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     "No messages yet. The first message didn't reach Claude; send it again "
                     "from the reply box.")
             self._chat_loaded = False  # keep looking until it appears
+            self._history_known = True  # nothing in it yet
         elif info.is_own:
             line = ("No transcript found for this session. Claude Code may not have "
                     "saved it, or it was deleted.")
@@ -1896,6 +1931,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self._chat_loaded = True
             return
         first_load = not self._chat_loaded
+        self._history_known = True
         if edits is not None:
             self._chat_edits, self._chat_turns = edits, turns
         if commands is not None:
@@ -1911,6 +1947,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if first_load:
             self._edits_said = len(self._chat_edits)  # what's there is old news
         if not changed and not first_load:
+            # A read that found nothing new still counts: a steer whose turn
+            # ended is settled by it (#410).
+            self._history_reads += 1
+            if self._drop_steers_in_history():
+                self._rebuild_chat_list()
             if self._changes_due:
                 self._say_changes(generation)
             return
@@ -1921,6 +1962,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._check_context()
         self._rebuild_chat_list(focus_newest=first_load)
         self._chat_loaded = True
+        self._history_reads += 1
+        if self._drop_steers_in_history():
+            self._rebuild_chat_list()  # the history has a steered message now
         if self._changes_due and not first_load:
             wx.CallAfter(self._say_changes, generation)  # after the reply
         if first_load:
@@ -2037,8 +2081,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         current = list(self.chat_list.GetStrings())
         # Queued messages (#50) are a tail after the conversation: new
         # messages go in before it, so the rows above never move.
-        old_body = [k for k in old_keys if not k.startswith(("queued:", "notice:"))]
-        body = [k for k in keys if not k.startswith(("queued:", "notice:"))]
+        old_body = [k for k in old_keys if not k.startswith(TAIL_PREFIXES)]
+        body = [k for k in keys if not k.startswith(TAIL_PREFIXES)]
         if (not focus_newest and keep_key is None and old_keys and keys
                 and body[: len(old_body)] == old_body and len(current) == len(old_keys)
                 and old_keys[: len(old_body)] == old_body):
@@ -2055,7 +2099,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     self.chat_list.Delete(tail_start)
                 if new_tail:
                     self.chat_list.Append(new_tail)
-                if selected_key is not None and selected_key.startswith(("queued:", "notice:")) \
+                if selected_key is not None and selected_key.startswith(TAIL_PREFIXES) \
                         and keys:
                     self.chat_list.SetSelection(
                         keys.index(selected_key) if selected_key in keys
@@ -2083,7 +2127,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         order = [m.key for m in self._chat_messages]
         if key not in order:
             return next((row for row in range(len(visible_keys) - 1, -1, -1)
-                         if not visible_keys[row].startswith(("queued:", "notice:"))),
+                         if not visible_keys[row].startswith(TAIL_PREFIXES)),
                         len(visible_keys) - 1)
         position = order.index(key)
         best = 0
@@ -2105,11 +2149,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if index >= len(visible) or visible[index].key != self._chat_keys[index]:
             return None  # the list and the messages are mid-update
         message = visible[index]
+        # Keyed by label too: a steering row's label says where it is, and
+        # changes while its text doesn't (#238).
         cached = self._spoken.get(message.key)
-        if cached is None or cached[0] != message.text:
+        if cached is None or cached[0] != (message.label, message.text):
             spoken = announce.spoken_markdown(message.text, describe_code=True) \
                 or message.first_line()
-            cached = (message.text, f"{message.label}: {spoken}")
+            cached = ((message.label, message.text), f"{message.label}: {spoken}")
             self._spoken[message.key] = cached
         return cached[1]
 
@@ -2205,8 +2251,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         copy = menu.Append(wx.ID_ANY, "&Copy Message\tCtrl+C")
         message = self._selected_message()
         if (message is not None and message.kind == QUEUED
+                and self._open is not None and self._open.provider in RUNTIME_PROVIDERS
+                and self._can_steer(self._open)):
+            steer = menu.Append(wx.ID_ANY, "S&teer\tCtrl+Alt+Enter")
+            menu.Bind(wx.EVT_MENU, lambda e: self.steer_queued(), steer)
+            menu.AppendSeparator()
+        if (message is not None and message.kind == QUEUED
                 and self._open is not None and self._open.provider == "claude"):
             now = menu.Append(wx.ID_ANY, "Send &Now\tCtrl+Enter")
+            steer = menu.Append(wx.ID_ANY, "S&teer\tCtrl+Alt+Enter")
+            menu.Bind(wx.EVT_MENU, lambda e: self.steer_queued(), steer)
             edit = menu.Append(wx.ID_ANY, "&Edit Queued Message")
             remove = menu.Append(wx.ID_ANY, "&Remove Queued Message\tDelete")
             menu.Bind(wx.EVT_MENU, lambda e: self.send_queued_now(), now)
@@ -2314,7 +2368,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
         def build(tab, tab_scope):
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
-                               lambda f: self._describe_changed_file(f, cwd), turn, tasks)
+                               lambda f: self._describe_changed_file(f, cwd), turn, tasks,
+                               marks=self.speech.change_marks)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
@@ -2825,6 +2880,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                      f"{name} is working." if state is not None and state.state == WORKING else "Ready.")
             if state is not None and state.queued:
                 label += " " + self._queued_words(len(state.queued))
+            if state is not None and getattr(state, "steering", ()):
+                label += " " + self._steering_words(len(state.steering)).strip()
             # Only when it changes, as for Claude: this runs on every tick,
             # and each new label is a name change JAWS shows again in braille
             # over the message you're on ("Messages in …" and part of it).
@@ -2854,6 +2911,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 if waiting_count:
                     # What's queued first: it's yours, and the news (#59).
                     label = f"{self._queued_words(waiting_count)} {label}"
+                steering = self._steering_words(len(getattr(runner, "steering", ())))
+                if steering:
+                    label = steering + label  # yours too (#238)
             else:
                 label = "Ready."
             # One line: a question's own line breaks would hide the rest of
@@ -2923,7 +2983,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("Couldn't open the clipboard.")
 
     def on_changes(self):
-        """View, Changed Files (Ctrl+Shift+D): the files Claude changed, on
+        """View, Changed Files (Ctrl+Shift+D): the files the AI changed, on
         the Lists dialog's Changed Files tab (#279): in the selected
         message's turn (your latest, if none is selected) if it changed any,
         else in the whole chat. From the transcript, so desktop sessions
@@ -3416,6 +3476,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     def _queued_words(count: int) -> str:
         return "1 message queued." if count == 1 else f"{count} messages queued."
 
+    @staticmethod
+    def _steering_words(count: int) -> str:
+        """Steered messages not yet taken in (#238), for turn status."""
+        if not count:
+            return ""
+        return ("1 steered message not taken in yet. " if count == 1
+                else f"{count} steered messages not taken in yet. ")
+
     def _own_for_setting(self, what: str, info: Optional[SessionInfo] = None):
         """The selected session (or ``info``) and its stored record, for a
         File, Change item; None (and why, said) for a session whose ``what``
@@ -3633,6 +3701,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if runner is not None:
             count = len(self._queued.get(info.cli_session_id, []))
             waiting = f"{self._queued_words(count)} " if count else ""
+            waiting += self._steering_words(len(getattr(runner, "steering", ())))
             self._feedback(f"{info.title}: {waiting}Claude has been working for "
                            f"{describe_elapsed(runner.elapsed())}, last {runner.last_activity}.{tasks}")
             return
@@ -4322,10 +4391,25 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._store_write(self.store.update, session_id, state=IDLE, detail="",
                           last_activity_ms=int(time.time() * 1000))
 
+    def _note_turn_text(self, session_id: str, event: TurnEvent) -> None:
+        """Keep what Claude wrote since its last tool (#415). AskUserQuestion
+        is a tool too, and its tool event comes before the question, so a
+        tool only marks the text as finished: the next text starts again."""
+        if event.kind in ("started", "finished", "failed"):
+            self._turn_said.pop(session_id, None)
+        elif event.kind in ("tool", "waiting", "steer_taken"):
+            # So does a pause for background work, or a steered message.
+            texts, _closed = self._turn_said.get(session_id, ([], False))
+            self._turn_said[session_id] = (texts, True)
+        elif event.kind == "text" and event.text.strip():
+            texts, closed = self._turn_said.get(session_id, ([], False))
+            self._turn_said[session_id] = (([] if closed else texts) + [event.text.strip()], False)
+
     def _on_turn_event(self, holder, title, event: TurnEvent):
         if self._gone():
             return
         session_id = holder["id"]
+        self._note_turn_text(session_id, event)
         if event.kind == "started":
             reported = event.session_id
             if reported and reported != session_id and session_id in self._runners:
@@ -4346,7 +4430,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self._agent_rename_member("claude", session_id, reported)
                 self._runners[reported] = self._runners.pop(session_id)
                 self._denials[reported] = self._denials.pop(session_id, [])
-                for per_session in (self._drafts, self._queued, self._pending,
+                for per_session in (self._drafts, self._queued, self._steered, self._pending,
                                     self._said_problems):
                     if session_id in per_session:
                         per_session[reported] = per_session.pop(session_id)
@@ -4420,6 +4504,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self.refresh_sessions()
             return
         if event.kind == "permission" and event.request is not None:
+            if event.request.is_question:
+                # What Claude wrote just before asking goes with the
+                # question: often it's what the question is about (#415).
+                event.request.said = "\n\n".join(self._turn_said.get(session_id, ([], False))[0])
             self._agent_member_asked("claude", session_id)
             if session_id not in self._runners:
                 return  # the turn already ended; nothing is waiting
@@ -4441,6 +4529,20 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         if event.kind == "waiting":
             self._answered_with_background(session_id, title, event, is_open_now)
+            return
+        if event.kind == "steer_taken":
+            data = event.data or {}
+            self._steer_status(session_id, event.text, "taken in by Claude")
+            said = announce.steer_taken_text(title, bool(data.get("late")))
+            # Late, the reply Claude had just finished is said first: the
+            # steered message's answer becomes the turn's (#238).
+            reply = announce.reply_text(title, data.get("reply") or "", self.speech.announce)
+            if reply:
+                said = f"{reply} {said}"
+            # Background news, so it doesn't cut off what's being read.
+            self._say(said, interrupt=False)
+            if is_open_now:
+                self._update_send_state()
             return
         if event.kind in ("finished", "failed"):
             command_state = self._command_speech_state(session_id)
@@ -4491,6 +4593,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                         p for p in waiting_now if p not in attached_back]
                     if is_open:
                         self._show_attachments()
+            self._steers_ended(session_id)
+            # Steered but never taken in (Stop, or the turn ended first): it
+            # comes back rather than being lost (#238).
+            untaken = list(getattr(runner, "steering", ()) or ()) if runner is not None else []
+            if untaken:
+                unsent.extend(untaken)
+                note = (f"Your steered message for {title} wasn't taken in. It's back in the "
+                        "message box.")
+                self._feedback(note)
+                self._last_announcement = note
             queued = self._take_queued(session_id)
             if queued and is_open:
                 self._rebuild_chat_list()  # sent, or given back: no longer queued
@@ -4656,12 +4768,137 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 return []
             notices = [ChatMessage(PERMISSION_NOTICE, text, key=f"notice:{info.key}:{turn}:{identity}")
                        for turn, identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
-            return notices + [ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
-                              for i, text in enumerate(state.queued)]
+            return notices + self._steered_rows(info.key) + [
+                ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
+                for i, text in enumerate(state.queued)]
         if info is None or not info.is_own or info.provider != "claude":
             return []
-        return [ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")
-                for i, text in enumerate(self._queued.get(info.cli_session_id, []))]
+        return self._steered_rows(info.cli_session_id) + [
+            ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")
+            for i, text in enumerate(self._queued.get(info.cli_session_id, []))]
+
+    def _your_messages_saying(self, text: str) -> int:
+        """How many of your messages in the loaded chat say ``text``."""
+        text = text.strip()
+        return sum(1 for m in self._chat_messages if m.kind == USER and m.text.strip() == text)
+
+    def _steered_rows(self, key: str) -> List[ChatMessage]:
+        """Steered messages as rows, readable like any other (#238, #239)."""
+        return [ChatMessage(STEERING, text, key=f"steering:{key}:{i}", sender=where)
+                for i, (text, where, *_rest) in enumerate(self._steered.get(key, ()))]
+
+    def _drop_steers_in_history(self) -> bool:
+        """A steered message's row goes once the loaded chat's history has
+        it: one more of your messages with its text than when it was
+        steered. Two steers saying the same go one at a time. Counted only
+        after a successful history read, so a failed or unread history can't
+        make one look missing."""
+        key = self._open_steer_key()
+        if key is None or not self._history_known:
+            return False
+        entries = self._steered.get(key)
+        if not entries:
+            return False
+        kept, earlier, missing = [], {}, []
+        for entry in entries:
+            text = entry[0]
+            ahead = earlier.get(text, 0)
+            earlier[text] = ahead + 1
+            # Only once it's known to be on its way (taken in, accepted):
+            # the history can be catching up on an earlier message saying
+            # the same thing.
+            if self._steer_waiting(entry):
+                kept.append(entry)
+            elif self._your_messages_saying(text) - entry[2] > ahead:
+                pass  # the history has it
+            elif entry[3] is not None and self._history_reads > entry[3]:
+                # Its turn is over and the history read since doesn't have
+                # it: accepted, then stopped before it was used (#410).
+                missing.append(text)
+            else:
+                kept.append(entry)
+        if len(kept) == len(entries):
+            return False
+        if kept:
+            self._steered[key] = kept
+        else:
+            self._steered.pop(key, None)
+        if missing:
+            self._restore_codex_text(key, missing)
+            name = provider_name(self._open.provider)
+            if len(missing) == 1:
+                self._feedback(f"{name} accepted your steered message, but the turn ended and "
+                               "the chat's history doesn't show it. It's back in the reply box: "
+                               "check the history before sending it again.")
+            else:
+                self._feedback(f"{name} accepted {len(missing)} steered messages, but the turn "
+                               "ended and the chat's history doesn't show them. They're back in "
+                               "the reply box: check the history before sending them again.")
+        return True
+
+    def _steers_turn_over(self, key: str) -> None:
+        """A runtime chat's turn is over (#239). A steer it accepted stays
+        until the history is read again: there, or back to the reply box."""
+        entries = self._steered.get(key)
+        if not entries:
+            return
+        marked = False
+        for entry in entries:
+            if not self._steer_waiting(entry) and entry[3] is None:
+                entry[3] = self._history_reads
+                marked = True
+        if marked and key == self._open_steer_key():
+            self._refresh_chat()
+
+    def _open_steer_key(self) -> Optional[str]:
+        """The key the loaded chat's steered messages are kept under: as its
+        queue's (Claude's session id, or a runtime chat's own key)."""
+        info = self._open
+        if info is None:
+            return None
+        return info.cli_session_id if info.provider == "claude" else info.key
+
+    @staticmethod
+    def _steer_waiting(entry: list) -> bool:
+        return entry[1].startswith("waiting for")
+
+    def _steers_changed(self, key: str) -> None:
+        """Show the change, only in the chat it belongs to: another chat's
+        list (or its "Loading messages…") must stay as it is."""
+        if key == self._open_steer_key():
+            # The history may have it already (read before this news came).
+            self._drop_steers_in_history()
+            self._rebuild_chat_list()
+
+    def _steer_row(self, key: str, text: str, where: str) -> None:
+        """Show a steered message at once, until its chat's history has it."""
+        # Steering waits for the chat to load (on_steer), so this count is
+        # of the history as it was before the message went.
+        self._steered.setdefault(key, []).append(
+            [text, where, self._your_messages_saying(text), None])
+        self._steers_changed(key)
+
+    def _steer_status(self, key: str, text: str, where: Optional[str]) -> None:
+        """Say where a steered message is now, or (``where`` None) drop its
+        row: it came back to you, or the history has it. With two saying the
+        same, it's the one still waiting that moves on, or goes."""
+        entries = self._steered.get(key, [])
+        same = [e for e in entries if e[0] == text]
+        entry = next((e for e in same if self._steer_waiting(e)), same[0] if same else None)
+        if entry is not None:
+            if where is None:
+                entries.remove(entry)
+            else:
+                entry[1] = where
+        if not entries:
+            self._steered.pop(key, None)
+        self._steers_changed(key)
+
+    def _steers_ended(self, key: str) -> None:
+        """The turn is over: its history shows what it took in, and any it
+        didn't came back to you, so the rows go."""
+        if self._steered.pop(key, None) is not None:
+            self._steers_changed(key)
 
     def _selected_queued(self) -> Optional[int]:
         """Which queued message is selected in the messages list, if one is."""
@@ -4694,6 +4931,146 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._update_send_state()
         self._feedback("Queued message removed. " + (
             f"{len(waiting)} still queued." if waiting else "Nothing is queued now."))
+
+    def _history_unknown(self) -> bool:
+        """True, and said, while the chat's history hasn't been read: a
+        steered message's row is counted against it (#410). The text stays."""
+        if self._history_known:
+            return False
+        if self._chat_loaded:
+            # Loaded, but its history couldn't be read (or isn't there).
+            self._feedback("This chat's history couldn't be read yet, so it can't be steered. "
+                           "Try again in a moment, or "
+                           f"{key_name('Ctrl+Enter')} queues your message for after the turn.")
+        else:
+            self._feedback("This chat is still loading. Steer again in a moment.")
+        return True
+
+    def _can_steer(self, info: Optional[SessionInfo]) -> bool:
+        """Whether this chat's provider can take a message into a running turn
+        (#238, #239)."""
+        if info is None or not info.is_own:
+            return False
+        try:
+            return bool(getattr(self.sessions.capabilities(info), "steer", False))
+        except ValueError:
+            return False
+
+    def on_steer(self):
+        """Steer (Ctrl+Alt+Enter, #238, #239): send the reply box's message
+        into the running turn without stopping it; the AI takes it in at its
+        next step and carries on. With no turn running, it's a plain Send."""
+        info = self._open
+        if info is None or info.provider == AGENTS or not info.is_own:
+            self.on_send()
+            return
+        if info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
+            state = self._codex_states.get(info.key)
+            if state is None or state.outcome != 'inProgress':
+                self.on_send()  # nothing running to steer
+                return
+            name = provider_name(info.provider)
+            if not self._can_steer(info):
+                self._feedback(f"{name} can't take a message during its turn. "
+                               f"{key_name('Ctrl+Enter')} queues it for after.")
+                return
+            message = self.reply_text.GetValue().strip()
+            if not message:
+                self._feedback("Type a message first.")
+                return
+            record = self.store.get(info.cli_session_id, provider=info.provider)
+            if record is None:
+                self._feedback("That chat is no longer in The Chat Place's list.")
+                return
+            if self._history_unknown():
+                return
+            self.reply_text.SetValue("")
+            self._codex_drafts.pop(info.key, None)
+            self._steer_codex_owned(record, message)
+            return
+        if info.provider != "claude":
+            self.on_send()
+            return
+        session_id = info.cli_session_id
+        runner = self._runners.get(session_id)
+        if runner is None:
+            self.on_send()
+            return
+        if runner.cancelled:
+            self._feedback("Still stopping. Send again in a moment.")
+            return
+        message = self.reply_text.GetValue().strip()
+        attached = list(self._attachments.get(session_id, []))
+        if not message and not attached:
+            self._feedback("Type a message first.")
+            self.reply_text.SetFocus()
+            return
+        if self._history_unknown():
+            return
+        # Attachments go as @"path", as a queued message's do.
+        text, _images = attachments.build(message, attached, images_inline=False)
+        if not runner.steer(text):
+            self._feedback(f"The turn has just ended. {key_name('Ctrl+Enter')} sends your "
+                           "message.")
+            return
+        self.reply_text.SetValue("")
+        self._drafts.pop(session_id, None)
+        if attached:
+            self._clear_attachments(session_id)
+        self._steer_row(session_id, text, "waiting for Claude")
+        self._update_send_state()
+        self._feedback(announce.steered_text(info.title, message, self.speech.announce,
+                                             self.speech.announce_own))
+        self.reply_text.SetFocus()
+
+    def steer_queued(self):
+        """Steer the selected queued message (Ctrl+Alt+Enter on it, #238,
+        #239): into the running turn now, without stopping it. It stays
+        queued if the turn can't take it."""
+        info = self._open
+        if info is None:
+            return
+        runtime = info.provider in RUNTIME_PROVIDERS and self._can_edit(info)
+        if not runtime and info.provider != "claude":
+            self._require_capability("steer", info)  # says it isn't available
+            return
+        index = self._selected_queued()
+        if index is None:
+            return
+        if runtime:
+            if not self._can_steer(info):
+                self._feedback(f"{provider_name(info.provider)} can't take a message during "
+                               "its turn. It stays queued.")
+                return
+            state = self._codex_states.get(info.key)
+            record = self.store.get(info.cli_session_id, provider=info.provider)
+            if state is None or record is None or not 0 <= index < len(state.queued):
+                return
+            if self._history_unknown():
+                return
+            self._steer_codex_owned(record, state.queued[index], index=index)
+            return
+        runner = self._runners.get(info.cli_session_id)
+        waiting = self._queued.get(info.cli_session_id, [])
+        if not 0 <= index < len(waiting):
+            return
+        if runner is None:
+            self._feedback("The turn has ended: the queued message goes next.")
+            return
+        text = waiting[index]
+        if self._history_unknown():
+            return
+        if not runner.steer(text):
+            self._feedback("The turn is already ending: the message stays queued and goes "
+                           "when it's done.")
+            return
+        del waiting[index]
+        if not waiting:
+            self._queued.pop(info.cli_session_id, None)
+        self._steer_row(info.cli_session_id, text, "waiting for Claude")
+        self._update_send_state()
+        # It was read back when it was queued.
+        self._feedback(announce.steered_text(info.title, text, self.speech.announce, False))
 
     def send_queued_now(self):
         """Send the selected queued message now: Claude stops what it's doing
@@ -5388,7 +5765,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         previous_providers = (self.speech.includes_codex(), self.speech.copilot_enabled)
         options = self._speech_options or default_options()
         dialog = SettingsDialog(self, self.speech, options,
-                                clear_recent=self._clear_recent_folders)
+                                clear_recent=self._clear_recent_folders, say=self._feedback)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
@@ -5986,6 +6363,70 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             process, lambda: codex_signin.check().usable,
             check=self._check_codex_sign_in)
 
+    def on_copilot_sign_in(self):
+        """Help, Copilot Sign-in (#391): whether GitHub Copilot CLI is
+        installed and signed in, and a way to sign in if it isn't. Shown
+        whether or not the Copilot preview is on: it's where you'd look
+        before turning it on."""
+        self._feedback("Checking Copilot CLI's sign-in.")
+        self._check_copilot_sign_in()
+
+    def _check_copilot_sign_in(self):
+        if self._gone():
+            return
+
+        def work():
+            try:
+                status = copilot_signin.check()
+            except Exception as exc:  # noqa: BLE001 - always answer
+                status = copilot_signin.SignIn(False, problem=str(exc) or "it failed")
+            wx.CallAfter(self._on_copilot_sign_in_result, status)
+        try:
+            self._pool.submit(work)
+        except RuntimeError:
+            pass  # closing
+
+    def _on_copilot_sign_in_result(self, status):
+        if self._gone():
+            return
+        text = copilot_signin.describe(status)
+        title = "Copilot Sign-in"
+        if status.missing or not status.known:
+            wx.MessageBox(text, title, wx.OK | wx.ICON_WARNING, self)
+            return
+        if status.signed_in:
+            wx.MessageBox(text, title, wx.OK | wx.ICON_INFORMATION, self)
+            return
+        answer = wx.MessageBox(
+            f"{text}\n\nSign in now? A window opens with Copilot's sign-in steps, which may give "
+            "you a code to enter on GitHub's sign-in page. When you've finished, The Chat Place "
+            "checks again and says so.",
+            title, wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION, self)
+        if answer != wx.YES:
+            return
+        command = copilot_signin.login_command()
+        try:
+            if command is None:
+                raise OSError("Copilot CLI wasn't found")
+            # The environment the app's own Copilot chats get, so the account
+            # signed in is theirs: no GH_TOKEN or other override can make it
+            # look signed in when they aren't (#352).
+            process = platform_paths.run_in_terminal(
+                command, "sign-in-copilot.command", "Signing in to GitHub Copilot CLI.",
+                env=platform_paths.copilot_child_environment(),
+                clear=platform_paths.COPILOT_OVERRIDE_VARS,
+                clear_prefixes=platform_paths.COPILOT_OVERRIDE_PREFIXES,
+                export=("COPILOT_HOME", "GH_HOST"))
+        except OSError as exc:
+            wx.MessageBox(f"Couldn't start the sign-in: {exc}", APP_NAME,
+                          wx.OK | wx.ICON_ERROR, self)
+            return
+        self._feedback("Signing in, in a new window. The Chat Place checks again when you've "
+                       "finished.")
+        self._check_sign_in_after(
+            process, lambda: copilot_signin.check().signed_in,
+            check=self._check_copilot_sign_in)
+
     def _check_sign_in(self, manual: bool):
         if self._gone():
             return
@@ -6122,6 +6563,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._is_in_session_view(focus)
 
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            if ctrl and event.AltDown() and not event.ShiftDown():
+                # Steer (#238, #239). Checked first, so it can never become
+                # a plain Send (Ctrl+Enter) or Properties (Alt+Enter).
+                if focus is self.reply_text:
+                    self.on_steer()
+                    return
+                if focus is self.chat_list and self._selected_queued() is not None:
+                    self.steer_queued()
+                    return
             if event.AltDown() and not ctrl and not event.ShiftDown():
                 # Properties (#214). Here rather than left to the menu's
                 # accelerator: this hook runs first, and Enter in the

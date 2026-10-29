@@ -48,6 +48,26 @@ class AcpNotSent(AcpError):
     """The message never left The Chat Place: Copilot can't have seen it."""
 
 
+#: ACP's error code for a request that needs a sign-in first ("auth_required",
+#: the ACP SDK's RequestError.authRequired). JSON-RPC leaves -32000 to the
+#: server, but ACP gives it this one meaning, and its other errors have codes
+#: of their own. Copilot CLI 1.0.103 gives it for session/new on a machine
+#: never signed in (Kelly's clean VM, #391).
+AUTH_REQUIRED = -32000
+#: Said instead of "Copilot couldn't do that.", which gave no hint (#391).
+NOT_SIGNED_IN = ("GitHub Copilot CLI isn't signed in. Choose Help, Copilot Sign-in to sign in, "
+                 "then try again.")
+#: The same, when a message was refused: it isn't given back, so say so.
+NOT_SIGNED_IN_SENT = ("GitHub Copilot CLI isn't signed in. Your message may not have reached "
+                      "Copilot, and it wasn't sent again. Choose Help, Copilot Sign-in to sign "
+                      "in, then send it again.")
+
+
+class AcpAuthRequired(AcpError):
+    """Copilot needs a sign-in before it will do this. Known from the error's
+    code alone; Copilot's own message is never shown."""
+
+
 class AcpConnection:
     """One running ``copilot --acp``. Notifications and permission requests
     arrive on the reader thread, through the callbacks.
@@ -114,9 +134,12 @@ class AcpConnection:
                 self.close()
                 return
 
-    def request(self, method: str, params: dict, timeout: Optional[float] = REQUEST_SECONDS):
+    def request(self, method: str, params: dict, timeout: Optional[float] = REQUEST_SECONDS,
+                on_queued: Optional[Callable[[], None]] = None):
         """Send a request and wait for its result (None waits until it comes
-        or Copilot exits). Raises AcpError on an error reply or a timeout."""
+        or Copilot exits). Raises AcpError on an error reply or a timeout.
+        ``on_queued`` is called once the request is queued to be written,
+        before the wait: whatever is sent after that reaches Copilot after it."""
         done = threading.Event()
         with self._lock:
             if self._closed:
@@ -129,6 +152,8 @@ class AcpConnection:
             self._pending[request_id] = slot
         try:
             self._write({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
+            if on_queued is not None:
+                on_queued()
             if not done.wait(timeout):
                 # Only this request gives up: other chats' turns share the
                 # process. Its id is never reused, so a late answer is ignored.
@@ -139,6 +164,9 @@ class AcpConnection:
         message = slot["message"]
         if message is None:
             raise AcpError("Copilot stopped before answering.")
+        error = message.get("error")
+        if isinstance(error, dict) and error.get("code") == AUTH_REQUIRED:
+            raise AcpAuthRequired(NOT_SIGNED_IN)
         if "error" in message or not isinstance(message.get("result"), dict):
             raise AcpError("Copilot couldn't do that.")
         return message["result"]

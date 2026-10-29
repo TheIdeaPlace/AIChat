@@ -50,6 +50,12 @@ class Window(CodexChats):
         self.notified.append((args, kwargs))
     def _gone(self):
         return False
+    def _steer_row(self, key, text, where):
+        self.steer_rows = getattr(self, 'steer_rows', []) + [(text, where)]
+    def _steer_status(self, key, text, where):
+        self.steer_rows = getattr(self, 'steer_rows', []) + [(text, where)]
+    def _steers_turn_over(self, key):
+        self.turn_over = getattr(self, 'turn_over', []) + [key]
     def _codex_work(self, action, done):
         self.work.append((action, done))
     def _feedback(self, text):
@@ -211,7 +217,7 @@ def test_recovery_and_error_speech_do_not_interrupt_readback():
     calls = []
     w._say = lambda text, *, interrupt=True: calls.append(('interrupt' if interrupt else 'queue', text))
     w._feedback = lambda text: calls.append(('queue', text))
-    w._on_codex_update(CodexChatState('owned', 'status unavailable', problem='Reload this chat.',
+    w._on_codex_update(CodexChatState('owned', 'status unavailable', problem='Use Stop to recheck this chat.',
                                     unsent=('Recovered text',)))
     assert [kind for kind, _text in calls] == ['queue', 'queue']
     assert 'back in the reply box' in calls[-1][1]
@@ -231,13 +237,34 @@ def test_stop_explicitly_recovers_disconnected_chat_without_sending():
         calls.append(name)
         if name == 'stop':
             raise CodexRpcError('Disconnected')
+        return 'resumed'
     w.sessions.owned_action = action
     w._stop_codex_owned(w._open)
     action, done = w.work[-1]
     result = action()
     done(result, False)
-    assert calls == ['stop', 'reopen']
+    assert calls == ['stop', 'recover']
     assert 'No message was resent' in w.said[-1]
+
+
+def test_failed_idle_recheck_runs_only_once():
+    from thechatplace.providers.codex_rpc import CodexRpcError
+    w = Window()
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'idle', 'turn', 'completed',
+                                                    problem='Synthetic problem')
+    calls = []
+    def action(name, record):
+        calls.append(name)
+        if name == 'stop':
+            return ()
+        if name == 'ready':
+            return False
+        raise CodexRpcError('Synthetic recheck failure')
+    w.sessions.owned_action = action
+    w._stop_codex_owned(w._open)
+    with pytest.raises(CodexRpcError):
+        w.work[-1][0]()
+    assert calls == ['stop', 'ready', 'recover']
 
 
 def test_stop_never_reports_recovery_when_native_state_is_unfinished():
@@ -253,7 +280,164 @@ def test_stop_never_reports_recovery_when_native_state_is_unfinished():
     w._stop_codex_owned(w._open)
     with pytest.raises(CodexTurnRejected):
         w.work[-1][0]()
-    assert calls == ['stop', 'reopen'] and not w.said
+    assert calls == ['stop', 'recover'] and not w.said
+
+
+class LiveWindow(Window):
+    """A stand-in window on a real runtime and controller over a synthetic
+    connection. Runtime updates wait, as with wx.CallAfter, and reach the
+    window in order before each worker's result."""
+    def __init__(self, tmp_path, monkeypatch):
+        from test_codex_auto_review import SavedHistoryConnection
+        import thechatplace.ui.codex_chats as module
+        from thechatplace.providers.codex import CodexProvider
+        from thechatplace.providers.codex_runtime import CodexChatRuntime
+        from thechatplace.session_controller import SessionController
+        super().__init__()
+        monkeypatch.setattr(module, 'codex_permission_prompt', lambda *args: 'Synthetic prompt')
+        self.updates = []
+        self.connection = SavedHistoryConnection()
+        self.runtime = CodexChatRuntime(self.updates.append, factory=lambda exe: self.connection)
+        self.sessions = SessionController([CodexProvider(self.connection, runtime=self.runtime)])
+        self.record = self.runtime.create(str(tmp_path), 'Synthetic chat')
+        self._open = self.record.to_info()
+        self.key = self._open.key
+        self._codex_policy_pending = set()
+        self.selected = ('workspace-write', 'on-request', 'auto_review')
+        self.saves = True
+        self.flush()
+
+    def flush(self):
+        while self.updates:
+            self._on_codex_update(self.updates.pop(0))
+
+    def _codex_work(self, action, done):
+        from thechatplace.codex_diagnostics import safe_reason
+        try:
+            result, error = action(), False
+        except Exception as exc:
+            result, error = safe_reason(exc) or None, True
+        self.flush()
+        done(result, error)
+
+    def _change_setting(self, title, prompt, choices, now):
+        return self.selected
+
+    def _store_write(self, method, *args, **kwargs):
+        return self.saves
+
+    def finish_turn(self):
+        from test_codex_runtime import wait
+        from thechatplace.providers.codex_events import decode_event
+        native = self.record.cli_session_id
+        self.runtime.send(self.record, 'Initial synthetic turn')
+        self.connection.events.append(decode_event('turn/completed', {
+            'threadId': native, 'turn': {'id': 'turn-1', 'status': 'completed'}}))
+        wait(lambda: self.runtime.snapshot(native).outcome == 'completed')
+        self.connection.saved_threads.add(native)
+        self.flush()
+
+    def spoken_after(self, start):
+        self.flush()
+        return self.said[start:]
+
+
+@pytest.fixture
+def live(tmp_path, monkeypatch):
+    w = LiveWindow(tmp_path, monkeypatch)
+    try:
+        yield w
+    finally:
+        w.runtime.close()
+
+
+@pytest.mark.parametrize('failure', ['auto_review_unavailable', 'private', 'save'])
+def test_failed_permission_change_is_said_once_ending_with_stop(live, monkeypatch, failure):
+    from thechatplace.providers.codex_runtime import STOP_TO_RECHECK
+    live.finish_turn()
+    request = live.connection.request
+    def refuse(method, params):
+        if method == 'thread/start' and params.get('ephemeral'):
+            if failure == 'private':
+                raise ValueError('private backend detail')
+            if failure == 'auto_review_unavailable':
+                result = request(method, params)
+                result['approvalsReviewer'] = 'user'
+                return result
+        return request(method, params)
+    monkeypatch.setattr(live.connection, 'request', refuse)
+    live.saves = failure != 'save'
+    start = len(live.said)
+    live._change_codex_permissions(live._open)
+    spoken = live.spoken_after(start)
+    assert spoken[0] == 'Verifying Codex permissions.'
+    assert len(spoken) == 2, spoken
+    assert spoken[1].endswith(STOP_TO_RECHECK) and spoken[1].count('Use Stop') == 1
+    assert 'private' not in spoken[1]
+    if failure == 'auto_review_unavailable':
+        assert 'automatic approval review' in spoken[1]
+    assert live._codex_status_text(live._codex_states[live.key]).endswith(STOP_TO_RECHECK)
+    assert not live._codex_policy_pending
+    assert not live.runtime.ready(live.record)
+
+
+def test_refused_permission_change_does_not_replay_an_earlier_problem(live):
+    from thechatplace.providers.codex_rpc import CodexRememberedApprovalError
+    live.finish_turn()
+    native = live.record.cli_session_id
+    earlier = CodexRememberedApprovalError.REASONS['kept_uncertain']
+    with live.runtime._lock:
+        live.runtime._problems[native] = earlier
+    live.runtime._notify(native)
+    live.flush()
+    start = len(live.said)
+    live._change_codex_permissions(live._open)  # Refused before anything is checked
+    spoken = live.spoken_after(start)
+    assert spoken[0] == 'Verifying Codex permissions.'
+    assert len(spoken) == 2, spoken
+    assert spoken[1].startswith('Could not change Codex permissions.')
+    assert earlier not in spoken[1] and spoken[1].lower().count('use stop') == 1
+    assert live.runtime.snapshot(native).problem == earlier
+    assert not live._codex_policy_pending
+
+
+def test_successful_permission_change_says_only_the_new_mode(live):
+    live.finish_turn()
+    start = len(live.said)
+    live._change_codex_permissions(live._open)
+    spoken = live.spoken_after(start)
+    assert spoken[0] == 'Verifying Codex permissions.'
+    assert len(spoken) == 2 and spoken[1].startswith('Codex permissions for Synthetic chat: ')
+    assert live.runtime.ready(live.record) and not live._codex_policy_pending
+
+
+@pytest.mark.parametrize('path', ['permissions', 'rechecked', 'resumed'])
+def test_stop_announces_the_recovery_reopen_actually_made(live, path):
+    from thechatplace.providers.codex_rpc import CodexRememberedApprovalError
+    live.finish_turn()
+    native = live.record.cli_session_id
+    if path == 'permissions':
+        live.saves = False
+        live._change_codex_permissions(live._open)
+    elif path == 'rechecked':
+        with live.runtime._lock:
+            live.runtime._problems[native] = CodexRememberedApprovalError.REASONS['kept_uncertain']
+        live.runtime._notify(native)
+    else:
+        live.runtime._proofs.clear()  # As if this chat was never opened here
+    live.flush()
+    assert not live.runtime.ready(live.record)
+    start = len(live.said)
+    live._stop_codex_owned(live._open)
+    spoken = live.spoken_after(start)
+    assert live.runtime.ready(live.record)
+    resumed = any(method == 'thread/resume' for method, _ in live.connection.calls)
+    assert resumed == (path == 'resumed')
+    assert live.connection.turns == 1
+    expected = {'permissions': 'Saved Codex permissions rechecked. You can send again. No message was sent.',
+                'rechecked': 'Codex chat rechecked. You can send again. No message was sent.',
+                'resumed': 'Codex chat reconnected after verifying its previous turn ended. No message was resent.'}
+    assert spoken[-1] == expected[path]
 
 
 def test_declined_request_notice_is_spoken_once_without_interrupting_or_failing_turn():
@@ -530,3 +714,151 @@ def test_permission_change_after_runs_once_when_saved_and_when_already_pending(m
     w._codex_policy_pending.add(w._open.key)
     w._change_codex_permissions(w._open, after=lambda: finished.append('pending'))
     assert finished == ['saved', 'pending'] and len(w.work) == 2
+
+
+def _run_work(w, failure=None):
+    """Run the queued worker as _codex_work would: an exception is (reason, True)."""
+    from thechatplace.codex_diagnostics import safe_reason
+    action, done = w.work.pop()
+    try:
+        result, error = action(), False
+    except Exception as exc:  # noqa: BLE001 - what _codex_work does
+        result, error = safe_reason(exc) or None, True
+    done(result, error)
+
+
+def test_steer_accepted_is_said_and_the_text_is_not_restored():
+    w = Window()
+    calls = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: calls.append(a) or 'turn')
+    w.reply_text.value = ''
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert calls == [('steer', w.record, 'Also the docs')]
+    assert w.said[-1] == 'Steered My chat: Also the docs.'
+    assert w.reply_text.value == ''
+
+
+@pytest.mark.parametrize('queued', [False, True])
+def test_steer_refused_puts_the_text_back_or_keeps_it_queued(queued):
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    w = Window()
+    w.reply_text.value = ''
+
+    def refuse(*a):
+        raise CodexSteerRefused('not_running')
+    w.sessions = SimpleNamespace(owned_action=refuse)
+    w._steer_codex_owned(w.record, 'Too late', index=0 if queued else None)
+    _run_work(w)
+    reason = CodexSteerRefused.REASONS['not_running']
+    if queued:
+        assert w.said[-1] == f'{reason} It stays queued.'
+        assert w.reply_text.value == ''
+    else:
+        assert w.said[-1] == f'{reason} Your message is back in the reply box.'
+        assert w.reply_text.value == 'Too late'
+
+
+def test_steer_not_confirmed_comes_back_with_a_warning():
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+    w = Window()
+    w.reply_text.value = ''
+
+    def lost(*a):
+        raise CodexConnectionFailure('stream_closed')
+    w.sessions = SimpleNamespace(owned_action=lost)
+    w._steer_codex_owned(w.record, 'Maybe sent')
+    _run_work(w)
+    assert w.reply_text.value == 'Maybe sent'
+    assert 'could not confirm' in w.said[-1]
+
+
+def test_turn_status_mentions_a_steer_waiting_to_be_accepted():
+    state = CodexChatState('owned', 'working', 'turn', 'inProgress', steering=('Also the docs',))
+    assert 'steered message waiting for Codex to accept it' in Window._codex_status_text(state)
+
+
+def test_a_queued_steer_that_stop_sent_back_says_where_it_is():
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    w = Window()
+    w.reply_text.value = ''
+
+    def refuse(*a):
+        error = CodexSteerRefused('stopping')
+        error.returned = True
+        raise error
+    w.sessions = SimpleNamespace(owned_action=refuse)
+    w._steer_codex_owned(w.record, 'Queued one', index=0)
+    _run_work(w)
+    assert w.said[-1].endswith('It is back in the reply box.')
+
+
+@pytest.mark.parametrize('outcome', ['accepted', 'refused', 'unconfirmed'])
+def test_a_steered_message_shows_until_its_fate_is_known(outcome):
+    from thechatplace.providers.codex_rpc import CodexSteerRefused, CodexConnectionFailure
+    w = Window()
+
+    def act(*a):
+        if outcome == 'refused':
+            raise CodexSteerRefused('not_running')
+        if outcome == 'unconfirmed':
+            raise CodexConnectionFailure('stream_closed')
+        return 'turn'
+    w.sessions = SimpleNamespace(owned_action=act)
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    assert w.steer_rows == [('Also the docs', 'waiting for Codex')]  # at once
+    _run_work(w)
+    expected = 'accepted by Codex' if outcome == 'accepted' else None
+    assert w.steer_rows[-1] == ('Also the docs', expected)
+
+
+def test_a_steer_accepted_after_the_turn_ended_waits_for_the_history():
+    # Stop before Codex answered: it may never be used, so the next history
+    # read decides whether it shows there or comes back to the reply box.
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'idle', 'turn', 'interrupted')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert w.steer_rows[-1] == ('Also the docs', 'accepted by Codex')
+    assert w.turn_over == ['codex:owned']
+
+
+def test_a_steer_accepted_into_a_turn_since_replaced_is_settled_by_the_history():
+    # The turn completed and a queued message's turn started before
+    # Codex's answer to the steer came.
+    w = Window()
+    w._codex_finished = {('codex', 'owned', 'turn-1')}
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-1')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-2', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert w.turn_over == ['codex:owned']
+
+
+def test_a_steer_accepted_into_the_running_turn_waits_for_it():
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-1')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert not getattr(w, 'turn_over', [])
+
+
+def test_a_newer_turn_alone_doesnt_end_a_steer_whose_turn_isnt_known_to_be_over():
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: 'turn-2')
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert not getattr(w, 'turn_over', [])
+
+
+def test_no_turn_id_back_is_not_taken_for_another_turn():
+    w = Window()
+    w.sessions = SimpleNamespace(owned_action=lambda *a: None)
+    w._codex_states['codex:owned'] = CodexChatState('owned', 'working', 'turn-1', 'inProgress')
+    w._steer_codex_owned(w.record, 'Also the docs')
+    _run_work(w)
+    assert not getattr(w, 'turn_over', [])

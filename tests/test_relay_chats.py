@@ -1,4 +1,4 @@
-"""Send Reply to Another Chat (#248): routing to Claude and Codex chats,
+"""Send Reply to Another Chat (#248): routing to Claude, Codex and Copilot chats,
 without a native window or a real provider."""
 import tempfile
 from pathlib import Path
@@ -31,7 +31,7 @@ class Text:
 
 
 def _own(native, title, provider):
-    return SessionInfo(source=OWN, key=f'{provider}:{native}' if provider == 'codex' else native,
+    return SessionInfo(source=OWN, key=f'{provider}:{native}' if provider != 'claude' else native,
                        title=title, cwd='/work', cli_session_id=native, provider=provider)
 
 
@@ -609,3 +609,54 @@ def test_an_edited_message_says_so_to_new_session(dialog, claude_installed):
     dialog.choose = lambda text: (2, text + ' Thoughts?')
     w.on_send_reply_to()
     assert w.new_sessions[-1].edited is True
+
+
+# -- Copilot chats (#369) --------------------------------------------------------------------
+
+
+def _with_copilot(w):
+    pilot = _own('pilot-1', 'Pilot', 'copilot')
+    w.records[pilot.cli_session_id] = OwnSession('pilot-1', 'Pilot', '/work', provider='copilot')
+    w._snapshot.sessions.append(pilot)
+    return pilot
+
+
+def test_a_reply_goes_to_a_copilot_chat_through_its_runtime(dialog):
+    w = Window()
+    pilot = _with_copilot(w)
+    sent = []
+    w.sessions.owned_action = lambda action, record, *a: sent.append((action, record, a))
+    dialog.choose = lambda text: (
+        next(i for i, c in enumerate(dialog.seen.choices) if c.startswith('Pilot')), text)
+    w.on_send_reply_to()
+    assert any(c.startswith('Pilot, Copilot') for c in dialog.seen.choices)
+    assert w.opened == ['Pilot'] and w.claude_sent == []
+    action, done = w.work.pop()
+    action()
+    assert sent[-1][0] == 'send' and sent[-1][1].provider == 'copilot'
+    assert sent[-1][2][0].startswith('From Claude, another AI agent')
+    assert w._relay_partners == {pilot.key: 'claude-1'}
+
+
+def test_a_new_copilot_chat_is_offered_when_copilot_can_start_one(dialog, claude_installed):
+    w = Window()
+    w.sessions.can_create = lambda provider: provider == 'copilot'
+    w.on_send_reply_to()
+    assert dialog.seen.choices[-2:] == ['New Claude chat', 'New Copilot chat']
+
+
+def test_a_copilot_chat_can_be_half_of_an_agent_conversation(dialog):
+    w = Window()
+    pilot = _with_copilot(w)
+    index = next(i for i, s in enumerate(relay_chats.relay.targets(
+        w._snapshot.sessions, w.builder.key, w._can_edit)) if s.key == pilot.key)
+    checked = []
+    dialog.joint = 'Pair'
+    # Asked while the dialog is open, as it asks when the option is chosen.
+    dialog.choose = lambda text: checked.append(dialog.seen.joint.problem(index)) or (index, text)
+    w.on_send_reply_to()
+    assert checked == [None]
+    made = next(c for c in w.agents.all() if c.title == 'Pair')
+    assert [(m.provider, m.name) for m in made.members] == [('claude', 'Claude'),
+                                                            ('copilot', 'Copilot')]
+    assert w.agent_sent and w.agent_sent[-1][2] == [1]

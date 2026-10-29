@@ -130,7 +130,7 @@ awake.
 
 ### 11. The user guide
 
-1. Help, User Guide. Move by heading (H) to **Your sessions on other computers**.
+1. Help, User Guide. Move by heading (H) to **Your chats on other computers**.
    - **Expect:** it matches what you just did. Report anything wrong or unclear.
 2. In the Remote Control section, "What you can't do yet" now says you can send to a session on
    another computer but can't read it from here.
