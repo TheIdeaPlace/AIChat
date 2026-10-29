@@ -139,6 +139,25 @@ the release workflow signs and notarizes it. The Linux build (AppImages for x64 
 preview. It has been tested with Orca 51 on an MNT Pocket Reform, with Orca 48 on Debian 13
 (arm64) in a virtual machine, and on Ubuntu 26.04 (arm64) in a virtual machine.
 
+Linux isn't tested by hand for each release. CI's **Orca (Linux)** job runs real Orca in a
+desktop of its own (`tools/linux_a11y_session.sh`: a session bus, Xvfb, a window manager and an
+accessibility bus), with no person, sound or VM:
+
+- `tools/orca_speech.sh` starts the app on the visual probe's made-up sessions, presses keys
+  through the session list, a chat's messages, Settings, the menu bar (F10 and Alt on its own)
+  and Keyboard Shortcuts, and checks what Orca said for each from its debug log. `--record`
+  says what each step spoke without checking; add a step to `STEPS` in `tools/orca_speech.py`
+  when a keyboard path changes.
+- The visual probe's Orca audit (`TCP_PROBE_ORCA=1 tools/ui_probe.py`), checked by
+  `tools/orca_names.py`, fails on any control on any surface that Orca reaches without a name.
+- The ATK tests in `tests/test_linux.py` run with an accessibility bus.
+
+`build_linux.sh`, and so the release workflow's Linux jobs, also start the packed AppImage on a
+virtual screen and wait for its window. Orca runs one copy per user, so to run these on a PC
+where you use Orca, run them as another user (the Ubuntu test VM has `tcptest`). They need
+`sudo apt install orca xdotool xvfb at-spi2-core dbus-x11 openbox x11-xserver-utils python3-gi
+gir1.2-atspi-2.0`.
+
 The rule for finding a session's conversation file (its folder with every character that
 isn't a letter or digit turned into `-`) was checked against every transcript on Kelly's PC.
 

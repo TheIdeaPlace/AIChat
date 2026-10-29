@@ -110,7 +110,8 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, ChatP
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
-                      formatted_view_available, press_focused_button_on_a_mac)
+                      formatted_view_available, press_focused_button_on_a_mac,
+                      single_choice_dialog)
 
 APP_NAME = "The Chat Place"
 LIST_REFRESH_MS = 5000
@@ -5563,7 +5564,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         readers handle well). The chosen index, or None."""
         # Over the dialog it was chosen from (Chat Permissions' Change, #329),
         # so closing it returns there rather than to the disabled window.
-        dialog = wx.SingleChoiceDialog(self._open_modal() or self, prompt, title, choices)
+        dialog = single_choice_dialog(self._open_modal() or self, prompt, title, choices)
         if selection is not None:
             dialog.SetSelection(selection)  # on the current choice, not the first
         try:
@@ -6556,6 +6557,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     # ------------------------------------------------------------- keyboard
 
     def _on_char_hook(self, event: wx.KeyEvent):
+        if self._menu_open and gtk_a11y.IS_LINUX:
+            # A menu has the keyboard. On Windows it never gets here, but
+            # GTK passes the window its keys first: Escape, meant to close
+            # the menu bar, went back to the session list instead and the
+            # menu bar stayed open (#230, found by tools/orca_speech.py).
+            event.Skip()
+            return
         key = event.GetKeyCode()
         focus = wx.Window.FindFocus()
         ctrl = event.ControlDown()

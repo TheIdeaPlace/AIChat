@@ -1746,7 +1746,7 @@ Chat Place again. To remove them too, delete these folders, the main things it l
   conversations, remembered Codex approvals and its logs.
 - On Windows, the formatted page's WebView2 profile, `%LOCALAPPDATA%\TheChatPlace WebView2`.
 - Its speech folder: `%TEMP%\thechatplace-speak` on Windows, `$TMPDIR/thechatplace-speak` on a
-  Mac. Its speech scripts also keep small logs in `claude-speak` (and, on Windows,
+  Mac, `$XDG_RUNTIME_DIR/thechatplace-speak` on Linux (emptied when you log out). Its speech scripts also keep small logs in `claude-speak` (and, on Windows,
   `claude-speak-nvda`) in the same temporary folder. ClaudeSpeak uses those folders too, so keep
   them if you use ClaudeSpeak.
 
@@ -1798,7 +1798,8 @@ announcement, a notification says announcements aren't being spoken (unless noti
 off in Settings), and Settings shows the reason in a Speech problem box after Speaking rate.
 
 Everything spoken is also written to `speech.log` (nothing is written while Silent is chosen),
-in `%TEMP%\thechatplace-speak` on Windows and `$TMPDIR/thechatplace-speak` on a Mac: one line
+in `%TEMP%\thechatplace-speak` on Windows, `$TMPDIR/thechatplace-speak` on a Mac and
+`$XDG_RUNTIME_DIR/thechatplace-speak` on Linux: one line
 each, with the time, the speech engine and the opening words. A line means the text was handed
 to the speech engine, not that it was heard. On Windows, with a screen reader setting, a `route:`
 line usually follows, saying which screen reader or voice spoke it, or why a running screen
@@ -1909,8 +1910,8 @@ support@theideaplace.net.
 - The Chat Place keeps its own settings and records on Windows in `%APPDATA%\TheChatPlace`, on a
   Mac in `~/Library/Application Support/TheChatPlace`.
 - It also writes a few things of its own elsewhere:
-    - its speech files and `speech.log`, in `%TEMP%\thechatplace-speak` on Windows and
-      `$TMPDIR/thechatplace-speak` on a Mac;
+    - its speech files and `speech.log`, in `%TEMP%\thechatplace-speak` on Windows,
+      `$TMPDIR/thechatplace-speak` on a Mac and `$XDG_RUNTIME_DIR/thechatplace-speak` on Linux;
     - on Windows, the formatted page's WebView2 profile, in
       `%LOCALAPPDATA%\TheChatPlace WebView2`;
     - on Windows, the installed copy sets up `thechatplace://` links for your Windows account

@@ -226,6 +226,46 @@ def test_the_linux_speech_script_can_be_run():
     assert script.read_bytes().startswith(b"#!/usr/bin/env bash\n")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX owners and modes")
+def test_speech_files_are_in_the_users_own_runtime_folder(tmp_path, monkeypatch):
+    """Not /tmp/thechatplace-speak, which is every user's: the first user's
+    speech owned it, so no one else's could speak, and whoever made it could
+    read the announcements (#230)."""
+    monkeypatch.setattr(speech, "IS_LINUX", True)
+    runtime = tmp_path / "run"
+    runtime.mkdir(mode=0o700)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    path = speech.Speaker().workdir
+    assert path == runtime / "thechatplace-speak"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o700
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX owners and modes")
+def test_without_a_runtime_folder_speech_files_are_in_a_folder_of_the_users_id(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(speech, "IS_LINUX", True)
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setattr(speech.tempfile, "gettempdir", lambda: str(tmp_path))
+    path = speech.Speaker().workdir
+    assert path == tmp_path / f"thechatplace-speak-{os.getuid()}"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o700
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX owners and modes")
+def test_a_speech_folder_someone_else_made_isnt_used(tmp_path, monkeypatch):
+    monkeypatch.setattr(speech, "IS_LINUX", True)
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setattr(speech.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(speech, "_PRIVATE_SPEECH_DIR", None)
+    someone = os.getuid() + 1
+    planted = tmp_path / f"thechatplace-speak-{someone}"
+    planted.mkdir()
+    monkeypatch.setattr(speech.os, "getuid", lambda: someone)
+    path = speech.Speaker().workdir
+    assert path != planted and path.name.startswith("thechatplace-speak-")
+    assert speech.Speaker().workdir == path  # the same one for the rest of the run
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="runs the bash script")
 def test_a_line_starting_like_a_command_is_spoken_not_run(tmp_path):
     """``spd-say -e`` sends a line starting with ``!-!`` to speech-dispatcher
@@ -285,6 +325,20 @@ def test_off_linux_nothing_is_touched():
 def app():
     wx = pytest.importorskip("wx")
     yield wx.App(False)
+
+
+@atk
+def test_a_single_choice_list_is_named_by_its_dialogs_title(app):
+    """wx's own single-choice dialog left its list without a name on Linux:
+    Orca said "table" and nothing else (#230, found by the Orca audit)."""
+    import wx
+    from thechatplace.ui.dialogs import single_choice_dialog
+    dialog = single_choice_dialog(None, "Choose a mode:", "Change Permission Mode", ["A", "B"])
+    try:
+        lists = [c for c in dialog.GetChildren() if isinstance(c, wx.ListBox)]
+        assert lists and gtk_a11y.get_label(lists[0]) == "Change Permission Mode"
+    finally:
+        dialog.Destroy()
 
 
 @atk

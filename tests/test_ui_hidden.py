@@ -3033,6 +3033,33 @@ def test_arrows_move_between_status_bar_parts(frame, monkeypatch):
     assert frame._current_pane() == frame.PANE_STATUS
 
 
+def test_an_open_menu_keeps_escape_on_linux(frame, monkeypatch):
+    """GTK gives the window a key before its open menu bar: Escape, meant to
+    close the menu, went back to the session list and left the menu open
+    (#230, found by tools/orca_speech.py). Elsewhere the menu takes the keys
+    itself and the window never sees them, so nothing changes there."""
+    from thechatplace.ui import gtk_a11y
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    moved = []
+    monkeypatch.setattr(frame, "focus_sessions", lambda *a, **k: moved.append(True))
+
+    def escape():
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_ESCAPE)
+        frame._on_char_hook(event)
+        return event
+    monkeypatch.setattr(gtk_a11y, "IS_LINUX", True)
+    monkeypatch.setattr(frame, "_menu_open", True)
+    assert escape().GetSkipped() and moved == []
+    monkeypatch.setattr(frame, "_menu_open", False)
+    escape()
+    assert moved == [True]  # with no menu open, Escape goes back as before
+    monkeypatch.setattr(gtk_a11y, "IS_LINUX", False)
+    monkeypatch.setattr(frame, "_menu_open", True)
+    escape()
+    assert moved == [True, True]
+
+
 def test_ctrl_9_goes_to_the_status_bar(frame, monkeypatch):
     focused = []
     monkeypatch.setattr(frame.status_text, "SetFocus", lambda: focused.append(True))

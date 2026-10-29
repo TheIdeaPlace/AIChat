@@ -609,9 +609,12 @@ class Speaker:
 
     @property
     def workdir(self) -> Path:
-        path = Path(tempfile.gettempdir()) / "thechatplace-speak"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        if not IS_LINUX:
+            # Windows' %TEMP% and the Mac's $TMPDIR are the user's own.
+            path = Path(tempfile.gettempdir()) / "thechatplace-speak"
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+        return _linux_speech_dir()
 
     def _command(self, text_file: Path, config_file: Path) -> Optional[list]:
         script_dir = _script_dir()
@@ -941,6 +944,35 @@ class Speaker:
                     pass
         except OSError:
             pass
+
+
+def _linux_speech_dir() -> Path:
+    """Linux: where the text of each announcement waits for the speech
+    script. Not /tmp/thechatplace-speak: /tmp is every user's, so the first
+    user to speak owned it, everyone else's speech failed, and anyone who
+    made it first could read the announcements, which are chat replies
+    (#230). The session's runtime folder is the user's alone (0700) and is
+    emptied at logout; without one, a folder of the user's id, refused if
+    someone else made it."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    if runtime and os.path.isdir(runtime) and os.access(runtime, os.W_OK):
+        path = Path(runtime) / "thechatplace-speak"
+    else:
+        path = Path(tempfile.gettempdir()) / f"thechatplace-speak-{os.getuid()}"
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = path.stat()
+    if info.st_uid != os.getuid():
+        # Someone else's: a fresh folder of our own instead, for this run.
+        global _PRIVATE_SPEECH_DIR
+        if _PRIVATE_SPEECH_DIR is None:
+            _PRIVATE_SPEECH_DIR = Path(tempfile.mkdtemp(prefix="thechatplace-speak-"))
+        return _PRIVATE_SPEECH_DIR
+    if info.st_mode & 0o077:
+        path.chmod(0o700)
+    return path
+
+
+_PRIVATE_SPEECH_DIR: Optional[Path] = None
 
 
 def _cancel_speech_dispatcher(wait: bool = False) -> None:

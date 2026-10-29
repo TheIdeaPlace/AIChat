@@ -67,3 +67,47 @@ jobs:
       - name: Test (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a -s "-screen 0 1920x1080x24" .venv/bin/python -m pytest -v tests
+
+  # What Orca says and reaches, with real Orca in a desktop of its own
+  # (tools/linux_a11y_session.sh): no person, sound or VM needed (#230).
+  # - tools/orca_speech.sh presses keys through the window, menus and
+  #   dialogs and checks Orca's speech for each.
+  # - The visual probe's Orca audit, checked by tools/orca_names.py, fails on
+  #   any control Orca would reach without a name.
+  # Not a required check, and not in the release workflow, so a problem here
+  # never holds up a release; it shows on the pull request that caused it.
+  orca:
+    name: Orca (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            python3-venv python3-wxgtk4.0 python3-wxgtk-webview4.0 xvfb xauth at-spi2-core \
+            dbus-x11 orca speech-dispatcher xdotool x11-xserver-utils openbox \
+            python3-gi gir1.2-atspi-2.0
+          /usr/bin/python3 -m venv --system-site-packages .venv
+          .venv/bin/python -m pip install -r requirements-dev.txt
+          orca --version || true
+      - name: ATK names, with an accessibility bus
+        run: tools/linux_a11y_session.sh .venv/bin/python -m pytest -v tests/test_linux.py
+      - name: What Orca says
+        run: tools/orca_speech.sh --json orca-speech.json
+      - name: Every control Orca reaches has a name
+        if: always()
+        run: |
+          TCP_PROBE_ORCA=1 tools/linux_a11y_session.sh \
+            .venv/bin/python tools/ui_probe.py --out probe-linux --tag linux-light
+          .venv/bin/python tools/orca_names.py probe-linux
+      - name: Keep what Orca said and the probe's pictures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: orca-linux
+          path: |
+            orca-speech.json
+            probe-linux
+          if-no-files-found: ignore

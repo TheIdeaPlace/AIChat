@@ -1206,7 +1206,7 @@ N lines" instead. A long transcript is read once, then only its new lines as it 
 
 **The Chat Place never writes to the desktop app's files or to any transcript.** Its own settings
 and records are in `%APPDATA%\TheChatPlace` (on a Mac, `~/Library/Application Support/TheChatPlace`). It also writes its speech files and `speech.log` in
-`%TEMP%\thechatplace-speak` (`$TMPDIR/thechatplace-speak` on a Mac) and, on Windows, the formatted
+`%TEMP%\thechatplace-speak` (`$TMPDIR/thechatplace-speak` on a Mac, `$XDG_RUNTIME_DIR/thechatplace-speak` on Linux) and, on Windows, the formatted
 view's WebView2 profile in `%LOCALAPPDATA%\TheChatPlace WebView2`; the installed Windows copy
 registers `thechatplace://` links for your account each time it starts. Otherwise it writes only
 when you ask: exports go where you save them, From GitHub clones into your GitHub folder, a new
@@ -1297,7 +1297,7 @@ turn status line say when a steered message hasn't been taken in yet. Send Now (
 answers the message instead.
 
 Every announcement is also written to `speech.log` in `%TEMP%\thechatplace-speak` (on a Mac,
-`$TMPDIR/thechatplace-speak`), one line each: the time, whether it interrupts or waits its turn,
+`$TMPDIR/thechatplace-speak`; on Linux, `$XDG_RUNTIME_DIR/thechatplace-speak`), one line each: the time, whether it interrupts or waits its turn,
 the speech engine, and its opening words. On Windows, with a screen reader setting, a `route:` line
 usually follows it: "spoke through NVDA", "no screen reader running, so a Windows voice", or why a running
 screen reader didn't speak. A line means the text was handed to the speech engine,

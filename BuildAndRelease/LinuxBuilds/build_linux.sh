@@ -34,6 +34,7 @@
 # Needs: .venv (linuxsetup.sh makes it), objdump (binutils), the Python
 # shared library (libpython3.X), mksquashfs (squashfs-tools), and vpk
 # (dotnet tool install -g vpk --version 1.2.161, which needs the .NET SDK).
+# With xvfb-run and xdotool it also checks the AppImage opens its window.
 # ============================================================================
 set -euo pipefail
 
@@ -74,6 +75,37 @@ smoke_test() {
 echo "========================================================================"
 echo "Building The Chat Place for Linux ($ARCH)"
 echo "========================================================================"
+
+# The smoke tests import everything but never open a window. This starts the
+# AppImage as a user would, on a virtual screen with a home folder of its own
+# (no sessions, no settings), and waits for its window (#230). It needs
+# xvfb-run and xdotool; without them it says so and goes on.
+window_test() {
+    if ! command -v xvfb-run >/dev/null 2>&1 || ! command -v xdotool >/dev/null 2>&1; then
+        echo "  window: not checked (needs xvfb-run and xdotool)"
+        return
+    fi
+    local home status=0
+    home="$(mktemp -d)"
+    HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
+        APPIMAGE_EXTRACT_AND_RUN=1 GDK_BACKEND=x11 \
+        timeout 180 xvfb-run -a -s "-screen 0 1920x1080x24" bash -c '
+            "$1" > "$2/app.log" 2>&1 &
+            app=$!
+            for _ in $(seq 90); do
+                if xdotool search --name "The Chat Place" > /dev/null 2>&1; then
+                    kill "$app"; exit 0
+                fi
+                kill -0 "$app" 2> /dev/null || exit 2
+                sleep 1
+            done
+            kill "$app"; exit 1' _ "$1" "$home" || status=$?
+    case $status in
+        0) echo "  window: opened" ;;
+        2) tail -40 "$home/app.log"; fail "the AppImage quit before its window opened." ;;
+        *) tail -40 "$home/app.log"; fail "the AppImage's window didn't open within 90 seconds." ;;
+    esac
+}
 
 # ---------------------------------------------------------------- tools ----
 if [ ! -x "$PY" ]; then
@@ -177,6 +209,7 @@ chmod +x "$APPIMAGE"
 smoke_test "$PWD/$APPIMAGE" packed
 grep -q "\"updater\": \"$VERSION\"" smoke-local.json \
     || { cat smoke-local.json; fail "Velopack doesn't see the AppImage as updatable."; }
+window_test "$PWD/$APPIMAGE"
 
 if [ -n "$OUTPUT_DIR" ]; then
     cp "$APPIMAGE" "$OUTPUT_DIR/" || fail "couldn't copy into $OUTPUT_DIR"
