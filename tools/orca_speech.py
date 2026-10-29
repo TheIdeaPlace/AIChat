@@ -74,14 +74,17 @@ class Step:
     #: Only with Orca 49 and later, which take announcements from the app
     #: through D-Bus whatever window is active.
     expect_dbus: List[str] = field(default_factory=list)
+    #: Only with Orca 50 and later, which say the window's and the list's
+    #: name as the app starts; 46 says only the row it lands on.
+    expect_50: List[str] = field(default_factory=list)
 
 
 #: The probe's sessions (tools/ui_probe.py build_world): "Fix the flaky upload
 #: test" first, as it needs you, then "Visual probe", the app's own, whose
 #: messages are the user's request and Claude's long reply.
 STEPS = [
-    Step("start", [], expect=["The Chat Place", "Session list", "Fix the flaky upload test",
-                              "needs you"]),
+    Step("start", [], expect=["Fix the flaky upload test", "needs you"],
+         expect_50=["The Chat Place", "Session list"]),
     Step("next session", ["Down"], expect=["Visual probe", "Chat Place session"]),
     Step("open it", ["Return"], expect=["Messages in Visual probe", "What changed"],
          expect_dbus=["Loaded Visual probe"]),
@@ -242,10 +245,11 @@ def _found(needle: str, spoken: List[str]) -> bool:
     return needle.casefold() in text
 
 
-def run_steps(log: OrcaLog, steps: List[Step], dbus: bool, record: bool) -> List[dict]:
+def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool) -> List[dict]:
     results = []
     for index, step in enumerate(steps):
-        expect = step.expect + (step.expect_dbus if dbus else [])
+        expect = (step.expect + (step.expect_dbus if version >= (49, 0) else [])
+                  + (step.expect_50 if version >= (50, 0) else []))
 
         def done(spoken, expect=expect):
             said = [s for s in spoken if s.casefold().rstrip(".") not in _KEY_ECHO]
@@ -299,7 +303,7 @@ def check(args) -> int:
                             str(work / "world")], cwd=str(ROOT),
                            stdout=open(work / "app.log", "w"), stderr=subprocess.STDOUT)
     try:
-        results = run_steps(log, STEPS, dbus=version >= (49, 0), record=args.record)
+        results = run_steps(log, STEPS, version, record=args.record)
     finally:
         app.terminate()
         try:
