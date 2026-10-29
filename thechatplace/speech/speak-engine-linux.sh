@@ -58,8 +58,12 @@ if command -v spd-say >/dev/null 2>&1; then
     if [ -n "$rate" ]; then args+=(-r "${rate%.*}"); fi
     log_route speechd
     # No cancel here: speech-dispatcher's cancels every client's speech,
-    # Orca's too. The app makes it, only when its own voice was cut off.
-    spd-say "${args[@]}" < "$path" && exit 0
+    # Orca's too. The app makes it, only when its own voice was cut off and
+    # Orca wasn't running.
+    # -e (read stdin) sends a line starting with !-! to speech-dispatcher as
+    # a command, not text: a reply could otherwise silence or change every
+    # voice, Orca's too. A space in front makes it text again.
+    sed 's/^!-!/ !-!/' "$path" | spd-say "${args[@]}" && exit 0
 fi
 
 for program in espeak-ng espeak; do

@@ -5202,7 +5202,16 @@ def test_the_reply_box_grows_with_the_window(frame):
     (small_frame, small), (large_frame, large) = heights((1000, 720)), heights((1440, 900))
     assert small >= 120
     assert large_frame > small_frame
-    assert large > small
+    # The reply's panel is the larger of its minimum and a third of the
+    # height it shares with the messages list, so it grows once that third
+    # passes its minimum. Linux's taller buttons give it a larger minimum
+    # (210 with Adwaita), which a 900-pixel window doesn't reach (#230).
+    panel_min = frame.own_reply.GetSizer().GetMinSize().height
+    shared_large = frame.chat_list.GetSize().height + frame.own_reply.GetSize().height
+    if shared_large / 3 > panel_min + 4:
+        assert large > small
+    else:
+        assert abs(frame.own_reply.GetSize().height - panel_min) <= 4
     # At 720 the reply box is at its minimum (#179 gave the turn status a
     # line of its own), so the first few dozen pixels go to the messages
     # list until the reply's share passes it; after that about a third goes

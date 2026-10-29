@@ -455,7 +455,8 @@ class _GdkEventKey(ctypes.Structure):
                 ("state", ctypes.c_uint), ("keyval", ctypes.c_uint)]
 
 
-_KEY_HANDLER = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+# gint, as GtkKeySnoopFunc returns (and gboolean, the focus handlers', is a gint too).
+_KEY_HANDLER = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 _GDK_KEY_PRESS, _GDK_KEY_RELEASE = 8, 9
 _KEPT: list = []
 

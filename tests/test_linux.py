@@ -226,6 +226,26 @@ def test_the_linux_speech_script_can_be_run():
     assert script.read_bytes().startswith(b"#!/usr/bin/env bash\n")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="runs the bash script")
+def test_a_line_starting_like_a_command_is_spoken_not_run(tmp_path):
+    """``spd-say -e`` sends a line starting with ``!-!`` to speech-dispatcher
+    as a command, so a reply line like "!-!CANCEL all" could silence every
+    voice, Orca's too. The script gives such a line a space in front (#230)."""
+    import subprocess
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    heard = tmp_path / "heard.txt"
+    fake = bin_dir / "spd-say"
+    fake.write_text(f'#!/bin/sh\ncat > "{heard}"\n', encoding="utf-8")
+    fake.chmod(0o755)
+    text = tmp_path / "say.txt"
+    text.write_text("First line.\n!-!CANCEL all\nLast !-! line.\n", encoding="utf-8")
+    script = speech._script_dir() / "speak-engine-linux.sh"
+    env = dict(os.environ, PATH=f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin")
+    subprocess.run(["bash", str(script), "--path", str(text)], env=env, check=True, timeout=10)
+    assert heard.read_text(encoding="utf-8") == "First line.\n !-!CANCEL all\nLast !-! line.\n"
+
+
 # -- what Orca reads for a message row (#11) -----------------------------------------------
 
 def test_a_rows_description_is_the_rest_of_its_message():

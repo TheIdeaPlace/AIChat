@@ -906,10 +906,15 @@ class SettingsDialog(wx.Dialog):
         if gtk_a11y.IS_LINUX:
             # wxGTK makes a radio box's label the label of the control after
             # it, at idle time, so Orca read this as "Announcements, Announce
-            # when...". It isn't one of Announcements' choices.
+            # when...". It isn't one of Announcements' choices. A few idle
+            # events at most: a wxGTK that never links it there would
+            # otherwise keep this running for as long as Settings is open.
+            tries = [0]
+
             def unlink(event):
                 event.Skip()
-                if gtk_a11y.forget_labels(self.all_sessions):
+                tries[0] += 1
+                if gtk_a11y.forget_labels(self.all_sessions) or tries[0] >= 20:
                     self.Unbind(wx.EVT_IDLE, handler=unlink)
             self.Bind(wx.EVT_IDLE, unlink)
 
@@ -2580,6 +2585,13 @@ class LinesDialog(wx.Dialog):
         row.Add(close, 0)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
+        # Where the frame takes more than ``room`` allows for it, widen by
+        # what the list still lacks: GTK's client-side decorations and shadow
+        # take 52 pixels with Adwaita, and left the longest line 13 short (#230).
+        self.Layout()
+        lacking = self.list.GetBestSize().width - self.list.GetSize().width
+        if lacking > 0:
+            self.SetSize((min(width + lacking, screen - SCREEN_MARGIN), self.GetSize().height))
         self.SetEscapeId(wx.ID_CANCEL)
         # A char hook, as the main window's Ctrl+C on the messages list:
         # it's the path Cmd+C takes on macOS too.
