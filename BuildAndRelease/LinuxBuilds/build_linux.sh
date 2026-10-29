@@ -85,10 +85,18 @@ fi
 command -v objdump >/dev/null 2>&1 || fail "PyInstaller needs objdump: sudo apt install binutils"
 command -v mksquashfs >/dev/null 2>&1 || fail "vpk needs mksquashfs: sudo apt install squashfs-tools"
 
+# The folder .NET itself is in, which vpk needs. Not just any folder by that
+# name: ~/.dotnet also exists once `dotnet tool` has installed vpk there, and
+# with the distribution's .NET in /usr/lib/dotnet it holds only the tools, so
+# a second build failed (#230).
 if [ -z "${DOTNET_ROOT:-}" ]; then
-    for root in "$HOME/.dotnet" /usr/share/dotnet /usr/lib/dotnet; do
-        if [ -d "$root" ]; then export DOTNET_ROOT="$root"; break; fi
-    done
+    if command -v dotnet >/dev/null 2>&1; then
+        export DOTNET_ROOT="$(dirname "$(readlink -f "$(command -v dotnet)")")"
+    else
+        for root in "$HOME/.dotnet" /usr/share/dotnet /usr/lib/dotnet; do
+            if [ -x "$root/dotnet" ]; then export DOTNET_ROOT="$root"; break; fi
+        done
+    fi
 fi
 VPK="$(command -v vpk || echo "$HOME/.dotnet/tools/vpk")"
 if [ ! -x "$VPK" ] || ! "$VPK" -h 2>/dev/null | grep -q "$VPK_VERSION"; then
