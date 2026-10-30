@@ -860,7 +860,7 @@ def s_main_codex_unavailable(frame, env):
     frame._apply_snapshot(snapshot, [], {}, False)
 
 
-def s_main_copilot(frame, env, events=None, title="Copilot history preview"):
+def s_main_copilot(frame, env, events=None, title="Copilot history preview", client=""):
     """Synthetic Copilot CLI session folder; never the real ~/.copilot."""
     import dataclasses
     import json
@@ -875,6 +875,7 @@ def s_main_copilot(frame, env, events=None, title="Copilot history preview"):
         "id: synthetic-copilot\n"
         f"cwd: {json.dumps(str(env['folders']['Scratch']))}\n"
         f"name: {title}\n"
+        + (f"client_name: {client}\n" if client else "") +
         "created_at: 2026-01-01T00:00:00.000Z\nupdated_at: 2026-01-01T00:01:00.000Z\n",
         encoding="utf-8")
     events = events or [("user.message", {"content": "Explain the upload test."}),
@@ -911,7 +912,28 @@ def s_main_copilot_copy(frame, env):
                                                 "the upload's own signal instead.",
                                      "model": "auto"}),
               ("assistant.turn_end", {"turnId": "0"})]
-    s_main_copilot(frame, env, events, "Copilot history preview (continued)")
+    import dataclasses
+    from types import SimpleNamespace
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.copilot_acp import CLIENT_NAME
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    from thechatplace.sessions import IDLE
+    import fake_env
+
+    # Split only in a chat of the app's own that Copilot says it made.
+    s_main_copilot(frame, env, events, "Copilot history preview (continued)", CLIENT_NAME)
+    info = frame._open
+    record = OwnSession(info.cli_session_id, info.title, info.cwd, provider="copilot", started=True)
+    frame.store.add(record)
+    state = CopilotChatState(info.cli_session_id, IDLE, "1", "completed")
+    frame.sessions._providers["copilot"].runtime = SimpleNamespace(
+        known=lambda: [(info.cli_session_id, info.cwd)], snapshot=lambda native: state,
+        ready=lambda native: True,
+        adopt=lambda native: None, prepare=lambda native, cwd: None, close=lambda: None)
+    frame._codex_states[info.key] = state
+    frame.open_session(dataclasses.replace(record.to_info(), state=IDLE))
+    fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy
+                  and not frame._codex_preparing, timeout=10)
 
 
 def s_main_copilot_owned(frame, env):

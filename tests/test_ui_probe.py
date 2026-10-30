@@ -132,8 +132,8 @@ def test_surfaces_show_their_made_up_content(opened, tmp_path, monkeypatch):
         ui_probe.s_main_copilot_copy(frame, env)
         assert [m.label for m in frame._chat_messages] == ["Earlier conversation", "You",
                                                            "Copilot"]
-        assert frame._chat_messages[0].text.startswith(
-            'Carried over from "Copilot history preview": ')
+        assert frame._chat_messages[0].text == '2 messages from "Copilot history preview".'
+        assert frame._open.is_own
         assert frame._chat_messages[1].text == "Now make the upload test faster."
     finally:
         ui_probe.close_frame(frame)

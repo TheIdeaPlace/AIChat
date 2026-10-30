@@ -1873,6 +1873,44 @@ def test_a_chat_without_history_is_refused_as_before(make, tmp_path):
     assert PREAMBLE_WAITING not in str(refused.value)
 
 
+def test_a_refusal_while_the_first_turn_starts_doesnt_say_the_history_waits(make, tmp_path):
+    """Once the first message's turn has begun the history is going with it,
+    even before Copilot has taken the prompt (#423 review)."""
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    with runtime._lock:
+        runtime._chats[chat].busy = True  # begun; the prompt not yet queued
+    try:
+        with pytest.raises(CopilotChatError) as refused:
+            runtime.send(chat, "/help")
+        assert PREAMBLE_WAITING not in str(refused.value)
+    finally:
+        with runtime._lock:
+            runtime._chats[chat].busy = False
+
+
+def test_history_set_while_a_message_is_checked_is_held_to_the_cap_too(make, tmp_path):
+    """The check under the lock, for history that arrived after the first
+    check, says the same as the first check does."""
+    from thechatplace.providers.copilot_runtime import MAX_MESSAGE_CHARS
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    history = "H" * 100_000
+    real = runtime._hooks_refusal
+
+    def late_history(cwd):
+        runtime.set_preamble(chat, history)  # between the two checks
+        return real(cwd)
+    runtime._hooks_refusal = late_history
+    with pytest.raises(CopilotChatError) as refused:
+        runtime.send(chat, "x" * (MAX_MESSAGE_CHARS - len(history) + 1))
+    assert f"({len(history):,} characters)" in str(refused.value)
+    assert f"{MAX_MESSAGE_CHARS - len(history):,} characters or put" in str(refused.value)
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/prompt"]
+
+
 # -- Kelly's follow-ups (#405) ------------------------------------------------------
 
 
