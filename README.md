@@ -574,9 +574,11 @@ in Copilot CLI.
 folder and your first message. **Model** lists the models Copilot offered your last Copilot chat
 here (it lists them only for a chat), each with the premium requests a message costs, such as
 "GPT-5 (1x)"; leave it on Copilot's configured model, or choose one, and the chat switches to it
-before your first message goes. **File, Change Model** (Alt+F, D) changes a Copilot chat's
-model later, from its next turn, choosing from the models Copilot offers that chat; the chat must
-be open in Copilot first (select it and wait until it's ready). Effort and Copilot's other
+before your first message goes; if Copilot won't, the chat says so and uses Copilot's own.
+**File, Change Model** (Alt+F, D) changes a Copilot chat's model later, from its next turn,
+choosing from the models Copilot offers that chat; the chat must be open in Copilot first (select
+it and wait until it's ready). Once it is, the chat's heading says its model ("on GPT-5 (1x)").
+Effort and Copilot's other
 settings are its own. Each message uses requests from your Copilot plan. Type and send as in any chat started here; messages sent while
 Copilot is answering wait their turn, and Stop (Ctrl+Period) cancels the answer and
 puts any waiting messages back in the message box, unsent. Copilot asks before it runs a command

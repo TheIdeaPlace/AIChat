@@ -1711,6 +1711,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     kind += ", Remote Control on"
         elif info.remote and info.provider == "claude":
             kind += ", on Remote Control in the desktop app"
+        elif info.is_own and info.provider == "copilot" and self._can_edit(info):
+            # The model Copilot reports for this chat, once it's open there
+            # (#422): what Change Model shows as "now".
+            runtime_state = self._codex_states.get(info.key)
+            model = getattr(runtime_state, "model", "")
+            if model:
+                kind += f" on {dict(getattr(runtime_state, 'models', ()) or ()).get(model, model)}"
         state = state_with_detail(info.state, info.detail)
         self.session_heading.set_text(f"{end_sentence(f'{info.title}, {info.repo}, {state}')} {kind}.")
         self._update_messages_label()

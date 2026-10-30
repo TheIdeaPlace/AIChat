@@ -130,6 +130,7 @@ class CodexChats:
             if joint:
                 self.refresh_sessions()
                 made(record.to_info(), message)
+                self._say_early_notice(provider, record)
                 return
             self._codex_drafts[record.to_info().key] = message
             self.open_session(record.to_info())
@@ -140,15 +141,32 @@ class CodexChats:
                 self._send_codex_owned(record, message)
             if made is not None:
                 made(record.to_info(), message)
+            self._say_early_notice(provider, record)
         self._codex_work(create, done)
+
+    def _say_early_notice(self, provider, record):
+        """Say a notice a new chat had before the window had its record.
+        The runtime can report one while it is still being created (Copilot
+        refusing the model chosen in New Session); that update arrives before
+        the record is stored, so _on_owned_update keeps the state but can't
+        say it, and later updates with the same notice won't either."""
+        state = self._codex_states.get(f'{provider}:' + record.cli_session_id)
+        if state is not None and state.notice:
+            self._say(f'{record.title}: {state.notice}', interrupt=False)
 
     def _change_copilot_model(self, info):
         """File, Change Model for a Copilot chat: the models Copilot offers
         that chat, each with the premium requests a message costs. From its
-        next turn; one already running keeps the model it started with."""
-        if not info.is_own or not self._can_edit(info):
+        next turn (what a turn already running does is Copilot's; unchecked)."""
+        if not info.is_own:
             self._feedback(f"{info.title} wasn't started in The Chat Place: its model is set in "
                            "Copilot CLI.")
+            return
+        if not self._can_edit(info):
+            # Started here, but Copilot isn't running here now (turned off
+            # in Settings, or Copilot CLI not found): the chat is read-only.
+            self._feedback(f"Copilot isn't available here now, so {info.title} is read-only and "
+                           "its model can't be changed.")
             return
         record = self.store.get(info.cli_session_id, provider='copilot')
         if record is None:

@@ -1069,6 +1069,20 @@ def d_copilot_new(frame, env):
                                                 provider="copilot"))
 
 
+def d_new_session_copilot(frame, env):
+    """New Session for Copilot once a Copilot chat here has listed its
+    models (#422): Model enabled, with each model's cost. Synthetic names."""
+    from thechatplace.ui.dialogs import NewSessionDialog
+    models = (("auto", "Auto (1x)"), ("gpt-probe", "GPT Probe (1x)"),
+              ("gpt-probe-mini", "GPT Probe Mini (0.33x)"),
+              ("probe-sonnet", "Probe Sonnet Long Model Name (preview) (1x)"))
+    dialog = NewSessionDialog(frame, env["folders"]["Scratch"],
+                              providers=("claude", "codex", "copilot"), provider="copilot",
+                              copilot_models=models)
+    dialog.model.SetSelection(3)
+    return lambda: frame._modal(dialog)
+
+
 def _copilot_request(tool_call):
     from thechatplace.providers.copilot_runtime import CopilotRequest
     return CopilotRequest.decode(1, {"toolCall": tool_call, "options": [
@@ -1612,6 +1626,8 @@ SURFACES = {
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
     "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
     "copilot-new": ("dialog", d_copilot_new, "New Session with Copilot selected as Provider"),
+    "new-session-copilot": ("dialog", d_new_session_copilot,
+                            "New Session for Copilot, choosing from the models it offered"),
     "copilot-permission": ("dialog", d_copilot_permission, "Copilot asks to run a command, once"),
     "copilot-files": ("dialog", d_copilot_files, "Copilot asks to create a file, with its diff"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
@@ -1703,6 +1719,7 @@ DIALOG_CLASSES = {
     "codex-auto-review": "NewSessionDialog",
     "codex-review-history": "ChatPermissionsDialog",
     "copilot-new": "NewSessionDialog",
+    "new-session-copilot": "NewSessionDialog",
     "copilot-permission": "CodexPermissionDialog",
     "copilot-files": "CodexPermissionDialog",
     "codex-models": "NewSessionDialog",

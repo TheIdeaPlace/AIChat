@@ -357,19 +357,34 @@ def _shown(text: str) -> bool:
             and not any(unicodedata.category(c) in ("Cc", "Cf") for c in text))
 
 
+def _flat_options(items):
+    """A select's options, with one level of ACP's option groups
+    (SessionConfigSelectGroup: a dict with its own "options" list) read in
+    place, in order. Anything else odd is passed on for the caller to skip."""
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if isinstance(item, dict) and "value" not in item and isinstance(item.get("options"), list):
+            yield from item["options"]
+        else:
+            yield item
+
+
 def _models(options):
     """(current model, ((value, label), …)) from ACP configOptions' "model"
     choice, or None when they don't have one. Copilot lists only what the
     account's plan allows, and each label says the premium requests a turn
     costs ("GPT-5 (1x)"); a model listed twice is listed once, with its
-    cost if either says it."""
+    cost if either says it. ACP lets a select's options come in groups
+    ({"group", "name", "options": [...]}); one level of those is read as
+    one list, in order."""
     if not isinstance(options, list):
         return None
     for option in options:
         if not isinstance(option, dict) or option.get("id") != "model":
             continue
         choices, costed = {}, set()
-        for item in option.get("options") if isinstance(option.get("options"), list) else ():
+        for item in _flat_options(option.get("options")):
             value = _text(item.get("value"), 200) if isinstance(item, dict) else ""
             if not value or not _shown(value):
                 continue
@@ -650,6 +665,9 @@ class _Chat:
         #: ((value, label), …), from its configOptions.
         self.model = ""
         self.models: tuple = ()
+        #: Counts each time the chat's settings are read whole (opened, or a
+        #: setting switched): a reply to an older switch mustn't overwrite them.
+        self.settings_gen = 0
 
     @property
     def safe(self) -> bool:
@@ -855,28 +873,39 @@ class CopilotChatRuntime:
     def set_model(self, native_id: str, model: str) -> None:
         """Switch a chat to ``model``, one Copilot offers it, from its next
         turn. Waits for Copilot, so call it off the UI thread."""
+        self._set_option(native_id, "model", model, "Copilot couldn't switch to that model.")
+
+    def _set_option(self, native_id: str, config_id: str, value: str, refused: str) -> None:
+        """Set one of a chat's configOptions (``session/set_config_option``)
+        and take in the whole set Copilot replies with. ``refused`` is said if
+        Copilot says no. A reply older than what the chat has now (it was
+        opened again, or switched again, meanwhile) is ignored. Waits for
+        Copilot, so call it off the UI thread."""
         with self._lock:
             chat = self._chats.get(native_id)
             if chat is None or chat.connection is None or chat.connection.closed or chat.loading:
                 raise CopilotChatError("This Copilot chat isn't open here yet. Select it, wait "
                                        "until it's ready, then try again.")
-            if model not in dict(chat.models):
+            if config_id == "model" and value not in dict(chat.models):
                 raise CopilotChatError("Copilot doesn't offer that model for this chat.")
             connection = chat.connection
+            chat.settings_gen += 1
+            generation = chat.settings_gen
         try:
             result = connection.request("session/set_config_option", {
-                "sessionId": native_id, "configId": "model", "value": model})
+                "sessionId": native_id, "configId": config_id, "value": value})
         except copilot_acp.AcpError:
-            raise CopilotChatError("Copilot couldn't switch to that model.") from None
+            raise CopilotChatError(refused) from None
         options = result.get("configOptions") if isinstance(result, dict) else None
         present = {option.get("id") for option in options if isinstance(option, dict)
                    } if isinstance(options, list) else set()
         unsafe_turn = False
         with self._lock:
             if (self._chats.get(native_id) is not chat or chat.loading
-                    or chat.connection is not connection):
-                # Opened again (or closed) while Copilot answered: what the
-                # reply says is older than what the chat has now.
+                    or chat.connection is not connection or chat.settings_gen != generation):
+                # Opened again (or closed, or switched again) while Copilot
+                # answered: what the reply says is older than what the chat
+                # has now.
                 return
             settings = _settings(options)
             # Each setting the reply names counts, unsafe ones included; one
@@ -888,8 +917,13 @@ class CopilotChatRuntime:
             if _models(options) is not None:
                 chat.apply_models(options)
                 self._seen_models(chat)
-            else:
-                chat.model = model  # it said yes, without the list
+            # It said yes: the switched setting has the value asked for, even
+            # if the reply leaves it out.
+            if config_id not in present:
+                if config_id == "model":
+                    chat.model = value
+                elif config_id == "mode":
+                    chat.mode = value
             # As for a config_option_update: a turn running when Copilot stops
             # asking before it acts is stopped.
             unsafe_turn = chat.busy and not chat.safe and not chat.stopping
@@ -971,6 +1005,7 @@ class CopilotChatRuntime:
                 chat.notice = ""  # opened again: "open it again" no longer applies
             chat.apply(_settings(result.get("configOptions")))
             chat.apply_models(result.get("configOptions"))
+            chat.settings_gen += 1
             self._seen_models(chat)
             if chat.problem and chat.problem != HOOK_ANSWERED and not self._halted and kinds and all(k == "copilot" for k in kinds):
                 chat.problem = ""  # the late record has arrived, and it's Copilot's
