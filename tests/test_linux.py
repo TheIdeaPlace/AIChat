@@ -441,6 +441,20 @@ def _send_key(wx, frame, keyval, state, kind, keycode=0):
         wx.Yield()
 
 
+def _until_active(wx, frame, seconds=3.0):
+    """Let a shown window settle: with a window manager (CI's Orca job runs
+    these under openbox) it becomes active a moment later, and the focus
+    arriving between a key's press and release reset the Alt tap, so the test
+    failed now and then (#428)."""
+    import time
+    end = time.time() + seconds
+    while time.time() < end and not frame.IsActive():
+        wx.Yield()
+        time.sleep(0.02)
+    for _ in range(20):
+        wx.Yield()
+
+
 @atk
 def test_a_tap_of_alt_is_seen_past_wxs_own_key_handling(app):
     """wxGTK's handler on the window stops its key-press-event, so the keys
@@ -451,8 +465,7 @@ def test_a_tap_of_alt_is_seen_past_wxs_own_key_handling(app):
         listbox = wx.ListBox(frame, choices=["One"])
         frame.Show()
         listbox.SetFocus()
-        for _ in range(20):
-            wx.Yield()
+        _until_active(wx, frame)
         taps = []
         assert gtk_a11y.watch_alt_tap(frame, lambda: taps.append(1))
         alt, x = 0xFFE9, ord("x")
@@ -496,8 +509,7 @@ def test_alt_puts_the_keyboard_in_the_menu_bar_as_f10_does(app):
         frame.SetMenuBar(bar)
         wx.ListBox(frame, choices=["One"]).SetFocus()
         frame.Show()
-        for _ in range(20):
-            wx.Yield()
+        _until_active(wx, frame)
         assert gtk_a11y.watch_alt_tap(frame, lambda: gtk_a11y.press_menu_bar_key(frame))
         _send_key(wx, frame, 0xFFE9, 0, 8)
         _send_key(wx, frame, 0xFFE9, 0x8, 9)
