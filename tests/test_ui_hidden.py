@@ -12984,6 +12984,38 @@ def test_a_copilot_chat_is_reopened_after_a_restart_from_its_record(frame, env, 
         runtime.close()
 
 
+def test_a_chat_opened_before_its_runtime_was_ready_sends_once_it_is(frame, env, monkeypatch):
+    """#430: a reopened chat opened before its runtime had it ready is marked
+    as getting ready until the window next looks. A message sent after the
+    runtime was ready but before that was refused with "still getting ready";
+    in CI, where the runtime is slower, the test above failed so. Here that
+    moment is made by hand: ready, still marked, and sent at once."""
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        frame._create_codex_owned(folder, "Kept Copilot", "Say hello", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        native = frame._open.cli_session_id
+    finally:
+        runtime.close()
+    frame._codex_states.clear()
+    frame._open = None
+    runtime, _ = _copilot_window(frame, env, monkeypatch)
+    try:
+        record = frame.store.get(native, provider="copilot")
+        info = record.to_info()
+        frame.open_session(info)
+        assert pump(lambda: frame.sessions.owned_action("ready", record), timeout=COPILOT_WAIT)
+        frame._codex_preparing[info.key] = frame._open_generation  # as a slow runtime leaves it
+        frame.reply_text.SetValue("Again")
+        frame.on_send()  # with no event in between to clear the mark
+        assert "This Copilot chat is still getting ready." not in env["feedback"]
+        assert pump(lambda: _received_prompts(env)[-1:] == ["Again"], timeout=COPILOT_WAIT)
+        assert info.key not in frame._codex_preparing
+    finally:
+        runtime.close()
+
+
 def test_a_copilot_chat_started_elsewhere_stays_read_only(frame, env, monkeypatch):
     runtime, folder = _copilot_window(frame, env, monkeypatch)
     try:
