@@ -12862,9 +12862,17 @@ def test_a_copilot_chat_is_reopened_after_a_restart_from_its_record(frame, env, 
         assert pump(lambda: frame.sessions.owned_action("ready", record), timeout=COPILOT_WAIT)
         frame.reply_text.SetValue("Again")
         frame.on_send()
-        assert pump(lambda: _received_prompts(env)[-1:] == ["Again"]
+        sent = pump(lambda: _received_prompts(env)[-1:] == ["Again"]
                     and _copilot_state(frame) is not None
                     and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        # What it saw, so a failure on CI says why (it failed there on macOS
+        # and Windows, never locally).
+        state = _copilot_state(frame)
+        assert sent, (_received_prompts(env), env["feedback"][-6:],
+                      state and (state.state, state.turn_id, state.outcome, state.notice,
+                                 state.problem, state.queued, state.unsent),
+                      frame.reply_text.GetValue(),
+                      runtime.ready(native), dict(frame._codex_preparing))
     finally:
         runtime.close()
 
@@ -13365,6 +13373,48 @@ def test_stop_doesnt_say_answered_when_copilot_has_gone(frame, env, monkeypatch)
     frame._stop_codex_owned(info)
     assert pump(lambda: frame.reply_text.GetValue() == "Two" and env["feedback"][-1] == (
         "Gone Copilot: Copilot isn't answering. 1 waiting message is back in the message box, unsent."))
+    frame._codex_states.clear()
+
+
+def test_stop_before_the_message_went_says_so(frame, env, monkeypatch):
+    """#405: stopped before the turn sent its message, nothing went to
+    Copilot and nothing will be closed; not "isn't answering" either."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-early", "Early Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-early", "Early Copilot", "C:/w", "cp-early",
+                       provider="copilot")
+    frame._codex_states[info.key] = CopilotChatState("cp-early", "working", "1", "inProgress")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: Stopped(before_sending=True))
+    frame._stop_codex_owned(info)
+    assert pump(lambda: "Early Copilot: Stopped before your message went to Copilot."
+                in env["feedback"])
+    assert not any("isn't answering" in t or "within 15 seconds" in t for t in env["feedback"])
+    frame._codex_states.clear()
+
+
+def test_stop_again_says_copilot_was_already_asked(frame, env, monkeypatch):
+    """#414 review: a second Stop keeps the first Stop's timer, so it mustn't
+    promise a fresh 15 seconds before Copilot is closed."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-again", "Again Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-again", "Again Copilot", "C:/w", "cp-again",
+                       provider="copilot")
+    frame._codex_states[info.key] = CopilotChatState("cp-again", "working", "1", "inProgress")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: Stopped(cancelled=True, already_asked=True))
+    frame._stop_codex_owned(info)
+    assert pump(lambda: "Again Copilot: Already asked Copilot to stop; "
+                "The Chat Place closes it if it doesn't." in env["feedback"])
+    assert not any("within 15 seconds" in t for t in env["feedback"])
     frame._codex_states.clear()
 
 

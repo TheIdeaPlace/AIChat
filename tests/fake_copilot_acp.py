@@ -48,11 +48,13 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
               no longer allows
   modelflip   as hang, and session/set_config_option's reply says allow_all is
               on: Copilot no longer asking before it acts
+  refused     chats open, but each prompt fails at once with -32000 before
+              anything is logged, not even its user.message (#405)
   strict      as hang, but a session/cancel that arrives while no prompt is
               running is ignored, as real Copilot ignores one that comes
               before the prompt it was meant for
 
-Every prompt logs a user.message first, as Copilot does.
+Every prompt logs a user.message first, as Copilot does (except in refused).
 
 FAKE_COPILOT_SESSIONS names the folder session logs are written under, as
 Copilot writes ~/.copilot/session-state/<id>/events.jsonl.
@@ -167,6 +169,10 @@ def prompt(message_id, session, text=""):
     turns[0] += 1
     if session in resume_pending:
         log_event(session, "session.resume", {"alreadyInUse": resume_pending.pop(session)})
+    if MODE == "refused":
+        send({"jsonrpc": "2.0", "id": message_id,
+              "error": {"code": -32000, "message": "Authentication required"}})
+        return
     log_event(session, "user.message", {"content": "synthetic"})
     if MODE == "expired":
         time.sleep(1.0)  # long enough for a second message to be queued

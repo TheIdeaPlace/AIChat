@@ -243,3 +243,40 @@ def test_unified_diff_ignores_blank_separators_after_complete_hunks(separator):
     detail = file_text(by_file([FileEdit("a.txt", "Codex", 1, hunks)])[0])
     assert "At line 1:" in detail and "At line 9:" in detail
     assert "Unchanged: blank line" not in detail
+
+
+def test_a_plain_unified_diff_is_read_file_by_file():
+    """Without "diff --git" lines, a "---" then "+++" starts the next file,
+    but only once the hunk before has all its lines: inside one, "--- x" is
+    a removed line starting with dashes, such as an SQL comment (#405)."""
+    from thechatplace.changes import parse_git_diff
+    text = "\n".join([
+        "--- a/query.sql",
+        "+++ b/query.sql",
+        "@@ -1,3 +1,2 @@",
+        " select 1;",
+        "--- the old comment",
+        "+++ looks like a header but is an added line",
+        "--- b/notes.txt",
+    ])
+    # The hunk said 3 old lines and 2 new, and has had 2 old lines when
+    # "--- b/notes.txt" comes, so that's its third: a removed line.
+    files = parse_git_diff(text)
+    assert [path for path, _ in files] == ["query.sql"]
+    assert files[0][1][0].lines[1:] == ["--- the old comment",
+                                        "+++ looks like a header but is an added line",
+                                        "--- b/notes.txt"]
+    two = "\n".join([
+        "--- a/one.txt",
+        "+++ b/one.txt",
+        "@@ -1 +1 @@",
+        "-old",
+        "+new",
+        "--- a/two.txt",
+        "+++ b/two.txt",
+        "@@ -1,0 +1 @@",
+        "+hello",
+    ])
+    files = parse_git_diff(two)
+    assert [path for path, _ in files] == ["one.txt", "two.txt"]
+    assert files[0][1][0].lines == ["-old", "+new"] and files[1][1][0].lines == ["+hello"]

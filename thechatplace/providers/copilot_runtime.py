@@ -166,6 +166,18 @@ class Stopped(NamedTuple):
     #: so nothing was cancelled. Not necessarily an answer: a cancel, a
     #: refusal or its process ending return the prompt too.
     answered: bool = False
+    #: The turn hadn't decided to send its message: it sees the stop and
+    #: gives the message back unsent, so nothing went to Copilot (#405).
+    before_sending: bool = False
+    #: A cancel had already gone for this turn, with its timer running: this
+    #: Stop sent nothing and left the timer alone, so the forced close comes
+    #: when the first Stop said it would, not a full grace from now (#405).
+    already_asked: bool = False
+
+
+#: What _cancel did.
+CANCEL_SENT, ANSWERED_FIRST, NOT_SENT = "sent", "answered first", "not sent"
+ALREADY_SENT = "already sent"
 
 
 class CopilotChatError(Exception):
@@ -640,6 +652,10 @@ class _Chat:
         #: This turn's prompt is queued to be written to Copilot: a cancel
         #: sent before then would reach Copilot first, and be ignored.
         self.prompt_queued = False
+        #: This turn has decided to send its prompt (it wasn't stopped
+        #: first): only then can a Stop's cancel lead to Copilot being
+        #: closed, and the window warn that it will be (Kelly, #405).
+        self.sending = False
         self.context = (0, 0)
         #: Counts compactions (context use dropping sharply), as Codex's state
         #: does, so the window's context warning can be said again after one.
@@ -668,6 +684,9 @@ class _Chat:
         #: Counts each time the chat's settings are read whole (opened, or a
         #: setting switched): a reply to an older switch mustn't overwrite them.
         self.settings_gen = 0
+        #: The turn ``cancel_timer`` is for: a second Stop in that turn
+        #: mustn't put the forced close off again (Kelly, #405).
+        self.cancel_turn = 0
 
     @property
     def safe(self) -> bool:
@@ -1096,6 +1115,7 @@ class CopilotChatRuntime:
         chat.busy, chat.outcome, chat.notice = True, "inProgress", ""
         chat.answered = False
         chat.prompt_queued = False
+        chat.sending = False
         chat.turns += 1
         chat.started_at = time.monotonic()
         chat.reply_open = False
@@ -1125,6 +1145,9 @@ class CopilotChatRuntime:
             # message goes back unsent, never to Copilot.
             stopped_first = chat.stopping
             turn = chat.turns
+            # Decided in the same locked step a Stop reads it in, so a Stop
+            # either finds the prompt going out or stops it going.
+            chat.sending = not stopped_first
         if stopped_first:
             not_sent = (text,)
 
@@ -1300,6 +1323,7 @@ class CopilotChatRuntime:
             chat.requests.clear()
             answered = chat.answered
             prompt_queued = chat.prompt_queued
+            sending = chat.sending
             connection = chat.connection
         if connection is not None and not connection.closed:
             for request_id in requests:
@@ -1311,22 +1335,40 @@ class CopilotChatRuntime:
         # cancelling it, and the timer that closes a Copilot ignoring the
         # cancel, would end every other chat's turn for nothing.
         cancel = connection is not None and not connection.closed and not answered
+        # A turn that hasn't decided to send will see this stop and give its
+        # message back unsent: there's nothing to cancel, and nothing will be
+        # closed, so the window mustn't warn that it will be (Kelly, #405).
+        # (The prompt can still fail to go after that, AcpNotSent for a
+        # message too big or too many requests waiting: a moment's gap in
+        # which the warning is said for nothing. Its message comes back
+        # unsent, and says so.)
+        before_sending = cancel and not sending
+        cancel = cancel and sending
         # Before its prompt is queued, the turn sends the cancel itself, right
         # after the prompt (_run_turn): sent now, it would reach Copilot
         # first, be ignored, and the timer would close a Copilot that was
         # only answering (Kelly, #372). Or the turn sees the stop before
         # sending, and the message comes back unsent.
-        if cancel and prompt_queued and not self._cancel(chat, connection, turn):
+        sent = self._cancel(chat, connection, turn) if cancel and prompt_queued else None
+        if sent == ANSWERED_FIRST:
             # No timer, so nothing will be closed: the window mustn't
             # warn that it will be. Copilot answered first (Kelly, #386).
             cancel, answered = False, True
+        elif sent == NOT_SENT:
+            # The cancel couldn't go out (Copilot is closing): no timer
+            # either, and the turn ends with the connection (Kelly, #405).
+            cancel = False
         self._notify(chat)
-        return Stopped(waiting, cancelled=cancel, answered=answered)
+        return Stopped(waiting, cancelled=cancel, answered=answered,
+                       before_sending=before_sending,
+                       already_asked=sent == ALREADY_SENT)
 
-    def _cancel(self, chat: _Chat, connection, turn: int) -> bool:
+    def _cancel(self, chat: _Chat, connection, turn: int) -> str:
         """Ask Copilot to cancel ``turn``, and close it if it doesn't stop in
-        time. False if Copilot answered first: nothing is sent, and no timer
-        kept."""
+        time. CANCEL_SENT; ALREADY_SENT if a cancel for this turn already
+        went and its timer is running (nothing is sent and that timer is
+        kept); ANSWERED_FIRST if Copilot answered first, or NOT_SENT if the
+        cancel couldn't go out, neither of which keeps a timer."""
         timer = threading.Timer(self._cancel_grace, self._cancel_overdue,
                                 args=(chat, connection, turn))
         timer.daemon = True  # never keeps the app open after it quits
@@ -1336,16 +1378,20 @@ class CopilotChatRuntime:
             # queued after its prompt would stop that one instead. Queuing
             # never waits on Copilot, so the lock is held only a moment.
             if chat.answered or chat.turns != turn:
-                return False
+                return ANSWERED_FIRST
+            if chat.cancel_timer is not None and chat.cancel_turn == turn:
+                # Already asked, and the clock is running: pressing Stop
+                # again mustn't put the forced close off (Kelly, #405).
+                return ALREADY_SENT
             try:
                 connection.notify("session/cancel", {"sessionId": chat.native_id})
             except copilot_acp.AcpError:
-                pass
+                return NOT_SENT  # never queued: Copilot is closing
             if chat.cancel_timer is not None:
                 chat.cancel_timer.cancel()
-            chat.cancel_timer = timer
+            chat.cancel_timer, chat.cancel_turn = timer, turn
         timer.start()
-        return True
+        return CANCEL_SENT
 
     def _cancel_overdue(self, chat: _Chat, connection, turn: int) -> None:
         """Copilot didn't stop when asked. Ending the turn here alone would
