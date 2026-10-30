@@ -12985,8 +12985,8 @@ def test_change_permission_mode_unblocks_a_chat_plan_mode_was_refused_for(frame,
     try:
         frame.on_change_permission_mode()
         assert nows == [""]
-        assert pump(lambda: calls == [("set_mode", (AGENT_MODE,))] and env["feedback"][-1] ==
-                    "Blocked Copilot: agent mode.")
+        assert pump(lambda: calls == [("set_mode", (AGENT_MODE,))] and env["feedback"][-1:] ==
+                    ["Blocked Copilot: agent mode."])
     finally:
         frame._codex_states.clear()
 
