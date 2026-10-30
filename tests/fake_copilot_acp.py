@@ -53,6 +53,7 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
   modeless    session/set_config_option for the mode says yes, but its reply
               leaves the mode out
   forgetmode  session/load reopens a chat in agent mode, whatever it was in
+  startplan   chats start in plan mode, as if that were Copilot's own default
   nomodel     session/set_config_option always fails, as for a model the plan
               no longer allows
   modelflip   as hang, and session/set_config_option's reply says allow_all is
@@ -123,7 +124,7 @@ model_of = {}
 
 
 def options(session=None):
-    mode = AUTOPILOT if MODE == "unsafe" else mode_of.get(session, AGENT)
+    mode = AUTOPILOT if MODE == "unsafe" else mode_of.get(session, PLAN if MODE == "startplan" else AGENT)
     allow = "on" if MODE == "allowall" else "off"
     return [{"type": "select", "id": "mode", "currentValue": mode},
             {"type": "select", "id": "model", "currentValue": model_of.get(session, "auto"),

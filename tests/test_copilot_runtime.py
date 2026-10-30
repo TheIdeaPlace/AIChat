@@ -2194,3 +2194,167 @@ def test_copilots_own_files_are_never_changed_files(tmp_path):
     events = [("tool.execution_complete", {"success": True, "fileEdits": [
         {"path": plan}, {"path": work}, {"path": other_chat}]})]
     assert _edited_paths(events, own) == (work, other_chat)
+
+
+# -- round 2 of #424's review ---------------------------------------------------------
+
+
+def test_nothing_can_be_sent_while_a_new_chats_mode_is_being_switched(make, tmp_path):
+    """A chat asked for in plan mode is blocked before the switch goes to
+    Copilot, so nothing sees it ready in agent mode meanwhile."""
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    runtime, _ = make()
+    original, seen = runtime._set_option, []
+
+    def checked(native_id, config_id, value, refused):
+        if config_id == "mode":
+            seen.append(runtime.ready(native_id))
+            with pytest.raises(CopilotChatError, match="plan mode"):
+                runtime.send(native_id, "Too soon")
+        return original(native_id, config_id, value, refused)
+    runtime._set_option = checked
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    assert seen == [False]
+    state = runtime.snapshot(chat)
+    assert state.mode == PLAN_MODE and state.problem == "" and runtime.ready(chat)
+    assert prompts_sent(tmp_path) == []
+
+
+def test_nothing_can_be_sent_while_a_reopened_chat_is_switched_back(make, tmp_path):
+    """Reopened in agent mode, a chat chosen for plan mode is blocked as
+    loading ends, before the switch back goes to Copilot."""
+    from thechatplace.providers.copilot_runtime import MODE_NOT_KEPT, PLAN_MODE
+    runtime, _ = make("forgetmode")
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    original, seen = runtime._set_option, []
+
+    def checked(native_id, config_id, value, refused):
+        if config_id == "mode":
+            seen.append((runtime.ready(native_id), runtime.snapshot(native_id).problem))
+            with pytest.raises(CopilotChatError, match="another mode"):
+                runtime.send(native_id, "Too soon")
+        return original(native_id, config_id, value, refused)
+    runtime._set_option = checked
+    runtime._chats[chat].elsewhere = True  # so prepare opens it again
+    runtime.prepare(chat, str(tmp_path), mode=PLAN_MODE)
+    assert seen == [(False, MODE_NOT_KEPT)]
+    assert runtime.snapshot(chat).mode == PLAN_MODE and runtime.ready(chat)
+    assert prompts_sent(tmp_path) == []
+
+
+def test_agent_mode_asked_for_where_copilot_starts_in_plan_is_switched(make, tmp_path):
+    """Copilot's own default needn't be agent ("startplan"): agent asked for
+    is switched to, and a refusal says agent mode, not plan mode."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, AGENT_NOT_SET
+    runtime, _ = make("startplan")
+    chat = runtime.create(str(tmp_path), mode=AGENT_MODE)
+    state = runtime.snapshot(chat)
+    assert state.mode == AGENT_MODE and state.problem == "" and runtime.ready(chat)
+
+    def refused(native_id, config_id, value, refused_text):
+        raise CopilotChatError(refused_text)
+    runtime._set_option = refused
+    other = runtime.create(str(tmp_path), mode=AGENT_MODE)
+    assert runtime.snapshot(other).problem == AGENT_NOT_SET
+    with pytest.raises(CopilotChatError, match="in agent mode"):
+        runtime.send(other, "Change things")
+
+
+# -- saved modes (provider level) -------------------------------------------------------
+
+
+@pytest.fixture
+def provider(make, tmp_path, monkeypatch):
+    from thechatplace.providers.copilot import CopilotProvider
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path / "data")
+    (tmp_path / "data").mkdir()
+
+    def build(mode="answer"):
+        runtime, _ = make(mode)
+        return CopilotProvider(tmp_path / "sessions", runtime=runtime), runtime
+    return build
+
+
+def test_a_saved_plan_mode_is_put_back_when_copilot_reopens_in_agent(provider, tmp_path):
+    """Through prepare_owned, as the window opens a chat: Copilot forgets the
+    mode across session/load, and the saved one is applied again."""
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    copilot, runtime = provider("forgetmode")
+    record = copilot.create_owned(str(tmp_path), "Planner", copilot_mode=PLAN_MODE)
+    runtime._chats[record.cli_session_id].elsewhere = True  # so it's loaded again
+    copilot.prepare_owned(record)
+    state = runtime.snapshot(record.cli_session_id)
+    assert state.mode == PLAN_MODE and state.problem == ""
+    assert runtime.ready(record.cli_session_id)
+    # The load did forget it: the switch was sent again after it.
+    sent = [m["params"]["value"] for m in received(tmp_path)
+            if m.get("method") == "session/set_config_option"]
+    assert sent == [PLAN_MODE, PLAN_MODE]
+
+
+def test_a_saved_plan_mode_copilot_wont_put_back_blocks_the_chat(provider, tmp_path):
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.copilot import _remember_mode
+    from thechatplace.providers.copilot_runtime import MODE_NOT_KEPT, PLAN_MODE
+    native = "11111111-2222-3333-4444-555555555555"
+    write_workspace(tmp_path, native, "thechatplace")
+    copilot, runtime = provider("nomode")
+    assert _remember_mode(native, PLAN_MODE) == ""
+    copilot.prepare_owned(OwnSession(native, "Planner", str(tmp_path), provider="copilot",
+                                     started=True))
+    assert runtime.snapshot(native).problem == MODE_NOT_KEPT and not runtime.ready(native)
+
+
+def test_saved_modes_file_edge_cases(tmp_path, monkeypatch):
+    from thechatplace.providers.copilot import (MODE_NOT_SAVED, MODES_SET_ASIDE,
+                                                _remember_mode, chosen_mode)
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    native = "11111111-2222-3333-4444-555555555555"
+    other = "22222222-2222-3333-4444-555555555555"
+    path = tmp_path / "copilot-modes.json"
+    # Missing: no mode, nothing to say.
+    assert chosen_mode(native) == ("", "")
+    # A bad id and an unknown mode are left out; the rest are read.
+    autopilot = "https://agentclientprotocol.com/protocol/session-modes#autopilot"
+    path.write_text(json.dumps({"version": 1, "modes": {
+        "../x": PLAN_MODE, native: autopilot, other: PLAN_MODE}}), encoding="utf-8")
+    assert chosen_mode(native) == ("", "")
+    assert chosen_mode(other) == (PLAN_MODE, "")
+    # Corrupt: moved aside whole, said, and not written over.
+    path.write_text("{not json", encoding="utf-8")
+    assert _remember_mode(native, PLAN_MODE) == MODES_SET_ASIDE
+    assert (tmp_path / "copilot-modes.json.bad").read_text(encoding="utf-8") == "{not json"
+    assert chosen_mode(native) == (PLAN_MODE, "")
+    path.write_text("[]", encoding="utf-8")
+    assert chosen_mode(native) == ("", MODES_SET_ASIDE)
+    assert (tmp_path / "copilot-modes.json.bad").read_text(encoding="utf-8") == "[]"
+    # A save that fails is said.
+
+    def full(*args, **kwargs):
+        raise OSError("disk full")
+    monkeypatch.setattr("thechatplace.provider_storage.atomic_write_json", full)
+    assert _remember_mode(native, PLAN_MODE) == MODE_NOT_SAVED
+
+
+def test_set_mode_owned_saves_only_a_confirmed_mode(provider, tmp_path):
+    from thechatplace.providers.copilot import chosen_mode
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+    copilot, runtime = provider("keepagent")
+    record = copilot.create_owned(str(tmp_path), "Unconfirmed")
+    assert copilot.set_mode_owned(record, PLAN_MODE) == AGENT_MODE
+    assert chosen_mode(record.cli_session_id) == ("", "")
+    assert copilot.set_mode_owned(record, AGENT_MODE) == AGENT_MODE
+    assert chosen_mode(record.cli_session_id) == (AGENT_MODE, "")
+
+
+def test_a_failed_save_of_a_mode_is_the_chats_notice(provider, tmp_path, monkeypatch):
+    from thechatplace.providers.copilot import MODE_NOT_SAVED
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    copilot, runtime = provider()
+
+    def full(*args, **kwargs):
+        raise OSError("disk full")
+    monkeypatch.setattr("thechatplace.provider_storage.atomic_write_json", full)
+    record = copilot.create_owned(str(tmp_path), "Unsaved", copilot_mode=PLAN_MODE)
+    assert runtime.snapshot(record.cli_session_id).notice == MODE_NOT_SAVED

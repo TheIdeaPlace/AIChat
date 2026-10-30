@@ -283,6 +283,11 @@ class AgentChats:
                                approval_policy=choice.approval_policy,
                                approvals_reviewer=(None if choice.approvals_reviewer == "user"
                                                    else choice.approvals_reviewer))
+            elif provider == "copilot":
+                # Agent mode, asked for: Copilot's own default needn't be, and
+                # a conversation hands work between its chats (#424).
+                from ..providers.copilot_runtime import AGENT_MODE
+                options = dict(copilot_mode=AGENT_MODE)
 
             def create():
                 return self.sessions.create_owned(provider, plan.folder, title, **options)

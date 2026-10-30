@@ -12915,9 +12915,10 @@ def test_new_session_offers_copilot_with_its_own_note(frame):
         # Agent or plan mode (#352): agent unless plan is chosen.
         assert dialog.mode.IsEnabled() and dialog.mode.GetCount() == 2
         _folder, _title, _mode, _message, model = dialog.values()
-        assert model == "" and dialog.effort() == "" and dialog.copilot_mode() == ""
+        from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+        # Agent is asked for too: Copilot's own default needn't be (#424).
+        assert model == "" and dialog.effort() == "" and dialog.copilot_mode() == AGENT_MODE
         dialog.mode.SetSelection(1)
-        from thechatplace.providers.copilot_runtime import PLAN_MODE
         assert dialog.copilot_mode() == PLAN_MODE
         dialog.provider_choice.SetSelection(0)  # back to Claude: its controls return
         dialog._on_provider()
@@ -12934,30 +12935,32 @@ def test_change_permission_mode_switches_a_copilot_chat_to_plan(frame, env, monk
     info = SessionInfo(OWN, "copilot:cp-p", "Planning Copilot", "C:/w", "cp-p", provider="copilot")
     monkeypatch.setattr(frame, "_selected_session", lambda: info)
     monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
-    frame.on_change_permission_mode()
-    assert "isn't open in Copilot yet" in env["feedback"][-1]
-    frame._codex_states[info.key] = CopilotChatState("cp-p", "idle", mode=AGENT_MODE)
-    asked, calls = [], []
+    try:
+        frame.on_change_permission_mode()
+        assert "isn't open in Copilot yet" in env["feedback"][-1]
+        frame._codex_states[info.key] = CopilotChatState("cp-p", "idle", mode=AGENT_MODE)
+        asked, calls = [], []
 
-    def change_setting(title, prompt, choices, now):
-        asked.append((prompt, [value for value, _label in choices], now))
-        return PLAN_MODE
-    monkeypatch.setattr(frame, "_change_setting", change_setting)
-    recorded = [PLAN_MODE]
-    monkeypatch.setattr(frame.sessions, "owned_action",
-                        lambda action, record, *args: (calls.append((action, args)),
-                                                       recorded[0])[1])
-    frame.on_change_permission_mode()
-    assert asked == [("Mode for Planning Copilot, now agent mode:", [AGENT_MODE, PLAN_MODE],
-                      AGENT_MODE)]
-    assert pump(lambda: calls == [("set_mode", (PLAN_MODE,))] and env["feedback"][-1] ==
-                "Planning Copilot: plan mode.")
-    # What's said is the mode Copilot then reports, not the one asked for.
-    recorded[0] = AGENT_MODE
-    frame.on_change_permission_mode()
-    assert pump(lambda: env["feedback"][-1] == "Copilot didn't switch Planning Copilot to "
-                "plan mode; it's in agent mode.")
-    frame._codex_states.clear()
+        def change_setting(title, prompt, choices, now):
+            asked.append((prompt, [value for value, _label in choices], now))
+            return PLAN_MODE
+        monkeypatch.setattr(frame, "_change_setting", change_setting)
+        recorded = [PLAN_MODE]
+        monkeypatch.setattr(frame.sessions, "owned_action",
+                            lambda action, record, *args: (calls.append((action, args)),
+                                                           recorded[0])[1])
+        frame.on_change_permission_mode()
+        assert asked == [("Mode for Planning Copilot, now agent mode:", [AGENT_MODE, PLAN_MODE],
+                          AGENT_MODE)]
+        assert pump(lambda: calls == [("set_mode", (PLAN_MODE,))] and env["feedback"][-1:] ==
+                    ["Planning Copilot: plan mode."])
+        # What's said is the mode Copilot then reports, not the one asked for.
+        recorded[0] = AGENT_MODE
+        frame.on_change_permission_mode()
+        assert pump(lambda: env["feedback"][-1] == "Copilot didn't switch Planning Copilot to "
+                    "plan mode; it's in agent mode.")
+    finally:
+        frame._codex_states.clear()
 
 
 def test_change_permission_mode_unblocks_a_chat_plan_mode_was_refused_for(frame, env, monkeypatch):
@@ -13034,7 +13037,7 @@ def test_a_plan_mode_copilot_chat_says_so_in_its_heading(frame, env, monkeypatch
         assert pump(lambda: frame.session_heading.GetLabel().endswith(", plan mode."),
                     timeout=COPILOT_WAIT)
         # Kept for the next time it's opened (#424).
-        assert chosen_mode(frame._open.cli_session_id) == PLAN_MODE
+        assert chosen_mode(frame._open.cli_session_id) == (PLAN_MODE, "")
     finally:
         runtime.close()
 
@@ -13042,7 +13045,8 @@ def test_a_plan_mode_copilot_chat_says_so_in_its_heading(frame, env, monkeypatch
 def test_copilot_switching_its_own_mode_is_said_once(frame, env, monkeypatch):
     """A switch nobody here asked for (Copilot's current_mode_update) is
     said; one asked for with Change Permission Mode says its own."""
-    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, CopilotChatState
+    from thechatplace.providers.copilot_runtime import (AGENT_MODE, MODE_NOT_KEPT, PLAN_MODE,
+                                                         CopilotChatState)
     settle(frame)
     frame.store.add(OwnSession("cp-s", "Self Switch", "C:/w", provider="copilot", started=True))
     said = []
@@ -13056,7 +13060,17 @@ def test_copilot_switching_its_own_mode_is_said_once(frame, env, monkeypatch):
         frame._copilot_mode_pending = {"copilot:cp-s"}
         frame._on_owned_update("copilot", CopilotChatState("cp-s", "idle", mode=AGENT_MODE))
         assert len([t for t in said if "switched" in t]) == 1
+        frame._copilot_mode_pending = set()
+        # Nor while the chat is being opened (it may be switched back), nor
+        # with a mode problem, which is said instead.
+        frame._codex_preparing["copilot:cp-s"] = 1
+        frame._on_owned_update("copilot", CopilotChatState("cp-s", "idle", mode=PLAN_MODE))
+        frame._codex_preparing.pop("copilot:cp-s")
+        frame._on_owned_update("copilot", CopilotChatState("cp-s", "idle", mode=AGENT_MODE,
+                                                           problem=MODE_NOT_KEPT))
+        assert len([t for t in said if "switched" in t]) == 1
     finally:
+        frame._codex_preparing.pop("copilot:cp-s", None)
         frame._copilot_mode_pending = set()
         frame._codex_states.clear()
 
@@ -13078,12 +13092,13 @@ def test_new_session_keeps_the_copilot_mode_across_provider_switches(frame):
 
 
 def test_a_copilot_chat_for_an_agent_conversation_is_offered_agent_mode_only(frame):
+    from thechatplace.providers.copilot_runtime import AGENT_MODE
     from thechatplace.ui.dialogs import NewSessionDialog
     dialog = NewSessionDialog(frame, "C:/w", providers=("copilot",), provider="copilot",
                               copilot_plan=False)
     try:
         assert dialog.mode.GetCount() == 1 and not dialog.mode.IsEnabled()
-        assert dialog.copilot_mode() == ""
+        assert dialog.copilot_mode() == AGENT_MODE
     finally:
         dialog.Destroy()
 

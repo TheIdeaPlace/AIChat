@@ -717,7 +717,7 @@ class CopilotProvider:
         native_id = self.runtime.create(cwd, model=model or "", mode=copilot_mode or "")
         self._remember_models()
         if copilot_mode:
-            _remember_mode(native_id, copilot_mode)
+            self._say_mode_problem(native_id, _remember_mode(native_id, copilot_mode))
         return OwnSession(native_id, title, cwd, provider=PROVIDER_ID, started=True,
                           created_ms=int(time.time() * 1000))
 
@@ -727,8 +727,14 @@ class CopilotProvider:
         if it is the one asked for."""
         recorded = self.runtime.set_mode(record.cli_session_id, mode)
         if recorded == mode:
-            _remember_mode(record.cli_session_id, mode)
+            self._say_mode_problem(record.cli_session_id,
+                                   _remember_mode(record.cli_session_id, mode))
         return recorded
+
+    def _say_mode_problem(self, native_id: str, problem: str) -> None:
+        """A problem with the saved modes, said as the chat's notice."""
+        if problem:
+            self.runtime.add_notice(native_id, problem)
 
     def owned_ready(self, record) -> bool:
         return self.runtime is not None and self.runtime.ready(record.cli_session_id)
@@ -737,8 +743,9 @@ class CopilotProvider:
         """Open a chat from the window's own record of it (the only place
         the runtime is told a chat is the app's), in the folder recorded."""
         self.runtime.adopt(record.cli_session_id)
-        self.runtime.prepare(record.cli_session_id, record.cwd,
-                             mode=chosen_mode(record.cli_session_id))
+        mode, problem = chosen_mode(record.cli_session_id)
+        self.runtime.prepare(record.cli_session_id, record.cwd, mode=mode)
+        self._say_mode_problem(record.cli_session_id, problem)
         self._remember_models()
 
     def set_model_owned(self, record, model: str) -> None:
@@ -857,41 +864,76 @@ def _modes_file() -> Path:
     return platform_paths.app_data_dir() / "copilot-modes.json"
 
 
-#: create_owned and set_mode_owned run on worker threads.
+#: create_owned, set_mode_owned and prepare_owned run on worker threads.
 _modes_lock = threading.Lock()
 
+#: Said for a chat when the saved modes file couldn't be read as JSON: it is
+#: moved aside, not overwritten, so nothing in it is lost (#424).
+MODES_SET_ASIDE = ("The Copilot modes The Chat Place saved couldn't be read, so the file was "
+                   "kept as copilot-modes.json.bad. A chat whose mode was saved there opens "
+                   "in the mode Copilot reports; Change Permission Mode chooses it again.")
+#: Said when the file is there but can't be opened (locked, say).
+MODES_UNREADABLE = ("The Copilot modes The Chat Place saved couldn't be opened, so this chat "
+                    "opens in the mode Copilot reports.")
+#: Said when a chat's mode couldn't be saved.
+MODE_NOT_SAVED = ("The Chat Place couldn't save this chat's Copilot mode, so if Copilot "
+                  "reopens it in another mode it won't be switched back.")
 
-def _read_modes() -> dict:
+
+def _read_modes() -> tuple:
+    """(native id -> mode, what to say or ""). Call with _modes_lock held.
+    A missing file is no modes. One that isn't the JSON written here is
+    moved aside to copilot-modes.json.bad, never just overwritten; one that
+    can't be opened is left alone and reported, so it isn't overwritten
+    either (None for the modes). Entries with an id or mode that isn't one
+    of the app's are left out."""
     from .copilot_runtime import SAFE_MODES
+    path = _modes_file()
     try:
-        raw = json.loads(_modes_file().read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}, ""
     except (OSError, ValueError):
-        return {}
-    modes = raw.get("modes") if isinstance(raw, dict) else None
-    if not isinstance(modes, dict):
-        return {}
+        return None, MODES_UNREADABLE
+    try:
+        raw = json.loads(text)
+        modes = raw.get("modes") if isinstance(raw, dict) else None
+        if not isinstance(modes, dict):
+            raise ValueError("no modes")
+    except ValueError:
+        try:
+            os.replace(path, path.with_name(path.name + ".bad"))
+        except OSError:
+            return None, MODES_UNREADABLE  # left as it is, and not written over
+        return {}, MODES_SET_ASIDE
     return {native_id: mode for native_id, mode in modes.items()
-            if platform_paths.is_safe_id(native_id) and mode in SAFE_MODES}
+            if isinstance(native_id, str) and platform_paths.is_safe_id(native_id)
+            and mode in SAFE_MODES}, ""
 
 
-def chosen_mode(native_id: str) -> str:
-    """The mode last chosen here for a chat (copilot_runtime.AGENT_MODE or
-    PLAN_MODE), or "" if none was."""
+def chosen_mode(native_id: str) -> tuple:
+    """(the mode last chosen here for a chat, copilot_runtime.AGENT_MODE or
+    PLAN_MODE, or "" if none was; what to say about the saved modes, or "")."""
     with _modes_lock:
-        return _read_modes().get(native_id, "")
+        modes, problem = _read_modes()
+        return (modes or {}).get(native_id, ""), problem
 
 
-def _remember_mode(native_id: str, mode: str) -> None:
+def _remember_mode(native_id: str, mode: str) -> str:
+    """Save a chat's mode; what to say if it couldn't be, or ""."""
     from ..provider_storage import atomic_write_json
     with _modes_lock:
-        modes = _read_modes()
+        modes, problem = _read_modes()
+        if modes is None:
+            return MODE_NOT_SAVED
         modes[native_id] = mode
         try:
             atomic_write_json(_modes_file(), {"version": 1, "modes": modes})
         except OSError:
             # Unsaved, the chat opens next time in whatever mode Copilot
             # reports; it's never assumed to be in plan mode.
-            pass
+            return MODE_NOT_SAVED
+        return problem
 
 
 def premium_requests(path: Path) -> Optional[float]:

@@ -110,6 +110,11 @@ class CodexChats:
         Copilot comes here too, #352). ``made(info, message)`` hears of the
         new chat (#378); with ``joint`` it sends the message, as an agent
         conversation's."""
+        if joint and provider == 'copilot':
+            # An agent conversation hands work between its chats, so a new
+            # Copilot one is asked for agent mode, whatever else was (#424).
+            from ..providers.copilot_runtime import AGENT_MODE
+            copilot_mode = AGENT_MODE
         options = {key: value for key, value in (('model', model), ('effort', effort),
                    ('sandbox', sandbox), ('approval_policy', approval_policy),
                    ('approvals_reviewer', approvals_reviewer), ('copilot_mode', copilot_mode))
@@ -656,11 +661,16 @@ class CodexChats:
         if state.notice and (previous is None or previous.notice != state.notice):
             self._say(f'{record.title}: {state.notice}', interrupt=False)
         before_mode, mode = getattr(previous, 'mode', ''), getattr(state, 'mode', '')
+        from ..providers.copilot_runtime import MODE_PROBLEMS
         if (provider == 'copilot' and before_mode and mode and before_mode != mode
-                and key not in getattr(self, '_copilot_mode_pending', ())):
+                and key not in getattr(self, '_copilot_mode_pending', ())
+                and key not in self._codex_preparing
+                and getattr(state, 'problem', '') not in MODE_PROBLEMS):
             # Copilot switched modes itself (Shift+Tab in Copilot CLI, or a
             # current_mode_update mid-turn): said once, as nobody here asked.
-            # A switch asked for with Change Permission Mode says its own.
+            # A switch asked for with Change Permission Mode says its own; a
+            # chat being opened, which may be switched back, and a mode
+            # problem, which is said instead, say nothing of it here.
             self._say(f'{record.title}: Copilot switched to {copilot_mode_name(mode)}.',
                       interrupt=False)
             if loaded:

@@ -629,12 +629,12 @@ class NewSessionDialog(wx.Dialog):
         return folder, title, mode, message, model
 
     def copilot_mode(self) -> str:
-        """Copilot's mode to start in: plan mode, or "" for its own (agent)."""
+        """Copilot's mode to start in, agent or plan, asked for even when it's
+        agent: Copilot's own default needn't be (#424). "" for another provider."""
         if self.provider() != "copilot":
             return ""
-        index = self.mode.GetSelection()
-        value = self._copilot_modes[index][0] if 0 <= index < len(self._copilot_modes) else ""
-        return value if index > 0 else ""
+        index = max(self.mode.GetSelection(), 0)
+        return self._copilot_modes[min(index, len(self._copilot_modes) - 1)][0]
 
     def codex_policy(self):
         from .permission_hosts import CODEX_REVIEW_MODES
