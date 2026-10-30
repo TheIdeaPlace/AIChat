@@ -860,7 +860,7 @@ def s_main_codex_unavailable(frame, env):
     frame._apply_snapshot(snapshot, [], {}, False)
 
 
-def s_main_copilot(frame, env):
+def s_main_copilot(frame, env, events=None, title="Copilot history preview"):
     """Synthetic Copilot CLI session folder; never the real ~/.copilot."""
     import dataclasses
     import json
@@ -874,13 +874,13 @@ def s_main_copilot(frame, env):
     (folder / "workspace.yaml").write_text(
         "id: synthetic-copilot\n"
         f"cwd: {json.dumps(str(env['folders']['Scratch']))}\n"
-        "name: Copilot history preview\n"
+        f"name: {title}\n"
         "created_at: 2026-01-01T00:00:00.000Z\nupdated_at: 2026-01-01T00:01:00.000Z\n",
         encoding="utf-8")
-    events = [("user.message", {"content": "Explain the upload test."}),
-              ("assistant.turn_start", {"turnId": "0"}),
-              ("assistant.message", {"content": LONG_MESSAGE, "model": "auto"}),
-              ("assistant.turn_end", {"turnId": "0"})]
+    events = events or [("user.message", {"content": "Explain the upload test."}),
+                        ("assistant.turn_start", {"turnId": "0"}),
+                        ("assistant.message", {"content": LONG_MESSAGE, "model": "auto"}),
+                        ("assistant.turn_end", {"turnId": "0"})]
     (folder / "events.jsonl").write_text("".join(
         json.dumps({"type": kind, "data": data, "id": f"e{n}",
                     "timestamp": "2026-01-01T00:00:00.000Z"}) + "\n"
@@ -893,7 +893,25 @@ def s_main_copilot(frame, env):
                                    sessions=[*frame._snapshot.sessions,
                                              *provider.collect().sessions])
     frame._apply_snapshot(snapshot, [], {}, False)
-    _open(frame, "Copilot history preview")
+    _open(frame, title)
+
+
+def s_main_copilot_copy(frame, env):
+    """A Copilot Continue Here copy (#423): Copilot records the carried
+    history in the first message's text, and the messages list shows it as
+    one "Earlier conversation" row ahead of what was typed."""
+    from thechatplace.providers.copilot import continue_text
+    from thechatplace.transcript import ASSISTANT, USER, ChatMessage
+    history = continue_text([ChatMessage(USER, "Explain the upload test.", key="1"),
+                             ChatMessage(ASSISTANT, LONG_MESSAGE, key="2")],
+                            "Copilot history preview", tag="probe")
+    events = [("user.message", {"content": history + "Now make the upload test faster."}),
+              ("assistant.turn_start", {"turnId": "0"}),
+              ("assistant.message", {"content": "It waits a fixed two seconds; I'll wait for "
+                                                "the upload's own signal instead.",
+                                     "model": "auto"}),
+              ("assistant.turn_end", {"turnId": "0"})]
+    s_main_copilot(frame, env, events, "Copilot history preview (continued)")
 
 
 def s_main_copilot_owned(frame, env):
@@ -1060,6 +1078,14 @@ def d_codex_review_history(frame, env):
     dialog = ChatPermissionsDialog(frame, record.title, host)
     wx.CallAfter(dialog.note.ShowPosition, dialog.note.GetValue().index('Recent automatic review decisions'))
     return lambda: frame._modal(dialog)
+
+
+def d_copilot_continue(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.sessions import WORKING
+    return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
+        continue_from="Copilot still working", providers=("copilot",), provider="copilot",
+        source_state=WORKING))
 
 
 def d_copilot_new(frame, env):
@@ -1587,6 +1613,8 @@ SURFACES = {
                      "Synthetic Copilot CLI history in the shared window: read-only controls"),
     "main-copilot-owned": ("window", s_main_copilot_owned,
                            "A Copilot chat started here: reply box, queued message and context"),
+    "main-copilot-copy": ("window", s_main_copilot_copy,
+                          "A Copilot Continue Here copy: the carried history as one row"),
     "main-copilot-filter": ("window", s_main_copilot_filter,
                             "Synthetic Copilot-only list with explicit Provider column"),
     "main-activity": ("window", s_main_activity, "Show tool activity turned on"),
@@ -1612,6 +1640,8 @@ SURFACES = {
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
     "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
     "copilot-new": ("dialog", d_copilot_new, "New Session with Copilot selected as Provider"),
+    "copilot-continue": ("dialog", d_copilot_continue,
+                         "Continue Here from a Copilot CLI chat that may still be working"),
     "copilot-permission": ("dialog", d_copilot_permission, "Copilot asks to run a command, once"),
     "copilot-files": ("dialog", d_copilot_files, "Copilot asks to create a file, with its diff"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
@@ -1703,6 +1733,7 @@ DIALOG_CLASSES = {
     "codex-auto-review": "NewSessionDialog",
     "codex-review-history": "ChatPermissionsDialog",
     "copilot-new": "NewSessionDialog",
+    "copilot-continue": "NewSessionDialog",
     "copilot-permission": "CodexPermissionDialog",
     "copilot-files": "CodexPermissionDialog",
     "codex-models": "NewSessionDialog",

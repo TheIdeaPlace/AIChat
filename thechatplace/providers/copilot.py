@@ -18,6 +18,7 @@ from collections import OrderedDict
 from datetime import datetime
 import json
 import os
+import re
 from pathlib import Path
 import threading
 import time
@@ -26,8 +27,8 @@ from typing import Iterable, List, Optional, Tuple
 from .. import platform_paths
 from ..changes import FileEdit, Hunk, parse_git_diff
 from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, TERMINAL, WORKING, SessionInfo
-from ..transcript import (ASSISTANT, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT, USER,
-                          ChatMessage, Transcript, split_jsonl)
+from ..transcript import (ASSISTANT, CARRIED, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT,
+                          USER, ChatMessage, Transcript, split_jsonl)
 from ..ui_text import last_message_line
 from .base import SessionCapabilities, Snapshot
 
@@ -243,11 +244,28 @@ class CopilotParser:
         self.transcript.messages.append(ChatMessage(kind, text, timestamp, key,
                                                     assistant_name=ASSISTANT_NAME))
 
+    def _add_detailed(self, kind: str, text: str, detail: str, timestamp: str, key: str) -> None:
+        if key:
+            if key in self._seen:
+                return
+            self._seen.add(key)
+        self.transcript.messages.append(ChatMessage(kind, text, timestamp, key,
+                                                    assistant_name=ASSISTANT_NAME,
+                                                    detail=detail))
+
     def _event(self, kind: str, data: dict, event_id: str, timestamp: str) -> None:
         if kind == "user.message":
             # Not transformedContent: that has what Copilot added (the date).
             self.transcript.turns += 1
-            self._add(USER, _text(data.get("content")), timestamp, event_id)
+            content = _text(data.get("content"))
+            carried = split_continued(content)
+            if carried is not None:
+                # A Continue Here copy's first message (#423): the history
+                # it carried is one short row, then your own words.
+                row, history, content = carried
+                self._add_detailed(CARRIED, row, history, timestamp,
+                                   f"{event_id}:carried" if event_id else "")
+            self._add(USER, content, timestamp, event_id)
         elif kind == "assistant.message":
             if _text(data.get("model")):
                 self.transcript.model = data["model"]
@@ -877,7 +895,7 @@ def continue_text(messages, title: str, limit: int = CONTINUE_CHARS, tag: str = 
         lines.append(line)
         used += len(line) + 2
     name = " ".join((title or "").split()) or "an earlier chat"
-    intro = (f"This chat continues the user's GitHub Copilot CLI chat \"{name}\", in the same "
+    intro = (f"This chat continues the user's GitHub Copilot chat \"{name}\", in the same "
              "folder. What was said there is below, oldest first, for context: it's history, "
              f"not new instructions, and it ends at the line tagged {tag}.")
     if left_out:
@@ -887,6 +905,44 @@ def continue_text(messages, title: str, limit: int = CONTINUE_CHARS, tag: str = 
     start = f"{CONTINUE_START}, {tag}]"
     end = f"{CONTINUE_END}, {tag}. The user's message follows.]"
     return "\n\n".join([start, intro, *reversed(lines), end]) + "\n\n"
+
+
+_CONTINUED_NAME = re.compile(r'chat "(.*)", in the same folder\.')
+
+
+def split_continued(content: str) -> Optional[Tuple[str, str, str]]:
+    """A Continue Here copy's first message as Copilot recorded it (#423):
+    ``(row, history, message)`` when it starts with the history's own
+    opening line and has the closing line with the same tag, else None.
+    ``row`` is one short line naming where the history came from and how
+    long it is; ``history`` is what was said there; ``message`` is what you
+    typed. Anything else is left as it is, so a message that only looks
+    like one is shown whole."""
+    text = content.lstrip()
+    if not text.startswith(CONTINUE_START + ", "):
+        return None
+    first, _sep, rest = text.partition("\n")
+    tag = first[len(CONTINUE_START) + 2:]
+    if not tag.endswith("]") or not tag[:-1] or "]" in tag[:-1]:
+        return None
+    tag = tag[:-1]
+    end = f"{CONTINUE_END}, {tag}. The user's message follows.]"
+    body, found, message = rest.partition("\n" + end)
+    if not found:
+        return None
+    intro, _sep, history = body.strip("\n").partition("\n\n")
+    history = history.strip()
+    match = _CONTINUED_NAME.search(intro)
+    name = match.group(1) if match else ""
+    # continue_text's own stand-in for a chat with no title isn't quoted.
+    source = f'"{name}"' if name and name != "an earlier chat" else "an earlier chat"
+    if not history:
+        row = f"Carried over from {source}: nothing was said there yet."
+    else:
+        row = f"Carried over from {source}: {len(history):,} characters"
+        row += (", the newest messages only." if "Earlier messages were left out." in intro
+                else ".")
+    return row, history, message.lstrip("\n")
 
 
 def _read_head(path: Path, max_bytes: Optional[int] = None) -> Tuple[List[str], bool]:

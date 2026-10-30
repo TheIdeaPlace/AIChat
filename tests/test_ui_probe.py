@@ -127,6 +127,16 @@ def test_surfaces_show_their_made_up_content(opened, tmp_path, monkeypatch):
         assert "working" in row and "Chat Place session" in row
     finally:
         ui_probe.close_frame(frame)
+    env, frame = world("copilot-copy")
+    try:
+        ui_probe.s_main_copilot_copy(frame, env)
+        assert [m.label for m in frame._chat_messages] == ["Earlier conversation", "You",
+                                                           "Copilot"]
+        assert frame._chat_messages[0].text.startswith(
+            'Carried over from "Copilot history preview": ')
+        assert frame._chat_messages[1].text == "Now make the upload test faster."
+    finally:
+        ui_probe.close_frame(frame)
     env, frame = world("commands")
     try:
         ui_probe.d_lists_commands(frame, env)

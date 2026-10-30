@@ -597,7 +597,10 @@ Place's own in the same folder, and your first message goes with the conversatio
 messages and Copilot's replies, labelled as history (the newest kept if it's long), but not the
 commands Copilot ran or their output. It goes as part of your first message, so it costs no extra
 request. If that message doesn't go, the history waits for your next one, but only while The Chat
-Place stays open: the chat says so. The original chat isn't changed.
+Place stays open: the chat says so. A first message too long to go with the history is
+refused and kept, so you can shorten it. In the copy's messages the history is one row,
+"Earlier conversation", just before your first message; Enter reads it in full. The
+original chat isn't changed.
 
 Change Permission Mode and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it. Usage and Context (Ctrl+Shift+U) says how full a Copilot chat's

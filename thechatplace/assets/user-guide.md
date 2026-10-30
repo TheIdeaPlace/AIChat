@@ -648,10 +648,10 @@ doesn't name, is an "other app session" or an "external session".
 |---|---|---|---|---|
 | **Desktop app session** | The Claude desktop app's Code tab | in the desktop app | yes | yes |
 | **Cowork session** | The desktop app's Cowork tab | in the desktop app | yes | no |
-| **Terminal session** | A terminal, with `claude` or `copilot`, and some Codex terminal chats | in that terminal | no | Claude and Codex |
+| **Terminal session** | A terminal, with `claude` or `copilot`, and some Codex terminal chats | in that terminal | no | yes |
 | **Editor session** | Codex in an editor or the Codex app, and often Codex in a terminal | where it was started | no | yes |
 | **Command-line session** | Codex run as a command | in Codex | no | yes |
-| **Other app session** or **external session** | Another app | in that app | no | Codex |
+| **Other app session** or **external session** | Another app | in that app | no | Codex and Copilot |
 | **Chat Place session** | The Chat Place (File, New Session) | here, in the reply box | no | not needed |
 | **Agent conversation** | The Chat Place (File, New Agent Conversation) | here, in the reply box | no | no |
 
@@ -827,7 +827,10 @@ Place's own in the same folder, and your first message goes with the conversatio
 messages and Copilot's replies, labelled as history (the newest kept if it's long), but not the
 commands Copilot ran or their output. It goes as part of your first message, so it costs no extra
 request. If that message doesn't go, the history waits for your next one, but only while The Chat
-Place stays open: the chat says so. The original chat isn't changed.
+Place stays open: the chat says so. A first message too long to go with the history is
+refused and kept, so you can shorten it. In the copy's messages the history is one row,
+"Earlier conversation", just before your first message; Enter reads it in full. The
+original chat isn't changed.
 
 Change Permission Mode and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.

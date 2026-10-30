@@ -116,7 +116,7 @@ COPILOT_CONTINUE_NOTE = (
     "The copy is a new Copilot chat of The Chat Place's own, in the same folder. Copilot can't "
     "copy a chat, so your first message goes with the conversation so far: your messages and "
     "Copilot's replies, newest kept if it's long, but not the commands it ran or their output. "
-    "The original chat isn't changed, and stays in Copilot CLI.")
+    "The original chat isn't changed.")
 
 
 class NewSessionDialog(wx.Dialog):

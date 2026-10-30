@@ -894,11 +894,35 @@ class CopilotChatRuntime:
         """Send now, or queue behind the running turn; True if queued.
         Reads Copilot's settings and the chat's log first, so call it off
         the UI thread."""
+        try:
+            return self._send(native_id, text)
+        except CopilotChatError as error:
+            # A refused first message of a Continue Here copy (#352): say
+            # the conversation so far is still waiting, as a turn that
+            # didn't go does.
+            with self._lock:
+                chat = self._chats.get(native_id)
+                waiting = bool(chat is not None and chat.preamble)
+            if waiting and PREAMBLE_WAITING not in str(error):
+                raise CopilotChatError(f"{error} {PREAMBLE_WAITING}") from None
+            raise
+
+    def _send(self, native_id: str, text: str) -> bool:
         if not isinstance(text, str) or not text.strip():
             raise CopilotChatError("There's nothing to send.")
         if len(text) > MAX_MESSAGE_CHARS:
             raise CopilotChatError("That message is too long to send to Copilot; "
                                    "shorten it or put the long part in a file.")
+        with self._lock:
+            chat = self._chats.get(native_id)
+            preamble = chat.preamble if chat is not None and not chat.busy else ""
+        if preamble and len(preamble) + len(text) > MAX_MESSAGE_CHARS:
+            # The history goes in the same prompt, so the cap is on both.
+            raise CopilotChatError(
+                "That message is too long to send to Copilot with the conversation so far "
+                f"({len(preamble):,} characters) ahead of it; shorten it to "
+                f"{max(0, MAX_MESSAGE_CHARS - len(preamble)):,} characters or put the long "
+                "part in a file.")
         if _visible_start(text).startswith("/"):
             raise CopilotChatError("Copilot commands starting with / can't be sent from "
                                    "The Chat Place: some of them turn off its permission prompts.")
@@ -938,6 +962,10 @@ class CopilotChatRuntime:
                 chat.queue.append(text)
                 queued = True
             else:
+                if chat.preamble and len(chat.preamble) + len(text) > MAX_MESSAGE_CHARS:
+                    raise CopilotChatError("That message is too long to send to Copilot with "
+                                           "the conversation so far ahead of it; shorten it "
+                                           "or put the long part in a file.")
                 self._begin(chat, text)
                 queued = False
         self._notify(chat)
