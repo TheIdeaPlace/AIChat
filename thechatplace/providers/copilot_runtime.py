@@ -1135,7 +1135,9 @@ class CopilotChatRuntime:
                     and kinds and all(k == "copilot" for k in kinds)):
                 chat.problem = ""  # the late record has arrived, and it's Copilot's
             if mode in SAFE_MODES:
-                if chat.mode != mode and (not chat.problem or chat.problem in MODE_PROBLEMS):
+                # A problem it has already (PLAN_NOT_SET, say) blocks it as
+                # well, and is kept: it says more.
+                if chat.mode != mode and not chat.problem:
                     # Blocked now, under the lock that ends loading: while
                     # _keep_mode waits on Copilot to switch it back, ready()
                     # and send() must not see a chat in the wrong mode (#424).
