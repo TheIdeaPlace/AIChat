@@ -12913,6 +12913,58 @@ def test_new_session_offers_copilot_with_its_own_note(frame):
         dialog.Destroy()
 
 
+def test_new_session_offers_the_models_copilot_last_offered(frame):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    offered = (("auto", "Auto (1x)"), ("gpt-mini", "GPT Mini (0.33x)"))
+    dialog = NewSessionDialog(frame, "C:/w", providers=("claude", "copilot"), provider="copilot",
+                              copilot_models=offered)
+    try:
+        assert dialog.model.IsEnabled() and not dialog.mode.IsEnabled()
+        assert list(dialog.model.GetStrings()) == ["Copilot's configured model", "Auto (1x)",
+                                                   "GPT Mini (0.33x)"]
+        assert dialog.values()[4] == ""  # Copilot's own, unless one is chosen
+        dialog.model.SetSelection(2)
+        assert dialog.values()[4] == "gpt-mini"
+        # Over to Claude and back, the choice is kept.
+        dialog.provider_choice.SetSelection(0)
+        dialog._on_provider()
+        dialog.provider_choice.SetSelection(1)
+        dialog._on_provider()
+        assert dialog.values()[4] == "gpt-mini"
+    finally:
+        dialog.Destroy()
+
+
+def test_change_model_in_a_copilot_chat(frame, env, monkeypatch):
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-m", "Model Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-m", "Model Copilot", "C:/w", "cp-m", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    # Not open in Copilot yet: its models aren't known.
+    frame.on_change_model()
+    assert "isn't open in Copilot yet" in env["feedback"][-1]
+    frame._codex_states[info.key] = CopilotChatState(
+        "cp-m", "idle", model="auto",
+        models=(("auto", "Auto (1x)"), ("gpt-mini", "GPT Mini (0.33x)")))
+    asked, calls = [], []
+
+    def change_setting(title, prompt, choices, now):
+        asked.append((prompt, tuple(choices), now))
+        return "gpt-mini"
+    monkeypatch.setattr(frame, "_change_setting", change_setting)
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: calls.append((action, args)))
+    frame.on_change_model()
+    assert asked == [("Model for Model Copilot, now Auto (1x):",
+                      (("auto", "Auto (1x)"), ("gpt-mini", "GPT Mini (0.33x)")), "auto")]
+    assert pump(lambda: calls == [("set_model", ("gpt-mini",))] and env["feedback"][-1] ==
+                "Model Copilot now uses GPT Mini (0.33x), from its next turn.")
+    frame._codex_states.clear()
+
+
 def test_copilot_is_offered_only_once_its_cli_is_installed(frame, env, monkeypatch):
     from thechatplace.providers.claude import ClaudeConversations
     from thechatplace.providers.copilot import CopilotProvider

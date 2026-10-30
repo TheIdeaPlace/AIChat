@@ -1760,3 +1760,98 @@ def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypat
     provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
     assert [info.cli_session_id for info in provider.collect().sessions] == [chat]
     runtime.stop(chat)
+
+
+# -- choosing the model -----------------------------------------------------------------
+
+
+OFFERED = (("auto", "Auto (1x)"), ("gpt-test", "GPT Test (1x)"), ("gpt-mini", "GPT Mini (0.33x)"))
+
+
+def test_a_new_chat_lists_the_models_copilot_offers(make, tmp_path):
+    """Auto, listed twice by Copilot, once; each with what a message costs."""
+    runtime, _ = make()
+    assert runtime.models() == ()
+    chat = runtime.create(str(tmp_path))
+    state = runtime.snapshot(chat)
+    assert state.model == "auto" and state.models == OFFERED
+    assert runtime.models() == OFFERED
+
+
+def test_changing_a_chats_model(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_model(chat, "gpt-mini")
+    assert runtime.snapshot(chat).model == "gpt-mini"
+    sent = [m for m in received(tmp_path) if m.get("method") == "session/set_config_option"]
+    assert sent[-1]["params"] == {"sessionId": chat, "configId": "model", "value": "gpt-mini"}
+    with pytest.raises(CopilotChatError, match="doesn't offer"):
+        runtime.set_model(chat, "not-offered")
+    assert runtime.ready(chat)  # still safe to send: mode and allow_all unchanged
+
+
+def test_a_model_copilot_refuses_is_said(make, tmp_path):
+    runtime, _ = make("nomodel")
+    chat = runtime.create(str(tmp_path))
+    with pytest.raises(CopilotChatError, match="couldn't switch"):
+        runtime.set_model(chat, "gpt-test")
+    assert runtime.snapshot(chat).model == "auto"
+
+
+def test_a_new_chat_starts_on_the_model_chosen(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path), model="gpt-test")
+    assert runtime.snapshot(chat).model == "gpt-test"
+    # Refused, the chat is still made, on Copilot's own, and says so.
+    runtime2, _ = make("nomodel")
+    other = runtime2.create(str(tmp_path), model="gpt-test")
+    state = runtime2.snapshot(other)
+    assert state.model == "auto" and "Change Model" in state.notice
+
+
+def test_odd_model_lists_are_made_safe():
+    from thechatplace.providers.copilot_runtime import _models
+    assert _models(None) is None and _models([{"id": "mode"}]) is None
+    found = _models([{"id": "model", "currentValue": "b", "options": [
+        "odd", {"value": ""}, {"value": "a\u202e", "name": "Flipped"},
+        {"value": "b", "name": "  Bee \n model "}, {"value": "c", "name": "\u200b"},
+        {"value": "d", "_meta": {"copilotUsage": 7}}]}])
+    assert found == ("b", (("b", "Bee model"), ("c", "c"), ("d", "d")))
+
+
+def test_a_model_change_that_stops_copilot_asking_stops_the_turn(make, tmp_path):
+    """Copilot's reply to a model change names its other settings too: one
+    saying it no longer asks before it acts counts, as a config_option_update
+    would, and stops the turn running."""
+    runtime, _ = make("modelflip")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    runtime.set_model(chat, "gpt-mini")
+    assert not runtime.ready(chat)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+    assert "stopped asking" in runtime.snapshot(chat).notice
+
+
+def test_a_model_reply_that_comes_after_the_chat_was_opened_again_is_ignored(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    real = connection.request
+
+    def reopened_meanwhile(method, params, *args, **kwargs):
+        result = real(method, params, *args, **kwargs)
+        if method == "session/set_config_option":
+            runtime._chats[chat].connection = object()  # as if opened on another Copilot
+        return result
+    connection.request = reopened_meanwhile
+    runtime.set_model(chat, "gpt-mini")
+    assert runtime._chats[chat].model == "auto"
+
+
+def test_a_models_cost_is_kept_whatever_its_name():
+    from thechatplace.providers.copilot_runtime import _models
+    found = _models([{"id": "model", "currentValue": "x", "options": [
+        {"value": "x", "name": "Model X (preview)"},
+        {"value": "x", "name": "Model X (preview)", "_meta": {"copilotUsage": "3x"}}]}])
+    assert found == ("x", (("x", "Model X (preview) (3x)"),))

@@ -142,6 +142,39 @@ class CodexChats:
                 made(record.to_info(), message)
         self._codex_work(create, done)
 
+    def _change_copilot_model(self, info):
+        """File, Change Model for a Copilot chat: the models Copilot offers
+        that chat, each with the premium requests a message costs. From its
+        next turn; one already running keeps the model it started with."""
+        if not info.is_own or not self._can_edit(info):
+            self._feedback(f"{info.title} wasn't started in The Chat Place: its model is set in "
+                           "Copilot CLI.")
+            return
+        record = self.store.get(info.cli_session_id, provider='copilot')
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        state = self._codex_states.get(info.key)
+        models = tuple(getattr(state, 'models', ()) or ())
+        if not models:
+            self._feedback(f"{info.title} isn't open in Copilot yet, so its models aren't known. "
+                           "Select it, wait until it's ready, then change its model.")
+            return
+        now = getattr(state, 'model', '')
+        names = dict(models)
+        current = names.get(now, now or "Copilot's own")
+        chosen = self._change_setting('Change Model', f'Model for {info.title}, now {current}:',
+                                      models, now)
+        if chosen is None:
+            return
+        def done(result, error):
+            if error:
+                self._feedback(result if isinstance(result, str) and result
+                               else "Copilot couldn't switch to that model.")
+            else:
+                self._feedback(f'{info.title} now uses {names[chosen]}, from its next turn.')
+        self._codex_work(lambda: self.sessions.owned_action('set_model', record, chosen), done)
+
     def _keep_first_message(self, message, provider='codex'):
         """New Session is gone when Codex refuses, so keep its first message
         somewhere reachable and say where, first, before the reason (#257).

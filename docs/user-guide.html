@@ -676,7 +676,7 @@ whether the chat was started here:</p>
 <td>Change Model or Change Effort later</td>
 <td>yes</td>
 <td>no: choose in New Session</td>
-<td>no: Copilot's own</td>
+<td>Change Model only</td>
 </tr>
 <tr>
 <td>Change Permission Mode and Chat Permissions</td>
@@ -856,8 +856,12 @@ asking. Chats started in Copilot CLI in a terminal are listed as terminal sessio
 Show Sessions, Terminal Sessions includes them; ones started from another app aren't.</p>
 <h3>Starting a Copilot chat</h3>
 <p>In New Session (Ctrl+N), choose <strong>Copilot</strong> as the Provider, then a folder and your first
-message. Copilot uses its own model and settings, and each message uses requests from your
-Copilot plan. Type and send as in any chat started here. Messages you send while Copilot is
+message. <strong>Model</strong> lists the models Copilot offered your last Copilot chat here, each with the
+premium requests a message costs, such as "GPT-5 (1x)". Copilot lists its models only for a
+chat, so before your first Copilot chat here only its configured model is offered. Choose one, and
+the chat switches to it before your first message goes; if Copilot won't, the chat says so and
+uses Copilot's own. Effort and Copilot's other settings are its own. Each message uses requests
+from your Copilot plan. Type and send as in any chat started here. Messages you send while Copilot is
 answering wait their turn, and Stop (Ctrl+Period) cancels the answer and puts any waiting
 messages back in the message box, unsent.</p>
 <p>Copilot asks before it runs a command or changes a file. You hear that the chat needs you, and
@@ -950,6 +954,10 @@ Escape to leave it as it is.</p>
   support effort levels ignore it.</li>
 <li><strong>Change Permission Mode</strong> (Ctrl+Shift+O): auto, accept edits, manual or plan.</li>
 </ul>
+<p>In a Copilot chat started here, <strong>Change Model</strong> lists the models Copilot offers that chat, with
+the premium requests a message costs, and the change counts from its next turn. The chat must be
+open in Copilot first: select it and wait until it's ready. Change Effort and Change Permission
+Mode don't apply: effort is Copilot's own, and Copilot always asks before it acts.</p>
 <p>You hear the change and when it counts, such as "Permission mode for Fix the build: plan, from its
 next turn." A turn that's already running carries on as it started, and you hear that too. The
 chat's heading, at the top of its messages, says its model, and its effort and mode when they

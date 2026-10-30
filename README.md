@@ -571,8 +571,13 @@ changes Copilot ran. Chats started in Copilot CLI, or in another app, are read-o
 in Copilot CLI.
 
 **Starting a Copilot chat here.** In New Session, choose **Copilot** as the Provider, then a
-folder and your first message. Copilot uses its own model and settings, and each message uses
-requests from your Copilot plan. Type and send as in any chat started here; messages sent while
+folder and your first message. **Model** lists the models Copilot offered your last Copilot chat
+here (it lists them only for a chat), each with the premium requests a message costs, such as
+"GPT-5 (1x)"; leave it on Copilot's configured model, or choose one, and the chat switches to it
+before your first message goes. **File, Change Model** (Alt+F, D) changes a Copilot chat's
+model later, from its next turn, choosing from the models Copilot offers that chat; the chat must
+be open in Copilot first (select it and wait until it's ready). Effort and Copilot's other
+settings are its own. Each message uses requests from your Copilot plan. Type and send as in any chat started here; messages sent while
 Copilot is answering wait their turn, and Stop (Ctrl+Period) cancels the answer and
 puts any waiting messages back in the message box, unsent. Copilot asks before it runs a command
 or changes a file: you hear "needs your answer", and Answer (Ctrl+Shift+A) shows the whole

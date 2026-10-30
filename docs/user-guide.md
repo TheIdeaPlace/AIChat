@@ -665,7 +665,7 @@ whether the chat was started here:
 | Send Now, edit or remove a queued message | yes | no: Stop returns it | no: Stop returns it |
 | Steer a running turn (Ctrl+Alt+Enter) | yes | yes | no: queue it instead |
 | Answer requests (Ctrl+Shift+A) | permissions, questions and plans | permissions and questions | permissions |
-| Change Model or Change Effort later | yes | no: choose in New Session | no: Copilot's own |
+| Change Model or Change Effort later | yes | no: choose in New Session | Change Model only |
 | Change Permission Mode and Chat Permissions | yes | yes | no |
 | Continue Here | desktop app and terminal chats | yes | no |
 | Commands and skills (Ctrl+/) | yes | no | no |
@@ -798,8 +798,12 @@ Show Sessions, Terminal Sessions includes them; ones started from another app ar
 ### Starting a Copilot chat
 
 In New Session (Ctrl+N), choose **Copilot** as the Provider, then a folder and your first
-message. Copilot uses its own model and settings, and each message uses requests from your
-Copilot plan. Type and send as in any chat started here. Messages you send while Copilot is
+message. **Model** lists the models Copilot offered your last Copilot chat here, each with the
+premium requests a message costs, such as "GPT-5 (1x)". Copilot lists its models only for a
+chat, so before your first Copilot chat here only its configured model is offered. Choose one, and
+the chat switches to it before your first message goes; if Copilot won't, the chat says so and
+uses Copilot's own. Effort and Copilot's other settings are its own. Each message uses requests
+from your Copilot plan. Type and send as in any chat started here. Messages you send while Copilot is
 answering wait their turn, and Stop (Ctrl+Period) cancels the answer and puts any waiting
 messages back in the message box, unsent.
 
@@ -892,6 +896,11 @@ Escape to leave it as it is.
 - **Change Effort** (Alt+F, F): Default, Low, Medium, High, Extra high or Max. Models that don't
   support effort levels ignore it.
 - **Change Permission Mode** (Ctrl+Shift+O): auto, accept edits, manual or plan.
+
+In a Copilot chat started here, **Change Model** lists the models Copilot offers that chat, with
+the premium requests a message costs, and the change counts from its next turn. The chat must be
+open in Copilot first: select it and wait until it's ready. Change Effort and Change Permission
+Mode don't apply: effort is Copilot's own, and Copilot always asks before it acts.
 
 You hear the change and when it counts, such as "Permission mode for Fix the build: plan, from its
 next turn." A turn that's already running carries on as it started, and you hear that too. The

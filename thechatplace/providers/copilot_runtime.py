@@ -203,6 +203,9 @@ class CopilotChatState:
     #: Copilot has answered; only this app's checks (billing, the log) are
     #: left, so Stop has nothing to cancel.
     checking: bool = False
+    #: The model this chat uses, and the ones Copilot offers it.
+    model: str = ""
+    models: tuple = field(default=(), repr=False)
 
 
 def _text(value, limit: int = MAX_TEXT_CHARS) -> str:
@@ -340,6 +343,48 @@ def _settings(options) -> dict:
             if isinstance(option, dict) and option.get("id") in values:
                 values[option["id"]] = _text(option.get("currentValue"), 500)
     return values
+
+
+#: More models than any plan offers: a longer list is cut short.
+MAX_MODELS = 100
+
+
+def _shown(text: str) -> bool:
+    """Text to show in a list: something visible, and nothing that moves
+    or hides what's around it (control and format characters)."""
+    return (any(not (c.isspace() or c in _BLANKS or unicodedata.category(c) in _HIDDEN)
+                for c in text)
+            and not any(unicodedata.category(c) in ("Cc", "Cf") for c in text))
+
+
+def _models(options):
+    """(current model, ((value, label), …)) from ACP configOptions' "model"
+    choice, or None when they don't have one. Copilot lists only what the
+    account's plan allows, and each label says the premium requests a turn
+    costs ("GPT-5 (1x)"); a model listed twice is listed once, with its
+    cost if either says it."""
+    if not isinstance(options, list):
+        return None
+    for option in options:
+        if not isinstance(option, dict) or option.get("id") != "model":
+            continue
+        choices, costed = {}, set()
+        for item in option.get("options") if isinstance(option.get("options"), list) else ():
+            value = _text(item.get("value"), 200) if isinstance(item, dict) else ""
+            if not value or not _shown(value):
+                continue
+            name = " ".join(_text(item.get("name"), 200).split()) or value
+            meta = item.get("_meta") if isinstance(item.get("_meta"), dict) else {}
+            usage = " ".join(_text(meta.get("copilotUsage"), 20).split())
+            label = f"{name} ({usage})" if usage else name
+            if value not in choices or (usage and value not in costed):
+                choices[value] = label if _shown(label) else value
+                if usage:
+                    costed.add(value)
+            if len(choices) >= MAX_MODELS:
+                break
+        return _text(option.get("currentValue"), 200), tuple(choices.items())
+    return None
 
 
 def usage_kinds(events_path: Path, offset: int = 0) -> tuple:
@@ -601,6 +646,10 @@ class _Chat:
         self.open_on = None
         self.last_chunk_notice = 0.0
         self.cancel_timer = None
+        #: The model Copilot uses for this chat, and the ones it offers
+        #: ((value, label), …), from its configOptions.
+        self.model = ""
+        self.models: tuple = ()
 
     @property
     def safe(self) -> bool:
@@ -608,6 +657,13 @@ class _Chat:
 
     def apply(self, settings: dict) -> None:
         self.mode, self.allow_all = settings["mode"], settings["allow_all"]
+
+    def apply_models(self, options) -> None:
+        """The model Copilot uses for this chat and the ones it offers, when
+        ``options`` (configOptions) say."""
+        found = _models(options)
+        if found is not None:
+            self.model, self.models = found
 
 
 class CopilotChatRuntime:
@@ -640,6 +696,8 @@ class CopilotChatRuntime:
         #: window says The Chat Place owns (adopt), and only if Copilot also
         #: recorded this app as their client.
         self._owned: set = set()
+        #: The models Copilot last offered a chat here, for a new one.
+        self._last_models: tuple = ()
         self._closed = False
 
     # -- the connection ------------------------------------------------------
@@ -730,10 +788,12 @@ class CopilotChatRuntime:
 
     # -- opening chats -------------------------------------------------------
 
-    def create(self, cwd: str) -> str:
+    def create(self, cwd: str, model: str = "") -> str:
         """A new Copilot chat in ``cwd``; its native id. No prompt is sent.
         Starts Copilot if needed and waits up to a minute for it, so call it
-        off the UI thread."""
+        off the UI thread. ``model``: switch to it before anything is sent,
+        if Copilot offers it; if it can't, the chat says so and keeps
+        Copilot's own."""
         _check_folder(cwd)
         refusal = self._hooks_refusal(cwd)
         if refusal:
@@ -748,11 +808,20 @@ class CopilotChatRuntime:
             raise CopilotChatError("Copilot didn't start a chat.")
         chat = _Chat(native_id, cwd)
         chat.apply(_settings(result.get("configOptions")))
+        chat.apply_models(result.get("configOptions"))
+        self._seen_models(chat)
         chat.connection = chat.open_on = connection
         chat.log_end = _whole_lines_end(self._events(native_id))
         with self._lock:
             self._chats[native_id] = chat
             self._owned.add(native_id)
+        if model and model != chat.model:
+            try:
+                self.set_model(native_id, model)
+            except CopilotChatError:
+                with self._lock:
+                    chat.notice = ("Copilot couldn't switch this chat to the model chosen, so it "
+                                   "uses Copilot's own. File, Change Model chooses another.")
         self._notify(chat)
         return native_id
 
@@ -770,6 +839,66 @@ class CopilotChatRuntime:
             return (chat is not None and chat.safe and not chat.loading and not chat.problem
                     and not chat.elsewhere and not self._halted and chat.connection is not None
                     and chat.connection is self._connection and not chat.connection.closed)
+
+    def models(self) -> tuple:
+        """The models Copilot last offered a chat here ((value, label), …):
+        what a new chat can start with. Empty until a chat has been opened."""
+        with self._lock:
+            return self._last_models
+
+    def _seen_models(self, chat: _Chat) -> None:
+        """Keep the list a chat was offered for the next new chat. Call
+        with _lock held, or before the chat is shared."""
+        if chat.models:
+            self._last_models = chat.models
+
+    def set_model(self, native_id: str, model: str) -> None:
+        """Switch a chat to ``model``, one Copilot offers it, from its next
+        turn. Waits for Copilot, so call it off the UI thread."""
+        with self._lock:
+            chat = self._chats.get(native_id)
+            if chat is None or chat.connection is None or chat.connection.closed or chat.loading:
+                raise CopilotChatError("This Copilot chat isn't open here yet. Select it, wait "
+                                       "until it's ready, then try again.")
+            if model not in dict(chat.models):
+                raise CopilotChatError("Copilot doesn't offer that model for this chat.")
+            connection = chat.connection
+        try:
+            result = connection.request("session/set_config_option", {
+                "sessionId": native_id, "configId": "model", "value": model})
+        except copilot_acp.AcpError:
+            raise CopilotChatError("Copilot couldn't switch to that model.") from None
+        options = result.get("configOptions") if isinstance(result, dict) else None
+        present = {option.get("id") for option in options if isinstance(option, dict)
+                   } if isinstance(options, list) else set()
+        unsafe_turn = False
+        with self._lock:
+            if (self._chats.get(native_id) is not chat or chat.loading
+                    or chat.connection is not connection):
+                # Opened again (or closed) while Copilot answered: what the
+                # reply says is older than what the chat has now.
+                return
+            settings = _settings(options)
+            # Each setting the reply names counts, unsafe ones included; one
+            # it leaves out is left as it was, never read as safe or unsafe.
+            if "mode" in present:
+                chat.mode = settings["mode"]
+            if "allow_all" in present:
+                chat.allow_all = settings["allow_all"]
+            if _models(options) is not None:
+                chat.apply_models(options)
+                self._seen_models(chat)
+            else:
+                chat.model = model  # it said yes, without the list
+            # As for a config_option_update: a turn running when Copilot stops
+            # asking before it acts is stopped.
+            unsafe_turn = chat.busy and not chat.safe and not chat.stopping
+            if unsafe_turn:
+                chat.notice = ("Copilot stopped asking before it acts, so The Chat Place "
+                               "stopped this turn.")
+        if unsafe_turn:
+            self.stop(native_id, hold=True)
+        self._notify(chat)
 
     def prepare(self, native_id: str, cwd: str) -> None:
         """Open a saved chat on the running Copilot so it can be sent to.
@@ -841,6 +970,8 @@ class CopilotChatRuntime:
                 chat.elsewhere, chat.log_end = False, log_end
                 chat.notice = ""  # opened again: "open it again" no longer applies
             chat.apply(_settings(result.get("configOptions")))
+            chat.apply_models(result.get("configOptions"))
+            self._seen_models(chat)
             if chat.problem and chat.problem != HOOK_ANSWERED and not self._halted and kinds and all(k == "copilot" for k in kinds):
                 chat.problem = ""  # the late record has arrived, and it's Copilot's
             late_elsewhere = any(k != "copilot" for k in kinds)
@@ -1271,6 +1402,8 @@ class CopilotChatRuntime:
             if kind in ("config_option_update", "current_mode_update"):
                 if kind == "config_option_update":
                     chat.apply(_settings(update.get("configOptions")))
+                    chat.apply_models(update.get("configOptions"))
+                    self._seen_models(chat)
                 else:
                     chat.mode = _text(update.get("currentModeId"), 500)
                 unsafe_turn = chat.busy and not chat.safe and not chat.stopping
@@ -1341,7 +1474,7 @@ class CopilotChatRuntime:
             problem=chat.problem, started_at=chat.started_at, activity=chat.activity,
             notice=chat.notice, context_used=chat.context[0], context_size=chat.context[1],
             context_epoch=chat.context_epoch, checking=chat.busy and chat.answered,
-            changed_paths=chat.changed_paths,
+            changed_paths=chat.changed_paths, model=chat.model, models=chat.models,
             token_usage=(ContextReport(min(1.0, chat.context[0] / chat.context[1]), chat.context[1])
                          if chat.context[1] > 0 and chat.context[0] >= 0 else None))
 

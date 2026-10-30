@@ -105,8 +105,10 @@ WORK_IN_FOLDER, WORK_IN_WORKTREE = 0, 1
 
 #: What New Session says about a Copilot chat (#352).
 COPILOT_NOTE = ("Copilot uses your GitHub Copilot sign-in, and each message uses requests from "
-                "your Copilot plan. It uses its own model and effort, which can't be chosen "
-                "here. Copilot asks before it runs a command or changes a file: "
+                "your Copilot plan. Model lists the models Copilot offered your last Copilot "
+                "chat here, each with the premium requests a message costs; Copilot's own "
+                "choice is first. File, Change Model changes it later. Effort is Copilot's "
+                "own. Copilot asks before it runs a command or changes a file: "
                 "each request appears in Answer, where you can allow it once or deny it. "
                 "The Chat Place won't send to Copilot in a folder whose Copilot hooks could act "
                 "without asking you.")
@@ -128,7 +130,7 @@ class NewSessionDialog(wx.Dialog):
     def __init__(self, parent, default_folder: str, continue_from: str = "",
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
                  remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
-                 title_text: str = "", message: str = ""):
+                 title_text: str = "", message: str = "", copilot_models=()):
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
@@ -159,6 +161,9 @@ class NewSessionDialog(wx.Dialog):
         self._rule_count = None
         self._rules_error = ""
         self._codex_models = ()
+        #: (value, label) of each model Copilot last offered (#352).
+        self._copilot_models = tuple(copilot_models)
+        self._copilot_choice = 0
         self._codex_choices = (0, 0, 0 if continue_from else 1)
         self._codex_model_error = False
         self._codex_models_loaded = False
@@ -591,7 +596,10 @@ class NewSessionDialog(wx.Dialog):
             index = self.model.GetSelection() - 1
             model = self._codex_models[index].model if 0 <= index < len(self._codex_models) else ""
         elif self.provider() == "copilot":
-            mode, model = DEFAULT_PERMISSION_MODE, ""  # Copilot's own settings, and it asks
+            mode = DEFAULT_PERMISSION_MODE  # it always asks
+            index = self.model.GetSelection() - 1
+            model = (self._copilot_models[index][0]
+                     if 0 <= index < len(self._copilot_models) else "")
         return folder, title, mode, message, model
 
     def codex_policy(self):
@@ -613,16 +621,21 @@ class NewSessionDialog(wx.Dialog):
             self._claude_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
         elif self._control_provider == "codex":
             self._codex_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
+        elif self._control_provider == "copilot":
+            self._copilot_choice = max(self.model.GetSelection(), 0)
         if provider == "copilot":
-            # Nothing to choose yet: Copilot's own model and effort, and it
-            # always asks before acting (copilot_runtime). Shown, not hidden,
-            # so the dialog keeps its shape and says so.
-            for control, label in ((self.model, "Copilot's configured model"),
-                                   (self.effort_choice, "Copilot's own setting"),
+            # The models Copilot last offered; effort is Copilot's own, and
+            # it always asks before acting (copilot_runtime). Shown, not
+            # hidden, so the dialog keeps its shape and says so.
+            for control, label in ((self.effort_choice, "Copilot's own setting"),
                                    (self.mode, "Asks before running commands or changing files")):
                 control.Set([label])
                 control.SetSelection(0)
                 control.Disable()
+            self.model.Set(["Copilot's configured model"]
+                           + [label for _value, label in self._copilot_models])
+            self.model.SetSelection(min(self._copilot_choice, len(self._copilot_models)))
+            self.model.Enable(bool(self._copilot_models))
             self.note.SetValue(COPILOT_NOTE)
         elif provider == "codex":
             self.model.Set(["Configured Codex model"] + [choice.label for choice in self._codex_models])
