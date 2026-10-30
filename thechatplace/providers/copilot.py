@@ -376,15 +376,20 @@ def parse_events(lines: Iterable[str], carried: bool = False) -> Transcript:
     return parser.transcript
 
 
+def client_of(folder: Path) -> str:
+    """The client_name Copilot recorded for a session, or "" if unreadable."""
+    try:
+        return parse_workspace((Path(folder) / WORKSPACE_FILE).read_text(
+            encoding="utf-8")).get("client_name", "")
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
 def made_here(folder: Path) -> bool:
     """Whether Copilot recorded The Chat Place as the client that made this
     session (workspace.yaml's client_name, from clientInfo)."""
     from .copilot_acp import CLIENT_NAME
-    try:
-        text = (Path(folder) / WORKSPACE_FILE).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return False
-    return parse_workspace(text).get("client_name") == CLIENT_NAME
+    return client_of(folder) == CLIENT_NAME
 
 
 def _read_tail(path: Path, max_bytes: int = TAIL_BYTES) -> List[str]:
@@ -703,11 +708,12 @@ class CopilotProvider:
                 continue
             if entry.last_line is None:
                 try:
-                    path = self._events_path(info.cli_session_id)
-                    # A copy's first message is split only when the tail is
-                    # the whole log, so it really is the first.
-                    carried = os.path.getsize(path) <= TAIL_BYTES and made_here(path.parent)
-                    transcript = parse_events(_read_tail(path), carried=carried)
+                    # Never split here (#423): discovery runs before the
+                    # window's own records are known, so whether this is a
+                    # Continue Here copy can't be told; the column shows
+                    # what Copilot recorded rather than disagree with the
+                    # open chat.
+                    transcript = parse_events(_read_tail(self._events_path(info.cli_session_id)))
                 except OSError:
                     info.last_message = ""
                     continue
@@ -764,6 +770,9 @@ class CopilotProvider:
             raise CopilotChatError("This Copilot chat's conversation isn't on disk any more, "
                                    "so there's nothing to continue from.")
         record = self.create_owned(source.cwd, title)
+        # Marks it as a copy: the heading and Properties say what it
+        # continues, and only a copy's first message is split (#423).
+        record.forked_from = " ".join((source.title or "").split()) or "a Copilot chat"
         self.runtime.set_preamble(record.cli_session_id,
                                   continue_text(reader.transcript.messages, source.title))
         return record
@@ -811,7 +820,10 @@ class CopilotProvider:
         path = self._events_path(session.cli_session_id)
         if not path.is_file():
             return None
-        return CopilotReader(path, carried=session.is_own and made_here(path.parent))
+        # Only a Continue Here copy's first message carries the history: a
+        # New Session chat's is shown as typed, whatever it looks like.
+        copy = session.is_own and bool(session.continued_from)
+        return CopilotReader(path, carried=copy and made_here(path.parent))
 
     def usage_lines(self, session: SessionInfo) -> List[str]:
         """Usage and Context (Ctrl+Shift+U, #369): how full the context is,

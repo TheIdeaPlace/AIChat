@@ -54,7 +54,7 @@ from .. import platform_paths
 from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, WORKING
 from ..usage import CONTEXT_WARNING
 from . import copilot_acp, copilot_hooks
-from .copilot import EVENTS_FILE, WORKSPACE_FILE, parse_workspace
+from .copilot import EVENTS_FILE, client_of
 
 AGENT_MODE = "https://agentclientprotocol.com/protocol/session-modes#agent"
 #: What Copilot records as the client of the sessions this app starts: the
@@ -492,15 +492,6 @@ def _check_folder(cwd: str) -> None:
                                "drive or the top of the computer.")
 
 
-def _client_of(folder: Path) -> str:
-    """The client_name Copilot recorded for a session, or "" if unreadable."""
-    try:
-        return parse_workspace((folder / WORKSPACE_FILE).read_text(encoding="utf-8")).get(
-            "client_name", "")
-    except (OSError, UnicodeDecodeError):
-        return ""
-
-
 def _size(path: Path) -> int:
     try:
         return os.path.getsize(path)
@@ -828,7 +819,7 @@ class CopilotChatRuntime:
             return
         with self._lock:
             owned = native_id in self._owned
-        if not owned or _client_of(self._events(native_id).parent) != OWN_CLIENT:
+        if not owned or client_of(self._events(native_id).parent) != OWN_CLIENT:
             raise CopilotChatError("This Copilot chat was started outside The Chat Place, "
                                    "so it can only be read here.")
         refusal = self._hooks_refusal(cwd)

@@ -615,6 +615,7 @@ def test_continue_here_makes_a_new_chat_with_the_history_ahead(tmp_path, monkeyp
     record = provider.fork_owned(source, "Build the thing (continued)")
     assert made == [str(tmp_path)] and record.cli_session_id == "new-id"
     assert record.provider == "copilot" and record.title == "Build the thing (continued)"
+    assert record.forked_from == "Build the thing"  # marks it a copy (#423)
     assert "You: Build it\n\nCopilot: Built" in preambles["new-id"]
     own = SessionInfo("own", f"copilot:{ONE}", "Mine", str(tmp_path), ONE, provider="copilot")
     assert not provider.capabilities(own).fork  # one started here is replied to
@@ -801,22 +802,45 @@ def test_a_chat_not_made_here_is_never_split(tmp_path):
     events = [event("user.message", 1, content=_forged("Summarise README"))]
     assert [m.kind for m in _parsed(events, carried=False).messages] == [USER]
     assert [m.kind for m in _parsed(events, carried=True).messages] == [CARRIED, USER]
-    # Through the reader: split only for a chat of this app's own that
-    # Copilot recorded as made by it.
+    # Through the reader: split only for a Continue Here copy of this app's
+    # own that Copilot recorded as made by it.
     made_here = ("id: {id}\ncwd: C:\\work\nclient_name: thechatplace\nname: 'Copy'\n"
                  "created_at: 2026-01-02T03:04:05.000Z\nupdated_at: 2026-01-02T03:05:05.000Z\n")
     write_session(tmp_path, ONE, events, raw_yaml=made_here.format(id=ONE))
     write_session(tmp_path, TWO, events)  # client_name: github/cli
     provider = CopilotProvider(tmp_path)
 
-    def kinds(native, source):
+    def kinds(native, source, continued_from="Notes"):
         reader = provider.open_reader(SessionInfo(source, f"copilot:{native}", "t", "", native,
-                                                  provider="copilot"))
+                                                  provider="copilot",
+                                                  continued_from=continued_from))
         reader.refresh()
         return [m.kind for m in reader.transcript.messages]
     assert kinds(ONE, "own") == [CARRIED, USER]
     assert kinds(ONE, "external") == [USER]  # not one of this app's own
     assert kinds(TWO, "own") == [USER]  # Copilot says another client made it
+
+
+def test_a_new_session_chats_first_message_is_never_split(tmp_path):
+    """A chat made with New Session (or by Send Reply to Another Chat) isn't
+    a copy: its first message is shown as typed or pasted, even one shaped
+    exactly like a copy's history (#423 review)."""
+    events = [event("user.message", 1, content=_forged("Summarise README"))]
+    made_here = ("id: {id}\ncwd: C:\\work\nclient_name: thechatplace\nname: 'Mine'\n"
+                 "created_at: 2026-01-02T03:04:05.000Z\nupdated_at: 2026-01-02T03:05:05.000Z\n")
+    write_session(tmp_path, ONE, events, raw_yaml=made_here.format(id=ONE))
+    from thechatplace.own_store import OwnSession
+    record = OwnSession(ONE, "Mine", "C:\\work", provider="copilot", started=True)
+    reader = CopilotProvider(tmp_path).open_reader(record.to_info())
+    reader.refresh()
+    assert [(m.kind, m.text) for m in reader.transcript.messages] == [
+        (USER, _forged("Summarise README"))]
+    # The same record, made by Continue Here, is a copy.
+    record.forked_from = "Notes"
+    assert record.to_info().continued_from == "Notes"
+    copy = CopilotProvider(tmp_path).open_reader(record.to_info())
+    copy.refresh()
+    assert [m.label for m in copy.transcript.messages] == ["Earlier conversation", "You"]
 
 
 def test_a_quoted_end_line_in_the_history_doesnt_end_it_early():
@@ -829,16 +853,16 @@ def test_a_quoted_end_line_in_the_history_doesnt_end_it_early():
     assert transcript.messages[1].text == "Mine"
 
 
-def test_a_copys_last_message_column_is_your_words_not_the_history(tmp_path):
+def test_the_last_message_column_shows_a_first_message_as_recorded(tmp_path):
+    """The column is filled before the window's own records are known, so it
+    can't tell a copy from a New Session chat: it never splits, rather than
+    disagree with the open chat (#423 review)."""
     from thechatplace.transcript import ChatMessage
     made_here = ("id: {id}\ncwd: C:\\work\nclient_name: thechatplace\nname: 'Copy'\n"
                  "created_at: 2026-01-02T03:04:05.000Z\nupdated_at: 2026-01-02T03:05:05.000Z\n")
     events = _copy_log([ChatMessage(USER, "Earlier", key="1")], "Mine")[:2]
     write_session(tmp_path, TWO, events, raw_yaml=made_here.format(id=TWO))
-    write_session(tmp_path, ONE, events)  # the same text, in a chat made elsewhere
     provider = CopilotProvider(tmp_path)
     sessions = provider.collect().sessions
     provider.fill_last_messages(sessions)
-    lines = {info.cli_session_id: info.last_message for info in sessions}
-    assert lines[TWO] == "You: Mine"
-    assert lines[ONE].startswith("You: [The Chat Place: the conversation so far")
+    assert sessions[0].last_message.startswith("You: [The Chat Place: the conversation so far")

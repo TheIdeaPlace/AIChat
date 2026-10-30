@@ -920,10 +920,12 @@ def s_main_copilot_copy(frame, env):
     from thechatplace.sessions import IDLE
     import fake_env
 
-    # Split only in a chat of the app's own that Copilot says it made.
+    # Split only in a Continue Here copy (forked_from) that Copilot says
+    # this app made.
     s_main_copilot(frame, env, events, "Copilot history preview (continued)", CLIENT_NAME)
     info = frame._open
-    record = OwnSession(info.cli_session_id, info.title, info.cwd, provider="copilot", started=True)
+    record = OwnSession(info.cli_session_id, info.title, info.cwd, provider="copilot",
+                        started=True, forked_from="Copilot history preview")
     frame.store.add(record)
     state = CopilotChatState(info.cli_session_id, IDLE, "1", "completed")
     frame.sessions._providers["copilot"].runtime = SimpleNamespace(
