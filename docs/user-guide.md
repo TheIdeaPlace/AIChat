@@ -1194,7 +1194,9 @@ What each provider offers:
   before asking (often the thing it's asking about, such as a draft to approve), then each
   question in full. Below it, each question is a group of choices, with Other and a box for your
   own answer. When a choice comes with a preview, the Preview box after the questions shows the
-  preview of the choice you're on. Send Answers, or Don't Answer.
+  preview of the choice you're on. Send Answers, or Don't Answer. A question with one answer is a
+  single Tab stop, on your choice, or on its first choice until you've made one (the arrow keys
+  move between choices); in a question with several answers, each choice is a stop.
 - **Claude, a plan:** read it (Read Formatted shows it as a page, by heading), then **Approve**,
   choosing how Claude carries on, or **Keep Planning**, the default, with what to change.
 - **Codex, a permission:** the request shows the command, its folder and Codex's reason, and a
