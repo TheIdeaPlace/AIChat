@@ -47,7 +47,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from . import links, platform_paths
 from .sessions import DESKTOP, TERMINAL, WORKING, SessionInfo, home_app
@@ -398,6 +398,7 @@ class Host:
         self._handle = handle
         self.path = connection_path(data_dir)
         self._listener = None
+        self._key = b""
         self._closed = False
 
     def start(self) -> None:
@@ -405,8 +406,10 @@ class Host:
         OSError if either can't be done."""
         from multiprocessing.connection import Listener
 
-        key = secrets.token_bytes(32)
-        self._listener = Listener(family=_family(), authkey=key)
+        key = self._key = secrets.token_bytes(32)
+        # The key is checked on each call's own thread (``_serve``), not in
+        # accept(), where one caller that never answered would hold up all.
+        self._listener = Listener(family=_family())
         try:
             payload = {"version": 1, "pid": os.getpid(), "family": _family(),
                        "address": self._listener.address, "key": key.hex()}
@@ -417,16 +420,12 @@ class Host:
             raise
         threading.Thread(target=self._accept, name="session-tools", daemon=True).start()
 
-    @property
-    def running(self) -> bool:
-        return self._listener is not None and not self._closed
-
     def _accept(self) -> None:
         listener = self._listener
         while not self._closed:
             try:
                 connection = listener.accept()
-            except Exception:  # noqa: BLE001 - a wrong key, or closed
+            except Exception:  # noqa: BLE001 - closed, or a failed connection
                 if self._closed:
                     return
                 time.sleep(0.05)
@@ -435,7 +434,13 @@ class Host:
                              name="session-tools-call", daemon=True).start()
 
     def _serve(self, connection) -> None:
+        from multiprocessing.connection import answer_challenge, deliver_challenge
+
         try:
+            # Both ways, as Listener.accept does with an authkey: a caller
+            # without the key gets nothing, and is never read past this.
+            deliver_challenge(connection, self._key)
+            answer_challenge(connection, self._key)
             if not connection.poll(10):
                 return
             request = json.loads(connection.recv_bytes(1 << 20).decode("utf-8"))
@@ -570,7 +575,3 @@ def mcp_config(self_id: str, data_dir: Optional[Path] = None, **kwargs) -> str:
     if env:
         server["env"] = env
     return json.dumps({"mcpServers": {SERVER_NAME: server}})
-
-
-def iter_tools() -> Iterable[dict]:
-    return (dict(tool) for tool in TOOLS)

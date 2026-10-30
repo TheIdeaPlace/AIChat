@@ -413,3 +413,18 @@ def test_a_handler_that_fails_says_why(tmp_path):
 def test_iso_time_is_the_desktop_apps_form():
     assert session_tools.iso_time(1785247846075) == "2026-07-28T14:10:46.075Z"
 
+
+
+def test_a_caller_that_never_answers_holds_nobody_up(tmp_path):
+    from multiprocessing.connection import Client
+    host = session_tools.Host(lambda request: {"text": "ok", "is_error": False}, tmp_path)
+    host.start()
+    try:
+        details = json.loads((tmp_path / session_tools.CONNECTION_FILE).read_text())
+        silent = Client(details["address"], family=details["family"])  # no key, says nothing
+        try:
+            assert session_tools.ask({"tool": "list_sessions"}, tmp_path, 10)["text"] == "ok"
+        finally:
+            silent.close()
+    finally:
+        host.close()
