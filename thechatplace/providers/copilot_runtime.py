@@ -922,11 +922,12 @@ class CopilotChatRuntime:
                     chat.notice = ("Copilot couldn't switch this chat to the model chosen, so it "
                                    "uses Copilot's own. File, Change Model chooses another.")
         if mode and mode != chat.mode:
-            # Only the mode Copilot reports counts: set_mode clears the
-            # problem set above when its reply names the mode asked for. A
-            # refusal, a reply naming another mode or none, or one dropped as
-            # stale all leave it, so nothing is sent in the other mode until
-            # it's switched (#424).
+            # Only the mode Copilot reports counts: the problem set above is
+            # cleared when a reply taken in names the mode asked for. A
+            # refusal, or a reply naming another mode or none, leaves it. A
+            # reply dropped as stale leaves it unless the chat is in the mode
+            # asked for by then all the same, so nothing is sent in another
+            # mode until it's switched (#424).
             try:
                 self.set_mode(native_id, mode)
             except CopilotChatError:
@@ -949,9 +950,12 @@ class CopilotChatRuntime:
             chat = self._chats.get(native_id)
             if chat is None:
                 return ""
+            # _set_option clears a mode problem as it takes in the reply that
+            # confirms the mode; this only catches a reply it dropped as
+            # stale while the chat is in that mode all the same.
             cleared = chat.mode == mode and chat.problem in MODE_PROBLEMS
             if cleared:
-                chat.problem = ""  # switched by hand, as it asked
+                chat.problem = ""
             recorded = chat.mode
         if cleared:
             self._notify(chat)
@@ -964,7 +968,12 @@ class CopilotChatRuntime:
             chat = self._chats.get(native_id)
             if chat is None:
                 return
-            chat.notice = text
+            # Added to what the chat says already (a model Copilot refused,
+            # say), never in place of it.
+            if chat.notice and text not in chat.notice:
+                chat.notice = f"{chat.notice} {text}"
+            elif not chat.notice:
+                chat.notice = text
         self._notify(chat)
 
     def adopt(self, native_id: str) -> None:
@@ -1039,6 +1048,11 @@ class CopilotChatRuntime:
             # it leaves out is left as it was, never read as safe or unsafe.
             if "mode" in present:
                 chat.mode = settings["mode"]
+                if config_id == "mode" and chat.mode == value and chat.problem in MODE_PROBLEMS:
+                    # Confirmed: cleared before the update below goes out,
+                    # so the window never hears the mode asked for together
+                    # with the problem it clears (#424).
+                    chat.problem = ""
             if "allow_all" in present:
                 chat.allow_all = settings["allow_all"]
             if _models(options) is not None:

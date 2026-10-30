@@ -360,6 +360,13 @@ class CodexChats:
         def done(_result, error):
             self._codex_preparation_running.discard(key)
             self._codex_preparing.pop(key, None)
+            from ..providers.copilot_runtime import MODE_PROBLEMS
+            state = self._codex_states.get(key)
+            problem = getattr(state, 'problem', '')
+            if not error and provider == 'copilot' and problem in MODE_PROBLEMS:
+                # Not said while the chat was being opened: Copilot may
+                # have put it back in its mode by the end (#424).
+                self._say(f'{record.title}: {problem}', interrupt=False)
             # A reply sent here from another chat waited for this (#248);
             # RelayChats provides it, so a window without that sends none.
             relay = getattr(self, '_relay_prepared', None)
@@ -654,14 +661,19 @@ class CodexChats:
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
                 and (previous is None or previous.turn_id != state.turn_id)):
             self._status(f'{record.title}: {name} is working.')
+        from ..providers.copilot_runtime import MODE_PROBLEMS
         if (state.problem and (previous is None or previous.problem != state.problem)
-                and key not in getattr(self, '_codex_policy_pending', ())):
+                and key not in getattr(self, '_codex_policy_pending', ())
+                and not (provider == 'copilot' and state.problem in MODE_PROBLEMS
+                         and key in self._codex_preparing)):
             # A pending permission change says its own failure once (#385).
+            # A Copilot chat being opened may be switched back to its mode
+            # yet: its preparation's done() says a mode problem still left
+            # (#424).
             self._say(f'{record.title}: {state.problem}', interrupt=False)
         if state.notice and (previous is None or previous.notice != state.notice):
             self._say(f'{record.title}: {state.notice}', interrupt=False)
         before_mode, mode = getattr(previous, 'mode', ''), getattr(state, 'mode', '')
-        from ..providers.copilot_runtime import MODE_PROBLEMS
         if (provider == 'copilot' and before_mode and mode and before_mode != mode
                 and key not in getattr(self, '_copilot_mode_pending', ())
                 and key not in self._codex_preparing

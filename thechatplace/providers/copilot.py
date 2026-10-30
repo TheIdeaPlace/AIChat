@@ -956,7 +956,7 @@ _modes_lock = threading.Lock()
 #: Said for a chat when the saved modes file couldn't be read as JSON: it is
 #: moved aside, not overwritten, so nothing in it is lost (#424).
 MODES_SET_ASIDE = ("The Copilot modes The Chat Place saved couldn't be read, so the file was "
-                   "kept as copilot-modes.json.bad. A chat whose mode was saved there opens "
+                   "kept beside it as copilot-modes.json.bad-<date and time>. A chat whose mode was saved there opens "
                    "in the mode Copilot reports; Change Permission Mode chooses it again.")
 #: Said when the file is there but can't be opened (locked, say).
 MODES_UNREADABLE = ("The Copilot modes The Chat Place saved couldn't be opened, so this chat "
@@ -969,32 +969,48 @@ MODE_NOT_SAVED = ("The Chat Place couldn't save this chat's Copilot mode, so if 
 def _read_modes() -> tuple:
     """(native id -> mode, what to say or ""). Call with _modes_lock held.
     A missing file is no modes. One that isn't the JSON written here is
-    moved aside to copilot-modes.json.bad, never just overwritten; one that
+    moved aside to copilot-modes.json.bad-<when>, never just overwritten,
+    and never over an earlier one (a file that isn't UTF-8 too); one that
     can't be opened is left alone and reported, so it isn't overwritten
     either (None for the modes). Entries with an id or mode that isn't one
     of the app's are left out."""
     from .copilot_runtime import SAFE_MODES
     path = _modes_file()
     try:
-        text = path.read_text(encoding="utf-8")
+        data = path.read_bytes()
     except FileNotFoundError:
         return {}, ""
-    except (OSError, ValueError):
+    except OSError:
         return None, MODES_UNREADABLE
     try:
-        raw = json.loads(text)
+        # Decoded here, so a file that isn't UTF-8 is set aside as one that
+        # isn't JSON is, rather than taken for one that can't be opened and
+        # never saved to again.
+        raw = json.loads(data.decode("utf-8"))
         modes = raw.get("modes") if isinstance(raw, dict) else None
         if not isinstance(modes, dict):
             raise ValueError("no modes")
     except ValueError:
         try:
-            os.replace(path, path.with_name(path.name + ".bad"))
+            os.replace(path, _set_aside_path(path))
         except OSError:
             return None, MODES_UNREADABLE  # left as it is, and not written over
         return {}, MODES_SET_ASIDE
     return {native_id: mode for native_id, mode in modes.items()
             if isinstance(native_id, str) and platform_paths.is_safe_id(native_id)
             and mode in SAFE_MODES}, ""
+
+
+def _set_aside_path(path: Path) -> Path:
+    """Where a damaged modes file goes: a new name each time, so an
+    earlier one set aside is never written over (as prompts.py does)."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup = path.with_name(f"{path.name}.bad-{stamp}")
+    n = 2
+    while backup.exists():  # two in one second
+        backup = path.with_name(f"{path.name}.bad-{stamp}-{n}")
+        n += 1
+    return backup
 
 
 def chosen_mode(native_id: str) -> tuple:

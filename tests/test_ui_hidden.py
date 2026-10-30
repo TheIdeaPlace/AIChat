@@ -13038,7 +13038,10 @@ def test_a_reopened_chat_whose_mode_wasnt_kept_isnt_sent_to_once_ready(frame, en
         info = record.to_info()
         frame.open_session(info)
         assert pump(lambda: _copilot_state(frame) is not None
-                    and _copilot_state(frame).problem == MODE_NOT_KEPT, timeout=COPILOT_WAIT)
+                    and _copilot_state(frame).problem == MODE_NOT_KEPT
+                    and info.key not in frame._codex_preparing, timeout=COPILOT_WAIT)
+        # Said once, as the chat's opening ends with it still set.
+        assert sum(MODE_NOT_KEPT in text for text in env["spoken"]) == 1
         assert not frame.sessions.owned_action("ready", record)
         frame._codex_preparing[info.key] = frame._open_generation  # as a slow runtime leaves it
         frame.reply_text.SetValue("Again")
@@ -13050,6 +13053,39 @@ def test_a_reopened_chat_whose_mode_wasnt_kept_isnt_sent_to_once_ready(frame, en
         assert pump(lambda: any("another mode than the one chosen" in text
                                 for text in env["feedback"]), timeout=COPILOT_WAIT)
         assert _received_prompts(env) == ["Plan it"]
+    finally:
+        runtime.close()
+
+
+def test_a_reopened_chat_put_back_in_its_mode_says_no_mode_problem(frame, env, monkeypatch):
+    """Copilot reopens a plan-mode chat in agent mode ("forgetmode") and
+    agrees to switch it back: nothing says it couldn't be switched back
+    (#424)."""
+    from thechatplace.providers.copilot_runtime import MODE_PROBLEMS, PLAN_MODE
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        frame._create_codex_owned(folder, "Kept Plan", "Plan it", provider="copilot",
+                                  copilot_mode=PLAN_MODE)
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        native = frame._open.cli_session_id
+    finally:
+        runtime.close()
+    frame._codex_states.clear()
+    frame._open = None
+    runtime, _ = _copilot_window(frame, env, monkeypatch, mode="forgetmode")
+    try:
+        record = frame.store.get(native, provider="copilot")
+        info = record.to_info()
+        env["spoken"].clear()
+        frame.open_session(info)
+        assert pump(lambda: frame.sessions.owned_action("ready", record)
+                    and info.key not in frame._codex_preparing, timeout=COPILOT_WAIT)
+        pump(lambda: False, timeout=0.3)  # any update still on its way
+        assert _copilot_state(frame).mode == PLAN_MODE
+        assert not [text for text in env["spoken"]
+                    if any(problem in text for problem in MODE_PROBLEMS)]
+        assert not [text for text in env["spoken"] if "Copilot switched to" in text]
     finally:
         runtime.close()
 

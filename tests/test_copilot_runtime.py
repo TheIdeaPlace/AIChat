@@ -2427,6 +2427,33 @@ def test_a_continue_here_copy_whose_plan_mode_isnt_confirmed_keeps_its_history(m
     assert prompts_sent(tmp_path) == ["Earlier: history. Carry on"]
 
 
+def test_no_update_carries_a_mode_problem_while_a_reopened_chat_is_switched_back(make, tmp_path):
+    """Reopened in agent mode and put back in plan mode: the reply that
+    confirms it clears MODE_NOT_KEPT before its update goes out, so the
+    window never hears plan mode together with the problem it cleared."""
+    from thechatplace.providers.copilot_runtime import MODE_PROBLEMS, PLAN_MODE
+    runtime, updates = make("forgetmode")
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    runtime._chats[chat].elsewhere = True  # so prepare opens it again
+    updates.clear()
+    runtime.prepare(chat, str(tmp_path), mode=PLAN_MODE)
+    assert updates and updates[-1].mode == PLAN_MODE and updates[-1].problem == ""
+    assert not [u for u in updates if u.problem in MODE_PROBLEMS]
+    assert runtime.ready(chat)
+
+
+def test_a_notice_added_keeps_the_one_the_chat_has(make, tmp_path):
+    """A refused model's notice and a mode that couldn't be saved are both
+    said: add_notice adds to the chat's notice, never replaces it."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime._chats[chat].notice = "Model refused."
+    runtime.add_notice(chat, "Mode not saved.")
+    assert runtime.snapshot(chat).notice == "Model refused. Mode not saved."
+    runtime.add_notice(chat, "Mode not saved.")  # not twice
+    assert runtime.snapshot(chat).notice == "Model refused. Mode not saved."
+
+
 # -- saved modes (provider level) -------------------------------------------------------
 
 
@@ -2491,17 +2518,42 @@ def test_saved_modes_file_edge_cases(tmp_path, monkeypatch):
     # Corrupt: moved aside whole, said, and not written over.
     path.write_text("{not json", encoding="utf-8")
     assert _remember_mode(native, PLAN_MODE) == MODES_SET_ASIDE
-    assert (tmp_path / "copilot-modes.json.bad").read_text(encoding="utf-8") == "{not json"
+    aside = list(tmp_path.glob("copilot-modes.json.bad-*"))
+    assert [p.read_text(encoding="utf-8") for p in aside] == ["{not json"]
     assert chosen_mode(native) == (PLAN_MODE, "")
+    # A second damaged file doesn't write over the first set aside.
     path.write_text("[]", encoding="utf-8")
     assert chosen_mode(native) == ("", MODES_SET_ASIDE)
-    assert (tmp_path / "copilot-modes.json.bad").read_text(encoding="utf-8") == "[]"
+    aside = list(tmp_path.glob("copilot-modes.json.bad-*"))
+    assert sorted(p.read_text(encoding="utf-8") for p in aside) == ["[]", "{not json"]
+    # Nor does a file that isn't UTF-8: it's set aside, not taken for one
+    # that can't be opened, so saving works again.
+    path.write_bytes(bytes([0xFF, 0xFE]) + b"{bad")
+    assert chosen_mode(native) == ("", MODES_SET_ASIDE)
+    assert len(list(tmp_path.glob("copilot-modes.json.bad-*"))) == 3
+    assert _remember_mode(native, PLAN_MODE) == ""
+    assert chosen_mode(native) == (PLAN_MODE, "")
     # A save that fails is said.
 
     def full(*args, **kwargs):
         raise OSError("disk full")
     monkeypatch.setattr("thechatplace.provider_storage.atomic_write_json", full)
     assert _remember_mode(native, PLAN_MODE) == MODE_NOT_SAVED
+
+
+def test_a_refused_model_and_an_unsaved_mode_are_both_said(provider, tmp_path, monkeypatch):
+    from thechatplace.providers.copilot import MODE_NOT_SAVED
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    copilot, runtime = provider()
+
+    def full(*args, **kwargs):
+        raise OSError("disk full")
+    monkeypatch.setattr("thechatplace.provider_storage.atomic_write_json", full)
+    record = copilot.create_owned(str(tmp_path), "Both", model="not-offered",
+                                  copilot_mode=PLAN_MODE)
+    notice = runtime.snapshot(record.cli_session_id).notice
+    assert "couldn't switch this chat to the model chosen" in notice
+    assert notice.endswith(MODE_NOT_SAVED)
 
 
 def test_set_mode_owned_saves_only_a_confirmed_mode(provider, tmp_path):
