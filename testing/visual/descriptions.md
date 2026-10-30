@@ -155,6 +155,12 @@ Like main-codex-owned, for Copilot (#352, #372). The chat's row is second in the
 
 **What looks off:** Nothing beyond the cut session rows, which is normal for that list.
 
+## main-copilot-copy: A Copilot Continue Here copy, with the carried history as one row
+
+The main window with a Copilot chat made by Continue Here opened (#423). Its row is last in the session list, selected, and reads "Copilot history preview (continued), Copilot, Scratch, idle, active just n..." (cut at the list's edge, as the other rows are). The heading is "Copilot history preview (continued), Scratch, idle. Copilot chat." and the label "Messages in Copilot history preview (continued) (idle, on Copilot):". The messages list holds three rows: "Earlier conversation: 2 messages from "Copilot history preview".", then "You: Now make the upload test faster." and "Copilot: It waits a fixed two seconds; I'll wait for the upload's own signal instead." (selected, white on Windows blue, #FFFFFF on #0078D4, 4.5:1). The carried history doesn't show inside the You row. Below are the reply box, Send, Stop, Commands... and Attach Files..., "Ready.", "Show tool activity", "New Session..." and "Refresh", as in main-copilot-owned. The status bar reads "Loaded Copilot history preview (continued), 3 messages.", "Copilot history preview (continued): idle" and "1 session needs you". In High Contrast Aquatic the rows are white on #202020 (16.3:1) and the selected ones dark on light aqua (#202020 on #8EE3F0, 11.2:1).
+
+**What looks off:** Nothing beyond the cut session rows, which is normal for that list.
+
 ## shortcuts-page: Help, Keyboard Shortcuts (formatted page)
 
 This is an 820 by 620 dialog. A web page fills almost all of it (796 by 534) inside a thin grey border, with a grey vertical scroll bar on the right. The page has a large bold "Keyboard shortcuts" heading, an intro paragraph (five lines in 0.1.7, now naming the Provider and Kind columns), then a "Moving around" heading and a two-column table, "Keys" and "What it does". Keys are in bold, and the table has thin grey grid lines and generous row padding. The text is about 12 point, noticeably bigger than the rest of the app. At the bottom right are two small buttons, "Read as Plain Text" (115 wide) and "Close".
@@ -402,6 +408,12 @@ The New Chat Place Session dialog, 680 by 620, laid out as in codex-new (#352, #
 ## new-session-copilot: New Session for Copilot, with the models Copilot offered
 
 The same dialog as copilot-new, 680 by 620, once a Copilot chat here has listed its models (#422), with synthetic model names. "Model" is enabled and shows the longest of them, "Probe Sonnet Long Model Name (preview) (1x)", in full, black on white (20.6:1), with about a third of the 413-wide field to spare (it needs 275). "Effort" and "Permission mode" stay greyed out, as in copilot-new (#6D6D6D on #FAFAFA, 5.0:1). The "About permissions:" box and everything below it are exactly as in copilot-new. In High Contrast Aquatic the Model field is white on #202020 (16.3:1), the greyed fields #A6A6A6 on #202020 (6.7:1), and Start light aqua with dark text (11.2:1).
+
+**What looks off:** Nothing.
+
+## copilot-continue: Continue Here from a Copilot CLI chat that may still be working
+
+The same 680 by 620 dialog as copilot-new, titled "Continue Here: Copilot still working" (#423). It has no Provider row: "Folder" (read-only, the chat's own folder) and "Title" ("Copilot still working (continued)") come first, then "Model" (enabled, "Copilot's configured model"), and "Effort" and "Permission mode" greyed out as in copilot-new (#6D6D6D on #FAFAFA, 5.0:1). "About continuing:" heads a read-only box, 644 by 162, holding two paragraphs with a scroll bar: the first starts "This chat may still be working in Copilot CLI." and says the copy is a new Copilot chat of The Chat Place's own, in the same folder, whose first message carries the conversation so far (your messages and Copilot's replies, newest kept if it's long, not the commands it ran or their output), and that the original isn't changed; the second is copilot-new's paragraph about the Copilot sign-in, models, effort, permissions and hooks. Both show in full, black on white (21:1). "First message:" heads an empty box, 644 by 151, and "Start" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic the text is white on #202020 (16.3:1), the greyed fields #A6A6A6 on #202020 (6.7:1), and Start light aqua with dark text (#202020 on #8EE3F0, 11.2:1).
 
 **What looks off:** Nothing.
 
