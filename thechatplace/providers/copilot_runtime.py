@@ -8,8 +8,9 @@ window reads from their Codex equivalents, so the window can show either.
 
 Safety rules, each with a test:
 
-* **Copilot asks before it acts.** Every chat must be in agent mode with
-  allow_all off, checked when the chat is opened and whenever Copilot reports
+* **Copilot asks before it acts.** Every chat must be in agent or plan mode
+  with allow_all off (plan mode writes only its own plan file, in Copilot's
+  session folder, without asking), checked when the chat is opened and whenever Copilot reports
   a settings change; otherwise nothing is sent. A message starting with "/"
   is refused, because Copilot's slash commands include /allow-all.
 * **Only one-time answers.** A permission request offers Allow Once and
@@ -57,6 +58,13 @@ from . import copilot_acp, copilot_hooks
 from .copilot import EVENTS_FILE, client_of
 
 AGENT_MODE = "https://agentclientprotocol.com/protocol/session-modes#agent"
+#: Copilot's Plan mode: it plans and blocks its own edits outside its
+#: session folder, and with allow-all off still asks before anything that
+#: needs permission (probed on 1.0.105). Safe to send to, like agent mode.
+PLAN_MODE = "https://agentclientprotocol.com/protocol/session-modes#plan"
+#: The modes a chat may be in to be sent to. Autopilot, which turns
+#: allow-all on, never is.
+SAFE_MODES = (AGENT_MODE, PLAN_MODE)
 #: What Copilot records as the client of the sessions this app starts: the
 #: name it gives in initialize's clientInfo (another ACP client's chats say
 #: "github/acp" or their own name, and a terminal chat says "github/cli").
@@ -180,6 +188,20 @@ CANCEL_SENT, ANSWERED_FIRST, NOT_SENT = "sent", "answered first", "not sent"
 ALREADY_SENT = "already sent"
 
 
+#: Said, and nothing sent, when a chat meant to start in plan mode couldn't.
+PLAN_NOT_SET = ("Copilot couldn't start this chat in plan mode, so nothing was sent. Use "
+                "Change Permission Mode to choose plan or agent mode, then send again.")
+#: Said, and nothing sent, when a chat opened again isn't in the mode last
+#: chosen for it and Copilot wouldn't switch it back (#424).
+MODE_NOT_KEPT = ("Copilot opened this chat in another mode than the one chosen for it and "
+                 "couldn't switch it back, so nothing was sent. Use Change Permission Mode "
+                 "to choose plan or agent mode, then send again.")
+#: The same for agent mode, asked for when Copilot starts a chat in another
+#: (New Session's Agent, or a chat for an agent conversation).
+AGENT_NOT_SET = ("Copilot couldn't start this chat in agent mode, so nothing was sent. Use "
+                 "Change Permission Mode to choose plan or agent mode, then send again.")
+#: Problems that only a switch of mode clears.
+MODE_PROBLEMS = (PLAN_NOT_SET, AGENT_NOT_SET, MODE_NOT_KEPT)
 #: Said when Continue Here's history is still waiting for a message to go.
 PREAMBLE_WAITING = ("The conversation so far goes with your next message. If you close The Chat "
                     "Place first, the copy carries on without it.")
@@ -229,6 +251,8 @@ class CopilotChatState:
     #: Copilot has answered; only this app's checks (billing, the log) are
     #: left, so Stop has nothing to cancel.
     checking: bool = False
+    #: Copilot's mode for this chat (AGENT_MODE, PLAN_MODE, …).
+    mode: str = ""
     #: The model this chat uses, and the ones Copilot offers it.
     model: str = ""
     models: tuple = field(default=(), repr=False)
@@ -500,11 +524,30 @@ def _prompts(events) -> int:
                for kind, data_ in events)
 
 
-def _edited_paths(events) -> tuple:
+def copilot_own_file(path: str, own_folder) -> bool:
+    """A file in this chat's own session folder (``own_folder``, the one its
+    events.jsonl is in), such as the plan.md plan mode keeps: Copilot's
+    bookkeeping, not the work, so never a changed file. Only that chat's:
+    a file in another chat's folder, or elsewhere under Copilot's own,
+    is still listed if a tool changed it. In agent and plan mode alike: the
+    folder is Copilot's whichever mode wrote to it, and the mode a file was
+    written in isn't recorded with it."""
+    if not own_folder:
+        return False
+    try:
+        own = os.path.normcase(os.path.normpath(str(own_folder)))
+        here = os.path.normcase(os.path.normpath(path))
+    except (OSError, ValueError, TypeError):
+        return False
+    return here == own or here.startswith(own + os.sep)
+
+
+def _edited_paths(events, own_folder=None) -> tuple:
     """The files ``events`` show a tool changing, in order, once each: a
     successful tool.execution_complete's ``fileEdits`` paths, as Changed
     Files reads them (copilot.CopilotParser). For an agent conversation's
-    hand-off (#369)."""
+    hand-off (#369). ``own_folder``: the chat's session folder, whose
+    files are Copilot's own (copilot_own_file)."""
     paths = []
     for kind, data_ in events:
         entries = data_.get("fileEdits") if kind == "tool.execution_complete" else None
@@ -512,7 +555,7 @@ def _edited_paths(events) -> tuple:
             continue
         for entry in entries:
             path = _text(entry.get("path"), 1000) if isinstance(entry, dict) else ""
-            if path and path not in paths:
+            if path and path not in paths and not copilot_own_file(path, own_folder):
                 paths.append(path)
     return tuple(paths)
 
@@ -703,7 +746,7 @@ class _Chat:
 
     @property
     def safe(self) -> bool:
-        return self.mode == AGENT_MODE and self.allow_all == "off"
+        return self.mode in SAFE_MODES and self.allow_all == "off"
 
     def apply(self, settings: dict) -> None:
         self.mode, self.allow_all = settings["mode"], settings["allow_all"]
@@ -838,12 +881,14 @@ class CopilotChatRuntime:
 
     # -- opening chats -------------------------------------------------------
 
-    def create(self, cwd: str, model: str = "") -> str:
+    def create(self, cwd: str, model: str = "", mode: str = "") -> str:
         """A new Copilot chat in ``cwd``; its native id. No prompt is sent.
         Starts Copilot if needed and waits up to a minute for it, so call it
         off the UI thread. ``model``: switch to it before anything is sent,
         if Copilot offers it; if it can't, the chat says so and keeps
-        Copilot's own."""
+        Copilot's own. ``mode``: agent or plan mode, switched to before
+        anything is sent if Copilot starts the chat in another; unless Copilot
+        confirms it, nothing is sent (PLAN_NOT_SET, AGENT_NOT_SET)."""
         _check_folder(cwd)
         refusal = self._hooks_refusal(cwd)
         if refusal:
@@ -865,6 +910,10 @@ class CopilotChatRuntime:
         with self._lock:
             self._chats[native_id] = chat
             self._owned.add(native_id)
+            if mode and mode != chat.mode:
+                # Blocked from the start, not after the switch: until Copilot
+                # confirms the mode, nothing may be sent in the other (#424).
+                chat.problem = PLAN_NOT_SET if mode == PLAN_MODE else AGENT_NOT_SET
         if model and model != chat.model:
             try:
                 self.set_model(native_id, model)
@@ -872,8 +921,60 @@ class CopilotChatRuntime:
                 with self._lock:
                     chat.notice = ("Copilot couldn't switch this chat to the model chosen, so it "
                                    "uses Copilot's own. File, Change Model chooses another.")
+        if mode and mode != chat.mode:
+            # Only the mode Copilot reports counts: the problem set above is
+            # cleared when a reply taken in names the mode asked for. A
+            # refusal, or a reply naming another mode or none, leaves it. A
+            # reply dropped as stale leaves it unless the chat is in the mode
+            # asked for by then all the same, so nothing is sent in another
+            # mode until it's switched (#424).
+            try:
+                self.set_mode(native_id, mode)
+            except CopilotChatError:
+                pass
         self._notify(chat)
         return native_id
+
+    def set_mode(self, native_id: str, mode: str) -> str:
+        """Switch a chat between agent and plan mode (Copilot's Shift+Tab).
+        Only those two: autopilot is never asked for. The mode Copilot then
+        reports for the chat, which may not be the one asked for: only a
+        reply that names it counts. A switch to it clears a mode problem
+        (PLAN_NOT_SET, MODE_NOT_KEPT). Waits for Copilot, so call it off the
+        UI thread."""
+        if mode not in SAFE_MODES:
+            raise CopilotChatError("The Chat Place only switches Copilot between agent and plan "
+                                   "mode.")
+        self._set_option(native_id, "mode", mode, "Copilot couldn't switch modes.")
+        with self._lock:
+            chat = self._chats.get(native_id)
+            if chat is None:
+                return ""
+            # _set_option clears a mode problem as it takes in the reply that
+            # confirms the mode; this only catches a reply it dropped as
+            # stale while the chat is in that mode all the same.
+            cleared = chat.mode == mode and chat.problem in MODE_PROBLEMS
+            if cleared:
+                chat.problem = ""
+            recorded = chat.mode
+        if cleared:
+            self._notify(chat)
+        return recorded
+
+    def add_notice(self, native_id: str, text: str) -> None:
+        """Give a chat a notice from outside the runtime (the provider's
+        saved modes, #424); the window says it as it says the runtime's."""
+        with self._lock:
+            chat = self._chats.get(native_id)
+            if chat is None:
+                return
+            # Added to what the chat says already (a model Copilot refused,
+            # say), never in place of it.
+            if chat.notice and text not in chat.notice:
+                chat.notice = f"{chat.notice} {text}"
+            elif not chat.notice:
+                chat.notice = text
+        self._notify(chat)
 
     def adopt(self, native_id: str) -> None:
         """Let prepare() reopen a chat The Chat Place started in an earlier
@@ -947,6 +1048,11 @@ class CopilotChatRuntime:
             # it leaves out is left as it was, never read as safe or unsafe.
             if "mode" in present:
                 chat.mode = settings["mode"]
+                if config_id == "mode" and chat.mode == value and chat.problem in MODE_PROBLEMS:
+                    # Confirmed: cleared before the update below goes out,
+                    # so the window never hears the mode asked for together
+                    # with the problem it clears (#424).
+                    chat.problem = ""
             if "allow_all" in present:
                 chat.allow_all = settings["allow_all"]
             if _models(options) is not None:
@@ -968,10 +1074,12 @@ class CopilotChatRuntime:
             self.stop(native_id, hold=True)
         self._notify(chat)
 
-    def prepare(self, native_id: str, cwd: str) -> None:
+    def prepare(self, native_id: str, cwd: str, mode: str = "") -> None:
         """Open a saved chat on the running Copilot so it can be sent to.
         Copilot replays its history while it loads; that is history, not new
-        replies.
+        replies. ``mode``: the mode last chosen for it here; if Copilot
+        reopens it in another, it's switched back, and if that fails nothing
+        is sent (MODE_NOT_KEPT).
 
         Only a chat The Chat Place started: Copilot records which client
         made a session, and one made in a terminal or another app stays
@@ -1043,14 +1151,43 @@ class CopilotChatRuntime:
             # A reopen supersedes every switch asked for before it.
             chat.settings_applied = chat.settings_gen
             self._seen_models(chat)
-            if chat.problem and chat.problem != HOOK_ANSWERED and not self._halted and kinds and all(k == "copilot" for k in kinds):
+            if (chat.problem and chat.problem != HOOK_ANSWERED
+                    and chat.problem not in MODE_PROBLEMS and not self._halted
+                    and kinds and all(k == "copilot" for k in kinds)):
                 chat.problem = ""  # the late record has arrived, and it's Copilot's
+            if mode in SAFE_MODES:
+                # A problem it has already (PLAN_NOT_SET, say) blocks it as
+                # well, and is kept: it says more.
+                if chat.mode != mode and not chat.problem:
+                    # Blocked now, under the lock that ends loading: while
+                    # _keep_mode waits on Copilot to switch it back, ready()
+                    # and send() must not see a chat in the wrong mode (#424).
+                    chat.problem = MODE_NOT_KEPT
+                elif chat.mode == mode and chat.problem in MODE_PROBLEMS:
+                    chat.problem = ""  # Copilot reopened it in the mode chosen
             late_elsewhere = any(k != "copilot" for k in kinds)
         if late_elsewhere:
             self._halt()
         if in_use:
             raise CopilotChatError(IN_USE)
+        if mode in SAFE_MODES:
+            self._keep_mode(chat, mode)
         self._notify(chat)
+
+    def _keep_mode(self, chat: _Chat, mode: str) -> None:
+        """Put a chat opened again back in the mode chosen for it: Copilot's
+        session/load reports a mode of its own, which needn't be the one the
+        chat had (unverified against real Copilot, #424). prepare() has
+        already blocked it (MODE_NOT_KEPT); set_mode clears that only if
+        Copilot confirms the mode, so nothing is sent until the chat is in it
+        or the mode is chosen again."""
+        with self._lock:
+            if chat.mode == mode:
+                return
+        try:
+            self.set_mode(chat.native_id, mode)
+        except CopilotChatError:
+            pass
 
     # -- sending -------------------------------------------------------------
 
@@ -1069,7 +1206,7 @@ class CopilotChatRuntime:
                     "here. Open it again to carry on.")
         if not chat.safe:
             return ("Copilot isn't set to ask before it acts in this chat "
-                    "(agent mode, with allow-all off), so nothing was sent.")
+                    "(agent or plan mode, with allow-all off), so nothing was sent.")
         return ""
 
     def set_preamble(self, native_id: str, text: str) -> None:
@@ -1274,7 +1411,7 @@ class CopilotChatRuntime:
                          # Ours is one of them, unless it never reached Copilot.
                          or _prompts(events) > (0 if not_sent else 1))
             hook_ran = _hook_ran(events)
-            changed = _edited_paths(events)
+            changed = _edited_paths(events, events_path.parent)
             hooks = self._hooks_refusal(chat.cwd)
             # Before a queued message goes: is another Copilot holding the chat
             # now? And a log shorter than the last check means it was replaced.
@@ -1611,6 +1748,7 @@ class CopilotChatRuntime:
             problem=chat.problem, started_at=chat.started_at, activity=chat.activity,
             notice=chat.notice, context_used=chat.context[0], context_size=chat.context[1],
             context_epoch=chat.context_epoch, checking=chat.busy and chat.answered,
+            mode=chat.mode,
             changed_paths=chat.changed_paths, model=chat.model, models=chat.models,
             token_usage=(ContextReport(min(1.0, chat.context[0] / chat.context[1]), chat.context[1])
                          if chat.context[1] > 0 and chat.context[0] >= 0 else None))

@@ -44,6 +44,16 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
               ACP's -32000 "Authentication required", as on a clean machine (#391)
   expired     chats open, but each prompt is logged, then fails a second later
               with -32000, as when a sign-in stops working mid-chat
+  toplan      mid-turn, reports (current_mode_update) a switch to plan mode
+  modeflip    as hang, and session/set_config_option's reply for the mode says
+              allow_all is on
+  nomode      session/set_config_option for the mode always fails
+  keepagent   session/set_config_option for the mode says yes, but its reply
+              still names agent mode
+  modeless    session/set_config_option for the mode says yes, but its reply
+              leaves the mode out
+  forgetmode  session/load reopens a chat in agent mode, whatever it was in
+  startplan   chats start in plan mode, as if that were Copilot's own default
   nomodel     session/set_config_option always fails, as for a model the plan
               no longer allows
   modelflip   as hang, and session/set_config_option's reply says allow_all is
@@ -72,6 +82,9 @@ SESSIONS = os.environ.get("FAKE_COPILOT_SESSIONS", "")
 LOG = os.environ.get("FAKE_COPILOT_LOG", "")
 AGENT = "https://agentclientprotocol.com/protocol/session-modes#agent"
 AUTOPILOT = "https://agentclientprotocol.com/protocol/session-modes#autopilot"
+PLAN = "https://agentclientprotocol.com/protocol/session-modes#plan"
+#: Each session's mode, as session/set_config_option left it.
+mode_of = {}
 write_lock = threading.Lock()
 answers = {}
 #: Sessions open in this process: like Copilot 1.0.103, it won't load one
@@ -111,7 +124,7 @@ model_of = {}
 
 
 def options(session=None):
-    mode = AUTOPILOT if MODE == "unsafe" else AGENT
+    mode = AUTOPILOT if MODE == "unsafe" else mode_of.get(session, PLAN if MODE == "startplan" else AGENT)
     allow = "on" if MODE == "allowall" else "off"
     return [{"type": "select", "id": "mode", "currentValue": mode},
             {"type": "select", "id": "model", "currentValue": model_of.get(session, "auto"),
@@ -221,7 +234,7 @@ def prompt(message_id, session, text=""):
         return
     if MODE == "slow":
         time.sleep(1.5)
-    if MODE in ("flip", "curmode"):
+    if MODE in ("flip", "curmode", "toplan"):
         # Long enough for a second message to be queued first, even on the
         # macOS CI runner, where send() reads hooks and the log before queuing.
         time.sleep(1.0)
@@ -231,6 +244,8 @@ def prompt(message_id, session, text=""):
             {"type": "select", "id": "allow_all", "currentValue": "off"}]})
     if MODE == "curmode":
         update(session, {"sessionUpdate": "current_mode_update", "currentModeId": AUTOPILOT})
+    if MODE == "toplan":
+        update(session, {"sessionUpdate": "current_mode_update", "currentModeId": PLAN})
     if MODE == "flipback":
         time.sleep(1.0)  # long enough for a second message to be queued, even on macOS CI
         update(session, {"sessionUpdate": "config_option_update", "configOptions": [
@@ -241,7 +256,7 @@ def prompt(message_id, session, text=""):
             {"type": "select", "id": "mode", "currentValue": AGENT},
             {"type": "select", "id": "allow_all", "currentValue": "off"}]})
         time.sleep(2.0)  # long enough for a third message to be queued
-    if MODE in ("hang", "strict", "modelflip") or (MODE == "byokhang" and turns[0] == 1):
+    if MODE in ("hang", "strict", "modelflip", "modeflip") or (MODE == "byokhang" and turns[0] == 1):
         update(session, {"sessionUpdate": "agent_message_chunk",
                          "content": {"type": "text", "text": "Working"}})
         cancelled.wait(30)
@@ -342,12 +357,13 @@ def main():
                              "content": {"type": "text", "text": "Replayed history"}})
             update(session, {"sessionUpdate": "agent_message_chunk",
                              "content": {"type": "text", "text": "Replayed reply"}})
+            if MODE == "forgetmode":
+                mode_of.pop(session, None)  # reopened in agent mode
             send({"jsonrpc": "2.0", "id": message_id,
                   "result": {"configOptions": options(session)}})
-        elif method == "session/set_config_option":
+        elif method == "session/set_config_option" and params.get("configId") == "model":
             session, value = params.get("sessionId"), params.get("value")
-            if (MODE == "nomodel" or params.get("configId") != "model"
-                    or value not in {m["value"] for m in MODELS}):
+            if MODE == "nomodel" or value not in {m["value"] for m in MODELS}:
                 send({"jsonrpc": "2.0", "id": message_id,
                       "error": {"code": -32603, "message": "no such model"}})
                 continue
@@ -361,6 +377,21 @@ def main():
             prompting.set()  # here, not in the thread: a cancel read next sees it
             threading.Thread(target=prompt, args=(message_id, params.get("sessionId"), text),
                              daemon=True).start()
+        elif method == "session/set_config_option":
+            session, value = params.get("sessionId"), params.get("value")
+            if (MODE == "nomode" or params.get("configId") != "mode"
+                    or value not in (AGENT, PLAN, AUTOPILOT)):
+                send({"jsonrpc": "2.0", "id": message_id,
+                      "error": {"code": -32603, "message": "no"}})
+                continue
+            if MODE != "keepagent":
+                mode_of[session] = value
+            reply = options(session)
+            if MODE == "modeflip":
+                reply[-1] = {"type": "select", "id": "allow_all", "currentValue": "on"}
+            if MODE == "modeless":
+                reply = [option for option in reply if option["id"] != "mode"]
+            send({"jsonrpc": "2.0", "id": message_id, "result": {"configOptions": reply}})
         elif method == "session/close":
             open_sessions.discard(params.get("sessionId"))
             send({"jsonrpc": "2.0", "id": message_id, "result": {}})

@@ -202,8 +202,11 @@ def _tool_output(data: dict) -> str:
 class CopilotParser:
     """Incremental: ``feed`` lines as events.jsonl grows."""
 
-    def __init__(self, carried: bool = False) -> None:
+    def __init__(self, carried: bool = False, own_folder: Optional[Path] = None) -> None:
         self.transcript = Transcript()
+        #: The chat's session folder, whose files (plan mode's plan.md) are
+        #: Copilot's own, never changed files (#424).
+        self._own_folder = own_folder
         #: Only for a chat The Chat Place made (#423): its first message may
         #: carry Continue Here's history, to be shown as its own row. Any
         #: other message, or any other chat's, is shown as it is, so text
@@ -334,8 +337,10 @@ class CopilotParser:
         # ---/+++ lines and so no section: it's listed with no lines changed.
         sections = parse_git_diff(_text(result.get("detailedContent")))
         by_path = {_path_key(path): hunks for path, hunks in sections}
+        from .copilot_runtime import copilot_own_file  # it imports this module
         for entry in entries:
-            if not isinstance(entry, dict) or not _text(entry.get("path")):
+            if (not isinstance(entry, dict) or not _text(entry.get("path"))
+                    or copilot_own_file(entry["path"], self._own_folder)):
                 continue
             path, kind = entry["path"], _text(entry.get("kind"))
             hunks = by_path.get(_path_key(path))
@@ -369,9 +374,11 @@ def _trimmed(hunk: Hunk, mark: str) -> Hunk:
     return Hunk(hunk.old_start, hunk.new_start, lines)
 
 
-def parse_events(lines: Iterable[str], carried: bool = False) -> Transcript:
-    """``carried``: see CopilotParser; only with the log read from its start."""
-    parser = CopilotParser(carried)
+def parse_events(lines: Iterable[str], carried: bool = False,
+                 own_folder: Optional[Path] = None) -> Transcript:
+    """``carried``: see CopilotParser; only with the log read from its start.
+    ``own_folder``: the chat's session folder (#424)."""
+    parser = CopilotParser(carried, own_folder)
     parser.feed(lines)
     return parser.transcript
 
@@ -495,7 +502,7 @@ class CopilotReader:
     def __init__(self, path: Path, carried: bool = False):
         self.path = Path(path)
         self.carried = carried
-        self._parser = CopilotParser(carried)
+        self._parser = CopilotParser(carried, self.path.parent)
         self._offset = 0
         self._identity = None
 
@@ -510,7 +517,7 @@ class CopilotReader:
         if stat.st_size < self._offset or (identity and self._identity
                                            and identity != self._identity):
             # Rewritten or replaced (rewind, say): start again.
-            self._parser, self._offset = CopilotParser(self.carried), 0
+            self._parser, self._offset = CopilotParser(self.carried, self.path.parent), 0
         self._identity = identity
         if stat.st_size == self._offset:
             return False
@@ -713,7 +720,8 @@ class CopilotProvider:
                     # Continue Here copy can't be told; the column shows
                     # what Copilot recorded rather than disagree with the
                     # open chat.
-                    transcript = parse_events(_read_tail(self._events_path(info.cli_session_id)))
+                    events = self._events_path(info.cli_session_id)
+                    transcript = parse_events(_read_tail(events), own_folder=events.parent)
                 except OSError:
                     info.last_message = ""
                     continue
@@ -750,12 +758,14 @@ class CopilotProvider:
         """Offered in New Session only once Copilot CLI is installed."""
         return self.runtime is not None and platform_paths.find_copilot() is not None
 
-    def fork_owned(self, source: SessionInfo, title: str, model: str = "", **_options):
+    def fork_owned(self, source: SessionInfo, title: str, model: str = "",
+                   copilot_mode: str = "", **_options):
         """Continue Here (#352): a new chat of this app's own, in the same
         folder, with the earlier conversation ahead of its first message.
         Copilot has no way to copy a chat over ACP (session/fork isn't
         offered), and the original is never written to. Waits for Copilot,
-        so call it off the UI thread."""
+        so call it off the UI thread. ``copilot_mode``: as for create_owned;
+        the copy is held unsent until Copilot confirms it (#424)."""
         self._check(source)
         try:
             reader = self.open_reader(source)
@@ -769,7 +779,7 @@ class CopilotProvider:
             from .copilot_runtime import CopilotChatError
             raise CopilotChatError("This Copilot chat's conversation isn't on disk any more, "
                                    "so there's nothing to continue from.")
-        record = self.create_owned(source.cwd, title, model)
+        record = self.create_owned(source.cwd, title, model, copilot_mode)
         # Marks it as a copy: the heading and Properties say what it
         # continues, and only a copy's first message is split (#423).
         record.forked_from = " ".join((source.title or "").split()) or "a Copilot chat"
@@ -777,15 +787,35 @@ class CopilotProvider:
                                   continue_text(reader.transcript.messages, source.title))
         return record
 
-    def create_owned(self, cwd: str, title: str, model: str = ""):
+    def create_owned(self, cwd: str, title: str, model: str = "", copilot_mode: str = ""):
         """A new chat, as the window's record of it. Waits for Copilot to
         start, so call it off the UI thread. ``model``: one model_choices()
-        listed; the chat switches to it before anything is sent."""
+        listed; the chat switches to it before anything is sent.
+        ``copilot_mode``: plan mode to start in it (copilot_runtime.PLAN_MODE);
+        agent mode otherwise. A mode chosen is kept, so the chat is put back
+        in it when it's opened again (#424)."""
         from ..own_store import OwnSession
-        native_id = self.runtime.create(cwd, model=model or "")
+        native_id = self.runtime.create(cwd, model=model or "", mode=copilot_mode or "")
         self._remember_models()
+        if copilot_mode:
+            self._say_mode_problem(native_id, _remember_mode(native_id, copilot_mode))
         return OwnSession(native_id, title, cwd, provider=PROVIDER_ID, started=True,
                           created_ms=int(time.time() * 1000))
+
+    def set_mode_owned(self, record, mode: str) -> str:
+        """Change Permission Mode: agent or plan. The mode Copilot reports
+        afterwards, which is kept for the next time the chat is opened only
+        if it is the one asked for."""
+        recorded = self.runtime.set_mode(record.cli_session_id, mode)
+        if recorded == mode:
+            self._say_mode_problem(record.cli_session_id,
+                                   _remember_mode(record.cli_session_id, mode))
+        return recorded
+
+    def _say_mode_problem(self, native_id: str, problem: str) -> None:
+        """A problem with the saved modes, said as the chat's notice."""
+        if problem:
+            self.runtime.add_notice(native_id, problem)
 
     def owned_ready(self, record) -> bool:
         return self.runtime is not None and self.runtime.ready(record.cli_session_id)
@@ -794,7 +824,9 @@ class CopilotProvider:
         """Open a chat from the window's own record of it (the only place
         the runtime is told a chat is the app's), in the folder recorded."""
         self.runtime.adopt(record.cli_session_id)
-        self.runtime.prepare(record.cli_session_id, record.cwd)
+        mode, problem = chosen_mode(record.cli_session_id)
+        self.runtime.prepare(record.cli_session_id, record.cwd, mode=mode)
+        self._say_mode_problem(record.cli_session_id, problem)
         self._remember_models()
 
     def set_model_owned(self, record, model: str) -> None:
@@ -898,7 +930,8 @@ class CopilotProvider:
     def last_reply(self, session: SessionInfo) -> str:
         self._check(session)
         try:
-            transcript = parse_events(_read_tail(self._events_path(session.cli_session_id)))
+            events = self._events_path(session.cli_session_id)
+            transcript = parse_events(_read_tail(events), own_folder=events.parent)
         except OSError:
             return ""
         reply = transcript.last_reply()
@@ -908,6 +941,101 @@ class CopilotProvider:
 def _models_file() -> Path:
     """The models Copilot last offered, in The Chat Place's own folder."""
     return platform_paths.app_data_dir() / "copilot-models.json"
+
+
+def _modes_file() -> Path:
+    """The mode chosen for each Copilot chat started here (#424). Its own
+    file, not the chat's record: releases before 0.3.3 drop a Copilot record
+    with any provider options, and would then save the list without it."""
+    return platform_paths.app_data_dir() / "copilot-modes.json"
+
+
+#: create_owned, set_mode_owned and prepare_owned run on worker threads.
+_modes_lock = threading.Lock()
+
+#: Said for a chat when the saved modes file couldn't be read as JSON: it is
+#: moved aside, not overwritten, so nothing in it is lost (#424).
+MODES_SET_ASIDE = ("The Copilot modes The Chat Place saved couldn't be read, so the file was "
+                   "kept beside it as copilot-modes.json.bad-<date and time>. A chat whose mode was saved there opens "
+                   "in the mode Copilot reports; Change Permission Mode chooses it again.")
+#: Said when the file is there but can't be opened (locked, say).
+MODES_UNREADABLE = ("The Copilot modes The Chat Place saved couldn't be opened, so this chat "
+                    "opens in the mode Copilot reports.")
+#: Said when a chat's mode couldn't be saved.
+MODE_NOT_SAVED = ("The Chat Place couldn't save this chat's Copilot mode, so if Copilot "
+                  "reopens it in another mode it won't be switched back.")
+
+
+def _read_modes() -> tuple:
+    """(native id -> mode, what to say or ""). Call with _modes_lock held.
+    A missing file is no modes. One that isn't the JSON written here is
+    moved aside to copilot-modes.json.bad-<when>, never just overwritten,
+    and never over an earlier one (a file that isn't UTF-8 too); one that
+    can't be opened is left alone and reported, so it isn't overwritten
+    either (None for the modes). Entries with an id or mode that isn't one
+    of the app's are left out."""
+    from .copilot_runtime import SAFE_MODES
+    path = _modes_file()
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return {}, ""
+    except OSError:
+        return None, MODES_UNREADABLE
+    try:
+        # Decoded here, so a file that isn't UTF-8 is set aside as one that
+        # isn't JSON is, rather than taken for one that can't be opened and
+        # never saved to again.
+        raw = json.loads(data.decode("utf-8"))
+        modes = raw.get("modes") if isinstance(raw, dict) else None
+        if not isinstance(modes, dict):
+            raise ValueError("no modes")
+    except ValueError:
+        try:
+            os.replace(path, _set_aside_path(path))
+        except OSError:
+            return None, MODES_UNREADABLE  # left as it is, and not written over
+        return {}, MODES_SET_ASIDE
+    return {native_id: mode for native_id, mode in modes.items()
+            if isinstance(native_id, str) and platform_paths.is_safe_id(native_id)
+            and mode in SAFE_MODES}, ""
+
+
+def _set_aside_path(path: Path) -> Path:
+    """Where a damaged modes file goes: a new name each time, so an
+    earlier one set aside is never written over (as prompts.py does)."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup = path.with_name(f"{path.name}.bad-{stamp}")
+    n = 2
+    while backup.exists():  # two in one second
+        backup = path.with_name(f"{path.name}.bad-{stamp}-{n}")
+        n += 1
+    return backup
+
+
+def chosen_mode(native_id: str) -> tuple:
+    """(the mode last chosen here for a chat, copilot_runtime.AGENT_MODE or
+    PLAN_MODE, or "" if none was; what to say about the saved modes, or "")."""
+    with _modes_lock:
+        modes, problem = _read_modes()
+        return (modes or {}).get(native_id, ""), problem
+
+
+def _remember_mode(native_id: str, mode: str) -> str:
+    """Save a chat's mode; what to say if it couldn't be, or ""."""
+    from ..provider_storage import atomic_write_json
+    with _modes_lock:
+        modes, problem = _read_modes()
+        if modes is None:
+            return MODE_NOT_SAVED
+        modes[native_id] = mode
+        try:
+            atomic_write_json(_modes_file(), {"version": 1, "modes": modes})
+        except OSError:
+            # Unsaved, the chat opens next time in whatever mode Copilot
+            # reports; it's never assumed to be in plan mode.
+            return MODE_NOT_SAVED
+        return problem
 
 
 def premium_requests(path: Path) -> Optional[float]:

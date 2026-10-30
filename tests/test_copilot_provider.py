@@ -606,7 +606,7 @@ def test_continue_here_makes_a_new_chat_with_the_history_ahead(tmp_path, monkeyp
                   cwd=str(tmp_path))
     made, preambles = [], {}
     runtime = SimpleNamespace(
-        create=lambda cwd, model="": made.append((cwd, model)) or "new-id",
+        create=lambda cwd, model="", mode="": made.append((cwd, model)) or "new-id",
         models=lambda: (),
         set_preamble=lambda native, text: preambles.__setitem__(native, text))
     provider = CopilotProvider(tmp_path, runtime=runtime)
@@ -620,6 +620,30 @@ def test_continue_here_makes_a_new_chat_with_the_history_ahead(tmp_path, monkeyp
     assert "You: Build it\n\nCopilot: Built" in preambles["new-id"]
     own = SessionInfo("own", f"copilot:{ONE}", "Mine", str(tmp_path), ONE, provider="copilot")
     assert not provider.capabilities(own).fork  # one started here is replied to
+
+
+def test_continue_here_asks_for_the_mode_chosen_before_the_history_is_set(tmp_path, monkeypatch):
+    """#424 with #423: a copy can start in plan mode. The mode goes to the
+    runtime's create, which blocks the chat until Copilot confirms it, and
+    is kept for the next time the copy is opened."""
+    from types import SimpleNamespace
+    from thechatplace.providers.copilot import chosen_mode
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path / "data")
+    (tmp_path / "data").mkdir()
+    write_session(tmp_path, events=answered_turn(question="Build it", answer="Built"),
+                  cwd=str(tmp_path))
+    calls = []
+    runtime = SimpleNamespace(
+        create=lambda cwd, model="", mode="": calls.append(("create", mode)) or "new-id",
+        models=lambda: (), add_notice=lambda native, text: calls.append(("notice", text)),
+        set_preamble=lambda native, text: calls.append(("preamble", native)))
+    provider = CopilotProvider(tmp_path, runtime=runtime)
+    source = SessionInfo("terminal", f"copilot:{ONE}", "Build the thing", str(tmp_path), ONE,
+                         provider="copilot")
+    provider.fork_owned(source, "Build the thing (continued)", copilot_mode=PLAN_MODE)
+    assert calls == [("create", PLAN_MODE), ("preamble", "new-id")]
+    assert chosen_mode("new-id")[0] == PLAN_MODE
 
 
 def test_continue_text_keeps_the_end_of_one_huge_message_and_defuses_its_own_lines():

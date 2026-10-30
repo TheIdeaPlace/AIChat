@@ -694,7 +694,13 @@ whether the chat was started here:</p>
 <td>Change Model only</td>
 </tr>
 <tr>
-<td>Change Permission Mode and Chat Permissions</td>
+<td>Change Permission Mode</td>
+<td>yes</td>
+<td>yes</td>
+<td>agent or plan mode</td>
+</tr>
+<tr>
+<td>Chat Permissions</td>
 <td>yes</td>
 <td>yes</td>
 <td>no</td>
@@ -894,6 +900,17 @@ show in full can only be denied: ask Copilot to do it in smaller steps.</p>
 <li>with a message that starts with <code>/</code>, because some of Copilot's commands turn off its
   questions.</li>
 </ul>
+<p><strong>Plan mode.</strong> A Copilot chat started here is in Copilot's agent mode or its plan mode. In plan
+mode Copilot works out a plan and doesn't edit your files (it keeps the plan in its own session
+folder); it still asks before anything that needs your permission. Choose the mode in New Session or Continue Here (Permission mode),
+or switch a chat with <strong>Change Permission Mode</strong> (Ctrl+Shift+O), as Shift+Tab does in Copilot
+CLI. The chat's heading ends "plan mode" while it's in plan mode, and if Copilot switches modes
+by itself you hear it. If Copilot can't start a new chat in plan mode, or reopens a chat in
+another mode than the one you chose and won't switch it back, nothing is sent until you choose a
+mode with Change Permission Mode; either choice, the one it's in now too, then lets it send. A
+chat started for an agent conversation starts in agent mode. When Copilot says to switch out of
+plan mode to make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
+it asking, is never offered, and a chat Copilot puts in it isn't sent to.</p>
 <p>A Copilot chat started in Copilot CLI or another app can be carried on here with
 <strong>Continue Here</strong> (Ctrl+Shift+N). Copilot can't copy a chat, so the copy is a new Copilot chat of The Chat
 Place's own in the same folder, and your first message goes with the conversation so far: your
@@ -903,8 +920,8 @@ request. If that message doesn't go, the history waits for your next one, but on
 Place stays open: the chat says so. A first message too long to go with the history is
 refused and kept, so you can shorten it. In the copy's messages the history is one row,
 "Earlier conversation", just before your first message; Enter reads it in full. Model
-offers the same choices as in New Session. The original chat isn't changed.</p>
-<p>Change Permission Mode and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+and Permission mode offer the same choices as in New Session. The original chat isn't changed.</p>
+<p>Chat Permissions isn't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.</p>
 <h2 id="starting-a-chat-and-replying">Starting a chat and replying</h2>
 <h3>A new chat</h3>

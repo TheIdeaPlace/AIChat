@@ -354,14 +354,14 @@
     23
    ],
    "best": [
-    288,
+    385,
     23
    ],
    "depth": 0,
    "parent": -1,
-   "enabled": false,
+   "enabled": true,
    "problems": [],
-   "value": "Asks before running commands or changing files"
+   "value": "Agent: asks before running commands or changing files"
   },
   {
    "class": "StaticText",
@@ -390,17 +390,17 @@
     12,
     309,
     644,
-    87
+    117
    ],
    "best": [
     127,
-    87
+    117
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Copilot uses your GitHub Copilot sign-in, and each message uses requests from your Copilot plan. Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs; Copilot's own choice is first. File, Change Model changes it later. Effort is Copilot's own. Copilot asks before it runs a command or changes a file: each request appears in Answer, where"
+   "value": "Copilot uses your GitHub Copilot sign-in, and each message uses requests from your Copilot plan. Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs; Copilot's own choice is first. File, Change Model changes it later. Effort is Copilot's own. Permission mode chooses agent mode, which can change your files, or plan mode, which plans fir"
   },
   {
    "class": "StaticText",
@@ -408,7 +408,7 @@
    "label": "First &message:",
    "rect": [
     10,
-    404,
+    434,
     75,
     16
    ],
@@ -427,9 +427,9 @@
    "label": "",
    "rect": [
     12,
-    432,
+    462,
     644,
-    102
+    72
    ],
    "best": [
     127,

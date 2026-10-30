@@ -103,12 +103,33 @@ def _end_modal(dialog: wx.Dialog, code: int) -> None:
 WORK_IN_FOLDER, WORK_IN_WORKTREE = 0, 1
 
 
+def _copilot_session_modes():
+    from ..providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+    return ((AGENT_MODE, "Agent: asks before running commands or changing files"),
+            (PLAN_MODE, "Plan: plans first and doesn't edit your files; asks before anything else"))
+
+
+#: The modes a Copilot chat can be in here (New Session, Change Permission
+#: Mode): Copilot's agent and plan modes, both of which ask before acting.
+#: Its autopilot mode, which doesn't, is never offered.
+COPILOT_SESSION_MODES = _copilot_session_modes()
+
+
+def copilot_mode_name(mode: str) -> str:
+    """A Copilot mode in words: "agent mode", "plan mode" or "another mode"."""
+    from ..providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+    return {AGENT_MODE: "agent mode", PLAN_MODE: "plan mode"}.get(mode, "another mode")
+
+
 #: What New Session says about a Copilot chat (#352).
 COPILOT_NOTE = ("Copilot uses your GitHub Copilot sign-in, and each message uses requests from "
                 "your Copilot plan. Model lists the models Copilot offered your last Copilot "
                 "chat here, each with the premium requests a message costs; Copilot's own "
                 "choice is first. File, Change Model changes it later. Effort is Copilot's "
-                "own. Copilot asks before it runs a command or changes a file: "
+                "own. Permission mode chooses agent mode, which can change your files, or "
+                "plan mode, which plans first and doesn't edit them; File, Change Permission "
+                "Mode switches it later. In both, Copilot asks before it runs a command or "
+                "changes a file: "
                 "each request appears in Answer, where you can allow it once or deny it. "
                 "The Chat Place won't send to Copilot in a folder whose Copilot hooks could act "
                 "without asking you.")
@@ -137,7 +158,8 @@ class NewSessionDialog(wx.Dialog):
     def __init__(self, parent, default_folder: str, continue_from: str = "",
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
                  remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
-                 title_text: str = "", message: str = "", copilot_models=()):
+                 title_text: str = "", message: str = "", copilot_models=(),
+                 copilot_plan: bool = True):
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
@@ -168,6 +190,10 @@ class NewSessionDialog(wx.Dialog):
         self._rule_count = None
         self._rules_error = ""
         self._codex_models = ()
+        self._copilot_mode_choice = 0
+        #: The Copilot modes offered: agent only for a chat made to join an
+        #: agent conversation (#424).
+        self._copilot_modes = COPILOT_SESSION_MODES if copilot_plan else COPILOT_SESSION_MODES[:1]
         #: (value, label) of each model Copilot last offered (#352).
         self._copilot_models = tuple(copilot_models)
         self._copilot_choice = 0
@@ -609,6 +635,14 @@ class NewSessionDialog(wx.Dialog):
                      if 0 <= index < len(self._copilot_models) else "")
         return folder, title, mode, message, model
 
+    def copilot_mode(self) -> str:
+        """Copilot's mode to start in, agent or plan, asked for even when it's
+        agent: Copilot's own default needn't be (#424). "" for another provider."""
+        if self.provider() != "copilot":
+            return ""
+        index = max(self.mode.GetSelection(), 0)
+        return self._copilot_modes[min(index, len(self._copilot_modes) - 1)][0]
+
     def codex_policy(self):
         from .permission_hosts import CODEX_REVIEW_MODES
         sandbox, approval, reviewer = CODEX_REVIEW_MODES[max(0, self.mode.GetSelection())][0]
@@ -629,20 +663,22 @@ class NewSessionDialog(wx.Dialog):
         elif self._control_provider == "codex":
             self._codex_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
         elif self._control_provider == "copilot":
+            self._copilot_mode_choice = max(self.mode.GetSelection(), 0)
             self._copilot_choice = max(self.model.GetSelection(), 0)
         if provider == "copilot":
-            # The models Copilot last offered; effort is Copilot's own, and
-            # it always asks before acting (copilot_runtime). Shown, not
-            # hidden, so the dialog keeps its shape and says so.
-            for control, label in ((self.effort_choice, "Copilot's own setting"),
-                                   (self.mode, "Asks before running commands or changing files")):
-                control.Set([label])
-                control.SetSelection(0)
-                control.Disable()
+            # The models Copilot last offered; effort is Copilot's own. Shown,
+            # not hidden, so the dialog keeps its shape and says so.
+            self.effort_choice.Set(["Copilot's own setting"])
+            self.effort_choice.SetSelection(0)
+            self.effort_choice.Disable()
             self.model.Set(["Copilot's configured model"]
                            + [label for _value, label in self._copilot_models])
             self.model.SetSelection(min(self._copilot_choice, len(self._copilot_models)))
             self.model.Enable(bool(self._copilot_models))
+            # Agent or plan mode; both ask before acting (copilot_runtime).
+            self.mode.Set([label for _value, label in self._copilot_modes])
+            self.mode.SetSelection(min(self._copilot_mode_choice, len(self._copilot_modes) - 1))
+            self.mode.Enable(len(self._copilot_modes) > 1)
             self.note.SetValue(COPILOT_NOTE)
             if self.continuing:
                 note = COPILOT_CONTINUE_NOTE
