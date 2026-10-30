@@ -1181,6 +1181,22 @@ def d_codex_mode(frame, env):
     return lambda: frame._modal(dialog)
 
 
+def d_copilot_change_mode(frame, env):
+    """File, Change Permission Mode for an owned Copilot chat in plan mode
+    (#424): agent or plan, the current one marked "(now)" and selected, as
+    main_frame._change_setting builds it. Plan's is the longer label."""
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    from thechatplace.ui.dialogs import (COPILOT_SESSION_MODES, copilot_mode_name,
+                                         single_choice_dialog)
+    title = "Plan the synthetic probe project's long refactor"
+    labels = [f"{label} (now)" if value == PLAN_MODE else label
+              for value, label in COPILOT_SESSION_MODES]
+    dialog = single_choice_dialog(frame, f"Mode for {title}, now {copilot_mode_name(PLAN_MODE)}:",
+                                  "Change Permission Mode", labels)
+    dialog.SetSelection(1)
+    return lambda: frame._modal(dialog)
+
+
 def d_codex_owned_properties(frame, env):
     from thechatplace.own_store import OwnSession
     from thechatplace.properties import session_properties
@@ -1690,6 +1706,8 @@ SURFACES = {
     "copilot-permission": ("dialog", d_copilot_permission, "Copilot asks to run a command, once"),
     "copilot-files": ("dialog", d_copilot_files, "Copilot asks to create a file, with its diff"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
+    "copilot-change-mode": ("dialog", d_copilot_change_mode,
+                            "Change Permission Mode for an owned Copilot chat in plan mode"),
     "properties-codex-owned": ("dialog", d_codex_owned_properties, "Verified owned Codex model and filesystem scope"),
     "codex-models": ("dialog", d_codex_models, "New Codex chat with advertised model and effort choices"),
     "codex-continue": ("dialog", d_codex_continue, "Continue a possibly active Codex chat with explicit runtime policy"),
@@ -1784,6 +1802,7 @@ DIALOG_CLASSES = {
     "copilot-files": "CodexPermissionDialog",
     "codex-models": "NewSessionDialog",
     "codex-change-mode": "SingleChoiceDialog",
+    "copilot-change-mode": "SingleChoiceDialog",
     "properties-codex-owned": "PropertiesDialog",
     "codex-continue": "NewSessionDialog",
     "github-repos": "GitHubRepoDialog",

@@ -1336,6 +1336,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "A Copilot Continue Here copy: the carried history as one row"
+  },
+  "copilot-change-mode": {
+   "kind": "dialog",
+   "png": "copilot-change-mode-light-100.png",
+   "json": "copilot-change-mode-light-100.json",
+   "title": "Change Permission Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    479,
+    189
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Permission Mode for an owned Copilot chat in plan mode"
   }
  },
  "seconds": 94.1

@@ -201,14 +201,14 @@
     23
    ],
    "best": [
-    288,
+    385,
     23
    ],
    "depth": 0,
    "parent": -1,
-   "enabled": false,
+   "enabled": true,
    "problems": [],
-   "value": "Asks before running commands or changing files"
+   "value": "Agent: asks before running commands or changing files"
   },
   {
    "class": "StaticText",
@@ -237,11 +237,11 @@
     12,
     185,
     644,
-    162
+    192
    ],
    "best": [
     127,
-    162
+    192
    ],
    "depth": 0,
    "parent": -1,
@@ -255,7 +255,7 @@
    "label": "First &message:",
    "rect": [
     10,
-    355,
+    385,
     75,
     16
    ],
@@ -274,9 +274,9 @@
    "label": "",
    "rect": [
     12,
-    383,
+    413,
     644,
-    151
+    121
    ],
    "best": [
     127,
