@@ -13011,7 +13011,6 @@ def test_a_chat_opened_before_its_runtime_was_ready_sends_once_it_is(frame, env,
         frame.on_send()  # with no event in between to clear the mark
         assert "This Copilot chat is still getting ready." not in env["feedback"]
         assert pump(lambda: _received_prompts(env)[-1:] == ["Again"], timeout=COPILOT_WAIT)
-        assert info.key not in frame._codex_preparing
     finally:
         runtime.close()
 

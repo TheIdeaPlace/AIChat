@@ -1535,18 +1535,19 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
     def _still_preparing(self, info) -> bool:
         """A chat opened before its runtime had it ready is marked as
-        getting ready, and the mark is cleared only when the chat is opened
-        again (the window's refresh does that). A message sent after the
-        runtime was ready but before then was refused with "still getting
-        ready" (#430). Asked again here, it clears as soon as the runtime
-        has the chat."""
+        getting ready until its preparation's done() clears the mark, which
+        comes through wx.CallAfter a moment after the runtime has the chat.
+        A message sent in that moment was refused with "still getting ready"
+        (#430). So the runtime is asked as well. The mark is only read here:
+        done() is also what sends a message forwarded while the chat got
+        ready, so it must still find the mark."""
         if info.key not in self._codex_preparing:
             return False
         record = self.store.get(info.cli_session_id, provider=info.provider)
-        if record is not None and self.sessions.owned_action("ready", record):
-            self._codex_preparing.pop(info.key, None)
-            return False
-        return True
+        try:
+            return record is None or not self.sessions.owned_action("ready", record)
+        except ValueError:  # the provider's gone (closing): not ready
+            return True
 
     def _can_edit(self, info):
         if info is None or not (info.is_own or info.provider == AGENTS):
