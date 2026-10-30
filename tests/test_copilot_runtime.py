@@ -1764,6 +1764,163 @@ def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypat
     runtime.stop(chat)
 
 
+# -- choosing the model -----------------------------------------------------------------
+
+
+OFFERED = (("auto", "Auto (1x)"), ("gpt-test", "GPT Test (1x)"), ("gpt-mini", "GPT Mini (0.33x)"))
+
+
+def test_a_new_chat_lists_the_models_copilot_offers(make, tmp_path):
+    """Auto, listed twice by Copilot, once; each with what a message costs."""
+    runtime, _ = make()
+    assert runtime.models() == ()
+    chat = runtime.create(str(tmp_path))
+    state = runtime.snapshot(chat)
+    assert state.model == "auto" and state.models == OFFERED
+    assert runtime.models() == OFFERED
+
+
+def test_changing_a_chats_model(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_model(chat, "gpt-mini")
+    assert runtime.snapshot(chat).model == "gpt-mini"
+    sent = [m for m in received(tmp_path) if m.get("method") == "session/set_config_option"]
+    assert sent[-1]["params"] == {"sessionId": chat, "configId": "model", "value": "gpt-mini"}
+    with pytest.raises(CopilotChatError, match="doesn't offer"):
+        runtime.set_model(chat, "not-offered")
+    assert runtime.ready(chat)  # still safe to send: mode and allow_all unchanged
+
+
+def test_a_model_copilot_refuses_is_said(make, tmp_path):
+    runtime, _ = make("nomodel")
+    chat = runtime.create(str(tmp_path))
+    with pytest.raises(CopilotChatError, match="couldn't switch"):
+        runtime.set_model(chat, "gpt-test")
+    assert runtime.snapshot(chat).model == "auto"
+
+
+def test_a_new_chat_starts_on_the_model_chosen(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path), model="gpt-test")
+    assert runtime.snapshot(chat).model == "gpt-test"
+    # Refused, the chat is still made, on Copilot's own, and says so.
+    runtime2, _ = make("nomodel")
+    other = runtime2.create(str(tmp_path), model="gpt-test")
+    state = runtime2.snapshot(other)
+    assert state.model == "auto" and "Change Model" in state.notice
+
+
+def test_odd_model_lists_are_made_safe():
+    from thechatplace.providers.copilot_runtime import _models
+    assert _models(None) is None and _models([{"id": "mode"}]) is None
+    found = _models([{"id": "model", "currentValue": "b", "options": [
+        "odd", {"value": ""}, {"value": "a\u202e", "name": "Flipped"},
+        {"value": "b", "name": "  Bee \n model "}, {"value": "c", "name": "\u200b"},
+        {"value": "d", "_meta": {"copilotUsage": 7}}]}])
+    assert found == ("b", (("b", "Bee model"), ("c", "c"), ("d", "d")))
+
+
+def test_a_model_change_that_stops_copilot_asking_stops_the_turn(make, tmp_path):
+    """Copilot's reply to a model change names its other settings too: one
+    saying it no longer asks before it acts counts, as a config_option_update
+    would, and stops the turn running."""
+    runtime, _ = make("modelflip")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    runtime.set_model(chat, "gpt-mini")
+    assert not runtime.ready(chat)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+    assert "stopped asking" in runtime.snapshot(chat).notice
+
+
+def test_a_model_reply_that_comes_after_the_chat_was_opened_again_is_ignored(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    real = connection.request
+
+    def reopened_meanwhile(method, params, *args, **kwargs):
+        result = real(method, params, *args, **kwargs)
+        if method == "session/set_config_option":
+            runtime._chats[chat].connection = object()  # as if opened on another Copilot
+        return result
+    connection.request = reopened_meanwhile
+    runtime.set_model(chat, "gpt-mini")
+    assert runtime._chats[chat].model == "auto"
+
+
+def test_a_models_cost_is_kept_whatever_its_name():
+    from thechatplace.providers.copilot_runtime import _models
+    found = _models([{"id": "model", "currentValue": "x", "options": [
+        {"value": "x", "name": "Model X (preview)"},
+        {"value": "x", "name": "Model X (preview)", "_meta": {"copilotUsage": "3x"}}]}])
+    assert found == ("x", (("x", "Model X (preview) (3x)"),))
+
+
+def test_grouped_model_options_are_read_as_one_list():
+    """ACP's SessionConfigSelectOptions may come in groups, each with its own
+    options: one level of those is read in place, in order."""
+    from thechatplace.providers.copilot_runtime import _models
+    found = _models([{"id": "model", "currentValue": "b", "options": [
+        {"value": "a", "name": "A"},
+        {"group": "fast", "name": "Fast", "options": [
+            {"value": "b", "name": "B", "_meta": {"copilotUsage": "0.33x"}},
+            {"value": "a", "name": "A", "_meta": {"copilotUsage": "1x"}}]},
+        {"group": "deep", "name": "Deeper", "options": [
+            {"group": "inner", "options": [{"value": "z", "name": "Too deep"}]},
+            {"value": "c", "name": "C"}]},
+        {"group": "odd", "options": "not a list"}]}])
+    assert found == ("b", (("a", "A (1x)"), ("b", "B (0.33x)"), ("c", "C")))
+
+
+def test_a_model_reply_older_than_another_switch_is_ignored(make, tmp_path):
+    """Two switches in flight: the first one's reply, arriving after the
+    second was asked for, mustn't overwrite what the second leaves."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    real = connection.request
+
+    def switched_again_meanwhile(method, params, *args, **kwargs):
+        result = real(method, params, *args, **kwargs)
+        if method == "session/set_config_option" and params.get("value") == "gpt-test":
+            runtime.set_model(chat, "gpt-mini")  # asked for, and answered, first
+        return result
+    connection.request = switched_again_meanwhile
+    runtime.set_model(chat, "gpt-test")
+    assert runtime._chats[chat].model == "gpt-mini"
+
+
+def test_a_failed_switch_doesnt_make_an_earlier_ones_reply_look_old(make, tmp_path):
+    """Switch A succeeds; switch B, asked for before A's reply is taken in,
+    fails. Copilot is on A, so A's reply still counts and A is recorded."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    real = connection.request
+
+    def second_switch_fails_meanwhile(method, params, *args, **kwargs):
+        if method == "session/set_config_option" and params.get("value") == "gpt-mini":
+            raise copilot_acp.AcpError("refused")
+        result = real(method, params, *args, **kwargs)
+        if method == "session/set_config_option" and params.get("value") == "gpt-test":
+            with pytest.raises(CopilotChatError, match="couldn't switch"):
+                runtime.set_model(chat, "gpt-mini")
+        return result
+    connection.request = second_switch_fails_meanwhile
+    runtime.set_model(chat, "gpt-test")
+    assert runtime.snapshot(chat).model == "gpt-test"
+    assert runtime.ready(chat)
+
+
+def test_a_model_is_refused_for_a_chat_that_isnt_open(make, tmp_path):
+    runtime, _ = make()
+    with pytest.raises(CopilotChatError, match="isn't open here yet"):
+        runtime.set_model("no-such-chat", "gpt-mini")
+
+
 # -- Kelly's follow-ups (#405) ------------------------------------------------------
 
 

@@ -700,11 +700,13 @@ class CopilotProvider:
         """Offered in New Session only once Copilot CLI is installed."""
         return self.runtime is not None and platform_paths.find_copilot() is not None
 
-    def create_owned(self, cwd: str, title: str):
+    def create_owned(self, cwd: str, title: str, model: str = ""):
         """A new chat, as the window's record of it. Waits for Copilot to
-        start, so call it off the UI thread."""
+        start, so call it off the UI thread. ``model``: one model_choices()
+        listed; the chat switches to it before anything is sent."""
         from ..own_store import OwnSession
-        native_id = self.runtime.create(cwd)
+        native_id = self.runtime.create(cwd, model=model or "")
+        self._remember_models()
         return OwnSession(native_id, title, cwd, provider=PROVIDER_ID, started=True,
                           created_ms=int(time.time() * 1000))
 
@@ -716,6 +718,45 @@ class CopilotProvider:
         the runtime is told a chat is the app's), in the folder recorded."""
         self.runtime.adopt(record.cli_session_id)
         self.runtime.prepare(record.cli_session_id, record.cwd)
+        self._remember_models()
+
+    def set_model_owned(self, record, model: str) -> None:
+        """File, Change Model: from the chat's next turn. Opened again later,
+        the chat shows whichever model Copilot reports for it then."""
+        self.runtime.set_model(record.cli_session_id, model)
+        self._remember_models()
+
+    # -- models ----------------------------------------------------------------
+
+    def model_choices(self):
+        """The models a new chat can start with ((value, label), …): the ones
+        Copilot last offered a chat here, kept from earlier runs too, since
+        Copilot lists them only for a chat. Empty before any. Never starts
+        Copilot."""
+        found = self.runtime.models() if self.runtime is not None else ()
+        if found:
+            return found
+        try:
+            raw = json.loads(_models_file().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return ()
+        listed = raw.get("models") if isinstance(raw, dict) else None
+        if not isinstance(listed, list):
+            return ()
+        return tuple((value, label) for value, label in
+                     (item for item in listed if isinstance(item, list) and len(item) == 2)
+                     if isinstance(value, str) and isinstance(label, str) and value and label
+                     )[:100]
+
+    def _remember_models(self) -> None:
+        found = self.runtime.models() if self.runtime is not None else ()
+        if not found:
+            return
+        from ..provider_storage import atomic_write_json
+        try:
+            atomic_write_json(_models_file(), {"version": 1, "models": [list(m) for m in found]})
+        except OSError:
+            pass  # only a convenience for the next New Session
 
     def send_owned(self, record, text: str) -> bool:
         return self.runtime.send(record.cli_session_id, text)
@@ -780,6 +821,11 @@ class CopilotProvider:
             return ""
         reply = transcript.last_reply()
         return reply.text if reply else ""
+
+
+def _models_file() -> Path:
+    """The models Copilot last offered, in The Chat Place's own folder."""
+    return platform_paths.app_data_dir() / "copilot-models.json"
 
 
 def premium_requests(path: Path) -> Optional[float]:

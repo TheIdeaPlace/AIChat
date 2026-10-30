@@ -575,3 +575,28 @@ def test_usage_lines_say_how_full_the_context_is_from_the_runtime(tmp_path, monk
     provider.runtime = SimpleNamespace(
         snapshot=lambda native: SimpleNamespace(context_used=64000, context_size=128000))
     assert provider.usage_lines(info_for())[0] == "Context 50% full: 64,000 of 128,000 tokens."
+
+
+# -- the models a new chat can start with --------------------------------------------------
+
+
+def test_the_models_last_offered_are_kept_for_the_next_new_session(tmp_path, monkeypatch):
+    """Copilot lists models only for a chat, so the last list is kept in The
+    Chat Place's own folder; reading it never starts Copilot."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    provider = CopilotProvider(tmp_path / "sessions")
+    assert provider.model_choices() == ()
+    offered = (("auto", "Auto (1x)"), ("gpt-test", "GPT Test (1x)"))
+    provider.runtime = SimpleNamespace(models=lambda: offered)
+    assert provider.model_choices() == offered
+    provider._remember_models()
+    assert json.loads((tmp_path / "copilot-models.json").read_text(encoding="utf-8")) == {
+        "version": 1, "models": [["auto", "Auto (1x)"], ["gpt-test", "GPT Test (1x)"]]}
+    provider.runtime = None  # a later run, before any Copilot chat is opened
+    assert provider.model_choices() == offered
+    (tmp_path / "copilot-models.json").write_text('{"models": [["a", 3], "x", ["b", "B"]]}',
+                                                  encoding="utf-8")
+    assert provider.model_choices() == (("b", "B"),)
+    (tmp_path / "copilot-models.json").write_text("{bad", encoding="utf-8")
+    assert provider.model_choices() == ()
