@@ -52,6 +52,7 @@ from thechatplace import platform_paths  # noqa: E402
 
 IS_WINDOWS = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
 
 #: How long a window must stay open before it's photographed, so its first
 #: paint (and a list's first selection) has happened.
@@ -233,6 +234,39 @@ def _capture_mac(window, path: Path) -> str:
     return "screencapture"
 
 
+def _capture_gtk(window, path: Path) -> str:
+    """Linux: GTK draws the window into a picture (``gtk_widget_draw``), so
+    another window on top of it, or none of it being on screen yet, doesn't
+    matter, as it would for a copy of the screen. The window manager's
+    frame isn't part of it."""
+    gtk = ctypes.CDLL("libgtk-3.so.0")
+    cairo = ctypes.CDLL("libcairo.so.2")
+    vp = ctypes.c_void_p
+    gtk.gtk_widget_get_allocated_width.argtypes = [vp]
+    gtk.gtk_widget_get_allocated_height.argtypes = [vp]
+    gtk.gtk_widget_draw.argtypes = [vp, vp]
+    cairo.cairo_image_surface_create.restype = vp
+    cairo.cairo_image_surface_create.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    cairo.cairo_create.restype = vp
+    cairo.cairo_create.argtypes = [vp]
+    cairo.cairo_surface_write_to_png.argtypes = [vp, ctypes.c_char_p]
+    cairo.cairo_destroy.argtypes = [vp]
+    cairo.cairo_surface_destroy.argtypes = [vp]
+    widget = vp(int(window.GetGtkWidget()))
+    width = gtk.gtk_widget_get_allocated_width(widget)
+    height = gtk.gtk_widget_get_allocated_height(widget)
+    surface = cairo.cairo_image_surface_create(0, width, height)  # CAIRO_FORMAT_ARGB32
+    context = cairo.cairo_create(surface)
+    try:
+        gtk.gtk_widget_draw(widget, context)
+        if cairo.cairo_surface_write_to_png(surface, str(path).encode()) != 0:
+            raise RuntimeError(f"couldn't save {path}")
+    finally:
+        cairo.cairo_destroy(context)
+        cairo.cairo_surface_destroy(surface)
+    return "gtk_widget_draw"
+
+
 def capture(window: wx.TopLevelWindow, path: Path) -> str:
     """Save a PNG of ``window`` to ``path``; returns how it was taken."""
     window.Refresh()
@@ -240,6 +274,8 @@ def capture(window: wx.TopLevelWindow, path: Path) -> str:
     _pump(0.1)
     if IS_MAC:
         method = _capture_mac(window, path)
+    elif IS_LINUX:
+        method = _capture_gtk(window, path)
     else:
         if IS_WINDOWS:
             bitmap, method = _capture_windows(window)
@@ -1066,11 +1102,11 @@ def d_copilot_files(frame, env):
 
 
 def d_codex_mode(frame, env):
-    from thechatplace.ui.dialogs import codex_permission_prompt
+    from thechatplace.ui.dialogs import codex_permission_prompt, single_choice_dialog
     from thechatplace.ui.permission_hosts import CODEX_REVIEW_MODES
     title = 'Review saved command rules for a deliberately long synthetic chat title'
     folder = str(Path(env['folders']['Scratch']) / 'long-synthetic-project-folder' / 'nested-folder-for-permission-review')
-    dialog = wx.SingleChoiceDialog(frame, codex_permission_prompt(frame, title, folder),
+    dialog = single_choice_dialog(frame, codex_permission_prompt(frame, title, folder),
         'Change Permission Mode', [label for value, label in CODEX_REVIEW_MODES])
     dialog.SetSelection(3)
     return lambda: frame._modal(dialog)
@@ -1143,6 +1179,29 @@ def d_question(frame, env):
         {"header": "Checks", "question": "Which checks should run first?", "multiSelect": True,
          "options": [{"label": "Unit tests"}, {"label": "Smoke test"}, {"label": "Lint"}]}]},
         "q1"))
+    return frame.on_answer
+
+
+def d_question_preview(frame, env):
+    """#415: text Claude wrote before asking, and options with previews."""
+    import fake_env
+    from thechatplace.claude_cli import TurnEvent
+    _open(frame, "Visual probe")
+    frame._pending.clear()
+    frame._runners["own-1"] = fake_env.FakeRunner([], "", "", None)
+    for kind, text in [("text", "Here's the announcement for the release:"),
+                       ("text", "The Chat Place 0.3.2 is out. Copilot chats can join agent "
+                                "conversations, and Changed Files works for Codex chats."),
+                       ("tool", "AskUserQuestion")]:
+        frame._on_turn_event({"id": "own-1"}, "Visual probe", TurnEvent(kind, text=text))
+    _waiting(frame, _request("AskUserQuestion", {"questions": [
+        {"header": "Mastodon", "question": "Post this announcement to Mastodon?",
+         "options": [{"label": "Post it", "description": "Post it publicly",
+                      "preview": "The Chat Place 0.3.2 is out. Copilot chats can join agent "
+                                 "conversations, and Changed Files works for Codex chats.\n\n"
+                                 "https://github.com/TheIdeaPlace/AIChat/releases/tag/v0.3.2"},
+                     {"label": "Change it", "description": "Say what to change"},
+                     {"label": "Don't post"}]}]}, "q2"))
     return frame.on_answer
 
 
@@ -1574,6 +1633,8 @@ SURFACES = {
     "codex-files": ("dialog", d_codex_files, "Codex file changes to review before allowing"),
     "codex-question": ("dialog", d_codex_question, "Codex choices and a masked secret answer"),
     "question": ("dialog", d_question, "Claude asks questions (one choice and several choices)"),
+    "question-preview": ("dialog", d_question_preview,
+                         "Claude asks about text it wrote just before, with an option's preview"),
     "plan": ("dialog", d_plan, "Claude's plan to approve"),
     "manage-groups": ("dialog", d_manage_groups, "File, Manage Groups"),
     "command-picker": ("dialog", d_command_picker, "Insert Command or Skill"),
@@ -1661,6 +1722,7 @@ DIALOG_CLASSES = {
     "codex-files": "CodexPermissionDialog",
     "codex-question": "QuestionDialog",
     "question": "QuestionDialog",
+    "question-preview": "QuestionDialog",
     "plan": "PlanDialog",
     "manage-groups": "ManageGroupsDialog",
     "command-picker": "CommandPickerDialog",
@@ -1817,15 +1879,40 @@ def photograph_dialog(opener, out: Path, stem: str) -> dict:
     return result
 
 
+def _orca_audit(window, out: Path, stem: str) -> dict:
+    """Linux: what Orca finds in the window (tools/atspi_audit.py). It asks
+    this process over D-Bus, so it runs as a separate process while this one
+    keeps answering, rather than one this process waits on."""
+    result_path = out / f"{stem}-orca.json"
+    result_path.unlink(missing_ok=True)
+    # Debian's own python3, whose PyGObject the app's virtual environment may not have.
+    python = shutil.which("python3") or sys.executable
+    process = subprocess.Popen([python, str(HERE / "atspi_audit.py"), window.GetTitle(),
+                                "--json", str(result_path)])
+    end = time.time() + 30
+    while process.poll() is None and time.time() < end:
+        _pump(0.05)
+    if process.poll() is None:
+        process.kill()
+        return {"error": "the audit didn't finish", "controls": [], "unnamed": []}
+    try:
+        return json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"error": f"no audit: {exc}", "controls": [], "unnamed": []}
+
+
 def _save(window, out: Path, stem: str) -> dict:
     png = out / f"{stem}.png"
     method = capture(window, png)
     info = describe(window)
     info["capture"] = method
+    if IS_LINUX and os.environ.get("TCP_PROBE_ORCA") == "1":
+        info["orca"] = _orca_audit(window, out, stem)
     (out / f"{stem}.json").write_text(json.dumps(info, indent=1, ensure_ascii=False),
                                       encoding="utf-8")
     problems = [f"{c['class']} {c['label'] or c['name']!r}: {p}"
                 for c in info["controls"] for p in c["problems"]]
+    problems += [f"Orca: a {c['role']} with no name" for c in info.get("orca", {}).get("unnamed", [])]
     return {"png": png.name, "json": f"{stem}.json", "title": info["title"],
             "class": info["class"], "size": info["size"], "capture": method,
             "problems": problems}
@@ -2023,6 +2110,7 @@ def main(argv=None) -> int:
     # As the app does, so the probe photographs it as people see it (#185).
     from thechatplace import platform_paths
     platform_paths.make_dpi_aware()
+    platform_paths.set_program_name()  # Linux: the name the Orca audit looks for
     app = wx.App(False)  # noqa: F841
     return run(args.out, args.tag, args.surface or list(SURFACES), args.size)
 

@@ -44,7 +44,7 @@ def test_environment_names_no_people_or_paths():
     facts = bugreport.environment(SpeechSettings(), {"desktop app": 3, "Chat Place": 1},
                                   claude_version="2.1.286 (Claude Code)")
     labels = [label for label, _value in facts]
-    system = {"win32": "Windows", "darwin": "macOS"}.get(sys.platform, "System")
+    system = {"win32": "Windows", "darwin": "macOS", "linux": "Linux"}.get(sys.platform, "System")
     assert labels[:5] == ["The Chat Place", system, "Python", "wxPython", "Claude Code"]
     assert ("Sessions listed", "3 desktop app, 1 Chat Place") in facts
     text = " ".join(str(value) for _label, value in facts)
@@ -91,7 +91,7 @@ def test_a_report_still_opens_when_windows_cant_say_its_version(monkeypatch):
     import platform
     monkeypatch.setattr(platform, "platform", _wmi_without_product_type)
     facts = dict(bugreport.environment(SpeechSettings(), {}, claude_version="2.1.292 (Claude Code)"))
-    system = facts["Windows" if sys.platform == "win32" else "macOS"]
+    system = facts[{"win32": "Windows", "darwin": "macOS", "linux": "Linux"}[sys.platform]]
     if sys.platform == "win32":
         major, minor, build = sys.getwindowsversion()[:3]
         assert system == f"Windows-{major}.{minor}.{build} (platform.platform failed)"

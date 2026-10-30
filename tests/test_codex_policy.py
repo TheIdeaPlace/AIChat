@@ -145,6 +145,26 @@ def test_windows_home_parents_and_drive_roots_are_not_write_scopes(monkeypatch):
             CodexPolicy.choose(folder, 'workspace-write')
 
 
+@pytest.mark.skipif(__import__('sys').platform == 'win32', reason='POSIX paths')
+def test_linux_drive_folders_are_not_write_scopes(monkeypatch):
+    """Like a Mac's /Volumes: write access to /media or /run/media (or a
+    user's folder in them) would reach every drive plugged in."""
+    from pathlib import Path
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths.sys, 'platform', 'linux')
+    monkeypatch.setattr(Path, 'home', lambda: Path('/home/name'))
+    monkeypatch.setattr(Path, 'resolve', lambda self, strict=False: self)
+    monkeypatch.setattr(Path, 'is_dir', lambda self: True)
+    monkeypatch.setattr(Path, 'samefile', lambda self, other: self == other)
+    monkeypatch.setattr(platform_paths.os.path, 'ismount', lambda root: False)
+    for folder in ['/media', '/media/name', '/run/media', '/run/media/name', '/mnt']:
+        with pytest.raises(ValueError, match='project folder'):
+            CodexPolicy.choose(folder, 'workspace-write')
+    for folder in ['/media/name/Drive/project', '/run/media/name/Drive/project',
+                   '/mnt/data/project', '/home/name/project']:
+        assert CodexPolicy.choose(folder, 'workspace-write').workspace_root == folder
+
+
 def test_home_identity_alias_cannot_be_a_writable_project(tmp_path, monkeypatch):
     from pathlib import Path
     home = tmp_path / 'person'; home.mkdir()

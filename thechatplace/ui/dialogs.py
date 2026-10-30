@@ -21,7 +21,7 @@ from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LE
                       SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import shortcuts_text, codex_effort_label, key_name
-from . import mac_a11y
+from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
@@ -52,6 +52,19 @@ PERMISSION_NOTE = (
     "you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that "
     "don't support effort levels ignore it. File, Change Permission Mode and Change "
     "Effort change them later."))
+
+
+def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:
+    """wx's own single-choice list, which screen readers handle well. On
+    Linux its list has no name of its own (Windows takes the label before
+    it), and Orca reached "a table with no name" (#230, found by the Orca
+    audit in tools/ui_probe.py), so there it takes the dialog's title."""
+    dialog = wx.SingleChoiceDialog(parent, prompt, title, choices)
+    if gtk_a11y.IS_LINUX:
+        for child in dialog.GetChildren():
+            if isinstance(child, wx.ListBox):
+                set_accessible_name(child, title)
+    return dialog
 
 
 def codex_permission_prompt(parent, title, folder):
@@ -903,6 +916,20 @@ class SettingsDialog(wx.Dialog):
                         "not just the open one")
         self.all_sessions.SetValue(speech.announce_all_sessions)
         outer.Add(self.all_sessions, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        if gtk_a11y.IS_LINUX:
+            # wxGTK makes a radio box's label the label of the control after
+            # it, at idle time, so Orca read this as "Announcements, Announce
+            # when...". It isn't one of Announcements' choices. A few idle
+            # events at most: a wxGTK that never links it there would
+            # otherwise keep this running for as long as Settings is open.
+            tries = [0]
+
+            def unlink(event):
+                event.Skip()
+                tries[0] += 1
+                if gtk_a11y.forget_labels(self.all_sessions) or tries[0] >= 20:
+                    self.Unbind(wx.EVT_IDLE, handler=unlink)
+            self.Bind(wx.EVT_IDLE, unlink)
 
         self.own_messages = wx.CheckBox(
             body, label="Read your own &messages back when they're sent")
@@ -1298,19 +1325,35 @@ document.addEventListener('keydown', function (e) {
 }, true);
 """
 
+#: Linux: WebKitGTK puts the focus on its own widget, not in the page, and
+#: Orca then has nowhere to start reading. Focusing the message's first
+#: element (a heading, a paragraph) puts Orca in the page, in browse mode,
+#: with its caret on the first line. Focusing the page's main element
+#: instead left Orca's caret after the last line.
+_FOCUS_PAGE = """
+document.addEventListener('DOMContentLoaded', function () {
+  var main = document.querySelector('main') || document.body;
+  var first = main.firstElementChild || main;
+  first.setAttribute('tabindex', '-1');
+  first.focus();
+  window.getSelection().collapse(first, 0);
+});
+"""
+
 
 def _webview_backend():
     """The engine for the formatted page: Edge WebView2 on Windows, the
-    system's WebKit on a Mac (#119)."""
+    system's WebKit on a Mac (#119), and on Linux WebKitGTK, which Orca reads
+    like a web page in a browser."""
     import wx.html2
-    if sys.platform == "darwin":
-        return wx.html2.WebViewBackendWebKit
-    return wx.html2.WebViewBackendEdge
+    if sys.platform == "win32":
+        return wx.html2.WebViewBackendEdge
+    return wx.html2.WebViewBackendWebKit
 
 
 def formatted_view_available() -> bool:
     """Whether this computer's web view (Edge WebView2 on Windows, WebKit on
-    a Mac) can show the formatted page."""
+    a Mac, WebKitGTK on Linux) can show the formatted page."""
     try:
         import wx.html2
         return bool(wx.html2.WebView.IsBackendAvailable(_webview_backend()))
@@ -1323,7 +1366,14 @@ def _prepare_webview_data_folder() -> None:
     which for an installed copy is the folder Velopack replaces on update, and
     for a source run may be Python's own folder. Put it in local app data
     instead, before the first WebView is made. Windows only: a Mac's WebKit
-    keeps no such folder."""
+    keeps no such folder.
+
+    Linux: WebKitGTK's DMA-BUF renderer draws a blank page with some
+    graphics drivers (seen on ARM boards and in virtual machines); a page of
+    text loses nothing without it."""
+    if sys.platform.startswith("linux"):
+        os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+        return
     if sys.platform != "win32" or os.environ.get("WEBVIEW2_USER_DATA_FOLDER"):
         return
     local = os.environ.get("LOCALAPPDATA")
@@ -1378,6 +1428,8 @@ class FormattedMessageDialog(wx.Dialog):
             self.view.EnableAccessToDevTools(False)
             self.view.AddScriptMessageHandler("hub")
             self.view.AddUserScript(_KEY_RELAY)
+            if wx.Platform == "__WXGTK__":
+                self.view.AddUserScript(_FOCUS_PAGE)
         except Exception:  # noqa: BLE001 - Escape still works from the buttons
             pass
         self.view.Bind(wx.html2.EVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, self._on_script_message)
@@ -1391,6 +1443,7 @@ class FormattedMessageDialog(wx.Dialog):
             self._loaded = True
             # Into the page, so the screen reader starts reading it.
             self.view.SetFocus()
+            gtk_a11y.focus_web_view(self.view)  # Linux: past wx's wrapper, into the page
 
     def _on_script_message(self, event):
         message = event.GetString()
@@ -1445,6 +1498,19 @@ def _fit_height(dialog, max_height: Optional[int] = None) -> None:
     target = min(dialog.GetSizer().GetMinSize().height + chrome, limit)
     if target != height:
         dialog.SetSize((width, target))
+        dialog.Layout()
+
+
+def _fit_width(dialog) -> None:
+    """Make ``dialog`` at least as wide as its controls need, up to the
+    screen's width. A row of buttons that fits on Windows can need more
+    room in another system's font (Prompts' seven, on Linux)."""
+    dialog.Layout()
+    width, height = dialog.GetSize()
+    chrome = width - dialog.GetClientSize().width
+    target = min(dialog.GetSizer().GetMinSize().width + chrome, screen_area(dialog).width)
+    if target > width:
+        dialog.SetSize((target, height))
         dialog.Layout()
 
 
@@ -1943,16 +2009,32 @@ class QuestionDialog(wx.Dialog):
     """Claude's questions (AskUserQuestion), one group per question: the
     options as radio buttons (check boxes when several may be chosen), each
     with its description, and Other with a text box. Send Answers is the
-    default button."""
+    default button.
 
-    def __init__(self, parent, session_title: str, request, provider="Claude"):
-        super().__init__(parent, title=f"{provider} asks: {session_title}", size=dialog_size(parent, 700, 560),
+    It opens on a read-only box, as a permission request does, with what
+    the chat wrote just before asking (``said``, often what the question is
+    about: a draft to approve) and each question in full, to read by line.
+    Options that carry a preview show it in a second read-only box as each
+    is reached (#415)."""
+
+    def __init__(self, parent, session_title: str, request, provider="Claude", said=None):
+        super().__init__(parent, title=f"{provider} asks: {session_title}", size=dialog_size(parent, 700, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._questions = request.questions()
         self._answer_key = "id" if provider == "Codex" else "question"
         self._controls = []  # per question: (kind, [controls], other text)
+        self._previews = {}  # option control -> its preview
+        self.preview_text = None
         outer = wx.BoxSizer(wx.VERTICAL)
-        panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
+        said = str(getattr(request, "said", "") or "") if said is None else str(said or "")
+        lines = [f"{question.get('header') or f'Question {number}'}: {question['question']}"
+                 for number, question in enumerate(self._questions, start=1)]
+        outer.Add(wx.StaticText(self, label="&Question:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        self.question_text = _read_only_text(
+            self, "\n\n".join(part for part in (said.strip(), "\n".join(lines)) if part),
+            "Question", min_height=120)
+        outer.Add(self.question_text, 0, wx.EXPAND | wx.ALL, 8)
+        panel = self.questions_panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
         panel.SetScrollRate(0, 20)
         sizer = wx.BoxSizer(wx.VERTICAL)
         first = None
@@ -1982,6 +2064,14 @@ class QuestionDialog(wx.Dialog):
                         control = wx.RadioButton(parent_window, label=text, style=style)
                         control.SetValue(False)
                     control._hub_label = label
+                    preview = option.get("preview")
+                    if isinstance(preview, str) and preview.strip():
+                        self._previews[control] = preview
+                    control.Bind(wx.EVT_SET_FOCUS, self._on_option_focus)
+                    # A choice made by the arrow keys too: on a Mac, focus
+                    # moved by move_in_radio_group may not send SET_FOCUS.
+                    control.Bind(wx.EVT_CHECKBOX if multi else wx.EVT_RADIOBUTTON,
+                                 self._on_option_focus)
                     controls.append(control)
                     box.Add(control, 0, wx.ALL, 4)
                     first = first or control
@@ -1993,6 +2083,7 @@ class QuestionDialog(wx.Dialog):
                                            style=0 if controls else wx.RB_GROUP)
                     other.SetValue(False)
                 other._hub_label = OTHER
+                other.Bind(wx.EVT_SET_FOCUS, self._on_option_focus)
                 controls.append(other)
                 box.Add(other, 0, wx.ALL, 4)
                 other_text = wx.TextCtrl(parent_window, style=wx.TE_PASSWORD if question.get("isSecret") else 0)
@@ -2010,6 +2101,13 @@ class QuestionDialog(wx.Dialog):
                 first = first or other
         panel.SetSizer(sizer)
         outer.Add(panel, 1, wx.EXPAND | wx.ALL, 4)
+        if self._previews:
+            # After the questions in Tab order, and only when an option has
+            # one: the preview of the option you're on (#415).
+            outer.Add(wx.StaticText(self, label="Pre&view:"), 0, wx.LEFT | wx.RIGHT, 8)
+            self.preview_text = _read_only_text(self, "", "Preview", min_height=120)
+            outer.Add(self.preview_text, 0, wx.EXPAND | wx.ALL, 8)
+            self._show_preview(first)
 
         row = wx.BoxSizer(wx.HORIZONTAL)
         send = wx.Button(self, wx.ID_OK, "&Send Answers")
@@ -2037,11 +2135,11 @@ class QuestionDialog(wx.Dialog):
         send.Bind(wx.EVT_BUTTON, self._on_send)
         decline.Bind(wx.EVT_BUTTON, self._on_decline)
         self._first = first
-        if first is not None:
-            # Set as the dialog starts, before it's shown: wx would otherwise
-            # give the focus to the last group first, and a screen reader
-            # would begin reading the wrong question.
-            self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
+        # Set as the dialog starts, before it's shown: wx would otherwise
+        # give the focus to the last group first, and a screen reader would
+        # begin reading the wrong question. It starts on the question's own
+        # text, as a permission request does (#415).
+        self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
         if wx.Platform == "__WXMAC__":
             # On a Mac the arrow keys did nothing in a group of radio buttons,
             # and Tab treats the group as one stop, so only the first option
@@ -2050,7 +2148,23 @@ class QuestionDialog(wx.Dialog):
 
     def _on_init_dialog(self, event):
         event.Skip()
-        self._first.SetFocus()
+        self.question_text.SetFocus()
+
+    def _on_option_focus(self, event):
+        event.Skip()
+        self._show_preview(event.GetEventObject())
+
+    def _show_preview(self, control):
+        """The preview box shows the preview of ``control``'s option, and is
+        named for it, so a screen reader says whose preview it is."""
+        if self.preview_text is None or control is None:
+            return
+        label = getattr(control, "_hub_label", "")
+        preview = self._previews.get(control)
+        self.preview_text.SetValue(preview if preview is not None
+                                   else f"{label} has no preview.")
+        self.preview_text.SetInsertionPoint(0)
+        set_accessible_name(self.preview_text, f"Preview of {label}")
 
     def _on_char_hook(self, event):
         step = RADIO_ARROW_STEPS.get(event.GetKeyCode())
@@ -2484,6 +2598,17 @@ class LinesDialog(wx.Dialog):
         row.Add(close, 0)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
+        # Linux: GTK's client-side decorations and shadow take more than
+        # ``room`` allows for the frame (52 pixels with Adwaita), which left
+        # the longest line 13 short, so widen by what the list still lacks
+        # (#230). Not elsewhere: a Windows list box's best width has three
+        # characters' slack, so it would widen dialogs that already fit.
+        if gtk_a11y.IS_LINUX:
+            self.Layout()
+            lacking = self.list.GetBestSize().width - self.list.GetSize().width
+            if lacking > 0:
+                self.SetSize((min(width + lacking, screen - SCREEN_MARGIN),
+                              self.GetSize().height))
         self.SetEscapeId(wx.ID_CANCEL)
         # A char hook, as the main window's Ctrl+C on the messages list:
         # it's the path Cmd+C takes on macOS too.
@@ -3519,6 +3644,7 @@ class PromptsDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Prompts:"), 0, wx.LEFT | wx.TOP, 8)
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
+        set_accessible_name(self.list, "Prompts")
         self.list.SetMinSize(dip(self, -1, 150))
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         sizer.Add(wx.StaticText(self, label="Te&xt:"), 0, wx.LEFT | wx.TOP, 8)
@@ -3539,6 +3665,7 @@ class PromptsDialog(wx.Dialog):
         row.Add(wx.Button(self, wx.ID_CANCEL, "&Close"), 0)
         sizer.Add(row, 0, wx.EXPAND | wx.ALL, 8)
         self.SetSizer(sizer)
+        _fit_width(self)
         self.SetEscapeId(wx.ID_CANCEL)
         self.use_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_use())
         self.new_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_new())
@@ -3572,6 +3699,7 @@ class PromptsDialog(wx.Dialog):
         # time), which SetName doesn't reach; for VoiceOver on the view.
         self.list.SetName(self._list_name())
         mac_a11y.set_label(self.list, self._list_name())
+        gtk_a11y.set_label(self.list, self._list_name())  # Orca
         # Always enabled, so the Tab order doesn't change; they say if
         # there's nothing to act on.
         self._show()

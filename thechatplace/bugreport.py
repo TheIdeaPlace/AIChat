@@ -61,7 +61,7 @@ def claude_code_version() -> str:
 
 def _system_name() -> str:
     """The label for the operating system line."""
-    return {"win32": "Windows", "darwin": "macOS"}.get(sys.platform, "System")
+    return {"win32": "Windows", "darwin": "macOS", "linux": "Linux"}.get(sys.platform, "System")
 
 
 def environment(speech, counts: Dict[str, int], claude_version: Optional[str] = None,

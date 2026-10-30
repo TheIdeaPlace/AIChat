@@ -206,3 +206,18 @@ class FakeRunner:
         self.follow_ups = getattr(self, "follow_ups", []) + [(prompt, images)]
         self.waiting_on_background = False
         return True
+
+
+def status_field(bar, index: int = 0) -> str:
+    """Field ``index`` of the status bar as the screen reader's read-status-bar
+    key gets it: the native field's text, or on Linux, where the fields stay
+    empty (statusbar._FIELD_TEXT), the part's own words."""
+    from thechatplace.ui import statusbar
+    if statusbar._FIELD_TEXT:
+        return bar.GetStatusText(index)
+    assert bar.GetStatusText(index) == ""
+    shown = [c for c in bar.GetChildren()
+             if isinstance(c, statusbar.StatusText)
+             or (isinstance(c, statusbar.StatusButton) and c.IsShown())]
+    part = shown[index]
+    return part.latest() if isinstance(part, statusbar.StatusText) else part.GetLabel()

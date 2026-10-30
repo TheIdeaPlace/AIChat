@@ -37,7 +37,8 @@ OpenAI products.</p>
 <nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#reviewing-changed-files">Reviewing changed files</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstalling">Uninstalling</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
 <p>You need:</p>
 <ul>
-<li>Windows 10 or 11, or a Mac with Apple silicon.</li>
+<li>Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
+  new as Ubuntu 24.04, Debian 13 or Fedora 40, with Orca for speech.</li>
 <li>For Codex chats: a native Codex CLI signed in to ChatGPT. Codex chats are listed once Codex is
   found; Settings, Include Codex chats turns them off or on. Claude Code is not required.</li>
 <li>For GitHub Copilot CLI chats (a preview): the native GitHub Copilot CLI, signed in with
@@ -54,7 +55,7 @@ OpenAI products.</p>
 <p>For Claude chats, install Claude Code by running its installer in a terminal, then run <code>claude</code>
 once to sign in:</p>
 <ul>
-<li>Mac (Terminal): <code>curl -fsSL https://claude.ai/install.sh | bash</code></li>
+<li>Mac (Terminal) and Linux: <code>curl -fsSL https://claude.ai/install.sh | bash</code></li>
 <li>Windows (PowerShell): <code>irm https://claude.ai/install.ps1 | iex</code></li>
 <li>Windows (Command Prompt):
   <code>curl -fsSL https://claude.ai/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd</code></li>
@@ -76,9 +77,15 @@ portable zip from the same release runs without installing, but doesn't update i
 Applications. The first time it speaks through VoiceOver, macOS asks whether The Chat Place may
 control VoiceOver: allow it, and turn on "Allow VoiceOver to be controlled with AppleScript" in
 VoiceOver Utility, General.</p>
+<p><strong>Linux</strong> (a preview): download <code>TheChatPlace-linux-x64.AppImage</code>, or
+<code>TheChatPlace-linux-arm64.AppImage</code> for an Arm PC such as the MNT Reform, put it where you keep
+programs, make it executable (<code>chmod +x</code>) and run it. Its first start adds The Chat Place to your
+desktop's menu. It needs FUSE 2 to run (<code>sudo apt install libfuse2t64</code> on Debian 13 and Ubuntu
+24.04), and Orca and speech-dispatcher for speech. Claude Code's sign-in opens a web page; without
+a web browser, open the link the terminal shows on another computer or phone.</p>
 <p>If Claude Code isn't signed in, your chats are still listed; only sending a message needs a
 sign-in. Help, Claude Code Sign-in says whether it is signed in, and offers to sign you in if not.
-The sign-in opens in its own window (Terminal, on a Mac), and The Chat Place checks again when
+The sign-in opens in its own window (Terminal, on a Mac; your terminal, on Linux), and The Chat Place checks again when
 you've finished. If it can't tell, it says why, for example that Claude Code is too old to ask:
 running <code>claude update</code> in a terminal fixes that.</p>
 <p>For Codex, choose Help, <strong>Codex Sign-in</strong>. It says whether Codex is signed in to ChatGPT. If it
@@ -151,6 +158,11 @@ read-status-bar key reads all the parts at once.</p>
   the forward Delete key, Fn+Delete. Each place this guide mentions Delete says which Mac key
   works there.</li>
 </ul>
+<h3>On Linux</h3>
+<p>The keys are the Windows ones: Ctrl+N, Alt for the menus (F10 works too), and the Menu key or
+Shift+F10 for a context menu.
+Orca reads a message's first line and then the rest of it as you arrow through the messages. Orca
+before version 50 doesn't say a list's name as you move into it; Orca's Where Am I says it.</p>
 <h2 id="reading-a-chat">Reading a chat</h2>
 <h3>Finding it in the list</h3>
 <p>Each line in the session list reads the chat's title, its folder, its state and when it was
@@ -196,7 +208,10 @@ mode moves by heading (H), table (T), list (L) and code block (each code block i
 JAWS, D in NVDA). Links open in your browser. <strong>Read as Plain Text</strong> (Alt+P) shows the message in
 a plain text box instead, to read by line, word and character. Escape closes either one and puts
 you back on the same message. On Windows the formatted page needs Microsoft's Edge WebView2
-runtime, which comes with Windows 11; without it, Enter opens the plain text box.</p>
+runtime, which comes with Windows 11; without it, Enter opens the plain text box. On Linux,
+Enter opens the plain text box unless you turn on the formatted page in Settings, Reading
+messages; it needs WebKitGTK, and Orca 48 moved through its headings but didn't read it line by
+line.</p>
 <p>On a Mac the page works the same way. VoiceOver's rotor (VO+U) lists its headings, tables, links
 and landmarks, VO+Command+H moves by heading, and with Quick Nav on, H, T and L work as above.
 Read as Plain Text is Option+P, and Command+W closes the page as well as Escape.</p>
@@ -1183,8 +1198,11 @@ Ctrl+Shift+A brings the same request back.</p>
 <li><strong>Claude, a permission:</strong> <strong>Allow</strong> (this request only), <strong>Allow for This Chat</strong> (keep a rule so
   it doesn't ask again in this chat; shown when Claude Code suggests one, and named in full) or
   <strong>Deny</strong>, the default, with a reason Claude reads if you like.</li>
-<li><strong>Claude, a question:</strong> each question is a group of choices, with Other and a box for your own
-  answer. Send Answers, or Don't Answer.</li>
+<li><strong>Claude, a question:</strong> it opens on the Question box, to read by line: what Claude wrote just
+  before asking (often the thing it's asking about, such as a draft to approve), then each
+  question in full. Below it, each question is a group of choices, with Other and a box for your
+  own answer. When a choice comes with a preview, the Preview box after the questions shows the
+  preview of the choice you're on. Send Answers, or Don't Answer.</li>
 <li><strong>Claude, a plan:</strong> read it (Read Formatted shows it as a page, by heading), then <strong>Approve</strong>,
   choosing how Claude carries on, or <strong>Keep Planning</strong>, the default, with what to change.</li>
 <li><strong>Codex, a permission:</strong> the request shows the command, its folder and Codex's reason, and a
@@ -1200,7 +1218,8 @@ Ctrl+Shift+A brings the same request back.</p>
   <strong>Allow for This Chat</strong> remembers your approval for this chat (see "For a Codex chat"
   below).</li>
 <li><strong>Codex, a question:</strong> the question shows which provider is asking, and a secret answer stays
-  hidden as you type it.</li>
+  hidden as you type it. The Question box starts with what Codex wrote in this turn before
+  asking, as for Claude. Copilot's questions work the same way.</li>
 <li><strong>Copilot:</strong> the whole command or change, with <strong>Allow Once</strong> and <strong>Deny</strong>, the default.
   Nothing is allowed for later.</li>
 </ul>
@@ -1435,10 +1454,15 @@ only when no screen reader is running, so you never hear a second voice over you
 If your screen reader is running but The Chat Place can't reach it, a Windows notification says
 announcements aren't being spoken, the status bar gives the reason beside the announcement, and
 Settings shows it in a Speech problem box after Speaking rate.</p>
+<p>On Linux, <strong>Automatic</strong> speaks through Orca, in Orca's voice and rate. Orca 49 and later take
+every announcement, whatever window you're in. Orca 48 and earlier take them while you're in The
+Chat Place; while you're in another window, speech-dispatcher speaks them, the speech server
+Orca uses too, which never talks over Orca. Without Orca, Automatic is a speech-dispatcher
+voice, and Settings chooses the voice and rate.</p>
 <p>When you're in another window, The Chat Place can show a notification: when one of the chats
 started here finishes a turn, fails or needs you, when the chat you have loaded finishes, or when
 a desktop app chat starts needing you. Choosing the notification brings The Chat Place forward
-with that chat loaded. Settings, Windows notifications (on a Mac, Notifications) chooses every
+with that chat loaded. Settings, Windows notifications (on a Mac and on Linux, Notifications) chooses every
 finished turn (the default), only when a chat needs you, or off. While you're in The Chat Place,
 the announcement is enough and no notification is shown.</p>
 <h2 id="settings">Settings</h2>
@@ -1589,7 +1613,9 @@ The Chat Place knows."</p>
 <p><strong>Where links work.</strong> On Windows, the installed copy of The Chat Place sets up
 <code>thechatplace://</code> links for your Windows account when it's installed and each time it starts,
 and uninstalling it removes them. The portable copy doesn't, so links open the installed copy
-if you have one. On a Mac, links work once The Chat Place is in Applications. A link copied on
+if you have one. On a Mac, links work once The Chat Place is in Applications. On Linux, the
+AppImage sets up links when it starts; if you move the AppImage, start it once from its new
+place. A link copied on
 one computer opens the chat only on that computer.</p>
 <h2 id="remote-control">Remote Control</h2>
 <p>Remote Control is for Claude chats started here. It lets you keep an eye on one when you're away
@@ -1690,18 +1716,22 @@ chats").</p>
 up links, so there's nothing else to undo.</p>
 <p><strong>Mac:</strong> drag The Chat Place from Applications (or wherever you keep it) to the Trash. Its
 <code>thechatplace://</code> links are declared inside the app itself.</p>
+<p><strong>Linux:</strong> delete the AppImage, and the desktop menu entry it made,
+<code>~/.local/share/applications/thechatplace.desktop</code>, which also holds its <code>thechatplace://</code> links.</p>
 <p><strong>What's left behind.</strong> Uninstalling keeps your settings and records, in case you install The
 Chat Place again. To remove them too, delete these folders, the main things it leaves:</p>
 <ul>
 <li>The Chat Place's own folder: <code>%APPDATA%\TheChatPlace</code> on Windows,
-  <code>~/Library/Application Support/TheChatPlace</code> on a Mac. It holds its records of the chats started
+  <code>~/Library/Application Support/TheChatPlace</code> on a Mac, <code>~/.config/TheChatPlace</code> on Linux. It holds its records of the chats started
   here, your settings, groups, names, hidden chats, saved prompts, pasted pictures, agent
   conversations, remembered Codex approvals and its logs.</li>
 <li>On Windows, the formatted page's WebView2 profile, <code>%LOCALAPPDATA%\TheChatPlace WebView2</code>.</li>
 <li>Its speech folder: <code>%TEMP%\thechatplace-speak</code> on Windows, <code>$TMPDIR/thechatplace-speak</code> on a
-  Mac. Its speech scripts also keep small logs in <code>claude-speak</code> (and, on Windows,
-  <code>claude-speak-nvda</code>) in the same temporary folder. ClaudeSpeak uses those folders too, so keep
-  them if you use ClaudeSpeak.</li>
+  Mac, <code>$XDG_RUNTIME_DIR/thechatplace-speak</code> on Linux (emptied when you log out; without a
+  runtime folder, <code>/tmp/thechatplace-speak-</code> and your user number). On Windows and the Mac its
+  speech scripts also keep small logs in <code>claude-speak</code> (and, on Windows, <code>claude-speak-nvda</code>) in
+  the same temporary folder. ClaudeSpeak uses those folders too, so keep them if you use
+  ClaudeSpeak. On Linux the speech script's log is in the speech folder itself.</li>
 </ul>
 <p><strong>What it never removes</strong>, because none of it belongs to The Chat Place:</p>
 <ul>
@@ -1740,7 +1770,8 @@ running but The Chat Place can't reach it, the status bar gives the reason besid
 announcement, a notification says announcements aren't being spoken (unless notifications are
 off in Settings), and Settings shows the reason in a Speech problem box after Speaking rate.</p>
 <p>Everything spoken is also written to <code>speech.log</code> (nothing is written while Silent is chosen),
-in <code>%TEMP%\thechatplace-speak</code> on Windows and <code>$TMPDIR/thechatplace-speak</code> on a Mac: one line
+in <code>%TEMP%\thechatplace-speak</code> on Windows, <code>$TMPDIR/thechatplace-speak</code> on a Mac and
+<code>$XDG_RUNTIME_DIR/thechatplace-speak</code> on Linux: one line
 each, with the time, the speech engine and the opening words. A line means the text was handed
 to the speech engine, not that it was heard. On Windows, with a screen reader setting, a <code>route:</code>
 line usually follows, saying which screen reader or voice spoke it, or why a running screen
@@ -1829,8 +1860,8 @@ support@theideaplace.net.</p>
 <li>The Chat Place keeps its own settings and records on Windows in <code>%APPDATA%\TheChatPlace</code>, on a
   Mac in <code>~/Library/Application Support/TheChatPlace</code>.</li>
 <li>It also writes a few things of its own elsewhere:<ul>
-<li>its speech files and <code>speech.log</code>, in <code>%TEMP%\thechatplace-speak</code> on Windows and
-  <code>$TMPDIR/thechatplace-speak</code> on a Mac;</li>
+<li>its speech files and <code>speech.log</code>, in <code>%TEMP%\thechatplace-speak</code> on Windows,
+  <code>$TMPDIR/thechatplace-speak</code> on a Mac and <code>$XDG_RUNTIME_DIR/thechatplace-speak</code> on Linux;</li>
 <li>on Windows, the formatted page's WebView2 profile, in
   <code>%LOCALAPPDATA%\TheChatPlace WebView2</code>;</li>
 <li>on Windows, the installed copy sets up <code>thechatplace://</code> links for your Windows account

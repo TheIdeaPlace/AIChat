@@ -3,11 +3,11 @@
  "class": "QuestionDialog",
  "size": [
   700,
-  254
+  414
  ],
  "client": [
   684,
-  215
+  375
  ],
  "dpi": [
   96,
@@ -16,12 +16,51 @@
  "content_scale": 1.0,
  "controls": [
   {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Question:",
+   "rect": [
+    8,
+    8,
+    52,
+    16
+   ],
+   "best": [
+    52,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Question",
+   "label": "Checks: Which checks should run?\r\nSecret: Enter the test secret.",
+   "rect": [
+    10,
+    34,
+    668,
+    120
+   ],
+   "best": [
+    127,
+    120
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Checks: Which checks should run?\nSecret: Enter the test secret."
+  },
+  {
    "class": "ScrolledWindow",
    "name": "panel",
    "label": "panel",
    "rect": [
     4,
-    4,
+    164,
     676,
     168
    ],
@@ -40,7 +79,7 @@
    "label": "Checks: Which checks should run?",
    "rect": [
     10,
-    10,
+    170,
     664,
     68
    ],
@@ -49,7 +88,7 @@
     23
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -59,7 +98,7 @@
    "label": "Unit tests",
    "rect": [
     19,
-    31,
+    191,
     71,
     15
    ],
@@ -68,7 +107,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -78,7 +117,7 @@
    "label": "Smoke test",
    "rect": [
     19,
-    54,
+    214,
     80,
     15
    ],
@@ -87,7 +126,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -97,7 +136,7 @@
    "label": "Secret: Enter the test secret.",
    "rect": [
     10,
-    90,
+    250,
     664,
     76
    ],
@@ -106,7 +145,7 @@
     23
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -116,7 +155,7 @@
    "label": "Other (type below)",
    "rect": [
     19,
-    111,
+    271,
     121,
     15
    ],
@@ -125,7 +164,7 @@
     15
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": []
   },
@@ -135,7 +174,7 @@
    "label": "",
    "rect": [
     21,
-    136,
+    296,
     646,
     23
    ],
@@ -144,7 +183,7 @@
     23
    ],
    "depth": 1,
-   "parent": 0,
+   "parent": 2,
    "enabled": true,
    "problems": [],
    "value": ""
@@ -155,7 +194,7 @@
    "label": "&Send Answers",
    "rect": [
     343,
-    184,
+    344,
     94,
     23
    ],
@@ -174,7 +213,7 @@
    "label": "Decline and Stop &Turn",
    "rect": [
     443,
-    184,
+    344,
     138,
     23
    ],
@@ -193,7 +232,7 @@
    "label": "Answer &Later",
    "rect": [
     587,
-    184,
+    344,
     89,
     23
    ],

@@ -90,9 +90,10 @@ from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, 
                           clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
-from . import mac_a11y
+from . import gtk_a11y, mac_a11y
 from .sizes import dialog_size, dip
-from .a11y import set_accessible_name, set_list_items_accessible, set_voiceover_menu
+from .a11y import (refresh_list_item, set_accessible_name, set_list_items_accessible,
+                   set_voiceover_menu)
 from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
@@ -109,7 +110,8 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, ChatP
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
-                      formatted_view_available, press_focused_button_on_a_mac)
+                      formatted_view_available, press_focused_button_on_a_mac,
+                      single_choice_dialog)
 
 APP_NAME = "The Chat Place"
 LIST_REFRESH_MS = 5000
@@ -212,6 +214,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         # update item says it.
         self._update_available = ""
         self._menu_open = False  # a menu is open: no dialog over it (#141)
+        self._menus_open = 0  # Linux: how many, submenus included (#230)
         self.speech = SpeechSettings.load()
         self._codex_states = {}
         self._codex_drafts = {}
@@ -259,6 +262,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         #: The latest messages the conversation sent each member, so a Stop
         #: that gives waiting ones back can tell its own from yours (#369).
         self._agent_sent_texts: Dict[tuple, list] = {}
+        #: Per running Claude chat: the text it wrote since its last tool,
+        #: and whether a tool has come since, so a question can show what
+        #: Claude said just before asking it (#415).
+        self._turn_said: Dict[str, tuple] = {}
         self._agent_codex_preparing: set = set()
         self._agent_answered_early: set = set()
         #: The files each member's running turn has edited (phase 3).
@@ -277,6 +284,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         # A screen reader that's running but can't be reached is reported, not
         # covered by a Windows voice (#98).
         speaker.on_problem = lambda reason: wx.CallAfter(self._on_speech_problem, reason)
+        if gtk_a11y.IS_LINUX:
+            # Orca before 49 takes announcements only from the active window.
+            speaker.window_announcer = self._announce_through_window
+            # GTK's key for the menu bar is F10; on Windows it's Alt on its own.
+            gtk_a11y.watch_alt_tap(self, lambda: wx.CallAfter(
+                lambda: self and gtk_a11y.press_menu_bar_key(self)))
 
         self._pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="hub")
         self._snapshot = Snapshot()
@@ -2106,6 +2119,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             else:
                 self.chat_list.SetSelection(self._nearest_visible(selected_key, keys))
         self._chat_keys = keys
+        refresh_list_item(self.chat_list)  # Linux: the rest of the row's message, for Orca
 
     def _nearest_visible(self, key: Optional[str], visible_keys: List[str]) -> int:
         """Row of the last visible message at or before ``key`` in the full
@@ -3033,6 +3047,35 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         dialogs (the frame alone says no while a dialog has the focus)."""
         return wx.GetActiveWindow() is not None
 
+    def _announce_through_window(self, text: str, interrupt: bool) -> bool:
+        """Linux: hand an announcement to Orca as a notification from The
+        Chat Place's active window, if it has one; Orca ignores those from
+        windows in the background (orca.py). Called on the speech thread: the
+        check and the notification happen on the UI thread, which it waits
+        for, a second at most. True if it was sent."""
+        lock, done, answer = threading.Lock(), threading.Event(), {}
+
+        def on_ui():
+            with lock:
+                if answer.get("too late"):
+                    return  # the speech thread has moved on to another voice
+                try:
+                    active = _active_top_level()
+                    answer["sent"] = bool(
+                        active is not None and not self._gone()
+                        and gtk_a11y.announce(active, text, interrupt))
+                except RuntimeError:  # the window was destroyed meanwhile
+                    answer["sent"] = False
+            done.set()
+
+        wx.CallAfter(on_ui)
+        if not done.wait(1.0):
+            with lock:
+                if "sent" not in answer:
+                    answer["too late"] = True
+                    return False
+        return answer.get("sent", False)
+
     @staticmethod
     def _open_modal() -> Optional[wx.Dialog]:
         """The modal wx dialog in front now (Code Blocks, Settings, a
@@ -3058,7 +3101,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         # Only when the main window itself is active and disabled, which is
         # only ever the case behind a dialog: if the dialog came forward
         # properly, or you've switched away again, there is nothing to do.
-        if not self or self.IsEnabled() or wx.GetActiveWindow() is not self:
+        if not self or self.IsEnabled() or _active_top_level() is not self:
             return
         # Windows knows the innermost dialog, native ones included.
         if platform_paths.bring_last_popup_forward(self.GetHandle()):
@@ -4350,10 +4393,25 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self._store_write(self.store.update, session_id, state=IDLE, detail="",
                           last_activity_ms=int(time.time() * 1000))
 
+    def _note_turn_text(self, session_id: str, event: TurnEvent) -> None:
+        """Keep what Claude wrote since its last tool (#415). AskUserQuestion
+        is a tool too, and its tool event comes before the question, so a
+        tool only marks the text as finished: the next text starts again."""
+        if event.kind in ("started", "finished", "failed"):
+            self._turn_said.pop(session_id, None)
+        elif event.kind in ("tool", "waiting", "steer_taken"):
+            # So does a pause for background work, or a steered message.
+            texts, _closed = self._turn_said.get(session_id, ([], False))
+            self._turn_said[session_id] = (texts, True)
+        elif event.kind == "text" and event.text.strip():
+            texts, closed = self._turn_said.get(session_id, ([], False))
+            self._turn_said[session_id] = (([] if closed else texts) + [event.text.strip()], False)
+
     def _on_turn_event(self, holder, title, event: TurnEvent):
         if self._gone():
             return
         session_id = holder["id"]
+        self._note_turn_text(session_id, event)
         if event.kind == "started":
             reported = event.session_id
             if reported and reported != session_id and session_id in self._runners:
@@ -4448,6 +4506,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 self.refresh_sessions()
             return
         if event.kind == "permission" and event.request is not None:
+            if event.request.is_question:
+                # What Claude wrote just before asking goes with the
+                # question: often it's what the question is about (#415).
+                event.request.said = "\n\n".join(self._turn_said.get(session_id, ([], False))[0])
             self._agent_member_asked("claude", session_id)
             if session_id not in self._runners:
                 return  # the turn already ended; nothing is waiting
@@ -5503,7 +5565,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         readers handle well). The chosen index, or None."""
         # Over the dialog it was chosen from (Chat Permissions' Change, #329),
         # so closing it returns there rather than to the disabled window.
-        dialog = wx.SingleChoiceDialog(self._open_modal() or self, prompt, title, choices)
+        dialog = single_choice_dialog(self._open_modal() or self, prompt, title, choices)
         if selection is not None:
             dialog.SetSelection(selection)  # on the current choice, not the first
         try:
@@ -5804,7 +5866,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
 
     def _on_menu_open_close(self, event, is_open: bool):
         event.Skip()
-        self._menu_open = is_open
+        if gtk_a11y.IS_LINUX:
+            # GTK sends an open and a close for each menu, submenus too, and
+            # a submenu's close could come while its menu is still open. A
+            # count keeps one menu closing from looking like all of them
+            # closing, which would let Escape reach the window again (#230).
+            self._menus_open = max(0, self._menus_open + (1 if is_open else -1))
+            self._menu_open = self._menus_open > 0
+        else:
+            self._menu_open = is_open
 
     def _set_update_available(self, version: str):
         """Help's update item names the version running, or the newer one
@@ -5926,7 +5996,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if any(isinstance(w, wx.Dialog) and w.IsShown() and w.IsModal()
                for w in wx.GetTopLevelWindows()):
             return True
-        active = wx.GetActiveWindow()
+        active = _active_top_level()
         return active is not None and active is not self
 
     def _on_update_downloaded(self, result: CheckResult, ok: bool):
@@ -6496,6 +6566,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
     # ------------------------------------------------------------- keyboard
 
     def _on_char_hook(self, event: wx.KeyEvent):
+        if self._menu_open and gtk_a11y.IS_LINUX:
+            # A menu has the keyboard. On Windows it never gets here, but
+            # GTK passes the window its keys first: Escape, meant to close
+            # the menu bar, went back to the session list instead and the
+            # menu bar stayed open (#230, found by tools/orca_speech.py).
+            event.Skip()
+            return
         key = event.GetKeyCode()
         focus = wx.Window.FindFocus()
         ctrl = event.ControlDown()
@@ -6703,6 +6780,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         self.stop_timers()
         speaker.stop()
         speaker.on_problem = None
+        speaker.window_announcer = None
         self._notifier.close()  # its icon would keep the app running
         self._pool.shutdown(wait=False, cancel_futures=True)
         self._close_providers()
@@ -6751,6 +6829,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             timer = getattr(self, name, None)
             if timer is not None:
                 timer.Stop()
+
+
+def _active_top_level() -> Optional[wx.Window]:
+    """The active window, or None. ``wx.GetActiveWindow`` on Linux (wxGTK)
+    answers with the control that has the focus, not its window, so the main
+    window always looked covered by a dialog and an update never installed."""
+    active = wx.GetActiveWindow()
+    return wx.GetTopLevelParent(active) if active is not None else None
 
 
 def _folder_key(cwd: str) -> str:

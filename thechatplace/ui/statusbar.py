@@ -8,6 +8,11 @@ too, so the screen reader's read-status-bar key reads them all.
 
 Parts with nothing to say are hidden, buttons especially: "Update
 available" is there only when there's an update.
+
+On Linux the native fields stay empty: wx draws GTK's status bar itself, so
+Orca can't read their text, and a button there has no background, so the
+field's text showed through it, doubled. Orca's read-status-bar command reads
+the parts themselves instead, the bar having the status bar role.
 """
 from __future__ import annotations
 
@@ -15,6 +20,8 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 import wx
+
+from . import gtk_a11y
 
 
 class _TextAccessible(wx.Accessible):
@@ -71,6 +78,10 @@ class StatusText(wx.Control):
             self.SetAccessible(self._accessible)
         except (NotImplementedError, AttributeError):
             pass
+        # Linux: GTK calls a control wx draws itself a "panel", with no name,
+        # so Orca said "panel". It's a label, named by its words.
+        gtk_a11y.set_role(self, "label")
+        gtk_a11y.set_label(self, empty_text)
 
     def AcceptsFocus(self):
         return True
@@ -81,6 +92,7 @@ class StatusText(wx.Control):
     def SetLabel(self, label):
         if label != self.GetLabel():
             super().SetLabel(label)
+            gtk_a11y.set_label(self, label or self.empty_text)
             self.Refresh()
 
     def show_text(self, text: str) -> None:
@@ -151,6 +163,8 @@ class StatusButton(wx.Button):
 
 #: Space kept around each part inside its field.
 _INSET = 2
+#: The native fields carry the parts' text (see the module docstring).
+_FIELD_TEXT = not gtk_a11y.IS_LINUX
 
 
 @dataclass
@@ -170,6 +184,7 @@ class StatusParts:
         self._fitted = False  # the bar's height is set for its buttons (#175)
         bar.Bind(wx.EVT_SIZE, self._on_size)
         bar.Bind(wx.EVT_DPI_CHANGED, self._on_dpi_changed)
+        gtk_a11y.set_role(bar, "statusbar")
 
     def add_text(self, key: str, name: str, width: int, empty_text: str = "") -> StatusText:
         control = StatusText(self.bar, name, empty_text)
@@ -261,20 +276,48 @@ class StatusParts:
             return
         # A part's width is in design pixels (#185): scaled here, every time,
         # so it follows a move to a screen with other scaling. A negative
-        # width is a share of what's left, and isn't scaled.
-        self.bar.SetFieldsCount(len(shown), [self.bar.FromDIP(p.width) if p.width > 0
-                                             else p.width for p in shown])
+        # width is a share of what's left, and isn't scaled. A button's field
+        # is never narrower than its text needs: Linux's fonts and taller
+        # bar (whose size grip is as wide as it's tall) cut "1 session needs
+        # you" to "l session needs you".
         grip = self.bar.GetSize().height
+        widths = []
+        for index, part in enumerate(shown):
+            width = self.bar.FromDIP(part.width) if part.width > 0 else part.width
+            if part.width > 0 and isinstance(part.control, StatusButton):
+                needed = part.control.GetBestSize().width + 2 * _INSET
+                if index == len(shown) - 1:
+                    needed += grip
+                width = max(width, needed)
+            widths.append(width)
+        self.bar.SetFieldsCount(len(shown), widths)
+        # A field holds a little less than asked for (its borders): made up.
+        short = False
+        for index, part in enumerate(shown):
+            if part.width > 0 and isinstance(part.control, StatusButton):
+                room = self.bar.GetFieldRect(index).width - 2 * _INSET
+                if index == len(shown) - 1:
+                    room -= grip
+                missing = part.control.GetBestSize().width - room
+                if missing > 0:
+                    widths[index] += missing
+                    short = True
+        if short:
+            self.bar.SetFieldsCount(len(shown), widths)
         for index, part in enumerate(shown):
             rect = self.bar.GetFieldRect(index)
             width = rect.width - 2 * _INSET
             if index == len(shown) - 1:
                 width -= grip  # keep the size grip visible
+            # Never below 1: before the bar is laid out its fields are 0
+            # high, and GTK refuses a negative height (a warning each time).
             part.control.SetSize(rect.x + _INSET, rect.y + _INSET, max(width, 20),
-                                 rect.height - 2 * _INSET)
+                                 max(rect.height - 2 * _INSET, 1))
         self._sync_fields()
 
     def _sync_fields(self) -> None:
+        if not _FIELD_TEXT:
+            return
         shown = [p for p in self._parts if p.always or p.control.IsShown()]
         for index, part in enumerate(shown):
             if index < self.bar.GetFieldsCount():

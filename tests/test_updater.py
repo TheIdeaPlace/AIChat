@@ -180,6 +180,21 @@ def test_latest_published_version_filters_by_prefix():
     assert latest_published_version(lambda url: json.dumps(odd).encode()) == "0.3.0"
 
 
+def test_a_release_without_this_platforms_feed_is_passed_over():
+    """Linux builds don't hold up a release (#230): one that went out
+    without them isn't offered to Linux copies, which stay on the last
+    release that has their feed."""
+    def files(*channels):
+        return [{"name": f"releases.{channel}.json"} for channel in channels]
+    releases = [
+        {"tag_name": "v0.3.0", "assets": files("windows", "osx")},
+        {"tag_name": "v0.2.0", "assets": files("windows", "osx", "linux-x64", "linux-arm64")},
+    ]
+    fetch = lambda url: json.dumps(releases).encode()  # noqa: E731
+    assert latest_published_version(fetch, channel="linux-x64") == "0.2.0"
+    assert latest_published_version(fetch, channel="windows") == "0.3.0"
+
+
 # -- data safety ---------------------------------------------------------------------------
 
 
@@ -260,7 +275,19 @@ def test_windows_portable_zip_still_never_updates(monkeypatch):
 
 
 def test_each_platform_reads_its_own_feed():
-    assert updater.CHANNEL == ("windows" if sys.platform == "win32" else "osx")
+    expected = {"win32": "windows", "darwin": "osx"}.get(sys.platform)
+    if expected is None:  # Linux: one feed per processor
+        import platform
+        expected = ("linux-arm64" if platform.machine().lower() in ("aarch64", "arm64")
+                    else "linux-x64")
+    assert updater.CHANNEL == expected
+
+
+def test_linux_has_a_feed_for_each_processor():
+    assert updater._channel("linux", "x86_64") == "linux-x64"
+    assert updater._channel("linux", "aarch64") == "linux-arm64"
+    assert updater._channel("win32", "ARM64") == "windows"
+    assert updater._channel("darwin", "arm64") == "osx"
 
 
 def test_mac_app_bundle_is_the_install_folder(tmp_path, monkeypatch):

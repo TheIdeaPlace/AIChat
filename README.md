@@ -18,8 +18,8 @@ Keyboard shortcuts: [a web page](https://theideaplace.github.io/AIChat/keyboard-
 [Markdown](docs/keyboard-shortcuts.md) and [plain text](docs/keyboard-shortcuts.txt): the same list
 as Help, Keyboard Shortcuts (F1) in the app.
 
-> **Status: version 0.3.1, a pre-release** (0.1.0, the first release, came out on 7 October 2026). How it
-> has been tested is in [DEVELOPING.md](DEVELOPING.md#how-its-been-tested).
+> **Status: version 0.3.2, a pre-release** (0.1.0, the first release, came out on 7 October 2026). The Linux
+> build is a preview. How it has been tested is in [DEVELOPING.md](DEVELOPING.md#how-its-been-tested).
 
 The Chat Place brings Claude and Codex chats into one accessible list. Read each conversation,
 find or export its messages, hear when it answers, and reply to chats started here. Provider
@@ -41,7 +41,8 @@ session, and the **reply box** with Send and Stop. Shift+Tab goes back the same 
 session list is always there. **F6** and **Shift+F6** move between those parts and the **status
 bar**, which holds whatever was said last ("12 sessions: 1 need you", "Claude is using Bash.") in
 a read-only box to read by line, word and character; **Ctrl+9** goes straight there. The status
-bar isn't a Tab stop, and your screen reader's own read-status-bar key still works.
+bar isn't a Tab stop, and your screen reader's own read-status-bar key still works (Orca's
+too).
 
 ### The session list
 
@@ -393,8 +394,11 @@ bar isn't a Tab stop, and your screen reader's own read-status-bar key still wor
     chat's own folder, with any tool. The Chat Place never keeps a whole drive or share. When
     Claude Code suggests no rule, only a switch to accepting edits, Allow for This Chat switches
     the chat's mode instead.
-  - **Questions:** each question is a group of options with their descriptions, with Other
-    and a box to type your own answer; Send Answers, or Don't Answer.
+  - **Questions:** a read-only Question box first, where focus starts, with what the chat wrote
+    just before asking and each question in full; then each question as a group of options
+    with their descriptions, with Other and a box to type your own answer; a Preview box when
+    an option has a preview, showing the one for the option you're on (#415); Send Answers, or
+    Don't Answer.
   - **Plan:** the plan to read (Read Formatted shows it as a page, by heading), then **Approve**, choosing the mode to carry on in (accept
     edits, auto or manual), or **Keep Planning** with what to change, which is the default.
 
@@ -719,6 +723,15 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   again. Nothing is spoken through a screen reader while Windows is locked. Choosing JAWS or NVDA in
   Settings only decides which is tried first when both are running. On a Mac, Automatic speaks
   through VoiceOver when it's running, else a system voice.
+- **Which voice speaks on Linux.** Automatic, or Orca, speaks through Orca when it's running, in
+  Orca's own voice and rate, on its braille display too. Orca 49 and later take every
+  announcement through their D-Bus remote controller (`PresentMessage`), whatever window you're
+  in. Orca 45.2 to 48 take them only from the active window, so The Chat Place sends them as
+  notifications from its window while you're in it; while you're in another window, they're
+  spoken by speech-dispatcher, the speech server Orca uses too. speech-dispatcher says one
+  thing at a time, so that voice never talks over Orca, and Orca's next words cut it off. With
+  Orca not running, Automatic is a speech-dispatcher voice; Settings lists the voices in your
+  language, and the rate. Help, Report a Bug says which way the last announcement went.
 - **Answers to what you do are spoken too**, briefly and without cutting off your screen reader:
   "Tool activity shown in Build.", "Message copied.", and so on (unless announcements are set to silent).
 - **Your own message is read back when it's sent**, so you hear what actually went to the selected provider,
@@ -732,8 +745,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 - **Notifications** while you're in another window: when one of The Chat Place's own
   sessions finishes a turn, fails or needs you (a permission or a question), when a desktop app
   session starts needing you, and when the loaded session finishes. Choosing one brings
-  The Chat Place forward with that session loaded. Settings, Windows notifications (on a Mac,
-  Notifications) chooses every finished turn of its own sessions (the default), only when a
+  The Chat Place forward with that session loaded. Settings, Windows notifications (on a Mac
+  and on Linux, Notifications) chooses every finished turn of its own sessions (the default), only when a
   session needs you, or off. While you're in The Chat Place (or one of its dialogs), the
   announcement is enough and none are shown.
   - On Windows they're ordinary Windows notifications from The Chat Place's icon in the
@@ -743,6 +756,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
     macOS asks once whether The Chat Place may send them (System Settings, Notifications changes
     that). Each one remembers its own session, so choosing an older one still opens the right
     session.
+  - On Linux they go to your desktop's notification server (GNOME's, KDE's, or any other that
+    follows the freedesktop.org standard), which Orca reads. Choosing one opens its session, as
+    on a Mac, where the notification server supports it.
 - **The status bar** (F6, or Ctrl+9) has parts, as in QuickMail, and Left and Right move between
   them: what was last said, then the loaded session and what it's doing (read-only text), then
   buttons that appear when there's something to act on: how full the context is (Usage and
@@ -958,8 +974,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ## Install
 
-You need Windows 10 or 11, or a Mac with Apple silicon. For Codex chats, you need a native
-Codex CLI signed in to ChatGPT. Claude Code is not required for Codex chats.
+You need Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview; see
+**Linux** below). For Codex chats, you need a native Codex CLI signed in to ChatGPT. Claude Code is not required for Codex chats.
 
 For GitHub Copilot CLI chats (a preview), you need the native GitHub Copilot CLI
 (`winget install GitHub.Copilot` on Windows, `brew install copilot-cli` or GitHub's install
@@ -975,7 +991,7 @@ native installer and signed in** to a Claude subscription (the `claude` command,
 the desktop app uses). The Claude desktop app's own copy of Claude Code isn't on the PATH and
 isn't meant for other programs, so install the command as well, from a terminal:
 
-- Mac: `curl -fsSL https://claude.ai/install.sh | bash`
+- Mac and Linux: `curl -fsSL https://claude.ai/install.sh | bash`
 - Windows PowerShell: `irm https://claude.ai/install.ps1 | iex`
 - Windows Command Prompt:
   `curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd`
@@ -999,9 +1015,44 @@ control VoiceOver; allow it, and turn on "Allow VoiceOver to be controlled with 
 VoiceOver Utility, General. Your sessions and settings are in
 `~/Library/Application Support/TheChatPlace`.
 
+**Linux** (a preview). Download `TheChatPlace-linux-x64.AppImage` (most PCs) or
+`TheChatPlace-linux-arm64.AppImage` (Arm PCs and boards, such as the MNT Reform and Pocket
+Reform) from the same release, put it where you keep programs (`~/Applications`,
+say), make it executable, and run it:
+
+```
+chmod +x ~/Applications/TheChatPlace-linux-arm64.AppImage
+~/Applications/TheChatPlace-linux-arm64.AppImage
+```
+
+The first start adds The Chat Place to your desktop's menu (a desktop entry in
+`~/.local/share/applications`) and makes it the handler for `thechatplace://` links. Your sessions
+and settings are in `~/.config/TheChatPlace`.
+
+It needs a Linux at least as new as Ubuntu 24.04, Debian 13 or Fedora 40, with GTK 3 (any
+desktop has it), and these, which most desktops have and the rest install in one line:
+
+- **FUSE 2**, which runs AppImages: `sudo apt install libfuse2t64` on Debian 13 and Ubuntu 24.04
+  (`libfuse2` on older ones), `sudo dnf install fuse-libs` on Fedora. Without it, an AppImage
+  still runs with `--appimage-extract-and-run`, but slower to start.
+- **Orca** (45.2 or later; 49 or later reads announcements from the background) and
+  **speech-dispatcher**: `sudo apt install orca speech-dispatcher`.
+- For formatted full messages (off by default on Linux; see Limitations), **WebKitGTK 4.1**:
+  `sudo apt install libwebkit2gtk-4.1-0`.
+
+Anthropic makes no Claude desktop app for Linux, so the Claude sessions listed there are the ones
+you started by typing `claude` in a terminal and The Chat Place's own. Codex and GitHub Copilot
+CLI chats are listed as on Windows and the Mac.
+
+Claude Code's sign-in (Help, Claude Code Sign-in) opens a web page. Without a web browser, which
+a server install often lacks, the terminal shows only the link: open it on another computer or
+phone, or install a browser (`sudo apt install firefox-esr` on Debian).
+
 **Uninstalling.** On Windows, uninstall the installed copy from Settings, Apps, Installed apps (Apps & features on Windows 10);
-delete the portable copy's folder. On a Mac, drag The Chat Place to the Trash. Your settings and
-records stay in `%APPDATA%\TheChatPlace` (on a Mac, `~/Library/Application Support/TheChatPlace`)
+delete the portable copy's folder. On a Mac, drag The Chat Place to the Trash. On Linux, delete
+the AppImage and its desktop entry, `~/.local/share/applications/thechatplace.desktop`. Your settings and
+records stay in `%APPDATA%\TheChatPlace` (on a Mac, `~/Library/Application Support/TheChatPlace`;
+on Linux, `~/.config/TheChatPlace`)
 until you delete them, and your Claude, Codex and Copilot chats are never removed. The user
 guide's [Uninstalling](https://theideaplace.github.io/AIChat/user-guide.html#uninstalling)
 section lists everything that's left behind.
@@ -1038,12 +1089,14 @@ turn starts, a dialog opens, or you type a reply while it downloads, it asks aga
 update to be installed the next time The Chat Place starts.
 
 The Mac app updates the same way. Velopack's updater is inside the app itself, so it works
-wherever you keep it.
+wherever you keep it. So does the Linux AppImage: an update replaces the `.AppImage` file where
+it is (asking for your password, through pkexec, only if it's in a folder you can't write to).
 
 **Updating never touches your sessions or settings.** On Windows the app lives in
 `%LOCALAPPDATA%\TheChatPlace`, which Velopack replaces on update and removes on uninstall, and
 your data is in `%APPDATA%\TheChatPlace`. On a Mac, Velopack replaces the app itself, and your
-data is in `~/Library/Application Support/TheChatPlace`. The updater refuses to run if the data
+data is in `~/Library/Application Support/TheChatPlace`. On Linux, Velopack replaces the
+AppImage, and your data is in `~/.config/TheChatPlace`. The updater refuses to run if the data
 were ever inside what it replaces. What the updater did is logged in `update.log` in the data
 folder.
 
@@ -1119,6 +1172,7 @@ takes a menu's letter.
 
 On a Mac, Ctrl is the Command key, the menus are in the menu bar (VO+M) rather than on Alt, and
 Settings is in the app menu.
+On Linux, Alt opens the menu bar as on Windows, and so does F10, as in other GTK programs.
 
 ## How it works
 
@@ -1152,7 +1206,7 @@ N lines" instead. A long transcript is read once, then only its new lines as it 
 
 **The Chat Place never writes to the desktop app's files or to any transcript.** Its own settings
 and records are in `%APPDATA%\TheChatPlace` (on a Mac, `~/Library/Application Support/TheChatPlace`). It also writes its speech files and `speech.log` in
-`%TEMP%\thechatplace-speak` (`$TMPDIR/thechatplace-speak` on a Mac) and, on Windows, the formatted
+`%TEMP%\thechatplace-speak` (`$TMPDIR/thechatplace-speak` on a Mac, `$XDG_RUNTIME_DIR/thechatplace-speak` on Linux) and, on Windows, the formatted
 view's WebView2 profile in `%LOCALAPPDATA%\TheChatPlace WebView2`; the installed Windows copy
 registers `thechatplace://` links for your account each time it starts. Otherwise it writes only
 when you ask: exports go where you save them, From GitHub clones into your GitHub folder, a new
@@ -1243,7 +1297,7 @@ turn status line say when a steered message hasn't been taken in yet. Send Now (
 answers the message instead.
 
 Every announcement is also written to `speech.log` in `%TEMP%\thechatplace-speak` (on a Mac,
-`$TMPDIR/thechatplace-speak`), one line each: the time, whether it interrupts or waits its turn,
+`$TMPDIR/thechatplace-speak`; on Linux, `$XDG_RUNTIME_DIR/thechatplace-speak`), one line each: the time, whether it interrupts or waits its turn,
 the speech engine, and its opening words. On Windows, with a screen reader setting, a `route:` line
 usually follows it: "spoke through NVDA", "no screen reader running, so a Windows voice", or why a running
 screen reader didn't speak. A line means the text was handed to the speech engine,
@@ -1292,9 +1346,16 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 - On a Mac, edit boxes, lists and
   choices have their names under VoiceOver, as under JAWS and NVDA. But the text a screen reader
   reads for each row of the messages list (the whole message) uses MSAA, which wxPython has only
-  on Windows, so VoiceOver reads the row's own text instead. The OS-specific parts are in
-  `thechatplace/platform_paths.py`, `thechatplace/ui/a11y.py`, `thechatplace/ui/mac_a11y.py` and
-  the speech scripts.
+  on Windows, so VoiceOver reads the row's own text instead. On Linux, Orca reads a row's own text
+  and then the rest of the message (from the row's accessible description). The OS-specific
+  parts are in `thechatplace/platform_paths.py`, `thechatplace/ui/a11y.py`,
+  `thechatplace/ui/mac_a11y.py`, `thechatplace/ui/gtk_a11y.py`, `thechatplace/orca.py` and the
+  speech scripts.
+- On Linux, Orca before 50 doesn't say a list's name ("Session list", "Messages in …") as you move
+  into it, only the row you land on; Orca's Where Am I says it. Orca 50 and later say it.
+- On Linux, full messages open as plain text unless you turn on the formatted page in Settings.
+  Tested with Orca 48 and WebKitGTK 2.50, the page's headings and landmarks could be moved
+  between, but Orca didn't read it line by line.
 - "Needs you" for desktop sessions depends on the desktop app's turn summary, which it doesn't
   always write. A session without one shows as idle once it stops working.
 - A desktop session's transcript can be gone if it's older than Claude Code's retention period

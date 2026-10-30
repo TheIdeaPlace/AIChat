@@ -1,4 +1,6 @@
 """Messages as formatted pages (#190): structure kept, nothing unsafe let in."""
+import sys
+
 import pytest
 
 from thechatplace.rendering import describe_code_block, markdown_to_html, message_page
@@ -82,10 +84,16 @@ def test_message_page_without_a_heading_is_unchanged():
 
 
 def test_formatted_setting_round_trips(tmp_path):
+    from thechatplace import speech
     path = tmp_path / "speech.json"
-    assert SpeechSettings.load(path).formatted_messages  # on by default
+    # On by default, but not on Linux, where Orca read a page's headings and
+    # not its lines.
+    assert speech.FORMATTED_BY_DEFAULT == (not sys.platform.startswith("linux"))
+    assert SpeechSettings.load(path).formatted_messages == speech.FORMATTED_BY_DEFAULT
     SpeechSettings(formatted_messages=False).save(path)
     assert not SpeechSettings.load(path).formatted_messages
+    SpeechSettings(formatted_messages=True).save(path)
+    assert SpeechSettings.load(path).formatted_messages
 
 
 def test_shortcuts_page_has_a_heading_and_a_table_per_group():

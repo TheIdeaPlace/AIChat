@@ -491,6 +491,9 @@ class PermissionRequest:
     description: str = ""
     suggestions: list = field(default_factory=list)
     tool_use_id: str = ""
+    #: For a question: what Claude wrote just before asking it, which the
+    #: answer dialog shows (#415). Filled in by the window, not Claude Code.
+    said: str = ""
 
     @property
     def is_question(self) -> bool:
