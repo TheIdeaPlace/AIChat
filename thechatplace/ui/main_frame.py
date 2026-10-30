@@ -3584,8 +3584,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if info.is_own and info.provider == "copilot":
             self._feedback(f"{info.title} keeps no permissions: Copilot asks before each command "
                            "or file change, and each answer is for that one request. Change "
-                           f"Permission Mode ({key_name('Ctrl+Shift+O')}) switches it between agent and plan "
-                           "mode.")
+                           f"Permission Mode ({key_name('Ctrl+Shift+O')}) switches it between "
+                           "agent mode, plan mode and running freely in its folder.")
             return
         if not info.is_own or info.provider not in ("claude", "codex"):
             where = "terminal" if info.is_terminal else "desktop app"

@@ -1820,3 +1820,33 @@ def test_copilots_own_files_are_never_changed_files(monkeypatch, tmp_path):
     events = [("tool.execution_complete", {"success": True,
                                            "fileEdits": [{"path": plan}, {"path": work}]})]
     assert _edited_paths(events) == (work,)
+
+
+# -- run freely in this folder (copilot_folder) -------------------------------------------
+
+
+def test_running_freely_answers_a_command_inside_the_folder_for_you(make, tmp_path):
+    runtime, _ = make("ask")  # each prompt asks to run "echo synthetic"
+    chat = runtime.create(str(tmp_path))
+    runtime.set_free(chat, True)
+    runtime.send(chat, "Run it")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    state = runtime.snapshot(chat)
+    assert state.replies[-1][1] == "Allowed" and state.requests == ()
+    assert state.free and state.auto_allowed == ((1, "Command: echo synthetic"),)
+    answer = next(m for m in received(tmp_path) if "result" in m and "method" not in m)
+    assert answer["result"] == {"outcome": {"outcome": "selected", "optionId": "allow_once"}}
+    # Off again, it asks.
+    runtime.set_free(chat, False)
+    runtime.send(chat, "Run it again")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert len(runtime.snapshot(chat).auto_allowed) == 1
+
+
+def test_running_freely_still_asks_for_a_file_outside_the_folder(make, tmp_path):
+    runtime, _ = make("edit")  # asks to create C:/synthetic/a.txt, outside tmp_path
+    chat = runtime.create(str(tmp_path))
+    runtime.set_free(chat, True)
+    runtime.send(chat, "Make a.txt")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert runtime.snapshot(chat).auto_allowed == ()

@@ -889,6 +889,28 @@ CLI. If Copilot can't start a new chat in plan mode, nothing is sent until you c
 with Change Permission Mode. When Copilot says to switch out of plan mode to
 make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
 it asking, is never offered, and a chat Copilot puts in it isn't sent to.</p>
+<p><strong>Running freely in the chat's folder.</strong> Copilot asks before every command and every file
+change, even one that only reads, such as Get-Item. For a chat you trust with a folder, choose
+<strong>Run freely in this folder</strong> in Change Permission Mode (Ctrl+Shift+O). After a warning (No is
+the default), The Chat Place answers for you, as Allow Once, Copilot's file changes inside the
+chat's folder and its subfolders, and its plain file and text commands that stay inside it:
+Get-Item, Get-ChildItem, Get-Content, Set-Content, Add-Content, New-Item, Copy-Item, Move-Item,
+Rename-Item, Remove-Item (not recursive), Select-String, Select-Object, Sort-Object, Test-Path and
+a few more, with relative paths or full paths inside the folder (on a Mac or Linux, only ls, cat,
+cp, mv, rm, echo and pwd). Each one it answers goes on the status bar, in full ("allowed for you:
+Command: Get-Item notes.txt"), and Turn Status says the chat runs freely. Everything else still
+asks: any other command or program, the network, changing folder (Set-Location, cd), recursion
+(-Recurse, -r) and following links, wildcards (<code>*</code>, <code>?</code>), making links, long options (<code>--name</code>),
+anything naming another folder or drive (a full path elsewhere, <code>..</code>, <code>~</code>, <code>\\server</code>,
+<code>HKLM:</code>), variables such as <code>$env:USERPROFILE</code>, brackets, redirection, characters other than
+plain ASCII (such as smart quotes), and Copilot's own requests for paths outside the folder. Once
+you allow by hand a command this check wouldn't allow itself (Set-Location, a script, git),
+commands in that chat always ask again, since the folder Copilot's shell is in is no longer known;
+file changes, which name their full path, are still allowed for you. For a command this is a
+strict reading of what the command says, not a lock, so anything unusual asks. It relies on
+Copilot asking about every command: commands your own Copilot settings already allow never come to
+The Chat Place at all.
+It lasts until you choose Agent or Plan in Change Permission Mode, or close The Chat Place.</p>
 <p>Continue Here and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.</p>
 <h2 id="starting-a-chat-and-replying">Starting a chat and replying</h2>

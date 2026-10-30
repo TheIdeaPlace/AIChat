@@ -206,7 +206,7 @@ class SessionController:
     def owned_action(self, action, record, *args):
         if action not in ("prepare", "reopen", "send", "steer", "steer_queued", "stop", "answer", "ready", "prepare_policy", "finish_policy",
                           "chat_rule_candidate", "allow_for_chat", "chat_rules", "remove_chat_rule", "review_history",
-                          "recover", "set_mode"):
+                          "recover", "set_mode", "set_free"):
             raise ValueError("Unsupported owned chat action")
         if not isinstance(record, OwnSession) or record.provider == "claude":
             raise ValueError("Foreign owned chat required")

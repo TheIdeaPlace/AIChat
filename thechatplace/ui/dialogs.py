@@ -115,6 +115,29 @@ def _copilot_session_modes():
 COPILOT_SESSION_MODES = _copilot_session_modes()
 
 
+#: Change Permission Mode's third choice for a Copilot chat (copilot_folder):
+#: not one of Copilot's modes, but The Chat Place answering for you what
+#: stays inside the chat's folder. Never offered in New Session: it comes
+#: with a warning, for a chat already open.
+COPILOT_FREE = "free"
+COPILOT_FREE_LABEL = ("Run freely in this folder: runs commands and changes files in the "
+                      "chat's folder without asking; asks before anything outside it")
+
+
+def copilot_free_warning(folder: str) -> str:
+    return (f"Copilot will run commands and change files in {folder} and its subfolders "
+            "without asking you. Anything it does there can't be undone by The Chat Place.\n\n"
+            "Only plain file and text commands are allowed for you (Get-Item, Get-Content, "
+            "Set-Content, Copy-Item, Remove-Item and the like). It still asks before anything "
+            "else: other folders and drives, your home folder, the network, other programs, "
+            "changing folder, wildcards, and deleting a folder's contents. If you allow one of "
+            "those yourself, commands in this chat ask again. For a command, The Chat Place "
+            "checks what the command says, which is a strict check, not a lock.\n\n"
+            "Each thing allowed for you is shown on the status bar. This lasts until you turn "
+            "it off with Change Permission Mode, or close The Chat Place.\n\n"
+            "Let Copilot run freely in this folder?")
+
+
 #: What New Session says about a Copilot chat (#352).
 COPILOT_NOTE = ("Copilot uses your GitHub Copilot sign-in, and each message uses requests from "
                 "your Copilot plan. It uses its own model and effort, which can't be chosen "

@@ -716,6 +716,10 @@ class CopilotProvider:
         return OwnSession(native_id, title, cwd, provider=PROVIDER_ID, started=True,
                           created_ms=int(time.time() * 1000))
 
+    def set_free_owned(self, record, on: bool) -> None:
+        """Run freely in this folder (copilot_folder), on or off."""
+        self.runtime.set_free(record.cli_session_id, on)
+
     def set_mode_owned(self, record, mode: str) -> None:
         """Change Permission Mode: agent or plan, from the chat's next turn."""
         self.runtime.set_mode(record.cli_session_id, mode)

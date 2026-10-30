@@ -19,8 +19,9 @@ from .. import announce
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name
-from .dialogs import (COPILOT_SESSION_MODES, CodexPermissionDialog, QuestionDialog,
-                      codex_permission_prompt)
+from .dialogs import (COPILOT_FREE, COPILOT_FREE_LABEL, COPILOT_SESSION_MODES,
+                      CodexPermissionDialog, QuestionDialog, codex_permission_prompt,
+                      copilot_free_warning)
 from .permission_hosts import CODEX_MODES
 
 
@@ -57,6 +58,9 @@ class CodexChats:
         if state.queued:
             count = len(state.queued)
             text += f' {count} {"message" if count == 1 else "messages"} queued.'
+        if getattr(state, 'free', False):
+            text += (' It runs freely in its folder: what stays inside it is allowed without '
+                     'asking.')
         steering = len(getattr(state, 'steering', ()))
         if steering:
             text += (f' 1 steered message waiting for {name} to accept it.' if steering == 1
@@ -147,9 +151,11 @@ class CodexChats:
 
     def _change_copilot_mode(self, info):
         """Change Permission Mode (Ctrl+Shift+O) for a Copilot chat: agent or
-        plan mode, as Copilot's own Shift+Tab switches them, from its next
-        turn. Copilot asks before it acts in both."""
-        from ..providers.copilot_runtime import PLAN_MODE
+        plan mode, as Copilot's own Shift+Tab switches them, or "run freely in
+        this folder" (copilot_folder), after a warning. Copilot asks before
+        it acts in agent and plan mode; running freely, The Chat Place
+        answers for you what stays inside the chat's folder."""
+        from ..providers.copilot_runtime import AGENT_MODE, PLAN_MODE
         if not info.is_own or not self._can_edit(info):
             self._feedback(f"{info.title} wasn't started in The Chat Place: its mode is set in "
                            "Copilot CLI.")
@@ -163,23 +169,43 @@ class CodexChats:
             self._feedback(f"{info.title} isn't open in Copilot yet, so its mode isn't known. "
                            "Select it, wait until it's ready, then change its mode.")
             return
-        choices = COPILOT_SESSION_MODES
+        choices = COPILOT_SESSION_MODES + ((COPILOT_FREE, COPILOT_FREE_LABEL),)
         names = dict(choices)
-        now = state.mode
+        now = COPILOT_FREE if getattr(state, 'free', False) else state.mode
         chosen = self._change_setting('Change Permission Mode',
                                       f'Mode for {info.title}, now {names.get(now, "another mode")}:',
                                       choices, now)
         if chosen is None:
             return
+        folder = record.cwd
+        if chosen == COPILOT_FREE:
+            answer = wx.MessageBox(copilot_free_warning(folder), 'Run Freely in This Folder',
+                                   wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self)
+            if answer != wx.YES:
+                self._feedback(f'{info.title} still asks before Copilot acts.')
+                return
+        mode = AGENT_MODE if chosen == COPILOT_FREE else chosen
+        def change():
+            # Off first, so a chat leaving it never runs a moment longer
+            # unasked; on last, once agent mode is confirmed.
+            if chosen != COPILOT_FREE:
+                self.sessions.owned_action('set_free', record, False)
+            if mode != state.mode:
+                self.sessions.owned_action('set_mode', record, mode)
+            if chosen == COPILOT_FREE:
+                self.sessions.owned_action('set_free', record, True)
         def done(result, error):
             if error:
                 self._feedback(result if isinstance(result, str) and result
                                else "Copilot couldn't switch modes.")
+            elif chosen == COPILOT_FREE:
+                self._feedback(f'{info.title} runs freely in {folder}. It still asks before '
+                               'anything outside it. Change Permission Mode turns it off.')
             else:
                 word = 'plan' if chosen == PLAN_MODE else 'agent'
                 self._feedback(f'{info.title}: {word} mode.')
             self._update_send_state()
-        self._codex_work(lambda: self.sessions.owned_action('set_mode', record, chosen), done)
+        self._codex_work(change, done)
 
     def _keep_first_message(self, message, provider='codex'):
         """New Session is gone when Codex refuses, so keep its first message
@@ -555,6 +581,13 @@ class CodexChats:
         record = self.store.get(state.native_id, provider=provider)
         if record is None:
             return
+        # Run freely in this folder (copilot_folder): each request answered
+        # for you goes on the status bar, so what was allowed can be read.
+        said_before = (previous.auto_allowed[-1][0]
+                       if previous is not None and getattr(previous, 'auto_allowed', ()) else 0)
+        for number, summary in getattr(state, 'auto_allowed', ()):
+            if number > said_before:
+                self._status(f'{record.title}: allowed for you: {summary}')
         loaded = self._open is not None and self._open.key == key
         seen = getattr(self, '_codex_permission_notices_seen', None)
         if seen is None:

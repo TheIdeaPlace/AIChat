@@ -12939,9 +12939,51 @@ def test_change_permission_mode_switches_a_copilot_chat_to_plan(frame, env, monk
                         lambda action, record, *args: calls.append((action, args)))
     frame.on_change_permission_mode()
     assert asked == [("Mode for Planning Copilot, now Agent: asks before running commands or "
-                      "changing files:", [AGENT_MODE, PLAN_MODE], AGENT_MODE)]
-    assert pump(lambda: calls == [("set_mode", (PLAN_MODE,))] and env["feedback"][-1] ==
-                "Planning Copilot: plan mode.")
+                      "changing files:", [AGENT_MODE, PLAN_MODE, "free"], AGENT_MODE)]
+    # Running freely is turned off first, whatever mode is chosen.
+    assert pump(lambda: calls == [("set_free", (False,)), ("set_mode", (PLAN_MODE,))]
+                and env["feedback"][-1] == "Planning Copilot: plan mode.")
+    frame._codex_states.clear()
+
+
+def test_running_freely_in_a_copilot_chats_folder_comes_with_a_warning(frame, env, monkeypatch):
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    from thechatplace.ui import codex_chats
+    from thechatplace.ui.dialogs import COPILOT_FREE
+    settle(frame)
+    frame.store.add(OwnSession("cp-f", "Free Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-f", "Free Copilot", "C:/w", "cp-f", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    frame._codex_states[info.key] = CopilotChatState("cp-f", "idle", mode=PLAN_MODE)
+    monkeypatch.setattr(frame, "_change_setting", lambda title, prompt, choices, now: COPILOT_FREE)
+    calls, warned = [], []
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: calls.append((action, args)))
+    # Declined: nothing changes.
+    monkeypatch.setattr(codex_chats.wx, "MessageBox",
+                        lambda text, *a, **k: warned.append(text) or wx.NO)
+    frame.on_change_permission_mode()
+    assert "C:/w" in warned[-1] and "not a lock" in warned[-1] and calls == []
+    assert env["feedback"][-1] == "Free Copilot still asks before Copilot acts."
+    # Accepted: agent mode first, then on.
+    monkeypatch.setattr(codex_chats.wx, "MessageBox", lambda text, *a, **k: wx.YES)
+    frame.on_change_permission_mode()
+    assert pump(lambda: calls == [("set_mode", (AGENT_MODE,)), ("set_free", (True,))]
+                and env["feedback"][-1].startswith("Free Copilot runs freely in C:/w."))
+    # Each request answered for you goes on the status bar.
+    statuses = []
+    monkeypatch.setattr(frame, "_status", lambda text: statuses.append(text))
+    frame._on_owned_update("copilot", CopilotChatState(
+        "cp-f", "working", "1", "inProgress", mode=AGENT_MODE, free=True,
+        auto_allowed=((1, "Command: Get-Item notes.txt"),)))
+    frame._on_owned_update("copilot", CopilotChatState(
+        "cp-f", "working", "1", "inProgress", mode=AGENT_MODE, free=True,
+        auto_allowed=((1, "Command: Get-Item notes.txt"), (2, "File change: C:/w/a.txt"))))
+    assert [t for t in statuses if "allowed for you" in t] == [
+        "Free Copilot: allowed for you: Command: Get-Item notes.txt",
+        "Free Copilot: allowed for you: File change: C:/w/a.txt"]
     frame._codex_states.clear()
 
 
