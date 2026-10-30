@@ -182,6 +182,7 @@ isn't a letter or digit turned into `-`) was checked against every transcript on
 | `thechatplace/nvda/` | NV Access's NVDA Controller Client (LGPL 2.1, unmodified; see its README and `license.txt`) |
 | `thechatplace/platform_paths.py` | Every path and OS call |
 | `thechatplace/links.py` | `thechatplace://` links to sessions: making, reading and registering them |
+| `thechatplace/session_tools.py`, `thechatplace/session_tools_mcp.py` | The session tools Claude turns get (`/wrap` and the like, #165): the tools' answers, the connection to the window, and the MCP server (`--session-tools-mcp`), whose stdio the built app's smoke test checks |
 | `thechatplace/ui/` | The wxPython window and dialogs |
 | `tests/` | pytest tests, built on made-up records shaped like the real ones |
 | `thechatplace/updater.py` | Velopack updates, adapted from GHManage's updater |
