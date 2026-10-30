@@ -571,8 +571,15 @@ changes Copilot ran. Chats started in Copilot CLI, or in another app, are read-o
 in Copilot CLI.
 
 **Starting a Copilot chat here.** In New Session, choose **Copilot** as the Provider, then a
-folder and your first message. Copilot uses its own model and settings, and each message uses
-requests from your Copilot plan. Type and send as in any chat started here; messages sent while
+folder and your first message. **Model** lists the models Copilot offered your last Copilot chat
+here (it lists them only for a chat), each with the premium requests a message costs, such as
+"GPT-5 (1x)"; leave it on Copilot's configured model, or choose one, and the chat switches to it
+before your first message goes; if Copilot won't, the chat says so and uses Copilot's own.
+**File, Change Model** (Alt+F, D) changes a Copilot chat's model later, from its next turn,
+choosing from the models Copilot offers that chat; the chat must be open in Copilot first (select
+it and wait until it's ready). Once it is, the chat's heading says its model ("on GPT-5 (1x)").
+Effort and Copilot's other
+settings are its own. Each message uses requests from your Copilot plan. Type and send as in any chat started here; messages sent while
 Copilot is answering wait their turn, and Stop (Ctrl+Period) cancels the answer and
 puts any waiting messages back in the message box, unsent. Copilot asks before it runs a command
 or changes a file: you hear "needs your answer", and Answer (Ctrl+Shift+A) shows the whole
@@ -593,9 +600,12 @@ Place won't send to Copilot:
 mode Copilot works out a plan and doesn't edit your files (it keeps the plan in its own session
 folder); it still asks before anything that needs your permission. Choose the mode in New Session (Permission mode),
 or switch a chat with **Change Permission Mode** (Ctrl+Shift+O), as Shift+Tab does in Copilot
-CLI. If Copilot can't start a new chat in plan mode, nothing is sent until you choose a mode
-with Change Permission Mode. When Copilot says to switch out of plan mode to
-make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
+CLI. The chat's heading ends "plan mode" while it's in plan mode, and if Copilot switches modes
+by itself you hear it. If Copilot can't start a new chat in plan mode, or reopens a chat in
+another mode than the one you chose and won't switch it back, nothing is sent until you choose a
+mode with Change Permission Mode; either choice, the one it's in now too, then lets it send. A
+chat started for an agent conversation starts in agent mode. When Copilot says to switch out of
+plan mode to make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
 it asking, is never offered, and a chat Copilot puts in it isn't sent to.
 
 Continue Here and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another

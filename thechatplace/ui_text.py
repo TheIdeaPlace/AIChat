@@ -73,9 +73,10 @@ SHORTCUTS = [
                          "where they apply its Open in Claude link and claude.ai address"),
         ("Ctrl+Shift+N", "Continue the selected desktop app or terminal session here, as a "
                          "copy you can reply to (the original isn't changed)"),
-        ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes or Codex file access and approval reviewer for the "
-                         "selected (or loaded) Chat Place session, from its next turn (File, "
-                         "Change Effort and Change Model are beside it)"),
+        ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes, Codex file access and "
+                         "approval reviewer, or Copilot agent or plan mode for the selected (or "
+                         "loaded) Chat Place session (File, Change Effort and Change Model are "
+                         "beside it)"),
         ("Ctrl+Shift+H", "Chat Permissions: the selected (or loaded) Chat Place chat's permission "
                          "mode, and, for a Claude chat, the commands and tools it may use without "
                          "asking (Delete or Remove takes one back, and Remove All takes them all) "

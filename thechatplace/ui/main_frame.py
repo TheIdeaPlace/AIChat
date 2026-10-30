@@ -1711,6 +1711,18 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     kind += ", Remote Control on"
         elif info.remote and info.provider == "claude":
             kind += ", on Remote Control in the desktop app"
+        elif info.is_own and info.provider == "copilot" and self._can_edit(info):
+            # The model Copilot reports for this chat, once it's open there
+            # (#422): what Change Model shows as "now".
+            runtime_state = self._codex_states.get(info.key)
+            model = getattr(runtime_state, "model", "")
+            if model:
+                kind += f" on {dict(getattr(runtime_state, 'models', ()) or ()).get(model, model)}"
+            # Plan mode only, as the Claude modes show only when not the
+            # default: agent mode is Copilot's own (#424).
+            from ..providers.copilot_runtime import PLAN_MODE
+            if getattr(runtime_state, "mode", "") == PLAN_MODE:
+                kind += ", plan mode"
         state = state_with_detail(info.state, info.detail)
         self.session_heading.set_text(f"{end_sentence(f'{info.title}, {info.repo}, {state}')} {kind}.")
         self._update_messages_label()
@@ -3524,9 +3536,21 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return "from its next turn; the turn running now carries on as it started"
         return "from its next turn"
 
+    def _copilot_models(self):
+        """The models a new Copilot chat can start with: a small file read,
+        never Copilot started (copilot.model_choices)."""
+        try:
+            return tuple(self.sessions.model_choices("copilot"))
+        except Exception:  # noqa: BLE001 - none to offer, Copilot's own is
+            return ()
+
     def on_change_model(self):
         """File, Change Model: the model for this session's next turns. A
         session's model goes with every turn, so it can change at any time."""
+        selected = self._selected_session()
+        if selected is not None and selected.provider == "copilot":
+            self._change_copilot_model(selected)
+            return
         found = self._own_for_setting("model")
         if found is None:
             return
@@ -3941,6 +3965,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                                              if same(f) != same(forward.folder)]
             prefill = {"title_text": forward.title, "message": forward.message,
                        "providers": (forward.provider,), "provider": forward.provider}
+            if forward.joint:
+                # An agent conversation hands work between its chats, so a
+                # new Copilot one starts in agent mode (#424).
+                prefill["copilot_plan"] = False
             codex_available = codex_available and forward.provider == "codex"
             copilot_available = copilot_available and forward.provider == "copilot"
         offered = tuple(p for p, ok in (("claude", bool(lookup.path)), ("codex", codex_available),
@@ -3948,7 +3976,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         provider_options = ({"providers": offered,
                              "provider": self.speech.new_session_provider,
                              "load_models": self._load_codex_models if codex_available else None,
-                             "load_rules": self._load_codex_rules if codex_available else None}
+                             "load_rules": self._load_codex_rules if codex_available else None,
+                             "copilot_models": self._copilot_models() if copilot_available else ()}
                             if codex_available or copilot_available else {})
         dialog = NewSessionDialog(self, root, recent=recent, projects_root=root,
                                   feedback=self._feedback,
@@ -3983,7 +4012,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         if provider == "copilot":
             self._create_codex_owned(folder, title, message, made=made, joint=joint,
-                                     provider="copilot", copilot_mode=copilot_mode)
+                                     provider="copilot", model=model, copilot_mode=copilot_mode)
             return
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)

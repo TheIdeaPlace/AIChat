@@ -201,8 +201,11 @@ def _tool_output(data: dict) -> str:
 class CopilotParser:
     """Incremental: ``feed`` lines as events.jsonl grows."""
 
-    def __init__(self) -> None:
+    def __init__(self, own_folder: Optional[Path] = None) -> None:
         self.transcript = Transcript()
+        #: The chat's session folder, whose files (plan mode's plan.md) are
+        #: Copilot's own, never changed files (#424).
+        self._own_folder = own_folder
         self._seen: set = set()
         # requestId -> what Copilot asked to do, for a refusal's message.
         self._asked: dict = {}
@@ -310,9 +313,10 @@ class CopilotParser:
         # ---/+++ lines and so no section: it's listed with no lines changed.
         sections = parse_git_diff(_text(result.get("detailedContent")))
         by_path = {_path_key(path): hunks for path, hunks in sections}
+        from .copilot_runtime import copilot_own_file  # it imports this module
         for entry in entries:
             if (not isinstance(entry, dict) or not _text(entry.get("path"))
-                    or _own_file(entry["path"])):
+                    or copilot_own_file(entry["path"], self._own_folder)):
                 continue
             path, kind = entry["path"], _text(entry.get("kind"))
             hunks = by_path.get(_path_key(path))
@@ -325,12 +329,6 @@ class CopilotParser:
             self.transcript.edits.append(FileEdit(
                 path, tool or "Copilot", self.transcript.turns, hunks,
                 created=created, deleted=deleted))
-
-
-def _own_file(path: str) -> bool:
-    """Copilot's own bookkeeping (plan mode's plan.md), not a changed file."""
-    from .copilot_runtime import copilot_own_file
-    return copilot_own_file(path)
 
 
 def _path_key(path: str) -> str:
@@ -352,8 +350,8 @@ def _trimmed(hunk: Hunk, mark: str) -> Hunk:
     return Hunk(hunk.old_start, hunk.new_start, lines)
 
 
-def parse_events(lines: Iterable[str]) -> Transcript:
-    parser = CopilotParser()
+def parse_events(lines: Iterable[str], own_folder: Optional[Path] = None) -> Transcript:
+    parser = CopilotParser(own_folder)
     parser.feed(lines)
     return parser.transcript
 
@@ -460,7 +458,7 @@ class CopilotReader:
 
     def __init__(self, path: Path):
         self.path = Path(path)
-        self._parser = CopilotParser()
+        self._parser = CopilotParser(self.path.parent)
         self._offset = 0
         self._identity = None
 
@@ -475,7 +473,7 @@ class CopilotReader:
         if stat.st_size < self._offset or (identity and self._identity
                                            and identity != self._identity):
             # Rewritten or replaced (rewind, say): start again.
-            self._parser, self._offset = CopilotParser(), 0
+            self._parser, self._offset = CopilotParser(self.path.parent), 0
         self._identity = identity
         if stat.st_size == self._offset:
             return False
@@ -673,7 +671,8 @@ class CopilotProvider:
                 continue
             if entry.last_line is None:
                 try:
-                    transcript = parse_events(_read_tail(self._events_path(info.cli_session_id)))
+                    events = self._events_path(info.cli_session_id)
+                    transcript = parse_events(_read_tail(events), events.parent)
                 except OSError:
                     info.last_message = ""
                     continue
@@ -707,18 +706,29 @@ class CopilotProvider:
         """Offered in New Session only once Copilot CLI is installed."""
         return self.runtime is not None and platform_paths.find_copilot() is not None
 
-    def create_owned(self, cwd: str, title: str, copilot_mode: str = ""):
+    def create_owned(self, cwd: str, title: str, model: str = "", copilot_mode: str = ""):
         """A new chat, as the window's record of it. Waits for Copilot to
-        start, so call it off the UI thread. ``copilot_mode``: plan mode to
-        start in it (copilot_runtime.PLAN_MODE); agent mode otherwise."""
+        start, so call it off the UI thread. ``model``: one model_choices()
+        listed; the chat switches to it before anything is sent.
+        ``copilot_mode``: plan mode to start in it (copilot_runtime.PLAN_MODE);
+        agent mode otherwise. A mode chosen is kept, so the chat is put back
+        in it when it's opened again (#424)."""
         from ..own_store import OwnSession
-        native_id = self.runtime.create(cwd, mode=copilot_mode or "")
+        native_id = self.runtime.create(cwd, model=model or "", mode=copilot_mode or "")
+        self._remember_models()
+        if copilot_mode:
+            _remember_mode(native_id, copilot_mode)
         return OwnSession(native_id, title, cwd, provider=PROVIDER_ID, started=True,
                           created_ms=int(time.time() * 1000))
 
-    def set_mode_owned(self, record, mode: str) -> None:
-        """Change Permission Mode: agent or plan, from the chat's next turn."""
-        self.runtime.set_mode(record.cli_session_id, mode)
+    def set_mode_owned(self, record, mode: str) -> str:
+        """Change Permission Mode: agent or plan. The mode Copilot reports
+        afterwards, which is kept for the next time the chat is opened only
+        if it is the one asked for."""
+        recorded = self.runtime.set_mode(record.cli_session_id, mode)
+        if recorded == mode:
+            _remember_mode(record.cli_session_id, mode)
+        return recorded
 
     def owned_ready(self, record) -> bool:
         return self.runtime is not None and self.runtime.ready(record.cli_session_id)
@@ -727,7 +737,47 @@ class CopilotProvider:
         """Open a chat from the window's own record of it (the only place
         the runtime is told a chat is the app's), in the folder recorded."""
         self.runtime.adopt(record.cli_session_id)
-        self.runtime.prepare(record.cli_session_id, record.cwd)
+        self.runtime.prepare(record.cli_session_id, record.cwd,
+                             mode=chosen_mode(record.cli_session_id))
+        self._remember_models()
+
+    def set_model_owned(self, record, model: str) -> None:
+        """File, Change Model: from the chat's next turn. Opened again later,
+        the chat shows whichever model Copilot reports for it then."""
+        self.runtime.set_model(record.cli_session_id, model)
+        self._remember_models()
+
+    # -- models ----------------------------------------------------------------
+
+    def model_choices(self):
+        """The models a new chat can start with ((value, label), …): the ones
+        Copilot last offered a chat here, kept from earlier runs too, since
+        Copilot lists them only for a chat. Empty before any. Never starts
+        Copilot."""
+        found = self.runtime.models() if self.runtime is not None else ()
+        if found:
+            return found
+        try:
+            raw = json.loads(_models_file().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return ()
+        listed = raw.get("models") if isinstance(raw, dict) else None
+        if not isinstance(listed, list):
+            return ()
+        return tuple((value, label) for value, label in
+                     (item for item in listed if isinstance(item, list) and len(item) == 2)
+                     if isinstance(value, str) and isinstance(label, str) and value and label
+                     )[:100]
+
+    def _remember_models(self) -> None:
+        found = self.runtime.models() if self.runtime is not None else ()
+        if not found:
+            return
+        from ..provider_storage import atomic_write_json
+        try:
+            atomic_write_json(_models_file(), {"version": 1, "models": [list(m) for m in found]})
+        except OSError:
+            pass  # only a convenience for the next New Session
 
     def send_owned(self, record, text: str) -> bool:
         return self.runtime.send(record.cli_session_id, text)
@@ -787,11 +837,61 @@ class CopilotProvider:
     def last_reply(self, session: SessionInfo) -> str:
         self._check(session)
         try:
-            transcript = parse_events(_read_tail(self._events_path(session.cli_session_id)))
+            events = self._events_path(session.cli_session_id)
+            transcript = parse_events(_read_tail(events), events.parent)
         except OSError:
             return ""
         reply = transcript.last_reply()
         return reply.text if reply else ""
+
+
+def _models_file() -> Path:
+    """The models Copilot last offered, in The Chat Place's own folder."""
+    return platform_paths.app_data_dir() / "copilot-models.json"
+
+
+def _modes_file() -> Path:
+    """The mode chosen for each Copilot chat started here (#424). Its own
+    file, not the chat's record: releases before 0.3.3 drop a Copilot record
+    with any provider options, and would then save the list without it."""
+    return platform_paths.app_data_dir() / "copilot-modes.json"
+
+
+#: create_owned and set_mode_owned run on worker threads.
+_modes_lock = threading.Lock()
+
+
+def _read_modes() -> dict:
+    from .copilot_runtime import SAFE_MODES
+    try:
+        raw = json.loads(_modes_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    modes = raw.get("modes") if isinstance(raw, dict) else None
+    if not isinstance(modes, dict):
+        return {}
+    return {native_id: mode for native_id, mode in modes.items()
+            if platform_paths.is_safe_id(native_id) and mode in SAFE_MODES}
+
+
+def chosen_mode(native_id: str) -> str:
+    """The mode last chosen here for a chat (copilot_runtime.AGENT_MODE or
+    PLAN_MODE), or "" if none was."""
+    with _modes_lock:
+        return _read_modes().get(native_id, "")
+
+
+def _remember_mode(native_id: str, mode: str) -> None:
+    from ..provider_storage import atomic_write_json
+    with _modes_lock:
+        modes = _read_modes()
+        modes[native_id] = mode
+        try:
+            atomic_write_json(_modes_file(), {"version": 1, "modes": modes})
+        except OSError:
+            # Unsaved, the chat opens next time in whatever mode Copilot
+            # reports; it's never assumed to be in plan mode.
+            pass
 
 
 def premium_requests(path: Path) -> Optional[float]:
