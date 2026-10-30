@@ -12862,9 +12862,17 @@ def test_a_copilot_chat_is_reopened_after_a_restart_from_its_record(frame, env, 
         assert pump(lambda: frame.sessions.owned_action("ready", record), timeout=COPILOT_WAIT)
         frame.reply_text.SetValue("Again")
         frame.on_send()
-        assert pump(lambda: _received_prompts(env)[-1:] == ["Again"]
+        sent = pump(lambda: _received_prompts(env)[-1:] == ["Again"]
                     and _copilot_state(frame) is not None
                     and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        # What it saw, so a failure on CI says why (it failed there on macOS
+        # and Windows, never locally).
+        state = _copilot_state(frame)
+        assert sent, (_received_prompts(env), env["feedback"][-6:],
+                      state and (state.state, state.turn_id, state.outcome, state.notice,
+                                 state.problem, state.queued, state.unsent),
+                      frame.reply_text.GetValue(),
+                      runtime.ready(native), dict(frame._codex_preparing))
     finally:
         runtime.close()
 
