@@ -606,14 +606,15 @@ def test_continue_here_makes_a_new_chat_with_the_history_ahead(tmp_path, monkeyp
                   cwd=str(tmp_path))
     made, preambles = [], {}
     runtime = SimpleNamespace(
-        create=lambda cwd: made.append(cwd) or "new-id",
+        create=lambda cwd, model="": made.append((cwd, model)) or "new-id",
+        models=lambda: (),
         set_preamble=lambda native, text: preambles.__setitem__(native, text))
     provider = CopilotProvider(tmp_path, runtime=runtime)
     source = SessionInfo("terminal", f"copilot:{ONE}", "Build the thing", str(tmp_path), ONE,
                          provider="copilot")
     assert provider.capabilities(source).fork
-    record = provider.fork_owned(source, "Build the thing (continued)")
-    assert made == [str(tmp_path)] and record.cli_session_id == "new-id"
+    record = provider.fork_owned(source, "Build the thing (continued)", model="gpt-mini")
+    assert made == [(str(tmp_path), "gpt-mini")] and record.cli_session_id == "new-id"
     assert record.provider == "copilot" and record.title == "Build the thing (continued)"
     assert record.forked_from == "Build the thing"  # marks it a copy (#423)
     assert "You: Build it\n\nCopilot: Built" in preambles["new-id"]
@@ -690,9 +691,11 @@ def test_continue_here_never_writes_to_or_names_the_original(tmp_path):
     record = provider.fork_owned(_copilot_source(tmp_path), "Build the thing (continued)")
     assert record.cli_session_id == "new-id"
     assert {path.name: path.read_bytes() for path in folder.iterdir()} == before
-    assert [name for name, _args, _kwargs in made] == ["create", "set_preamble"]
+    # create, then the models it offered (for the next New Session), then
+    # the history: nothing else, and none of it about the original.
+    assert [name for name, _args, _kwargs in made] == ["create", "models", "set_preamble"]
     assert not any(ONE in repr(args) or ONE in repr(kwargs) for _name, args, kwargs in made)
-    assert made[1][1][0] == "new-id"
+    assert made[2][1][0] == "new-id"
 
 
 # -- A copy's first message, as Copilot records it (#423) --------------------------------
@@ -866,3 +869,28 @@ def test_the_last_message_column_shows_a_first_message_as_recorded(tmp_path):
     sessions = provider.collect().sessions
     provider.fill_last_messages(sessions)
     assert sessions[0].last_message.startswith("You: [The Chat Place: the conversation so far")
+
+
+# -- the models a new chat can start with --------------------------------------------------
+
+
+def test_the_models_last_offered_are_kept_for_the_next_new_session(tmp_path, monkeypatch):
+    """Copilot lists models only for a chat, so the last list is kept in The
+    Chat Place's own folder; reading it never starts Copilot."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    provider = CopilotProvider(tmp_path / "sessions")
+    assert provider.model_choices() == ()
+    offered = (("auto", "Auto (1x)"), ("gpt-test", "GPT Test (1x)"))
+    provider.runtime = SimpleNamespace(models=lambda: offered)
+    assert provider.model_choices() == offered
+    provider._remember_models()
+    assert json.loads((tmp_path / "copilot-models.json").read_text(encoding="utf-8")) == {
+        "version": 1, "models": [["auto", "Auto (1x)"], ["gpt-test", "GPT Test (1x)"]]}
+    provider.runtime = None  # a later run, before any Copilot chat is opened
+    assert provider.model_choices() == offered
+    (tmp_path / "copilot-models.json").write_text('{"models": [["a", 3], "x", ["b", "B"]]}',
+                                                  encoding="utf-8")
+    assert provider.model_choices() == (("b", "B"),)
+    (tmp_path / "copilot-models.json").write_text("{bad", encoding="utf-8")
+    assert provider.model_choices() == ()

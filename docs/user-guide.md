@@ -667,7 +667,7 @@ whether the chat was started here:
 | Send Now, edit or remove a queued message | yes | no: Stop returns it | no: Stop returns it |
 | Steer a running turn (Ctrl+Alt+Enter) | yes | yes | no: queue it instead |
 | Answer requests (Ctrl+Shift+A) | permissions, questions and plans | permissions and questions | permissions |
-| Change Model or Change Effort later | yes | no: choose in New Session | no: Copilot's own |
+| Change Model or Change Effort later | yes | no: choose in New Session | Change Model only |
 | Change Permission Mode and Chat Permissions | yes | yes | no |
 | Continue Here | desktop app and terminal chats | yes | yes, with the conversation as text |
 | Commands and skills (Ctrl+/) | yes | no | no |
@@ -800,8 +800,12 @@ Show Sessions, Terminal Sessions includes them; ones started from another app ar
 ### Starting a Copilot chat
 
 In New Session (Ctrl+N), choose **Copilot** as the Provider, then a folder and your first
-message. Copilot uses its own model and settings, and each message uses requests from your
-Copilot plan. Type and send as in any chat started here. Messages you send while Copilot is
+message. **Model** lists the models Copilot offered your last Copilot chat here, each with the
+premium requests a message costs, such as "GPT-5 (1x)". Copilot lists its models only for a
+chat, so before your first Copilot chat here only its configured model is offered. Choose one, and
+the chat switches to it before your first message goes; if Copilot won't, the chat says so and
+uses Copilot's own. Effort and Copilot's other settings are its own. Each message uses requests
+from your Copilot plan. Type and send as in any chat started here. Messages you send while Copilot is
 answering wait their turn, and Stop (Ctrl+Period) cancels the answer and puts any waiting
 messages back in the message box, unsent.
 
@@ -829,8 +833,8 @@ commands Copilot ran or their output. It goes as part of your first message, so 
 request. If that message doesn't go, the history waits for your next one, but only while The Chat
 Place stays open: the chat says so. A first message too long to go with the history is
 refused and kept, so you can shorten it. In the copy's messages the history is one row,
-"Earlier conversation", just before your first message; Enter reads it in full. The
-original chat isn't changed.
+"Earlier conversation", just before your first message; Enter reads it in full. Model
+offers the same choices as in New Session. The original chat isn't changed.
 
 Change Permission Mode and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.
@@ -906,11 +910,18 @@ Escape to leave it as it is.
 - **Change Permission Mode** (Ctrl+Shift+O): auto, accept edits, manual or plan.
 
 You hear the change and when it counts, such as "Permission mode for Fix the build: plan, from its
-next turn." A turn that's already running carries on as it started, and you hear that too. The
-chat's heading, at the top of its messages, says its model, and its effort and mode when they
-aren't the defaults: "on Opus at high effort, plan mode". Approving a plan, or allowing something
+next turn." In a Claude chat, a turn that's already running carries on as it started, and you hear
+that too. The chat's heading, at the top of its messages, says its model, and its effort and mode
+when they aren't the defaults: "on Opus at high effort, plan mode". Approving a plan, or allowing something
 "for this chat" that switches mode, changes the mode as well; approving a plan starts on the
 mode you chose here, unless that was plan.
+
+In a Copilot chat started here, **Change Model** lists the models Copilot offers that chat, with
+the premium requests a message costs, and you hear the change, such as "Fix the build now uses GPT
+Mini (0.33x), from its next turn." The chat must be open in Copilot first: select it and wait
+until it's ready. Once it is, the chat's heading says the model Copilot reports for it, such as
+"on GPT Mini (0.33x)". Change Effort and Change Permission Mode don't apply: effort is Copilot's
+own, and Copilot always asks before it acts.
 
 For a Codex chat started here, **Change Permission Mode** switches between read-only and editing
 files in its folder, with you or automatic approval review checking requests. Finish or stop the

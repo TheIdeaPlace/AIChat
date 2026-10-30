@@ -44,6 +44,10 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
               ACP's -32000 "Authentication required", as on a clean machine (#391)
   expired     chats open, but each prompt is logged, then fails a second later
               with -32000, as when a sign-in stops working mid-chat
+  nomodel     session/set_config_option always fails, as for a model the plan
+              no longer allows
+  modelflip   as hang, and session/set_config_option's reply says allow_all is
+              on: Copilot no longer asking before it acts
   refused     chats open, but each prompt fails at once with -32000 before
               anything is logged, not even its user.message (#405)
   strict      as hang, but a session/cancel that arrives while no prompt is
@@ -95,11 +99,23 @@ def update(session, body):
           "params": {"sessionId": session, "update": body}})
 
 
-def options():
+#: The models offered, shaped like Copilot 1.0.105's: Auto twice (once
+#: with its cost), then models with theirs. Synthetic names.
+MODELS = [{"value": "auto", "name": "Auto", "description": "Let Copilot pick", "_meta": None},
+          {"value": "auto", "name": "Auto", "description": "Auto",
+           "_meta": {"copilotUsage": "1x", "copilotEnablement": "enabled"}},
+          {"value": "gpt-test", "name": "GPT Test", "_meta": {"copilotUsage": "1x"}},
+          {"value": "gpt-mini", "name": "GPT Mini", "_meta": {"copilotUsage": "0.33x"}}]
+#: Each session's model, as session/set_config_option left it.
+model_of = {}
+
+
+def options(session=None):
     mode = AUTOPILOT if MODE == "unsafe" else AGENT
     allow = "on" if MODE == "allowall" else "off"
     return [{"type": "select", "id": "mode", "currentValue": mode},
-            {"type": "select", "id": "model", "currentValue": "auto"},
+            {"type": "select", "id": "model", "currentValue": model_of.get(session, "auto"),
+             "options": MODELS},
             {"type": "select", "id": "allow_all", "currentValue": allow}]
 
 
@@ -225,7 +241,7 @@ def prompt(message_id, session, text=""):
             {"type": "select", "id": "mode", "currentValue": AGENT},
             {"type": "select", "id": "allow_all", "currentValue": "off"}]})
         time.sleep(2.0)  # long enough for a third message to be queued
-    if MODE in ("hang", "strict") or (MODE == "byokhang" and turns[0] == 1):
+    if MODE in ("hang", "strict", "modelflip") or (MODE == "byokhang" and turns[0] == 1):
         update(session, {"sessionUpdate": "agent_message_chunk",
                          "content": {"type": "text", "text": "Working"}})
         cancelled.wait(30)
@@ -309,7 +325,7 @@ def main():
             open_sessions.add(session)
             hold_lock(session)
             send({"jsonrpc": "2.0", "id": message_id,
-                  "result": {"sessionId": session, "configOptions": options()}})
+                  "result": {"sessionId": session, "configOptions": options(session)}})
         elif method == "session/load":
             session = params.get("sessionId")
             if session in open_sessions:
@@ -326,7 +342,20 @@ def main():
                              "content": {"type": "text", "text": "Replayed history"}})
             update(session, {"sessionUpdate": "agent_message_chunk",
                              "content": {"type": "text", "text": "Replayed reply"}})
-            send({"jsonrpc": "2.0", "id": message_id, "result": {"configOptions": options()}})
+            send({"jsonrpc": "2.0", "id": message_id,
+                  "result": {"configOptions": options(session)}})
+        elif method == "session/set_config_option":
+            session, value = params.get("sessionId"), params.get("value")
+            if (MODE == "nomodel" or params.get("configId") != "model"
+                    or value not in {m["value"] for m in MODELS}):
+                send({"jsonrpc": "2.0", "id": message_id,
+                      "error": {"code": -32603, "message": "no such model"}})
+                continue
+            model_of[session] = value
+            reply = options(session)
+            if MODE == "modelflip":
+                reply[-1] = {"type": "select", "id": "allow_all", "currentValue": "on"}
+            send({"jsonrpc": "2.0", "id": message_id, "result": {"configOptions": reply}})
         elif method == "session/prompt":
             text = ((params.get("prompt") or [{}])[0] or {}).get("text", "")
             prompting.set()  # here, not in the thread: a cancel read next sees it

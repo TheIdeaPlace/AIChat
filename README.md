@@ -573,8 +573,15 @@ changes Copilot ran. Chats started in Copilot CLI, or in another app, are read-o
 in Copilot CLI.
 
 **Starting a Copilot chat here.** In New Session, choose **Copilot** as the Provider, then a
-folder and your first message. Copilot uses its own model and settings, and each message uses
-requests from your Copilot plan. Type and send as in any chat started here; messages sent while
+folder and your first message. **Model** lists the models Copilot offered your last Copilot chat
+here (it lists them only for a chat), each with the premium requests a message costs, such as
+"GPT-5 (1x)"; leave it on Copilot's configured model, or choose one, and the chat switches to it
+before your first message goes; if Copilot won't, the chat says so and uses Copilot's own.
+**File, Change Model** (Alt+F, D) changes a Copilot chat's model later, from its next turn,
+choosing from the models Copilot offers that chat; the chat must be open in Copilot first (select
+it and wait until it's ready). Once it is, the chat's heading says its model ("on GPT-5 (1x)").
+Effort and Copilot's other
+settings are its own. Each message uses requests from your Copilot plan. Type and send as in any chat started here; messages sent while
 Copilot is answering wait their turn, and Stop (Ctrl+Period) cancels the answer and
 puts any waiting messages back in the message box, unsent. Copilot asks before it runs a command
 or changes a file: you hear "needs your answer", and Answer (Ctrl+Shift+A) shows the whole
@@ -599,8 +606,8 @@ commands Copilot ran or their output. It goes as part of your first message, so 
 request. If that message doesn't go, the history waits for your next one, but only while The Chat
 Place stays open: the chat says so. A first message too long to go with the history is
 refused and kept, so you can shorten it. In the copy's messages the history is one row,
-"Earlier conversation", just before your first message; Enter reads it in full. The
-original chat isn't changed.
+"Earlier conversation", just before your first message; Enter reads it in full. Model
+offers the same choices as in New Session. The original chat isn't changed.
 
 Change Permission Mode and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it. Usage and Context (Ctrl+Shift+U) says how full a Copilot chat's

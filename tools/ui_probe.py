@@ -1105,11 +1105,14 @@ def d_codex_review_history(frame, env):
 
 
 def d_copilot_continue(frame, env):
+    """Continue Here from a Copilot chat that may still be working (#423):
+    the longest note, and Model with the choices New Session offers."""
     from thechatplace.ui.dialogs import NewSessionDialog
     from thechatplace.sessions import WORKING
+    models = (("auto", "Auto (1x)"), ("gpt-probe-mini", "GPT Probe Mini (0.33x)"))
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
         continue_from="Copilot still working", providers=("copilot",), provider="copilot",
-        source_state=WORKING))
+        source_state=WORKING, copilot_models=models))
 
 
 def d_copilot_new(frame, env):
@@ -1117,6 +1120,20 @@ def d_copilot_new(frame, env):
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
                                                 providers=("claude", "codex", "copilot"),
                                                 provider="copilot"))
+
+
+def d_new_session_copilot(frame, env):
+    """New Session for Copilot once a Copilot chat here has listed its
+    models (#422): Model enabled, with each model's cost. Synthetic names."""
+    from thechatplace.ui.dialogs import NewSessionDialog
+    models = (("auto", "Auto (1x)"), ("gpt-probe", "GPT Probe (1x)"),
+              ("gpt-probe-mini", "GPT Probe Mini (0.33x)"),
+              ("probe-sonnet", "Probe Sonnet Long Model Name (preview) (1x)"))
+    dialog = NewSessionDialog(frame, env["folders"]["Scratch"],
+                              providers=("claude", "codex", "copilot"), provider="copilot",
+                              copilot_models=models)
+    dialog.model.SetSelection(4)  # 0 is "Copilot's configured model": the long name, the worst case
+    return lambda: frame._modal(dialog)
 
 
 def _copilot_request(tool_call):
@@ -1666,6 +1683,8 @@ SURFACES = {
     "copilot-new": ("dialog", d_copilot_new, "New Session with Copilot selected as Provider"),
     "copilot-continue": ("dialog", d_copilot_continue,
                          "Continue Here from a Copilot CLI chat that may still be working"),
+    "new-session-copilot": ("dialog", d_new_session_copilot,
+                            "New Session for Copilot, choosing from the models it offered"),
     "copilot-permission": ("dialog", d_copilot_permission, "Copilot asks to run a command, once"),
     "copilot-files": ("dialog", d_copilot_files, "Copilot asks to create a file, with its diff"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
@@ -1758,6 +1777,7 @@ DIALOG_CLASSES = {
     "codex-review-history": "ChatPermissionsDialog",
     "copilot-new": "NewSessionDialog",
     "copilot-continue": "NewSessionDialog",
+    "new-session-copilot": "NewSessionDialog",
     "copilot-permission": "CodexPermissionDialog",
     "copilot-files": "CodexPermissionDialog",
     "codex-models": "NewSessionDialog",
