@@ -77,6 +77,9 @@ class Step:
     #: Only with Orca 50 and later, which say the window's and the list's
     #: name as the app starts; 46 says only the row it lands on.
     expect_50: List[str] = field(default_factory=list)
+    #: Something to happen in the app before the keys: "question" has Claude
+    #: ask one in the open chat, as a turn would (``serve`` watches for it).
+    trigger: str = ""
 
 
 #: The probe's sessions (tools/ui_probe.py build_world): "Fix the flaky upload
@@ -108,7 +111,22 @@ STEPS = [
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Answer (#415): it opens on the Question box, and Tab goes to the first
+    # question's choices, not past them to its answer box (#428).
+    Step("Claude asks a question", [], trigger="question", expect=["needs you"]),
+    # Orca reads the Question box's first line as it lands there.
+    Step("answer it", ["ctrl+shift+a"], expect=["Question", "Here's the draft"]),
+    Step("Tab to the choices", ["Tab"], expect=["Keep it as is"],
+         refuse=["your own answer"]),
+    Step("answer later, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),
 ]
+
+#: The question "question" asks (STEPS above).
+QUESTION = {"questions": [{
+    "header": "Linux notes", "question": "How should it read?",
+    "options": [{"label": "Keep it as is", "description": "As drafted",
+                 "preview": "Linux (preview). The Chat Place now runs on Linux."},
+                {"label": "Shorter", "description": "Just the essentials"}]}]}
 
 
 # -- the app --------------------------------------------------------------------------------
@@ -135,8 +153,33 @@ def serve(root: Path) -> int:
     frame.Show()
     frame.Raise()
     frame.session_list.SetFocus()
+
+    def watch(_event):
+        # A step's trigger: check writes ROOT/<name>.trigger before its keys.
+        trigger = root / "question.trigger"
+        if trigger.exists():
+            trigger.unlink()
+            ask_question(frame)
+    timer = wx.Timer(frame)
+    frame.Bind(wx.EVT_TIMER, watch, timer)
+    timer.Start(200)
     app.MainLoop()
     return 0
+
+
+def ask_question(frame) -> None:
+    """Claude, in the probe's own session (open by then), writes a line and
+    asks QUESTION, as a turn reports them (tools/ui_probe.py's _waiting)."""
+    import fake_env
+    from thechatplace.claude_cli import PermissionRequest, TurnEvent
+    frame._pending.clear()
+    frame._runners["own-1"] = fake_env.FakeRunner([], "", "", None)
+    for kind, text in [("text", "Here's the draft release note for Linux."),
+                       ("tool", "AskUserQuestion")]:
+        frame._on_turn_event({"id": "own-1"}, "Visual probe", TurnEvent(kind, text=text))
+    request = PermissionRequest("q1", "AskUserQuestion", QUESTION, suggestions=[])
+    frame._on_turn_event({"id": "own-1"}, "Visual probe",
+                         TurnEvent("permission", text=request.summary(), request=request))
 
 
 # -- Orca -----------------------------------------------------------------------------------
@@ -245,7 +288,8 @@ def _found(needle: str, spoken: List[str]) -> bool:
     return needle.casefold() in text
 
 
-def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool) -> List[dict]:
+def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
+              world: Path) -> List[dict]:
     results = []
     for index, step in enumerate(steps):
         expect = (step.expect + (step.expect_dbus if version >= (49, 0) else [])
@@ -256,10 +300,12 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool) -> 
             if expect and not record:
                 return all(_found(e, said) for e in expect)
             return bool(spoken)
-        if step.keys:
+        if step.keys or step.trigger:
             log.mark()
         # The first step's speech is the app starting, from the mark made
         # before it was started.
+        if step.trigger:
+            (world / f"{step.trigger}.trigger").write_text("", encoding="utf-8")
         press(step.keys)
         spoken = log.wait_quiet(done, timeout=START_TIMEOUT if index == 0 else STEP_TIMEOUT)
         said = [s for s in spoken if s.casefold().rstrip(".") not in _KEY_ECHO]
@@ -303,7 +349,7 @@ def check(args) -> int:
                             str(work / "world")], cwd=str(ROOT),
                            stdout=open(work / "app.log", "w"), stderr=subprocess.STDOUT)
     try:
-        results = run_steps(log, STEPS, version, record=args.record)
+        results = run_steps(log, STEPS, version, record=args.record, world=work / "world")
     finally:
         app.terminate()
         try:

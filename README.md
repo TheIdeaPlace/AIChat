@@ -398,7 +398,8 @@ too).
     just before asking and each question in full; then each question as a group of options
     with their descriptions, with Other and a box to type your own answer; a Preview box when
     an option has a preview, showing the one for the option you're on (#415); Send Answers, or
-    Don't Answer.
+    Don't Answer. A question with one answer is a single Tab stop, on its chosen option, or its
+    first while none is chosen.
   - **Plan:** the plan to read (Read Formatted shows it as a page, by heading), then **Approve**, choosing the mode to carry on in (accept
     edits, auto or manual), or **Keep Planning** with what to change, which is the default.
 
