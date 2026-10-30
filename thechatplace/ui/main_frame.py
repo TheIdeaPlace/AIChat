@@ -76,6 +76,7 @@ from ..groups import GroupStore
 from ..prompts import (MAX_NAME as PROMPT_NAME_MAX, PromptStore, clean_text as clean_prompt_text,
                        suggested_name)
 from ..hidden import HiddenStore, ToolActivityStore
+from ..links import claude_link
 from ..titles import MAX_TITLE, TitleStore, clean_title
 from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP_VIEW_PREFIX, IDLE,
                         DESKTOP, NEEDS_YOU, OWN, SORT_ORDERS,
@@ -98,6 +99,7 @@ from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
 from .relay_chats import RelayChats
+from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
@@ -168,13 +170,6 @@ def kind_name(info: SessionInfo) -> str:
     return f"{article} {kind}"
 
 
-def claude_link(info: SessionInfo) -> str:
-    """The desktop app's own link to a session: its Code page, or for a
-    Cowork session (#91) the page the app's own notifications open."""
-    page = "cowork" if info.cowork else "epitaxy"
-    return f"claude://claude.ai/{page}/{info.desktop_session_id}"
-
-
 #: The narrowest the lists go. Without it a list's minimum is its longest row
 #: (see session_list in _build_ui).
 LIST_MIN_WIDTH = 200
@@ -191,7 +186,7 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
-class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
+class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -4394,8 +4389,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         own = self.store.get(session_id)
         remote = ({"name": title, "reattach": own.bridge_session_id}
                   if own is not None and self._remote_control_on(own) else None)
+        # The session tools (#165): /wrap and the like work here too.
         runner = TurnRunner(command, cwd, prompt, on_event, images=images,
-                            remote_control=remote, task_list=self.speech.task_list)
+                            remote_control=remote, task_list=self.speech.task_list,
+                            mcp_config=self._session_tools_config(session_id))
         # What you typed and attached, to give back if the turn never starts.
         runner.typed = spoken if spoken is not None else prompt
         runner.attached = list(attached or [])
@@ -6803,6 +6800,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         speaker.window_announcer = None
         self._notifier.close()  # its icon would keep the app running
         self._pool.shutdown(wait=False, cancel_futures=True)
+        self._close_session_tools()
         self._close_providers()
         event.Skip()
 
