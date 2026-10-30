@@ -290,13 +290,14 @@ def test_owned_foreign_overlay_keeps_provider_identity_and_live_metadata():
             return Snapshot(sessions=[foreign])
 
     owned = OwnSession(foreign.cli_session_id, "Local Codex title", "/local",
-                       provider="codex", unread=True)
+                       provider="codex", unread=True, forked_from="Earlier chat")
     claude = info("claude")
     claude.source = "external"
     controller = SessionController([Backend()])
     snap = controller.collect(lambda: Snapshot(sessions=[claude]), SORT_STATUS, owned=[owned])
     result = next(s for s in snap.sessions if s.provider == "codex")
     assert result.is_own and result.title == "Local Codex title" and result.unread
+    assert result.continued_from == "Earlier chat"  # a Continue Here copy (#423)
     assert result.state == WORKING and result.archived and result.cwd == foreign.cwd
     assert not next(s for s in snap.sessions if s.provider == "claude").is_own
     assert not foreign.is_own and foreign.title != owned.title

@@ -55,7 +55,7 @@ from .. import platform_paths
 from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, WORKING
 from ..usage import CONTEXT_WARNING
 from . import copilot_acp, copilot_hooks
-from .copilot import EVENTS_FILE, WORKSPACE_FILE, parse_workspace
+from .copilot import EVENTS_FILE, client_of
 
 AGENT_MODE = "https://agentclientprotocol.com/protocol/session-modes#agent"
 #: Copilot's Plan mode: it plans and blocks its own edits outside its
@@ -202,6 +202,18 @@ AGENT_NOT_SET = ("Copilot couldn't start this chat in agent mode, so nothing was
                  "Change Permission Mode to choose plan or agent mode, then send again.")
 #: Problems that only a switch of mode clears.
 MODE_PROBLEMS = (PLAN_NOT_SET, AGENT_NOT_SET, MODE_NOT_KEPT)
+#: Said when Continue Here's history is still waiting for a message to go.
+PREAMBLE_WAITING = ("The conversation so far goes with your next message. If you close The Chat "
+                    "Place first, the copy carries on without it.")
+
+
+def _too_long_with(preamble: str) -> str:
+    """Continue Here's history goes in the same prompt as the first message
+    (#423), so the limit is on the two together: how long yours can be."""
+    return ("That message is too long to send to Copilot with the conversation so far "
+            f"({len(preamble):,} characters) ahead of it; shorten it to "
+            f"{max(0, MAX_MESSAGE_CHARS - len(preamble)):,} characters or put the long "
+            "part in a file.")
 
 
 class CopilotChatError(Exception):
@@ -583,15 +595,6 @@ def _check_folder(cwd: str) -> None:
                                "drive or the top of the computer.")
 
 
-def _client_of(folder: Path) -> str:
-    """The client_name Copilot recorded for a session, or "" if unreadable."""
-    try:
-        return parse_workspace((folder / WORKSPACE_FILE).read_text(encoding="utf-8")).get(
-            "client_name", "")
-    except (OSError, UnicodeDecodeError):
-        return ""
-
-
 def _size(path: Path) -> int:
     try:
         return os.path.getsize(path)
@@ -722,6 +725,10 @@ class _Chat:
         self.open_on = None
         self.last_chunk_notice = 0.0
         self.cancel_timer = None
+        #: Continue Here (#352): the earlier conversation, to go ahead of
+        #: this chat's first message when that message is sent; kept until
+        #: then, so a message that doesn't go doesn't lose it.
+        self.preamble = ""
         #: The model Copilot uses for this chat, and the ones it offers
         #: ((value, label), …), from its configOptions.
         self.model = ""
@@ -1075,7 +1082,7 @@ class CopilotChatRuntime:
             return
         with self._lock:
             owned = native_id in self._owned
-        if not owned or _client_of(self._events(native_id).parent) != OWN_CLIENT:
+        if not owned or client_of(self._events(native_id).parent) != OWN_CLIENT:
             raise CopilotChatError("This Copilot chat was started outside The Chat Place, "
                                    "so it can only be read here.")
         refusal = self._hooks_refusal(cwd)
@@ -1188,15 +1195,46 @@ class CopilotChatRuntime:
                     "(agent or plan mode, with allow-all off), so nothing was sent.")
         return ""
 
+    def set_preamble(self, native_id: str, text: str) -> None:
+        """Continue Here (#352): ``text`` goes ahead of the chat's next
+        message, once, as that message is sent. Only The Chat Place makes
+        it, so it's never taken for a command: the "/" check is on what
+        you type."""
+        with self._lock:
+            chat = self._chats.get(native_id)
+            if chat is None:
+                raise CopilotChatError("This Copilot chat isn't open here.")
+            chat.preamble = text
+
     def send(self, native_id: str, text: str) -> bool:
         """Send now, or queue behind the running turn; True if queued.
         Reads Copilot's settings and the chat's log first, so call it off
         the UI thread."""
+        try:
+            return self._send(native_id, text)
+        except CopilotChatError as error:
+            # A refused first message of a Continue Here copy (#352): say
+            # the conversation so far is still waiting, as a turn that
+            # didn't go does.
+            with self._lock:
+                chat = self._chats.get(native_id)
+                # Not while a turn runs: the history is going with it.
+                waiting = bool(chat is not None and chat.preamble and not chat.busy)
+            if waiting and PREAMBLE_WAITING not in str(error):
+                raise CopilotChatError(f"{error} {PREAMBLE_WAITING}") from None
+            raise
+
+    def _send(self, native_id: str, text: str) -> bool:
         if not isinstance(text, str) or not text.strip():
             raise CopilotChatError("There's nothing to send.")
         if len(text) > MAX_MESSAGE_CHARS:
             raise CopilotChatError("That message is too long to send to Copilot; "
                                    "shorten it or put the long part in a file.")
+        with self._lock:
+            chat = self._chats.get(native_id)
+            preamble = chat.preamble if chat is not None and not chat.busy else ""
+        if preamble and len(preamble) + len(text) > MAX_MESSAGE_CHARS:
+            raise CopilotChatError(_too_long_with(preamble))
         if _visible_start(text).startswith("/"):
             raise CopilotChatError("Copilot commands starting with / can't be sent from "
                                    "The Chat Place: some of them turn off its permission prompts.")
@@ -1236,6 +1274,8 @@ class CopilotChatRuntime:
                 chat.queue.append(text)
                 queued = True
             else:
+                if chat.preamble and len(chat.preamble) + len(text) > MAX_MESSAGE_CHARS:
+                    raise CopilotChatError(_too_long_with(chat.preamble))
                 self._begin(chat, text)
                 queued = False
         self._notify(chat)
@@ -1278,6 +1318,7 @@ class CopilotChatRuntime:
             # message goes back unsent, never to Copilot.
             stopped_first = chat.stopping
             turn = chat.turns
+            preamble = chat.preamble
             # Decided in the same locked step a Stop reads it in, so a Stop
             # either finds the prompt going out or stops it going.
             chat.sending = not stopped_first
@@ -1290,13 +1331,15 @@ class CopilotChatRuntime:
             # on its way left the cancel to this turn, to send now.
             with self._lock:
                 chat.prompt_queued = True
+                if preamble and chat.preamble is preamble:
+                    chat.preamble = ""  # gone with this prompt
                 cancel = chat.stopping and not chat.answered and chat.turns == turn
             if cancel:
                 self._cancel(chat, connection, turn)
         try:
             result = {"stopReason": "cancelled"} if stopped_first else connection.request(
                 "session/prompt", {"sessionId": chat.native_id,
-                                   "prompt": [{"type": "text", "text": text}]},
+                                   "prompt": [{"type": "text", "text": preamble + text}]},
                 timeout=None, on_queued=queued)
             reason = result.get("stopReason")
             outcome = {"end_turn": "completed", "cancelled": "interrupted"}.get(reason, "failed")
@@ -1371,6 +1414,9 @@ class CopilotChatRuntime:
             if hook_ran:
                 chat.problem = HOOK_ANSWERED
             chat.busy, chat.outcome, chat.activity = False, outcome, ""
+            if chat.preamble and PREAMBLE_WAITING not in chat.notice:
+                # Continue Here's history didn't go: it waits, in memory only.
+                chat.notice = f"{chat.notice} {PREAMBLE_WAITING}".strip()
             chat.requests.clear()
             held, chat.held = chat.held, ()
             chat.stopping = False

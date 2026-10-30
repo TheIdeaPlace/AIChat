@@ -1764,6 +1764,153 @@ def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypat
     runtime.stop(chat)
 
 
+# -- Continue Here (#352) ---------------------------------------------------------------
+
+
+def test_the_conversation_so_far_goes_ahead_of_the_first_message_only(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    runtime.send(chat, "Two")
+    assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
+                and runtime.snapshot(chat).outcome == "completed")
+    assert prompts_sent(tmp_path) == ["HISTORY\n\nOne", "Two"]
+    with pytest.raises(CopilotChatError):
+        runtime.set_preamble("not-a-chat", "x")
+
+
+def test_the_conversation_so_far_waits_for_a_message_that_goes(make, tmp_path):
+    """A first message that never left keeps the history for the next."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    connection = runtime._connection
+    real = connection.request
+
+    def not_sent_once(method, params, *args, **kwargs):
+        if method == "session/prompt" and not getattr(not_sent_once, "done", False):
+            not_sent_once.done = True
+            raise copilot_acp.AcpNotSent("Copilot couldn't take your message.")
+        return real(method, params, *args, **kwargs)
+    connection.request = not_sent_once
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "failed"
+                and not runtime._chats[chat].busy)
+    assert runtime._chats[chat].preamble == "HISTORY\n\n"
+    runtime.send(chat, "One again")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert prompts_sent(tmp_path) == ["HISTORY\n\nOne again"]
+
+
+def test_a_first_message_that_didnt_go_says_the_history_waits(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    connection = runtime._connection
+    real = connection.request
+
+    def not_sent(method, params, *args, **kwargs):
+        if method == "session/prompt":
+            raise copilot_acp.AcpNotSent("Copilot couldn't take your message.")
+        return real(method, params, *args, **kwargs)
+    connection.request = not_sent
+    runtime.send(chat, "One")
+    assert wait(lambda: not runtime._chats[chat].busy and runtime.snapshot(chat).outcome)
+    assert PREAMBLE_WAITING in runtime.snapshot(chat).notice
+
+
+def test_the_cap_counts_the_conversation_so_far_too(make, tmp_path):
+    """The history goes in the same prompt as the first message, so the two
+    together are held to one message's limit (#423 review)."""
+    from thechatplace.providers.copilot_runtime import MAX_MESSAGE_CHARS, PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    history = "H" * 100_000
+    runtime.set_preamble(chat, history)
+    with pytest.raises(CopilotChatError, match="too long to send to Copilot with the "
+                                              "conversation so far") as refused:
+        runtime.send(chat, "x" * (MAX_MESSAGE_CHARS - len(history) + 1))
+    assert f"{MAX_MESSAGE_CHARS - len(history):,} characters" in str(refused.value)
+    assert PREAMBLE_WAITING in str(refused.value)
+    assert runtime._chats[chat].preamble == history  # still waiting
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/prompt"]
+    runtime.send(chat, "x" * (MAX_MESSAGE_CHARS - len(history)))  # exactly fits
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    assert runtime._chats[chat].preamble == ""
+
+
+def test_a_refused_first_message_says_the_history_waits(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    for text, why in (("   ", "nothing to send"), ("/allow-all", "starting with /")):
+        with pytest.raises(CopilotChatError, match=why) as refused:
+            runtime.send(chat, text)
+        assert str(refused.value).endswith(PREAMBLE_WAITING)
+    assert runtime._chats[chat].preamble == "HISTORY\n\n"
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    assert prompts_sent(tmp_path) == ["HISTORY\n\nOne"]
+    # Gone with that message: a later refusal doesn't mention it.
+    with pytest.raises(CopilotChatError) as refused:
+        runtime.send(chat, "/help")
+    assert PREAMBLE_WAITING not in str(refused.value)
+
+
+def test_a_chat_without_history_is_refused_as_before(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    with pytest.raises(CopilotChatError) as refused:
+        runtime.send(chat, "/help")
+    assert PREAMBLE_WAITING not in str(refused.value)
+
+
+def test_a_refusal_while_the_first_turn_starts_doesnt_say_the_history_waits(make, tmp_path):
+    """Once the first message's turn has begun the history is going with it,
+    even before Copilot has taken the prompt (#423 review)."""
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    with runtime._lock:
+        runtime._chats[chat].busy = True  # begun; the prompt not yet queued
+    try:
+        with pytest.raises(CopilotChatError) as refused:
+            runtime.send(chat, "/help")
+        assert PREAMBLE_WAITING not in str(refused.value)
+    finally:
+        with runtime._lock:
+            runtime._chats[chat].busy = False
+
+
+def test_history_set_while_a_message_is_checked_is_held_to_the_cap_too(make, tmp_path):
+    """The check under the lock, for history that arrived after the first
+    check, says the same as the first check does."""
+    from thechatplace.providers.copilot_runtime import MAX_MESSAGE_CHARS
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    history = "H" * 100_000
+    real = runtime._hooks_refusal
+
+    def late_history(cwd):
+        runtime.set_preamble(chat, history)  # between the two checks
+        return real(cwd)
+    runtime._hooks_refusal = late_history
+    with pytest.raises(CopilotChatError) as refused:
+        runtime.send(chat, "x" * (MAX_MESSAGE_CHARS - len(history) + 1))
+    assert f"({len(history):,} characters)" in str(refused.value)
+    assert f"{MAX_MESSAGE_CHARS - len(history):,} characters or put" in str(refused.value)
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/prompt"]
+
+
 # -- choosing the model -----------------------------------------------------------------
 
 
@@ -2258,6 +2405,26 @@ def test_agent_mode_asked_for_where_copilot_starts_in_plan_is_switched(make, tmp
     assert runtime.snapshot(other).problem == AGENT_NOT_SET
     with pytest.raises(CopilotChatError, match="in agent mode"):
         runtime.send(other, "Change things")
+
+
+def test_a_continue_here_copy_whose_plan_mode_isnt_confirmed_keeps_its_history(make, tmp_path):
+    """#424 with #423: a copy asked for in plan mode that Copilot won't
+    confirm sends nothing, its history included, and says the history is
+    still waiting; once a mode is chosen the first message takes it."""
+    from thechatplace.providers.copilot_runtime import (AGENT_MODE, PLAN_MODE, PLAN_NOT_SET,
+                                                        PREAMBLE_WAITING)
+    runtime, _ = make("keepagent")
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    runtime.set_preamble(chat, "Earlier: history. ")
+    assert not runtime.ready(chat)
+    with pytest.raises(CopilotChatError) as refused:
+        runtime.send(chat, "Carry on")
+    assert PLAN_NOT_SET in str(refused.value) and PREAMBLE_WAITING in str(refused.value)
+    assert prompts_sent(tmp_path) == []
+    assert runtime.set_mode(chat, AGENT_MODE) == AGENT_MODE and runtime.ready(chat)
+    runtime.send(chat, "Carry on")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert prompts_sent(tmp_path) == ["Earlier: history. Carry on"]
 
 
 # -- saved modes (provider level) -------------------------------------------------------

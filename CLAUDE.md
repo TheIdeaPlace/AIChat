@@ -211,6 +211,11 @@ Kelly can't see the screen, so how the app looks is checked by the visual probe,
 - **Accept with care.** Once the change is right, `--accept` the changed pictures into
   `testing/visual/baseline/windows/` in the same PR. Update `testing/visual/descriptions.md` for any
   screen whose look changed.
+- **Walk it by keyboard in the VM.** A new dialog, or a change to a dialog's controls or where
+  its focus starts, is walked with real Tab, Shift+Tab and arrow presses in the test VM (vmtest
+  `keys` and `focused`), every stop checked, before it merges. Tests that call `SetFocus` don't
+  catch Tab skipping controls: #415 moved the Answer dialog's start to its Question box, and
+  Windows' Tab then skipped every radio group with nothing chosen (#428).
 - **Hand the rest to Kelly.** Anything the probe can't see (animation, focus moving, how it sounds)
   goes in the step-4 list for Kelly.
 

@@ -544,13 +544,28 @@ is "Chat Place session". You read and reply to them entirely in The Chat Place, 
 appear in the desktop app. If Claude starts something in the background, such as a build or a
 wait for GitHub checks, the chat keeps running while it does, and Claude carries on by itself
 when it finishes (see Replying).</p>
+<h3>Session commands in Claude chats</h3>
+<p>Commands and skills that manage your sessions, such as <code>/wrap</code>, work in Claude chats started
+here, as they do in the desktop app. Claude can list the sessions in The Chat Place's list
+(desktop app sessions, chats started here, terminal sessions and Codex and Copilot chats), look
+one up, and search their messages, like Find in All Sessions but across every chat.</p>
+<p>Archiving works for chats started here and for terminal sessions: it hides the chat, as
+File, <strong>Hide Session</strong> does, so it moves to View, Show Sessions, Hidden, and File,
+<strong>Bring Back Session</strong> returns it. A desktop app session is never changed from here: Claude is
+told to archive it in the desktop app's sidebar instead. A chat with a turn running, including
+the one you're asking from, isn't archived, and neither is the chat you have open, so nothing
+you're reading or typing disappears; hide it yourself once you're done. Archiving never moves
+you in the list. Claude can't switch the desktop app to another session from here, but it can
+give you the session's link.</p>
 <h3>Continue Here</h3>
 <p>To carry on a chat that was started elsewhere, use <strong>Continue Here</strong> (Ctrl+Shift+N, or the
 button after the note, where the reply box would be). It makes a new chat here in the same
 folder, with the whole conversation so far, and you type its first message. Its title starts as
 the original's, followed by "(continued)". The original chat isn't changed, and what you do in
-the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats and
-for Codex chats; not for Cowork or Copilot chats.</p>
+the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats, for
+Codex chats and for Copilot chats; not for Cowork chats. A Copilot copy is a little different:
+Copilot can't copy a chat, so your first message goes with the conversation so far, as text (see
+"Starting a Copilot chat").</p>
 <h3>Following a chat as it works</h3>
 <p>You can follow any kind of chat while the AI works in it, wherever it was started. Load it, and
 its new messages appear as they're written. Turn on <strong>Show Tool Activity</strong> (Ctrl+T) to hear each
@@ -595,7 +610,7 @@ doesn't name, is an "other app session" or an "external session".</p>
 <td>A terminal, with <code>claude</code> or <code>copilot</code>, and some Codex terminal chats</td>
 <td>in that terminal</td>
 <td>no</td>
-<td>Claude and Codex</td>
+<td>yes</td>
 </tr>
 <tr>
 <td><strong>Editor session</strong></td>
@@ -616,7 +631,7 @@ doesn't name, is an "other app session" or an "external session".</p>
 <td>Another app</td>
 <td>in that app</td>
 <td>no</td>
-<td>Codex</td>
+<td>Codex and Copilot</td>
 </tr>
 <tr>
 <td><strong>Chat Place session</strong></td>
@@ -694,7 +709,7 @@ whether the chat was started here:</p>
 <td>Continue Here</td>
 <td>desktop app and terminal chats</td>
 <td>yes</td>
-<td>no</td>
+<td>yes, with the conversation as text</td>
 </tr>
 <tr>
 <td>Commands and skills (Ctrl+/)</td>
@@ -887,7 +902,7 @@ show in full can only be denied: ask Copilot to do it in smaller steps.</p>
 </ul>
 <p><strong>Plan mode.</strong> A Copilot chat started here is in Copilot's agent mode or its plan mode. In plan
 mode Copilot works out a plan and doesn't edit your files (it keeps the plan in its own session
-folder); it still asks before anything that needs your permission. Choose the mode in New Session (Permission mode),
+folder); it still asks before anything that needs your permission. Choose the mode in New Session or Continue Here (Permission mode),
 or switch a chat with <strong>Change Permission Mode</strong> (Ctrl+Shift+O), as Shift+Tab does in Copilot
 CLI. The chat's heading ends "plan mode" while it's in plan mode, and if Copilot switches modes
 by itself you hear it. If Copilot can't start a new chat in plan mode, or reopens a chat in
@@ -896,7 +911,17 @@ mode with Change Permission Mode; either choice, the one it's in now too, then l
 chat started for an agent conversation starts in agent mode. When Copilot says to switch out of
 plan mode to make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
 it asking, is never offered, and a chat Copilot puts in it isn't sent to.</p>
-<p>Continue Here and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+<p>A Copilot chat started in Copilot CLI or another app can be carried on here with
+<strong>Continue Here</strong> (Ctrl+Shift+N). Copilot can't copy a chat, so the copy is a new Copilot chat of The Chat
+Place's own in the same folder, and your first message goes with the conversation so far: your
+messages and Copilot's replies, labelled as history (the newest kept if it's long), but not the
+commands Copilot ran or their output. It goes as part of your first message, so it costs no extra
+request. If that message doesn't go, the history waits for your next one, but only while The Chat
+Place stays open: the chat says so. A first message too long to go with the history is
+refused and kept, so you can shorten it. In the copy's messages the history is one row,
+"Earlier conversation", just before your first message; Enter reads it in full. Model
+and Permission mode offer the same choices as in New Session. The original chat isn't changed.</p>
+<p>Chat Permissions isn't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.</p>
 <h2 id="starting-a-chat-and-replying">Starting a chat and replying</h2>
 <h3>A new chat</h3>
@@ -1228,7 +1253,9 @@ Ctrl+Shift+A brings the same request back.</p>
   before asking (often the thing it's asking about, such as a draft to approve), then each
   question in full. Below it, each question is a group of choices, with Other and a box for your
   own answer. When a choice comes with a preview, the Preview box after the questions shows the
-  preview of the choice you're on. Send Answers, or Don't Answer.</li>
+  preview of the choice you're on. Send Answers, or Don't Answer. A question with one answer is a
+  single Tab stop, on your choice, or on its first choice until you've made one (the arrow keys
+  move between choices); in a question with several answers, each choice is a stop.</li>
 <li><strong>Claude, a plan:</strong> read it (Read Formatted shows it as a page, by heading), then <strong>Approve</strong>,
   choosing how Claude carries on, or <strong>Keep Planning</strong>, the default, with what to change.</li>
 <li><strong>Codex, a permission:</strong> the request shows the command, its folder and Codex's reason, and a

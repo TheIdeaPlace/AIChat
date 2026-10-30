@@ -79,6 +79,10 @@ COMMAND_ERROR = "command_error"
 #: An agent conversation's own line (#248): the relay passing a reply on, the
 #: setup it sent, or why it stopped. Never from a transcript.
 RELAY = "relay"
+#: Continue Here's carried-over history in a Copilot copy (#352, #423): one
+#: short row ahead of your first message, the history itself as its
+#: ``detail`` (Enter reads it). Copilot records it in your message's text.
+CARRIED = "carried"
 MAX_COMMAND_OUTPUT = 16_384
 
 LABELS = {
@@ -102,6 +106,7 @@ LABELS = {
     COMMAND_OUTPUT: "Claude Code",
     COMMAND_ERROR: "Claude Code error",
     RELAY: "Relay",
+    CARRIED: "Earlier conversation",
 }
 
 #: Kinds hidden unless "show tool activity" is on.

@@ -119,6 +119,7 @@ class SessionController:
             info.source = OWN
             info.title = record.title
             info.unread = record.unread
+            info.continued_from = record.forked_from
 
     def _provider(self, session: SessionInfo) -> ConversationProvider:
         if self._closed:
