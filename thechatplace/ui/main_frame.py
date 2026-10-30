@@ -4136,6 +4136,25 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
             self._create_codex_owned(info.cwd, title, message, source=info, **options, **policy)
             return
+        if info.provider == "copilot":
+            # A new Copilot chat with the conversation so far ahead of your
+            # first message: Copilot can't copy a chat (#352).
+            if not info.cwd or not os.path.isdir(info.cwd):
+                wx.MessageBox(f"This chat's folder ({info.cwd or 'unknown'}) doesn't exist any "
+                              "more, so it can't be continued here.", APP_NAME,
+                              wx.OK | wx.ICON_WARNING, self)
+                return
+            dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
+                                      providers=("copilot",), provider="copilot",
+                                      source_state=info.state, feedback=self._feedback)
+            try:
+                if dialog.ShowModal() != wx.ID_OK:
+                    return
+                _folder, title, _mode, message, _model = dialog.values()
+            finally:
+                dialog.Destroy()
+            self._create_codex_owned(info.cwd, title, message, source=info, provider="copilot")
+            return
         if info.cowork:
             # Its transcript is in the session's own Claude Code home, where
             # claude -p on this PC can't resume it (#91).

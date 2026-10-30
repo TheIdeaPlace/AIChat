@@ -12913,6 +12913,46 @@ def test_new_session_offers_copilot_with_its_own_note(frame):
         dialog.Destroy()
 
 
+def test_continue_here_on_a_copilot_chat_makes_a_copy_with_its_history(frame, env, monkeypatch,
+                                                                       tmp_path):
+    """#352: Copilot can't copy a chat, so the copy is a new Copilot chat of
+    the app's own, and the dialog says what it gets."""
+    from thechatplace.sessions import SessionInfo, TERMINAL
+    from thechatplace.ui import main_frame as mf
+    from thechatplace.ui.dialogs import COPILOT_CONTINUE_NOTE, NewSessionDialog
+    settle(frame)
+    dialog = NewSessionDialog(frame, str(tmp_path), continue_from="CLI chat",
+                              providers=("copilot",), provider="copilot")
+    try:
+        assert dialog.note.GetValue().startswith(COPILOT_CONTINUE_NOTE)
+    finally:
+        dialog.Destroy()
+    info = SessionInfo(TERMINAL, "copilot:cli-1", "CLI chat", str(tmp_path), "cli-1",
+                       provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_require_capability", lambda what, chat: True)
+
+    class Answered:
+        def __init__(self, *args, **kwargs):
+            self.kwargs = kwargs
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def values(self):
+            return str(tmp_path), "CLI chat (continued)", "default", "Carry on", ""
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(mf, "NewSessionDialog", Answered)
+    made = []
+    monkeypatch.setattr(frame, "_create_codex_owned",
+                        lambda folder, title, message, **kw: made.append((folder, title, message, kw)))
+    frame.on_continue_here()
+    assert made == [(str(tmp_path), "CLI chat (continued)", "Carry on",
+                     {"source": info, "provider": "copilot"})]
+
+
 def test_copilot_is_offered_only_once_its_cli_is_installed(frame, env, monkeypatch):
     from thechatplace.providers.claude import ClaudeConversations
     from thechatplace.providers.copilot import CopilotProvider

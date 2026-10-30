@@ -168,6 +168,11 @@ class Stopped(NamedTuple):
     answered: bool = False
 
 
+#: Said when Continue Here's history is still waiting for a message to go.
+PREAMBLE_WAITING = ("The conversation so far goes with your next message. If you close The Chat "
+                    "Place first, the copy carries on without it.")
+
+
 class CopilotChatError(Exception):
     """A reason a chat can't do something now, in words to show."""
 
@@ -601,6 +606,10 @@ class _Chat:
         self.open_on = None
         self.last_chunk_notice = 0.0
         self.cancel_timer = None
+        #: Continue Here (#352): the earlier conversation, to go ahead of
+        #: this chat's first message when that message is sent; kept until
+        #: then, so a message that doesn't go doesn't lose it.
+        self.preamble = ""
 
     @property
     def safe(self) -> bool:
@@ -870,6 +879,17 @@ class CopilotChatRuntime:
                     "(agent mode, with allow-all off), so nothing was sent.")
         return ""
 
+    def set_preamble(self, native_id: str, text: str) -> None:
+        """Continue Here (#352): ``text`` goes ahead of the chat's next
+        message, once, as that message is sent. Only The Chat Place makes
+        it, so it's never taken for a command: the "/" check is on what
+        you type."""
+        with self._lock:
+            chat = self._chats.get(native_id)
+            if chat is None:
+                raise CopilotChatError("This Copilot chat isn't open here.")
+            chat.preamble = text
+
     def send(self, native_id: str, text: str) -> bool:
         """Send now, or queue behind the running turn; True if queued.
         Reads Copilot's settings and the chat's log first, so call it off
@@ -959,6 +979,7 @@ class CopilotChatRuntime:
             # message goes back unsent, never to Copilot.
             stopped_first = chat.stopping
             turn = chat.turns
+            preamble = chat.preamble
         if stopped_first:
             not_sent = (text,)
 
@@ -968,13 +989,15 @@ class CopilotChatRuntime:
             # on its way left the cancel to this turn, to send now.
             with self._lock:
                 chat.prompt_queued = True
+                if preamble and chat.preamble is preamble:
+                    chat.preamble = ""  # gone with this prompt
                 cancel = chat.stopping and not chat.answered and chat.turns == turn
             if cancel:
                 self._cancel(chat, connection, turn)
         try:
             result = {"stopReason": "cancelled"} if stopped_first else connection.request(
                 "session/prompt", {"sessionId": chat.native_id,
-                                   "prompt": [{"type": "text", "text": text}]},
+                                   "prompt": [{"type": "text", "text": preamble + text}]},
                 timeout=None, on_queued=queued)
             reason = result.get("stopReason")
             outcome = {"end_turn": "completed", "cancelled": "interrupted"}.get(reason, "failed")
@@ -1049,6 +1072,9 @@ class CopilotChatRuntime:
             if hook_ran:
                 chat.problem = HOOK_ANSWERED
             chat.busy, chat.outcome, chat.activity = False, outcome, ""
+            if chat.preamble and PREAMBLE_WAITING not in chat.notice:
+                # Continue Here's history didn't go: it waits, in memory only.
+                chat.notice = f"{chat.notice} {PREAMBLE_WAITING}".strip()
             chat.requests.clear()
             held, chat.held = chat.held, ()
             chat.stopping = False

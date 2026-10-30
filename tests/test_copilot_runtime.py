@@ -1760,3 +1760,62 @@ def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypat
     provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
     assert [info.cli_session_id for info in provider.collect().sessions] == [chat]
     runtime.stop(chat)
+
+
+# -- Continue Here (#352) ---------------------------------------------------------------
+
+
+def test_the_conversation_so_far_goes_ahead_of_the_first_message_only(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    runtime.send(chat, "Two")
+    assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
+                and runtime.snapshot(chat).outcome == "completed")
+    assert prompts_sent(tmp_path) == ["HISTORY\n\nOne", "Two"]
+    with pytest.raises(CopilotChatError):
+        runtime.set_preamble("not-a-chat", "x")
+
+
+def test_the_conversation_so_far_waits_for_a_message_that_goes(make, tmp_path):
+    """A first message that never left keeps the history for the next."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    connection = runtime._connection
+    real = connection.request
+
+    def not_sent_once(method, params, *args, **kwargs):
+        if method == "session/prompt" and not getattr(not_sent_once, "done", False):
+            not_sent_once.done = True
+            raise copilot_acp.AcpNotSent("Copilot couldn't take your message.")
+        return real(method, params, *args, **kwargs)
+    connection.request = not_sent_once
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "failed"
+                and not runtime._chats[chat].busy)
+    assert runtime._chats[chat].preamble == "HISTORY\n\n"
+    runtime.send(chat, "One again")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert prompts_sent(tmp_path) == ["HISTORY\n\nOne again"]
+
+
+def test_a_first_message_that_didnt_go_says_the_history_waits(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    connection = runtime._connection
+    real = connection.request
+
+    def not_sent(method, params, *args, **kwargs):
+        if method == "session/prompt":
+            raise copilot_acp.AcpNotSent("Copilot couldn't take your message.")
+        return real(method, params, *args, **kwargs)
+    connection.request = not_sent
+    runtime.send(chat, "One")
+    assert wait(lambda: not runtime._chats[chat].busy and runtime.snapshot(chat).outcome)
+    assert PREAMBLE_WAITING in runtime.snapshot(chat).notice

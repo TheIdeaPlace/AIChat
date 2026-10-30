@@ -112,6 +112,13 @@ COPILOT_NOTE = ("Copilot uses your GitHub Copilot sign-in, and each message uses
                 "without asking you.")
 
 
+COPILOT_CONTINUE_NOTE = (
+    "The copy is a new Copilot chat of The Chat Place's own, in the same folder. Copilot can't "
+    "copy a chat, so your first message goes with the conversation so far: your messages and "
+    "Copilot's replies, newest kept if it's long, but not the commands it ran or their output. "
+    "The original chat isn't changed, and stays in Copilot CLI.")
+
+
 class NewSessionDialog(wx.Dialog):
     """Folder, where in it to work, title, model, permission mode, first message.
 
@@ -624,6 +631,11 @@ class NewSessionDialog(wx.Dialog):
                 control.SetSelection(0)
                 control.Disable()
             self.note.SetValue(COPILOT_NOTE)
+            if self.continuing:
+                note = COPILOT_CONTINUE_NOTE
+                if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
+                    note = "This chat may still be working in Copilot CLI. " + note
+                self.note.SetValue(note + "\n\n" + COPILOT_NOTE)
         elif provider == "codex":
             self.model.Set(["Configured Codex model"] + [choice.label for choice in self._codex_models])
             self.model.SetSelection(min(self._codex_choices[0], len(self._codex_models)))

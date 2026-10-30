@@ -549,8 +549,10 @@ when it finishes (see Replying).</p>
 button after the note, where the reply box would be). It makes a new chat here in the same
 folder, with the whole conversation so far, and you type its first message. Its title starts as
 the original's, followed by "(continued)". The original chat isn't changed, and what you do in
-the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats and
-for Codex chats; not for Cowork or Copilot chats.</p>
+the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats, for
+Codex chats and for Copilot chats; not for Cowork chats. A Copilot copy is a little different:
+Copilot can't copy a chat, so your first message goes with the conversation so far, as text (see
+"Starting a Copilot chat").</p>
 <h3>Following a chat as it works</h3>
 <p>You can follow any kind of chat while the AI works in it, wherever it was started. Load it, and
 its new messages appear as they're written. Turn on <strong>Show Tool Activity</strong> (Ctrl+T) to hear each
@@ -688,7 +690,7 @@ whether the chat was started here:</p>
 <td>Continue Here</td>
 <td>desktop app and terminal chats</td>
 <td>yes</td>
-<td>no</td>
+<td>yes, with the conversation as text</td>
 </tr>
 <tr>
 <td>Commands and skills (Ctrl+/)</td>
@@ -875,8 +877,14 @@ show in full can only be denied: ask Copilot to do it in smaller steps.</p>
 <li>with a message that starts with <code>/</code>, because some of Copilot's commands turn off its
   questions.</li>
 </ul>
-<p>Continue Here, Change Permission Mode and Chat Permissions aren't available for Copilot chats
-yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+<p>A Copilot chat started in Copilot CLI or another app can be carried on here with
+<strong>Continue Here</strong> (Ctrl+Shift+N). Copilot can't copy a chat, so the copy is a new Copilot chat of The Chat
+Place's own in the same folder, and your first message goes with the conversation so far: your
+messages and Copilot's replies, labelled as history (the newest kept if it's long), but not the
+commands Copilot ran or their output. It goes as part of your first message, so it costs no extra
+request. If that message doesn't go, the history waits for your next one, but only while The Chat
+Place stays open: the chat says so. The original chat isn't changed.</p>
+<p>Change Permission Mode and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.</p>
 <h2 id="starting-a-chat-and-replying">Starting a chat and replying</h2>
 <h3>A new chat</h3>

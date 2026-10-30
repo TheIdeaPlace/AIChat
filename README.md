@@ -285,7 +285,9 @@ too).
   app or terminal session on in The Chat Place, as a copy: a new Chat Place session in the same
   folder, with the whole conversation so far in its messages, that you reply to here. You type its
   first message in the same dialog as New Session; the title starts as "<title> (continued)". The
-  original session isn't changed, and what you do in the copy doesn't appear in it.
+  original session isn't changed, and what you do in the copy doesn't appear in it. For a
+  Copilot chat, the copy's first message carries the conversation so far instead (see GitHub
+  Copilot CLI chats).
 
 ### Starting a session and replying
 
@@ -589,8 +591,15 @@ Place won't send to Copilot:
 - with a message starting with `/`, since Copilot's commands include ones that turn off its
   questions.
 
-Continue Here, Change Permission Mode and Chat Permissions aren't available for Copilot chats
-yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+A Copilot chat started in Copilot CLI or another app can be carried on here with
+**Continue Here** (Ctrl+Shift+N). Copilot can't copy a chat, so the copy is a new Copilot chat of The Chat
+Place's own in the same folder, and your first message goes with the conversation so far: your
+messages and Copilot's replies, labelled as history (the newest kept if it's long), but not the
+commands Copilot ran or their output. It goes as part of your first message, so it costs no extra
+request. If that message doesn't go, the history waits for your next one, but only while The Chat
+Place stays open: the chat says so. The original chat isn't changed.
+
+Change Permission Mode and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it. Usage and Context (Ctrl+Shift+U) says how full a Copilot chat's
 context is (once Copilot has answered in it here) and how many premium requests the chat has
 used, from its log; Copilot doesn't say how many your plan has left, so check that in GitHub's
