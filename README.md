@@ -1196,6 +1196,7 @@ Everything it reads is on your own computer, so reading costs nothing.
 | Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json` (on a Mac, `~/Library/Application Support/TheChatPlace/provider-tasks/codex/<sha256>.json`): the latest task list captured for each owned Codex chat, with its turn ID. The Chat Place can't delete Codex chats yet, so these files stay until you delete them. |
 | The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (on a Mac, `~/Library/Application Support/TheChatPlace/sessions.json`), and `speech.json` for settings. If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json` (on a Mac, `~/Library/Application Support/TheChatPlace/prompts.json`). If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
+| The session tools' connection | `%APPDATA%\TheChatPlace\session-tools.json` (on a Mac, `~/Library/Application Support/TheChatPlace/session-tools.json`): where Claude turns' session tools reach the running app, and the key they need (see Session tools for Claude turns). Readable only by you, and deleted when The Chat Place closes. |
 | Errors | `%APPDATA%\TheChatPlace\error.log` (on a Mac, `~/Library/Application Support/TheChatPlace/error.log`): anything that went wrong unexpectedly, with its traceback |
 
 Copilot CLI sessions are read from `%USERPROFILE%\.copilot\session-state\<id>\` (`~/.copilot/session-state/<id>/` on a Mac)
@@ -1274,6 +1275,43 @@ instead, ahead of anything typed since, with the cursor left at the end. While o
 The Chat Place's sessions is loaded, Send and Stop are never disabled, so from the message box, Tab
 is always Send and the next Tab is always Stop. When a turn is running, Tab doesn't jump past
 Send to Stop.
+
+### Session tools for Claude turns
+
+The Claude desktop app gives its sessions tools for managing sessions, which commands and skills
+such as `/wrap` call by name: `mcp__ccd_session_mgmt__list_sessions`, `get_session`,
+`archive_session`, `search_session_transcripts` and `open_session_in`. A `claude -p` turn has no
+desktop app behind it, so The Chat Place gives each Claude turn it runs an MCP server of its own
+under the same name, with `--mcp-config` (#165). The server is The Chat Place itself, started with
+`--session-tools-mcp`, so the built app needs nothing else installed.
+
+- **list_sessions** and **get_session** answer from The Chat Place's own list, the one its window
+  shows: desktop app, Cowork and terminal sessions, its own, and Codex and Copilot chats, with
+  your names for them. Each has the desktop app's fields (`sessionId`, `title`, `cwd`,
+  `isArchived`, `isRunning`, `lastActivityAt`, and `link`, a `claude://` link, for desktop app
+  sessions), and The Chat Place's own (`kind`, `provider`, `repo`, `state`, `isHidden`,
+  `chatPlaceLink`). As in the desktop app, the session asking is always left out, and archived
+  sessions unless `include_archived` is true; a hidden session counts as archived.
+- **archive_session** hides one of The Chat Place's own sessions, or a terminal session, exactly
+  as File, Hide Session does, and the list changes at once. It refuses a desktop app session (The
+  Chat Place never changes the desktop app's files) and says to archive it in the desktop app's
+  sidebar; another app's chat, in that app. It refuses a session with a turn running, including
+  the one asking, and one open in the window, so nothing you're reading or typing disappears; the
+  list stays on the session you're on.
+- **search_session_transcripts** searches messages like Find in All Sessions, but across every
+  session that isn't archived (or every one, with `include_archived`), tool activity included,
+  and gives a snippet of the newest match in each.
+- **open_session_in** says it isn't available here and points to the session's link.
+
+The server runs as a child of `claude`, but the list (your titles, hidden sessions, running turns,
+and the Codex and Copilot chats only the running app can reach) is in the window, and the window
+keeps its hidden list in memory, so a change written behind its back would be lost. So the server
+asks the window. With the first Claude turn, the window opens a local connection
+(`multiprocessing.connection`: a named pipe on Windows, a Unix socket in a private folder on a Mac
+and Linux) that needs a random key, and writes its address and key to `session-tools.json` in The
+Chat Place's folder, readable only by you, and deletes it on closing. Neither is on any command
+line. Each tool call is one JSON request; the list is read and a session hidden on the window's
+thread, and a search reads transcripts off it.
 
 ### Steering a running turn
 
@@ -1374,6 +1412,10 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   folder inside the desktop app's files, where `claude -p` on your PC can't resume it, and its
   tools were run by the desktop app. Open in Claude carries on there.
 - Subagent conversations are left out of the chat.
+- Claude chats started here have the desktop app's session tools that `/wrap` and similar
+  commands use (see Session tools for Claude turns), but not its other tools: reading another
+  session's events or stopping it, Remote Control and window tools, the browser pane and computer
+  use. Archiving can't change a desktop app session.
 - Turns of The Chat Place's own sessions are also spoken by ClaudeSpeak's Stop hook, if that's
   installed, since `claude -p` runs hooks; so a reply can be heard twice.
 - The desktop app's file formats are undocumented and could change with any update.

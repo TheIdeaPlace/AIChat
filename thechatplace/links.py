@@ -78,6 +78,13 @@ def session_link(info) -> str:
     return PREFIX + session_id if session_id else ""
 
 
+def claude_link(info) -> str:
+    """The desktop app's own link to a session: its Code page, or for a
+    Cowork session (#91) the page the app's own notifications open."""
+    page = "cowork" if info.cowork else "epitaxy"
+    return f"claude://claude.ai/{page}/{info.desktop_session_id}"
+
+
 def find_session(sessions: Iterable, session_id: str):
     """The session a link's id names, or None. The Chat Place's own sessions
     first (by their Claude Code id), then desktop app ones (by theirs), then

@@ -615,6 +615,22 @@ appear in the desktop app. If Claude starts something in the background, such as
 wait for GitHub checks, the chat keeps running while it does, and Claude carries on by itself
 when it finishes (see Replying).
 
+### Session commands in Claude chats
+
+Commands and skills that manage your sessions, such as `/wrap`, work in Claude chats started
+here, as they do in the desktop app. Claude can list the sessions in The Chat Place's list
+(desktop app sessions, chats started here, terminal sessions and Codex and Copilot chats), look
+one up, and search their messages, like Find in All Sessions but across every chat.
+
+Archiving works for chats started here and for terminal sessions: it hides the chat, as
+File, **Hide Session** does, so it moves to View, Show Sessions, Hidden, and File,
+**Bring Back Session** returns it. A desktop app session is never changed from here: Claude is
+told to archive it in the desktop app's sidebar instead. A chat with a turn running, including
+the one you're asking from, isn't archived, and neither is the chat you have open, so nothing
+you're reading or typing disappears; hide it yourself once you're done. Archiving never moves
+you in the list. Claude can't switch the desktop app to another session from here, but it can
+give you the session's link.
+
 ### Continue Here
 
 To carry on a chat that was started elsewhere, use **Continue Here** (Ctrl+Shift+N, or the
