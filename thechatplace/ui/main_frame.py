@@ -4447,6 +4447,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 except OSError:
                     pass  # its tool activity is hidden next time; nothing else is lost
                 self._agent_rename_member("claude", session_id, reported)
+                # This turn's session tools still name the old id (#165).
+                self._session_tools_renamed = {**self._session_tools_renamed,
+                                               session_id: reported}
                 self._runners[reported] = self._runners.pop(session_id)
                 self._denials[reported] = self._denials.pop(session_id, [])
                 for per_session in (self._drafts, self._queued, self._steered, self._pending,

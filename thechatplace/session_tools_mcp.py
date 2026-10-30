@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import BinaryIO, List, Optional
 
 from . import __version__
-from .session_tools import (CALL_TIMEOUT, SEARCH_TIMEOUT, SERVER_NAME, TOOL_NAMES, TOOLS,
+from .session_tools import (ARCHIVE_TIMEOUT, CALL_TIMEOUT, SEARCH_TIMEOUT, SERVER_NAME, TOOL_NAMES, TOOLS,
                             Unreachable, ask)
 
 #: The versions of MCP this server speaks; the newest is offered when the
@@ -75,7 +75,8 @@ class Server:
         return _error(request_id, METHOD_NOT_FOUND, f"Method not found: {method}")
 
     def call(self, name: str, arguments: dict) -> dict:
-        timeout = SEARCH_TIMEOUT if name == "search_session_transcripts" else CALL_TIMEOUT
+        timeout = {"search_session_transcripts": SEARCH_TIMEOUT,
+                   "archive_session": ARCHIVE_TIMEOUT}.get(name, CALL_TIMEOUT)
         try:
             answer = self._ask({"tool": name, "arguments": arguments, "self": self.self_id},
                                self.data_dir, timeout)

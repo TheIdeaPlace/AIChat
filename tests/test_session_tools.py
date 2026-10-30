@@ -428,3 +428,19 @@ def test_a_caller_that_never_answers_holds_nobody_up(tmp_path):
             silent.close()
     finally:
         host.close()
+
+
+def test_archive_waits_longer_than_the_window_may_take_twice(tmp_path):
+    asked = []
+    server = session_tools_mcp.Server(tmp_path, "me",
+                                      asker=lambda r, d, timeout: asked.append(timeout) or {})
+    rpc(server, "tools/call", name="archive_session", arguments={"session_id": "x"})
+    assert asked == [session_tools.ARCHIVE_TIMEOUT]
+    assert session_tools.ARCHIVE_TIMEOUT > 2 * session_tools.CALL_TIMEOUT
+
+
+def test_a_search_stops_when_the_window_closes(tmp_path):
+    view = world(cancelled=lambda: True)
+    _with_transcript(view.sessions[0], tmp_path, user_text("migration"))
+    result = call("search_session_transcripts", {"query": "migration"}, view)
+    assert result.text.startswith("No matching sessions found. Searched 0 sessions.")

@@ -13820,3 +13820,35 @@ def test_the_connection_starts_with_the_first_turn_and_closes_with_the_window(fr
     frame._close_session_tools()
     assert host.closed and frame._session_tools is False
     assert frame._session_tools_config("own-1") is None
+
+
+def test_archiving_from_a_session_never_moves_you_in_the_list(frame, env):
+    from thechatplace import session_tools
+    frame.store.add(OwnSession("own-2", "Finished work", r"C:\G\Done", last_activity_ms=now_ms()))
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: frame.session_list.GetCount() == 4)
+    select(frame, "Quiet one")
+    result = session_tools.call_tool("archive_session", {"session_id": "own:own-2"},
+                                     frame._session_tools_view("own-1"),
+                                     frame._session_tools_hide)
+    assert not result.is_error, result.text
+    assert frame.session_list.GetCount() == 3
+    assert frame.session_list.GetString(frame.session_list.GetSelection()).startswith("Quiet one")
+
+
+def test_the_chat_you_have_open_is_not_archived_from_a_session(frame, env):
+    from thechatplace import session_tools
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("half a reply")
+    result = session_tools.call_tool("archive_session", {"session_id": "own:own-1"},
+                                     frame._session_tools_view("other"),
+                                     frame._session_tools_hide)
+    assert result.is_error and "open in The Chat Place's window" in result.text
+    assert "own:own-1" not in frame.hidden
+    assert frame._open is not None and frame.reply_text.GetValue() == "half a reply"
+
+
+def test_self_follows_an_id_claude_changed(frame):
+    frame._session_tools_renamed = {"asked-for": "own-1"}
+    assert frame._session_tools_view("asked-for").current.key == "own:own-1"

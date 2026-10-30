@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from . import links, platform_paths
+from .agents import AGENTS
 from .sessions import DESKTOP, TERMINAL, WORKING, SessionInfo, home_app
 
 #: The MCP server's name. Claude Code names a server's tools
@@ -69,6 +70,10 @@ SEARCH_MAX = 50
 #: transcript, so it gets longer.
 CALL_TIMEOUT = 30.0
 SEARCH_TIMEOUT = 180.0
+#: Archiving waits for the window twice (its list, then the hide), so the
+#: server waits longer than both: a hide that lands late must never have
+#: been reported as not done.
+ARCHIVE_TIMEOUT = 2 * CALL_TIMEOUT + 15.0
 
 _SESSION_ID = {"type": "string",
                "description": 'The session\'s sessionId from list_sessions, or "self" for '
@@ -80,8 +85,8 @@ TOOLS: List[dict] = [
         "description": (
             "List the sessions in The Chat Place's session list, newest activity first: "
             "Claude desktop app sessions, The Chat Place's own, terminal sessions, and Codex "
-            "and Copilot chats. This session and archived or hidden sessions are left out "
-            "unless include_archived is true. Each has sessionId, title, cwd, isArchived, "
+            "and Copilot chats. This session is always left out, and archived or hidden "
+            "sessions unless include_archived is true. Each has sessionId, title, cwd, isArchived, "
             "isRunning and lastActivityAt, and a claude:// link for desktop app sessions."),
         "inputSchema": {
             "type": "object",
@@ -105,7 +110,8 @@ TOOLS: List[dict] = [
             "Archive a session. In The Chat Place this hides one of its own sessions (or a "
             "terminal session) from the list, as File, Hide Session does; File, Bring Back "
             "Session undoes it. Claude desktop app sessions can't be archived from here, and "
-            "the result says where to do it. A session with a turn running is left alone."),
+            "the result says where to do it. A session with a turn running, or open in The "
+            "Chat Place's window, is left alone."),
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _SESSION_ID,
@@ -117,8 +123,8 @@ TOOLS: List[dict] = [
     {
         "name": "search_session_transcripts",
         "description": (
-            "Find the sessions whose messages contain some text, ignoring case, as Find in "
-            "All Sessions does. Each match has the session's details and a snippet of the "
+            "Find the sessions whose messages contain some text, ignoring case: like Find "
+            "in All Sessions, but across every session, tool activity included. Each match has the session's details and a snippet of the "
             "newest message that contains it."),
         "inputSchema": {
             "type": "object",
@@ -162,6 +168,8 @@ class View:
     #: A Codex or Copilot chat's history (the window's ``sessions.read``),
     #: for searching; None leaves them out.
     read_history: Optional[Callable[[SessionInfo], object]] = None
+    #: True once a search should stop (the window is closing).
+    cancelled: Callable[[], bool] = lambda: False
 
 
 @dataclass
@@ -288,7 +296,7 @@ def archive_session(view: View, arguments: dict,
             "desktop app's sessions. Archive it from the sidebar in the Claude desktop app. To "
             "take it out of The Chat Place's list only, select it there and choose File, "
             "Hide Session.", True)
-    if not (info.is_own or info.source in (TERMINAL, "agents")):
+    if not (info.is_own or info.source in (TERMINAL, AGENTS)):
         app = home_app(info.provider)
         return Result(
             f"Session {name} was not archived: it belongs to {app}, and The Chat Place "
@@ -330,7 +338,7 @@ def search_transcripts(view: View, arguments: dict) -> Result:
             read = (lambda session=info: view.read_history(session))
         # Tool calls and their output count, as in the desktop app's search.
         targets.append(Target(info.key, info.title, info.transcript_path, True, read))
-    results = search_sessions(targets, query)
+    results = search_sessions(targets, query, cancelled=view.cancelled)
     found: List[dict] = []
     for match in results.matches:
         if any(item["sessionId"] == match.key for item in found):

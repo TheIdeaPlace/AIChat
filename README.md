@@ -1289,15 +1289,17 @@ under the same name, with `--mcp-config` (#165). The server is The Chat Place it
   your names for them. Each has the desktop app's fields (`sessionId`, `title`, `cwd`,
   `isArchived`, `isRunning`, `lastActivityAt`, and `link`, a `claude://` link, for desktop app
   sessions), and The Chat Place's own (`kind`, `provider`, `repo`, `state`, `isHidden`,
-  `chatPlaceLink`). As in the desktop app, the session asking and archived sessions are left out
-  unless `include_archived` is true; a hidden session counts as archived.
+  `chatPlaceLink`). As in the desktop app, the session asking is always left out, and archived
+  sessions unless `include_archived` is true; a hidden session counts as archived.
 - **archive_session** hides one of The Chat Place's own sessions, or a terminal session, exactly
   as File, Hide Session does, and the list changes at once. It refuses a desktop app session (The
   Chat Place never changes the desktop app's files) and says to archive it in the desktop app's
   sidebar; another app's chat, in that app. It refuses a session with a turn running, including
-  the one asking.
-- **search_session_transcripts** searches every listed session's messages, tool activity
-  included, as Find in All Sessions does, and gives a snippet of the newest match in each.
+  the one asking, and one open in the window, so nothing you're reading or typing disappears; the
+  list stays on the session you're on.
+- **search_session_transcripts** searches messages like Find in All Sessions, but across every
+  session that isn't archived (or every one, with `include_archived`), tool activity included,
+  and gives a snippet of the newest match in each.
 - **open_session_in** says it isn't available here and points to the session's link.
 
 The server runs as a child of `claude`, but the list (your titles, hidden sessions, running turns,
