@@ -996,8 +996,12 @@ class TurnRunner:
                  images: Optional[List[dict]] = None,
                  remote_control: Optional[Dict[str, str]] = None,
                  timer: Callable[..., threading.Timer] = threading.Timer,
-                 task_list: bool = False) -> None:
+                 task_list: bool = False, mcp_config: Optional[str] = None) -> None:
         self.command = command
+        #: ``--mcp-config`` for this turn's process only (the session tools,
+        #: #165), or None. Kept apart from ``command``, which is the turn's
+        #: own: it ends with ``--resume <id>``, and tests read it.
+        self.mcp_config = mcp_config
         self.cwd = cwd
         self.prompt = prompt
         self.images = list(images or [])
@@ -1338,8 +1342,13 @@ class TurnRunner:
             # Bytes in and out: text mode on Windows would turn the prompt's
             # newlines into CRLF, and splitting decoded text on every Unicode
             # line break would cut JSON lines that contain U+2028.
+            command = list(self.command)
+            if self.mcp_config:
+                # Last: --mcp-config takes several values, so nothing that
+                # isn't one may follow it.
+                command += ["--mcp-config", self.mcp_config]
             process = self._popen(
-                self.command,
+                command,
                 cwd=self.cwd,
                 env=self._env,
                 stdin=subprocess.PIPE,

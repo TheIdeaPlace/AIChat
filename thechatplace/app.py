@@ -172,6 +172,13 @@ def smoke_test(out_path: str) -> int:
         report["atk"] = gtk_a11y._load() is not None
         if not report["atk"]:
             problems.append("GTK 3 and ATK can't be loaded, so Orca gets no names")
+    # The session tools' server (#165): the app started as Claude Code starts
+    # it, answering over its stdin and stdout.
+    try:
+        from . import session_tools_mcp
+        report["session_tools"] = session_tools_mcp.self_test()
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"session tools server: {exc}")
     lookup = platform_paths.find_claude()
     report["claude"] = lookup.path or lookup.problem
     report["data_outside_install"] = updater.data_is_outside_install_dir()
@@ -226,6 +233,16 @@ def hand_link_to_running_copy(link: str) -> bool:
 
 def main(argv: Optional[list] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["--session-tools-mcp"]:
+        # The session tools' MCP server (#165), started by Claude Code for a
+        # turn The Chat Place runs: no window, no updater, nothing on stdout
+        # but the protocol.
+        from . import session_tools_mcp
+        try:
+            return session_tools_mcp.main(argv[1:])
+        except Exception:  # noqa: BLE001 - recorded where the app's errors go
+            log_exception(*sys.exc_info(), "session tools server")
+            return 1
     # Linux, built app: what it starts gets the system's libraries.
     platform_paths.restore_system_library_path()
     from . import links

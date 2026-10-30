@@ -435,7 +435,8 @@ class FakeProcess:
         self.killed = True
 
 
-def run_turn(process, tmp_path, command=None, prompt="Hello -p --bare", remote_control=None):
+def run_turn(process, tmp_path, command=None, prompt="Hello -p --bare", remote_control=None,
+             mcp_config=None):
     captured = {}
     events = []
     done = threading.Event()
@@ -452,11 +453,34 @@ def run_turn(process, tmp_path, command=None, prompt="Hello -p --bare", remote_c
 
     runner = TurnRunner(command or ["claude", "-p"], str(tmp_path), prompt,
                         on_event, popen=popen, env={"PATH": "x"},
-                        remote_control=remote_control)
+                        remote_control=remote_control, mcp_config=mcp_config)
     runner.start()
     assert done.wait(5)
     runner.join(5)
     return runner, events, captured
+
+
+def test_the_session_tools_config_goes_last_on_the_turns_command_only(tmp_path):
+    """--mcp-config (#165) takes several values, so it comes last; the
+    runner's own command, which tests and the session read, is unchanged."""
+    process = FakeProcess([
+        ev(type="system", subtype="init", session_id="s1", apiKeySource="none"),
+        ev(type="result", subtype="success", result="ok", session_id="s1"),
+    ])
+    command = ["claude", "-p", "--resume", "s1"]
+    runner, _events, captured = run_turn(process, tmp_path, command=list(command),
+                                         mcp_config='{"mcpServers": {}}')
+    assert captured["cmd"] == command + ["--mcp-config", '{"mcpServers": {}}']
+    assert runner.command == command
+
+
+def test_no_session_tools_config_adds_nothing(tmp_path):
+    process = FakeProcess([
+        ev(type="system", subtype="init", session_id="s1", apiKeySource="none"),
+        ev(type="result", subtype="success", result="ok", session_id="s1"),
+    ])
+    _runner, _events, captured = run_turn(process, tmp_path, command=["claude", "-p"])
+    assert captured["cmd"] == ["claude", "-p"]
 
 
 def test_runner_sends_prompt_on_stdin_and_reports_events(tmp_path):

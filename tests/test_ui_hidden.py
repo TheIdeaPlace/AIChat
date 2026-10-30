@@ -13908,3 +13908,125 @@ def test_a_chat_whose_history_cant_be_read_says_so_rather_than_loading(frame, en
     assert "history couldn't be read" in env["feedback"][-1]
     assert frame.reply_text.GetValue() == "Also the docs"
     assert not getattr(runner, "steered", None)
+
+
+# -- session tools (#165) ----------------------------------------------------------------
+
+
+def test_a_turn_gets_the_session_tools_for_its_own_session(frame, env, fake_runner):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("Wrap up")
+    frame.on_send()
+    runner = fake_runner.instances[0]
+    assert runner.command[-2:] == ["--resume", "own-1"]  # the session's own command
+    server = json.loads(runner.mcp_config)["mcpServers"]["ccd_session_mgmt"]
+    assert server["args"][server["args"].index("--self") + 1] == "own-1"
+    assert server["args"][server["args"].index("--data-dir") + 1] == str(env["tmp"] / "appdata")
+    frame._runners.clear()
+
+
+def test_the_session_tools_answer_from_the_windows_list(frame):
+    from thechatplace import session_tools
+    view = frame._session_tools_view("own-1")
+    assert view.current is not None and view.current.key == "own:own-1"
+    listed = json.loads(session_tools.call_tool("list_sessions", {}, view, None).text)
+    # This session is left out, as the desktop app leaves out its own.
+    assert sorted(item["title"] for item in listed) == ["Blocked one", "Quiet one"]
+    # A session not in the list yet comes from the store.
+    frame.store.add(OwnSession("own-new", "Brand new", r"C:\G\New", last_activity_ms=now_ms()))
+    assert frame._session_tools_view("own-new").current.title == "Brand new"
+
+
+def test_archiving_from_a_session_hides_it_in_the_window(frame, env):
+    from thechatplace import session_tools
+    from thechatplace.hidden import HiddenStore
+    frame.store.add(OwnSession("own-2", "Finished work", r"C:\G\Done", last_activity_ms=now_ms()))
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: frame.session_list.GetCount() == 4)
+    view = frame._session_tools_view("own-1")
+    result = session_tools.call_tool("archive_session",
+                                     {"session_id": "own:own-2", "reason": "PR merged"},
+                                     view, frame._session_tools_hide)
+    assert not result.is_error, result.text
+    # As File, Hide Session: kept in hidden.json, and out of the list now.
+    assert "own:own-2" in frame.hidden
+    assert "own:own-2" in HiddenStore(env["tmp"] / "appdata" / "hidden.json")
+    assert pump(lambda: frame.session_list.GetCount() == 3)
+    assert not any(frame.session_list.GetString(i).startswith("Finished work")
+                   for i in range(frame.session_list.GetCount()))
+    # A desktop app session is never changed.
+    refused = session_tools.call_tool("archive_session", {"session_id": "local_a"},
+                                      frame._session_tools_view("own-1"),
+                                      frame._session_tools_hide)
+    assert refused.is_error and "local_a" not in frame.hidden
+
+
+def test_a_session_with_a_turn_running_is_not_hidden(frame, fake_runner):
+    from thechatplace import session_tools
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("Still going")
+    frame.on_send()
+    # Asked from another session, while own-1's turn runs.
+    result = session_tools.call_tool("archive_session", {"session_id": "own:own-1"},
+                                     frame._session_tools_view("other"),
+                                     frame._session_tools_hide)
+    assert result.is_error and "a turn is running" in result.text
+    assert "own:own-1" not in frame.hidden
+    # Even if the view were stale, the window checks again.
+    info = frame._current_info("own:own-1")
+    assert frame._session_tools_hide(info) == "a turn is running in it."
+    frame._runners.clear()
+
+
+def test_the_window_answers_a_tool_call_from_another_thread(frame):
+    answers = []
+    thread = threading.Thread(target=lambda: answers.append(frame._session_tools_answer(
+        {"tool": "get_session", "arguments": {"session_id": "self"}, "self": "own-1"})),
+        daemon=True)
+    thread.start()
+    assert pump(lambda: bool(answers))
+    assert not answers[0]["is_error"]
+    assert json.loads(answers[0]["text"])["title"] == "Hub probe"
+
+
+def test_the_connection_starts_with_the_first_turn_and_closes_with_the_window(frame):
+    assert frame._session_tools is None  # nothing until a Claude turn needs it
+    assert frame._session_tools_config("own-1")
+    host = frame._session_tools
+    frame._close_session_tools()
+    assert host.closed and frame._session_tools is False
+    assert frame._session_tools_config("own-1") is None
+
+
+def test_archiving_from_a_session_never_moves_you_in_the_list(frame, env):
+    from thechatplace import session_tools
+    frame.store.add(OwnSession("own-2", "Finished work", r"C:\G\Done", last_activity_ms=now_ms()))
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: frame.session_list.GetCount() == 4)
+    select(frame, "Quiet one")
+    result = session_tools.call_tool("archive_session", {"session_id": "own:own-2"},
+                                     frame._session_tools_view("own-1"),
+                                     frame._session_tools_hide)
+    assert not result.is_error, result.text
+    assert frame.session_list.GetCount() == 3
+    assert frame.session_list.GetString(frame.session_list.GetSelection()).startswith("Quiet one")
+
+
+def test_the_chat_you_have_open_is_not_archived_from_a_session(frame, env):
+    from thechatplace import session_tools
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("half a reply")
+    result = session_tools.call_tool("archive_session", {"session_id": "own:own-1"},
+                                     frame._session_tools_view("other"),
+                                     frame._session_tools_hide)
+    assert result.is_error and "open in The Chat Place's window" in result.text
+    assert "own:own-1" not in frame.hidden
+    assert frame._open is not None and frame.reply_text.GetValue() == "half a reply"
+
+
+def test_self_follows_an_id_claude_changed(frame):
+    frame._session_tools_renamed = {"asked-for": "own-1"}
+    assert frame._session_tools_view("asked-for").current.key == "own:own-1"
