@@ -4921,20 +4921,7 @@ def test_tab_reaches_every_question_while_none_is_answered(frame, monkeypatch):
         send, decline, later = dialog._buttons
         assert dialog.tab_stops() == [dialog.question_text, red, t1, *multi, t2, third[0], t3,
                                       fourth[0], t4, send, decline, later]
-        focused = []
-        for stop in [dialog.question_text, red, blue, t1, *multi, t2, *third, t3, *fourth, t4,
-                     send, decline, later]:
-            monkeypatch.setattr(stop, "SetFocus", lambda s=stop: focused.append(s))
-
-        def press(focus, shift=False):
-            monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: focus))
-            event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
-            event.SetKeyCode(wx.WXK_TAB)
-            event.SetShiftDown(shift)
-            dialog._on_char_hook(event)
-            assert not event.GetSkipped()
-            return focused[-1]
-
+        press = _tab_presser(dialog, monkeypatch)
         assert press(dialog.question_text) is red  # the bug: this was the answer box
         assert press(red) is t1
         assert press(t1, shift=True) is red
@@ -4944,6 +4931,81 @@ def test_tab_reaches_every_question_while_none_is_answered(frame, monkeypatch):
         assert press(dialog.question_text) is blue
         assert press(red) is t1  # an option that isn't the stop still leaves the group
         assert press(t1, shift=True) is blue
+        assert press(red, shift=True) is dialog.question_text  # and back out of it too
+        # Focus that isn't the dialog's own: Tab goes on as the system has it.
+        assert press(None) is _SKIPPED and press(dialog) is _SKIPPED
+    finally:
+        dialog.Destroy()
+
+
+_SKIPPED = object()
+
+
+def _tab_presser(dialog, monkeypatch, refuse=()):
+    """press(focus, shift) -> where Tab put the focus, or _SKIPPED when the
+    dialog left the key to the system. ``refuse`` won't take focus from the
+    keyboard, as radio buttons and buttons on a Mac without Full Keyboard
+    Access."""
+    state = {"focus": None}
+    windows = {dialog.question_text, *dialog._buttons}
+    if dialog.preview_text is not None:
+        windows.add(dialog.preview_text)
+    for _kind, controls, other_text in dialog._controls:
+        windows.update(controls)
+        windows.add(other_text)
+    for window in windows:
+        monkeypatch.setattr(window, "SetFocusFromKbd",
+                            lambda w=window: state.update(focus=w))
+        monkeypatch.setattr(window, "CanAcceptFocusFromKeyboard",
+                            lambda w=window: w not in refuse)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: state["focus"]))
+
+    def press(focus, shift=False):
+        state["focus"] = focus
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_TAB)
+        event.SetShiftDown(shift)
+        dialog._on_char_hook(event)
+        return _SKIPPED if event.GetSkipped() else state["focus"]
+    return press
+
+
+def test_tab_passes_over_what_wont_take_focus(frame, monkeypatch):
+    """On a Mac with Full Keyboard Access off, radio buttons and push buttons
+    refuse keyboard focus: Tab goes on to the next stop that takes it, and
+    with none, is left to the system rather than going nowhere (#428)."""
+    from thechatplace.ui.dialogs import QuestionDialog
+    dialog = QuestionDialog(frame, "Probe", _Questions())
+    try:
+        (_k1, first, t1), (_k2, _multi, t2), (_k3, _third, t3), (_k4, fourth, t4) = dialog._controls
+        refuse = {c for _k, controls, _t in dialog._controls for c in controls} | set(dialog._buttons)
+        press = _tab_presser(dialog, monkeypatch, refuse)
+        assert press(dialog.question_text) is t1
+        assert press(t1) is t2
+        assert press(dialog.question_text, shift=True) is t4
+        everything = refuse | {dialog.question_text, t1, t2, t3, t4}
+        press = _tab_presser(dialog, monkeypatch, everything)
+        assert press(dialog.question_text) is _SKIPPED
+    finally:
+        dialog.Destroy()
+
+
+def test_a_codex_question_s_tab_stops_include_its_preview(frame):
+    """Codex's question without Other has no answer box to stop at, and a
+    choice with a preview adds the Preview box before the buttons."""
+    from thechatplace.ui.dialogs import QuestionDialog
+
+    class Codex:
+        def questions(self):
+            return [{"id": "q", "header": "Mode", "question": "Which mode?", "isOther": False,
+                     "options": [{"label": "Fast", "preview": "Runs the quick checks"},
+                                 {"label": "Full"}]}]
+    dialog = QuestionDialog(frame, "Probe", Codex(), provider="Codex")
+    try:
+        ((_kind, controls, other_text),) = dialog._controls
+        assert not other_text.IsShown() and len(controls) == 2
+        assert dialog.tab_stops() == [dialog.question_text, controls[0], dialog.preview_text,
+                                      *dialog._buttons]
     finally:
         dialog.Destroy()
 

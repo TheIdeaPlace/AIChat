@@ -2183,8 +2183,18 @@ class QuestionDialog(wx.Dialog):
                     break
         if here is None:
             return False
-        stops[(here + (1 if forward else -1)) % len(stops)].SetFocus()
-        return True
+        step = 1 if forward else -1
+        for offset in range(1, len(stops)):
+            stop = stops[(here + step * offset) % len(stops)]
+            # A stop that won't take focus from the keyboard is passed over:
+            # on a Mac with Full Keyboard Access off, radio buttons and push
+            # buttons refuse it, and Tab would otherwise go nowhere.
+            if not stop.CanAcceptFocusFromKeyboard():
+                continue
+            stop.SetFocusFromKbd()
+            if wx.Window.FindFocus() is stop:
+                return True
+        return False  # nothing took it: Tab goes on as the system has it
 
     def _on_init_dialog(self, event):
         event.Skip()
