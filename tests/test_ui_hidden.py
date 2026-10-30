@@ -4877,7 +4877,9 @@ def test_arrow_keys_move_through_a_question_s_options(frame):
 
 def test_only_plain_arrows_on_a_radio_are_taken(frame, monkeypatch):
     # #121's key hook keeps every other key, and arrows anywhere else, working.
+    # Arrows are the Mac's only; Windows moves through a radio group itself.
     from thechatplace.ui.dialogs import QuestionDialog
+    monkeypatch.setattr(wx, "Platform", "__WXMAC__")
     dialog = QuestionDialog(frame, "Probe", _Questions())
     try:
         (_k1, first, other_text), (_k2, multi, _t2), _third, _fourth = dialog._controls
@@ -4894,11 +4896,54 @@ def test_only_plain_arrows_on_a_radio_are_taken(frame, monkeypatch):
 
         assert not press(red, wx.WXK_DOWN) and blue.GetValue()  # taken: moves the choice
         for focus, key, control in [(blue, wx.WXK_RETURN, False), (blue, wx.WXK_ESCAPE, False),
-                                    (blue, wx.WXK_TAB, False), (blue, wx.WXK_DOWN, True),
+                                    (blue, wx.WXK_TAB, True), (blue, wx.WXK_DOWN, True),
                                     (other_text, wx.WXK_DOWN, False), (multi[0], wx.WXK_DOWN, False),
                                     (None, wx.WXK_DOWN, False)]:
             assert press(focus, key, control), (focus, key, control)
         assert blue.GetValue()  # none of those moved it
+        monkeypatch.setattr(wx, "Platform", "__WXMSW__")
+        assert press(red, wx.WXK_DOWN)  # Windows' own, as before
+    finally:
+        dialog.Destroy()
+
+
+def test_tab_reaches_every_question_while_none_is_answered(frame, monkeypatch):
+    """The options start with none chosen, and Windows' Tab goes only to a
+    group's chosen option, so from the question's text (#415) Tab skipped
+    every option and landed in the first question's answer box. The dialog
+    keeps its own Tab order: each question once, on its chosen option, or its
+    first while none is."""
+    from thechatplace.ui.dialogs import QuestionDialog
+    dialog = QuestionDialog(frame, "Probe", _Questions())
+    try:
+        (_k1, first, t1), (_k2, multi, t2), (_k3, third, t3), (_k4, fourth, t4) = dialog._controls
+        red, blue, _other1 = first
+        send, decline, later = dialog._buttons
+        assert dialog.tab_stops() == [dialog.question_text, red, t1, *multi, t2, third[0], t3,
+                                      fourth[0], t4, send, decline, later]
+        focused = []
+        for stop in [dialog.question_text, red, blue, t1, *multi, t2, *third, t3, *fourth, t4,
+                     send, decline, later]:
+            monkeypatch.setattr(stop, "SetFocus", lambda s=stop: focused.append(s))
+
+        def press(focus, shift=False):
+            monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: focus))
+            event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+            event.SetKeyCode(wx.WXK_TAB)
+            event.SetShiftDown(shift)
+            dialog._on_char_hook(event)
+            assert not event.GetSkipped()
+            return focused[-1]
+
+        assert press(dialog.question_text) is red  # the bug: this was the answer box
+        assert press(red) is t1
+        assert press(t1, shift=True) is red
+        assert press(dialog.question_text, shift=True) is later  # wraps, as Windows does
+        assert press(later) is dialog.question_text
+        blue.SetValue(True)  # once chosen, the question's stop is its answer
+        assert press(dialog.question_text) is blue
+        assert press(red) is t1  # an option that isn't the stop still leaves the group
+        assert press(t1, shift=True) is blue
     finally:
         dialog.Destroy()
 

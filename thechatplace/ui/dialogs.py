@@ -2115,7 +2115,9 @@ class QuestionDialog(wx.Dialog):
         row.Add(send, 0, wx.RIGHT, 6)
         decline = wx.Button(self, ID_DENY, "Decline and Stop &Turn" if provider == "Codex" else "&Don't Answer")
         row.Add(decline, 0, wx.RIGHT, 6)
-        row.Add(wx.Button(self, wx.ID_CANCEL, "Answer &Later"), 0)
+        later = wx.Button(self, wx.ID_CANCEL, "Answer &Later")
+        row.Add(later, 0)
+        self._buttons = [send, decline, later]
         outer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(outer)
         # As tall as the questions need, up to the size it was given; past
@@ -2140,11 +2142,49 @@ class QuestionDialog(wx.Dialog):
         # begin reading the wrong question. It starts on the question's own
         # text, as a permission request does (#415).
         self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
-        if wx.Platform == "__WXMAC__":
-            # On a Mac the arrow keys did nothing in a group of radio buttons,
-            # and Tab treats the group as one stop, so only the first option
-            # could be reached (#121). Windows moves through the group itself.
-            self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+
+    def tab_stops(self) -> list:
+        """The dialog's Tab order: the question's text, then each question
+        as one stop (its chosen option, or its first while none is chosen),
+        its own answer, the preview and the buttons. Kept here rather than
+        left to the system: the options start with none chosen, so you pick
+        one, and Windows' Tab goes only to a group's chosen option, so it
+        skipped every question with none chosen. With focus starting on the
+        question's text (#415), Tab went straight past the options to the
+        answer box."""
+        stops = [self.question_text]
+        for kind, controls, other_text in self._controls:
+            shown = [c for c in controls if c.IsShown()]
+            if kind == "single":
+                chosen = [c for c in shown if c.GetValue()]
+                stops += (chosen or shown)[:1]
+            else:
+                stops += shown
+            if other_text.IsShown():
+                stops.append(other_text)
+        if self.preview_text is not None:
+            stops.append(self.preview_text)
+        return stops + [b for b in self._buttons if b.IsShown() and b.IsEnabled()]
+
+    def _tab_from(self, focus, forward: bool) -> bool:
+        """Move to the next (or previous) stop after ``focus``. False when
+        ``focus`` isn't one of the dialog's, so Tab goes on as usual."""
+        stops = self.tab_stops()
+        here = None
+        if focus in stops:
+            here = stops.index(focus)
+        else:
+            for kind, controls, _other_text in self._controls:
+                if kind == "single" and focus in controls:
+                    # An option of a group whose stop is another option.
+                    group = [s for s in stops if s in controls]
+                    here = stops.index(group[0]) if group else None
+                    break
+        if here is None:
+            return False
+        stops[(here + (1 if forward else -1)) % len(stops)].SetFocus()
+        return True
 
     def _on_init_dialog(self, event):
         event.Skip()
@@ -2167,8 +2207,14 @@ class QuestionDialog(wx.Dialog):
         set_accessible_name(self.preview_text, f"Preview of {label}")
 
     def _on_char_hook(self, event):
-        step = RADIO_ARROW_STEPS.get(event.GetKeyCode())
         focus = wx.Window.FindFocus()
+        if (event.GetKeyCode() == wx.WXK_TAB and not event.ControlDown()
+                and not event.AltDown() and self._tab_from(focus, not event.ShiftDown())):
+            return
+        # On a Mac the arrow keys did nothing in a group of radio buttons,
+        # and Tab treats the group as one stop, so only the first option
+        # could be reached (#121). Windows moves through the group itself.
+        step = RADIO_ARROW_STEPS.get(event.GetKeyCode()) if wx.Platform == "__WXMAC__" else None
         if (step is None or event.HasAnyModifiers() or not isinstance(focus, wx.RadioButton)
                 or not self.move_in_radio_group(focus, step)):
             event.Skip()
