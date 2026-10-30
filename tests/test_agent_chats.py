@@ -1588,7 +1588,9 @@ def test_a_new_copilot_member_is_made_with_nothing_to_choose(tmp_path):
     while w.work:
         action, done = w.work.pop(0)
         done(action(), False)
-    assert created == [('copilot', 'Pair: Copilot', {})]
+    # Agent mode asked for, whatever Copilot's own default (#424).
+    from thechatplace.providers.copilot_runtime import AGENT_MODE
+    assert created == [('copilot', 'Pair: Copilot', {'copilot_mode': AGENT_MODE})]
     made = next(c for c in w.agents.all() if c.title == 'Pair')
     assert [(m.provider, m.name) for m in made.members] == [('claude', 'Claude'),
                                                             ('copilot', 'Copilot')]

@@ -124,6 +124,8 @@ def edit_from_tool(name: str, tool_input: dict, result, turn: int) -> Optional[F
 
 
 _HUNK = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+#: The same line's counts (1 when left out, as unified diffs allow).
+_HUNK_COUNTS = re.compile(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
 
 
 def parse_unified_diff(text: str) -> List[Hunk]:
@@ -148,14 +150,31 @@ def parse_git_diff(text: str) -> List[Tuple[str, List[Hunk]]]:
     """Each file's path and hunks, from a git-style unified diff with one
     section per file ("diff --git", "---", "+++", "@@ -1,4 +1,5 @@"). The
     path is the new one, or the old one for a file deleted ("+++ /dev/null").
-    Lines that aren't part of a hunk are skipped, never guessed at."""
+    Lines that aren't part of a hunk are skipped, never guessed at.
+
+    A plain unified diff, without "diff --git" lines, also starts a file at
+    a "---" line followed by "+++", but only once the hunk before has had
+    every line its "@@" line counts: inside a hunk, "--- x" is a removed
+    line that starts with dashes, such as an SQL comment (#405, #406)."""
     files: List[Tuple[str, List[Hunk]]] = []
     old = new = ""
     hunks: Optional[List[Hunk]] = None
-    for line in (text or "").replace("\r\n", "\n").split("\n"):
+    # Lines the current hunk still has, old and new; None when its "@@"
+    # line didn't say, and then only "diff --git" starts another file. A
+    # bare blank line isn't counted as context: Copilot's own counts take
+    # the newline ending a file as one more line, which then isn't there,
+    # and counting the blank after a diff would add a line that isn't.
+    left: Optional[List[int]] = None
+    lines = (text or "").replace("\r\n", "\n").split("\n")
+    for index, line in enumerate(lines):
+        between = (hunks is not None and left is not None and left[0] <= 0 and left[1] <= 0
+                   and line.startswith("--- ") and index + 1 < len(lines)
+                   and lines[index + 1].startswith("+++ "))
+        if line.startswith("diff --git ") or between:
+            hunks, old, new, left = None, "", "", None
         if line.startswith("diff --git "):
-            hunks, old, new = None, "", ""
-        elif line.startswith("--- ") and hunks is None:
+            continue
+        if line.startswith("--- ") and hunks is None:
             old = _diff_path(line)
         elif line.startswith("+++ ") and hunks is None:
             new = _diff_path(line)
@@ -165,8 +184,16 @@ def parse_git_diff(text: str) -> List[Tuple[str, List[Hunk]]]:
             match = _HUNK.match(line)
             hunks.append(Hunk(int(match.group(1)) if match else 0,
                               int(match.group(2)) if match else 0, []))
+            counted = _HUNK_COUNTS.match(line)
+            left = ([int(counted.group(1) or 1), int(counted.group(2) or 1)]
+                    if counted else None)
         elif hunks and line[:1] in (" ", "+", "-", "\\"):
             hunks[-1].lines.append(line)
+            if left is not None:
+                if line[:1] in (" ", "-"):
+                    left[0] -= 1
+                if line[:1] in (" ", "+"):
+                    left[1] -= 1
     return [(path, found) for path, found in files if path]
 
 

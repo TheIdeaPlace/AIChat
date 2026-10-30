@@ -678,7 +678,9 @@ def test_a_stop_as_the_prompt_goes_out_reaches_copilot_after_it(tmp_path):
         order = [m["method"] for m in received(tmp_path)
                  if m.get("method") in ("session/prompt", "session/cancel")]
         assert order == ["session/prompt", "session/cancel"]
-        time.sleep(1.0)  # past the grace: Copilot stopped, so it isn't closed
+        # Copilot stopped, so the timer that would close it is called off
+        # (checked directly, rather than by sleeping past the grace).
+        assert wait(lambda: runtime._chats[chat].cancel_timer is None)
         assert runtime.ready(chat) and "didn't stop" not in runtime.snapshot(chat).notice
     finally:
         runtime.close()
@@ -1762,6 +1764,425 @@ def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypat
     runtime.stop(chat)
 
 
+# -- Continue Here (#352) ---------------------------------------------------------------
+
+
+def test_the_conversation_so_far_goes_ahead_of_the_first_message_only(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    runtime.send(chat, "Two")
+    assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
+                and runtime.snapshot(chat).outcome == "completed")
+    assert prompts_sent(tmp_path) == ["HISTORY\n\nOne", "Two"]
+    with pytest.raises(CopilotChatError):
+        runtime.set_preamble("not-a-chat", "x")
+
+
+def test_the_conversation_so_far_waits_for_a_message_that_goes(make, tmp_path):
+    """A first message that never left keeps the history for the next."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    connection = runtime._connection
+    real = connection.request
+
+    def not_sent_once(method, params, *args, **kwargs):
+        if method == "session/prompt" and not getattr(not_sent_once, "done", False):
+            not_sent_once.done = True
+            raise copilot_acp.AcpNotSent("Copilot couldn't take your message.")
+        return real(method, params, *args, **kwargs)
+    connection.request = not_sent_once
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "failed"
+                and not runtime._chats[chat].busy)
+    assert runtime._chats[chat].preamble == "HISTORY\n\n"
+    runtime.send(chat, "One again")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert prompts_sent(tmp_path) == ["HISTORY\n\nOne again"]
+
+
+def test_a_first_message_that_didnt_go_says_the_history_waits(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    connection = runtime._connection
+    real = connection.request
+
+    def not_sent(method, params, *args, **kwargs):
+        if method == "session/prompt":
+            raise copilot_acp.AcpNotSent("Copilot couldn't take your message.")
+        return real(method, params, *args, **kwargs)
+    connection.request = not_sent
+    runtime.send(chat, "One")
+    assert wait(lambda: not runtime._chats[chat].busy and runtime.snapshot(chat).outcome)
+    assert PREAMBLE_WAITING in runtime.snapshot(chat).notice
+
+
+def test_the_cap_counts_the_conversation_so_far_too(make, tmp_path):
+    """The history goes in the same prompt as the first message, so the two
+    together are held to one message's limit (#423 review)."""
+    from thechatplace.providers.copilot_runtime import MAX_MESSAGE_CHARS, PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    history = "H" * 100_000
+    runtime.set_preamble(chat, history)
+    with pytest.raises(CopilotChatError, match="too long to send to Copilot with the "
+                                              "conversation so far") as refused:
+        runtime.send(chat, "x" * (MAX_MESSAGE_CHARS - len(history) + 1))
+    assert f"{MAX_MESSAGE_CHARS - len(history):,} characters" in str(refused.value)
+    assert PREAMBLE_WAITING in str(refused.value)
+    assert runtime._chats[chat].preamble == history  # still waiting
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/prompt"]
+    runtime.send(chat, "x" * (MAX_MESSAGE_CHARS - len(history)))  # exactly fits
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    assert runtime._chats[chat].preamble == ""
+
+
+def test_a_refused_first_message_says_the_history_waits(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    for text, why in (("   ", "nothing to send"), ("/allow-all", "starting with /")):
+        with pytest.raises(CopilotChatError, match=why) as refused:
+            runtime.send(chat, text)
+        assert str(refused.value).endswith(PREAMBLE_WAITING)
+    assert runtime._chats[chat].preamble == "HISTORY\n\n"
+    runtime.send(chat, "One")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and not runtime._chats[chat].busy)
+    assert prompts_sent(tmp_path) == ["HISTORY\n\nOne"]
+    # Gone with that message: a later refusal doesn't mention it.
+    with pytest.raises(CopilotChatError) as refused:
+        runtime.send(chat, "/help")
+    assert PREAMBLE_WAITING not in str(refused.value)
+
+
+def test_a_chat_without_history_is_refused_as_before(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    with pytest.raises(CopilotChatError) as refused:
+        runtime.send(chat, "/help")
+    assert PREAMBLE_WAITING not in str(refused.value)
+
+
+def test_a_refusal_while_the_first_turn_starts_doesnt_say_the_history_waits(make, tmp_path):
+    """Once the first message's turn has begun the history is going with it,
+    even before Copilot has taken the prompt (#423 review)."""
+    from thechatplace.providers.copilot_runtime import PREAMBLE_WAITING
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_preamble(chat, "HISTORY\n\n")
+    with runtime._lock:
+        runtime._chats[chat].busy = True  # begun; the prompt not yet queued
+    try:
+        with pytest.raises(CopilotChatError) as refused:
+            runtime.send(chat, "/help")
+        assert PREAMBLE_WAITING not in str(refused.value)
+    finally:
+        with runtime._lock:
+            runtime._chats[chat].busy = False
+
+
+def test_history_set_while_a_message_is_checked_is_held_to_the_cap_too(make, tmp_path):
+    """The check under the lock, for history that arrived after the first
+    check, says the same as the first check does."""
+    from thechatplace.providers.copilot_runtime import MAX_MESSAGE_CHARS
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    history = "H" * 100_000
+    real = runtime._hooks_refusal
+
+    def late_history(cwd):
+        runtime.set_preamble(chat, history)  # between the two checks
+        return real(cwd)
+    runtime._hooks_refusal = late_history
+    with pytest.raises(CopilotChatError) as refused:
+        runtime.send(chat, "x" * (MAX_MESSAGE_CHARS - len(history) + 1))
+    assert f"({len(history):,} characters)" in str(refused.value)
+    assert f"{MAX_MESSAGE_CHARS - len(history):,} characters or put" in str(refused.value)
+    assert not [m for m in received(tmp_path) if m.get("method") == "session/prompt"]
+
+
+# -- choosing the model -----------------------------------------------------------------
+
+
+OFFERED = (("auto", "Auto (1x)"), ("gpt-test", "GPT Test (1x)"), ("gpt-mini", "GPT Mini (0.33x)"))
+
+
+def test_a_new_chat_lists_the_models_copilot_offers(make, tmp_path):
+    """Auto, listed twice by Copilot, once; each with what a message costs."""
+    runtime, _ = make()
+    assert runtime.models() == ()
+    chat = runtime.create(str(tmp_path))
+    state = runtime.snapshot(chat)
+    assert state.model == "auto" and state.models == OFFERED
+    assert runtime.models() == OFFERED
+
+
+def test_changing_a_chats_model(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_model(chat, "gpt-mini")
+    assert runtime.snapshot(chat).model == "gpt-mini"
+    sent = [m for m in received(tmp_path) if m.get("method") == "session/set_config_option"]
+    assert sent[-1]["params"] == {"sessionId": chat, "configId": "model", "value": "gpt-mini"}
+    with pytest.raises(CopilotChatError, match="doesn't offer"):
+        runtime.set_model(chat, "not-offered")
+    assert runtime.ready(chat)  # still safe to send: mode and allow_all unchanged
+
+
+def test_a_model_copilot_refuses_is_said(make, tmp_path):
+    runtime, _ = make("nomodel")
+    chat = runtime.create(str(tmp_path))
+    with pytest.raises(CopilotChatError, match="couldn't switch"):
+        runtime.set_model(chat, "gpt-test")
+    assert runtime.snapshot(chat).model == "auto"
+
+
+def test_a_new_chat_starts_on_the_model_chosen(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path), model="gpt-test")
+    assert runtime.snapshot(chat).model == "gpt-test"
+    # Refused, the chat is still made, on Copilot's own, and says so.
+    runtime2, _ = make("nomodel")
+    other = runtime2.create(str(tmp_path), model="gpt-test")
+    state = runtime2.snapshot(other)
+    assert state.model == "auto" and "Change Model" in state.notice
+
+
+def test_odd_model_lists_are_made_safe():
+    from thechatplace.providers.copilot_runtime import _models
+    assert _models(None) is None and _models([{"id": "mode"}]) is None
+    found = _models([{"id": "model", "currentValue": "b", "options": [
+        "odd", {"value": ""}, {"value": "a\u202e", "name": "Flipped"},
+        {"value": "b", "name": "  Bee \n model "}, {"value": "c", "name": "\u200b"},
+        {"value": "d", "_meta": {"copilotUsage": 7}}]}])
+    assert found == ("b", (("b", "Bee model"), ("c", "c"), ("d", "d")))
+
+
+def test_a_model_change_that_stops_copilot_asking_stops_the_turn(make, tmp_path):
+    """Copilot's reply to a model change names its other settings too: one
+    saying it no longer asks before it acts counts, as a config_option_update
+    would, and stops the turn running."""
+    runtime, _ = make("modelflip")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    runtime.set_model(chat, "gpt-mini")
+    assert not runtime.ready(chat)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+    assert "stopped asking" in runtime.snapshot(chat).notice
+
+
+def test_a_model_reply_that_comes_after_the_chat_was_opened_again_is_ignored(make, tmp_path):
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    real = connection.request
+
+    def reopened_meanwhile(method, params, *args, **kwargs):
+        result = real(method, params, *args, **kwargs)
+        if method == "session/set_config_option":
+            runtime._chats[chat].connection = object()  # as if opened on another Copilot
+        return result
+    connection.request = reopened_meanwhile
+    runtime.set_model(chat, "gpt-mini")
+    assert runtime._chats[chat].model == "auto"
+
+
+def test_a_models_cost_is_kept_whatever_its_name():
+    from thechatplace.providers.copilot_runtime import _models
+    found = _models([{"id": "model", "currentValue": "x", "options": [
+        {"value": "x", "name": "Model X (preview)"},
+        {"value": "x", "name": "Model X (preview)", "_meta": {"copilotUsage": "3x"}}]}])
+    assert found == ("x", (("x", "Model X (preview) (3x)"),))
+
+
+def test_grouped_model_options_are_read_as_one_list():
+    """ACP's SessionConfigSelectOptions may come in groups, each with its own
+    options: one level of those is read in place, in order."""
+    from thechatplace.providers.copilot_runtime import _models
+    found = _models([{"id": "model", "currentValue": "b", "options": [
+        {"value": "a", "name": "A"},
+        {"group": "fast", "name": "Fast", "options": [
+            {"value": "b", "name": "B", "_meta": {"copilotUsage": "0.33x"}},
+            {"value": "a", "name": "A", "_meta": {"copilotUsage": "1x"}}]},
+        {"group": "deep", "name": "Deeper", "options": [
+            {"group": "inner", "options": [{"value": "z", "name": "Too deep"}]},
+            {"value": "c", "name": "C"}]},
+        {"group": "odd", "options": "not a list"}]}])
+    assert found == ("b", (("a", "A (1x)"), ("b", "B (0.33x)"), ("c", "C")))
+
+
+def test_a_model_reply_older_than_another_switch_is_ignored(make, tmp_path):
+    """Two switches in flight: the first one's reply, arriving after the
+    second was asked for, mustn't overwrite what the second leaves."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    real = connection.request
+
+    def switched_again_meanwhile(method, params, *args, **kwargs):
+        result = real(method, params, *args, **kwargs)
+        if method == "session/set_config_option" and params.get("value") == "gpt-test":
+            runtime.set_model(chat, "gpt-mini")  # asked for, and answered, first
+        return result
+    connection.request = switched_again_meanwhile
+    runtime.set_model(chat, "gpt-test")
+    assert runtime._chats[chat].model == "gpt-mini"
+
+
+def test_a_failed_switch_doesnt_make_an_earlier_ones_reply_look_old(make, tmp_path):
+    """Switch A succeeds; switch B, asked for before A's reply is taken in,
+    fails. Copilot is on A, so A's reply still counts and A is recorded."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    real = connection.request
+
+    def second_switch_fails_meanwhile(method, params, *args, **kwargs):
+        if method == "session/set_config_option" and params.get("value") == "gpt-mini":
+            raise copilot_acp.AcpError("refused")
+        result = real(method, params, *args, **kwargs)
+        if method == "session/set_config_option" and params.get("value") == "gpt-test":
+            with pytest.raises(CopilotChatError, match="couldn't switch"):
+                runtime.set_model(chat, "gpt-mini")
+        return result
+    connection.request = second_switch_fails_meanwhile
+    runtime.set_model(chat, "gpt-test")
+    assert runtime.snapshot(chat).model == "gpt-test"
+    assert runtime.ready(chat)
+
+
+def test_a_model_is_refused_for_a_chat_that_isnt_open(make, tmp_path):
+    runtime, _ = make()
+    with pytest.raises(CopilotChatError, match="isn't open here yet"):
+        runtime.set_model("no-such-chat", "gpt-mini")
+
+
+# -- Kelly's follow-ups (#405) ------------------------------------------------------
+
+
+def test_stopping_again_doesnt_put_the_forced_close_off(make, tmp_path):
+    """A second Stop while the first cancel is pending sends nothing more and
+    keeps the first timer, so pressing Stop again can't keep Copilot open.
+    A Copilot that ignores the cancel ("deaf"), so the turn is still going
+    when the second Stop comes, however slow the machine."""
+    env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
+               FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
+    runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("deaf", env),
+                                 sessions_dir=tmp_path / "sessions", billing_wait=0.5,
+                                 cancel_grace=1.5)
+    try:
+        chat = runtime.create(str(tmp_path))
+        runtime.send(chat, "Long job")
+        assert wait(lambda: runtime.snapshot(chat).replies)
+        first = runtime.stop(chat)
+        assert first.cancelled and not first.already_asked
+        timer = runtime._chats[chat].cancel_timer
+        assert timer is not None
+        again = runtime.stop(chat)
+        assert again.cancelled and again.already_asked
+        assert runtime._chats[chat].cancel_timer is timer
+        # The first Stop's clock still runs out, and closes it.
+        assert wait(lambda: "didn't stop when asked" in runtime.snapshot(chat).notice)
+        # By then the fake has logged what it was sent (it logs as it reads,
+        # which on a busy machine came after the Stops returned): one cancel.
+        cancels = [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
+        assert len(cancels) == 1
+    finally:
+        runtime.close()
+
+
+def test_a_stop_before_the_turn_sends_warns_of_no_close(make, tmp_path):
+    """Stopped before the turn decided to send, the message comes back
+    unsent: nothing is cancelled, and no close is threatened."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    real_run, stops = runtime._run_turn, []
+
+    def stop_then_run(chat_, connection, text):
+        stops.append(runtime.stop(chat))
+        real_run(chat_, connection, text)
+    runtime._run_turn = stop_then_run
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted"
+                and not runtime._chats[chat].busy)
+    assert stops == [Stopped((), cancelled=False, before_sending=True)]
+    assert runtime.snapshot(chat).unsent == ("Hello",)
+    assert not [m for m in received(tmp_path)
+                if m.get("method") in ("session/prompt", "session/cancel")]
+
+
+def test_a_cancel_that_cant_go_out_isnt_reported_as_sent(make, tmp_path):
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+
+    def closed(method, params):
+        raise copilot_acp.AcpError("Copilot is closing.")
+    runtime._connection.notify = closed
+    stopped = runtime.stop(chat)
+    assert not stopped.cancelled and not stopped.answered
+    assert runtime._chats[chat].cancel_timer is None
+
+
+def test_a_stop_between_the_prompts_write_and_its_queuing_cancels_after_it(tmp_path):
+    """The prompt is written, but the turn hasn't yet heard it's queued: the
+    Stop leaves the cancel to the turn, which sends it after the prompt."""
+    env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
+               FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
+    runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("strict", env),
+                                 sessions_dir=tmp_path / "sessions", billing_wait=0.5,
+                                 cancel_grace=0.5)
+    try:
+        chat = runtime.create(str(tmp_path))
+        connection = runtime._connection
+        real_request, stops = connection.request, []
+
+        def stop_once_written(method, params, *args, on_queued=None, **kwargs):
+            def queued():
+                if method == "session/prompt":
+                    stops.append(runtime.stop(chat))  # written, not yet queued here
+                if on_queued is not None:
+                    on_queued()
+            return real_request(method, params, *args, on_queued=queued, **kwargs)
+        connection.request = stop_once_written
+        runtime.send(chat, "Long job")
+        assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+        assert stops == [Stopped((), cancelled=True)]
+        order = [m["method"] for m in received(tmp_path)
+                 if m.get("method") in ("session/prompt", "session/cancel")]
+        assert order == ["session/prompt", "session/cancel"]
+        # Copilot stopped, so the timer that would close it is called off
+        # (checked directly, rather than by sleeping past the grace).
+        assert wait(lambda: runtime._chats[chat].cancel_timer is None)
+        assert runtime.ready(chat) and "didn't stop" not in runtime.snapshot(chat).notice
+    finally:
+        runtime.close()
+
+
+def test_a_prompt_refused_before_copilot_logs_it_isnt_use_elsewhere(make, tmp_path):
+    """Refused with -32000 before Copilot wrote its user.message (#400): no
+    message of ours is in the log, which mustn't look like another Copilot."""
+    runtime, _ = make("refused")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "First")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "failed"
+                and not runtime._chats[chat].busy)
+    assert runtime.snapshot(chat).notice == copilot_acp.NOT_SIGNED_IN_SENT
+    assert not runtime._chats[chat].elsewhere
+
+
 # -- plan mode --------------------------------------------------------------------------
 
 
@@ -1791,17 +2212,23 @@ def test_copilot_switching_itself_to_plan_mode_doesnt_stop_the_turn(make, tmp_pa
 
 
 def test_a_mode_switch_that_stops_copilot_asking_stops_the_turn(make, tmp_path):
+    """A switch made while a turn runs, whose reply says allow-all is on:
+    Copilot no longer asks before it acts, so the turn is stopped."""
     from thechatplace.providers.copilot_runtime import PLAN_MODE
     runtime, _ = make("modeflip")
     chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
     runtime.set_mode(chat, PLAN_MODE)  # its reply says allow-all is on
     assert not runtime.ready(chat)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+    assert "stopped asking" in runtime.snapshot(chat).notice
 
 
 def test_a_new_chat_copilot_wont_put_in_plan_mode_sends_nothing_until_switched(make, tmp_path):
     """Plan mode was chosen so nothing would change: refused, the chat
     doesn't carry on in agent mode by itself."""
-    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, PLAN_NOT_SET
+    from thechatplace.providers.copilot_runtime import PLAN_MODE, PLAN_NOT_SET
     runtime, _ = make("nomode")
     chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
     assert runtime.snapshot(chat).problem == PLAN_NOT_SET and not runtime.ready(chat)
@@ -1810,16 +2237,346 @@ def test_a_new_chat_copilot_wont_put_in_plan_mode_sends_nothing_until_switched(m
     assert prompts_sent(tmp_path) == []
 
 
-def test_copilots_own_files_are_never_changed_files(monkeypatch, tmp_path):
+@pytest.mark.parametrize("fake", ["keepagent", "modeless"])
+def test_plan_mode_copilot_says_yes_to_but_doesnt_confirm_sends_nothing(make, tmp_path, fake):
+    """Copilot accepts the switch but its reply still names agent mode, or
+    names no mode: plan mode isn't confirmed, so nothing is sent (#424)."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, PLAN_NOT_SET
+    runtime, _ = make(fake)
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    state = runtime.snapshot(chat)
+    assert state.mode == AGENT_MODE and state.problem == PLAN_NOT_SET
+    assert not runtime.ready(chat)
+    with pytest.raises(CopilotChatError, match="plan mode"):
+        runtime.send(chat, "Change things")
+    assert prompts_sent(tmp_path) == []
+
+
+def test_a_later_switch_clears_plan_not_set(make, tmp_path):
+    """Plan mode refused at the start: choosing agent mode, the mode the chat
+    is already in, goes through and lets it send; set_mode says what
+    Copilot recorded."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, PLAN_NOT_SET
+    runtime, _ = make("keepagent")
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    assert runtime.snapshot(chat).problem == PLAN_NOT_SET
+    assert runtime.set_mode(chat, PLAN_MODE) == AGENT_MODE  # still not confirmed
+    assert runtime.snapshot(chat).problem == PLAN_NOT_SET
+    assert runtime.set_mode(chat, AGENT_MODE) == AGENT_MODE
+    assert runtime.snapshot(chat).problem == "" and runtime.ready(chat)
+
+
+def test_a_stale_mode_reply_isnt_taken_as_plan_mode(make, tmp_path):
+    """A reply dropped as older than a reopen doesn't count as plan mode
+    confirmed: the chat sends nothing."""
+    from thechatplace.providers.copilot_runtime import PLAN_MODE, PLAN_NOT_SET
+    runtime, _ = make()
+    original = runtime._set_option
+
+    def reopened_meanwhile(native_id, config_id, value, refused):
+        if config_id == "mode":
+            runtime._chats[native_id].settings_applied += 5  # as a reopen would
+        return original(native_id, config_id, value, refused)
+    runtime._set_option = reopened_meanwhile
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    assert runtime.snapshot(chat).problem == PLAN_NOT_SET and not runtime.ready(chat)
+
+
+def test_a_reopened_chat_is_put_back_in_plan_mode(make, tmp_path):
+    """Copilot may reopen a chat in agent mode ("forgetmode"); the mode last
+    chosen here is switched back to before anything is sent (#424)."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+    runtime, _ = make("forgetmode")
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    assert runtime.snapshot(chat).mode == PLAN_MODE
+    runtime._chats[chat].elsewhere = True  # so prepare opens it again
+    runtime.prepare(chat, str(tmp_path))
+    assert runtime.snapshot(chat).mode == AGENT_MODE  # forgotten, with no mode asked for
+    runtime._chats[chat].elsewhere = True
+    runtime.prepare(chat, str(tmp_path), mode=PLAN_MODE)
+    assert runtime.snapshot(chat).mode == PLAN_MODE and runtime.ready(chat)
+
+
+def test_after_a_restart_a_plan_chat_copilot_wont_switch_back_sends_nothing(make, tmp_path):
+    """A new runtime (the app restarted) opens a chat chosen for plan mode,
+    which Copilot reopens in agent mode and won't switch: nothing is sent,
+    rather than carrying on in agent mode; a switch by hand clears it."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, MODE_NOT_KEPT, PLAN_MODE
+    native = "11111111-2222-3333-4444-555555555555"
+    write_workspace(tmp_path, native, "thechatplace")
+    runtime, _ = make("nomode")
+    runtime.adopt(native)
+    runtime.prepare(native, str(tmp_path), mode=PLAN_MODE)
+    state = runtime.snapshot(native)
+    assert state.mode == AGENT_MODE and state.problem == MODE_NOT_KEPT
+    assert not runtime.ready(native)
+    with pytest.raises(CopilotChatError, match="another mode"):
+        runtime.send(native, "Change things")
+    # Opened again, it's still not sendable: the late-record check that
+    # clears other problems leaves this one.
+    runtime._chats[native].elsewhere = True
+    runtime.prepare(native, str(tmp_path), mode=PLAN_MODE)
+    assert runtime.snapshot(native).problem == MODE_NOT_KEPT
+    assert prompts_sent(tmp_path) == []
+    # A Copilot that does switch puts it back in plan mode.
+    runtime.close()  # it holds the chat open
+    other, _ = make()
+    other.adopt(native)
+    other.prepare(native, str(tmp_path), mode=PLAN_MODE)
+    assert other.snapshot(native).mode == PLAN_MODE and other.ready(native)
+
+
+def test_copilots_own_files_are_never_changed_files(tmp_path):
+    """Only this chat's own session folder: a file under another chat's, or
+    elsewhere in Copilot's, is still a changed file."""
     from thechatplace.providers.copilot_runtime import _edited_paths, copilot_own_file
-    monkeypatch.setattr(platform_paths, "copilot_sessions_dir", lambda: tmp_path / "state")
-    plan = str(tmp_path / "state" / "abc" / "plan.md")
+    own = tmp_path / "state" / "abc"
+    plan = str(own / "plan.md")
+    other_chat = str(tmp_path / "state" / "xyz" / "notes.md")
     work = str(tmp_path / "work" / "a.py")
-    assert copilot_own_file(plan) and not copilot_own_file(work)
-    assert not copilot_own_file(str(tmp_path / "state-other" / "x"))
-    events = [("tool.execution_complete", {"success": True,
-                                           "fileEdits": [{"path": plan}, {"path": work}]})]
-    assert _edited_paths(events) == (work,)
+    assert copilot_own_file(plan, own) and not copilot_own_file(work, own)
+    assert not copilot_own_file(other_chat, own)
+    assert not copilot_own_file(str(tmp_path / "state" / "abc-other" / "x"), own)
+    assert not copilot_own_file(plan, None)
+    events = [("tool.execution_complete", {"success": True, "fileEdits": [
+        {"path": plan}, {"path": work}, {"path": other_chat}]})]
+    assert _edited_paths(events, own) == (work, other_chat)
+
+
+# -- round 2 of #424's review ---------------------------------------------------------
+
+
+def test_nothing_can_be_sent_while_a_new_chats_mode_is_being_switched(make, tmp_path):
+    """A chat asked for in plan mode is blocked before the switch goes to
+    Copilot, so nothing sees it ready in agent mode meanwhile."""
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    runtime, _ = make()
+    original, seen = runtime._set_option, []
+
+    def checked(native_id, config_id, value, refused):
+        if config_id == "mode":
+            seen.append(runtime.ready(native_id))
+            with pytest.raises(CopilotChatError, match="plan mode"):
+                runtime.send(native_id, "Too soon")
+        return original(native_id, config_id, value, refused)
+    runtime._set_option = checked
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    assert seen == [False]
+    state = runtime.snapshot(chat)
+    assert state.mode == PLAN_MODE and state.problem == "" and runtime.ready(chat)
+    assert prompts_sent(tmp_path) == []
+
+
+def test_nothing_can_be_sent_while_a_reopened_chat_is_switched_back(make, tmp_path):
+    """Reopened in agent mode, a chat chosen for plan mode is blocked as
+    loading ends, before the switch back goes to Copilot."""
+    from thechatplace.providers.copilot_runtime import MODE_NOT_KEPT, PLAN_MODE
+    runtime, _ = make("forgetmode")
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    original, seen = runtime._set_option, []
+
+    def checked(native_id, config_id, value, refused):
+        if config_id == "mode":
+            seen.append((runtime.ready(native_id), runtime.snapshot(native_id).problem))
+            with pytest.raises(CopilotChatError, match="another mode"):
+                runtime.send(native_id, "Too soon")
+        return original(native_id, config_id, value, refused)
+    runtime._set_option = checked
+    runtime._chats[chat].elsewhere = True  # so prepare opens it again
+    runtime.prepare(chat, str(tmp_path), mode=PLAN_MODE)
+    assert seen == [(False, MODE_NOT_KEPT)]
+    assert runtime.snapshot(chat).mode == PLAN_MODE and runtime.ready(chat)
+    assert prompts_sent(tmp_path) == []
+
+
+def test_agent_mode_asked_for_where_copilot_starts_in_plan_is_switched(make, tmp_path):
+    """Copilot's own default needn't be agent ("startplan"): agent asked for
+    is switched to, and a refusal says agent mode, not plan mode."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, AGENT_NOT_SET
+    runtime, _ = make("startplan")
+    chat = runtime.create(str(tmp_path), mode=AGENT_MODE)
+    state = runtime.snapshot(chat)
+    assert state.mode == AGENT_MODE and state.problem == "" and runtime.ready(chat)
+
+    def refused(native_id, config_id, value, refused_text):
+        raise CopilotChatError(refused_text)
+    runtime._set_option = refused
+    other = runtime.create(str(tmp_path), mode=AGENT_MODE)
+    assert runtime.snapshot(other).problem == AGENT_NOT_SET
+    with pytest.raises(CopilotChatError, match="in agent mode"):
+        runtime.send(other, "Change things")
+
+
+def test_a_continue_here_copy_whose_plan_mode_isnt_confirmed_keeps_its_history(make, tmp_path):
+    """#424 with #423: a copy asked for in plan mode that Copilot won't
+    confirm sends nothing, its history included, and says the history is
+    still waiting; once a mode is chosen the first message takes it."""
+    from thechatplace.providers.copilot_runtime import (AGENT_MODE, PLAN_MODE, PLAN_NOT_SET,
+                                                        PREAMBLE_WAITING)
+    runtime, _ = make("keepagent")
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    runtime.set_preamble(chat, "Earlier: history. ")
+    assert not runtime.ready(chat)
+    with pytest.raises(CopilotChatError) as refused:
+        runtime.send(chat, "Carry on")
+    assert PLAN_NOT_SET in str(refused.value) and PREAMBLE_WAITING in str(refused.value)
+    assert prompts_sent(tmp_path) == []
+    assert runtime.set_mode(chat, AGENT_MODE) == AGENT_MODE and runtime.ready(chat)
+    runtime.send(chat, "Carry on")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert prompts_sent(tmp_path) == ["Earlier: history. Carry on"]
+
+
+def test_no_update_carries_a_mode_problem_while_a_reopened_chat_is_switched_back(make, tmp_path):
+    """Reopened in agent mode and put back in plan mode: the reply that
+    confirms it clears MODE_NOT_KEPT before its update goes out, so the
+    window never hears plan mode together with the problem it cleared."""
+    from thechatplace.providers.copilot_runtime import MODE_PROBLEMS, PLAN_MODE
+    runtime, updates = make("forgetmode")
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    runtime._chats[chat].elsewhere = True  # so prepare opens it again
+    updates.clear()
+    runtime.prepare(chat, str(tmp_path), mode=PLAN_MODE)
+    assert updates and updates[-1].mode == PLAN_MODE and updates[-1].problem == ""
+    assert not [u for u in updates if u.problem in MODE_PROBLEMS]
+    assert runtime.ready(chat)
+
+
+def test_a_notice_added_keeps_the_one_the_chat_has(make, tmp_path):
+    """A refused model's notice and a mode that couldn't be saved are both
+    said: add_notice adds to the chat's notice, never replaces it."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime._chats[chat].notice = "Model refused."
+    runtime.add_notice(chat, "Mode not saved.")
+    assert runtime.snapshot(chat).notice == "Model refused. Mode not saved."
+    runtime.add_notice(chat, "Mode not saved.")  # not twice
+    assert runtime.snapshot(chat).notice == "Model refused. Mode not saved."
+
+
+# -- saved modes (provider level) -------------------------------------------------------
+
+
+@pytest.fixture
+def provider(make, tmp_path, monkeypatch):
+    from thechatplace.providers.copilot import CopilotProvider
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path / "data")
+    (tmp_path / "data").mkdir()
+
+    def build(mode="answer"):
+        runtime, _ = make(mode)
+        return CopilotProvider(tmp_path / "sessions", runtime=runtime), runtime
+    return build
+
+
+def test_a_saved_plan_mode_is_put_back_when_copilot_reopens_in_agent(provider, tmp_path):
+    """Through prepare_owned, as the window opens a chat: Copilot forgets the
+    mode across session/load, and the saved one is applied again."""
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    copilot, runtime = provider("forgetmode")
+    record = copilot.create_owned(str(tmp_path), "Planner", copilot_mode=PLAN_MODE)
+    runtime._chats[record.cli_session_id].elsewhere = True  # so it's loaded again
+    copilot.prepare_owned(record)
+    state = runtime.snapshot(record.cli_session_id)
+    assert state.mode == PLAN_MODE and state.problem == ""
+    assert runtime.ready(record.cli_session_id)
+    # The load did forget it: the switch was sent again after it.
+    sent = [m["params"]["value"] for m in received(tmp_path)
+            if m.get("method") == "session/set_config_option"]
+    assert sent == [PLAN_MODE, PLAN_MODE]
+
+
+def test_a_saved_plan_mode_copilot_wont_put_back_blocks_the_chat(provider, tmp_path):
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.copilot import _remember_mode
+    from thechatplace.providers.copilot_runtime import MODE_NOT_KEPT, PLAN_MODE
+    native = "11111111-2222-3333-4444-555555555555"
+    write_workspace(tmp_path, native, "thechatplace")
+    copilot, runtime = provider("nomode")
+    assert _remember_mode(native, PLAN_MODE) == ""
+    copilot.prepare_owned(OwnSession(native, "Planner", str(tmp_path), provider="copilot",
+                                     started=True))
+    assert runtime.snapshot(native).problem == MODE_NOT_KEPT and not runtime.ready(native)
+
+
+def test_saved_modes_file_edge_cases(tmp_path, monkeypatch):
+    from thechatplace.providers.copilot import (MODE_NOT_SAVED, MODES_SET_ASIDE,
+                                                _remember_mode, chosen_mode)
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    native = "11111111-2222-3333-4444-555555555555"
+    other = "22222222-2222-3333-4444-555555555555"
+    path = tmp_path / "copilot-modes.json"
+    # Missing: no mode, nothing to say.
+    assert chosen_mode(native) == ("", "")
+    # A bad id and an unknown mode are left out; the rest are read.
+    autopilot = "https://agentclientprotocol.com/protocol/session-modes#autopilot"
+    path.write_text(json.dumps({"version": 1, "modes": {
+        "../x": PLAN_MODE, native: autopilot, other: PLAN_MODE}}), encoding="utf-8")
+    assert chosen_mode(native) == ("", "")
+    assert chosen_mode(other) == (PLAN_MODE, "")
+    # Corrupt: moved aside whole, said, and not written over.
+    path.write_text("{not json", encoding="utf-8")
+    assert _remember_mode(native, PLAN_MODE) == MODES_SET_ASIDE
+    aside = list(tmp_path.glob("copilot-modes.json.bad-*"))
+    assert [p.read_text(encoding="utf-8") for p in aside] == ["{not json"]
+    assert chosen_mode(native) == (PLAN_MODE, "")
+    # A second damaged file doesn't write over the first set aside.
+    path.write_text("[]", encoding="utf-8")
+    assert chosen_mode(native) == ("", MODES_SET_ASIDE)
+    aside = list(tmp_path.glob("copilot-modes.json.bad-*"))
+    assert sorted(p.read_text(encoding="utf-8") for p in aside) == ["[]", "{not json"]
+    # Nor does a file that isn't UTF-8: it's set aside, not taken for one
+    # that can't be opened, so saving works again.
+    path.write_bytes(bytes([0xFF, 0xFE]) + b"{bad")
+    assert chosen_mode(native) == ("", MODES_SET_ASIDE)
+    assert len(list(tmp_path.glob("copilot-modes.json.bad-*"))) == 3
+    assert _remember_mode(native, PLAN_MODE) == ""
+    assert chosen_mode(native) == (PLAN_MODE, "")
+    # A save that fails is said.
+
+    def full(*args, **kwargs):
+        raise OSError("disk full")
+    monkeypatch.setattr("thechatplace.provider_storage.atomic_write_json", full)
+    assert _remember_mode(native, PLAN_MODE) == MODE_NOT_SAVED
+
+
+def test_a_refused_model_and_an_unsaved_mode_are_both_said(provider, tmp_path, monkeypatch):
+    from thechatplace.providers.copilot import MODE_NOT_SAVED
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    copilot, runtime = provider()
+
+    def full(*args, **kwargs):
+        raise OSError("disk full")
+    monkeypatch.setattr("thechatplace.provider_storage.atomic_write_json", full)
+    record = copilot.create_owned(str(tmp_path), "Both", model="not-offered",
+                                  copilot_mode=PLAN_MODE)
+    notice = runtime.snapshot(record.cli_session_id).notice
+    assert "couldn't switch this chat to the model chosen" in notice
+    assert notice.endswith(MODE_NOT_SAVED)
+
+
+def test_set_mode_owned_saves_only_a_confirmed_mode(provider, tmp_path):
+    from thechatplace.providers.copilot import chosen_mode
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+    copilot, runtime = provider("keepagent")
+    record = copilot.create_owned(str(tmp_path), "Unconfirmed")
+    assert copilot.set_mode_owned(record, PLAN_MODE) == AGENT_MODE
+    assert chosen_mode(record.cli_session_id) == ("", "")
+    assert copilot.set_mode_owned(record, AGENT_MODE) == AGENT_MODE
+    assert chosen_mode(record.cli_session_id) == (AGENT_MODE, "")
+
+
+def test_a_failed_save_of_a_mode_is_the_chats_notice(provider, tmp_path, monkeypatch):
+    from thechatplace.providers.copilot import MODE_NOT_SAVED
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    copilot, runtime = provider()
+
+    def full(*args, **kwargs):
+        raise OSError("disk full")
+    monkeypatch.setattr("thechatplace.provider_storage.atomic_write_json", full)
+    record = copilot.create_owned(str(tmp_path), "Unsaved", copilot_mode=PLAN_MODE)
+    assert runtime.snapshot(record.cli_session_id).notice == MODE_NOT_SAVED
 
 
 # -- run freely in this folder (copilot_folder) -------------------------------------------
@@ -1850,3 +2607,70 @@ def test_running_freely_still_asks_for_a_file_outside_the_folder(make, tmp_path)
     runtime.send(chat, "Make a.txt")
     assert wait(lambda: runtime.snapshot(chat).requests)
     assert runtime.snapshot(chat).auto_allowed == ()
+
+
+def test_running_freely_is_for_agent_mode_only(make, tmp_path):
+    """Plan mode promises not to edit your files: running freely never
+    answers for it, can't be turned on in it, and ends when the chat leaves
+    agent mode (the reviews of the merged #426)."""
+    from thechatplace.providers.copilot_runtime import FREE_ENDED, PLAN_MODE
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_free(chat, True)
+    assert runtime.snapshot(chat).free
+    runtime.set_mode(chat, PLAN_MODE)
+    state = runtime.snapshot(chat)
+    assert not state.free and FREE_ENDED in state.notice
+    with pytest.raises(CopilotChatError, match="agent mode"):
+        runtime.set_free(chat, True)
+
+
+def test_a_restart_starts_every_chat_asking_again(make, tmp_path):
+    """Running freely is kept in memory only: a new run starts without it."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_free(chat, True)
+    runtime.close()
+    again, _ = make()
+    again.adopt(chat)
+    assert again.snapshot(chat) is None or not again.snapshot(chat).free
+
+
+def test_allowing_a_command_never_clears_the_moved_flag(make, tmp_path):
+    """Two answers at once mustn't undo each other: the flag is only set."""
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime._chats[chat].location_changed = True
+    runtime.send(chat, "Run it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    request = runtime.snapshot(chat).requests[0]  # echo synthetic: allowed by the check
+    runtime.answer(chat, request.request_id, ALLOW_ONCE)
+    assert runtime.snapshot(chat).location_changed
+
+
+def test_a_new_copilot_process_starts_the_shell_in_the_folder_again(make, tmp_path):
+    """Reopened on a Copilot process it wasn't open on, the chat's shell is
+    new, so commands may be answered for you again."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime._chats[chat].location_changed = True
+    runtime._connection.request("session/close", {"sessionId": chat})
+    runtime._chats[chat].open_on = object()   # as if open on an earlier Copilot
+    runtime._chats[chat].elsewhere = True     # so prepare opens it again
+    runtime.prepare(chat, str(tmp_path))
+    assert not runtime._chats[chat].location_changed
+
+
+def test_running_freely_isnt_allowed_where_an_organisation_manages_copilot(make, tmp_path,
+                                                                        monkeypatch):
+    """No documented policy says whether automatic approval is allowed, so
+    any Copilot policy on the computer means each request asks (#426)."""
+    from thechatplace.providers.copilot_runtime import MANAGED
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    monkeypatch.setattr(platform_paths, "copilot_policy_texts",
+                        lambda: [("C:/ProgramData/GitHub/Copilot/policy.d/org.json", "{}")])
+    with pytest.raises(CopilotChatError) as raised:
+        runtime.set_free(chat, True)
+    assert str(raised.value) == MANAGED and not runtime.snapshot(chat).free
+    runtime.set_free(chat, False)  # turning it off is always fine

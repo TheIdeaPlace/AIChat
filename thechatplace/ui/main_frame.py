@@ -76,6 +76,7 @@ from ..groups import GroupStore
 from ..prompts import (MAX_NAME as PROMPT_NAME_MAX, PromptStore, clean_text as clean_prompt_text,
                        suggested_name)
 from ..hidden import HiddenStore, ToolActivityStore
+from ..links import claude_link
 from ..titles import MAX_TITLE, TitleStore, clean_title
 from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP_VIEW_PREFIX, IDLE,
                         DESKTOP, NEEDS_YOU, OWN, SORT_ORDERS,
@@ -98,6 +99,7 @@ from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
 from .relay_chats import RelayChats
+from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
@@ -168,13 +170,6 @@ def kind_name(info: SessionInfo) -> str:
     return f"{article} {kind}"
 
 
-def claude_link(info: SessionInfo) -> str:
-    """The desktop app's own link to a session: its Code page, or for a
-    Cowork session (#91) the page the app's own notifications open."""
-    page = "cowork" if info.cowork else "epitaxy"
-    return f"claude://claude.ai/{page}/{info.desktop_session_id}"
-
-
 #: The narrowest the lists go. Without it a list's minimum is its longest row
 #: (see session_list in _build_ui).
 LIST_MIN_WIDTH = 200
@@ -191,7 +186,7 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
-class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
+class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -1533,6 +1528,22 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 or self._open.provider == AGENTS):
             self._codex_drafts[self._open.key] = self.reply_text.GetValue()
 
+    def _still_preparing(self, info) -> bool:
+        """A chat opened before its runtime had it ready is marked as
+        getting ready until its preparation's done() clears the mark, which
+        comes through wx.CallAfter a moment after the runtime has the chat.
+        A message sent in that moment was refused with "still getting ready"
+        (#430). So the runtime is asked as well. The mark is only read here:
+        done() is also what sends a message forwarded while the chat got
+        ready, so it must still find the mark."""
+        if info.key not in self._codex_preparing:
+            return False
+        record = self.store.get(info.cli_session_id, provider=info.provider)
+        try:
+            return record is None or not self.sessions.owned_action("ready", record)
+        except ValueError:  # the provider's gone (closing): not ready
+            return True
+
     def _can_edit(self, info):
         if info is None or not (info.is_own or info.provider == AGENTS):
             return False
@@ -1711,6 +1722,21 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                     kind += ", Remote Control on"
         elif info.remote and info.provider == "claude":
             kind += ", on Remote Control in the desktop app"
+        elif info.is_own and info.provider == "copilot" and self._can_edit(info):
+            # The model Copilot reports for this chat, once it's open there
+            # (#422): what Change Model shows as "now".
+            runtime_state = self._codex_states.get(info.key)
+            model = getattr(runtime_state, "model", "")
+            if model:
+                kind += f" on {dict(getattr(runtime_state, 'models', ()) or ()).get(model, model)}"
+            # Plan mode only, as the Claude modes show only when not the
+            # default: agent mode is Copilot's own (#424).
+            from ..providers.copilot_runtime import PLAN_MODE
+            if getattr(runtime_state, "mode", "") == PLAN_MODE:
+                kind += ", plan mode"
+            # Running freely is said wherever the chat is read (#426).
+            if getattr(runtime_state, "free", False):
+                kind += ", runs freely in its folder"
         state = state_with_detail(info.state, info.detail)
         self.session_heading.set_text(f"{end_sentence(f'{info.title}, {info.repo}, {state}')} {kind}.")
         self._update_messages_label()
@@ -2876,7 +2902,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self.stop_btn.Enable(True)
             state = self._codex_states.get(info.key)
             name = provider_name(info.provider)
-            label = (f"Getting {name} ready." if info.key in self._codex_preparing else
+            label = (f"Getting {name} ready." if self._still_preparing(info) else
                      state.problem if state is not None and state.problem else
                      f"{name} is waiting for you. {key_name('Ctrl+Shift+A')} answers." if state is not None and state.requests else
                      f"{name} is working." if state is not None and state.state == WORKING else "Ready.")
@@ -3524,9 +3550,21 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return "from its next turn; the turn running now carries on as it started"
         return "from its next turn"
 
+    def _copilot_models(self):
+        """The models a new Copilot chat can start with: a small file read,
+        never Copilot started (copilot.model_choices)."""
+        try:
+            return tuple(self.sessions.model_choices("copilot"))
+        except Exception:  # noqa: BLE001 - none to offer, Copilot's own is
+            return ()
+
     def on_change_model(self):
         """File, Change Model: the model for this session's next turns. A
         session's model goes with every turn, so it can change at any time."""
+        selected = self._selected_session()
+        if selected is not None and selected.provider == "copilot":
+            self._change_copilot_model(selected)
+            return
         found = self._own_for_setting("model")
         if found is None:
             return
@@ -3582,6 +3620,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self._feedback("No session selected.")
             return
         if info.is_own and info.provider == "copilot":
+            state = self._codex_states.get(info.key)
+            if getattr(state, "free", False) or getattr(state, "auto_allowed", ()):
+                self._copilot_allowed_list(info, state)
+                return
             self._feedback(f"{info.title} keeps no permissions: Copilot asks before each command "
                            "or file change, and each answer is for that one request. Change "
                            f"Permission Mode ({key_name('Ctrl+Shift+O')}) switches it between "
@@ -3941,6 +3983,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                                              if same(f) != same(forward.folder)]
             prefill = {"title_text": forward.title, "message": forward.message,
                        "providers": (forward.provider,), "provider": forward.provider}
+            if forward.joint:
+                # An agent conversation hands work between its chats, so a
+                # new Copilot one starts in agent mode (#424).
+                prefill["copilot_plan"] = False
             codex_available = codex_available and forward.provider == "codex"
             copilot_available = copilot_available and forward.provider == "copilot"
         offered = tuple(p for p, ok in (("claude", bool(lookup.path)), ("codex", codex_available),
@@ -3948,7 +3994,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         provider_options = ({"providers": offered,
                              "provider": self.speech.new_session_provider,
                              "load_models": self._load_codex_models if codex_available else None,
-                             "load_rules": self._load_codex_rules if codex_available else None}
+                             "load_rules": self._load_codex_rules if codex_available else None,
+                             "copilot_models": self._copilot_models() if copilot_available else ()}
                             if codex_available or copilot_available else {})
         dialog = NewSessionDialog(self, root, recent=recent, projects_root=root,
                                   feedback=self._feedback,
@@ -3983,7 +4030,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         if provider == "copilot":
             self._create_codex_owned(folder, title, message, made=made, joint=joint,
-                                     provider="copilot", copilot_mode=copilot_mode)
+                                     provider="copilot", model=model, copilot_mode=copilot_mode)
             return
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
@@ -4142,6 +4189,30 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
             self._create_codex_owned(info.cwd, title, message, source=info, **options, **policy)
             return
+        if info.provider == "copilot":
+            # A new Copilot chat with the conversation so far ahead of your
+            # first message: Copilot can't copy a chat (#352).
+            if not info.cwd or not os.path.isdir(info.cwd):
+                wx.MessageBox(f"This chat's folder ({info.cwd or 'unknown'}) doesn't exist any "
+                              "more, so it can't be continued here.", APP_NAME,
+                              wx.OK | wx.ICON_WARNING, self)
+                return
+            dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
+                                      providers=("copilot",), provider="copilot",
+                                      source_state=info.state, feedback=self._feedback,
+                                      copilot_models=self._copilot_models())
+            try:
+                if dialog.ShowModal() != wx.ID_OK:
+                    return
+                _folder, title, _mode, message, model = dialog.values()
+                # Agent or plan mode, held unsent until Copilot confirms it,
+                # as for a new chat (#424).
+                copilot_mode = dialog.copilot_mode()
+            finally:
+                dialog.Destroy()
+            self._create_codex_owned(info.cwd, title, message, source=info, provider="copilot",
+                                     model=model, copilot_mode=copilot_mode)
+            return
         if info.cowork:
             # Its transcript is in the session's own Claude Code home, where
             # claude -p on this PC can't resume it (#91).
@@ -4212,7 +4283,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             self.reply_text.SetFocus()
             return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
-            if info.key in self._codex_preparing:
+            if self._still_preparing(info):
                 self._feedback(f"This {provider_name(info.provider)} chat is still getting ready.")
                 return
             message = self.reply_text.GetValue().strip()
@@ -4380,8 +4451,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         own = self.store.get(session_id)
         remote = ({"name": title, "reattach": own.bridge_session_id}
                   if own is not None and self._remote_control_on(own) else None)
+        # The session tools (#165): /wrap and the like work here too.
         runner = TurnRunner(command, cwd, prompt, on_event, images=images,
-                            remote_control=remote, task_list=self.speech.task_list)
+                            remote_control=remote, task_list=self.speech.task_list,
+                            mcp_config=self._session_tools_config(session_id))
         # What you typed and attached, to give back if the turn never starts.
         runner.typed = spoken if spoken is not None else prompt
         runner.attached = list(attached or [])
@@ -4436,6 +4509,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
                 except OSError:
                     pass  # its tool activity is hidden next time; nothing else is lost
                 self._agent_rename_member("claude", session_id, reported)
+                # This turn's session tools still name the old id (#165).
+                self._session_tools_renamed = {**self._session_tools_renamed,
+                                               session_id: reported}
                 self._runners[reported] = self._runners.pop(session_id)
                 self._denials[reported] = self._denials.pop(session_id, [])
                 for per_session in (self._drafts, self._queued, self._steered, self._pending,
@@ -5564,6 +5640,24 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if info is None:
             self._feedback("No session selected.")
         return info
+
+    def _copilot_allowed_list(self, info, state):
+        """Chat Permissions for a Copilot chat that runs freely, or did
+        (#426): everything The Chat Place allowed for you in it this run,
+        newest first, to arrow through and read in full."""
+        allowed = list(getattr(state, "auto_allowed", ()))
+        free = getattr(state, "free", False)
+        how = ("runs freely in its folder" if free else "doesn't run freely now")
+        if getattr(state, "location_changed", False) and free:
+            how += ", but its commands ask again"
+        if not allowed:
+            self._feedback(f"{info.title} {how}. Nothing has been allowed for you yet. Change "
+                           f"Permission Mode ({key_name('Ctrl+Shift+O')}) turns it off.")
+            return
+        lines = [summary for _number, summary in reversed(allowed)]
+        self._choose(f"Allowed for You: {info.title}",
+                     f"{info.title} {how}. What The Chat Place allowed for you, newest first "
+                     f"({len(lines)}):", lines, selection=0)
 
     def _choose(self, title: str, prompt: str, choices: List[str],
                 selection: Optional[int] = None) -> Optional[int]:
@@ -6789,6 +6883,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         speaker.window_announcer = None
         self._notifier.close()  # its icon would keep the app running
         self._pool.shutdown(wait=False, cancel_futures=True)
+        self._close_session_tools()
         self._close_providers()
         event.Skip()
 

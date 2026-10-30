@@ -1294,6 +1294,62 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Claude asks about text it wrote just before, with an option's preview"
+  },
+  "new-session-copilot": {
+   "kind": "dialog",
+   "png": "new-session-copilot-light-100.png",
+   "json": "new-session-copilot-light-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session for Copilot, choosing from the models it offered"
+  },
+  "copilot-continue": {
+   "kind": "dialog",
+   "png": "copilot-continue-light-100.png",
+   "json": "copilot-continue-light-100.json",
+   "title": "Continue Here: Copilot still working",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Continue Here from a Copilot CLI chat that may still be working"
+  },
+  "main-copilot-copy": {
+   "kind": "window",
+   "png": "main-copilot-copy-light-100.png",
+   "json": "main-copilot-copy-light-100.json",
+   "title": "Copilot history preview (continued) — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A Copilot Continue Here copy: the carried history as one row"
+  },
+  "copilot-change-mode": {
+   "kind": "dialog",
+   "png": "copilot-change-mode-light-100.png",
+   "json": "copilot-change-mode-light-100.json",
+   "title": "Change Permission Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    479,
+    189
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Permission Mode for an owned Copilot chat in plan mode"
   }
  },
  "seconds": 94.1

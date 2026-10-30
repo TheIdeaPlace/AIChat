@@ -115,6 +115,12 @@ def _copilot_session_modes():
 COPILOT_SESSION_MODES = _copilot_session_modes()
 
 
+def copilot_mode_name(mode: str) -> str:
+    """A Copilot mode in words: "agent mode", "plan mode" or "another mode"."""
+    from ..providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+    return {AGENT_MODE: "agent mode", PLAN_MODE: "plan mode"}.get(mode, "another mode")
+
+
 #: Change Permission Mode's third choice for a Copilot chat (copilot_folder):
 #: not one of Copilot's modes, but The Chat Place answering for you what
 #: stays inside the chat's folder. Never offered in New Session: it comes
@@ -125,26 +131,46 @@ COPILOT_FREE_LABEL = ("Run freely in this folder: runs commands and changes file
 
 
 def copilot_free_warning(folder: str) -> str:
+    # The commands named are the ones allowed where this runs (#426): Copilot
+    # uses PowerShell on Windows and bash or zsh elsewhere (copilot_folder).
+    examples = ("Get-Item, Get-Content, Set-Content, Copy-Item, Remove-Item and the like"
+                if sys.platform == "win32" else "ls, cat, cp, mv, rm, echo and pwd")
     return (f"Copilot will run commands and change files in {folder} and its subfolders "
-            "without asking you. Anything it does there can't be undone by The Chat Place.\n\n"
-            "Only plain file and text commands are allowed for you (Get-Item, Get-Content, "
-            "Set-Content, Copy-Item, Remove-Item and the like). It still asks before anything "
+            "without asking you. Anything it does there can't be undone by The Chat Place, "
+            "so use this only in a folder that's backed up or under version control, and not "
+            "with files you haven't checked: instructions hidden in a file Copilot reads could "
+            "steer what it does there.\n\n"
+            f"Only plain file and text commands are allowed for you ({examples}). "
+            "It still asks before anything "
             "else: other folders and drives, your home folder, the network, other programs, "
             "changing folder, wildcards, and deleting a folder's contents. If you allow one of "
             "those yourself, commands in this chat ask again. For a command, The Chat Place "
             "checks what the command says, which is a strict check, not a lock.\n\n"
-            "Each thing allowed for you is shown on the status bar. This lasts until you turn "
-            "it off with Change Permission Mode, or close The Chat Place.\n\n"
+            "Each thing allowed for you is shown on the status bar, and Chat Permissions lists "
+            "them all. This lasts until you turn it off with Change Permission Mode, or close "
+            "The Chat Place.\n\n"
             "Let Copilot run freely in this folder?")
 
 
 #: What New Session says about a Copilot chat (#352).
 COPILOT_NOTE = ("Copilot uses your GitHub Copilot sign-in, and each message uses requests from "
-                "your Copilot plan. It uses its own model and effort, which can't be chosen "
-                "here. Copilot asks before it runs a command or changes a file: "
+                "your Copilot plan. Model lists the models Copilot offered your last Copilot "
+                "chat here, each with the premium requests a message costs; Copilot's own "
+                "choice is first. File, Change Model changes it later. Effort is Copilot's "
+                "own. Permission mode chooses agent mode, which can change your files, or "
+                "plan mode, which plans first and doesn't edit them; File, Change Permission "
+                "Mode switches it later. In both, Copilot asks before it runs a command or "
+                "changes a file: "
                 "each request appears in Answer, where you can allow it once or deny it. "
                 "The Chat Place won't send to Copilot in a folder whose Copilot hooks could act "
                 "without asking you.")
+
+
+COPILOT_CONTINUE_NOTE = (
+    "The copy is a new Copilot chat of The Chat Place's own, in the same folder. Copilot can't "
+    "copy a chat, so your first message goes with the conversation so far: your messages and "
+    "Copilot's replies, newest kept if it's long, but not the commands it ran or their output. "
+    "The original chat isn't changed.")
 
 
 class NewSessionDialog(wx.Dialog):
@@ -163,7 +189,8 @@ class NewSessionDialog(wx.Dialog):
     def __init__(self, parent, default_folder: str, continue_from: str = "",
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
                  remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
-                 title_text: str = "", message: str = ""):
+                 title_text: str = "", message: str = "", copilot_models=(),
+                 copilot_plan: bool = True):
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
@@ -195,6 +222,12 @@ class NewSessionDialog(wx.Dialog):
         self._rules_error = ""
         self._codex_models = ()
         self._copilot_mode_choice = 0
+        #: The Copilot modes offered: agent only for a chat made to join an
+        #: agent conversation (#424).
+        self._copilot_modes = COPILOT_SESSION_MODES if copilot_plan else COPILOT_SESSION_MODES[:1]
+        #: (value, label) of each model Copilot last offered (#352).
+        self._copilot_models = tuple(copilot_models)
+        self._copilot_choice = 0
         self._codex_choices = (0, 0, 0 if continue_from else 1)
         self._codex_model_error = False
         self._codex_models_loaded = False
@@ -627,16 +660,19 @@ class NewSessionDialog(wx.Dialog):
             index = self.model.GetSelection() - 1
             model = self._codex_models[index].model if 0 <= index < len(self._codex_models) else ""
         elif self.provider() == "copilot":
-            mode, model = DEFAULT_PERMISSION_MODE, ""  # Copilot's own settings, and it asks
+            mode = DEFAULT_PERMISSION_MODE  # it always asks
+            index = self.model.GetSelection() - 1
+            model = (self._copilot_models[index][0]
+                     if 0 <= index < len(self._copilot_models) else "")
         return folder, title, mode, message, model
 
     def copilot_mode(self) -> str:
-        """Copilot's mode to start in: plan mode, or "" for its own (agent)."""
+        """Copilot's mode to start in, agent or plan, asked for even when it's
+        agent: Copilot's own default needn't be (#424). "" for another provider."""
         if self.provider() != "copilot":
             return ""
-        index = self.mode.GetSelection()
-        value = COPILOT_SESSION_MODES[index][0] if 0 <= index < len(COPILOT_SESSION_MODES) else ""
-        return value if index > 0 else ""
+        index = max(self.mode.GetSelection(), 0)
+        return self._copilot_modes[min(index, len(self._copilot_modes) - 1)][0]
 
     def codex_policy(self):
         from .permission_hosts import CODEX_REVIEW_MODES
@@ -659,20 +695,27 @@ class NewSessionDialog(wx.Dialog):
             self._codex_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
         elif self._control_provider == "copilot":
             self._copilot_mode_choice = max(self.mode.GetSelection(), 0)
+            self._copilot_choice = max(self.model.GetSelection(), 0)
         if provider == "copilot":
-            # Nothing to choose yet: Copilot's own model and effort, and it
-            # always asks before acting (copilot_runtime). Shown, not hidden,
-            # so the dialog keeps its shape and says so.
-            for control, label in ((self.model, "Copilot's configured model"),
-                                   (self.effort_choice, "Copilot's own setting")):
-                control.Set([label])
-                control.SetSelection(0)
-                control.Disable()
+            # The models Copilot last offered; effort is Copilot's own. Shown,
+            # not hidden, so the dialog keeps its shape and says so.
+            self.effort_choice.Set(["Copilot's own setting"])
+            self.effort_choice.SetSelection(0)
+            self.effort_choice.Disable()
+            self.model.Set(["Copilot's configured model"]
+                           + [label for _value, label in self._copilot_models])
+            self.model.SetSelection(min(self._copilot_choice, len(self._copilot_models)))
+            self.model.Enable(bool(self._copilot_models))
             # Agent or plan mode; both ask before acting (copilot_runtime).
-            self.mode.Set([label for _value, label in COPILOT_SESSION_MODES])
-            self.mode.SetSelection(min(self._copilot_mode_choice, len(COPILOT_SESSION_MODES) - 1))
-            self.mode.Enable()
+            self.mode.Set([label for _value, label in self._copilot_modes])
+            self.mode.SetSelection(min(self._copilot_mode_choice, len(self._copilot_modes) - 1))
+            self.mode.Enable(len(self._copilot_modes) > 1)
             self.note.SetValue(COPILOT_NOTE)
+            if self.continuing:
+                note = COPILOT_CONTINUE_NOTE
+                if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
+                    note = "This chat may still be working in Copilot CLI. " + note
+                self.note.SetValue(note + "\n\n" + COPILOT_NOTE)
         elif provider == "codex":
             self.model.Set(["Configured Codex model"] + [choice.label for choice in self._codex_models])
             self.model.SetSelection(min(self._codex_choices[0], len(self._codex_models)))
@@ -2164,7 +2207,9 @@ class QuestionDialog(wx.Dialog):
         row.Add(send, 0, wx.RIGHT, 6)
         decline = wx.Button(self, ID_DENY, "Decline and Stop &Turn" if provider == "Codex" else "&Don't Answer")
         row.Add(decline, 0, wx.RIGHT, 6)
-        row.Add(wx.Button(self, wx.ID_CANCEL, "Answer &Later"), 0)
+        later = wx.Button(self, wx.ID_CANCEL, "Answer &Later")
+        row.Add(later, 0)
+        self._buttons = [send, decline, later]
         outer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(outer)
         # As tall as the questions need, up to the size it was given; past
@@ -2189,11 +2234,59 @@ class QuestionDialog(wx.Dialog):
         # begin reading the wrong question. It starts on the question's own
         # text, as a permission request does (#415).
         self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
-        if wx.Platform == "__WXMAC__":
-            # On a Mac the arrow keys did nothing in a group of radio buttons,
-            # and Tab treats the group as one stop, so only the first option
-            # could be reached (#121). Windows moves through the group itself.
-            self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+
+    def tab_stops(self) -> list:
+        """The dialog's Tab order: the question's text, then each question
+        as one stop (its chosen option, or its first while none is chosen),
+        its own answer, the preview and the buttons. Kept here rather than
+        left to the system: the options start with none chosen, so you pick
+        one, and Windows' Tab goes only to a group's chosen option, so it
+        skipped every question with none chosen. With focus starting on the
+        question's text (#415), Tab went straight past the options to the
+        answer box."""
+        stops = [self.question_text]
+        for kind, controls, other_text in self._controls:
+            shown = [c for c in controls if c.IsShown()]
+            if kind == "single":
+                chosen = [c for c in shown if c.GetValue()]
+                stops += (chosen or shown)[:1]
+            else:
+                stops += shown
+            if other_text.IsShown():
+                stops.append(other_text)
+        if self.preview_text is not None:
+            stops.append(self.preview_text)
+        return stops + [b for b in self._buttons if b.IsShown() and b.IsEnabled()]
+
+    def _tab_from(self, focus, forward: bool) -> bool:
+        """Move to the next (or previous) stop after ``focus``. False when
+        ``focus`` isn't one of the dialog's, so Tab goes on as usual."""
+        stops = self.tab_stops()
+        here = None
+        if focus in stops:
+            here = stops.index(focus)
+        else:
+            for kind, controls, _other_text in self._controls:
+                if kind == "single" and focus in controls:
+                    # An option of a group whose stop is another option.
+                    group = [s for s in stops if s in controls]
+                    here = stops.index(group[0]) if group else None
+                    break
+        if here is None:
+            return False
+        step = 1 if forward else -1
+        for offset in range(1, len(stops)):
+            stop = stops[(here + step * offset) % len(stops)]
+            # A stop that won't take focus from the keyboard is passed over:
+            # on a Mac with Full Keyboard Access off, radio buttons and push
+            # buttons refuse it, and Tab would otherwise go nowhere.
+            if not stop.CanAcceptFocusFromKeyboard():
+                continue
+            stop.SetFocusFromKbd()
+            if wx.Window.FindFocus() is stop:
+                return True
+        return False  # nothing took it: Tab goes on as the system has it
 
     def _on_init_dialog(self, event):
         event.Skip()
@@ -2216,8 +2309,14 @@ class QuestionDialog(wx.Dialog):
         set_accessible_name(self.preview_text, f"Preview of {label}")
 
     def _on_char_hook(self, event):
-        step = RADIO_ARROW_STEPS.get(event.GetKeyCode())
         focus = wx.Window.FindFocus()
+        if (event.GetKeyCode() == wx.WXK_TAB and not event.ControlDown()
+                and not event.AltDown() and self._tab_from(focus, not event.ShiftDown())):
+            return
+        # On a Mac the arrow keys did nothing in a group of radio buttons,
+        # and Tab treats the group as one stop, so only the first option
+        # could be reached (#121). Windows moves through the group itself.
+        step = RADIO_ARROW_STEPS.get(event.GetKeyCode()) if wx.Platform == "__WXMAC__" else None
         if (step is None or event.HasAnyModifiers() or not isinstance(focus, wx.RadioButton)
                 or not self.move_in_radio_group(focus, step)):
             event.Skip()

@@ -222,3 +222,113 @@ def test_a_hard_link_to_a_file_outside_isnt_inside(folder, tmp_path):
 def test_zsh_extended_patterns_ask(folder, command):
     """zsh's ^x means "everything but x", which can reach through a link."""
     assert not copilot_folder.command_allowed(command, folder)
+
+
+# -- the two reviews of the merged #426 (Claude's and Copilot's) ---------------------------
+
+
+@pytest.mark.parametrize("command", [
+    "Get-ChildItem sub | Set-Content -Value pwned",       # paths piped into a writer
+    "Get-ChildItem sub | Clear-Content",
+    "Get-ChildItem sub | Remove-Item",
+    "Get-ChildItem sub | Select-String secret",           # reads each path piped in
+    "Get-ChildItem sub | Get-FileHash",
+    "Get-ChildItem sub | Out-File",                       # Out-File needs its own path
+    "New-Item -ItemType s -Path l -Value notes.txt",      # SymbolicLink, shortened
+    "New-Item -ItemType Junc -Path j -Value sub",
+    "New-Item -Type h -Path l -Value notes.txt",
+    "Remove-Item sub",                                    # a folder: "Yes to All"
+    "Out-File CON",                                       # devices
+    "Set-Content NUL x",
+    "Get-Content COM1.txt",
+    "Remove-Item notes.txt -Stream Zone.Identifier",      # a file's hidden streams
+    "Get-Content notes.txt -Stream x",
+    "echo " + "x" * 400,                                  # too long to read in full
+])
+def test_what_the_reviews_of_the_merge_found_asks(folder, command):
+    assert not copilot_folder.command_allowed(command, folder)
+
+
+@windows_paths
+@pytest.mark.parametrize("command", [
+    "Get-Content notes.txt | Select-Object -First 1",
+    "Get-ChildItem sub | Sort-Object Name | Format-Table",
+    "Get-Content notes.txt | Out-File sub\copy.txt",
+    "Copy-Item notes.txt -Destination sub\copy.txt",     # -Destination isn't -Depth
+    "New-Item -ItemType Directory -Path build",
+    "New-Item -ItemType f -Path new.txt",
+    "Copy-Item notes.txt sub",                            # into a folder, a plain file
+])
+def test_plain_pipes_and_copies_are_still_allowed(folder, command):
+    assert copilot_folder.command_allowed(command, folder)
+
+
+def test_copying_into_a_folder_checks_the_file_written(folder, tmp_path):
+    outside = tmp_path / "outside.txt"
+    outside.write_text("x", encoding="utf-8")
+    try:
+        os.link(outside, os.path.join(folder, "sub", "notes.txt"))
+    except OSError:
+        pytest.skip("this file system has no hard links")
+    copy = "Copy-Item notes.txt sub" if sys.platform == "win32" else "cp notes.txt sub"
+    assert not copilot_folder.command_allowed(copy, folder)
+
+
+@posix_only
+@pytest.mark.parametrize("command", ["cat sub/\.\./\.\./secret.txt", "cat note\s.txt"])
+def test_a_backslash_asks_elsewhere(folder, command):
+    """bash and zsh read a backslash as an escape: sub/\.\./x is ../x."""
+    assert not copilot_folder.command_allowed(command, folder)
+
+
+# -- the verification passes on the fixes (Claude's and Copilot's) ------------------------
+
+
+@pytest.mark.parametrize("command", [
+    "Get-ChildItem sub |\nSet-Content -Value x",           # a pipe carried to the next line
+    "Get-ChildItem sub |\r\nRemove-Item",
+    "Get-ChildItem sub |  \nClear-Content",
+    "Set-Content notes.txt -s Zone.Identifier -Value x",   # -s is -Stream
+    "Get-Content notes.txt -St Zone.Identifier",
+    "Remove-Item notes.txt -stre x",
+    "New-Item -Path sub -Name evil -Value x",              # -Name puts it elsewhere
+    "New-Item -Path sub -n evil",
+    "Get-Content sub/nul",                                 # a device inside a path
+    "Get-Content 'nul '",
+])
+def test_what_the_verification_passes_found_asks(folder, command):
+    assert not copilot_folder.command_allowed(command, folder)
+
+
+@windows_paths
+@pytest.mark.parametrize("command", [
+    "Get-ChildItem sub | cat",                             # cat is Get-Content there
+    "Get-Content paths.txt | type",
+    "Get-Content paths.txt | gc",
+])
+def test_cat_after_a_pipe_asks_on_windows(folder, command):
+    assert not copilot_folder.command_allowed(command, folder)
+
+
+@windows_paths
+@pytest.mark.parametrize("command", [
+    "Get-Content -Raw notes.txt",                          # Copilot's commonest read
+    "Get-Content notes.txt -ReadCount 0",
+    "Copy-Item notes.txt -Destination sub\copy.txt",
+])
+def test_ordinary_reads_and_copies_are_allowed(folder, command):
+    assert copilot_folder.command_allowed(command, folder)
+
+
+def test_a_copy_names_its_folder_first_or_last(folder, tmp_path):
+    outside = tmp_path / "outside.txt"
+    outside.write_text("x", encoding="utf-8")
+    try:
+        os.link(outside, os.path.join(folder, "sub", "notes.txt"))
+    except OSError:
+        pytest.skip("this file system has no hard links")
+    if sys.platform == "win32":
+        assert not copilot_folder.command_allowed("Copy-Item -Destination sub notes.txt", folder)
+        assert not copilot_folder.command_allowed("Move-Item -Destination sub notes.txt", folder)
+    else:
+        assert not copilot_folder.command_allowed("cp notes.txt sub", folder)

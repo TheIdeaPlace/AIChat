@@ -285,7 +285,9 @@ too).
   app or terminal session on in The Chat Place, as a copy: a new Chat Place session in the same
   folder, with the whole conversation so far in its messages, that you reply to here. You type its
   first message in the same dialog as New Session; the title starts as "<title> (continued)". The
-  original session isn't changed, and what you do in the copy doesn't appear in it.
+  original session isn't changed, and what you do in the copy doesn't appear in it. For a
+  Copilot chat, the copy's first message carries the conversation so far instead (see GitHub
+  Copilot CLI chats).
 
 ### Starting a session and replying
 
@@ -398,7 +400,8 @@ too).
     just before asking and each question in full; then each question as a group of options
     with their descriptions, with Other and a box to type your own answer; a Preview box when
     an option has a preview, showing the one for the option you're on (#415); Send Answers, or
-    Don't Answer.
+    Don't Answer. A question with one answer is a single Tab stop, on its chosen option, or its
+    first while none is chosen.
   - **Plan:** the plan to read (Read Formatted shows it as a page, by heading), then **Approve**, choosing the mode to carry on in (accept
     edits, auto or manual), or **Keep Planning** with what to change, which is the default.
 
@@ -571,8 +574,15 @@ changes Copilot ran. Chats started in Copilot CLI, or in another app, are read-o
 in Copilot CLI.
 
 **Starting a Copilot chat here.** In New Session, choose **Copilot** as the Provider, then a
-folder and your first message. Copilot uses its own model and settings, and each message uses
-requests from your Copilot plan. Type and send as in any chat started here; messages sent while
+folder and your first message. **Model** lists the models Copilot offered your last Copilot chat
+here (it lists them only for a chat), each with the premium requests a message costs, such as
+"GPT-5 (1x)"; leave it on Copilot's configured model, or choose one, and the chat switches to it
+before your first message goes; if Copilot won't, the chat says so and uses Copilot's own.
+**File, Change Model** (Alt+F, D) changes a Copilot chat's model later, from its next turn,
+choosing from the models Copilot offers that chat; the chat must be open in Copilot first (select
+it and wait until it's ready). Once it is, the chat's heading says its model ("on GPT-5 (1x)").
+Effort and Copilot's other
+settings are its own. Each message uses requests from your Copilot plan. Type and send as in any chat started here; messages sent while
 Copilot is answering wait their turn, and Stop (Ctrl+Period) cancels the answer and
 puts any waiting messages back in the message box, unsent. Copilot asks before it runs a command
 or changes a file: you hear "needs your answer", and Answer (Ctrl+Shift+A) shows the whole
@@ -591,12 +601,26 @@ Place won't send to Copilot:
 
 **Plan mode.** A Copilot chat started here is in Copilot's agent mode or its plan mode. In plan
 mode Copilot works out a plan and doesn't edit your files (it keeps the plan in its own session
-folder); it still asks before anything that needs your permission. Choose the mode in New Session (Permission mode),
+folder); it still asks before anything that needs your permission. Choose the mode in New Session or Continue Here (Permission mode),
 or switch a chat with **Change Permission Mode** (Ctrl+Shift+O), as Shift+Tab does in Copilot
-CLI. If Copilot can't start a new chat in plan mode, nothing is sent until you choose a mode
-with Change Permission Mode. When Copilot says to switch out of plan mode to
-make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
+CLI. The chat's heading ends "plan mode" while it's in plan mode, and if Copilot switches modes
+by itself you hear it. If Copilot can't start a new chat in plan mode, or reopens a chat in
+another mode than the one you chose and won't switch it back, nothing is sent until you choose a
+mode with Change Permission Mode; either choice, the one it's in now too, then lets it send. A
+chat started for an agent conversation starts in agent mode. When Copilot says to switch out of
+plan mode to make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
 it asking, is never offered, and a chat Copilot puts in it isn't sent to.
+
+A Copilot chat started in Copilot CLI or another app can be carried on here with
+**Continue Here** (Ctrl+Shift+N). Copilot can't copy a chat, so the copy is a new Copilot chat of The Chat
+Place's own in the same folder, and your first message goes with the conversation so far: your
+messages and Copilot's replies, labelled as history (the newest kept if it's long), but not the
+commands Copilot ran or their output. It goes as part of your first message, so it costs no extra
+request. If that message doesn't go, the history waits for your next one, but only while The Chat
+Place stays open: the chat says so. A first message too long to go with the history is
+refused and kept, so you can shorten it. In the copy's messages the history is one row,
+"Earlier conversation", just before your first message; Enter reads it in full. Model
+and Permission mode offer the same choices as in New Session. The original chat isn't changed.
 
 **Running freely in the chat's folder.** Copilot asks before every command and every file
 change, even one that only reads, such as Get-Item. For a chat you trust with a folder, choose
@@ -619,9 +643,20 @@ file changes, which name their full path, are still allowed for you. For a comma
 strict reading of what the command says, not a lock, so anything unusual asks. It relies on
 Copilot asking about every command: commands your own Copilot settings already allow never come to
 The Chat Place at all.
-It lasts until you choose Agent or Plan in Change Permission Mode, or close The Chat Place.
+It lasts until you choose Agent or Plan in Change Permission Mode, or close The Chat Place, and
+only while Copilot is in agent mode: if Copilot switches to plan mode, it ends, and the chat says
+so. The chat's heading says "runs freely in its folder", and Chat Permissions (Ctrl+Shift+H)
+lists everything allowed for you in it, newest first. A command after a pipe (`|`) may only sort,
+select or format what comes in (Select-String is allowed reading a file it names, not after a
+pipe); moving a file always asks; deleting a folder, even without -Recurse, asks; and copying into
+a folder checks the file that would be written there. It isn't offered on a computer where your organisation
+has installed GitHub Copilot policy (in `C:\ProgramData\GitHub\Copilot\policy.d`, the
+registry's `Software\Policies\GitHub\Copilot`, or `/etc/github-copilot/policy.d`): there each
+request asks. Use it only in a folder that's backed up or
+under version control, and not with files you haven't checked: instructions hidden in a file
+Copilot reads could steer what it does there.
 
-Continue Here and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+Chat Permissions isn't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it. Usage and Context (Ctrl+Shift+U) says how full a Copilot chat's
 context is (once Copilot has answered in it here) and how many premium requests the chat has
 used, from its log; Copilot doesn't say how many your plan has left, so check that in GitHub's
@@ -1170,8 +1205,8 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+U | Usage and context: a list of how full the context is, and each plan limit |
 | Anywhere | Alt+V, H | Show Sessions: choose which sessions are listed |
 | Anywhere | Alt+V, E | Session List Columns: choose what each session's line says, and in what order |
-| Anywhere | Ctrl+Shift+N | Continue the selected (or loaded) desktop app or terminal session here, as a copy |
-| Anywhere | Ctrl+Shift+O | Change Permission Mode for the selected (or loaded) Chat Place session, from its next turn |
+| Anywhere | Ctrl+Shift+N | Continue the selected (or loaded) chat from the desktop app, a terminal or another app here, as a copy |
+| Anywhere | Ctrl+Shift+O | Change Permission Mode: Claude permission modes, Codex file access and approval reviewer, or Copilot agent or plan mode for the selected (or loaded) Chat Place session |
 | Anywhere | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode and kept rules, to read and remove |
 | Session list | F5 | Refresh the list now and put it in order |
 | Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
@@ -1219,6 +1254,7 @@ Everything it reads is on your own computer, so reading costs nothing.
 | Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json` (on a Mac, `~/Library/Application Support/TheChatPlace/provider-tasks/codex/<sha256>.json`): the latest task list captured for each owned Codex chat, with its turn ID. The Chat Place can't delete Codex chats yet, so these files stay until you delete them. |
 | The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (on a Mac, `~/Library/Application Support/TheChatPlace/sessions.json`), and `speech.json` for settings. If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json` (on a Mac, `~/Library/Application Support/TheChatPlace/prompts.json`). If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
+| The session tools' connection | `%APPDATA%\TheChatPlace\session-tools.json` (on a Mac, `~/Library/Application Support/TheChatPlace/session-tools.json`): where Claude turns' session tools reach the running app, and the key they need (see Session tools for Claude turns). Readable only by you, and deleted when The Chat Place closes. |
 | Errors | `%APPDATA%\TheChatPlace\error.log` (on a Mac, `~/Library/Application Support/TheChatPlace/error.log`): anything that went wrong unexpectedly, with its traceback |
 
 Copilot CLI sessions are read from `%USERPROFILE%\.copilot\session-state\<id>\` (`~/.copilot/session-state/<id>/` on a Mac)
@@ -1297,6 +1333,43 @@ instead, ahead of anything typed since, with the cursor left at the end. While o
 The Chat Place's sessions is loaded, Send and Stop are never disabled, so from the message box, Tab
 is always Send and the next Tab is always Stop. When a turn is running, Tab doesn't jump past
 Send to Stop.
+
+### Session tools for Claude turns
+
+The Claude desktop app gives its sessions tools for managing sessions, which commands and skills
+such as `/wrap` call by name: `mcp__ccd_session_mgmt__list_sessions`, `get_session`,
+`archive_session`, `search_session_transcripts` and `open_session_in`. A `claude -p` turn has no
+desktop app behind it, so The Chat Place gives each Claude turn it runs an MCP server of its own
+under the same name, with `--mcp-config` (#165). The server is The Chat Place itself, started with
+`--session-tools-mcp`, so the built app needs nothing else installed.
+
+- **list_sessions** and **get_session** answer from The Chat Place's own list, the one its window
+  shows: desktop app, Cowork and terminal sessions, its own, and Codex and Copilot chats, with
+  your names for them. Each has the desktop app's fields (`sessionId`, `title`, `cwd`,
+  `isArchived`, `isRunning`, `lastActivityAt`, and `link`, a `claude://` link, for desktop app
+  sessions), and The Chat Place's own (`kind`, `provider`, `repo`, `state`, `isHidden`,
+  `chatPlaceLink`). As in the desktop app, the session asking is always left out, and archived
+  sessions unless `include_archived` is true; a hidden session counts as archived.
+- **archive_session** hides one of The Chat Place's own sessions, or a terminal session, exactly
+  as File, Hide Session does, and the list changes at once. It refuses a desktop app session (The
+  Chat Place never changes the desktop app's files) and says to archive it in the desktop app's
+  sidebar; another app's chat, in that app. It refuses a session with a turn running, including
+  the one asking, and one open in the window, so nothing you're reading or typing disappears; the
+  list stays on the session you're on.
+- **search_session_transcripts** searches messages like Find in All Sessions, but across every
+  session that isn't archived (or every one, with `include_archived`), tool activity included,
+  and gives a snippet of the newest match in each.
+- **open_session_in** says it isn't available here and points to the session's link.
+
+The server runs as a child of `claude`, but the list (your titles, hidden sessions, running turns,
+and the Codex and Copilot chats only the running app can reach) is in the window, and the window
+keeps its hidden list in memory, so a change written behind its back would be lost. So the server
+asks the window. With the first Claude turn, the window opens a local connection
+(`multiprocessing.connection`: a named pipe on Windows, a Unix socket in a private folder on a Mac
+and Linux) that needs a random key, and writes its address and key to `session-tools.json` in The
+Chat Place's folder, readable only by you, and deletes it on closing. Neither is on any command
+line. Each tool call is one JSON request; the list is read and a session hidden on the window's
+thread, and a search reads transcripts off it.
 
 ### Steering a running turn
 
@@ -1397,6 +1470,10 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   folder inside the desktop app's files, where `claude -p` on your PC can't resume it, and its
   tools were run by the desktop app. Open in Claude carries on there.
 - Subagent conversations are left out of the chat.
+- Claude chats started here have the desktop app's session tools that `/wrap` and similar
+  commands use (see Session tools for Claude turns), but not its other tools: reading another
+  session's events or stopping it, Remote Control and window tools, the browser pane and computer
+  use. Archiving can't change a desktop app session.
 - Turns of The Chat Place's own sessions are also spoken by ClaudeSpeak's Stop hook, if that's
   installed, since `claude -p` runs hooks; so a reply can be heard twice.
 - The desktop app's file formats are undocumented and could change with any update.

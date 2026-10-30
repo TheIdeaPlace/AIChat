@@ -615,14 +615,32 @@ appear in the desktop app. If Claude starts something in the background, such as
 wait for GitHub checks, the chat keeps running while it does, and Claude carries on by itself
 when it finishes (see Replying).
 
+### Session commands in Claude chats
+
+Commands and skills that manage your sessions, such as `/wrap`, work in Claude chats started
+here, as they do in the desktop app. Claude can list the sessions in The Chat Place's list
+(desktop app sessions, chats started here, terminal sessions and Codex and Copilot chats), look
+one up, and search their messages, like Find in All Sessions but across every chat.
+
+Archiving works for chats started here and for terminal sessions: it hides the chat, as
+File, **Hide Session** does, so it moves to View, Show Sessions, Hidden, and File,
+**Bring Back Session** returns it. A desktop app session is never changed from here: Claude is
+told to archive it in the desktop app's sidebar instead. A chat with a turn running, including
+the one you're asking from, isn't archived, and neither is the chat you have open, so nothing
+you're reading or typing disappears; hide it yourself once you're done. Archiving never moves
+you in the list. Claude can't switch the desktop app to another session from here, but it can
+give you the session's link.
+
 ### Continue Here
 
 To carry on a chat that was started elsewhere, use **Continue Here** (Ctrl+Shift+N, or the
 button after the note, where the reply box would be). It makes a new chat here in the same
 folder, with the whole conversation so far, and you type its first message. Its title starts as
 the original's, followed by "(continued)". The original chat isn't changed, and what you do in
-the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats and
-for Codex chats; not for Cowork or Copilot chats.
+the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats, for
+Codex chats and for Copilot chats; not for Cowork chats. A Copilot copy is a little different:
+Copilot can't copy a chat, so your first message goes with the conversation so far, as text (see
+"Starting a Copilot chat").
 
 ### Following a chat as it works
 
@@ -646,10 +664,10 @@ doesn't name, is an "other app session" or an "external session".
 |---|---|---|---|---|
 | **Desktop app session** | The Claude desktop app's Code tab | in the desktop app | yes | yes |
 | **Cowork session** | The desktop app's Cowork tab | in the desktop app | yes | no |
-| **Terminal session** | A terminal, with `claude` or `copilot`, and some Codex terminal chats | in that terminal | no | Claude and Codex |
+| **Terminal session** | A terminal, with `claude` or `copilot`, and some Codex terminal chats | in that terminal | no | yes |
 | **Editor session** | Codex in an editor or the Codex app, and often Codex in a terminal | where it was started | no | yes |
 | **Command-line session** | Codex run as a command | in Codex | no | yes |
-| **Other app session** or **external session** | Another app | in that app | no | Codex |
+| **Other app session** or **external session** | Another app | in that app | no | Codex and Copilot |
 | **Chat Place session** | The Chat Place (File, New Session) | here, in the reply box | no | not needed |
 | **Agent conversation** | The Chat Place (File, New Agent Conversation) | here, in the reply box | no | no |
 
@@ -665,10 +683,10 @@ whether the chat was started here:
 | Send Now, edit or remove a queued message | yes | no: Stop returns it | no: Stop returns it |
 | Steer a running turn (Ctrl+Alt+Enter) | yes | yes | no: queue it instead |
 | Answer requests (Ctrl+Shift+A) | permissions, questions and plans | permissions and questions | permissions |
-| Change Model or Change Effort later | yes | no: choose in New Session | no: Copilot's own |
+| Change Model or Change Effort later | yes | no: choose in New Session | Change Model only |
 | Change Permission Mode | yes | yes | agent or plan mode |
 | Chat Permissions | yes | yes | no |
-| Continue Here | desktop app and terminal chats | yes | no |
+| Continue Here | desktop app and terminal chats | yes | yes, with the conversation as text |
 | Commands and skills (Ctrl+/) | yes | no | no |
 | Attachments | yes | no | no |
 | Changed Files in Lists | yes | yes | yes |
@@ -799,8 +817,12 @@ Show Sessions, Terminal Sessions includes them; ones started from another app ar
 ### Starting a Copilot chat
 
 In New Session (Ctrl+N), choose **Copilot** as the Provider, then a folder and your first
-message. Copilot uses its own model and settings, and each message uses requests from your
-Copilot plan. Type and send as in any chat started here. Messages you send while Copilot is
+message. **Model** lists the models Copilot offered your last Copilot chat here, each with the
+premium requests a message costs, such as "GPT-5 (1x)". Copilot lists its models only for a
+chat, so before your first Copilot chat here only its configured model is offered. Choose one, and
+the chat switches to it before your first message goes; if Copilot won't, the chat says so and
+uses Copilot's own. Effort and Copilot's other settings are its own. Each message uses requests
+from your Copilot plan. Type and send as in any chat started here. Messages you send while Copilot is
 answering wait their turn, and Stop (Ctrl+Period) cancels the answer and puts any waiting
 messages back in the message box, unsent.
 
@@ -822,12 +844,26 @@ The Chat Place won't send to Copilot:
 
 **Plan mode.** A Copilot chat started here is in Copilot's agent mode or its plan mode. In plan
 mode Copilot works out a plan and doesn't edit your files (it keeps the plan in its own session
-folder); it still asks before anything that needs your permission. Choose the mode in New Session (Permission mode),
+folder); it still asks before anything that needs your permission. Choose the mode in New Session or Continue Here (Permission mode),
 or switch a chat with **Change Permission Mode** (Ctrl+Shift+O), as Shift+Tab does in Copilot
-CLI. If Copilot can't start a new chat in plan mode, nothing is sent until you choose a mode
-with Change Permission Mode. When Copilot says to switch out of plan mode to
-make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
+CLI. The chat's heading ends "plan mode" while it's in plan mode, and if Copilot switches modes
+by itself you hear it. If Copilot can't start a new chat in plan mode, or reopens a chat in
+another mode than the one you chose and won't switch it back, nothing is sent until you choose a
+mode with Change Permission Mode; either choice, the one it's in now too, then lets it send. A
+chat started for an agent conversation starts in agent mode. When Copilot says to switch out of
+plan mode to make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
 it asking, is never offered, and a chat Copilot puts in it isn't sent to.
+
+A Copilot chat started in Copilot CLI or another app can be carried on here with
+**Continue Here** (Ctrl+Shift+N). Copilot can't copy a chat, so the copy is a new Copilot chat of The Chat
+Place's own in the same folder, and your first message goes with the conversation so far: your
+messages and Copilot's replies, labelled as history (the newest kept if it's long), but not the
+commands Copilot ran or their output. It goes as part of your first message, so it costs no extra
+request. If that message doesn't go, the history waits for your next one, but only while The Chat
+Place stays open: the chat says so. A first message too long to go with the history is
+refused and kept, so you can shorten it. In the copy's messages the history is one row,
+"Earlier conversation", just before your first message; Enter reads it in full. Model
+and Permission mode offer the same choices as in New Session. The original chat isn't changed.
 
 **Running freely in the chat's folder.** Copilot asks before every command and every file
 change, even one that only reads, such as Get-Item. For a chat you trust with a folder, choose
@@ -850,9 +886,20 @@ file changes, which name their full path, are still allowed for you. For a comma
 strict reading of what the command says, not a lock, so anything unusual asks. It relies on
 Copilot asking about every command: commands your own Copilot settings already allow never come to
 The Chat Place at all.
-It lasts until you choose Agent or Plan in Change Permission Mode, or close The Chat Place.
+It lasts until you choose Agent or Plan in Change Permission Mode, or close The Chat Place, and
+only while Copilot is in agent mode: if Copilot switches to plan mode, it ends, and the chat says
+so. The chat's heading says "runs freely in its folder", and Chat Permissions (Ctrl+Shift+H)
+lists everything allowed for you in it, newest first. A command after a pipe (`|`) may only sort,
+select or format what comes in (Select-String is allowed reading a file it names, not after a
+pipe); moving a file always asks; deleting a folder, even without -Recurse, asks; and copying into
+a folder checks the file that would be written there. It isn't offered on a computer where your organisation
+has installed GitHub Copilot policy (in `C:\ProgramData\GitHub\Copilot\policy.d`, the
+registry's `Software\Policies\GitHub\Copilot`, or `/etc/github-copilot/policy.d`): there each
+request asks. Use it only in a folder that's backed up or
+under version control, and not with files you haven't checked: instructions hidden in a file
+Copilot reads could steer what it does there.
 
-Continue Here and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+Chat Permissions isn't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.
 
 ## Starting a chat and replying
@@ -926,11 +973,18 @@ Escape to leave it as it is.
 - **Change Permission Mode** (Ctrl+Shift+O): auto, accept edits, manual or plan.
 
 You hear the change and when it counts, such as "Permission mode for Fix the build: plan, from its
-next turn." A turn that's already running carries on as it started, and you hear that too. The
-chat's heading, at the top of its messages, says its model, and its effort and mode when they
-aren't the defaults: "on Opus at high effort, plan mode". Approving a plan, or allowing something
+next turn." In a Claude chat, a turn that's already running carries on as it started, and you hear
+that too. The chat's heading, at the top of its messages, says its model, and its effort and mode
+when they aren't the defaults: "on Opus at high effort, plan mode". Approving a plan, or allowing something
 "for this chat" that switches mode, changes the mode as well; approving a plan starts on the
 mode you chose here, unless that was plan.
+
+In a Copilot chat started here, **Change Model** lists the models Copilot offers that chat, with
+the premium requests a message costs, and you hear the change, such as "Fix the build now uses GPT
+Mini (0.33x), from its next turn." The chat must be open in Copilot first: select it and wait
+until it's ready. Once it is, the chat's heading says the model Copilot reports for it, such as
+"on GPT Mini (0.33x)". Change Effort and Change Permission Mode don't apply: effort is Copilot's
+own, and Copilot always asks before it acts.
 
 For a Codex chat started here, **Change Permission Mode** switches between read-only and editing
 files in its folder, with you or automatic approval review checking requests. Finish or stop the
@@ -1203,7 +1257,9 @@ What each provider offers:
   before asking (often the thing it's asking about, such as a draft to approve), then each
   question in full. Below it, each question is a group of choices, with Other and a box for your
   own answer. When a choice comes with a preview, the Preview box after the questions shows the
-  preview of the choice you're on. Send Answers, or Don't Answer.
+  preview of the choice you're on. Send Answers, or Don't Answer. A question with one answer is a
+  single Tab stop, on your choice, or on its first choice until you've made one (the arrow keys
+  move between choices); in a question with several answers, each choice is a stop.
 - **Claude, a plan:** read it (Read Formatted shows it as a page, by heading), then **Approve**,
   choosing how Claude carries on, or **Keep Planning**, the default, with what to change.
 - **Codex, a permission:** the request shows the command, its folder and Codex's reason, and a

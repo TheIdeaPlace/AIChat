@@ -119,6 +119,21 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         def close(self):
             pass
     patch(main_frame, "Notifier", FakeNotifier)
+    # No real connection for the session tools (#165): a turn's --mcp-config
+    # is still made, and tests call the window's answers directly.
+    from thechatplace import session_tools
+
+    class FakeSessionToolsHost:
+        def __init__(self, handle, data_dir=None):
+            self.handle = handle
+            self.closed = False
+
+        def start(self):
+            pass
+
+        def close(self):
+            self.closed = True
+    patch(session_tools, "Host", FakeSessionToolsHost)
     # Nor take the Mac's menu bar from the app you're using.
     activated = []
     from thechatplace.ui import mac_a11y
@@ -161,8 +176,9 @@ class FakeRunner:
     instances = []
 
     def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
-                 task_list=False):
+                 task_list=False, mcp_config=None):
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
+        self.mcp_config = mcp_config
         self.images = images or []
         self.remote_control = remote_control
         self.task_list = task_list

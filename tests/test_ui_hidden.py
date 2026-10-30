@@ -4877,7 +4877,9 @@ def test_arrow_keys_move_through_a_question_s_options(frame):
 
 def test_only_plain_arrows_on_a_radio_are_taken(frame, monkeypatch):
     # #121's key hook keeps every other key, and arrows anywhere else, working.
+    # Arrows are the Mac's only; Windows moves through a radio group itself.
     from thechatplace.ui.dialogs import QuestionDialog
+    monkeypatch.setattr(wx, "Platform", "__WXMAC__")
     dialog = QuestionDialog(frame, "Probe", _Questions())
     try:
         (_k1, first, other_text), (_k2, multi, _t2), _third, _fourth = dialog._controls
@@ -4894,11 +4896,116 @@ def test_only_plain_arrows_on_a_radio_are_taken(frame, monkeypatch):
 
         assert not press(red, wx.WXK_DOWN) and blue.GetValue()  # taken: moves the choice
         for focus, key, control in [(blue, wx.WXK_RETURN, False), (blue, wx.WXK_ESCAPE, False),
-                                    (blue, wx.WXK_TAB, False), (blue, wx.WXK_DOWN, True),
+                                    (blue, wx.WXK_TAB, True), (blue, wx.WXK_DOWN, True),
                                     (other_text, wx.WXK_DOWN, False), (multi[0], wx.WXK_DOWN, False),
                                     (None, wx.WXK_DOWN, False)]:
             assert press(focus, key, control), (focus, key, control)
         assert blue.GetValue()  # none of those moved it
+        monkeypatch.setattr(wx, "Platform", "__WXMSW__")
+        assert press(red, wx.WXK_DOWN)  # Windows' own, as before
+    finally:
+        dialog.Destroy()
+
+
+def test_tab_reaches_every_question_while_none_is_answered(frame, monkeypatch):
+    """The options start with none chosen, and Windows' Tab goes only to a
+    group's chosen option, so from the question's text (#415) Tab skipped
+    every option and landed in the first question's answer box. The dialog
+    keeps its own Tab order: each question once, on its chosen option, or its
+    first while none is."""
+    from thechatplace.ui.dialogs import QuestionDialog
+    dialog = QuestionDialog(frame, "Probe", _Questions())
+    try:
+        (_k1, first, t1), (_k2, multi, t2), (_k3, third, t3), (_k4, fourth, t4) = dialog._controls
+        red, blue, _other1 = first
+        send, decline, later = dialog._buttons
+        assert dialog.tab_stops() == [dialog.question_text, red, t1, *multi, t2, third[0], t3,
+                                      fourth[0], t4, send, decline, later]
+        press = _tab_presser(dialog, monkeypatch)
+        assert press(dialog.question_text) is red  # the bug: this was the answer box
+        assert press(red) is t1
+        assert press(t1, shift=True) is red
+        assert press(dialog.question_text, shift=True) is later  # wraps, as Windows does
+        assert press(later) is dialog.question_text
+        blue.SetValue(True)  # once chosen, the question's stop is its answer
+        assert press(dialog.question_text) is blue
+        assert press(red) is t1  # an option that isn't the stop still leaves the group
+        assert press(t1, shift=True) is blue
+        assert press(red, shift=True) is dialog.question_text  # and back out of it too
+        # Focus that isn't the dialog's own: Tab goes on as the system has it.
+        assert press(None) is _SKIPPED and press(dialog) is _SKIPPED
+    finally:
+        dialog.Destroy()
+
+
+_SKIPPED = object()
+
+
+def _tab_presser(dialog, monkeypatch, refuse=()):
+    """press(focus, shift) -> where Tab put the focus, or _SKIPPED when the
+    dialog left the key to the system. ``refuse`` won't take focus from the
+    keyboard, as radio buttons and buttons on a Mac without Full Keyboard
+    Access."""
+    state = {"focus": None}
+    windows = {dialog.question_text, *dialog._buttons}
+    if dialog.preview_text is not None:
+        windows.add(dialog.preview_text)
+    for _kind, controls, other_text in dialog._controls:
+        windows.update(controls)
+        windows.add(other_text)
+    for window in windows:
+        monkeypatch.setattr(window, "SetFocusFromKbd",
+                            lambda w=window: state.update(focus=w))
+        monkeypatch.setattr(window, "CanAcceptFocusFromKeyboard",
+                            lambda w=window: w not in refuse)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: state["focus"]))
+
+    def press(focus, shift=False):
+        state["focus"] = focus
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_TAB)
+        event.SetShiftDown(shift)
+        dialog._on_char_hook(event)
+        return _SKIPPED if event.GetSkipped() else state["focus"]
+    return press
+
+
+def test_tab_passes_over_what_wont_take_focus(frame, monkeypatch):
+    """On a Mac with Full Keyboard Access off, radio buttons and push buttons
+    refuse keyboard focus: Tab goes on to the next stop that takes it, and
+    with none, is left to the system rather than going nowhere (#428)."""
+    from thechatplace.ui.dialogs import QuestionDialog
+    dialog = QuestionDialog(frame, "Probe", _Questions())
+    try:
+        (_k1, first, t1), (_k2, _multi, t2), (_k3, _third, t3), (_k4, fourth, t4) = dialog._controls
+        refuse = {c for _k, controls, _t in dialog._controls for c in controls} | set(dialog._buttons)
+        press = _tab_presser(dialog, monkeypatch, refuse)
+        assert press(dialog.question_text) is t1
+        assert press(t1) is t2
+        assert press(dialog.question_text, shift=True) is t4
+        everything = refuse | {dialog.question_text, t1, t2, t3, t4}
+        press = _tab_presser(dialog, monkeypatch, everything)
+        assert press(dialog.question_text) is _SKIPPED
+    finally:
+        dialog.Destroy()
+
+
+def test_a_codex_question_s_tab_stops_include_its_preview(frame):
+    """Codex's question without Other has no answer box to stop at, and a
+    choice with a preview adds the Preview box before the buttons."""
+    from thechatplace.ui.dialogs import QuestionDialog
+
+    class Codex:
+        def questions(self):
+            return [{"id": "q", "header": "Mode", "question": "Which mode?", "isOther": False,
+                     "options": [{"label": "Fast", "preview": "Runs the quick checks"},
+                                 {"label": "Full"}]}]
+    dialog = QuestionDialog(frame, "Probe", Codex(), provider="Codex")
+    try:
+        ((_kind, controls, other_text),) = dialog._controls
+        assert not other_text.IsShown() and len(controls) == 2
+        assert dialog.tab_stops() == [dialog.question_text, controls[0], dialog.preview_text,
+                                      *dialog._buttons]
     finally:
         dialog.Destroy()
 
@@ -12862,9 +12969,125 @@ def test_a_copilot_chat_is_reopened_after_a_restart_from_its_record(frame, env, 
         assert pump(lambda: frame.sessions.owned_action("ready", record), timeout=COPILOT_WAIT)
         frame.reply_text.SetValue("Again")
         frame.on_send()
-        assert pump(lambda: _received_prompts(env)[-1:] == ["Again"]
+        sent = pump(lambda: _received_prompts(env)[-1:] == ["Again"]
                     and _copilot_state(frame) is not None
                     and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        # What it saw, so a failure on CI says why (it failed there on macOS
+        # and Windows, never locally).
+        state = _copilot_state(frame)
+        assert sent, (_received_prompts(env), env["feedback"][-6:],
+                      state and (state.state, state.turn_id, state.outcome, state.notice,
+                                 state.problem, state.queued, state.unsent),
+                      frame.reply_text.GetValue(),
+                      runtime.ready(native), dict(frame._codex_preparing))
+    finally:
+        runtime.close()
+
+
+def test_a_chat_opened_before_its_runtime_was_ready_sends_once_it_is(frame, env, monkeypatch):
+    """#430: a reopened chat opened before its runtime had it ready is marked
+    as getting ready until the window next looks. A message sent after the
+    runtime was ready but before that was refused with "still getting ready";
+    in CI, where the runtime is slower, the test above failed so. Here that
+    moment is made by hand: ready, still marked, and sent at once."""
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        frame._create_codex_owned(folder, "Kept Copilot", "Say hello", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        native = frame._open.cli_session_id
+    finally:
+        runtime.close()
+    frame._codex_states.clear()
+    frame._open = None
+    runtime, _ = _copilot_window(frame, env, monkeypatch)
+    try:
+        record = frame.store.get(native, provider="copilot")
+        info = record.to_info()
+        frame.open_session(info)
+        assert pump(lambda: frame.sessions.owned_action("ready", record), timeout=COPILOT_WAIT)
+        frame._codex_preparing[info.key] = frame._open_generation  # as a slow runtime leaves it
+        frame.reply_text.SetValue("Again")
+        frame.on_send()  # with no event in between to clear the mark
+        assert "This Copilot chat is still getting ready." not in env["feedback"]
+        assert pump(lambda: _received_prompts(env)[-1:] == ["Again"], timeout=COPILOT_WAIT)
+    finally:
+        runtime.close()
+
+
+def test_a_reopened_chat_whose_mode_wasnt_kept_isnt_sent_to_once_ready(frame, env, monkeypatch):
+    """#430's check asks the runtime whether a chat being got ready is ready;
+    one reopened in another mode than the one chosen for it, which Copilot
+    won't switch back, never is (MODE_NOT_KEPT), so a message sent while it
+    is still marked, or after, doesn't go (#424)."""
+    from thechatplace.providers.copilot_runtime import MODE_NOT_KEPT, PLAN_MODE
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        frame._create_codex_owned(folder, "Planned Copilot", "Plan it", provider="copilot",
+                                  copilot_mode=PLAN_MODE)
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        native = frame._open.cli_session_id
+    finally:
+        runtime.close()
+    frame._codex_states.clear()
+    frame._open = None
+    runtime, _ = _copilot_window(frame, env, monkeypatch, mode="nomode")
+    try:
+        record = frame.store.get(native, provider="copilot")
+        info = record.to_info()
+        frame.open_session(info)
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).problem == MODE_NOT_KEPT
+                    and info.key not in frame._codex_preparing, timeout=COPILOT_WAIT)
+        # Said once, as the chat's opening ends with it still set (an
+        # announcement that doesn't interrupt is recorded as feedback).
+        assert sum(MODE_NOT_KEPT in text for text in env["feedback"]) == 1
+        assert not frame.sessions.owned_action("ready", record)
+        frame._codex_preparing[info.key] = frame._open_generation  # as a slow runtime leaves it
+        frame.reply_text.SetValue("Again")
+        frame.on_send()
+        assert env["feedback"][-1] == "This Copilot chat is still getting ready."
+        frame._codex_preparing.pop(info.key, None)
+        frame.reply_text.SetValue("Again")
+        frame.on_send()
+        assert pump(lambda: sum("another mode than the one chosen" in text
+                                for text in env["feedback"]) == 2, timeout=COPILOT_WAIT)
+        assert _received_prompts(env) == ["Plan it"]
+    finally:
+        runtime.close()
+
+
+def test_a_reopened_chat_put_back_in_its_mode_says_no_mode_problem(frame, env, monkeypatch):
+    """Copilot reopens a plan-mode chat in agent mode ("forgetmode") and
+    agrees to switch it back: nothing says it couldn't be switched back
+    (#424)."""
+    from thechatplace.providers.copilot_runtime import MODE_PROBLEMS, PLAN_MODE
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        frame._create_codex_owned(folder, "Kept Plan", "Plan it", provider="copilot",
+                                  copilot_mode=PLAN_MODE)
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+        native = frame._open.cli_session_id
+    finally:
+        runtime.close()
+    frame._codex_states.clear()
+    frame._open = None
+    runtime, _ = _copilot_window(frame, env, monkeypatch, mode="forgetmode")
+    try:
+        record = frame.store.get(native, provider="copilot")
+        info = record.to_info()
+        env["spoken"].clear()
+        env["feedback"].clear()
+        frame.open_session(info)
+        assert pump(lambda: frame.sessions.owned_action("ready", record)
+                    and info.key not in frame._codex_preparing, timeout=COPILOT_WAIT)
+        pump(lambda: False, timeout=0.3)  # any update still on its way
+        assert _copilot_state(frame).mode == PLAN_MODE
+        said = env["spoken"] + env["feedback"]
+        assert not [text for text in said if any(problem in text for problem in MODE_PROBLEMS)]
+        assert not [text for text in said if "Copilot switched to" in text]
     finally:
         runtime.close()
 
@@ -12907,9 +13130,10 @@ def test_new_session_offers_copilot_with_its_own_note(frame):
         # Agent or plan mode (#352): agent unless plan is chosen.
         assert dialog.mode.IsEnabled() and dialog.mode.GetCount() == 2
         _folder, _title, _mode, _message, model = dialog.values()
-        assert model == "" and dialog.effort() == "" and dialog.copilot_mode() == ""
+        from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+        # Agent is asked for too: Copilot's own default needn't be (#424).
+        assert model == "" and dialog.effort() == "" and dialog.copilot_mode() == AGENT_MODE
         dialog.mode.SetSelection(1)
-        from thechatplace.providers.copilot_runtime import PLAN_MODE
         assert dialog.copilot_mode() == PLAN_MODE
         dialog.provider_choice.SetSelection(0)  # back to Claude: its controls return
         dialog._on_provider()
@@ -12926,23 +13150,273 @@ def test_change_permission_mode_switches_a_copilot_chat_to_plan(frame, env, monk
     info = SessionInfo(OWN, "copilot:cp-p", "Planning Copilot", "C:/w", "cp-p", provider="copilot")
     monkeypatch.setattr(frame, "_selected_session", lambda: info)
     monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
-    frame.on_change_permission_mode()
+    try:
+        frame.on_change_permission_mode()
+        assert "isn't open in Copilot yet" in env["feedback"][-1]
+        frame._codex_states[info.key] = CopilotChatState("cp-p", "idle", mode=AGENT_MODE)
+        asked, calls = [], []
+
+        def change_setting(title, prompt, choices, now):
+            asked.append((prompt, [value for value, _label in choices], now))
+            return PLAN_MODE
+        monkeypatch.setattr(frame, "_change_setting", change_setting)
+        recorded = [PLAN_MODE]
+        monkeypatch.setattr(frame.sessions, "owned_action",
+                            lambda action, record, *args: (calls.append((action, args)),
+                                                           recorded[0])[1])
+        frame.on_change_permission_mode()
+        # Run freely in this folder is the third choice (#426), and choosing
+        # a mode turns it off at once, before the switch goes to Copilot.
+        assert asked == [("Mode for Planning Copilot, now agent mode:",
+                          [AGENT_MODE, PLAN_MODE, "free"], AGENT_MODE)]
+        assert pump(lambda: calls == [("set_free", (False,)), ("set_mode", (PLAN_MODE,))]
+                    and env["feedback"][-1:] == ["Planning Copilot: plan mode."])
+        # What's said is the mode Copilot then reports, not the one asked for.
+        recorded[0] = AGENT_MODE
+        frame.on_change_permission_mode()
+        assert pump(lambda: env["feedback"][-1] == "Copilot didn't switch Planning Copilot to "
+                    "plan mode; it's in agent mode.")
+    finally:
+        frame._codex_states.clear()
+
+
+def test_change_permission_mode_unblocks_a_chat_plan_mode_was_refused_for(frame, env, monkeypatch):
+    """Plan mode refused at the start (PLAN_NOT_SET): choosing agent mode,
+    the one the chat is in, isn't "unchanged", so it goes through (#424)."""
+    from thechatplace.providers.copilot_runtime import (AGENT_MODE, PLAN_NOT_SET,
+                                                         CopilotChatState)
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-b", "Blocked Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-b", "Blocked Copilot", "C:/w", "cp-b", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    frame._codex_states[info.key] = CopilotChatState("cp-b", "idle", mode=AGENT_MODE,
+                                                     problem=PLAN_NOT_SET)
+    nows, calls = [], []
+
+    def change_setting(title, prompt, choices, now):
+        nows.append(now)
+        # As _change_setting: the current value chosen again is no change.
+        return None if now == AGENT_MODE else AGENT_MODE
+    monkeypatch.setattr(frame, "_change_setting", change_setting)
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: (calls.append((action, args)), AGENT_MODE)[1])
+    try:
+        frame.on_change_permission_mode()
+        assert nows == [""]
+        assert pump(lambda: calls == [("set_free", (False,)), ("set_mode", (AGENT_MODE,))]
+                    and env["feedback"][-1:] == ["Blocked Copilot: agent mode."])
+    finally:
+        frame._codex_states.clear()
+
+
+def test_a_real_switch_clears_plan_not_set_in_the_window(frame, env, monkeypatch):
+    """With the fake Copilot: plan mode accepted but not confirmed, so the
+    chat sends nothing and says why; Change Permission Mode to agent lets
+    it send."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, PLAN_NOT_SET
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "keepagent")
+    said = []
+    real_say = frame._say
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: (said.append(text), real_say(text, **kw)))
+    try:
+        frame._create_codex_owned(folder, "Unconfirmed Plan", "", provider="copilot",
+                                  copilot_mode=PLAN_MODE)
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).problem == PLAN_NOT_SET, timeout=COPILOT_WAIT)
+        assert pump(lambda: any(PLAN_NOT_SET in text for text in said), timeout=COPILOT_WAIT)
+        # Opening it tries plan mode again (still unconfirmed); wait for that.
+        assert pump(lambda: frame._open is not None and not frame._codex_preparing,
+                    timeout=COPILOT_WAIT)
+        assert _copilot_state(frame).problem == PLAN_NOT_SET
+        info = frame._open
+        monkeypatch.setattr(frame, "_selected_session", lambda: info)
+        monkeypatch.setattr(frame, "_choose", lambda title, prompt, labels, selection=None: 0)
+        frame.on_change_permission_mode()
+        assert pump(lambda: _copilot_state(frame).problem == ""
+                    and env["feedback"][-1:] == ["Unconfirmed Plan: agent mode."],
+                    timeout=COPILOT_WAIT), (_copilot_state(frame).problem, env["feedback"][-3:])
+        assert _copilot_state(frame).mode == AGENT_MODE
+    finally:
+        runtime.close()
+
+
+def test_a_plan_mode_copilot_chat_says_so_in_its_heading(frame, env, monkeypatch):
+    from thechatplace.providers.copilot import chosen_mode
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    try:
+        frame._create_codex_owned(folder, "Planner", "", provider="copilot",
+                                  copilot_mode=PLAN_MODE)
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).mode == PLAN_MODE, timeout=COPILOT_WAIT)
+        assert pump(lambda: frame.session_heading.GetLabel().endswith(", plan mode."),
+                    timeout=COPILOT_WAIT)
+        # Kept for the next time it's opened (#424).
+        assert chosen_mode(frame._open.cli_session_id) == (PLAN_MODE, "")
+    finally:
+        runtime.close()
+
+
+def test_copilot_switching_its_own_mode_is_said_once(frame, env, monkeypatch):
+    """A switch nobody here asked for (Copilot's current_mode_update) is
+    said; one asked for with Change Permission Mode says its own."""
+    from thechatplace.providers.copilot_runtime import (AGENT_MODE, MODE_NOT_KEPT, PLAN_MODE,
+                                                         CopilotChatState)
+    settle(frame)
+    frame.store.add(OwnSession("cp-s", "Self Switch", "C:/w", provider="copilot", started=True))
+    said = []
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: said.append(text))
+    try:
+        frame._on_owned_update("copilot", CopilotChatState("cp-s", "idle", mode=AGENT_MODE))
+        frame._on_owned_update("copilot", CopilotChatState("cp-s", "idle", mode=PLAN_MODE))
+        frame._on_owned_update("copilot", CopilotChatState("cp-s", "idle", mode=PLAN_MODE))
+        assert [t for t in said if "switched" in t] == [
+            "Self Switch: Copilot switched to plan mode."]
+        frame._copilot_mode_pending = {"copilot:cp-s"}
+        frame._on_owned_update("copilot", CopilotChatState("cp-s", "idle", mode=AGENT_MODE))
+        assert len([t for t in said if "switched" in t]) == 1
+        frame._copilot_mode_pending = set()
+        # Nor while the chat is being opened (it may be switched back), nor
+        # with a mode problem, which is said instead.
+        frame._codex_preparing["copilot:cp-s"] = 1
+        frame._on_owned_update("copilot", CopilotChatState("cp-s", "idle", mode=PLAN_MODE))
+        frame._codex_preparing.pop("copilot:cp-s")
+        frame._on_owned_update("copilot", CopilotChatState("cp-s", "idle", mode=AGENT_MODE,
+                                                           problem=MODE_NOT_KEPT))
+        assert len([t for t in said if "switched" in t]) == 1
+    finally:
+        frame._codex_preparing.pop("copilot:cp-s", None)
+        frame._copilot_mode_pending = set()
+        frame._codex_states.clear()
+
+
+def test_new_session_keeps_the_copilot_mode_across_provider_switches(frame):
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, "C:/w", providers=("claude", "copilot"), provider="copilot")
+    try:
+        dialog.mode.SetSelection(1)
+        dialog.provider_choice.SetSelection(0)
+        dialog._on_provider()
+        assert dialog.copilot_mode() == ""
+        dialog.provider_choice.SetSelection(1)
+        dialog._on_provider()
+        assert dialog.mode.GetSelection() == 1 and dialog.copilot_mode() == PLAN_MODE
+    finally:
+        dialog.Destroy()
+
+
+def test_a_copilot_chat_for_an_agent_conversation_is_offered_agent_mode_only(frame):
+    from thechatplace.providers.copilot_runtime import AGENT_MODE
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, "C:/w", providers=("copilot",), provider="copilot",
+                              copilot_plan=False)
+    try:
+        assert dialog.mode.GetCount() == 1 and not dialog.mode.IsEnabled()
+        assert dialog.copilot_mode() == AGENT_MODE
+    finally:
+        dialog.Destroy()
+
+
+def test_continue_here_on_a_copilot_chat_makes_a_copy_with_its_history(frame, env, monkeypatch,
+                                                                       tmp_path):
+    """#352: Copilot can't copy a chat, so the copy is a new Copilot chat of
+    the app's own, and the dialog says what it gets."""
+    from thechatplace.sessions import SessionInfo, TERMINAL
+    from thechatplace.ui import main_frame as mf
+    from thechatplace.ui.dialogs import COPILOT_CONTINUE_NOTE, NewSessionDialog
+    settle(frame)
+    dialog = NewSessionDialog(frame, str(tmp_path), continue_from="CLI chat",
+                              providers=("copilot",), provider="copilot")
+    try:
+        assert dialog.note.GetValue().startswith(COPILOT_CONTINUE_NOTE)
+        # The copy can start in plan mode too (#424).
+        assert dialog.mode.IsEnabled() and dialog.mode.GetCount() == 2
+    finally:
+        dialog.Destroy()
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    info = SessionInfo(TERMINAL, "copilot:cli-1", "CLI chat", str(tmp_path), "cli-1",
+                       provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_require_capability", lambda what, chat: True)
+
+    class Answered:
+        def __init__(self, *args, **kwargs):
+            self.kwargs = kwargs
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def values(self):
+            return str(tmp_path), "CLI chat (continued)", "default", "Carry on", ""
+
+        def copilot_mode(self):
+            return PLAN_MODE
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(mf, "NewSessionDialog", Answered)
+    made = []
+    monkeypatch.setattr(frame, "_create_codex_owned",
+                        lambda folder, title, message, **kw: made.append((folder, title, message, kw)))
+    frame.on_continue_here()
+    assert made == [(str(tmp_path), "CLI chat (continued)", "Carry on",
+                     {"source": info, "provider": "copilot", "model": "",
+                      "copilot_mode": PLAN_MODE})]
+
+
+def test_new_session_offers_the_models_copilot_last_offered(frame):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    offered = (("auto", "Auto (1x)"), ("gpt-mini", "GPT Mini (0.33x)"))
+    dialog = NewSessionDialog(frame, "C:/w", providers=("claude", "copilot"), provider="copilot",
+                              copilot_models=offered)
+    try:
+        # Model and Permission mode (agent or plan, #424) are both chosen.
+        assert dialog.model.IsEnabled() and dialog.mode.IsEnabled()
+        assert list(dialog.model.GetStrings()) == ["Copilot's configured model", "Auto (1x)",
+                                                   "GPT Mini (0.33x)"]
+        assert dialog.values()[4] == ""  # Copilot's own, unless one is chosen
+        dialog.model.SetSelection(2)
+        assert dialog.values()[4] == "gpt-mini"
+        # Over to Claude and back, the choice is kept.
+        dialog.provider_choice.SetSelection(0)
+        dialog._on_provider()
+        dialog.provider_choice.SetSelection(1)
+        dialog._on_provider()
+        assert dialog.values()[4] == "gpt-mini"
+    finally:
+        dialog.Destroy()
+
+
+def test_change_model_in_a_copilot_chat(frame, env, monkeypatch):
+    from thechatplace.providers.copilot_runtime import CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-m", "Model Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-m", "Model Copilot", "C:/w", "cp-m", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    # Not open in Copilot yet: its models aren't known.
+    frame.on_change_model()
     assert "isn't open in Copilot yet" in env["feedback"][-1]
-    frame._codex_states[info.key] = CopilotChatState("cp-p", "idle", mode=AGENT_MODE)
+    frame._codex_states[info.key] = CopilotChatState(
+        "cp-m", "idle", model="auto",
+        models=(("auto", "Auto (1x)"), ("gpt-mini", "GPT Mini (0.33x)")))
     asked, calls = [], []
 
     def change_setting(title, prompt, choices, now):
-        asked.append((prompt, [value for value, _label in choices], now))
-        return PLAN_MODE
+        asked.append((prompt, tuple(choices), now))
+        return "gpt-mini"
     monkeypatch.setattr(frame, "_change_setting", change_setting)
     monkeypatch.setattr(frame.sessions, "owned_action",
                         lambda action, record, *args: calls.append((action, args)))
-    frame.on_change_permission_mode()
-    assert asked == [("Mode for Planning Copilot, now Agent: asks before running commands or "
-                      "changing files:", [AGENT_MODE, PLAN_MODE, "free"], AGENT_MODE)]
-    # Running freely is turned off first, whatever mode is chosen.
-    assert pump(lambda: calls == [("set_free", (False,)), ("set_mode", (PLAN_MODE,))]
-                and env["feedback"][-1] == "Planning Copilot: plan mode.")
+    frame.on_change_model()
+    assert asked == [("Model for Model Copilot, now Auto (1x):",
+                      (("auto", "Auto (1x)"), ("gpt-mini", "GPT Mini (0.33x)")), "auto")]
+    assert pump(lambda: calls == [("set_model", ("gpt-mini",))] and env["feedback"][-1] ==
+                "Model Copilot now uses GPT Mini (0.33x), from its next turn.")
     frame._codex_states.clear()
 
 
@@ -12959,8 +13433,10 @@ def test_running_freely_in_a_copilot_chats_folder_comes_with_a_warning(frame, en
     frame._codex_states[info.key] = CopilotChatState("cp-f", "idle", mode=PLAN_MODE)
     monkeypatch.setattr(frame, "_change_setting", lambda title, prompt, choices, now: COPILOT_FREE)
     calls, warned = [], []
+    # Copilot confirms the mode asked for (#424 says what it reports).
     monkeypatch.setattr(frame.sessions, "owned_action",
-                        lambda action, record, *args: calls.append((action, args)))
+                        lambda action, record, *args: (calls.append((action, args)),
+                                                       AGENT_MODE)[1])
     # Declined: nothing changes.
     monkeypatch.setattr(codex_chats.wx, "MessageBox",
                         lambda text, *a, **k: warned.append(text) or wx.NO)
@@ -12985,6 +13461,182 @@ def test_running_freely_in_a_copilot_chats_folder_comes_with_a_warning(frame, en
         "Free Copilot: allowed for you: Command: Get-Item notes.txt",
         "Free Copilot: allowed for you: File change: C:/w/a.txt"]
     frame._codex_states.clear()
+
+
+def test_a_failed_copilot_model_switch_is_said(frame, env, monkeypatch):
+    from thechatplace.providers.copilot_runtime import CopilotChatError, CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-f", "Failing Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-f", "Failing Copilot", "C:/w", "cp-f", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    frame._codex_states[info.key] = CopilotChatState(
+        "cp-f", "idle", model="auto",
+        models=(("auto", "Auto (1x)"), ("gpt-mini", "GPT Mini (0.33x)")))
+    monkeypatch.setattr(frame, "_change_setting", lambda *a: "gpt-mini")
+
+    def refuse(action, record, *args):
+        raise CopilotChatError("Copilot couldn't switch to that model.")
+    monkeypatch.setattr(frame.sessions, "owned_action", refuse)
+    env["feedback"].clear()
+    try:
+        frame.on_change_model()
+        assert pump(lambda: env["feedback"] == ["Copilot couldn't switch to that model."])
+    finally:
+        frame._codex_states.clear()
+
+
+def test_change_model_says_copilot_isnt_available_for_a_chat_started_here(frame, env, monkeypatch):
+    """Started here, but Copilot isn't running here now: not "wasn't started
+    in The Chat Place" (#422 review)."""
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-u", "Offline Copilot", "C:/w", provider="copilot", started=True))
+    owned = SessionInfo(OWN, "copilot:cp-u", "Offline Copilot", "C:/w", "cp-u", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: owned)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: False)
+    frame.on_change_model()
+    assert env["feedback"][-1] == ("Copilot isn't available here now, so Offline Copilot is "
+                                   "read-only and its model can't be changed.")
+    foreign = SessionInfo("copilot", "copilot:cp-x", "Their Copilot", "C:/w", "cp-x",
+                          provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: foreign)
+    frame.on_change_model()
+    assert "wasn't started in The Chat Place" in env["feedback"][-1]
+
+
+def test_new_session_starts_a_copilot_chat_on_the_model_chosen(frame, env, monkeypatch):
+    """New Session's Model reaches Copilot before anything is sent, and the
+    chat's heading then says it."""
+    from thechatplace.ui import main_frame
+    runtime, folder = _copilot_window(frame, env, monkeypatch)
+    given = {}
+
+    class Dialog:
+        def __init__(self, *a, **k):
+            given.update(k)
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def values(self):
+            return folder, "Chosen Copilot", "auto", "", "gpt-mini"
+
+        def effort(self):
+            return ""
+
+        def provider(self):
+            return "copilot"
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(main_frame, "NewSessionDialog", Dialog)
+    try:
+        frame.on_new_session()
+        assert pump(lambda: _copilot_state(frame) is not None
+                    and _copilot_state(frame).model == "gpt-mini", timeout=COPILOT_WAIT)
+        assert "copilot" in given["providers"] and given["copilot_models"] == ()
+        sent = [json.loads(line) for line in (env["tmp"] / "copilot-received.jsonl").read_text(
+            encoding="utf-8").splitlines()]
+        assert [m["params"]["value"] for m in sent
+                if m.get("method") == "session/set_config_option"] == ["gpt-mini"]
+        assert pump(lambda: frame.session_heading.GetLabel().endswith(
+            "Copilot chat on GPT Mini (0.33x)."), timeout=COPILOT_WAIT)
+        # The next New Session offers what this chat was offered.
+        assert [value for value, _label in frame._copilot_models()] == [
+            "auto", "gpt-test", "gpt-mini"]
+    finally:
+        runtime.close()
+
+
+def test_a_model_copilot_wont_switch_a_new_chat_to_is_said_once(frame, env, monkeypatch):
+    """#422 review: Copilot's refusal arrives before the window has the new
+    chat's record, so it's said once the record is stored, and only once."""
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "nomodel")
+    said = []
+    real_say = frame._say
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: (said.append(text), real_say(text, **kw)))
+    try:
+        frame._create_codex_owned(folder, "Refused Model", "", provider="copilot",
+                                  model="gpt-test")
+        assert pump(lambda: any("couldn't switch this chat" in text for text in said),
+                    timeout=COPILOT_WAIT)
+        assert pump(lambda: frame._open is not None and not frame._codex_preparing,
+                    timeout=COPILOT_WAIT)
+        pump(lambda: False, timeout=1)  # let any later updates arrive
+        notices = [text for text in said if "couldn't switch this chat" in text]
+        assert notices == ["Refused Model: Copilot couldn't switch this chat to the model "
+                           "chosen, so it uses Copilot's own. File, Change Model chooses another."]
+        assert _copilot_state(frame).model == "auto"
+    finally:
+        runtime.close()
+
+
+def test_leaving_running_freely_says_so_and_lists_what_was_allowed(frame, env, monkeypatch):
+    """The reviews of the merged #426: turning running freely off says so on
+    every outcome, a second switch waits for the first, the heading says the
+    chat runs freely, and Chat Permissions lists what was allowed."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-o", "Off Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-o", "Off Copilot", "C:/w", "cp-o", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    allowed = ((1, "Command: Get-Item notes.txt"), (2, "File change: C:/w/a.txt"))
+    frame._codex_states[info.key] = CopilotChatState("cp-o", "idle", mode=AGENT_MODE, free=True,
+                                                     auto_allowed=allowed)
+    try:
+        # Chat Permissions: the list, newest first.
+        shown = []
+        monkeypatch.setattr(frame, "_choose", lambda title, prompt, choices, selection=None:
+                            shown.append((title, prompt, list(choices))))
+        frame.on_chat_permissions()
+        assert shown and shown[-1][0] == "Allowed for You: Off Copilot"
+        assert shown[-1][2] == ["File change: C:/w/a.txt", "Command: Get-Item notes.txt"]
+        assert "runs freely in its folder" in shown[-1][1]
+        # The heading says so.
+        monkeypatch.setattr(frame, "_open", info)
+        frame._update_heading()
+        assert "runs freely in its folder" in frame.session_heading.GetLabel() or \
+            "runs freely in its folder" in getattr(frame.session_heading, "text", "")
+        # Off to plan mode: it says the chat no longer runs freely.
+        calls = []
+        monkeypatch.setattr(frame, "_change_setting", lambda *a: PLAN_MODE)
+        monkeypatch.setattr(frame.sessions, "owned_action",
+                            lambda action, record, *args: (calls.append((action, args)),
+                                                           PLAN_MODE)[1])
+        frame.on_change_permission_mode()
+        # A second switch while the first is on its way waits.
+        frame.on_change_permission_mode()
+        assert "still being switched" in env["feedback"][-1]
+        assert pump(lambda: env["feedback"][-1] == "Off Copilot: plan mode. It no longer runs "
+                    "freely; Copilot asks before it acts.")
+        assert calls == [("set_free", (False,)), ("set_mode", (PLAN_MODE,))]
+    finally:
+        frame._codex_states.clear()
+
+
+def test_running_freely_isnt_offered_where_copilot_is_managed(frame, env, monkeypatch):
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-m2", "Managed Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-m2", "Managed Copilot", "C:/w", "cp-m2", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    monkeypatch.setattr(platform_paths, "copilot_policy_texts", lambda: [("org.json", "{}")])
+    frame._codex_states[info.key] = CopilotChatState("cp-m2", "idle", mode=AGENT_MODE)
+    offered = []
+    monkeypatch.setattr(frame, "_change_setting",
+                        lambda title, prompt, choices, now: offered.append(
+                            [value for value, _label in choices]))
+    try:
+        frame.on_change_permission_mode()
+        assert offered and "free" not in offered[-1]
+    finally:
+        frame._codex_states.clear()
 
 
 def test_copilot_is_offered_only_once_its_cli_is_installed(frame, env, monkeypatch):
@@ -13277,6 +13929,48 @@ def test_stop_doesnt_say_answered_when_copilot_has_gone(frame, env, monkeypatch)
     frame._stop_codex_owned(info)
     assert pump(lambda: frame.reply_text.GetValue() == "Two" and env["feedback"][-1] == (
         "Gone Copilot: Copilot isn't answering. 1 waiting message is back in the message box, unsent."))
+    frame._codex_states.clear()
+
+
+def test_stop_before_the_message_went_says_so(frame, env, monkeypatch):
+    """#405: stopped before the turn sent its message, nothing went to
+    Copilot and nothing will be closed; not "isn't answering" either."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-early", "Early Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-early", "Early Copilot", "C:/w", "cp-early",
+                       provider="copilot")
+    frame._codex_states[info.key] = CopilotChatState("cp-early", "working", "1", "inProgress")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: Stopped(before_sending=True))
+    frame._stop_codex_owned(info)
+    assert pump(lambda: "Early Copilot: Stopped before your message went to Copilot."
+                in env["feedback"])
+    assert not any("isn't answering" in t or "within 15 seconds" in t for t in env["feedback"])
+    frame._codex_states.clear()
+
+
+def test_stop_again_says_copilot_was_already_asked(frame, env, monkeypatch):
+    """#414 review: a second Stop keeps the first Stop's timer, so it mustn't
+    promise a fresh 15 seconds before Copilot is closed."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-again", "Again Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-again", "Again Copilot", "C:/w", "cp-again",
+                       provider="copilot")
+    frame._codex_states[info.key] = CopilotChatState("cp-again", "working", "1", "inProgress")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: Stopped(cancelled=True, already_asked=True))
+    frame._stop_codex_owned(info)
+    assert pump(lambda: "Again Copilot: Already asked Copilot to stop; "
+                "The Chat Place closes it if it doesn't." in env["feedback"])
+    assert not any("within 15 seconds" in t for t in env["feedback"])
     frame._codex_states.clear()
 
 
@@ -13592,3 +14286,125 @@ def test_a_chat_whose_history_cant_be_read_says_so_rather_than_loading(frame, en
     assert "history couldn't be read" in env["feedback"][-1]
     assert frame.reply_text.GetValue() == "Also the docs"
     assert not getattr(runner, "steered", None)
+
+
+# -- session tools (#165) ----------------------------------------------------------------
+
+
+def test_a_turn_gets_the_session_tools_for_its_own_session(frame, env, fake_runner):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("Wrap up")
+    frame.on_send()
+    runner = fake_runner.instances[0]
+    assert runner.command[-2:] == ["--resume", "own-1"]  # the session's own command
+    server = json.loads(runner.mcp_config)["mcpServers"]["ccd_session_mgmt"]
+    assert server["args"][server["args"].index("--self") + 1] == "own-1"
+    assert server["args"][server["args"].index("--data-dir") + 1] == str(env["tmp"] / "appdata")
+    frame._runners.clear()
+
+
+def test_the_session_tools_answer_from_the_windows_list(frame):
+    from thechatplace import session_tools
+    view = frame._session_tools_view("own-1")
+    assert view.current is not None and view.current.key == "own:own-1"
+    listed = json.loads(session_tools.call_tool("list_sessions", {}, view, None).text)
+    # This session is left out, as the desktop app leaves out its own.
+    assert sorted(item["title"] for item in listed) == ["Blocked one", "Quiet one"]
+    # A session not in the list yet comes from the store.
+    frame.store.add(OwnSession("own-new", "Brand new", r"C:\G\New", last_activity_ms=now_ms()))
+    assert frame._session_tools_view("own-new").current.title == "Brand new"
+
+
+def test_archiving_from_a_session_hides_it_in_the_window(frame, env):
+    from thechatplace import session_tools
+    from thechatplace.hidden import HiddenStore
+    frame.store.add(OwnSession("own-2", "Finished work", r"C:\G\Done", last_activity_ms=now_ms()))
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: frame.session_list.GetCount() == 4)
+    view = frame._session_tools_view("own-1")
+    result = session_tools.call_tool("archive_session",
+                                     {"session_id": "own:own-2", "reason": "PR merged"},
+                                     view, frame._session_tools_hide)
+    assert not result.is_error, result.text
+    # As File, Hide Session: kept in hidden.json, and out of the list now.
+    assert "own:own-2" in frame.hidden
+    assert "own:own-2" in HiddenStore(env["tmp"] / "appdata" / "hidden.json")
+    assert pump(lambda: frame.session_list.GetCount() == 3)
+    assert not any(frame.session_list.GetString(i).startswith("Finished work")
+                   for i in range(frame.session_list.GetCount()))
+    # A desktop app session is never changed.
+    refused = session_tools.call_tool("archive_session", {"session_id": "local_a"},
+                                      frame._session_tools_view("own-1"),
+                                      frame._session_tools_hide)
+    assert refused.is_error and "local_a" not in frame.hidden
+
+
+def test_a_session_with_a_turn_running_is_not_hidden(frame, fake_runner):
+    from thechatplace import session_tools
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("Still going")
+    frame.on_send()
+    # Asked from another session, while own-1's turn runs.
+    result = session_tools.call_tool("archive_session", {"session_id": "own:own-1"},
+                                     frame._session_tools_view("other"),
+                                     frame._session_tools_hide)
+    assert result.is_error and "a turn is running" in result.text
+    assert "own:own-1" not in frame.hidden
+    # Even if the view were stale, the window checks again.
+    info = frame._current_info("own:own-1")
+    assert frame._session_tools_hide(info) == "a turn is running in it."
+    frame._runners.clear()
+
+
+def test_the_window_answers_a_tool_call_from_another_thread(frame):
+    answers = []
+    thread = threading.Thread(target=lambda: answers.append(frame._session_tools_answer(
+        {"tool": "get_session", "arguments": {"session_id": "self"}, "self": "own-1"})),
+        daemon=True)
+    thread.start()
+    assert pump(lambda: bool(answers))
+    assert not answers[0]["is_error"]
+    assert json.loads(answers[0]["text"])["title"] == "Hub probe"
+
+
+def test_the_connection_starts_with_the_first_turn_and_closes_with_the_window(frame):
+    assert frame._session_tools is None  # nothing until a Claude turn needs it
+    assert frame._session_tools_config("own-1")
+    host = frame._session_tools
+    frame._close_session_tools()
+    assert host.closed and frame._session_tools is False
+    assert frame._session_tools_config("own-1") is None
+
+
+def test_archiving_from_a_session_never_moves_you_in_the_list(frame, env):
+    from thechatplace import session_tools
+    frame.store.add(OwnSession("own-2", "Finished work", r"C:\G\Done", last_activity_ms=now_ms()))
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: frame.session_list.GetCount() == 4)
+    select(frame, "Quiet one")
+    result = session_tools.call_tool("archive_session", {"session_id": "own:own-2"},
+                                     frame._session_tools_view("own-1"),
+                                     frame._session_tools_hide)
+    assert not result.is_error, result.text
+    assert frame.session_list.GetCount() == 3
+    assert frame.session_list.GetString(frame.session_list.GetSelection()).startswith("Quiet one")
+
+
+def test_the_chat_you_have_open_is_not_archived_from_a_session(frame, env):
+    from thechatplace import session_tools
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("half a reply")
+    result = session_tools.call_tool("archive_session", {"session_id": "own:own-1"},
+                                     frame._session_tools_view("other"),
+                                     frame._session_tools_hide)
+    assert result.is_error and "open in The Chat Place's window" in result.text
+    assert "own:own-1" not in frame.hidden
+    assert frame._open is not None and frame.reply_text.GetValue() == "half a reply"
+
+
+def test_self_follows_an_id_claude_changed(frame):
+    frame._session_tools_renamed = {"asked-for": "own-1"}
+    assert frame._session_tools_view("asked-for").current.key == "own:own-1"

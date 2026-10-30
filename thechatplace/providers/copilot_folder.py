@@ -124,6 +124,45 @@ def _words(part: str):
     return None if part[end:].strip() else words
 
 
+#: After a pipe, only commands that take what comes in as text, never as
+#: paths: Set-Content, Clear-Content, Remove-Item, Select-String and the like
+#: take a path from each item piped in, which nothing here has checked
+#: (Claude's review of #426: Get-ChildItem sub | Set-Content wrote through a
+#: hard link). Out-File writes what comes in to the path it names, which is
+#: checked, so it may follow a pipe with one.
+_AFTER_PIPE = frozenset({"select-object", "sort-object", "measure-object", "format-list",
+                         "format-table", "format-wide", "out-string", "get-unique",
+                         "select", "sort", "measure", "fl", "ft", "fw"})
+#: Outside Windows, cat after a pipe reads only the text piped in. On
+#: Windows cat is Get-Content, which reads each item piped in as a path
+#: (both reviews of the fixes).
+_AFTER_PIPE_POSIX = frozenset({"cat"})
+#: Copying and moving: into a folder that exists, the file written is
+#: folder/name, which is checked too (it may already be a link).
+_COPYING = frozenset({"copy-item", "move-item", "copy", "cp", "cpi", "move", "mv", "mi"})
+_LISTING = frozenset({"get-childitem", "gci", "dir", "ls"})
+#: Windows device names: not files, wherever they're named.
+_DEVICES = frozenset({"con", "prn", "aux", "nul", "conin$", "conout$",
+                      *(f"com{n}" for n in range(1, 10)), *(f"lpt{n}" for n in range(1, 10))})
+#: Commands longer than this always ask: the status bar says what was allowed
+#: in full, and a long one is more than anyone reads (Copilot's review).
+MAX_COMMAND = 400
+
+
+def _prefix_of(word: str, name: str, shortest: int = 2) -> bool:
+    """Whether ``word`` is a start of ``name`` at least ``shortest`` long,
+    as PowerShell lets a parameter be shortened."""
+    return len(word) >= shortest and name.startswith(word)
+
+
+def _existing_dir(text: str, folder: str) -> bool:
+    full = text if os.path.isabs(text) else os.path.join(folder, text)
+    try:
+        return os.path.isdir(full)
+    except (OSError, ValueError):
+        return True  # can't tell: taken as one, which asks
+
+
 def changes_location(command: str, folder: str) -> bool:
     """Whether a command you allowed by hand may have moved Copilot's shell,
     so its folder isn't known any more. Any command this check doesn't
@@ -134,12 +173,28 @@ def changes_location(command: str, folder: str) -> bool:
 
 def command_allowed(command: str, folder: str) -> bool:
     """A command: see the module docstring. False whenever in doubt."""
-    if not command or not command.strip() or _REFUSED.search(command.replace("&&", " ; ")):
+    if (not command or not command.strip() or len(command) > MAX_COMMAND
+            or _REFUSED.search(command.replace("&&", " ; "))):
         return False
-    for part in _SPLIT.split(command):
-        if not part.strip():
-            continue
-        words = _words(part.strip())
+    # bash and zsh read a backslash as an escape: sub/\.\./x is ../x there,
+    # which the check below would see as a name in the folder (Copilot's
+    # review of #426). On Windows it's only the path separator.
+    if os.name != "nt" and "\\" in command:
+        return False
+    # PowerShell carries a pipe on to the next line: "gci sub |" then a
+    # line "Set-Content x" is one pipeline (Claude's review of the fixes).
+    if re.search(r"\|[ \t]*[\r\n]", command):
+        return False
+    # The parts, each with whether a pipe brought it what it reads.
+    pieces = re.split(r"(\|\||&&|[|;\n\r])", command)
+    parts, piped = [], False
+    for index, piece in enumerate(pieces):
+        if index % 2:
+            piped = piece == "|"
+        elif piece.strip():
+            parts.append((piece.strip(), piped))
+    for part, after_pipe in parts:
+        words = _words(part)
         if not words:
             return False
         name = words[0].lower()
@@ -148,12 +203,14 @@ def command_allowed(command: str, folder: str) -> bool:
                 return False
         elif name not in POSIX_ALLOWED:
             return False
+        paths, previous = [], ""
         for word in words[1:]:
             text = word[1:-1] if word[:1] in "'\"" else word
             lowered = text.lower()
             if lowered in _LINKS:
                 return False
             if word.startswith("-"):
+                previous = lowered
                 # A parameter name only: one with its value attached
                 # (-Path:C:\x, bash's -o/tmp/x) asks.
                 if any(c in text for c in ":/\\"):
@@ -164,14 +221,34 @@ def command_allowed(command: str, folder: str) -> bool:
                     return False
                 # Recursion, and following links, reach through a link
                 # already in the folder: -Recurse and any abbreviation of it,
-                # -FollowSymlink, and bash's -r, -R, -rf. Erring toward
-                # asking, any short option with an r in it does too.
-                if (lowered.startswith(("-r", "-fol", "-de")) or "follow" in lowered
-                        or (len(lowered) <= 4 and "r" in lowered)):
-                    return False  # -Depth recurses too (PowerShell 5.1 through junctions)
+                # -FollowSymlink, -Depth (Get-ChildItem's), and bash's -r,
+                # -R, -rf. Erring toward asking, any short option with an r
+                # in it does too. -Stream reaches a file's hidden streams.
+                # PowerShell takes any unambiguous start of a parameter's name:
+                # -s is -Stream on Set-Content (Claude's review of the
+                # fixes), -rec is -Recurse. On Windows those prefixes are
+                # refused, so -Raw and -ReadCount still work; elsewhere the
+                # short options are letters, checked below.
+                if (_prefix_of(lowered, "-stream") or _prefix_of(lowered, "-recurse", 2)
+                        or _prefix_of(lowered, "-followsymlink", 4) or "follow" in lowered
+                        or (name in _LISTING and lowered.startswith("-de"))
+                        or (name in ("new-item", "ni") and _prefix_of(lowered, "-name"))
+                        or (os.name != "nt" and len(lowered) <= 4 and "r" in lowered.lower())):
+                    return False
                 if os.name != "nt" and not set(text[1:]) <= POSIX_OPTION_LETTERS.get(name, set()):
                     return False
                 continue
+            # New-Item's -ItemType (or -Type), however shortened, may only be
+            # a file or a folder: "s" or "Junc" would make a link.
+            if previous.startswith(("-it", "-ty")) or previous in ("-i", "-t"):
+                if not lowered or not ("file".startswith(lowered)
+                                       or "directory".startswith(lowered)):
+                    return False
+                previous = ""
+                continue
+            previous = ""
+            if os.path.basename(lowered.replace("\\", "/")).rstrip(" .").split(".")[0] in _DEVICES:
+                return False  # CON, NUL, COM1: devices, not files
             if ":" in text and not (os.name == "nt" and _WINDOWS_DRIVE.match(text)
                                     and text.count(":") == 1):
                 return False  # another drive or provider, or a file's stream
@@ -179,6 +256,26 @@ def command_allowed(command: str, folder: str) -> bool:
                 return False  # a root, or a \\server path
             if not _inside(text, folder):
                 return False
+            paths.append(text)
+        after_ok = _AFTER_PIPE if os.name == "nt" else _AFTER_PIPE_POSIX
+        if after_pipe and name not in after_ok and not (name == "out-file" and paths):
+            return False
+        # Deleting a folder, even without -Recurse, can be agreed to "Yes to
+        # All" at PowerShell's own prompt: it asks here instead.
+        if name in _DELETING and any(_existing_dir(p, folder) for p in paths):
+            return False
+        if name in _COPYING and len(paths) >= 2:
+            # Whichever word names the folder (-Destination may come first),
+            # each other one written into it is checked too.
+            for target in paths:
+                if not _existing_dir(target, folder):
+                    continue
+                for source in paths:
+                    if source is target:
+                        continue
+                    written = os.path.join(target, os.path.basename(source.rstrip("\\/")))
+                    if not _inside(written, folder):
+                        return False
     return True
 
 

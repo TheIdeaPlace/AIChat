@@ -138,6 +138,10 @@ class SessionInfo:
     #: An agent conversation's members' providers, so View, Show Sessions,
     #: Claude Chats (or Codex Chats) lists it too.
     member_providers: tuple = ()
+    #: For one of The Chat Place's own made by Continue Here: the title of
+    #: the chat it continues (``OwnSession.forked_from``), "" otherwise. A
+    #: Copilot copy's first message carries the history (#423).
+    continued_from: str = ""
 
     @property
     def identity(self) -> tuple[str, str]:
