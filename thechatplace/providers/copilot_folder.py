@@ -68,20 +68,27 @@ _LINKS = frozenset({"junction", "symboliclink", "hardlink"})
 _SPLIT = re.compile(r"\|\||&&|[|;\n\r]")
 #: Anything that could run code, join or redirect paths, name a place other
 #: than the folder by itself, or match through a link already in the folder
-#: (wildcards). Anything not plain ASCII too: PowerShell reads smart quotes
+#: (wildcards, and zsh's extended patterns: ^x is "everything but x", and
+#: # and ! take part in them too; Copilot's review of #426). Anything not
+#: plain ASCII too: PowerShell reads smart quotes
 #: as quotes and en and em dashes as "-" (the second security review).
-_REFUSED = re.compile(r"[()@,<>=$`{}~&*?\[\]]|\.\.|::|[^\x00-\x7f]")
+_REFUSED = re.compile(r"[()@,<>=$`{}~&*?\[\]^#!]|\.\.|::|[^\x00-\x7f]")
 _WORD = re.compile(r"""'[^']*'|"[^"]*"|[^\s'"]+""")
 _WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def _inside(path: str, folder: str) -> bool:
     """Whether ``path`` (relative to ``folder`` if not absolute) is the folder
-    or inside it, links and junctions followed."""
+    or inside it, links and junctions followed. A file with more than one
+    hard link isn't: its other name may be outside the folder, and writing
+    to either changes both. Hard links have no target to follow, so the
+    only sign is the count (Copilot's review of #426)."""
     try:
         base = os.path.normcase(os.path.realpath(folder))
         full = path if os.path.isabs(path) else os.path.join(folder, path)
         target = os.path.normcase(os.path.realpath(full))
+        if os.path.isfile(target) and os.stat(target).st_nlink > 1:
+            return False
     except (OSError, ValueError, TypeError):
         return False
     return target == base or target.startswith(base.rstrip(os.sep) + os.sep)

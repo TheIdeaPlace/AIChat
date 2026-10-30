@@ -194,3 +194,31 @@ def test_depth_recurses_and_asks(folder, command):
                                      "cp -aH sub dest", "rm -d sub"])
 def test_only_known_option_letters_elsewhere(folder, command):
     assert not copilot_folder.command_allowed(command, folder)
+
+
+# -- Copilot's review of #426 -----------------------------------------------------------
+
+
+def test_a_hard_link_to_a_file_outside_isnt_inside(folder, tmp_path):
+    """A hard link has no target to follow: writing to its name inside the
+    folder changes the file outside it. Any file with another link asks."""
+    outside = tmp_path / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    alias = os.path.join(folder, "alias.txt")
+    try:
+        os.link(outside, alias)
+    except OSError:
+        pytest.skip("this file system has no hard links")
+    write = "Set-Content alias.txt x" if sys.platform == "win32" else "cat alias.txt"
+    assert not copilot_folder.command_allowed(write, folder)
+    assert not copilot_folder.file_change_allowed(alias, (), folder)
+    # A file with only its one name is still fine.
+    plain = "Get-Item notes.txt" if sys.platform == "win32" else "cat notes.txt"
+    assert copilot_folder.command_allowed(plain, folder)
+
+
+@pytest.mark.parametrize("command", ["cat ^notes.txt", "ls ^sub", "cat notes.txt#",
+                                     "ls !(notes.txt)", "Get-Item ^notes.txt"])
+def test_zsh_extended_patterns_ask(folder, command):
+    """zsh's ^x means "everything but x", which can reach through a link."""
+    assert not copilot_folder.command_allowed(command, folder)
