@@ -1528,6 +1528,22 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 or self._open.provider == AGENTS):
             self._codex_drafts[self._open.key] = self.reply_text.GetValue()
 
+    def _still_preparing(self, info) -> bool:
+        """A chat opened before its runtime had it ready is marked as
+        getting ready until its preparation's done() clears the mark, which
+        comes through wx.CallAfter a moment after the runtime has the chat.
+        A message sent in that moment was refused with "still getting ready"
+        (#430). So the runtime is asked as well. The mark is only read here:
+        done() is also what sends a message forwarded while the chat got
+        ready, so it must still find the mark."""
+        if info.key not in self._codex_preparing:
+            return False
+        record = self.store.get(info.cli_session_id, provider=info.provider)
+        try:
+            return record is None or not self.sessions.owned_action("ready", record)
+        except ValueError:  # the provider's gone (closing): not ready
+            return True
+
     def _can_edit(self, info):
         if info is None or not (info.is_own or info.provider == AGENTS):
             return False
@@ -2878,7 +2894,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self.stop_btn.Enable(True)
             state = self._codex_states.get(info.key)
             name = provider_name(info.provider)
-            label = (f"Getting {name} ready." if info.key in self._codex_preparing else
+            label = (f"Getting {name} ready." if self._still_preparing(info) else
                      state.problem if state is not None and state.problem else
                      f"{name} is waiting for you. {key_name('Ctrl+Shift+A')} answers." if state is not None and state.requests else
                      f"{name} is working." if state is not None and state.state == WORKING else "Ready.")
@@ -4221,7 +4237,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self.reply_text.SetFocus()
             return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
-            if info.key in self._codex_preparing:
+            if self._still_preparing(info):
                 self._feedback(f"This {provider_name(info.provider)} chat is still getting ready.")
                 return
             message = self.reply_text.GetValue().strip()
