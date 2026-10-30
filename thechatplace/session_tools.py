@@ -61,6 +61,8 @@ SERVER_NAME = "ccd_session_mgmt"
 FLAG = "--session-tools-mcp"
 #: Where the window leaves the connection's address and key.
 CONNECTION_FILE = "session-tools.json"
+#: Connections that may wait to be accepted.
+BACKLOG = 32
 
 LIST_DEFAULT = 50
 LIST_MAX = 500
@@ -417,7 +419,10 @@ class Host:
         key = self._key = secrets.token_bytes(32)
         # The key is checked on each call's own thread (``_serve``), not in
         # accept(), where one caller that never answered would hold up all.
-        self._listener = Listener(family=_family())
+        # A backlog, not multiprocessing's default of 1: Claude can make
+        # several calls at once, and a Mac refuses a connection outright
+        # (rather than waiting) while the queue is full.
+        self._listener = Listener(family=_family(), backlog=BACKLOG)
         try:
             payload = {"version": 1, "pid": os.getpid(), "family": _family(),
                        "address": self._listener.address, "key": key.hex()}

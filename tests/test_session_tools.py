@@ -444,3 +444,27 @@ def test_a_search_stops_when_the_window_closes(tmp_path):
     _with_transcript(view.sessions[0], tmp_path, user_text("migration"))
     result = call("search_session_transcripts", {"query": "migration"}, view)
     assert result.text.startswith("No matching sessions found. Searched 0 sessions.")
+
+
+def test_calls_made_at_once_are_all_answered(tmp_path):
+    """Claude can call several tools at once; on a Mac a full accept queue
+    refuses a connection outright."""
+    import threading
+    host = session_tools.Host(lambda request: {"text": request["n"], "is_error": False}, tmp_path)
+    host.start()
+    answers, problems = [], []
+
+    def one(n):
+        try:
+            answers.append(session_tools.ask({"n": str(n)}, tmp_path, 20)["text"])
+        except Exception as exc:  # noqa: BLE001
+            problems.append(exc)
+    try:
+        threads = [threading.Thread(target=one, args=(n,), daemon=True) for n in range(12)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(30)
+    finally:
+        host.close()
+    assert problems == [] and sorted(answers, key=int) == [str(n) for n in range(12)]
