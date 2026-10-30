@@ -91,6 +91,7 @@ class OwnSession:
             permission_mode=self.permission_mode,
             unread=self.unread,
             provider=self.provider,
+            continued_from=self.forked_from,
         )
 
 

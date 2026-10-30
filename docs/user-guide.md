@@ -637,8 +637,10 @@ To carry on a chat that was started elsewhere, use **Continue Here** (Ctrl+Shift
 button after the note, where the reply box would be). It makes a new chat here in the same
 folder, with the whole conversation so far, and you type its first message. Its title starts as
 the original's, followed by "(continued)". The original chat isn't changed, and what you do in
-the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats and
-for Codex chats; not for Cowork or Copilot chats.
+the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats, for
+Codex chats and for Copilot chats; not for Cowork chats. A Copilot copy is a little different:
+Copilot can't copy a chat, so your first message goes with the conversation so far, as text (see
+"Starting a Copilot chat").
 
 ### Following a chat as it works
 
@@ -662,10 +664,10 @@ doesn't name, is an "other app session" or an "external session".
 |---|---|---|---|---|
 | **Desktop app session** | The Claude desktop app's Code tab | in the desktop app | yes | yes |
 | **Cowork session** | The desktop app's Cowork tab | in the desktop app | yes | no |
-| **Terminal session** | A terminal, with `claude` or `copilot`, and some Codex terminal chats | in that terminal | no | Claude and Codex |
+| **Terminal session** | A terminal, with `claude` or `copilot`, and some Codex terminal chats | in that terminal | no | yes |
 | **Editor session** | Codex in an editor or the Codex app, and often Codex in a terminal | where it was started | no | yes |
 | **Command-line session** | Codex run as a command | in Codex | no | yes |
-| **Other app session** or **external session** | Another app | in that app | no | Codex |
+| **Other app session** or **external session** | Another app | in that app | no | Codex and Copilot |
 | **Chat Place session** | The Chat Place (File, New Session) | here, in the reply box | no | not needed |
 | **Agent conversation** | The Chat Place (File, New Agent Conversation) | here, in the reply box | no | no |
 
@@ -683,7 +685,7 @@ whether the chat was started here:
 | Answer requests (Ctrl+Shift+A) | permissions, questions and plans | permissions and questions | permissions |
 | Change Model or Change Effort later | yes | no: choose in New Session | Change Model only |
 | Change Permission Mode and Chat Permissions | yes | yes | no |
-| Continue Here | desktop app and terminal chats | yes | no |
+| Continue Here | desktop app and terminal chats | yes | yes, with the conversation as text |
 | Commands and skills (Ctrl+/) | yes | no | no |
 | Attachments | yes | no | no |
 | Changed Files in Lists | yes | yes | yes |
@@ -839,8 +841,18 @@ The Chat Place won't send to Copilot:
 - with a message that starts with `/`, because some of Copilot's commands turn off its
   questions.
 
-Continue Here, Change Permission Mode and Chat Permissions aren't available for Copilot chats
-yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+A Copilot chat started in Copilot CLI or another app can be carried on here with
+**Continue Here** (Ctrl+Shift+N). Copilot can't copy a chat, so the copy is a new Copilot chat of The Chat
+Place's own in the same folder, and your first message goes with the conversation so far: your
+messages and Copilot's replies, labelled as history (the newest kept if it's long), but not the
+commands Copilot ran or their output. It goes as part of your first message, so it costs no extra
+request. If that message doesn't go, the history waits for your next one, but only while The Chat
+Place stays open: the chat says so. A first message too long to go with the history is
+refused and kept, so you can shorten it. In the copy's messages the history is one row,
+"Earlier conversation", just before your first message; Enter reads it in full. Model
+offers the same choices as in New Session. The original chat isn't changed.
+
+Change Permission Mode and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.
 
 ## Starting a chat and replying

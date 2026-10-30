@@ -71,8 +71,9 @@ SHORTCUTS = [
         ("Ctrl+Shift+L", "Copy Session Link (Claude chats): Enter copies a Markdown link that "
                          "opens the session in The Chat Place; the list also has the bare link, and "
                          "where they apply its Open in Claude link and claude.ai address"),
-        ("Ctrl+Shift+N", "Continue the selected desktop app or terminal session here, as a "
-                         "copy you can reply to (the original isn't changed)"),
+        ("Ctrl+Shift+N", "Continue the selected chat from the desktop app, a terminal or "
+                         "another app here, as a copy you can reply to (the original isn't "
+                         "changed)"),
         ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes or Codex file access and approval reviewer for the "
                          "selected (or loaded) Chat Place session, from its next turn (File, "
                          "Change Effort and Change Model are beside it)"),
