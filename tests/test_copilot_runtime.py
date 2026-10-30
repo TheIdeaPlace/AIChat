@@ -1784,10 +1784,12 @@ def test_stopping_again_doesnt_put_the_forced_close_off(make, tmp_path):
         assert timer is not None
         assert runtime.stop(chat).cancelled
         assert runtime._chats[chat].cancel_timer is timer
-        cancels = [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
-        assert len(cancels) == 1
         # The first Stop's clock still runs out, and closes it.
         assert wait(lambda: "didn't stop when asked" in runtime.snapshot(chat).notice)
+        # By then the fake has logged what it was sent (it logs as it reads,
+        # which on a busy machine came after the Stops returned): one cancel.
+        cancels = [m for m in received(tmp_path) if m.get("method") == "session/cancel"]
+        assert len(cancels) == 1
     finally:
         runtime.close()
 
