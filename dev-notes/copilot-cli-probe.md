@@ -266,6 +266,13 @@ tested. Every edit was an `apply_patch` call, but nothing below depends on the t
   `+alpha`, `+beta`, `+gamma`, `+` (`@@ -1,0 +1,4 @@`). The reader drops that last empty line.
 - `session.shutdown` has `codeChanges.filesModified` for the whole session; not used.
 
+**When the log has a turn's edits (checked 2026-10-28, Copilot CLI 1.0.105, for #405).** Through
+`copilot --acp` in a scratch folder, twice: one prompt to create a file, its permission request
+allowed. Both times the turn's `tool.execution_complete` with `fileEdits` was already in
+`events.jsonl` when `session/prompt` returned, and nothing more arrived in the two seconds after.
+So the window's "Changed N files" (#401) and an agent conversation's hand-off list (#369), both
+read at the turn's end, see the turn's files then, not a turn late. Both test chats were deleted.
+
 ## Next, in rough order
 
 Ideas from the first listening test, kept here so they aren't lost:
