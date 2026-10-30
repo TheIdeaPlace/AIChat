@@ -1294,6 +1294,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Claude asks about text it wrote just before, with an option's preview"
+  },
+  "new-session-copilot": {
+   "kind": "dialog",
+   "png": "new-session-copilot-hc-aquatic-100.png",
+   "json": "new-session-copilot-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session for Copilot, choosing from the models it offered"
   }
  },
  "seconds": 91.6

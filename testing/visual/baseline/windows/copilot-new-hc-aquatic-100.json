@@ -390,17 +390,17 @@
     12,
     309,
     644,
-    72
+    87
    ],
    "best": [
     127,
-    72
+    87
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Copilot uses your GitHub Copilot sign-in, and each message uses requests from your Copilot plan. It uses its own model and effort, which can't be chosen here. Copilot asks before it runs a command or changes a file: each request appears in Answer, where you can allow it once or deny it. The Chat Place won't send to Copilot in a folder whose Copilot hooks could act without asking you."
+   "value": "Copilot uses your GitHub Copilot sign-in, and each message uses requests from your Copilot plan. Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs; Copilot's own choice is first. File, Change Model changes it later. Effort is Copilot's own. Copilot asks before it runs a command or changes a file: each request appears in Answer, where"
   },
   {
    "class": "StaticText",
@@ -408,7 +408,7 @@
    "label": "First &message:",
    "rect": [
     10,
-    389,
+    404,
     75,
     16
    ],
@@ -427,9 +427,9 @@
    "label": "",
    "rect": [
     12,
-    417,
+    432,
     644,
-    117
+    102
    ],
    "best": [
     127,
