@@ -13006,13 +13006,17 @@ def test_a_real_switch_clears_plan_not_set_in_the_window(frame, env, monkeypatch
         assert pump(lambda: _copilot_state(frame) is not None
                     and _copilot_state(frame).problem == PLAN_NOT_SET, timeout=COPILOT_WAIT)
         assert pump(lambda: any(PLAN_NOT_SET in text for text in said), timeout=COPILOT_WAIT)
+        # Opening it tries plan mode again (still unconfirmed); wait for that.
+        assert pump(lambda: frame._open is not None and not frame._codex_preparing,
+                    timeout=COPILOT_WAIT)
+        assert _copilot_state(frame).problem == PLAN_NOT_SET
         info = frame._open
         monkeypatch.setattr(frame, "_selected_session", lambda: info)
         monkeypatch.setattr(frame, "_choose", lambda title, prompt, labels, selection=None: 0)
         frame.on_change_permission_mode()
         assert pump(lambda: _copilot_state(frame).problem == ""
-                    and env["feedback"][-1] == "Unconfirmed Plan: agent mode.",
-                    timeout=COPILOT_WAIT)
+                    and env["feedback"][-1:] == ["Unconfirmed Plan: agent mode."],
+                    timeout=COPILOT_WAIT), (_copilot_state(frame).problem, env["feedback"][-3:])
         assert _copilot_state(frame).mode == AGENT_MODE
     finally:
         runtime.close()
