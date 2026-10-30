@@ -666,7 +666,8 @@ whether the chat was started here:
 | Steer a running turn (Ctrl+Alt+Enter) | yes | yes | no: queue it instead |
 | Answer requests (Ctrl+Shift+A) | permissions, questions and plans | permissions and questions | permissions |
 | Change Model or Change Effort later | yes | no: choose in New Session | no: Copilot's own |
-| Change Permission Mode and Chat Permissions | yes | yes | no |
+| Change Permission Mode | yes | yes | agent or plan mode |
+| Chat Permissions | yes | yes | no |
 | Continue Here | desktop app and terminal chats | yes | no |
 | Commands and skills (Ctrl+/) | yes | no | no |
 | Attachments | yes | no | no |
@@ -819,8 +820,16 @@ The Chat Place won't send to Copilot:
 - with a message that starts with `/`, because some of Copilot's commands turn off its
   questions.
 
-Continue Here, Change Permission Mode and Chat Permissions aren't available for Copilot chats
-yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+**Plan mode.** A Copilot chat started here is in Copilot's agent mode or its plan mode. In plan
+mode Copilot works out a plan and doesn't edit your files (it keeps the plan in its own session
+folder); it still asks before anything that needs your permission. Choose the mode in New Session (Permission mode),
+or switch a chat with **Change Permission Mode** (Ctrl+Shift+O), as Shift+Tab does in Copilot
+CLI. If Copilot can't start a new chat in plan mode, nothing is sent until you choose a mode
+with Change Permission Mode. When Copilot says to switch out of plan mode to
+make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
+it asking, is never offered, and a chat Copilot puts in it isn't sent to.
+
+Continue Here and Chat Permissions aren't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.
 
 ## Starting a chat and replying

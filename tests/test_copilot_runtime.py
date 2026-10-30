@@ -1760,3 +1760,63 @@ def test_a_new_chat_stays_listed_during_its_first_turn(make, tmp_path, monkeypat
     provider = CopilotProvider(tmp_path / "sessions", runtime=runtime)
     assert [info.cli_session_id for info in provider.collect().sessions] == [chat]
     runtime.stop(chat)
+
+
+# -- plan mode --------------------------------------------------------------------------
+
+
+def test_a_chat_can_start_in_plan_mode_and_still_be_sent_to(make, tmp_path):
+    """Plan mode asks before acting too (allow-all stays off), so it's as
+    safe to send to as agent mode; autopilot is never asked for."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    assert runtime.snapshot(chat).mode == PLAN_MODE and runtime.ready(chat)
+    runtime.send(chat, "Plan it")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    runtime.set_mode(chat, AGENT_MODE)
+    assert runtime.snapshot(chat).mode == AGENT_MODE and runtime.ready(chat)
+    with pytest.raises(CopilotChatError, match="agent and plan"):
+        runtime.set_mode(chat, "https://agentclientprotocol.com/protocol/session-modes#autopilot")
+
+
+def test_copilot_switching_itself_to_plan_mode_doesnt_stop_the_turn(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    runtime, _ = make("toplan")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Hello")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    state = runtime.snapshot(chat)
+    assert state.mode == PLAN_MODE and "stopped" not in state.notice and runtime.ready(chat)
+
+
+def test_a_mode_switch_that_stops_copilot_asking_stops_the_turn(make, tmp_path):
+    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    runtime, _ = make("modeflip")
+    chat = runtime.create(str(tmp_path))
+    runtime.set_mode(chat, PLAN_MODE)  # its reply says allow-all is on
+    assert not runtime.ready(chat)
+
+
+def test_a_new_chat_copilot_wont_put_in_plan_mode_sends_nothing_until_switched(make, tmp_path):
+    """Plan mode was chosen so nothing would change: refused, the chat
+    doesn't carry on in agent mode by itself."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, PLAN_NOT_SET
+    runtime, _ = make("nomode")
+    chat = runtime.create(str(tmp_path), mode=PLAN_MODE)
+    assert runtime.snapshot(chat).problem == PLAN_NOT_SET and not runtime.ready(chat)
+    with pytest.raises(CopilotChatError, match="plan mode"):
+        runtime.send(chat, "Change things")
+    assert prompts_sent(tmp_path) == []
+
+
+def test_copilots_own_files_are_never_changed_files(monkeypatch, tmp_path):
+    from thechatplace.providers.copilot_runtime import _edited_paths, copilot_own_file
+    monkeypatch.setattr(platform_paths, "copilot_sessions_dir", lambda: tmp_path / "state")
+    plan = str(tmp_path / "state" / "abc" / "plan.md")
+    work = str(tmp_path / "work" / "a.py")
+    assert copilot_own_file(plan) and not copilot_own_file(work)
+    assert not copilot_own_file(str(tmp_path / "state-other" / "x"))
+    events = [("tool.execution_complete", {"success": True,
+                                           "fileEdits": [{"path": plan}, {"path": work}]})]
+    assert _edited_paths(events) == (work,)

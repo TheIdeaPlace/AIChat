@@ -12903,14 +12903,46 @@ def test_new_session_offers_copilot_with_its_own_note(frame):
     try:
         assert dialog.provider() == "copilot"
         assert dialog.note.GetValue() == COPILOT_NOTE
-        assert not dialog.model.IsEnabled() and not dialog.mode.IsEnabled()
+        assert not dialog.model.IsEnabled()
+        # Agent or plan mode (#352): agent unless plan is chosen.
+        assert dialog.mode.IsEnabled() and dialog.mode.GetCount() == 2
         _folder, _title, _mode, _message, model = dialog.values()
-        assert model == "" and dialog.effort() == ""
+        assert model == "" and dialog.effort() == "" and dialog.copilot_mode() == ""
+        dialog.mode.SetSelection(1)
+        from thechatplace.providers.copilot_runtime import PLAN_MODE
+        assert dialog.copilot_mode() == PLAN_MODE
         dialog.provider_choice.SetSelection(0)  # back to Claude: its controls return
         dialog._on_provider()
         assert dialog.model.IsEnabled() and dialog.note.GetValue() != COPILOT_NOTE
     finally:
         dialog.Destroy()
+
+
+def test_change_permission_mode_switches_a_copilot_chat_to_plan(frame, env, monkeypatch):
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-p", "Planning Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-p", "Planning Copilot", "C:/w", "cp-p", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    frame.on_change_permission_mode()
+    assert "isn't open in Copilot yet" in env["feedback"][-1]
+    frame._codex_states[info.key] = CopilotChatState("cp-p", "idle", mode=AGENT_MODE)
+    asked, calls = [], []
+
+    def change_setting(title, prompt, choices, now):
+        asked.append((prompt, [value for value, _label in choices], now))
+        return PLAN_MODE
+    monkeypatch.setattr(frame, "_change_setting", change_setting)
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: calls.append((action, args)))
+    frame.on_change_permission_mode()
+    assert asked == [("Mode for Planning Copilot, now Agent: asks before running commands or "
+                      "changing files:", [AGENT_MODE, PLAN_MODE], AGENT_MODE)]
+    assert pump(lambda: calls == [("set_mode", (PLAN_MODE,))] and env["feedback"][-1] ==
+                "Planning Copilot: plan mode.")
+    frame._codex_states.clear()
 
 
 def test_copilot_is_offered_only_once_its_cli_is_installed(frame, env, monkeypatch):

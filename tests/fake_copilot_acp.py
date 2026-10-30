@@ -44,6 +44,9 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
               ACP's -32000 "Authentication required", as on a clean machine (#391)
   expired     chats open, but each prompt is logged, then fails a second later
               with -32000, as when a sign-in stops working mid-chat
+  toplan      mid-turn, reports (current_mode_update) a switch to plan mode
+  modeflip    session/set_config_option's reply says allow_all is on
+  nomode      session/set_config_option always fails
   strict      as hang, but a session/cancel that arrives while no prompt is
               running is ignored, as real Copilot ignores one that comes
               before the prompt it was meant for
@@ -66,6 +69,9 @@ SESSIONS = os.environ.get("FAKE_COPILOT_SESSIONS", "")
 LOG = os.environ.get("FAKE_COPILOT_LOG", "")
 AGENT = "https://agentclientprotocol.com/protocol/session-modes#agent"
 AUTOPILOT = "https://agentclientprotocol.com/protocol/session-modes#autopilot"
+PLAN = "https://agentclientprotocol.com/protocol/session-modes#plan"
+#: Each session's mode, as session/set_config_option left it.
+mode_of = {}
 write_lock = threading.Lock()
 answers = {}
 #: Sessions open in this process: like Copilot 1.0.103, it won't load one
@@ -93,8 +99,8 @@ def update(session, body):
           "params": {"sessionId": session, "update": body}})
 
 
-def options():
-    mode = AUTOPILOT if MODE == "unsafe" else AGENT
+def options(session=None):
+    mode = AUTOPILOT if MODE == "unsafe" else mode_of.get(session, AGENT)
     allow = "on" if MODE == "allowall" else "off"
     return [{"type": "select", "id": "mode", "currentValue": mode},
             {"type": "select", "id": "model", "currentValue": "auto"},
@@ -199,7 +205,7 @@ def prompt(message_id, session, text=""):
         return
     if MODE == "slow":
         time.sleep(1.5)
-    if MODE in ("flip", "curmode"):
+    if MODE in ("flip", "curmode", "toplan"):
         # Long enough for a second message to be queued first, even on the
         # macOS CI runner, where send() reads hooks and the log before queuing.
         time.sleep(1.0)
@@ -209,6 +215,8 @@ def prompt(message_id, session, text=""):
             {"type": "select", "id": "allow_all", "currentValue": "off"}]})
     if MODE == "curmode":
         update(session, {"sessionUpdate": "current_mode_update", "currentModeId": AUTOPILOT})
+    if MODE == "toplan":
+        update(session, {"sessionUpdate": "current_mode_update", "currentModeId": PLAN})
     if MODE == "flipback":
         time.sleep(1.0)  # long enough for a second message to be queued, even on macOS CI
         update(session, {"sessionUpdate": "config_option_update", "configOptions": [
@@ -303,7 +311,7 @@ def main():
             open_sessions.add(session)
             hold_lock(session)
             send({"jsonrpc": "2.0", "id": message_id,
-                  "result": {"sessionId": session, "configOptions": options()}})
+                  "result": {"sessionId": session, "configOptions": options(session)}})
         elif method == "session/load":
             session = params.get("sessionId")
             if session in open_sessions:
@@ -320,12 +328,24 @@ def main():
                              "content": {"type": "text", "text": "Replayed history"}})
             update(session, {"sessionUpdate": "agent_message_chunk",
                              "content": {"type": "text", "text": "Replayed reply"}})
-            send({"jsonrpc": "2.0", "id": message_id, "result": {"configOptions": options()}})
+            send({"jsonrpc": "2.0", "id": message_id, "result": {"configOptions": options(session)}})
         elif method == "session/prompt":
             text = ((params.get("prompt") or [{}])[0] or {}).get("text", "")
             prompting.set()  # here, not in the thread: a cancel read next sees it
             threading.Thread(target=prompt, args=(message_id, params.get("sessionId"), text),
                              daemon=True).start()
+        elif method == "session/set_config_option":
+            session, value = params.get("sessionId"), params.get("value")
+            if (MODE == "nomode" or params.get("configId") != "mode"
+                    or value not in (AGENT, PLAN, AUTOPILOT)):
+                send({"jsonrpc": "2.0", "id": message_id,
+                      "error": {"code": -32603, "message": "no"}})
+                continue
+            mode_of[session] = value
+            reply = options(session)
+            if MODE == "modeflip":
+                reply[-1] = {"type": "select", "id": "allow_all", "currentValue": "on"}
+            send({"jsonrpc": "2.0", "id": message_id, "result": {"configOptions": reply}})
         elif method == "session/close":
             open_sessions.discard(params.get("sessionId"))
             send({"jsonrpc": "2.0", "id": message_id, "result": {}})

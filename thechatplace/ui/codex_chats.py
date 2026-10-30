@@ -19,7 +19,8 @@ from .. import announce
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name
-from .dialogs import CodexPermissionDialog, QuestionDialog, codex_permission_prompt
+from .dialogs import (COPILOT_SESSION_MODES, CodexPermissionDialog, QuestionDialog,
+                      codex_permission_prompt)
 from .permission_hosts import CODEX_MODES
 
 
@@ -103,14 +104,16 @@ class CodexChats:
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
     def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None,
-                            approval_policy=None, made=None, joint=False, provider='codex', approvals_reviewer=None):
+                            approval_policy=None, made=None, joint=False, provider='codex', approvals_reviewer=None,
+                            copilot_mode=''):
         """A new owned chat with a runtime provider (Codex's name is history:
         Copilot comes here too, #352). ``made(info, message)`` hears of the
         new chat (#378); with ``joint`` it sends the message, as an agent
         conversation's."""
         options = {key: value for key, value in (('model', model), ('effort', effort),
                    ('sandbox', sandbox), ('approval_policy', approval_policy),
-                   ('approvals_reviewer', approvals_reviewer)) if value}
+                   ('approvals_reviewer', approvals_reviewer), ('copilot_mode', copilot_mode))
+                   if value}
         name = provider_name(provider)
         def create():
             return (self.sessions.fork_owned(source, title, **options) if source is not None
@@ -141,6 +144,42 @@ class CodexChats:
             if made is not None:
                 made(record.to_info(), message)
         self._codex_work(create, done)
+
+    def _change_copilot_mode(self, info):
+        """Change Permission Mode (Ctrl+Shift+O) for a Copilot chat: agent or
+        plan mode, as Copilot's own Shift+Tab switches them, from its next
+        turn. Copilot asks before it acts in both."""
+        from ..providers.copilot_runtime import PLAN_MODE
+        if not info.is_own or not self._can_edit(info):
+            self._feedback(f"{info.title} wasn't started in The Chat Place: its mode is set in "
+                           "Copilot CLI.")
+            return
+        record = self.store.get(info.cli_session_id, provider='copilot')
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        state = self._codex_states.get(info.key)
+        if state is None or not getattr(state, 'mode', ''):
+            self._feedback(f"{info.title} isn't open in Copilot yet, so its mode isn't known. "
+                           "Select it, wait until it's ready, then change its mode.")
+            return
+        choices = COPILOT_SESSION_MODES
+        names = dict(choices)
+        now = state.mode
+        chosen = self._change_setting('Change Permission Mode',
+                                      f'Mode for {info.title}, now {names.get(now, "another mode")}:',
+                                      choices, now)
+        if chosen is None:
+            return
+        def done(result, error):
+            if error:
+                self._feedback(result if isinstance(result, str) and result
+                               else "Copilot couldn't switch modes.")
+            else:
+                word = 'plan' if chosen == PLAN_MODE else 'agent'
+                self._feedback(f'{info.title}: {word} mode.')
+            self._update_send_state()
+        self._codex_work(lambda: self.sessions.owned_action('set_mode', record, chosen), done)
 
     def _keep_first_message(self, message, provider='codex'):
         """New Session is gone when Codex refuses, so keep its first message

@@ -3553,6 +3553,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
         if selected is not None and selected.provider == 'codex':
             self._change_codex_permissions(selected)
             return
+        if selected is not None and selected.provider == 'copilot':
+            self._change_copilot_mode(selected)
+            return
         found = self._own_for_setting("permission mode", selected)
         if found is None:
             return
@@ -3580,7 +3583,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         if info.is_own and info.provider == "copilot":
             self._feedback(f"{info.title} keeps no permissions: Copilot asks before each command "
-                           "or file change, and each answer is for that one request.")
+                           "or file change, and each answer is for that one request. Change "
+                           f"Permission Mode ({key_name('Ctrl+Shift+O')}) switches it between agent and plan "
+                           "mode.")
             return
         if not info.is_own or info.provider not in ("claude", "codex"):
             where = "terminal" if info.is_terminal else "desktop app"
@@ -3960,6 +3965,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             effort = dialog.effort()
             provider = getattr(dialog, "provider", lambda: "claude")()
             policy = getattr(dialog, 'codex_policy', lambda: {})() if provider == 'codex' else {}
+            copilot_mode = getattr(dialog, "copilot_mode", lambda: "")()
         finally:
             dialog.Destroy()
         if forward is None:
@@ -3977,7 +3983,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, wx.Frame):
             return
         if provider == "copilot":
             self._create_codex_owned(folder, title, message, made=made, joint=joint,
-                                     provider="copilot")
+                                     provider="copilot", copilot_mode=copilot_mode)
             return
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)

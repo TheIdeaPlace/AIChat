@@ -311,7 +311,8 @@ class CopilotParser:
         sections = parse_git_diff(_text(result.get("detailedContent")))
         by_path = {_path_key(path): hunks for path, hunks in sections}
         for entry in entries:
-            if not isinstance(entry, dict) or not _text(entry.get("path")):
+            if (not isinstance(entry, dict) or not _text(entry.get("path"))
+                    or _own_file(entry["path"])):
                 continue
             path, kind = entry["path"], _text(entry.get("kind"))
             hunks = by_path.get(_path_key(path))
@@ -324,6 +325,12 @@ class CopilotParser:
             self.transcript.edits.append(FileEdit(
                 path, tool or "Copilot", self.transcript.turns, hunks,
                 created=created, deleted=deleted))
+
+
+def _own_file(path: str) -> bool:
+    """Copilot's own bookkeeping (plan mode's plan.md), not a changed file."""
+    from .copilot_runtime import copilot_own_file
+    return copilot_own_file(path)
 
 
 def _path_key(path: str) -> str:
@@ -700,13 +707,18 @@ class CopilotProvider:
         """Offered in New Session only once Copilot CLI is installed."""
         return self.runtime is not None and platform_paths.find_copilot() is not None
 
-    def create_owned(self, cwd: str, title: str):
+    def create_owned(self, cwd: str, title: str, copilot_mode: str = ""):
         """A new chat, as the window's record of it. Waits for Copilot to
-        start, so call it off the UI thread."""
+        start, so call it off the UI thread. ``copilot_mode``: plan mode to
+        start in it (copilot_runtime.PLAN_MODE); agent mode otherwise."""
         from ..own_store import OwnSession
-        native_id = self.runtime.create(cwd)
+        native_id = self.runtime.create(cwd, mode=copilot_mode or "")
         return OwnSession(native_id, title, cwd, provider=PROVIDER_ID, started=True,
                           created_ms=int(time.time() * 1000))
+
+    def set_mode_owned(self, record, mode: str) -> None:
+        """Change Permission Mode: agent or plan, from the chat's next turn."""
+        self.runtime.set_mode(record.cli_session_id, mode)
 
     def owned_ready(self, record) -> bool:
         return self.runtime is not None and self.runtime.ready(record.cli_session_id)
