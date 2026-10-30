@@ -681,9 +681,13 @@ class _Chat:
         #: ((value, label), …), from its configOptions.
         self.model = ""
         self.models: tuple = ()
-        #: Counts each time the chat's settings are read whole (opened, or a
-        #: setting switched): a reply to an older switch mustn't overwrite them.
+        #: Counts each time the chat's settings are asked for whole (opened,
+        #: or a setting switched), and which of those was last taken in: a
+        #: reply older than one already taken in mustn't overwrite it. A
+        #: switch that fails asks for nothing, so it never makes an earlier
+        #: one's reply look old.
         self.settings_gen = 0
+        self.settings_applied = 0
         #: The turn ``cancel_timer`` is for: a second Stop in that turn
         #: mustn't put the forced close off again (Kelly, #405).
         self.cancel_turn = 0
@@ -897,9 +901,10 @@ class CopilotChatRuntime:
     def _set_option(self, native_id: str, config_id: str, value: str, refused: str) -> None:
         """Set one of a chat's configOptions (``session/set_config_option``)
         and take in the whole set Copilot replies with. ``refused`` is said if
-        Copilot says no. A reply older than what the chat has now (it was
-        opened again, or switched again, meanwhile) is ignored. Waits for
-        Copilot, so call it off the UI thread."""
+        Copilot says no. A reply older than a later switch or reopen whose
+        reply has already been taken in is ignored (a config_option_update
+        notification doesn't count as either). Waits for Copilot, so call it
+        off the UI thread."""
         with self._lock:
             chat = self._chats.get(native_id)
             if chat is None or chat.connection is None or chat.connection.closed or chat.loading:
@@ -921,11 +926,13 @@ class CopilotChatRuntime:
         unsafe_turn = False
         with self._lock:
             if (self._chats.get(native_id) is not chat or chat.loading
-                    or chat.connection is not connection or chat.settings_gen != generation):
-                # Opened again (or closed, or switched again) while Copilot
-                # answered: what the reply says is older than what the chat
-                # has now.
+                    or chat.connection is not connection
+                    or generation <= chat.settings_applied):
+                # Closed, or opened again or switched again (and that reply
+                # taken in) while Copilot answered: what this reply says is
+                # older than what the chat has now.
                 return
+            chat.settings_applied = generation
             settings = _settings(options)
             # Each setting the reply names counts, unsafe ones included; one
             # it leaves out is left as it was, never read as safe or unsafe.
@@ -938,11 +945,10 @@ class CopilotChatRuntime:
                 self._seen_models(chat)
             # It said yes: the switched setting has the value asked for, even
             # if the reply leaves it out.
-            if config_id not in present:
-                if config_id == "model":
-                    chat.model = value
-                elif config_id == "mode":
-                    chat.mode = value
+            # Only the model: a safety setting Copilot didn't report is
+            # never assumed.
+            if config_id == "model" and config_id not in present:
+                chat.model = value
             # As for a config_option_update: a turn running when Copilot stops
             # asking before it acts is stopped.
             unsafe_turn = chat.busy and not chat.safe and not chat.stopping
@@ -1025,6 +1031,8 @@ class CopilotChatRuntime:
             chat.apply(_settings(result.get("configOptions")))
             chat.apply_models(result.get("configOptions"))
             chat.settings_gen += 1
+            # A reopen supersedes every switch asked for before it.
+            chat.settings_applied = chat.settings_gen
             self._seen_models(chat)
             if chat.problem and chat.problem != HOOK_ANSWERED and not self._halted and kinds and all(k == "copilot" for k in kinds):
                 chat.problem = ""  # the late record has arrived, and it's Copilot's

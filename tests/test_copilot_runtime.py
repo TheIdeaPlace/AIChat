@@ -1886,13 +1886,33 @@ def test_a_model_reply_older_than_another_switch_is_ignored(make, tmp_path):
     def switched_again_meanwhile(method, params, *args, **kwargs):
         result = real(method, params, *args, **kwargs)
         if method == "session/set_config_option" and params.get("value") == "gpt-test":
-            runtime._chats[chat].settings_gen += 1  # as if another switch was asked for
+            runtime.set_model(chat, "gpt-mini")  # asked for, and answered, first
         return result
     connection.request = switched_again_meanwhile
     runtime.set_model(chat, "gpt-test")
-    assert runtime._chats[chat].model == "auto"
-    runtime.set_model(chat, "gpt-mini")
     assert runtime._chats[chat].model == "gpt-mini"
+
+
+def test_a_failed_switch_doesnt_make_an_earlier_ones_reply_look_old(make, tmp_path):
+    """Switch A succeeds; switch B, asked for before A's reply is taken in,
+    fails. Copilot is on A, so A's reply still counts and A is recorded."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    real = connection.request
+
+    def second_switch_fails_meanwhile(method, params, *args, **kwargs):
+        if method == "session/set_config_option" and params.get("value") == "gpt-mini":
+            raise copilot_acp.AcpError("refused")
+        result = real(method, params, *args, **kwargs)
+        if method == "session/set_config_option" and params.get("value") == "gpt-test":
+            with pytest.raises(CopilotChatError, match="couldn't switch"):
+                runtime.set_model(chat, "gpt-mini")
+        return result
+    connection.request = second_switch_fails_meanwhile
+    runtime.set_model(chat, "gpt-test")
+    assert runtime.snapshot(chat).model == "gpt-test"
+    assert runtime.ready(chat)
 
 
 def test_a_model_is_refused_for_a_chat_that_isnt_open(make, tmp_path):

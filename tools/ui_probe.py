@@ -1079,7 +1079,7 @@ def d_new_session_copilot(frame, env):
     dialog = NewSessionDialog(frame, env["folders"]["Scratch"],
                               providers=("claude", "codex", "copilot"), provider="copilot",
                               copilot_models=models)
-    dialog.model.SetSelection(3)
+    dialog.model.SetSelection(4)  # 0 is "Copilot's configured model": the long name, the worst case
     return lambda: frame._modal(dialog)
 
 
