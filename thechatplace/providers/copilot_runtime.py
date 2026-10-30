@@ -169,10 +169,15 @@ class Stopped(NamedTuple):
     #: The turn hadn't decided to send its message: it sees the stop and
     #: gives the message back unsent, so nothing went to Copilot (#405).
     before_sending: bool = False
+    #: A cancel had already gone for this turn, with its timer running: this
+    #: Stop sent nothing and left the timer alone, so the forced close comes
+    #: when the first Stop said it would, not a full grace from now (#405).
+    already_asked: bool = False
 
 
 #: What _cancel did.
 CANCEL_SENT, ANSWERED_FIRST, NOT_SENT = "sent", "answered first", "not sent"
+ALREADY_SENT = "already sent"
 
 
 class CopilotChatError(Exception):
@@ -1189,13 +1194,15 @@ class CopilotChatRuntime:
             cancel = False
         self._notify(chat)
         return Stopped(waiting, cancelled=cancel, answered=answered,
-                       before_sending=before_sending)
+                       before_sending=before_sending,
+                       already_asked=sent == ALREADY_SENT)
 
     def _cancel(self, chat: _Chat, connection, turn: int) -> str:
         """Ask Copilot to cancel ``turn``, and close it if it doesn't stop in
-        time. CANCEL_SENT, or ANSWERED_FIRST if Copilot answered first, or
-        NOT_SENT if the cancel couldn't go out; neither of those keeps a
-        timer."""
+        time. CANCEL_SENT; ALREADY_SENT if a cancel for this turn already
+        went and its timer is running (nothing is sent and that timer is
+        kept); ANSWERED_FIRST if Copilot answered first, or NOT_SENT if the
+        cancel couldn't go out, neither of which keeps a timer."""
         timer = threading.Timer(self._cancel_grace, self._cancel_overdue,
                                 args=(chat, connection, turn))
         timer.daemon = True  # never keeps the app open after it quits
@@ -1209,7 +1216,7 @@ class CopilotChatRuntime:
             if chat.cancel_timer is not None and chat.cancel_turn == turn:
                 # Already asked, and the clock is running: pressing Stop
                 # again mustn't put the forced close off (Kelly, #405).
-                return CANCEL_SENT
+                return ALREADY_SENT
             try:
                 connection.notify("session/cancel", {"sessionId": chat.native_id})
             except copilot_acp.AcpError:

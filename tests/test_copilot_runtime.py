@@ -678,7 +678,9 @@ def test_a_stop_as_the_prompt_goes_out_reaches_copilot_after_it(tmp_path):
         order = [m["method"] for m in received(tmp_path)
                  if m.get("method") in ("session/prompt", "session/cancel")]
         assert order == ["session/prompt", "session/cancel"]
-        time.sleep(1.0)  # past the grace: Copilot stopped, so it isn't closed
+        # Copilot stopped, so the timer that would close it is called off
+        # (checked directly, rather than by sleeping past the grace).
+        assert wait(lambda: runtime._chats[chat].cancel_timer is None)
         assert runtime.ready(chat) and "didn't stop" not in runtime.snapshot(chat).notice
     finally:
         runtime.close()
@@ -1779,10 +1781,12 @@ def test_stopping_again_doesnt_put_the_forced_close_off(make, tmp_path):
         chat = runtime.create(str(tmp_path))
         runtime.send(chat, "Long job")
         assert wait(lambda: runtime.snapshot(chat).replies)
-        assert runtime.stop(chat).cancelled
+        first = runtime.stop(chat)
+        assert first.cancelled and not first.already_asked
         timer = runtime._chats[chat].cancel_timer
         assert timer is not None
-        assert runtime.stop(chat).cancelled
+        again = runtime.stop(chat)
+        assert again.cancelled and again.already_asked
         assert runtime._chats[chat].cancel_timer is timer
         # The first Stop's clock still runs out, and closes it.
         assert wait(lambda: "didn't stop when asked" in runtime.snapshot(chat).notice)
@@ -1855,7 +1859,9 @@ def test_a_stop_between_the_prompts_write_and_its_queuing_cancels_after_it(tmp_p
         order = [m["method"] for m in received(tmp_path)
                  if m.get("method") in ("session/prompt", "session/cancel")]
         assert order == ["session/prompt", "session/cancel"]
-        time.sleep(1.0)  # past the grace: Copilot stopped, so it isn't closed
+        # Copilot stopped, so the timer that would close it is called off
+        # (checked directly, rather than by sleeping past the grace).
+        assert wait(lambda: runtime._chats[chat].cancel_timer is None)
         assert runtime.ready(chat) and "didn't stop" not in runtime.snapshot(chat).notice
     finally:
         runtime.close()

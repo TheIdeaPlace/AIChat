@@ -13235,6 +13235,27 @@ def test_stop_before_the_message_went_says_so(frame, env, monkeypatch):
     frame._codex_states.clear()
 
 
+def test_stop_again_says_copilot_was_already_asked(frame, env, monkeypatch):
+    """#414 review: a second Stop keeps the first Stop's timer, so it mustn't
+    promise a fresh 15 seconds before Copilot is closed."""
+    from thechatplace.providers.copilot_runtime import CopilotChatState, Stopped
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-again", "Again Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-again", "Again Copilot", "C:/w", "cp-again",
+                       provider="copilot")
+    frame._codex_states[info.key] = CopilotChatState("cp-again", "working", "1", "inProgress")
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: Stopped(cancelled=True, already_asked=True))
+    frame._stop_codex_owned(info)
+    assert pump(lambda: "Again Copilot: Already asked Copilot to stop; "
+                "The Chat Place closes it if it doesn't." in env["feedback"])
+    assert not any("within 15 seconds" in t for t in env["feedback"])
+    frame._codex_states.clear()
+
+
 def test_stop_is_worded_from_what_the_runtime_saw_not_the_windows_state(frame, env, monkeypatch):
     """Kelly's review of #372: the window's state can say Copilot has
     answered when the next waiting message has already started. Stop then
