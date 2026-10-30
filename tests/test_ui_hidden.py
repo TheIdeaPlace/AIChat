@@ -13040,8 +13040,9 @@ def test_a_reopened_chat_whose_mode_wasnt_kept_isnt_sent_to_once_ready(frame, en
         assert pump(lambda: _copilot_state(frame) is not None
                     and _copilot_state(frame).problem == MODE_NOT_KEPT
                     and info.key not in frame._codex_preparing, timeout=COPILOT_WAIT)
-        # Said once, as the chat's opening ends with it still set.
-        assert sum(MODE_NOT_KEPT in text for text in env["spoken"]) == 1
+        # Said once, as the chat's opening ends with it still set (an
+        # announcement that doesn't interrupt is recorded as feedback).
+        assert sum(MODE_NOT_KEPT in text for text in env["feedback"]) == 1
         assert not frame.sessions.owned_action("ready", record)
         frame._codex_preparing[info.key] = frame._open_generation  # as a slow runtime leaves it
         frame.reply_text.SetValue("Again")
@@ -13050,8 +13051,8 @@ def test_a_reopened_chat_whose_mode_wasnt_kept_isnt_sent_to_once_ready(frame, en
         frame._codex_preparing.pop(info.key, None)
         frame.reply_text.SetValue("Again")
         frame.on_send()
-        assert pump(lambda: any("another mode than the one chosen" in text
-                                for text in env["feedback"]), timeout=COPILOT_WAIT)
+        assert pump(lambda: sum("another mode than the one chosen" in text
+                                for text in env["feedback"]) == 2, timeout=COPILOT_WAIT)
         assert _received_prompts(env) == ["Plan it"]
     finally:
         runtime.close()
@@ -13078,14 +13079,15 @@ def test_a_reopened_chat_put_back_in_its_mode_says_no_mode_problem(frame, env, m
         record = frame.store.get(native, provider="copilot")
         info = record.to_info()
         env["spoken"].clear()
+        env["feedback"].clear()
         frame.open_session(info)
         assert pump(lambda: frame.sessions.owned_action("ready", record)
                     and info.key not in frame._codex_preparing, timeout=COPILOT_WAIT)
         pump(lambda: False, timeout=0.3)  # any update still on its way
         assert _copilot_state(frame).mode == PLAN_MODE
-        assert not [text for text in env["spoken"]
-                    if any(problem in text for problem in MODE_PROBLEMS)]
-        assert not [text for text in env["spoken"] if "Copilot switched to" in text]
+        said = env["spoken"] + env["feedback"]
+        assert not [text for text in said if any(problem in text for problem in MODE_PROBLEMS)]
+        assert not [text for text in said if "Copilot switched to" in text]
     finally:
         runtime.close()
 
