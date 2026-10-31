@@ -350,7 +350,7 @@ def tcp_inventory() -> Inventory:
                           "The Chat Place's settings, groups and session records"))
     inv.items = walk(root, "thechatplace/data",
                      exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json",
-                                    platform_paths.BACKUP_SECRET_FILE),
+                                    platform_paths.BACKUP_SECRET_FILE + "*"),
                      inventory=inv)
     inv.skipped += ["*.log (diagnostic logs)",
                     "session-tools.json (a running chat's connection key, made anew)",
@@ -1203,9 +1203,13 @@ def note_made(path: Path) -> None:
     _update_state(change)
 
 
+def _same_path(path) -> str:
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
 def _made_here(path: Path, made: dict) -> bool:
     """A scheduled backup this computer recorded making, unchanged since."""
-    size = made.get(str(path))
+    size = made.get(_same_path(path))
     try:
         return size is not None and path.stat().st_size == size
     except OSError:
@@ -1217,11 +1221,13 @@ def prune(folder: Path, keep: int, computer_id: str, newest: Path) -> List[Path]
     left, counting ``newest`` (the one just made and checked), which is never
     deleted. "This computer's" means its manifest says so (#443 review): a
     shared cloud folder can hold another computer's backups under a name that
-    cleans up to the same text. Only files named like backups are opened, and
-    an encrypted one or one that can't be read is left alone. Returns what
-    was deleted."""
-    made = {m.get("path"): m.get("size") for m in load_state().get("schedule_made") or []
-            if isinstance(m, dict)}
+    cleans up to the same text. An encrypted one's manifest can't be read, so
+    a scheduled backup recorded as made here, the same size since, counts too
+    (#442). Anything else, including a backup that can't be read, is left
+    alone. Returns what was deleted."""
+    made = {_same_path(m.get("path")): m.get("size")
+            for m in load_state().get("schedule_made") or []
+            if isinstance(m, dict) and isinstance(m.get("path"), str)}
     mine = []
     for path in Path(folder).glob(f"{FILE_PREFIX}*.zip"):
         # A name, then the stamp: YYYY-MM-DD-HHMMSS, perhaps with " (n)".
@@ -1238,6 +1244,11 @@ def prune(folder: Path, keep: int, computer_id: str, newest: Path) -> List[Path]
             deleted.append(path)
         except OSError:
             pass
+    gone = {_same_path(path) for path in deleted}
+    if gone:
+        _update_state(lambda state: state.__setitem__("schedule_made", [
+            m for m in state.get("schedule_made") or []
+            if isinstance(m, dict) and _same_path(m.get("path", "")) not in gone]))
     return deleted
 
 

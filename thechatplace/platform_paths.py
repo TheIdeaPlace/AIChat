@@ -2345,8 +2345,11 @@ def save_backup_secret(passphrase: str) -> None:
         folder.mkdir(parents=True, exist_ok=True)
         target = folder / BACKUP_SECRET_FILE
         temporary = target.with_name(target.name + ".tmp")
-        temporary.write_bytes(_dpapi(data, protect=True))
-        os.replace(temporary, target)
+        try:
+            temporary.write_bytes(_dpapi(data, protect=True))
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
         return
     if sys.platform == "darwin":
         ctypes, security, core = _keychain()
@@ -2372,6 +2375,31 @@ def save_backup_secret(passphrase: str) -> None:
     if done.returncode != 0:
         raise OSError("secret-tool couldn't keep the passphrase: "
                       + done.stderr.decode("utf-8", "replace").strip())
+
+
+def has_backup_secret() -> bool:
+    """Whether a passphrase is kept, without reading it: opening Backup
+    Schedule mustn't raise a keychain prompt or wait on a keyring (#452
+    review)."""
+    try:
+        if sys.platform == "win32":
+            return (app_data_dir() / BACKUP_SECRET_FILE).is_file()
+        if sys.platform == "darwin":
+            ctypes, security, core = _keychain()
+            service, account = _SECRET_SERVICE.encode(), _SECRET_ACCOUNT.encode()
+            item = ctypes.c_void_p()
+            status = security.SecKeychainFindGenericPassword(
+                None, len(service), service, len(account), account, None, None,
+                ctypes.byref(item))
+            if status == 0 and item:
+                core.CFRelease(item)
+            return status == 0
+        import subprocess
+        done = subprocess.run(["secret-tool", "search", "service", _SECRET_SERVICE,
+                               "account", _SECRET_ACCOUNT], capture_output=True, timeout=5)
+        return done.returncode == 0 and bool(done.stdout.strip() or done.stderr.strip())
+    except Exception:  # noqa: BLE001 - unknown reads as none
+        return False
 
 
 def load_backup_secret() -> Optional[str]:

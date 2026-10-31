@@ -4374,7 +4374,7 @@ class BackupScheduleDialog(wx.Dialog):
     def __init__(self, parent, schedule, status: str = "", *, can_encrypt: bool = True,
                  has_passphrase: bool = False):
         from .. import backup
-        super().__init__(parent, title="Backup Schedule", size=dialog_size(parent, 600, 420),
+        super().__init__(parent, title="Backup Schedule", size=dialog_size(parent, 620, 500),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._backup = backup
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -4405,6 +4405,10 @@ class BackupScheduleDialog(wx.Dialog):
         # Encrypted with a passphrase the system keeps (#442): typed once
         # here, then used by every scheduled backup with nobody there.
         self._can_encrypt, self._has_passphrase = can_encrypt, has_passphrase
+        # Encrypted already but can't be here now (secret-tool gone, say):
+        # kept on, so scheduled backups fail loudly rather than quietly
+        # going unencrypted (#452 review).
+        self._was_encrypted = bool(schedule.encrypt)
         self.new_passphrase = None
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.encrypt = wx.CheckBox(self, label="&Encrypt them with a passphrase kept on this computer")
@@ -4412,7 +4416,7 @@ class BackupScheduleDialog(wx.Dialog):
         self.encrypt.Bind(wx.EVT_CHECKBOX, lambda e: self._sync())
         row.Add(self.encrypt, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
         self.change_passphrase = wx.Button(self, label="Change &Passphrase...")
-        self.change_passphrase.Bind(wx.EVT_BUTTON, lambda e: self._ask_passphrase())
+        self.change_passphrase.Bind(wx.EVT_BUTTON, lambda e: self._ask_passphrase(changing=True))
         row.Add(self.change_passphrase, 0)
         sizer.Add(row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
@@ -4467,14 +4471,21 @@ class BackupScheduleDialog(wx.Dialog):
         finally:
             dialog.Destroy()
 
-    def _ask_passphrase(self) -> bool:
-        """The scheduled backups' passphrase, typed twice. False if cancelled."""
+    def _ask_passphrase(self, changing: bool = False) -> bool:
+        """The scheduled backups' passphrase, typed twice. False if cancelled.
+        An empty one is asked for again, with why (#452 review)."""
         while True:
+            note = ("Backups already made keep the passphrase they were made with: keep the old "
+                    "one until they've been removed.\n" if changing else "")
             first = self._ask_one(
-                "If you forget it, these backups can't be opened anywhere else.\n"
+                note + "If you forget it, these backups can't be opened anywhere else.\n"
                 "Passphrase for scheduled backups:", "Passphrase for scheduled backups")
-            if not first:
+            if first is None:
                 return False
+            if not first:
+                wx.MessageBox("Type a passphrase, or uncheck Encrypt.", "Backup Schedule",
+                              wx.OK | wx.ICON_INFORMATION, self)
+                continue
             again = self._ask_one("Type the passphrase again:", "Passphrase again")
             if again is None:
                 return False
@@ -4526,4 +4537,5 @@ class BackupScheduleDialog(wx.Dialog):
     def value(self):
         return self._backup.Schedule(self._backup.SCHEDULES[self.every.GetSelection()],
                                      self.folder.GetValue().strip(), self.keep.GetValue(),
-                                     bool(self.encrypt.GetValue() and self._can_encrypt))
+                                     bool(self.encrypt.GetValue() and self._can_encrypt)
+                                     or (self._was_encrypted and not self._can_encrypt))

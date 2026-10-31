@@ -6062,7 +6062,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         status = " ".join(t for t in (backup.last_backup_text(state),
                                       backup.failure_text(state)) if t)
         can_encrypt = platform_paths.backup_secret_available()
-        has_passphrase = can_encrypt and platform_paths.load_backup_secret() is not None
+        has_passphrase = can_encrypt and platform_paths.has_backup_secret()
         dialog = BackupScheduleDialog(self, backup.load_schedule(state), status,
                                       can_encrypt=can_encrypt, has_passphrase=has_passphrase)
         try:
@@ -6077,7 +6077,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         try:
             if schedule.encrypt and passphrase:
                 platform_paths.save_backup_secret(passphrase)
-            elif not schedule.encrypt:
+            elif not schedule.encrypt and has_passphrase:
                 platform_paths.delete_backup_secret()
         except OSError as exc:
             wx.MessageBox(f"Couldn't keep the passphrase: {exc}\n\nThe schedule wasn't changed.",

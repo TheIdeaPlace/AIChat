@@ -1678,7 +1678,8 @@ was made, and what's wrong if it isn't.
    Only backups this computer made are counted: scheduled ones, and unencrypted ones made by
    hand. Other computers' backups and anything else in the folder are never touched.
 4. To encrypt them, check **Encrypt them with a passphrase kept on this computer** (Alt+E).
-   When you save, you type a passphrase twice. **Change Passphrase** (Alt+P) changes it later.
+   When you save, you type a passphrase twice. **Change Passphrase** (Alt+P) changes it later;
+   backups already made keep the passphrase they were made with.
 5. Press **Enter** (Save). A folder on the same disk as your chats is allowed, but you're asked
    first, since it won't survive losing the computer. If a backup is due, one starts straight
    away.
@@ -1694,7 +1695,8 @@ the last backup and the last failure. To stop one, choose **File, Back Up Now**.
 **About the scheduled backups' passphrase.** Nobody is there to type it when a backup runs, so
 it's kept where the system protects it: on Windows, tied to your Windows sign-in; on a Mac, in
 your login keychain; on Linux, in your keyring through secret-tool (without secret-tool,
-scheduled backups can't be encrypted). It's never in The Chat Place's files or in a backup. A
+scheduled backups can't be encrypted). It's never in plain text in The Chat Place's files, or
+in a backup. A
 backup that leaves this computer needs the passphrase to open, but anyone signed in as you
 here could make or open one. If you forget it, the backups can't be opened anywhere else.
 Turning encryption off forgets the kept passphrase.

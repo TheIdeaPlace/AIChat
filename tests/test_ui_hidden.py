@@ -14912,3 +14912,30 @@ def test_saving_an_encrypted_schedule_keeps_the_passphrase_first(frame, env, mon
     frame.on_backup_schedule()
     assert "Couldn't keep the passphrase" in backup_boxes[-1]
     assert backup.load_schedule() == before
+
+
+def test_an_empty_scheduled_passphrase_is_asked_for_again(frame, env, monkeypatch,
+                                                           backup_boxes, passphrases):
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5),
+                                  can_encrypt=True)
+    try:
+        passphrases.answers = ["", "pw", "pw"]
+        assert dialog._ask_passphrase() is True and dialog.new_passphrase == "pw"
+        assert backup_boxes == ["Type a passphrase, or uncheck Encrypt."]
+        passphrases.answers = ["x", "x"]
+        dialog._ask_passphrase(changing=True)
+        assert passphrases.messages[-2].startswith("Backups already made keep the passphrase")
+    finally:
+        dialog.Destroy()
+
+
+def test_an_encrypted_schedule_stays_encrypted_when_the_store_is_unavailable(frame, env):
+    """#452 review: saving never quietly turns encryption off."""
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5, True),
+                                  can_encrypt=False)
+    try:
+        assert dialog.value().encrypt is True
+    finally:
+        dialog.Destroy()
