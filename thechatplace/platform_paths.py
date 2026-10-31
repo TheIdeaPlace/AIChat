@@ -189,6 +189,35 @@ def _copilot_policy_values(winreg, hive, hive_name) -> list:
 COPILOT_SETTINGS_BYTES = 2 * 1024 * 1024
 
 
+def documents_dirs() -> List[str]:
+    """The Documents folder, where PowerShell keeps its profiles: on Windows
+    the one the shell reports (OneDrive moves it, Claude's review of #426) as
+    well as the home folder's own."""
+    found = [os.path.join(os.path.expanduser("~"), "Documents")]
+    if sys.platform == "win32":
+        import ctypes
+        import uuid
+        try:
+            # FOLDERID_Documents
+            raw = uuid.UUID("FDD39AD0-238F-46AF-ADB4-6C85480369C7").bytes_le
+            guid = (ctypes.c_byte * 16).from_buffer_copy(raw)
+            path = ctypes.c_wchar_p()
+            shell32 = ctypes.WinDLL("shell32")
+            ole32 = ctypes.WinDLL("ole32")
+            shell32.SHGetKnownFolderPath.argtypes = [
+                ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_wchar_p)]
+            ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+            if shell32.SHGetKnownFolderPath(ctypes.byref(guid), 0, None,
+                                            ctypes.byref(path)) == 0:
+                if path.value:
+                    found.append(path.value)
+                ole32.CoTaskMemFree(path)
+        except (OSError, AttributeError, ValueError):
+            pass
+    return found
+
+
 def copilot_sessions_dir() -> Path:
     """One folder per Copilot CLI session, each named for its id."""
     return copilot_home() / "session-state"
@@ -1497,6 +1526,47 @@ def bring_last_popup_forward(hwnd: int) -> bool:
 
     user32.EnumWindows(callback, 0)
     return bool(found) and bool(user32.SetForegroundWindow(found[0]))
+
+
+#: git_names_diff_program's answers, by folder: (when, answer). It's asked
+#: for each git diff Copilot wants to run, so it's kept a little while.
+_DIFF_PROGRAM_SEEN: dict = {}
+#: Settings git itself puts in its own config, as git config lists them.
+_GIT_OWN_DIFF_PROGRAMS = frozenset({"diff.astextplain.textconv astextplain"})
+
+
+def git_names_diff_program(folder: str) -> Optional[bool]:
+    """Whether any git config that applies in ``folder`` (yours too, not
+    only the repository's) names a program for showing differences:
+    diff.external, or a diff driver's command or textconv. A repository's
+    .gitattributes can choose such a driver for its files, and git diff then
+    runs it (Copilot's review of Auto, #426). None if git can't say."""
+    import subprocess
+    import time
+
+    seen = _DIFF_PROGRAM_SEEN.get(folder)
+    if seen and time.monotonic() - seen[0] < 30:
+        return seen[1]
+    git = find_tool("git")
+    answer: Optional[bool] = None
+    if git:
+        try:
+            done = subprocess.run(
+                [git, "config", "--get-regexp", r"^diff\.(external|.+\.(command|textconv))$"],
+                cwd=folder, capture_output=True, timeout=10, creationflags=hidden_window_flags())
+            # git config says 1, with nothing written, when nothing matches.
+            # Git for Windows' own setting, which runs a script it ships for
+            # .doc and .pdf files, doesn't count.
+            named = [line.strip() for line in done.stdout.decode("utf-8", "replace").splitlines()
+                     if line.strip() and line.strip() not in _GIT_OWN_DIFF_PROGRAMS]
+            if done.returncode == 0:
+                answer = bool(named)
+            elif done.returncode == 1 and not done.stdout.strip():
+                answer = False
+        except (OSError, subprocess.SubprocessError, ValueError):
+            answer = None
+    _DIFF_PROGRAM_SEEN[folder] = (time.monotonic(), answer)
+    return answer
 
 
 def hidden_window_flags() -> int:

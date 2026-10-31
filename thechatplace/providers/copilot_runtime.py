@@ -216,9 +216,20 @@ def _too_long_with(preamble: str) -> str:
             "part in a file.")
 
 
-#: Said when Copilot leaves agent mode while a chat runs freely.
-FREE_ENDED = ("This chat no longer runs freely, since Copilot isn't in agent mode: it asks "
+#: What allowed a request answered for you, said before it (copilot_folder).
+_BY = {copilot_folder.AUTO: "", copilot_folder.RULE: " (your rule)",
+       copilot_folder.CHAT: " (allowed for this chat)"}
+
+#: Said when Copilot leaves agent mode while a chat is in Auto.
+AUTO_ENDED = ("This chat is no longer in Auto, since Copilot isn't in agent mode: it asks "
               "before it acts again.")
+
+
+#: Said when a chat's folder is a whole drive or the home folder.
+TOO_BROAD = ("Auto isn't offered for this chat's folder: it's a whole drive, your home folder or "
+             "a folder holding it, or it's inside a folder whose files can make a program run, "
+             "such as .git, .vscode or your home folder's settings. Start a Copilot chat in a "
+             "project's own folder to use it.")
 
 
 #: Said when an organisation's Copilot policy is on this computer.
@@ -277,12 +288,15 @@ class CopilotChatState:
     #: The model this chat uses, and the ones Copilot offers it.
     model: str = ""
     models: tuple = field(default=(), repr=False)
-    #: "Run freely in this folder" is on (copilot_folder), and how many
-    #: requests it has answered, with the last ones said ((count, summary)).
-    free: bool = False
+    #: Auto is on (copilot_folder), and the requests answered for you, by
+    #: Auto, a rule or Allow for This Chat, the last ones said
+    #: ((count, summary)).
+    auto: bool = False
     auto_allowed: tuple = field(default=(), repr=False)
     #: A command you allowed may have moved Copilot's shell: commands ask.
     location_changed: bool = False
+    #: Auto, a rule or a kept command may answer requests in this chat.
+    answering: bool = False
 
 
 def _text(value, limit: int = MAX_TEXT_CHARS) -> str:
@@ -306,10 +320,13 @@ class CopilotRequest:
     #: ACP kind -> Copilot's optionId, for the one-time choices it offered.
     choices: tuple = ()
     #: Every file the request names (its locations, and each file in its
-    #: diff), for "run freely in this folder" (copilot_folder).
+    #: diff), for Auto (copilot_folder).
     paths: tuple = ()
     #: ACP's kind for the tool call ("execute", "edit", "move", …).
     tool_kind: str = ""
+    #: A path was cut short to keep: what's kept can't be checked, so
+    #: nothing answers it for you (Copilot's review of the fixes).
+    paths_too_long: bool = False
     turn_id: str = ""
     questions: tuple = ()
 
@@ -331,13 +348,15 @@ class CopilotRequest:
         raw_diff = raw.get("diff") if isinstance(raw.get("diff"), str) else ""
         diff, diff_too_long = (raw_diff, False) if raw_diff else _content_diff(call)
         command, command_too_long = _command(raw)
-        paths = [_text(raw.get("fileName"), 4096)]
+        named = [raw.get("fileName")]
         for location in call.get("locations") if isinstance(call.get("locations"), list) else ():
             if isinstance(location, dict):
-                paths.append(_text(location.get("path"), 4096))
+                named.append(location.get("path"))
         for item in call.get("content") if isinstance(call.get("content"), list) else ():
             if isinstance(item, dict) and item.get("type") == "diff":
-                paths.append(_text(item.get("path"), 4096))
+                named.append(item.get("path"))
+        paths_too_long = any(isinstance(p, str) and len(p) > 4096 for p in named)
+        paths = [_text(p, 4096) for p in named]
         from ..changes import parse_git_diff
         paths += [path for path, _hunks in parse_git_diff(raw_diff)]
         return cls(request_id=request_id,
@@ -347,7 +366,8 @@ class CopilotRequest:
                    diff=diff[:MAX_DIFF_CHARS],
                    too_long=diff_too_long or command_too_long or len(diff) > MAX_DIFF_CHARS,
                    choices=tuple(choices), turn_id=turn_id,
-                   paths=tuple(dict.fromkeys(p for p in paths if p)), tool_kind=kind)
+                   paths=tuple(dict.fromkeys(p for p in paths if p)), tool_kind=kind,
+                   paths_too_long=paths_too_long)
 
     def offered(self):
         """Allow Once (if Copilot offered it) then Deny; never "always"."""
@@ -627,6 +647,17 @@ def hooks_refusal(places) -> str:
             "Use Copilot CLI here instead, or remove the hook if you don't need it.")
 
 
+def _follow(chat: "_Chat", locations) -> bool:
+    """Add the folders a command may have left Copilot's shell in to the
+    ones kept for the chat (call with the lock held). False if that's more
+    than copilot_folder keeps track of, when commands should ask instead."""
+    kept = tuple(dict.fromkeys([*(chat.locations or (chat.cwd,)), *locations]))
+    if len(kept) > copilot_folder.MAX_LOCATIONS:
+        return False
+    chat.locations = kept
+    return True
+
+
 def _check_folder(cwd: str) -> None:
     """Copilot works in one project folder: never a whole drive, a share's
     root, / or a device path (platform_paths.is_specific_folder, as #334
@@ -785,15 +816,22 @@ class _Chat:
         #: The turn ``cancel_timer`` is for: a second Stop in that turn
         #: mustn't put the forced close off again (Kelly, #405).
         self.cancel_turn = 0
-        #: Run freely in this folder (copilot_folder): on only when you turn
-        #: it on, after a warning, and only until The Chat Place closes.
-        self.free = False
-        #: (number, summary) of the latest requests it answered for you.
+        #: Auto (copilot_folder): on only when you choose it, after a
+        #: warning; the window keeps the choice for the chat.
+        self.auto = False
+        #: (number, summary) of the latest requests answered for you.
         self.auto_allowed: list = []
         self.auto_count = 0
-        #: You allowed a command that may move Copilot's shell: its folder
-        #: isn't known, so no command is answered for you after it.
+        #: Every folder Copilot's shell may be in: the chat's, and each
+        #: change of folder answered or allowed since Copilot started.
+        self.locations: tuple = ()
+        #: You allowed a command that may move Copilot's shell somewhere not
+        #: followed: no command is answered for you after it.
         self.location_changed = False
+        #: Something may be answered for you in this chat (Auto, a rule or a
+        #: kept command), as last worked out: the window says when commands
+        #: ask again only then.
+        self.answering = False
 
     @property
     def safe(self) -> bool:
@@ -822,8 +860,16 @@ class CopilotChatRuntime:
                  start: Optional[Callable] = None, sessions_dir: Optional[Path] = None,
                  billing_wait: float = BILLING_WAIT_SECONDS,
                  cancel_grace: float = CANCEL_GRACE_SECONDS,
-                 find_hooks: Optional[Callable[[str], list]] = None):
+                 find_hooks: Optional[Callable[[str], list]] = None,
+                 rules: Optional[Callable[[], "copilot_folder.Rules"]] = None,
+                 auto_ended: Optional[Callable[[str], None]] = None):
         self._on_update = on_update
+        #: Your rules (copilot-rules.json), read again for each request so
+        #: an edit to the file counts at once. None: no rules.
+        self._rules = rules or (lambda: copilot_folder.Rules())
+        #: Told when a chat leaves Auto by itself (Copilot left agent mode),
+        #: so the choice kept for it can be put back.
+        self._auto_ended = auto_ended
         #: Where an approving hook is defined for a folder (copilot_hooks).
         self._find_hooks = find_hooks or copilot_hooks.blocking_hooks
         self._start = start or platform_paths.start_copilot_acp
@@ -834,6 +880,9 @@ class CopilotChatRuntime:
         self._connect_lock = threading.Lock()
         self._connection: Optional[copilot_acp.AcpConnection] = None
         self._chats: Dict[str, _Chat] = {}
+        #: Commands you allowed for each chat (Allow for This Chat), exactly
+        #: as Copilot wrote them; the window keeps them (keep_allowed).
+        self._allowed_here: Dict[str, frozenset] = {}
         #: Latched for every chat when billing can't be confirmed.
         self._halted = ""
         #: Chats this runtime may reopen: ones it created, and ones the
@@ -986,21 +1035,70 @@ class CopilotChatRuntime:
         self._notify(chat)
         return native_id
 
-    def set_free(self, native_id: str, on: bool) -> None:
-        """Turn "run freely in this folder" on or off for one chat. It's kept
-        in memory only: The Chat Place closing turns it off."""
+    def set_auto(self, native_id: str, on: bool) -> None:
+        """Turn Auto on or off for one chat (copilot_folder). Only in agent
+        mode, and never where an organisation manages Copilot."""
         with self._lock:
             chat = self._chats.get(native_id)
             if chat is None:
                 raise CopilotChatError("This Copilot chat isn't open here.")
             if on and chat.mode != AGENT_MODE:
                 raise CopilotChatError("Copilot isn't in agent mode in this chat, so it can't "
-                                       "run freely. Choose Run freely again once it is.")
+                                       "be in Auto. Choose Auto again once it is.")
         if on and copilot_managed():
             raise CopilotChatError(MANAGED)
+        if on and copilot_folder.folder_too_broad(chat.cwd):
+            raise CopilotChatError(TOO_BROAD)
         with self._lock:
-            chat.free = bool(on)
+            chat.auto = bool(on)
         self._notify(chat)
+
+    def allowed_here(self, native_id: str) -> frozenset:
+        """The commands allowed for a chat now (keep_allowed)."""
+        with self._lock:
+            return self._allowed_here.get(native_id, frozenset())
+
+    def keep_allowed(self, native_id: str, commands) -> None:
+        """The commands allowed for this chat (Allow for This Chat), as the
+        window keeps them: all of them, replacing any before."""
+        with self._lock:
+            self._allowed_here[native_id] = frozenset(
+                c for c in commands if isinstance(c, str) and c)
+
+    def _policy(self, chat: "_Chat") -> "copilot_folder.Policy":
+        """What may be answered for you in a chat: nothing where an
+        organisation manages Copilot (MANAGED). Reads the disk and the
+        registry: call it with no lock held."""
+        if copilot_managed():
+            return copilot_folder.Policy()
+        rules = self._read_rules()
+        with self._lock:
+            auto, exact = chat.auto, self._allowed_here.get(chat.native_id, frozenset())
+            policy = copilot_folder.Policy(auto=auto, allow=rules.allow, ask=rules.ask,
+                                           exact=exact)
+            chat.answering = policy.any
+        return policy
+
+    def _read_rules(self) -> "copilot_folder.Rules":
+        try:
+            return self._rules()
+        except Exception:  # noqa: BLE001 - unreadable rules are no rules
+            return copilot_folder.Rules(problem="couldn't be read")
+
+    def chat_candidate(self, native_id: str, request_id) -> str:
+        """The command a waiting request would keep with Allow for This
+        Chat, or "" if it can't be kept (copilot_folder.chat_candidate)."""
+        with self._lock:
+            chat = self._chats.get(native_id)
+            request = chat.requests.get(request_id) if chat else None
+            if request is None or request.method != COMMAND or request.too_long:
+                return ""
+            if chat.mode != AGENT_MODE or chat.location_changed:
+                return ""
+            folder, places = chat.cwd, chat.locations or (chat.cwd,)
+        if copilot_managed():
+            return ""
+        return copilot_folder.chat_candidate(request.command, folder, self._policy(chat), places)
 
     def set_mode(self, native_id: str, mode: str) -> str:
         """Switch a chat between agent and plan mode (Copilot's Shift+Tab).
@@ -1187,7 +1285,7 @@ class CopilotChatRuntime:
                 # A Copilot process it wasn't open on starts it a new shell,
                 # in the chat's folder: where an earlier command may have
                 # moved the old one no longer matters (copilot_folder).
-                chat.location_changed = False
+                chat.location_changed, chat.locations = False, ()
             chat.loading, chat.connection, chat.open_on = True, connection, connection
             self._chats[native_id] = chat
         if open_here:
@@ -1682,12 +1780,19 @@ class CopilotChatRuntime:
             chat = self._chats.get(native_id)
             peek = chat.requests.get(request_id) if chat else None
             cwd = chat.cwd if chat else ""
-        # A command you allow that the folder check wouldn't allow itself may
-        # move Copilot's shell (copilot_folder): worked out first, with no
-        # lock held (it reads the disk), and only ever set, never put back,
-        # so two answers at once can't undo each other (Claude's review).
-        moves = (peek is not None and decision == ALLOW_ONCE and peek.method == COMMAND
-                 and copilot_folder.changes_location(peek.command, cwd))
+            places = (chat.locations or (cwd,)) if chat else ()
+        # Where a command you allow leaves Copilot's shell (copilot_folder):
+        # followed if the strict reading can follow it (cd sub; a command
+        # Auto, a rule or this chat allows), otherwise, if it may have moved
+        # the shell, commands ask from then on. Worked out first, with no
+        # lock held (it reads the disk); location_changed is only ever set,
+        # never put back, so two answers at once can't undo each other.
+        followed, moves = None, False
+        if peek is not None and decision == ALLOW_ONCE and peek.method == COMMAND:
+            policy = self._policy(chat)
+            tracking = copilot_folder.Policy(auto=True, allow=policy.allow, exact=policy.exact)
+            followed = copilot_folder.check_command(peek.command, cwd, tracking, places)
+            moves = followed is None and copilot_folder.may_move(peek.command)
         with self._lock:
             chat = self._chats.get(native_id)
             request = chat.requests.get(request_id) if chat else None
@@ -1697,9 +1802,9 @@ class CopilotChatRuntime:
                 raise CopilotChatError(self._halted)
             reply = request.approval_answer(decision)  # raises before anything is removed
             del chat.requests[request_id]
-            if moves:
-                # Before Copilot hears the answer, so nothing after the
-                # command can be answered for you first.
+            # Before Copilot hears the answer, so nothing after the command
+            # can be answered for you first.
+            if moves or (followed is not None and not _follow(chat, followed.locations)):
                 chat.location_changed = True
             connection = chat.connection
         if connection is None or connection.closed:
@@ -1727,10 +1832,15 @@ class CopilotChatRuntime:
             request, problem = None, str(exc)
         except Exception:  # noqa: BLE001 - a malformed request is declined, not refused
             request, problem = None, UNANSWERABLE
-        # Whether "run freely in this folder" covers it, worked out first:
-        # it reads the disk (links are followed), never with the lock held.
-        covered = (request is not None and chat is not None and chat.free
-                   and copilot_folder.allowed(request, chat.cwd, chat.location_changed))
+        # Whether Auto, a rule or this chat covers it, worked out first: it
+        # reads the disk (links are followed), never with the lock held. The
+        # folders it's read from are noted, so a change meanwhile asks.
+        covered, places = None, None
+        if request is not None and chat is not None:
+            with self._lock:
+                places, moved = chat.locations, chat.location_changed
+            covered = copilot_folder.decide(request, chat.cwd, self._policy(chat),
+                                            places or (chat.cwd,), moved)
         with self._lock:
             # Checked and stored in one go, so a Stop can't slip in between
             # and leave this request stored but never answered.
@@ -1738,7 +1848,7 @@ class CopilotChatRuntime:
                        and not chat.stopping and not self._halted)
             if watched and request is not None and len(chat.requests) >= MAX_REQUESTS:
                 request, problem = None, "Copilot asked too many things at once; some were declined."
-            # Run freely in this folder: a request it covers is answered here,
+            # A request Auto, a rule or this chat covers is answered here,
             # once, as Allow Once would be, and said; anything else asks.
             # Checked again here, with the lock: a command you allowed by hand
             # meanwhile may have moved the shell; and while one waits for you,
@@ -1746,17 +1856,26 @@ class CopilotChatRuntime:
             command_waiting = any(r.method == COMMAND for r in chat.requests.values()) \
                 if chat is not None else False
             # Only in agent mode: plan mode promises not to edit your files,
-            # and running freely mustn't answer for it (Claude's review).
-            auto = (watched and covered and request is not None and chat.free and chat.safe
+            # and nothing is answered for it (Claude's review of #426).
+            auto = (watched and covered is not None and request is not None and chat.safe
                     and chat.mode == AGENT_MODE
                     and ALLOW_ONCE in request.offered() and request.reviewable()
+                    # Still on: Auto turned off, or a kept command removed,
+                    # while this was worked out mustn't answer it (Claude's
+                    # review of Auto).
+                    and (covered.by != copilot_folder.AUTO or chat.auto)
+                    and (covered.by != copilot_folder.CHAT
+                         or request.command.strip() in self._allowed_here.get(chat.native_id, ()))
                     and not (request.method == COMMAND
-                             and (chat.location_changed or command_waiting)))
+                             and (chat.location_changed or command_waiting
+                                  or chat.locations != places
+                                  or not _follow(chat, covered.locations))))
             if auto:
                 chat.auto_count += 1
                 # The whole command, not its first line: all of it ran.
-                said = (f"Command: {' '.join(request.command.split())}"
+                what = (f"Command: {' '.join(request.command.split())}"
                         if request.method == COMMAND else request.summary())
+                said = f"{what}{_BY.get(covered.by, '')}"
                 # Kept for the list Chat Permissions shows (#426); the
                 # command check refuses anything longer than it keeps.
                 chat.auto_allowed = (chat.auto_allowed + [(chat.auto_count, said[:500])])[-200:]
@@ -1865,20 +1984,21 @@ class CopilotChatRuntime:
             problem=chat.problem, started_at=chat.started_at, activity=chat.activity,
             notice=chat.notice, context_used=chat.context[0], context_size=chat.context[1],
             context_epoch=chat.context_epoch, checking=chat.busy and chat.answered,
-            mode=chat.mode, free=chat.free, auto_allowed=tuple(chat.auto_allowed),
-            location_changed=chat.location_changed,
+            mode=chat.mode, auto=chat.auto, auto_allowed=tuple(chat.auto_allowed),
+            location_changed=chat.location_changed, answering=chat.answering or chat.auto,
             changed_paths=chat.changed_paths, model=chat.model, models=chat.models,
             token_usage=(ContextReport(min(1.0, chat.context[0] / chat.context[1]), chat.context[1])
                          if chat.context[1] > 0 and chat.context[0] >= 0 else None))
 
     def _notify(self, chat: _Chat) -> None:
+        ended = False
         with chat.delivering:
             with self._lock:
-                if chat.free and chat.mode != AGENT_MODE:
+                if chat.auto and chat.mode and chat.mode != AGENT_MODE and not chat.loading:
                     # Copilot (or a switch, or reopening) left agent mode:
-                    # running freely ends with it, and the chat says so.
-                    chat.free = False
-                    chat.notice = (f"{chat.notice} " if chat.notice else "") + FREE_ENDED
+                    # Auto ends with it, and the chat says so.
+                    chat.auto, ended = False, True
+                    chat.notice = (f"{chat.notice} " if chat.notice else "") + AUTO_ENDED
                 state = self._state(chat)
                 # The window puts unsent messages back in the message box
                 # when an update has them, so each is in one update only (as
@@ -1887,6 +2007,11 @@ class CopilotChatRuntime:
                     state = replace(state, unsent=())
                 chat.unsent_told = chat.unsent
             self._deliver(state)
+        if ended and self._auto_ended is not None:
+            try:
+                self._auto_ended(chat.native_id)
+            except Exception:  # noqa: BLE001 - the choice kept is put back next time it's made
+                pass
 
     def _deliver(self, state: CopilotChatState) -> None:
         try:

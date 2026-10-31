@@ -4,7 +4,8 @@ Shaped like what Copilot CLI 1.0.103 sent (dev-notes/copilot-cli-probe.md),
 with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
 
   answer      each prompt streams "Hello" " there" and ends the turn
-  ask         each prompt asks permission to run a command first, then says
+  ask         each prompt asks permission to run a command first (echo
+              synthetic, or FAKE_COPILOT_COMMAND), then says
               "Allowed" or "Denied" depending on the answer
   hang        each prompt streams one chunk, then waits for session/cancel
   unsafe      sessions start in autopilot mode
@@ -98,6 +99,10 @@ client = ["github/acp"]  # what Copilot records unless clientInfo names one
 cancelled = threading.Event()
 prompting = threading.Event()  # strict: set as a prompt is read, before its thread
 
+
+#: The command "ask" asks to run (FAKE_COPILOT_COMMAND): Auto, rules and
+#: Allow for This Chat are tested with ones they do and don't cover (#426).
+ASK_COMMAND = os.environ.get("FAKE_COPILOT_COMMAND", "echo synthetic")
 
 def send(message):
     with write_lock:
@@ -277,9 +282,9 @@ def prompt(message_id, session, text=""):
             "sessionId": session,
             "toolCall": {"toolCallId": "call-1", "title": "Run a synthetic command",
                          "kind": "execute", "rawInput": {
-                             "command": "echo synthetic",
+                             "command": ASK_COMMAND,
                              # As Copilot 1.0.103 lists the commands it found.
-                             "commands": [{"identifier": "echo synthetic", "readOnly": False}]}},
+                             "commands": [{"identifier": ASK_COMMAND, "readOnly": False}]}},
             "options": [{"optionId": "allow_once", "name": "Allow once", "kind": "allow_once"},
                         {"optionId": "allow_always", "name": "Always", "kind": "allow_always"},
                         {"optionId": "reject_once", "name": "Reject", "kind": "reject_once"}]}})

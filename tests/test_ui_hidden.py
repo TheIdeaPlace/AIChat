@@ -12902,7 +12902,11 @@ def test_answering_a_copilot_request_asks_in_copilots_name_and_denies(frame, env
                     timeout=COPILOT_WAIT)
         frame.on_answer()
         assert pump(lambda: _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
-        assert shown == [("Copilot", ("allow_once", "reject_once"), None)]
+        # echo synthetic can be kept for the chat, so Allow for This Chat is
+        # offered with it (#426).
+        assert [(name, offered) for name, offered, _rule in shown] == [
+            ("Copilot", ("allow_once", "reject_once"))]
+        assert shown[0][2].command == "echo synthetic"
         assert _copilot_state(frame).replies[-1][1] == "Denied"
         assert "Answer sent to Copilot." in env["feedback"]
     finally:
@@ -13110,13 +13114,13 @@ def test_a_copilot_chat_started_elsewhere_stays_read_only(frame, env, monkeypatc
         runtime.close()
 
 
-def test_chat_permissions_says_a_copilot_chat_keeps_none(frame, env, monkeypatch):
+def test_chat_permissions_says_when_a_copilot_chat_has_gone(frame, env, monkeypatch):
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
     info = SessionInfo(OWN, "copilot:cp", "My Copilot", "C:/w", "cp", provider="copilot")
     monkeypatch.setattr(frame, "_selected_session", lambda: info)
     frame.on_chat_permissions()
-    assert "asks before each command" in env["feedback"][-1]
+    assert env["feedback"][-1] == "This Copilot chat is no longer in The Chat Place."
 
 
 def test_new_session_offers_copilot_with_its_own_note(frame):
@@ -13165,11 +13169,11 @@ def test_change_permission_mode_switches_a_copilot_chat_to_plan(frame, env, monk
                             lambda action, record, *args: (calls.append((action, args)),
                                                            recorded[0])[1])
         frame.on_change_permission_mode()
-        # Run freely in this folder is the third choice (#426), and choosing
-        # a mode turns it off at once, before the switch goes to Copilot.
+        # Auto is the third choice (#426), and choosing a mode turns it off
+        # at once, before the switch goes to Copilot.
         assert asked == [("Mode for Planning Copilot, now agent mode:",
-                          [AGENT_MODE, PLAN_MODE, "free"], AGENT_MODE)]
-        assert pump(lambda: calls == [("set_free", (False,)), ("set_mode", (PLAN_MODE,))]
+                          [AGENT_MODE, PLAN_MODE, "auto"], AGENT_MODE)]
+        assert pump(lambda: calls == [("set_auto", (False,)), ("set_mode", (PLAN_MODE,))]
                     and env["feedback"][-1:] == ["Planning Copilot: plan mode."])
         # What's said is the mode Copilot then reports, not the one asked for.
         recorded[0] = AGENT_MODE
@@ -13205,7 +13209,7 @@ def test_change_permission_mode_unblocks_a_chat_plan_mode_was_refused_for(frame,
     try:
         frame.on_change_permission_mode()
         assert nows == [""]
-        assert pump(lambda: calls == [("set_free", (False,)), ("set_mode", (AGENT_MODE,))]
+        assert pump(lambda: calls == [("set_auto", (False,)), ("set_mode", (AGENT_MODE,))]
                     and env["feedback"][-1:] == ["Blocked Copilot: agent mode."])
     finally:
         frame._codex_states.clear()
@@ -13420,18 +13424,18 @@ def test_change_model_in_a_copilot_chat(frame, env, monkeypatch):
     frame._codex_states.clear()
 
 
-def test_running_freely_in_a_copilot_chats_folder_comes_with_a_warning(frame, env, monkeypatch):
+def test_auto_in_a_copilot_chat_comes_with_a_warning(frame, env, monkeypatch):
     from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, CopilotChatState
     from thechatplace.sessions import OWN, SessionInfo
     from thechatplace.ui import codex_chats
-    from thechatplace.ui.dialogs import COPILOT_FREE
+    from thechatplace.ui.dialogs import COPILOT_AUTO
     settle(frame)
-    frame.store.add(OwnSession("cp-f", "Free Copilot", "C:/w", provider="copilot", started=True))
-    info = SessionInfo(OWN, "copilot:cp-f", "Free Copilot", "C:/w", "cp-f", provider="copilot")
+    frame.store.add(OwnSession("cp-f", "Auto Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-f", "Auto Copilot", "C:/w", "cp-f", provider="copilot")
     monkeypatch.setattr(frame, "_selected_session", lambda: info)
     monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
     frame._codex_states[info.key] = CopilotChatState("cp-f", "idle", mode=PLAN_MODE)
-    monkeypatch.setattr(frame, "_change_setting", lambda title, prompt, choices, now: COPILOT_FREE)
+    monkeypatch.setattr(frame, "_change_setting", lambda title, prompt, choices, now: COPILOT_AUTO)
     calls, warned = [], []
     # Copilot confirms the mode asked for (#424 says what it reports).
     monkeypatch.setattr(frame.sessions, "owned_action",
@@ -13441,25 +13445,34 @@ def test_running_freely_in_a_copilot_chats_folder_comes_with_a_warning(frame, en
     monkeypatch.setattr(codex_chats.wx, "MessageBox",
                         lambda text, *a, **k: warned.append(text) or wx.NO)
     frame.on_change_permission_mode()
-    assert "C:/w" in warned[-1] and "not a lock" in warned[-1] and calls == []
-    assert env["feedback"][-1] == "Free Copilot still asks before Copilot acts."
+    assert "C:/w" in warned[-1] and "not a lock" in warned[-1] and ".git" in warned[-1]
+    assert calls == [] and env["feedback"][-1] == "Auto Copilot still asks before Copilot acts."
     # Accepted: agent mode first, then on.
     monkeypatch.setattr(codex_chats.wx, "MessageBox", lambda text, *a, **k: wx.YES)
     frame.on_change_permission_mode()
-    assert pump(lambda: calls == [("set_mode", (AGENT_MODE,)), ("set_free", (True,))]
-                and env["feedback"][-1].startswith("Free Copilot runs freely in C:/w."))
-    # Each request answered for you goes on the status bar.
+    assert pump(lambda: calls == [("set_mode", (AGENT_MODE,)), ("set_auto", (True,))]
+                and env["feedback"][-1].startswith("Auto Copilot: Auto. It reads"))
+    # Each request answered for you goes on the status bar, with what allowed it.
     statuses = []
     monkeypatch.setattr(frame, "_status", lambda text: statuses.append(text))
     frame._on_owned_update("copilot", CopilotChatState(
-        "cp-f", "working", "1", "inProgress", mode=AGENT_MODE, free=True,
+        "cp-f", "working", "1", "inProgress", mode=AGENT_MODE, auto=True,
         auto_allowed=((1, "Command: Get-Item notes.txt"),)))
     frame._on_owned_update("copilot", CopilotChatState(
-        "cp-f", "working", "1", "inProgress", mode=AGENT_MODE, free=True,
-        auto_allowed=((1, "Command: Get-Item notes.txt"), (2, "File change: C:/w/a.txt"))))
+        "cp-f", "working", "1", "inProgress", mode=AGENT_MODE, auto=True,
+        auto_allowed=((1, "Command: Get-Item notes.txt"),
+                      (2, "Command: npm test (your rule)"))))
     assert [t for t in statuses if "allowed for you" in t] == [
-        "Free Copilot: allowed for you: Command: Get-Item notes.txt",
-        "Free Copilot: allowed for you: File change: C:/w/a.txt"]
+        "Auto Copilot: allowed for you: Command: Get-Item notes.txt",
+        "Auto Copilot: allowed for you: Command: npm test (your rule)"]
+    # Already in Auto, choosing it again asks no second time.
+    warned.clear()
+    frame._codex_states[info.key] = CopilotChatState("cp-f", "idle", mode=AGENT_MODE, auto=True)
+    monkeypatch.setattr(codex_chats.wx, "MessageBox",
+                        lambda text, *a, **k: warned.append(text) or wx.NO)
+    frame.on_change_permission_mode()
+    assert warned == []
+    pump(lambda: not getattr(frame, "_copilot_mode_pending", set()))
     frame._codex_states.clear()
 
 
@@ -13573,10 +13586,10 @@ def test_a_model_copilot_wont_switch_a_new_chat_to_is_said_once(frame, env, monk
         runtime.close()
 
 
-def test_leaving_running_freely_says_so_and_lists_what_was_allowed(frame, env, monkeypatch):
-    """The reviews of the merged #426: turning running freely off says so on
-    every outcome, a second switch waits for the first, the heading says the
-    chat runs freely, and Chat Permissions lists what was allowed."""
+def test_leaving_auto_says_so_and_the_heading_says_auto(frame, env, monkeypatch):
+    """The reviews of #426: turning Auto off says so on every outcome, a
+    second switch waits for the first, and the heading says the chat is in
+    Auto."""
     from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE, CopilotChatState
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
@@ -13584,24 +13597,13 @@ def test_leaving_running_freely_says_so_and_lists_what_was_allowed(frame, env, m
     info = SessionInfo(OWN, "copilot:cp-o", "Off Copilot", "C:/w", "cp-o", provider="copilot")
     monkeypatch.setattr(frame, "_selected_session", lambda: info)
     monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
-    allowed = ((1, "Command: Get-Item notes.txt"), (2, "File change: C:/w/a.txt"))
-    frame._codex_states[info.key] = CopilotChatState("cp-o", "idle", mode=AGENT_MODE, free=True,
-                                                     auto_allowed=allowed)
+    frame._codex_states[info.key] = CopilotChatState("cp-o", "idle", mode=AGENT_MODE, auto=True)
     try:
-        # Chat Permissions: the list, newest first.
-        shown = []
-        monkeypatch.setattr(frame, "_choose", lambda title, prompt, choices, selection=None:
-                            shown.append((title, prompt, list(choices))))
-        frame.on_chat_permissions()
-        assert shown and shown[-1][0] == "Allowed for You: Off Copilot"
-        assert shown[-1][2] == ["File change: C:/w/a.txt", "Command: Get-Item notes.txt"]
-        assert "runs freely in its folder" in shown[-1][1]
-        # The heading says so.
         monkeypatch.setattr(frame, "_open", info)
         frame._update_heading()
-        assert "runs freely in its folder" in frame.session_heading.GetLabel() or \
-            "runs freely in its folder" in getattr(frame.session_heading, "text", "")
-        # Off to plan mode: it says the chat no longer runs freely.
+        heading = getattr(frame.session_heading, "text", "") or frame.session_heading.GetLabel()
+        assert ", Auto." in heading
+        # Off to plan mode: it says the chat is no longer in Auto.
         calls = []
         monkeypatch.setattr(frame, "_change_setting", lambda *a: PLAN_MODE)
         monkeypatch.setattr(frame.sessions, "owned_action",
@@ -13611,14 +13613,101 @@ def test_leaving_running_freely_says_so_and_lists_what_was_allowed(frame, env, m
         # A second switch while the first is on its way waits.
         frame.on_change_permission_mode()
         assert "still being switched" in env["feedback"][-1]
-        assert pump(lambda: env["feedback"][-1] == "Off Copilot: plan mode. It no longer runs "
-                    "freely; Copilot asks before it acts.")
-        assert calls == [("set_free", (False,)), ("set_mode", (PLAN_MODE,))]
+        assert pump(lambda: env["feedback"][-1] == "Off Copilot: plan mode. Auto is off; "
+                    "Copilot asks before it acts.")
+        assert calls == [("set_auto", (False,)), ("set_mode", (PLAN_MODE,))]
     finally:
         frame._codex_states.clear()
 
 
-def test_running_freely_isnt_offered_where_copilot_is_managed(frame, env, monkeypatch):
+def test_chat_permissions_lists_a_copilot_chats_commands_and_removes_one(frame, env, monkeypatch):
+    """#426: the commands allowed for a Copilot chat are rows to read and
+    remove; what was answered for you, and your rules, are in the note."""
+    from thechatplace.providers.copilot_auto_store import Kept
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession("cp-p", "Kept Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-p", "Kept Copilot", "C:/w", "cp-p", provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    frame._codex_states[info.key] = CopilotChatState(
+        "cp-p", "idle", mode=AGENT_MODE, auto=True,
+        auto_allowed=((1, "Command: Get-Item notes.txt"), (2, "File change: C:/w/a.txt")))
+    kept = [Kept("npm test", 0), Kept("npm run build", 0)]
+    calls = []
+
+    def owned_action(action, record, *args):
+        calls.append((action, args))
+        if action == "remove_chat_rule":
+            kept[:] = [k for k in kept if k.command != args[0]]
+        return tuple(kept)
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    try:
+        def drive(dialog):
+            assert pump(lambda: dialog.loaded)
+            rows = list(dialog.list.GetStrings())
+            mode = dialog.mode.GetValue()
+            note = dialog.note.GetValue()
+            dialog.list.SetSelection(0)
+            _permission_delete_key(dialog)
+            assert pump(lambda: dialog.list.GetCount() == 1)
+            return rows, mode, note, list(dialog.list.GetStrings())
+        (rows, mode, note, after), asked = _chat_permissions(frame, monkeypatch, drive, [wx.YES])
+        assert rows == ["Exactly this command: npm test. Allowed: time not recorded.",
+                        "Exactly this command: npm run build. Allowed: time not recorded."]
+        assert mode.startswith("Auto")
+        assert "copilot-rules.json" in note
+        assert "File change: C:/w/a.txt\nCommand: Get-Item notes.txt" in note  # newest first
+        assert after == ["Exactly this command: npm run build. Allowed: time not recorded."]
+        assert ("remove_chat_rule", ("npm test",)) in calls
+    finally:
+        frame._codex_states.clear()
+
+
+def test_allow_for_this_chat_is_offered_for_a_copilot_command(frame, env, monkeypatch):
+    """#426: Answer offers Allow for This Chat for a Copilot command the
+    provider says can be kept, and sends allow_for_chat when it's chosen."""
+    from thechatplace.providers.copilot_auto_store import Kept
+    from thechatplace.providers.copilot_runtime import (AGENT_MODE, COMMAND, CopilotChatState,
+                                                         CopilotRequest)
+    from thechatplace.sessions import OWN, SessionInfo
+    from thechatplace.ui import codex_chats
+    settle(frame)
+    frame.store.add(OwnSession("cp-a", "Asking Copilot", "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, "copilot:cp-a", "Asking Copilot", "C:/w", "cp-a", provider="copilot")
+    request = CopilotRequest("perm-1", COMMAND, "call-1", title="Run a command",
+                             command="npm test", choices=(("allow_once", "allow_once"),
+                                                          ("reject_once", "reject_once")))
+    state = CopilotChatState("cp-a", "needs_you", "1", "inProgress", mode=AGENT_MODE,
+                             requests=(request,))
+    frame._codex_states[info.key] = state
+    calls, shown = [], []
+
+    def owned_action(action, record, *args):
+        calls.append(action)
+        return Kept("npm test") if action == "chat_rule_candidate" else None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+
+    class Choosing(codex_chats.CodexPermissionDialog):
+        def ShowModal(self):
+            shown.append((self.chat_rule_button is not None
+                          and self.chat_rule_button.IsEnabled(),
+                          self.request_text.GetValue()))
+            self.choice = "tcp_chat_rule"
+            return wx.ID_OK
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog", Choosing)
+    try:
+        frame._answer_codex_owned(info, state)
+        assert pump(lambda: "allow_for_chat" in calls)
+        assert shown and shown[0][0], "Allow for This Chat is there and enabled"
+        assert "exactly this command: npm test" in shown[0][1]
+        assert pump(lambda: env["feedback"][-1] == "Approval kept for this chat and answer "
+                    "sent to Copilot.")
+    finally:
+        frame._codex_states.clear()
+
+
+def test_auto_isnt_offered_where_copilot_is_managed(frame, env, monkeypatch):
     from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
     from thechatplace.sessions import OWN, SessionInfo
     settle(frame)
@@ -13634,7 +13723,7 @@ def test_running_freely_isnt_offered_where_copilot_is_managed(frame, env, monkey
                             [value for value, _label in choices]))
     try:
         frame.on_change_permission_mode()
-        assert offered and "free" not in offered[-1]
+        assert offered and "auto" not in offered[-1]
     finally:
         frame._codex_states.clear()
 

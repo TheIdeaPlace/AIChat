@@ -19,9 +19,9 @@ from .. import announce
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name
-from .dialogs import (COPILOT_FREE, COPILOT_FREE_LABEL, COPILOT_SESSION_MODES,
+from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
                       CodexPermissionDialog, QuestionDialog, codex_permission_prompt,
-                      copilot_free_warning, copilot_mode_name)
+                      copilot_auto_warning, copilot_mode_name)
 from .permission_hosts import CODEX_MODES
 
 
@@ -58,12 +58,13 @@ class CodexChats:
         if state.queued:
             count = len(state.queued)
             text += f' {count} {"message" if count == 1 else "messages"} queued.'
-        if getattr(state, 'free', False):
-            text += (' It runs freely in its folder: what stays inside it is allowed without '
-                     'asking.')
-            if getattr(state, 'location_changed', False):
-                text += (' Its commands ask again, since a command you allowed may have moved '
-                         "Copilot's shell; file changes are still allowed.")
+        if getattr(state, 'auto', False):
+            text += (' It is in Auto: reading, and changing files, inside its folder are '
+                     'allowed without asking.')
+        if getattr(state, 'answering', False) and getattr(state, 'location_changed', False):
+            text += (' Its commands ask again, since a command you allowed may have moved '
+                     "Copilot's shell" + ("; file changes are still allowed."
+                                          if getattr(state, 'auto', False) else "."))
         steering = len(getattr(state, 'steering', ()))
         if steering:
             text += (f' 1 steered message waiting for {name} to accept it.' if steering == 1
@@ -214,10 +215,10 @@ class CodexChats:
 
     def _change_copilot_mode(self, info):
         """Change Permission Mode (Ctrl+Shift+O) for a Copilot chat: agent or
-        plan mode, as Copilot's own Shift+Tab switches them, or "run freely in
-        this folder" (copilot_folder, #426), after a warning. Copilot asks
-        before it acts in agent and plan mode; running freely, The Chat Place
-        answers for you what stays inside the chat's folder. What's said is
+        plan mode, as Copilot's own Shift+Tab switches them, or Auto
+        (copilot_folder, #426), after a warning. Copilot asks before it acts
+        in agent and plan mode; in Auto, The Chat Place answers for you what
+        only reads, or changes files, inside the chat's folder. What's said is
         the mode Copilot then reports, which needn't be the one chosen (#424)."""
         from ..providers.copilot_runtime import AGENT_MODE, MODE_PROBLEMS
         if not info.is_own:
@@ -243,71 +244,75 @@ class CodexChats:
             # finish first (Claude's review of #426).
             self._feedback(f"{info.title}'s mode is still being switched. Try again in a moment.")
             return
-        free_now = getattr(state, 'free', False)
-        now = COPILOT_FREE if free_now else state.mode
+        auto_now = getattr(state, 'auto', False)
+        now = COPILOT_AUTO if auto_now else state.mode
         # A chat that can't send until its mode is chosen again (plan mode
         # refused or not kept): either choice goes through, the one it's in
         # now too, and a switch Copilot confirms lets it send (#424).
         blocked = getattr(state, 'problem', '') in MODE_PROBLEMS
-        now_name = ('running freely in its folder' if free_now
-                    else copilot_mode_name(state.mode))
+        now_name = 'Auto' if auto_now else copilot_mode_name(state.mode)
         # Not offered where an organisation manages Copilot (#426): the
         # runtime refuses it there too.
         from ..providers.copilot_runtime import copilot_managed
-        offered = COPILOT_SESSION_MODES + (() if copilot_managed() and not free_now
-                                           else ((COPILOT_FREE, COPILOT_FREE_LABEL),))
+        offered = COPILOT_SESSION_MODES + (() if copilot_managed() and not auto_now
+                                           else ((COPILOT_AUTO, COPILOT_AUTO_LABEL),))
         chosen = self._change_setting('Change Permission Mode',
                                       f'Mode for {info.title}, now {now_name}:',
                                       offered, '' if blocked else now)
         if chosen is None:
             return
         folder = record.cwd
-        if chosen == COPILOT_FREE:
-            answer = wx.MessageBox(copilot_free_warning(folder), 'Run Freely in This Folder',
+        if chosen == COPILOT_AUTO and not auto_now:
+            from ..providers.copilot_folder import folder_too_broad
+            from ..providers.copilot_runtime import TOO_BROAD
+            if folder_too_broad(folder):
+                self._feedback(TOO_BROAD)
+                return
+            answer = wx.MessageBox(copilot_auto_warning(folder), 'Auto',
                                    wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self)
             if answer != wx.YES:
                 self._feedback(f'{info.title} still asks before Copilot acts.')
                 return
-        else:
+        elif chosen != COPILOT_AUTO:
             # Off at once, here, not on the worker: a message sent while the
             # switch is on its way mustn't be answered for you (Copilot's
             # review of #426). Turning it off waits on nothing.
             try:
-                self.sessions.owned_action('set_free', record, False)
-            except Exception:  # noqa: BLE001 - the chat's gone; nothing runs freely
+                self.sessions.owned_action('set_auto', record, False)
+            except Exception:  # noqa: BLE001 - the chat's gone; nothing is answered for it
                 pass
-        mode = AGENT_MODE if chosen == COPILOT_FREE else chosen
+        mode = AGENT_MODE if chosen == COPILOT_AUTO else chosen
         def change():
             # Agent mode confirmed first, always asked of Copilot, never taken
-            # from the window's copy of the state; running freely goes on only
-            # then. Its refusal is said after the mode it's in.
+            # from the window's copy of the state; Auto goes on only then. Its
+            # refusal is said after the mode it's in.
             result = self.sessions.owned_action('set_mode', record, mode)
             refused = ''
-            if chosen == COPILOT_FREE and result == AGENT_MODE:
+            if chosen == COPILOT_AUTO and result == AGENT_MODE:
                 try:
-                    self.sessions.owned_action('set_free', record, True)
+                    self.sessions.owned_action('set_auto', record, True)
                 except Exception as exc:  # noqa: BLE001 - said, with the mode
-                    refused = str(exc) or "It couldn't be set to run freely."
+                    refused = str(exc) or "It couldn't be put in Auto."
             return result, refused
         pending.add(info.key)
-        # Turning running freely off is said whatever else happens: it went
-        # off at once, above.
-        ended = (' It no longer runs freely; Copilot asks before it acts.'
-                 if free_now and chosen != COPILOT_FREE else '')
+        # Turning Auto off is said whatever else happens: it went off at once,
+        # above.
+        ended = (' Auto is off; Copilot asks before it acts.'
+                 if auto_now and chosen != COPILOT_AUTO else '')
         def done(outcome, error):
             pending.discard(info.key)
             result, refused = outcome if not error else (outcome, '')
             if error:
                 self._feedback((result if isinstance(result, str) and result
                                 else "Copilot couldn't switch modes.") + ended)
-            elif chosen == COPILOT_FREE and result == AGENT_MODE and not refused:
+            elif chosen == COPILOT_AUTO and result == AGENT_MODE and not refused:
                 moved = getattr(self._codex_states.get(info.key), 'location_changed', False)
-                self._feedback(f'{info.title} runs freely in {folder}. It still asks before '
-                               'anything outside it. Change Permission Mode turns it off.'
+                self._feedback(f'{info.title}: Auto. It reads, and changes files, in {folder} '
+                               'without asking, and asks before anything else.'
                                + (" Its commands ask for now, since a command you allowed "
                                   "earlier may have moved Copilot's shell; file changes are "
                                   "allowed for you." if moved else ''))
-            elif chosen == COPILOT_FREE and result == AGENT_MODE:
+            elif chosen == COPILOT_AUTO and result == AGENT_MODE:
                 self._feedback(f'{info.title}: agent mode. {refused}')
             elif result == mode:
                 self._feedback(f'{info.title}: {copilot_mode_name(chosen)}.{ended}')
@@ -315,7 +320,7 @@ class CodexChats:
                 self._feedback(f"Copilot didn't switch {info.title} to "
                                f"{copilot_mode_name(mode)}; it's in "
                                f"{copilot_mode_name(result)}."
-                               + (" It doesn't run freely." if chosen == COPILOT_FREE else ended))
+                               + (" It isn't in Auto." if chosen == COPILOT_AUTO else ended))
             self._update_send_state()
             if self._open is not None and self._open.key == info.key:
                 self._update_heading()
@@ -712,19 +717,23 @@ class CodexChats:
         record = self.store.get(state.native_id, provider=provider)
         if record is None:
             return
-        # Run freely in this folder (copilot_folder): each request answered
-        # for you goes on the status bar, so what was allowed can be read.
+        # Auto, your rules and Allow for This Chat (copilot_folder): each
+        # request answered for you goes on the status bar, so what was
+        # allowed can be read.
         said_before = (previous.auto_allowed[-1][0]
                        if previous is not None and getattr(previous, 'auto_allowed', ()) else 0)
         for number, summary in getattr(state, 'auto_allowed', ()):
             if number > said_before:
                 self._status(f'{record.title}: allowed for you: {summary}')
         # Once a command you allowed may have moved the shell, commands ask
-        # again: said once, when it happens, while the chat runs freely.
-        if (getattr(state, 'free', False) and getattr(state, 'location_changed', False)
+        # again: said once, when it happens, in a chat where anything is
+        # answered for you (Auto, a rule or a kept command).
+        if (getattr(state, 'answering', False) and getattr(state, 'location_changed', False)
                 and not getattr(previous, 'location_changed', False)):
             self._say(f"{record.title}: commands ask again, since the one you allowed may have "
-                      "moved Copilot's shell. File changes in its folder are still allowed.",
+                      "moved Copilot's shell."
+                      + (" File changes in its folder are still allowed."
+                         if getattr(state, 'auto', False) else ""),
                       interrupt=False)
         loaded = self._open is not None and self._open.key == key
         seen = getattr(self, '_codex_permission_notices_seen', None)
@@ -847,8 +856,12 @@ class CodexChats:
         if record is None or not state.requests:
             return
         request = state.requests[0]
-        # Only Codex can offer to keep an approval for the chat (#307).
-        if request.method != QUESTIONS and info.provider == 'codex':
+        # Codex can offer to keep an approval for the chat (#307), and Copilot
+        # a command, letter for letter (#426): the provider says whether this
+        # one can be kept.
+        from ..providers.copilot_runtime import COMMAND as COPILOT_COMMAND
+        if ((request.method != QUESTIONS and info.provider == 'codex')
+                or (request.method == COPILOT_COMMAND and info.provider == 'copilot')):
             pending = getattr(self, '_codex_answer_checks', None)
             if pending is None:
                 pending = self._codex_answer_checks = set()

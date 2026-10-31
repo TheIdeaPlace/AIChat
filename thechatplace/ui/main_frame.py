@@ -103,7 +103,7 @@ from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
-from .permission_hosts import ClaudePermissions, CodexPermissions
+from .permission_hosts import ClaudePermissions, CodexPermissions, CopilotPermissions
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, ChatPermissionsDialog,
@@ -1734,9 +1734,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             from ..providers.copilot_runtime import PLAN_MODE
             if getattr(runtime_state, "mode", "") == PLAN_MODE:
                 kind += ", plan mode"
-            # Running freely is said wherever the chat is read (#426).
-            if getattr(runtime_state, "free", False):
-                kind += ", runs freely in its folder"
+            # Auto is said wherever the chat is read (#426).
+            if getattr(runtime_state, "auto", False):
+                kind += ", Auto"
         state = state_with_detail(info.state, info.detail)
         self.session_heading.set_text(f"{end_sentence(f'{info.title}, {info.repo}, {state}')} {kind}.")
         self._update_messages_label()
@@ -3613,33 +3613,26 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
 
     def on_chat_permissions(self):
         """File, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission
-        mode, and the rules kept with a chat started here, to read and remove.
-        Codex chats keep none yet: each request still asks (#307)."""
+        mode, and the rules kept with a chat started here, to read and remove:
+        Claude's tool rules, Codex's remembered approvals, and the commands
+        allowed for a Copilot chat (#426)."""
         info = self._selected_session()
         if info is None:
             self._feedback("No session selected.")
             return
-        if info.is_own and info.provider == "copilot":
-            state = self._codex_states.get(info.key)
-            if getattr(state, "free", False) or getattr(state, "auto_allowed", ()):
-                self._copilot_allowed_list(info, state)
-                return
-            self._feedback(f"{info.title} keeps no permissions: Copilot asks before each command "
-                           "or file change, and each answer is for that one request. Change "
-                           f"Permission Mode ({key_name('Ctrl+Shift+O')}) switches it between "
-                           "agent mode, plan mode and running freely in its folder.")
-            return
-        if not info.is_own or info.provider not in ("claude", "codex"):
+        if not info.is_own or info.provider not in ("claude", "codex", "copilot"):
             where = "terminal" if info.is_terminal else "desktop app"
             self._feedback(f"{info.title} is {kind_name(info)}: it's read-only here, so it keeps "
                            f"no permissions in The Chat Place. Its {where} decides what it may do.")
             return
-        if info.provider == "codex":
-            record = self.store.get(info.cli_session_id, provider="codex")
+        if info.provider in ("codex", "copilot"):
+            record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is None:
-                self._feedback("This Codex chat is no longer in The Chat Place.")
+                self._feedback(f"This {provider_name(info.provider)} chat is no longer in The "
+                               "Chat Place.")
                 return
-            host = CodexPermissions(self, info, record)
+            host = (CodexPermissions if info.provider == "codex" else CopilotPermissions)(
+                self, info, record)
         else:
             if self.store.get(info.cli_session_id) is None:
                 self._feedback("This chat is no longer in The Chat Place.")
@@ -5640,24 +5633,6 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if info is None:
             self._feedback("No session selected.")
         return info
-
-    def _copilot_allowed_list(self, info, state):
-        """Chat Permissions for a Copilot chat that runs freely, or did
-        (#426): everything The Chat Place allowed for you in it this run,
-        newest first, to arrow through and read in full."""
-        allowed = list(getattr(state, "auto_allowed", ()))
-        free = getattr(state, "free", False)
-        how = ("runs freely in its folder" if free else "doesn't run freely now")
-        if getattr(state, "location_changed", False) and free:
-            how += ", but its commands ask again"
-        if not allowed:
-            self._feedback(f"{info.title} {how}. Nothing has been allowed for you yet. Change "
-                           f"Permission Mode ({key_name('Ctrl+Shift+O')}) turns it off.")
-            return
-        lines = [summary for _number, summary in reversed(allowed)]
-        self._choose(f"Allowed for You: {info.title}",
-                     f"{info.title} {how}. What The Chat Place allowed for you, newest first "
-                     f"({len(lines)}):", lines, selection=0)
 
     def _choose(self, title: str, prompt: str, choices: List[str],
                 selection: Optional[int] = None) -> Optional[int]:

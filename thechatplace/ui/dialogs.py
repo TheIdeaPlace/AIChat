@@ -121,35 +121,35 @@ def copilot_mode_name(mode: str) -> str:
     return {AGENT_MODE: "agent mode", PLAN_MODE: "plan mode"}.get(mode, "another mode")
 
 
-#: Change Permission Mode's third choice for a Copilot chat (copilot_folder):
-#: not one of Copilot's modes, but The Chat Place answering for you what
-#: stays inside the chat's folder. Never offered in New Session: it comes
-#: with a warning, for a chat already open.
-COPILOT_FREE = "free"
-COPILOT_FREE_LABEL = ("Run freely in this folder: runs commands and changes files in the "
-                      "chat's folder without asking; asks before anything outside it")
+#: Change Permission Mode's third choice for a Copilot chat (copilot_folder,
+#: #426): not one of Copilot's modes, but agent mode with The Chat Place
+#: answering for you what only reads, or edits files, inside the chat's
+#: folder. Never offered in New Session: it comes with a warning, for a chat
+#: already open.
+COPILOT_AUTO = "auto"
+COPILOT_AUTO_LABEL = ("Auto: reads, and changes files, in the chat's folder without asking; "
+                      "asks before running anything else")
 
 
-def copilot_free_warning(folder: str) -> str:
-    # The commands named are the ones allowed where this runs (#426): Copilot
-    # uses PowerShell on Windows and bash or zsh elsewhere (copilot_folder).
-    examples = ("Get-Item, Get-Content, Set-Content, Copy-Item, Remove-Item and the like"
-                if sys.platform == "win32" else "ls, cat, cp, mv, rm, echo and pwd")
-    return (f"Copilot will run commands and change files in {folder} and its subfolders "
-            "without asking you. Anything it does there can't be undone by The Chat Place, "
-            "so use this only in a folder that's backed up or under version control, and not "
-            "with files you haven't checked: instructions hidden in a file Copilot reads could "
-            "steer what it does there.\n\n"
-            f"Only plain file and text commands are allowed for you ({examples}). "
-            "It still asks before anything "
-            "else: other folders and drives, your home folder, the network, other programs, "
-            "changing folder, wildcards, and deleting a folder's contents. If you allow one of "
-            "those yourself, commands in this chat ask again. For a command, The Chat Place "
-            "checks what the command says, which is a strict check, not a lock.\n\n"
+def copilot_auto_warning(folder: str) -> str:
+    # The commands named are Auto's where this runs: Copilot uses PowerShell
+    # on Windows and bash or zsh elsewhere (copilot_folder).
+    examples = ("Get-ChildItem, Get-Content, Select-String, cd and git status"
+                if sys.platform == "win32" else "ls, cat, cd and git status")
+    return (f"In Auto, Copilot reads and searches in {folder} and changes files there without "
+            f"asking you: commands such as {examples}, and its own file edits. Use it in a "
+            "folder that's backed up or under version control, and not with files you haven't "
+            "checked: instructions hidden in a file Copilot reads could steer what it changes.\n\n"
+            "It still asks before running anything else (other programs, deleting, the "
+            "network), before anything outside the folder or in your home folder's settings "
+            "and secrets, and before changing files that can make a program run (such as .git, "
+            ".github, .vscode and .mcp.json). If you've allowed a program such as npm test, "
+            "with your rules or Allow for This Chat, it runs the files Auto lets Copilot change. The "
+            "Chat Place checks what each command says, which is a strict check, not a lock.\n\n"
             "Each thing allowed for you is shown on the status bar, and Chat Permissions lists "
-            "them all. This lasts until you turn it off with Change Permission Mode, or close "
-            "The Chat Place.\n\n"
-            "Let Copilot run freely in this folder?")
+            "them. Auto stays on for this chat until you choose Agent or Plan with Change "
+            "Permission Mode.\n\n"
+            "Turn on Auto for this chat?")
 
 
 #: What New Session says about a Copilot chat (#352).
@@ -1788,7 +1788,14 @@ class CodexPermissionDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
         detail = request.detail(file_detail)
-        if chat_rule is not None:
+        if chat_rule is not None and provider != "Codex":
+            # Copilot's (#426): The Chat Place keeps the command and answers
+            # Allow Once each time; Copilot's own "always" is never sent.
+            detail += ('\n\nAllow for This Chat runs ' + chat_rule.description
+                       + ', again without asking, in this chat only, while every path in it '
+                       "stays inside the folder. It can run what's in the folder, which Copilot "
+                       "may change first. File, Chat Permissions lists it, to remove.")
+        elif chat_rule is not None:
             from ..providers.codex_permissions import NOTICE
             from ..providers.codex_requests import SAVED_RULE_NOTE
             detail = detail.replace(SAVED_RULE_NOTE, 'Codex offered to keep a native approval. '
