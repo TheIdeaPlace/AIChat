@@ -261,7 +261,7 @@ def test_codex_unreadable_config_preserves_other_history(homes, monkeypatch):
     assert "codex/home/sessions/keep.jsonl" in items(inv)
 
 
-def test_codex_unknown_relocated_database_is_kept_and_noted(homes):
+def test_codex_unknown_database_in_shared_folder_is_not_copied(homes):
     elsewhere = homes["tmp"] / "database-folder"
     write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(elsewhere)}'\n")
     con = wal_db(elsewhere / "future_store_2.sqlite")
@@ -269,7 +269,7 @@ def test_codex_unknown_relocated_database_is_kept_and_noted(homes):
         inv = codex_backup.inventory()
     finally:
         con.close()
-    assert items(inv)["codex/sqlite-home/future_store_2.sqlite"] is True
+    assert "codex/sqlite-home/future_store_2.sqlite" not in items(inv)
     assert any("future_store_2.sqlite" in note for note in inv.notes)
     assert not any("future_store_2.sqlite-wal" in note for note in inv.notes)
     assert not any("future_store_2.sqlite-shm" in note for note in inv.notes)
@@ -396,7 +396,7 @@ def test_provider_linked_root_keeps_history_but_skips_child_links(homes, collect
 
 def test_codex_linked_database_root_is_backed_up(homes):
     real = homes["tmp"] / "real-databases"
-    con = wal_db(real / "future_1.sqlite")
+    con = wal_db(real / "state_7.sqlite")
     link = homes["tmp"] / "database-link"
     try:
         try:
@@ -405,7 +405,7 @@ def test_codex_linked_database_root_is_backed_up(homes):
             pytest.skip("can't make a symlink here")
         write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(link)}'\n")
         inv = codex_backup.inventory()
-        assert items(inv)["codex/sqlite-home/future_1.sqlite"] is True
+        assert items(inv)["codex/sqlite-home/state_7.sqlite"] is True
         assert any("is a link" in note for note in inv.notes)
         assert not inv.failures
     finally:
@@ -418,7 +418,7 @@ def test_live_provider_databases_round_trip_committed_wal_data(homes, monkeypatc
     monkeypatch.setattr(platform_paths, "app_data_dir", lambda: homes["tmp"] / "tcp")
     elsewhere = homes["tmp"] / "databases"
     write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(elsewhere)}'\n")
-    paths = [elsewhere / "future_1.sqlite",
+    paths = [elsewhere / "state_8.sqlite",
              homes["copilot"] / "session-store.db",
              homes["copilot"] / "session-state" / "a" / "session.db"]
     cons = [wal_db(path) for path in paths]
@@ -485,12 +485,15 @@ def test_codex_relocated_folder_is_read_only_at_the_top(homes):
     write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(elsewhere)}'\n")
     top = wal_db(elsewhere / "state_5.sqlite")
     deep = wal_db(elsewhere / "AppData" / "Firefox" / "key4.db")
+    foreign = [wal_db(elsewhere / name) for name in
+               ("key4.db", "cookies.sqlite", "state_other.sqlite", "state_5.sqlite.bak.db")]
     inv = codex_backup.inventory()
-    top.close()
-    deep.close()
+    for con in (top, deep, *foreign):
+        con.close()
     got = items(inv)
     assert got["codex/sqlite-home/state_5.sqlite"] is True
-    assert not any("key4.db" in name for name in got)
+    assert {name for name in got if name.startswith("codex/sqlite-home/")} == {
+        "codex/sqlite-home/state_5.sqlite"}
 
 
 def test_copilot_config_with_a_plaintext_token_is_left_out(homes):
@@ -512,3 +515,17 @@ def test_copilot_config_without_a_token_is_kept(homes):
 def test_copilot_unreadable_config_is_not_risked(homes):
     write(homes["copilot"] / "config.json", "{not json")
     assert "copilot/home/config.json" not in items(copilot_backup.inventory())
+
+
+@pytest.mark.parametrize("name", ["state_99.sqlite", "thread_history_2.sqlite",
+                                 "memories_3.sqlite", "goals_4.sqlite", "queue_5.sqlite"])
+def test_codex_relocated_folder_keeps_each_codex_database_kind(homes, name):
+    elsewhere = homes["tmp"] / "databases"
+    write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(elsewhere)}'\n")
+    con = wal_db(elsewhere / name)
+    try:
+        inv = codex_backup.inventory()
+    finally:
+        con.close()
+    assert items(inv)["codex/sqlite-home/" + name] is True
+    assert not inv.failures

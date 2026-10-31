@@ -4,7 +4,9 @@ History and durable state stay in Codex's profile, with databases optionally
 relocated by config.toml or CODEX_SQLITE_HOME. Files are opaque recovery
 copies: readable chat history still goes through app-server. Database names
 carry schema numbers, so unknown stores are kept and noted rather than
-silently discarded. Shared personal skills have their own source area.
+silently discarded inside Codex home. A separate database folder may be
+shared, so only Codex database names at its top level are copied. Shared
+personal skills have their own source area.
 
 Authentication, capabilities, caches, packages, logs and live runtime files
 are excluded. A restored queue or goal must never execute automatically.
@@ -14,12 +16,13 @@ from __future__ import annotations
 import fnmatch
 import json
 import os
+import re
 import stat
 import tomllib
 from pathlib import Path
 
 from .. import platform_paths
-from ..backup import Area, Inventory, SQLITE_SUFFIXES, walk
+from ..backup import Area, Inventory, walk
 
 EXCLUDED_DIRS = (
     "cache", ".cache", "tmp", ".tmp", "packages", "app-server-control", "app-server-daemon",
@@ -40,6 +43,9 @@ KNOWN = {
 }
 KNOWN_PATTERNS = ("state_*.sqlite*", "thread_history_*.sqlite*", "memories_*.sqlite*",
                   "goals_*.sqlite*", "queue_*.sqlite*")
+# A relocated folder can be the whole user home: an arbitrary SQLite file
+# there is not evidence that it belongs to Codex (#434 review, finding 13).
+DATABASE_NAME = re.compile(r"(?:state|thread_history|memories|goals|queue)_[0-9]+\.sqlite")
 SKIPPED = [
     "auth.json and its backups, app-server tokens, capabilities and installation identity "
     "(sign-in and runtime authority; sign in again)",
@@ -158,14 +164,17 @@ def inventory() -> Inventory:
             listed = [item for item in walk(sqlite_home, area, exclude_dirs=("*",),
                                             exclude_files=EXCLUDED_FILES, inventory=inv)
                       if "/" not in item.arcname[len(area) + 1:]]
-            # Keep even damaged/uninitialised database files as recovery bytes.
-            # Filtering only by a valid SQLite header would silently lose them.
-            databases = [item for item in listed
-                         if item.sqlite or item.source.suffix.lower() in SQLITE_SUFFIXES]
+            # Keep known Codex names even if damaged/uninitialised, but never
+            # infer ownership from a SQLite header alone in this shared folder.
+            databases = []
             for item in listed:
-                if not item.sqlite and item.source.suffix.lower() not in SQLITE_SUFFIXES:
-                    inv.skipped.append(f"{item.arcname} (not a database file)")
-            _note_unknown(databases, area, inv)
+                if DATABASE_NAME.fullmatch(item.source.name):
+                    databases.append(item)
+                else:
+                    inv.skipped.append(f"{item.arcname} (not a Codex database name)")
+                    if item.sqlite:
+                        inv.notes.append(f"Not copied: {item.arcname}; an unrecognized database "
+                                         "in sqlite_home may belong to another program.")
             seen = {_source_key(item.source) for item in inv.items}
             for item in databases:
                 key = _source_key(item.source)
