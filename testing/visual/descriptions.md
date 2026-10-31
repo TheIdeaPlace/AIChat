@@ -734,3 +734,11 @@ The light picture uses black text on white in the messages and note, with blue
 selection. High Contrast uses white text on #202020, white outlines and aqua
 selection; its dotted selection focus is visible. The probe reported no layout
 problems in either picture. No new visual defect was found.
+
+## restore-chooser: Restore from Backup, choosing chats (#450)
+
+The 666 by 513 Restore from Backup chooser. At the top, a read-only box with the backup's description: "Restore 4 chats from SURFACEPRO7, backed up on 31 October 2026 at 09:00? Claude 3, Codex 1.", a blank line, then what restored chats are, wrapped to four lines with a scroll bar. Below it, "Chat list (Space switches Restore and Skip):" over a list filling most of the dialog: four rows, the first selected, each starting "Restore:" or "Skip:" (the third is "Skip: Release notes for 0.3.3, Codex, AIChat, last active 28 October 2026"). Select All and Select None at the bottom left; "Restore 3 Chats" (the default) and Cancel at the bottom right. Nothing is cut off or overlapping.
+
+Text is black on white (21:1), the label black on #F0F0F0 (18.4:1), and the selected row white on #0078D4 (4.5:1). In High Contrast Desert, rows are #3D3D3D on cream (10.4:1), the selected row cream on rust brown (#FFFAEF on #903909, 7.3:1), and the default button #FFF5E3 on #903909 (7.0:1).
+
+**What looks off:** Nothing.

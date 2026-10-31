@@ -1,0 +1,161 @@
+{
+ "title": "Restore from Backup",
+ "class": "RestoreChooserDialog",
+ "size": [
+  680,
+  520
+ ],
+ "client": [
+  664,
+  481
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "TextCtrl",
+   "name": "About this backup",
+   "label": "Restore 4 chats from SURFACEPRO7, backed up on 31 October 2026 at 09:00? Claude 3, Codex 1.\r\n\r\nThey come back read-only, marked as imported: you can read, find and export them, not continue them. Nothing is written to Claude's, Codex's or Copilot's folders. Restoring the same backup again updates them instead of adding copies.",
+   "rect": [
+    10,
+    10,
+    648,
+    90
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Restore 4 chats from SURFACEPRO7, backed up on 31 October 2026 at 09:00? Claude 3, Codex 1.\n\nThey come back read-only, marked as imported: you can read, find and export them, not continue them. Nothing is written to Claude's, Codex's or Copilot's folders. Restoring the same backup again updates them instead of adding copies."
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Chat &list (Space switches Restore and Skip):",
+   "rect": [
+    8,
+    106,
+    227,
+    16
+   ],
+   "best": [
+    227,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "listBox",
+   "label": "",
+   "rect": [
+    10,
+    124,
+    648,
+    320
+   ],
+   "best": [
+    454,
+    64
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Restore: Fix the flaky upload test, Claude, Uploader, last active 30 October 2026",
+    "Restore: Visual probe, Claude, AIChat, last active 29 October 2026",
+    "Skip: Release notes for 0.3.3, Codex, AIChat, last active 28 October 2026",
+    "Restore: Plan the Linux port, Claude, AIChat, last active 2 October 2026"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Select &All",
+   "rect": [
+    8,
+    450,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Select &None",
+   "rect": [
+    89,
+    450,
+    84,
+    23
+   ],
+   "best": [
+    84,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Restore 3 Chats",
+   "rect": [
+    473,
+    450,
+    102,
+    23
+   ],
+   "best": [
+    102,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    581,
+    450,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
