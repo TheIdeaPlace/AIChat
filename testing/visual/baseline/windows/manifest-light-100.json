@@ -1350,6 +1350,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Change Permission Mode for an owned Copilot chat in plan mode"
+  },
+  "backup-schedule": {
+   "kind": "dialog",
+   "png": "backup-schedule-light-100.png",
+   "json": "backup-schedule-light-100.json",
+   "title": "Backup Schedule",
+   "class": "BackupScheduleDialog",
+   "size": [
+    600,
+    420
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Backup Schedule, daily, after a failure"
   }
  },
  "seconds": 94.1

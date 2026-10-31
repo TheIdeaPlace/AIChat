@@ -692,3 +692,11 @@ The 680 by 520 Chat Permissions dialog, titled "Chat Permissions: Automatic revi
 Text is black on white (21:1) and the selected row white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1) and the selected row #263B50 on aqua #8EE3F0 (7.9:1); in Desert the text is dark on cream (#FFFAEF, 10.4:1 or better) and the selected row cream on rust brown (#FFF5E3 on #903909, 7.0:1). At 175% (1190 by 910) the same lines show larger, with more space below them.
 
 **What looks off:** Nothing.
+
+## backup-schedule: File, Backup Schedule, daily, after a failure (#437)
+
+The 586 by 413 Backup Schedule dialog. From the top: "Back up automatically:" over a full-width box reading "Every day". "Folder for the backups:" over a box holding the folder path, with Browse... beside it. "Backups to keep:" over a narrow spin box reading 5. Below is a read-only box filling the width and most of the remaining height. It holds the explanation (it runs while The Chat Place is open, isn't encrypted, older backups are removed only after a new one checks out), a blank line, then the last backup and the last failure, all wrapped inside the box, with about a third of it empty below. Save (the default) and Cancel are at the bottom right. Nothing is cut off or overlapping.
+
+Text is black on #F0F0F0 for the labels (18.4:1) and black on white in the boxes (21:1). In High Contrast Desert, text is #202020 on cream #FFFAEF (15.7:1), the folder path #3D3D3D on cream (10.4:1), and the default Save button cream on rust brown (#FFF5E3 on #903909, 7.0:1).
+
+**What looks off:** Nothing.

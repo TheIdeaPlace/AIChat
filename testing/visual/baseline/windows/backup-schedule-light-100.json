@@ -1,0 +1,213 @@
+{
+ "title": "Backup Schedule",
+ "class": "BackupScheduleDialog",
+ "size": [
+  600,
+  420
+ ],
+ "client": [
+  584,
+  381
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Back up automatically:",
+   "rect": [
+    8,
+    8,
+    121,
+    16
+   ],
+   "best": [
+    121,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Back up automatically",
+   "label": "",
+   "rect": [
+    8,
+    24,
+    568,
+    23
+   ],
+   "best": [
+    86,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Every day"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Folder for the backups:",
+   "rect": [
+    8,
+    55,
+    122,
+    16
+   ],
+   "best": [
+    122,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Folder for the backups",
+   "label": "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\backup-schedule",
+   "rect": [
+    10,
+    73,
+    487,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\backup-schedule"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "B&rowse...",
+   "rect": [
+    501,
+    71,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Backups to &keep:",
+   "rect": [
+    8,
+    102,
+    90,
+    16
+   ],
+   "best": [
+    90,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "SpinCtrl",
+   "name": "Backups to keep",
+   "label": "",
+   "rect": [
+    8,
+    118,
+    46,
+    23
+   ],
+   "best": [
+    46,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About scheduled backups",
+   "label": "Scheduled backups run while The Chat Place is open; one that's due when it starts runs then. They aren't encrypted, so choose a private folder, ideally on another drive or in a cloud folder. Older backups from this computer are removed to keep the number you choose, and only after a new one checks out.\r\n\r\nLast backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last scheduled backup failed on 31 October at 09:00: E:\\Backups isn't a folder that exists.",
+   "rect": [
+    10,
+    151,
+    568,
+    185
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Scheduled backups run while The Chat Place is open; one that's due when it starts runs then. They aren't encrypted, so choose a private folder, ideally on another drive or in a cloud folder. Older backups from this computer are removed to keep the number you choose, and only after a new one checks out.\n\nLast backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last scheduled backup faile"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Save",
+   "rect": [
+    420,
+    350,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    501,
+    350,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
