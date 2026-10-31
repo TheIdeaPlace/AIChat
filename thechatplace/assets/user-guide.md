@@ -1617,6 +1617,27 @@ Fix the build 2026-10-26.md in C:\Users\you\Documents". Each message is a headin
 it and when, then its text. Tool activity is included only when Show Tool Activity is on for
 that chat.
 
+### Exporting many chats
+
+**File, Export Chats** (the last item before Exit: **Alt+F**, then **Up** twice) exports as many
+chats as you choose, each to its own file.
+
+1. A list of the chats in the session list opens, newest first, with hidden chats left out.
+   None are chosen to begin with. Each chat starts with **Skip** or **Export**; **Space**
+   switches the one you're on, and you hear how many are chosen. **Select All** (Alt+A) and
+   **Select None** (Alt+N) do every chat.
+2. Choose the **Format** (Alt+F): Markdown, Web page or Plain text.
+3. Press **Enter** (Export). A folder dialog asks where to save them.
+
+Each chat is saved as Export Session would save it, named after its title and the date. If a
+name is already taken, the new file gets a number, such as "Fix the build 2026-10-31 (2).md":
+nothing is ever replaced. Export Chats works in the background, and the status bar shows how far
+it has got. To stop it, choose **Export Chats** again. When it's done, a message says how many
+chats were exported and where, and lists any that couldn't be.
+
+A backup (below) is the complete copy, for restoring on this or another computer. Exported chats
+are for reading, sharing or keeping as ordinary files.
+
 ## Backing up your chats
 
 Your chats with Claude, Codex and Copilot are kept on this computer, not in your account.

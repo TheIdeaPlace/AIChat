@@ -109,7 +109,7 @@ from .permission_hosts import ClaudePermissions, CodexPermissions
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
-                      RestoreChooserDialog,
+                      ExportChatsDialog, RestoreChooserDialog,
                       ChatPermissionsDialog,
                       FindResultsDialog,
                       FormattedMessageDialog, ListsDialog, WrappingText,
@@ -275,6 +275,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._agent_last_reply: Dict[tuple, str] = {}
         self._agent_last_heard: Dict[str, str] = {}
         self._agent_codex_waiting: Dict[str, list] = {}
+        # Export Chats (#461): the running export, and this run's last format and folder.
+        self._export_many_job: Optional[dict] = None
+        self._export_many_format, self._export_many_folder = export.MARKDOWN, ""
         # The last refusal noted for each (conversation, member), until a
         # hand-off to it goes (#448).
         self._agent_send_refusals: Dict[tuple, str] = {}
@@ -599,6 +602,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._item(session, "Backup Schedule...", lambda e: self.on_backup_schedule())
         # Every letter of "Restore from Backup" is another item's access key.
         self._item(session, "Restore from Backup...", lambda e: self.on_restore_backup())
+        # Many chats as files (#461), with the other ways to get your chats
+        # out. Every letter of "Export Chats" is another item's access key,
+        # so it's here, last before Exit: Alt+F, Up, Up.
+        self._item(session, "Export Chats...", lambda e: self.on_export_chats())
         session.AppendSeparator()
         self._item(session, "E&xit", lambda e: self.Close(), wx.ID_EXIT)
         bar.Append(session, "&File")
@@ -2982,6 +2989,110 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 wx.CallAfter(self._export_done, title, path, 0, exc)
 
         self._pool.submit(work)
+
+    def on_export_chats(self):
+        """File, Export Chats (#461): choose any of the chats in the session
+        list, then a format and a folder, and each becomes its own file, as
+        Export Session makes it. It runs in the background with its progress
+        in the status bar; choosing it again offers to stop it."""
+        job = self._export_many_job
+        if job is not None:
+            if wx.MessageBox("Chats are being exported. Stop?", "Export Chats",
+                             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES:
+                job["cancel"] = True
+                self._feedback("Stopping the export.")
+            return
+        def exportable(info):
+            try:   # a local check, as Export Session makes
+                return self.sessions.has_history(info)
+            except (ValueError, OSError):
+                return False
+        infos = [info for info in (self._current_info(key) for key in self._list_keys)
+                 if info is not None and info.key not in self.hidden and exportable(info)]
+        infos.sort(key=lambda info: info.last_activity_ms or 0, reverse=True)
+        if not infos:
+            wx.MessageBox("There are no chats in the session list to export.", "Export Chats",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            return
+        rows = [export.chat_row(info.title, info.provider_label or info.provider.capitalize(),
+                                info.cwd, info.last_activity_ms) for info in infos]
+        heading = (f"{len(infos)} chat{'s' if len(infos) != 1 else ''} in the session list, newest "
+                   "first. Choose the ones to export and the format; the folder comes next. Each "
+                   "chat becomes its own file, and no file is ever replaced.")
+        dialog = ExportChatsDialog(self, heading, rows, say=lambda text: self._say(text, interrupt=True),
+                                   fmt=self._export_many_format)
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            chosen = [infos[i] for i in dialog.chosen_indexes()]
+            fmt = dialog.chosen_format()
+        finally:
+            dialog.Destroy()
+        documents = os.path.join(os.path.expanduser("~"), "Documents")
+        start = self._export_many_folder if os.path.isdir(self._export_many_folder) else (
+            documents if os.path.isdir(documents) else "")
+        folders = wx.DirDialog(self, f"Export {len(chosen)} chat{'s' if len(chosen) != 1 else ''} "
+                               "to which folder?", defaultPath=start,
+                               style=wx.DD_DEFAULT_STYLE)
+        try:
+            if folders.ShowModal() != wx.ID_OK:
+                return
+            folder = folders.GetPath()
+        finally:
+            folders.Destroy()
+        self._export_many_format, self._export_many_folder = fmt, folder
+        # Gathered here, on the window's thread: the loaded chat as the list
+        # shows it, and each chat's own Show Tool Activity choice.
+        chats = []
+        for info in chosen:
+            messages, _source = self._export_source(info)
+            show_activity = (self._show_activity if self._open is not None
+                             and info.key == self._open.key else info.key in self.tool_activity)
+            chats.append((info.title, info.cwd, (info, messages, show_activity)))
+        job = {"cancel": False}
+        self._export_many_job = job
+        self._feedback(f"Exporting {len(chats)} chat{'s' if len(chats) != 1 else ''}. "
+                       "Progress is in the status bar.")
+
+        def read(source):
+            info, messages, show_activity = source
+            if messages:
+                return messages
+            history = self.sessions.read(info)
+            return [m for m in history.messages if show_activity or not m.is_activity] if history else []
+
+        def progress(done, total):
+            wx.CallAfter(self._export_many_status, f"Exporting chats: {done} of {total}.")
+
+        def work():
+            try:
+                result = export.export_many(chats, folder, fmt, read,
+                                            cancelled=lambda: job["cancel"], progress=progress)
+                wx.CallAfter(self._export_many_done, result, folder, None)
+            except Exception as error:  # noqa: BLE001 - said, not raised
+                wx.CallAfter(self._export_many_done, None, folder, error)
+
+        self._pool.submit(work)
+
+    def _export_many_status(self, text: str):
+        if not self._gone() and self._export_many_job is not None:
+            self._status(text)
+
+    def _export_many_done(self, result, folder: str, error):
+        self._export_many_job = None
+        if self._gone():
+            return
+        if error is not None:
+            self._status("The export didn't finish.")
+            wx.MessageBox(f"Couldn't export the chats: {error}", "Export Chats",
+                          wx.OK | wx.ICON_ERROR, self)
+            return
+        summary = export.many_summary(result, folder)
+        # A message box, as the backup commands end (#458); the status bar
+        # keeps its first line to read back.
+        self._status(summary.splitlines()[0])
+        wx.MessageBox(summary, "Export Chats",
+                      wx.OK | (wx.ICON_WARNING if result.failed else wx.ICON_INFORMATION), self)
 
     def _export_done(self, title: str, path: str, count: int, error):
         if self._gone():

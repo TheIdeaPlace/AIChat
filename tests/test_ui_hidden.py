@@ -14917,10 +14917,10 @@ def test_restore_chooser_switches_rows_by_space_and_names_its_state(frame, env, 
         event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
         skipped = []
         event.Skip = lambda skip=True: skipped.append(skip)
-        dialog._on_restore(event)
+        dialog._on_go(event)
         assert shown and not skipped
         dialog._set_all(True)
-        dialog._on_restore(event)
+        dialog._on_go(event)
         assert skipped
         # Space on the list switches the selected row.
         dialog.list.SetSelection(2)
@@ -15108,3 +15108,132 @@ def test_a_second_restore_doesnt_put_back_what_you_changed(frame, env, monkeypat
     frame.on_restore_backup()
     assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
     assert frame.groups.groups_of(key) == [] and key not in frame.hidden
+
+
+
+# Export Chats (#461) ----------------------------------------------------------------------
+
+def _fake_export_dialogs(monkeypatch, folder, pick=lambda rows: [0], fmt="md", ok=True):
+    """Export Chats' chooser answers with ``pick(rows)``; the folder dialog
+    with ``folder``."""
+    from thechatplace.ui import main_frame
+
+    class Chooser:
+        made = []
+
+        def __init__(self, parent, heading, rows, say=None, fmt=""):
+            self.heading, self.rows, self.start_format = heading, list(rows), fmt
+            Chooser.made.append(self)
+
+        def ShowModal(self):
+            return wx.ID_OK if ok else wx.ID_CANCEL
+
+        def chosen_indexes(self):
+            return pick(self.rows)
+
+        def chosen_format(self):
+            return fmt
+
+        def Destroy(self):
+            pass
+
+    class Folders:
+        asked = []
+
+        def __init__(self, parent, message, defaultPath="", style=0):
+            Folders.asked.append(message)
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def GetPath(self):
+            return str(folder)
+
+        def Destroy(self):
+            pass
+
+    monkeypatch.setattr(main_frame, "ExportChatsDialog", Chooser)
+    monkeypatch.setattr(wx, "DirDialog", Folders)
+    return Chooser, Folders
+
+
+def test_export_chats_writes_only_the_chosen_ones(frame, env, monkeypatch):
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Check the build"),
+                                                 assistant_block(text_block("It passes."), "m1")])
+    add_transcript(env, "C:\\G\\Repo", "cli-b", [user_text("Pick a name")])
+    out = env["tmp"] / "exported"
+    out.mkdir()
+    chooser, folders = _fake_export_dialogs(
+        monkeypatch, out, pick=lambda rows: [i for i, r in enumerate(rows) if r.startswith("Quiet one")],
+        fmt="html")
+    frame.on_export_chats()
+    made = chooser.made[-1]
+    # Only chats with a history are listed (Hub probe has none).
+    assert sorted(r.split(",")[0] for r in made.rows) == ["Blocked one", "Quiet one"]
+    assert any(r.startswith("Quiet one, Claude, Repo, last active ") for r in made.rows)
+    assert made.heading.startswith("2 chats in the session list")
+    assert folders.asked[-1] == "Export 1 chat to which folder?"
+    assert env["feedback"][-1] == "Exporting 1 chat. Progress is in the status bar."
+    assert pump(lambda: any(b.startswith("Exported 1 chat to ") for b in env["boxes"]), timeout=20)
+    files = sorted(p.name for p in out.iterdir())
+    assert len(files) == 1 and files[0].startswith("Quiet one ") and files[0].endswith(".html")
+    assert "It passes." in (out / files[0]).read_text(encoding="utf-8")
+    assert frame._status_latest.startswith("Exported 1 chat to ")
+    assert frame._export_many_job is None
+    # The format and folder are offered again next time.
+    frame.on_export_chats()
+    assert chooser.made[-1].start_format == "html"
+
+
+def test_export_chats_leaves_out_hidden_chats(frame, env, monkeypatch):
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hello")])
+    add_transcript(env, "C:\\G\\Repo", "cli-b", [user_text("Hello")])
+    select(frame, "Blocked one")
+    key = frame._list_keys[frame.session_list.GetSelection()]
+    frame.hidden.hide(key)
+    chooser, _folders = _fake_export_dialogs(monkeypatch, env["tmp"], ok=False)
+    frame.on_export_chats()
+    assert [r.split(",")[0] for r in chooser.made[-1].rows] == ["Quiet one"]
+
+
+def test_export_chats_with_nothing_to_export_says_so(frame, env, monkeypatch):
+    chooser, _folders = _fake_export_dialogs(monkeypatch, env["tmp"])
+    frame.on_export_chats()
+    assert chooser.made == []
+    assert env["boxes"][-1] == "There are no chats in the session list to export."
+
+
+def test_export_chats_again_while_running_offers_to_stop(frame, env, monkeypatch):
+    job = {"cancel": False}
+    frame._export_many_job = job
+    frame.on_export_chats()   # env's MessageBox answers Yes
+    assert env["boxes"][-1] == "Chats are being exported. Stop?"
+    assert job["cancel"] and env["feedback"][-1] == "Stopping the export."
+    frame._export_many_job = None
+
+
+def test_export_chats_dialog_starts_with_none_chosen(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import ExportChatsDialog
+    said = []
+    dialog = ExportChatsDialog(frame, "2 chats.", ["A, Claude", "B, Codex"], say=said.append,
+                               fmt="txt")
+    try:
+        assert dialog.GetTitle() == "Export Chats"
+        assert dialog.list.GetString(0) == "Skip: A, Claude"
+        assert dialog.go.GetLabel().replace("&", "") == "Export 0 Chats"
+        assert dialog.chosen_format() == "txt"
+        dialog.format.SetSelection(1)
+        assert dialog.chosen_format() == "html"
+        dialog.toggle(1)
+        assert dialog.list.GetString(1) == "Export: B, Codex"
+        assert said[-1] == "Export, 1 of 2 chosen." and dialog.chosen_indexes() == [1]
+        assert dialog.go.GetLabel().replace("&", "") == "Export 1 Chat"
+        dialog._set_all(False)
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        dialog._on_go(event)
+        assert env["boxes"][-1] == "Choose at least one chat to export, or Cancel." and not skipped
+        assert dialog.format.GetName() == "Format"
+    finally:
+        dialog.Destroy()
