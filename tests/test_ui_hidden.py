@@ -9203,7 +9203,7 @@ def test_remote_control_wraps_but_says_all_it_says(frame):
         # Several lines, so it fits; the same words, so it's read the same.
         assert label.count("\n") >= 1
         assert " ".join(label.split()) == (
-            "Turn on Remote &Control for The Chat Place's sessions, so you can reach them "
+            "T&urn on Remote Control for The Chat Place's sessions, so you can reach them "
             "from claude.ai and other devices. Their conversations are copied to claude.ai "
             "and kept there. (File, Remote Control changes one session.)")
         box = dialog.remote_control
@@ -9232,11 +9232,11 @@ def test_settings_is_no_taller_than_its_controls(frame):
     dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
     try:
         dialog.Layout()
-        # The scrolling body (#231) is exactly as tall as the settings: no
-        # band of empty space above the buttons.
+        # There is no empty band above the buttons. A shorter body scrolls
+        # when the current display cannot fit all settings (#231, #438).
         body = dialog._body
         spare = body.GetClientSize().height - body.GetSizer().GetMinSize().height
-        assert 0 <= spare <= 2
+        assert spare <= 2
     finally:
         dialog.Destroy()
 
@@ -11518,8 +11518,10 @@ def test_settings_scroll_on_a_short_screen_and_keep_ok_and_cancel_whole(frame, m
         dialog.Destroy()
 
 
-def test_settings_that_fit_dont_scroll(frame):
+def test_settings_that_fit_dont_scroll(frame, monkeypatch):
+    from thechatplace.ui import dialogs
     from thechatplace.ui.dialogs import SettingsDialog
+    monkeypatch.setattr(dialogs, 'screen_area', lambda window: wx.Rect(0, 0, 1920, 1200))
     dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
     try:
         body = dialog._body

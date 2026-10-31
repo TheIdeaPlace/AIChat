@@ -717,6 +717,23 @@ def s_main_desktop(frame, env):
     _open(frame, "Fix the flaky upload test")
 
 
+def s_main_kept(frame, env):
+    import fake_env
+    from thechatplace.providers.claude import keep_session
+    from thechatplace.history_keeper import keeper
+    info = next(info for info in frame._snapshot.sessions if info.title == 'Fix the flaky upload test')
+    keep_session(info)
+    if not keeper().wait_idle():
+        raise RuntimeError('The synthetic kept copy did not finish')
+    original = info.transcript_path()
+    original.unlink()
+    frame.refresh_sessions(force=True)
+    if not fake_env.pump(lambda: any(s.key == info.key and s.source == 'kept'
+                                    for s in frame._snapshot.sessions), timeout=10):
+        raise RuntimeError('The synthetic kept chat was not listed')
+    _open(frame, info.title)
+
+
 def s_main_codex(frame, env, *, file_changes=False):
     """Synthetic prototype only; no installed CLI/account or UI opt-in."""
     import dataclasses
@@ -1037,13 +1054,19 @@ def d_message_plain(frame, env):
 
 
 def d_settings(frame, env):
-    return frame.on_settings
+    def show():
+        # Made-up files are tiny. Finish their queued copies so the retention
+        # count is stable across probe captures, independently of scheduling.
+        from thechatplace.history_keeper import keeper
+        keeper().wait_idle()
+        frame.on_settings()
+    return show
 
 
 def d_settings_codex(frame, env):
     from thechatplace import platform_paths
     platform_paths.find_codex = lambda: "synthetic-native-codex"
-    return frame.on_settings
+    return d_settings(frame, env)
 
 
 def d_settings_copilot(frame, env):
@@ -1051,7 +1074,7 @@ def d_settings_copilot(frame, env):
     folder = env["tmp"] / "copilot" / "session-state" / "synthetic-copilot"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "events.jsonl").touch()
-    return frame.on_settings
+    return d_settings(frame, env)
 
 
 def d_settings_speech_problem(frame, env):
@@ -1062,7 +1085,7 @@ def d_settings_speech_problem(frame, env):
     def show():
         speech.speaker.last_problem = "not spoken: JAWS is running but refused the text"
         try:
-            frame.on_settings()
+            d_settings(frame, env)()
         finally:
             speech.speaker.last_problem = ""
     return show
@@ -1664,6 +1687,8 @@ SURFACES = {
                          "An own session with two files attached to the next message"),
     "main-desktop": ("window", s_main_desktop,
                      "A desktop app session loaded: the read-only panel instead of a reply box"),
+    "main-kept": ("window", s_main_kept,
+                  "Kept Claude history after its original transcript is removed: read-only"),
     "main-codex": ("window", s_main_codex,
                    "Synthetic Codex history in the shared window: read-only controls and Codex labels"),
     "main-codex-owned": ("window", s_main_codex_owned,

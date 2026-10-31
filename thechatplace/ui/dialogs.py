@@ -1102,7 +1102,7 @@ class SettingsDialog(wx.Dialog):
         # edge (#176). A check box's label is its spoken name, so screen
         # readers hear the same sentence as before.
         self.remote_control = wx.CheckBox(body, label=_wrapped(
-            self, "Turn on Remote &Control for The Chat Place's sessions, so you can reach "
+            self, "T&urn on Remote Control for The Chat Place's sessions, so you can reach "
                   "them from claude.ai and other devices. Their conversations are copied to "
                   "claude.ai and kept there. (File, Remote Control changes one session.)",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
@@ -1142,7 +1142,7 @@ class SettingsDialog(wx.Dialog):
         if (speech.copilot_enabled or platform_paths.copilot_has_sessions()
                 or platform_paths.find_copilot() is not None):
             self.copilot_enabled = wx.CheckBox(body, label=_wrapped(
-                self, "Include GitHub C&opilot CLI chats (preview; restart required)",
+                self, "&Include GitHub Copilot CLI chats (preview; restart required)",
                 self.GetClientSize().width - 20 - _check_box_glyph(self)))
             self.copilot_enabled.SetValue(speech.copilot_enabled)
             outer.Add(self.copilot_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -1164,6 +1164,19 @@ class SettingsDialog(wx.Dialog):
             body, label="&Tell me when an update has been installed, with a link to what's new")
         self.update_notice.SetValue(speech.update_installed_notice)
         outer.Add(self.update_notice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        from ..retention import describe as describe_retention
+        outer.Add(wx.StaticText(body, label="Histor&y retention and kept copies:"),
+                  0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        self.retention = wx.TextCtrl(body, value=describe_retention(),
+                                    size=(-1, self.FromDIP(110)),
+                                    style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.retention, "History retention and kept copies")
+        self.retention.SetInsertionPoint(0)
+        outer.Add(self.retention, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        self.retention_settings = wx.Button(body, label="Open Claude's retention settings")
+        self.retention_settings.Bind(wx.EVT_BUTTON, self._open_retention_settings)
+        outer.Add(self.retention_settings, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         buttons = wx.StdDialogButtonSizer()
         ok = wx.Button(self, wx.ID_OK)
@@ -1191,6 +1204,19 @@ class SettingsDialog(wx.Dialog):
         self.engine_choice.Bind(wx.EVT_CHOICE, lambda e: self._update_rate_state())
         self._update_rate_state()
         wx.CallAfter(self.level.SetFocus)
+
+    def _open_retention_settings(self, _event):
+        path = platform_paths.claude_home() / 'settings.json'
+        if not path.is_file():
+            wx.MessageBox("Claude's settings.json does not exist yet. Set cleanupPeriodDays "
+                          "in Claude Code's user settings; The Chat Place never creates or edits it.",
+                          "History Retention", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        try:
+            platform_paths.edit_file(path)
+        except OSError:
+            wx.MessageBox("Couldn't open Claude's settings in your editor.",
+                          "History Retention", wx.OK | wx.ICON_ERROR, self)
 
     def _on_clear_recent(self, clear_recent):
         if wx.MessageBox("Clear all of New Session's recent folders? Each comes back when a "

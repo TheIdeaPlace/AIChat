@@ -854,7 +854,7 @@ again. Codex also reports read-only when your Codex settings allow only read-onl
 requirements an administrator set.</p>
 <h2 id="github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</h2>
 <h3>Turning them on</h3>
-<p>Turn on <strong>Include GitHub Copilot CLI chats (preview; restart required)</strong> in Settings (Alt+O),
+<p>Turn on <strong>Include GitHub Copilot CLI chats (preview; restart required)</strong> in Settings (Alt+I),
 save and restart. The option appears once Copilot CLI is installed or has saved a session on
 this computer: Settings looks for the Copilot CLI program, and checks the names of the folders in
 Copilot's session folder and whether each has a conversation log, never what's in them. With the
@@ -1567,14 +1567,14 @@ setting moves straight to it.</p>
 - <strong>Clear Recent Folders</strong> (Alt+L) asks first, with No as the default, and then clears the list
   at once: Cancel in Settings doesn't bring it back. A folder comes back when a chat works in it
   again.
-- <strong>Turn on Remote Control for The Chat Place's sessions</strong> (Alt+C): Claude chats started here
+- <strong>Turn on Remote Control for The Chat Place's sessions</strong> (Alt+U): Claude chats started here
   only, and off at first. It counts from each chat's next turn. File, Remote Control can set one
   chat on or off instead (see "Remote Control").
 - <strong>Let Claude keep a task list</strong> (Alt+K): Claude chats started here only, from your next
   message. On at first.
 - <strong>Include Codex chats (restart required)</strong> (Alt+X): on once Codex is found. Restart The Chat
   Place for a change to count; you hear that when you press OK.
-- <strong>Include GitHub Copilot CLI chats (preview; restart required)</strong> (Alt+O): shown only once
+- <strong>Include GitHub Copilot CLI chats (preview; restart required)</strong> (Alt+I): shown only once
   Copilot CLI is installed or has saved a session on this computer. Off at first. Restart for a
   change to count.
 - <strong>Let agent conversations hand replies across automatically</strong> (Alt+G): off at first. With it
@@ -1716,6 +1716,23 @@ the rest.</p>
 exempt in recent versions. Chats started in The Chat Place and in a terminal aren't. To keep
 them longer, set a larger number in <code>~/.claude/settings.json</code>, such as
 <code>"cleanupPeriodDays": 36500</code>. A backup keeps what was there when it was made.</p>
+<h3>Chats Claude has deleted</h3>
+<p>The Chat Place keeps its own copy of every Claude chat it lists, and adds to it as the chat
+grows. When Claude Code deletes a chat's transcript, the chat stays in the list as a
+<strong>kept chat (read-only)</strong>: you can read, find and export it, but not reply to it or continue it. It
+stays in the view it was in before, such as Terminal Sessions or Chat Place Sessions. A chat
+deleted before its first copy was made can't be recovered.</p>
+<p><strong>Settings</strong> (Ctrl+Comma) shows how long each AI keeps chats. <strong>History</strong> (Alt+Y) is that
+report, and the button after it opens Claude's settings file in your editor; The Chat Place
+never changes it.</p>
+<p><strong>Delete Session Permanently</strong> (Shift+Delete) on a kept chat deletes The Chat Place's copy, and
+on one of The Chat Place's own chats deletes its copy along with the transcript. To take a kept
+chat out of the list without deleting it, hide it.</p>
+<p>The copies are in <code>kept-history/claude</code> in The Chat Place's folder, aren't encrypted and never
+expire. If Claude rewrites a transcript, the earlier copy is kept too. Back Up Now includes the
+copies of chats whose transcript Claude has deleted, so a backup isn't twice the size of your
+Claude history. The copies are on this computer's disk: keep a backup elsewhere for a lost
+computer.</p>
 <h2 id="more-things-you-can-do">More things you can do</h2>
 <ul>
 <li><strong>Properties</strong> (Alt+Enter, View menu, or the context menu) lists what can be known about a
@@ -1966,7 +1983,7 @@ If Codex hasn't confirmed that the turn stopped, press Stop again later. Selecti
 again doesn't reconnect it.</p>
 <h3>GitHub Copilot CLI</h3>
 <p><strong>Copilot chats aren't listed, or Copilot isn't offered in New Session.</strong> Turn on
-<strong>Include GitHub Copilot CLI chats (preview; restart required)</strong> in Settings (Alt+O), save and
+<strong>Include GitHub Copilot CLI chats (preview; restart required)</strong> in Settings (Alt+I), save and
 restart. The option appears only once Copilot CLI is installed or has saved a session on this
 computer. If the option is on and Copilot still isn't offered in New Session, The Chat Place
 hasn't found a native Copilot CLI: install it as below. New Session checks again each time.</p>

@@ -560,7 +560,7 @@ on the clipboard.
 ### GitHub Copilot CLI chats
 
 **Settings: GitHub Copilot CLI chats.** Enable **Include GitHub Copilot CLI
-chats (preview; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
+chats (preview; restart required)** (Alt+I), save and restart to list GitHub Copilot CLI
 sessions alongside Claude, and to start Copilot chats of your own. The option appears once
 Copilot CLI is installed or has saved a session on this computer: to decide that, Settings looks
 for the Copilot CLI program and at the names of the folders in Copilot's session folder and
@@ -1468,8 +1468,19 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   between, but Orca didn't read it line by line.
 - "Needs you" for desktop sessions depends on the desktop app's turn summary, which it doesn't
   always write. A session without one shows as idle once it stops working.
-- A desktop session's transcript can be gone if it's older than Claude Code's retention period
-  (`cleanupPeriodDays` in Claude Code's settings). The chat says so.
+- Claude Code can delete old transcripts according to `cleanupPeriodDays`. The Chat Place
+  keeps copies of Claude transcripts it discovers or reads, under `kept-history/claude` in its
+  own data folder. After an original disappears, its chat remains as a **kept chat (read-only)**.
+  Copies refresh in the background, including after turns; a transcript deleted before the first
+  successful copy cannot be recovered. Rewrites retain the previous copy in `versions`.
+  Settings (Ctrl+Comma) shows provider retention: Alt+Y reaches the report, and Tab reaches
+  the button that opens Claude's settings in your editor.
+  Copies have no automatic expiry, are unencrypted, and Back Up Now includes them. They still
+  need a backup on another disk. Copies grow by appending what's new, and only a rewritten
+  transcript is copied whole (the earlier copy kept in `versions/`). A kept row keeps its
+  original kind for the Desktop, Chat Place and Terminal views, and Delete Session Permanently on
+  it deletes only the copy (on an own chat, the transcript and its copy). Back Up Now leaves out
+  kept copies whose original is in the backup too, unless they have earlier versions.
 - The Chat Place's own sessions, and terminal sessions, don't appear in the desktop app, so Open in
   Claude doesn't work for them; the app says so.
 - Cowork sessions can't be continued here. Their conversation is in the session's own Claude Code
