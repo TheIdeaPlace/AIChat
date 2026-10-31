@@ -303,7 +303,7 @@ def test_chooser_rows_survive_odd_input():
     from thechatplace.backup_reader import ImportedSession
     from thechatplace.imported_store import chooser_rows
     rows = chooser_rows([
-        ImportedSession("claude", "a", "pc", "One", "C:\work\proj", 0, 1_790_000_000_000),
+        ImportedSession("claude", "a", "pc", "One", r"C:\work\proj", 0, 1_790_000_000_000),
         ImportedSession("codex", "b", "pc", "Two", "", 0, -5),
         ImportedSession("copilot", "c", "pc", "Three", "/old/x/", 0, 10 ** 20)])
     assert rows[0].startswith("One, Claude, proj, last active ")
