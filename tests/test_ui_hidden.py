@@ -3507,6 +3507,42 @@ def test_report_a_bug_opens_github_with_the_report(frame, env, monkeypatch):
     assert env["feedback"][-1].startswith("Opened GitHub's new issue page")
 
 
+def test_a_second_press_while_gathering_opens_no_second_report(frame, env, monkeypatch):
+    fills = _fake_bug_dialog(monkeypatch, "copy", ("x", "y", "", ""))
+    opened = []
+    real = fills.__init__
+
+    def counting(self, parent, lines):
+        opened.append(lines)
+        real(self, parent, lines)
+    monkeypatch.setattr(fills, "__init__", counting)
+    frame.on_report_bug()
+    frame.on_report_bug()
+    assert env["feedback"][-1] == "Still gathering the details for your report."
+    assert pump(lambda: not frame._bug_report_busy)
+    assert len(opened) == 1
+
+
+def test_a_report_gathered_behind_another_dialog_waits(frame, env, monkeypatch):
+    """Gathering takes seconds: the report never opens on top of a dialog
+    opened meanwhile (#464), and choosing it again uses what was gathered."""
+    fills = _fake_bug_dialog(monkeypatch, "copy", ("x", "y", "", ""))
+    other = wx.Dialog(frame, title="Settings")
+    monkeypatch.setattr(other, "IsModal", lambda: True)
+    other.Show()
+    try:
+        frame.on_report_bug()
+        assert pump(lambda: not frame._bug_report_busy)
+        assert fills.seen is None
+        assert env["feedback"][-1].startswith("The details for your report are ready.")
+    finally:
+        other.Destroy()
+    monkeypatch.setattr("thechatplace.bugreport.gather_sign_ins",
+                        lambda *a, **k: pytest.fail("gathered twice"))
+    frame.on_report_bug()  # no gathering this time: it opens at once
+    assert fills.seen is not None and frame._bug_report_ready is None
+
+
 def test_copy_report_only_copies(frame, env, monkeypatch):
     _fake_bug_dialog(monkeypatch, "copy", ("Sort resets", "It went back.", "", ""))
     _report_bug(frame)
@@ -12959,7 +12995,9 @@ def test_a_copilot_refusal_is_said_in_its_own_words(frame, env, monkeypatch):
             frame._open.key, "/allow-all on")
         assert _received_prompts(env) == []
         from thechatplace import codex_diagnostics
-        assert codex_diagnostics.last_failure().startswith("Copilot worker failed")
+        # The reason the app wrote goes into the log for bug reports (#464).
+        assert codex_diagnostics.last_failure().startswith(
+            "Copilot CopilotChatError: Copilot commands starting with /")
     finally:
         runtime.close()
 

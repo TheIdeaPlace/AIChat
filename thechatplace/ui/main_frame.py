@@ -128,6 +128,9 @@ LIST_REFRESH_MS = 5000
 #: How often the window looks for a link another copy handed it (#144).
 LINK_CHECK_MS = 1000
 UPDATE_CHECK_DELAY_MS = 4000
+#: How long a bug report's gathered sign-ins stay usable when they arrived
+#: while another dialog was open (#464).
+BUG_REPORT_FRESH_SECONDS = 120
 #: The update-installed notice (#141) waits this long after the window is
 #: made, then until the window is active with no dialog in front of it,
 #: trying every UPDATE_NOTICE_RETRY_MS for up to UPDATE_NOTICE_TRIES times.
@@ -341,6 +344,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         # in the background; "checking" until then.
         self._cli_versions: Dict[str, str] = {}
         self._bug_report_busy = False  # gathering a report's sign-ins (#464)
+        # (when, sign-ins, install) gathered while another dialog was open.
+        self._bug_report_ready = None
         # Slash commands and skills per folder (#23), fetched in the background.
         self._commands: Dict[str, List[dict]] = {}  # by _folder_key
         self._commands_fetching: set = set()
@@ -7100,6 +7105,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         sign-in is asked first, in the background (#464), so the report says
         whether it was signed in when the bug happened."""
         if self._bug_report_busy:
+            self._feedback("Still gathering the details for your report.")
+            return
+        ready = self._bug_report_ready
+        self._bug_report_ready = None
+        if ready is not None and time.monotonic() - ready[0] < BUG_REPORT_FRESH_SECONDS:
+            # Gathered while another dialog was open: it's still fresh.
+            self._show_bug_report(*ready[1:])
             return
         self._bug_report_busy = True
         self._feedback("Gathering the details for your report.")
@@ -7134,6 +7146,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
     def _show_bug_report(self, sign_ins, install):
         self._bug_report_busy = False
         if self._gone():
+            return
+        if any(isinstance(w, wx.Dialog) and w.IsShown() and w.IsModal()
+               for w in wx.GetTopLevelWindows()):
+            # Gathering takes a few seconds, and you may have opened Settings
+            # or the like meanwhile: never stack the report on top of it.
+            self._bug_report_ready = (time.monotonic(), sign_ins, install)
+            self._feedback("The details for your report are ready. Choose Report a Bug "
+                           "again when you've finished here.")
             return
         versions = {provider: self._cli_versions.get(provider, "checking")
                     for provider in bugreport.CLI_NAMES}
@@ -7178,11 +7198,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         """Each provider's command-line version for bug reports (#464), found
         once in the background: asking takes a second or more each, too long
         to wait for in a dialog."""
-        def work(provider):
-            version = bugreport.cli_version(provider)
-            wx.CallAfter(self._cli_versions.__setitem__, provider, version)
-        for provider in bugreport.CLI_NAMES:
-            self._pool.submit(work, provider)
+        def work():
+            # One after another in one task: they aren't needed until Report
+            # a Bug, and the shared pool has other work at start-up.
+            for provider in bugreport.CLI_NAMES:
+                version = bugreport.cli_version(provider)
+                wx.CallAfter(self._cli_versions.__setitem__, provider, version)
+        self._pool.submit(work)
 
     def on_sign_in(self):
         """Help, Claude Code Sign-in (#52): whether Claude Code is signed in,

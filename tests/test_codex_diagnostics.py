@@ -59,7 +59,9 @@ def test_a_copilot_reason_too_long_or_with_control_characters_is_redacted(tmp_pa
                  # Copilot's own error text can carry a path, an address or a link.
                  'Couldn\'t open C:\\Users\\kelly\\project', 'No such file /home/kelly/x',
                  'Signed in as kelly@example.com', 'See https://github.com/acme/x',
-                 'Folder ~/work isn\'t there'):
+                 'Folder ~/work isn\'t there', 'Key in /.ssh', 'Host github.acme-corp.com',
+                 'Drive C:foo', 'mailto:kelly', 'sftp:h', 'Mail ＠x', 'At ／home',
+                 'At ∕home', 'Delete\x7fhere', 'Line break', 'Next\x85line'):
         path.unlink(missing_ok=True)
         codex_diagnostics.record_failure(_copilot_error(text))
         written = path.read_text()
@@ -69,6 +71,34 @@ def test_a_copilot_reason_too_long_or_with_control_characters_is_redacted(tmp_pa
     path.unlink()
     codex_diagnostics.record_failure(_copilot_error('y' * 1000))
     assert codex_diagnostics.last_failure() == 'Copilot CopilotChatError: ' + 'y' * 1000
+
+
+def test_every_copilot_message_the_app_writes_is_kept_unless_it_names_a_place():
+    """The privacy check mustn't hide the app's own words: only the hooks
+    refusal, which can name a folder, is a place."""
+    import ast
+    import pathlib
+    root = pathlib.Path(codex_diagnostics.__file__).parent / 'providers'
+    texts = []
+    for name in ('copilot_runtime.py', 'copilot.py', 'copilot_acp.py', 'copilot_hooks.py'):
+        tree = ast.parse((root / name).read_text(encoding='utf-8'))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                    and len(node.value) > 30 and ' ' in node.value and '{' not in node.value:
+                texts.append(node.value)
+    hidden = [t for t in texts if codex_diagnostics._PRIVATE.search(t)]
+    for text in hidden:
+        # A file name reads like a host name; hiding it costs only detail.
+        assert any(word in text for word in ('/', '\\', 'http', '@', '~', '.json')), text
+
+
+def test_a_long_reason_never_hides_the_log_from_a_report(tmp_path, monkeypatch):
+    path = tmp_path / 'errors.log'
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: path)
+    line = '2026-10-31T12:00:00Z Codex worker failed: A; details redacted.\n'
+    path.write_text(line * (65536 // len(line)))  # just under the limit
+    codex_diagnostics.record_failure(_copilot_error('é' * 1000))  # 2000 bytes
+    assert codex_diagnostics.last_failure() == 'Copilot CopilotChatError: ' + 'é' * 1000
 
 
 def test_a_forged_copilot_reason_with_a_path_is_not_reported(tmp_path, monkeypatch):

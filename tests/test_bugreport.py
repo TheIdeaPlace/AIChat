@@ -109,7 +109,23 @@ def test_each_provider_has_a_line_with_version_state_and_sign_in():
     assert off["Copilot CLI"] == "checking; preview off"
     automatic = dict(bugreport.environment(SpeechSettings(), {}, claude_version="x",
                                            versions={"codex": "0.1"}))
-    assert automatic["Codex"] == "0.1; turned on (automatic)"
+    assert automatic["Codex"] == "0.1; automatic"
+
+
+def test_a_version_that_cant_be_decoded_is_unknown(monkeypatch):
+    import subprocess
+    monkeypatch.setattr(bugreport.platform_paths, "find_codex", lambda: "codex.exe")
+    calls = []
+
+    def run(*args, **kwargs):
+        calls.append(kwargs)
+        return _Out("codex-cli 0.1.2�")
+    monkeypatch.setattr(subprocess, "run", run)
+    assert bugreport.cli_version("codex") == "unknown"
+    # Decoded as UTF-8 with replacement, so odd bytes never raise.
+    assert calls[0]["encoding"] == "utf-8" and calls[0]["errors"] == "replace"
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Out("codex-cli 0.1.2kellyé"))
+    assert bugreport.cli_version("codex") == "unknown"
 
 
 def test_sign_in_words_never_name_the_account():
@@ -139,6 +155,8 @@ def test_sign_in_words_never_name_the_account():
     assert bugreport.copilot_sign_in(copilot_signin.SignIn(
         True, signed_in=True, login="someone", host="https://acme.ghe.com")) \
         == "signed in (another GitHub host)"
+    assert bugreport.copilot_sign_in(copilot_signin.SignIn(
+        True, signed_in=True, login="someone", host="GitHub.com/")) == "signed in"
     assert bugreport.copilot_sign_in(copilot_signin.SignIn(
         False, missing=True, unusable="C:\\npm\\copilot.cmd")) \
         == "found, but not a copy The Chat Place runs"

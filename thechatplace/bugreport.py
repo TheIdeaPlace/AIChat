@@ -39,9 +39,9 @@ MAX_URL_BODY = 6000
 #: 1: "2.1.286 (Claude Code)", "codex-cli 0.163.0", "GitHub Copilot CLI
 #: 1.0.105." Anything else, such as an error naming a path, is "unknown".
 _VERSIONS = {
-    "claude": re.compile(r"^(\d+\.\d+[\w.+-]{0,40})( \(Claude Code\))?$"),
-    "codex": re.compile(r"^codex-cli (\d+\.\d+[\w.+-]{0,40})$"),
-    "copilot": re.compile(r"^GitHub Copilot CLI (\d+\.\d+[\w.+-]{0,40}?)\.?$"),
+    "claude": re.compile(r"^(\d+\.\d+[0-9A-Za-z.+-]{0,24})( \(Claude Code\))?$"),
+    "codex": re.compile(r"^codex-cli (\d+\.\d+[0-9A-Za-z.+-]{0,24})$"),
+    "copilot": re.compile(r"^GitHub Copilot CLI (\d+\.\d+[0-9A-Za-z.+-]{0,24}?)\.?$"),
 }
 #: The providers the report describes, named as their command lines.
 CLI_NAMES = {"claude": "Claude Code", "codex": "Codex", "copilot": "Copilot CLI"}
@@ -83,7 +83,8 @@ def cli_version(provider: str) -> str:
     if not path:
         return "not found"
     try:
-        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=8,
+        out = subprocess.run([path, "--version"], capture_output=True, encoding="utf-8",
+                             errors="replace", timeout=8,
                              creationflags=platform_paths.hidden_window_flags())
         first = (out.stdout or "").strip().splitlines()[0].strip()
     except (OSError, subprocess.SubprocessError, IndexError):
@@ -130,7 +131,7 @@ def codex_sign_in(status) -> str:
 
 
 def copilot_sign_in(status) -> str:
-    from .copilot_signin import GITHUB
+    from .copilot_signin import GITHUB, _host_name
     if status.missing:
         return "found, but not a copy The Chat Place runs" if status.unusable else "not installed"
     if not status.known:
@@ -138,7 +139,7 @@ def copilot_sign_in(status) -> str:
     if not status.signed_in:
         return "not signed in"
     # A GitHub Enterprise host can name the company: only say it's another.
-    return ("signed in" if status.host.rstrip("/").lower() == GITHUB
+    return ("signed in" if _host_name(status.host or GITHUB) == _host_name(GITHUB)
             else "signed in (another GitHub host)")
 
 
@@ -267,8 +268,9 @@ def environment(speech, counts: Dict[str, Dict[str, int]],
     # One line for each provider (#464): which version, whether it's turned
     # on, and whether it's signed in, so "Copilot preview off" reads apart
     # from "not signed in" and from "signed in and failing".
-    codex_state = {False: "turned off", True: "turned on"}.get(
-        speech.codex_enabled, "turned on (automatic)")
+    # Settings' "automatic" includes Codex only when it's found.
+    codex_state = {False: "turned off", True: "turned on"}.get(speech.codex_enabled,
+                                                               "automatic")
     copilot_state = "preview on" if speech.copilot_enabled else "preview off"
     for provider, state in (("claude", ""), ("codex", codex_state), ("copilot", copilot_state)):
         version = versions.get(provider)

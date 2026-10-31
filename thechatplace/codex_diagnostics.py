@@ -19,7 +19,12 @@ _STAMP = '%Y-%m-%dT%H:%M:%SZ'
 #: What would make a reason unfit for a public bug report even though the app
 #: wrote it: a path, an address or a home folder can come in through the text
 #: Copilot's own errors carry (``CopilotChatError(str(exc))``).
-_PRIVATE = re.compile(r'[\\@~]|[A-Za-z]:[\\/]|/\w|https?:', re.IGNORECASE)
+_PRIVATE = re.compile(r'[\\@~\uff20\uff0f\uff3c\u2215\u2044]|\b[A-Za-z]:\S|/[\w.]'
+                      r'|\b(?:https?|s?ftp|ssh|file|mailto):'
+                      r'|[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.[A-Za-z]{2,}', re.IGNORECASE)
+#: The longest a log line can be (a worded one; UTF-8 can take 3 bytes a
+#: character), so reading never gives up on a file that a write just grew.
+_LINE_MAX = 4096
 
 
 def _copilot_error(error):
@@ -59,13 +64,17 @@ def record_failure(error):
         # The words the user saw, which say what went wrong (#464); safe_reason
         # has already bounded them and refused control characters.
         reason = safe_reason(error)
-        if reason and not _PRIVATE.search(reason):
-            line = time.strftime(_STAMP, time.gmtime()) + f' Copilot worker failed: {name}. It said: {reason}'
+        worded = time.strftime(_STAMP, time.gmtime()) + f' Copilot worker failed: {name}. It said: {reason}'
+        # Only a line that reads back whole, as one line (#464): splitlines()
+        # also splits on characters safe_reason lets through.
+        if (reason and not _PRIVATE.search(reason) and _WORDED.fullmatch(worded)
+                and len(worded.splitlines()) == 1):
+            line = worded
     try:
         with _LOCK:
             path = platform_paths.codex_diagnostic_path()
             path.parent.mkdir(parents=True, exist_ok=True)
-            if path.exists() and path.stat().st_size > _LIMIT:
+            if path.exists() and path.stat().st_size + len(line.encode('utf-8')) + 1 > _LIMIT:
                 kept = path.read_text(encoding='utf-8', errors='replace')[-(_LIMIT // 2):]
                 path.write_text(kept[kept.find('\n') + 1:], encoding='utf-8')
             with path.open('a', encoding='utf-8') as output:
@@ -77,7 +86,7 @@ def record_failure(error):
 def _read_lines():
     with _LOCK:
         path = platform_paths.codex_diagnostic_path()
-        if path.stat().st_size > _LIMIT + 1024:
+        if path.stat().st_size > _LIMIT + _LINE_MAX:
             return []
         return path.read_text(encoding='utf-8', errors='replace').splitlines()
 
