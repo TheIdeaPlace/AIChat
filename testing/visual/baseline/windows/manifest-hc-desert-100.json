@@ -1168,6 +1168,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Backup Schedule, daily, after a failure"
+  },
+  "restore-chooser": {
+   "kind": "dialog",
+   "png": "restore-chooser-hc-desert-100.png",
+   "json": "restore-chooser-hc-desert-100.json",
+   "title": "Restore from Backup",
+   "class": "RestoreChooserDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Restore from Backup, choosing chats"
   }
  },
  "seconds": 92.2

@@ -109,6 +109,7 @@ from .permission_hosts import ClaudePermissions, CodexPermissions
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
+                      RestoreChooserDialog,
                       ChatPermissionsDialog,
                       FindResultsDialog,
                       FormattedMessageDialog, ListsDialog, WrappingText,
@@ -6353,31 +6354,40 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
     def _ask_from_worker(self, ask, job=None):
         """Run ``ask`` on the window's thread and wait for its answer, so a
         worker can ask a question while it holds open what it's reading.
-        False, without asking, if the window is closing or the job was
+        None, without asking, if the window is closing or the job was
         stopped meanwhile: a question must never open over Quit's (#449)."""
         done, answer = threading.Event(), []
 
         def on_ui():
             try:
                 stopped = job is not None and job.get("cancel")
-                answer.append(False if (self._gone() or self._closing or stopped)
-                              else bool(ask()))
+                answer.append(None if (self._gone() or self._closing or stopped) else ask())
             finally:
                 done.set()
         wx.CallAfter(on_ui)
         while not done.wait(0.5):
             if self._gone():
-                return False
-        return bool(answer and answer[0])
+                return None
+        return answer[0] if answer else None
 
     def _restore_run(self, path, manifest, passphrase, job):
         job["said"] = time.monotonic()
         self._feedback("Reading the backup's chats.")
 
-        def confirm(plan):
-            return self._ask_from_worker(lambda: wx.MessageBox(
-                imported_store.describe_plan(plan), "Restore from Backup",
-                wx.YES_NO | wx.ICON_QUESTION, self) == wx.YES, job)
+        def confirm(plan, sessions):
+            # Which chats (#450): all of them chosen to start with.
+            def ask():
+                dialog = RestoreChooserDialog(
+                    self, imported_store.describe_plan(plan),
+                    imported_store.chooser_rows(sessions),
+                    say=lambda text: self._say(text, interrupt=True))
+                try:
+                    if dialog.ShowModal() != wx.ID_OK:
+                        return None
+                    return [sessions[i] for i in dialog.chosen_indexes()]
+                finally:
+                    dialog.Destroy()
+            return self._ask_from_worker(ask, job)
 
         def progress(done, total, _title):
             job["progress"] = (done, total)
@@ -6419,10 +6429,32 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if outcome is None:
             self._feedback("Restore cancelled. Nothing was restored.")
             return
+        self._apply_restored_metadata(outcome)
         self._feedback(imported_store.restore_summary(outcome))
         # Not forced: its own spoken summary would follow, and could talk over
         # this one (#449 review).
         self.refresh_sessions(resort=True)
+
+    def _apply_restored_metadata(self, outcome):
+        """The restored chats' groups and hidden state from the backup (#450):
+        a group of the same name is used, or made; this computer's own groups
+        and hidden chats are otherwise untouched."""
+        for key, names in (getattr(outcome, "groups", None) or {}).items():
+            for name in names:
+                try:
+                    group = self.groups.find(name) or self.groups.create(name)
+                    self.groups.add(group, key)
+                except (OSError, ValueError):
+                    continue   # groups off (damaged file) or a bad name: skipped
+        hidden = []
+        for key in getattr(outcome, "hidden", None) or []:
+            try:
+                self.hidden.hide(key)
+            except (OSError, ValueError):
+                continue
+            hidden.append(key)
+        if isinstance(getattr(outcome, "hidden", None), list):
+            outcome.hidden[:] = hidden   # the summary says only what was hidden
 
     def on_settings(self, _event=None):
         previous_providers = (self.speech.includes_codex(), self.speech.copilot_enabled)

@@ -284,7 +284,7 @@ class ImportedStore:
 
 
 def import_sessions(store: ImportedStore, reader, sessions, *, backup_name: str = "",
-                    cancelled=None, progress=None) -> Dict[str, int]:
+                    cancelled=None, progress=None, results=None) -> Dict[str, int]:
     """Read each of ``sessions`` from an open backup_reader.BackupReader and
     keep it in ``store``. Returns how many were added, updated, unchanged
     and failed (one that can't be read doesn't stop the rest)."""
@@ -298,7 +298,10 @@ def import_sessions(store: ImportedStore, reader, sessions, *, backup_name: str 
                 raise InterruptedError("Restore cancelled.")
             if progress is not None:
                 progress(done, len(sessions), session.title)
+            before = dict(counts)
             _import_one(store, reader, session, manifest, computer, backup_name, counts)
+            if results is not None:
+                results[session.key] = next(k for k in counts if counts[k] != before[k])
             if done % INDEX_EVERY == INDEX_EVERY - 1:
                 store.flush()
     finally:
@@ -389,15 +392,70 @@ def notes_text(notes, limit: int = 3) -> str:
 class RestoreOutcome:
     counts: Dict[str, int]
     notes: List[str] = field(default_factory=list)
+    # What the backup's own Chat Place had for the restored chats (#450):
+    # imported key -> its group names there, and the keys it had hidden.
+    # The window applies these; a worker never writes the window's stores.
+    groups: Dict[str, List[str]] = field(default_factory=dict)
+    hidden: List[str] = field(default_factory=list)
+
+
+def _backup_metadata(reader, sessions):
+    """Each restored chat's groups and hidden state in the backup, by its
+    imported key, read through the stores' own readers from the backup's
+    temporary extracted copy of The Chat Place's folder (which their loading
+    may tidy; it's deleted afterwards)."""
+    from .groups import GroupStore
+    from .hidden import HiddenStore
+    groups: Dict[str, List[str]] = {}
+    hidden: List[str] = []
+    try:
+        data = reader.data_dir
+        their_groups = GroupStore(data / "groups.json")
+        their_hidden = HiddenStore(data / "hidden.json")
+    except Exception:  # noqa: BLE001 - a backup without them restores without them
+        return groups, hidden
+    for session in sessions:
+        old = session.source_key
+        if not old:
+            continue
+        try:
+            names = [] if their_groups.load_error else their_groups.groups_of(old)
+            if names:
+                groups[session.key] = list(names)
+            if not their_hidden.load_error and old in their_hidden:
+                hidden.append(session.key)
+        except Exception:  # noqa: BLE001 - one chat's mustn't stop the rest
+            continue
+    return groups, hidden
+
+
+def chooser_rows(sessions) -> List[str]:
+    """One line per chat for the chooser: title, AI, folder, last active."""
+    from .providers.imported import PROVIDER_NAMES
+    rows = []
+    for session in sessions:
+        folder = (session.cwd or "").replace("\\", "/").rstrip("/").split("/")[-1] or "no folder"
+        when = ""
+        try:
+            if session.last_activity_ms and session.last_activity_ms > 0:
+                moment = datetime.fromtimestamp(session.last_activity_ms / 1000).astimezone()
+                when = f", last active {moment.day} {moment:%B %Y}"
+        except (OSError, OverflowError, ValueError, TypeError):
+            when = ""
+        rows.append(f"{session.title}, {PROVIDER_NAMES.get(session.provider, session.provider)}, "
+                    f"{folder}{when}")
+    return rows
 
 
 def restore_backup(path, manifest: dict, passphrase: Optional[str], *, confirm,
                    store: Optional[ImportedStore] = None, cancelled=None,
                    progress=None) -> Optional[RestoreOutcome]:
     """Restore a backup that ``backup.verify`` has passed (``manifest`` is
-    its manifest): read its chats, ask ``confirm(plan)``, then keep them all
-    as imported chats. Returns the counts and the reader's notes, or None if
-    the answer was no.
+    its manifest): read its chats, ask ``confirm(plan, sessions)`` which to
+    restore (True for all, a list of them, or None/False for none), then
+    keep those as imported chats. Returns the counts, the reader's notes and
+    the backup's groups and hidden state for them, or None if none were
+    chosen.
     The decrypted copy and any provider reader live only inside this call."""
     import zipfile
     from . import backup
@@ -419,11 +477,24 @@ def restore_backup(path, manifest: dict, passphrase: Optional[str], *, confirm,
                                   list(reader.notes))
         if cancelled is not None and cancelled():
             raise InterruptedError("Restore cancelled.")
-        if not confirm(plan):
+        # Newest first, as the session list is: easier to find one by.
+        sessions = sorted(sessions, key=lambda s: int(s.last_activity_ms or 0), reverse=True)
+        answer = confirm(plan, sessions)
+        if not answer:
             return None
-        counts = import_sessions(store, reader, sessions, backup_name=Path(path).name,
-                                 cancelled=cancelled, progress=progress)
-        return RestoreOutcome(counts, list(reader.notes))
+        offered = {id(s) for s in sessions}
+        chosen = sessions if answer is True else [s for s in answer if id(s) in offered]
+        if not chosen:
+            return None
+        results: Dict[str, str] = {}
+        counts = import_sessions(store, reader, chosen, backup_name=Path(path).name,
+                                 cancelled=cancelled, progress=progress, results=results)
+        # Only chats restored for the first time get the backup's groups and
+        # hidden state: one already here keeps whatever's been done to it
+        # since, and one that failed has nothing to put in a group (#453).
+        added = [s for s in chosen if results.get(s.key) == "added"]
+        groups, hidden = _backup_metadata(reader, added)
+        return RestoreOutcome(counts, list(reader.notes), groups, hidden)
 
 
 def restore_summary(outcome) -> str:
@@ -433,8 +504,13 @@ def restore_summary(outcome) -> str:
     def n(count, word):
         return f"{count} {word}{'s' if count != 1 else ''}"
     parts = []
+    # Hidden counts only newly restored chats, so it follows "restored".
+    hidden = len(outcome.hidden) if isinstance(outcome, RestoreOutcome) else 0
     if counts.get("added"):
         parts.append(f"{n(counts['added'], 'chat')} restored")
+        if hidden:
+            parts.append(f"{hidden} of them hidden, as {'it was' if hidden == 1 else 'they were'} "
+                         "(View, Show Sessions, Hidden)")
     if counts.get("updated"):
         parts.append(f"{n(counts['updated'], 'chat')} updated")
     if counts.get("unchanged"):

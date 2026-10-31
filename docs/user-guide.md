@@ -1709,9 +1709,15 @@ computer or a new one.
 1. Choose **File, Restore from Backup**, then the backup's zip file.
 2. It's checked first. An encrypted backup asks for its passphrase, and a damaged one is said
    and not used.
-3. A question says how many chats it holds, for each AI, and which computer they came from. Choose
-   **Yes** to restore them all.
-4. You hear how many were restored. They're in the session list straight away.
+3. A list of the backup's chats opens, all chosen. The box at the top says how many it holds,
+   for each AI, and which computer they came from. Each chat starts with **Restore** or
+   **Skip**; **Space** switches the one you're on, and you hear how many are chosen.
+   **Select All** (Alt+A) and **Select None** (Alt+N) do every chat.
+4. Press **Enter** (Restore). You hear how many were restored, and they're in the session list.
+
+Chats come back in the groups they were in on the computer they came from, and ones that were
+hidden there are hidden here. A group with the same name is used, or made; your other groups
+aren't changed.
 
 Restored chats are **read-only**. You can read them, find in them (Find in All Sessions too),
 export them and list their changes, but not reply to them or continue them. Each row says

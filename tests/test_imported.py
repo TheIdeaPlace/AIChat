@@ -185,13 +185,21 @@ def test_restore_backup_asks_first_and_imports_everything(tmp_path, monkeypatch)
     store = ImportedStore(tmp_path / "imported")
     asked = []
     assert restore_backup(made, manifest, None, store=store,
-                          confirm=lambda plan: asked.append(plan) or False) is None
+                          confirm=lambda plan, sessions: asked.append(plan) or False) is None
     assert store.all() == [] and asked[0].counts == {"claude": 2}
     question = describe_plan(asked[0])
     assert question.startswith("Restore 2 chats from ") and "Claude 2" in question
     assert "read-only" in question and "Nothing is written" in question
-    outcome = restore_backup(made, manifest, None, store=store, confirm=lambda plan: True)
-    assert outcome.counts["added"] == 2 and len(store.all()) == 2
+    # Choosing some (#450) restores exactly those; a session it wasn't
+    # offered is ignored.
+    stranger = chat(native="stranger")
+    outcome = restore_backup(made, manifest, None, store=store, confirm=lambda plan, sessions: [
+        s for s in sessions if s.native_id == "two-id"] + [stranger])
+    assert outcome.counts["added"] == 1
+    assert [c.native_id for c in store.all()] == ["two-id"]
+    outcome = restore_backup(made, manifest, None, store=store, confirm=lambda plan, sessions: True)
+    assert outcome.counts["added"] == 1 and outcome.counts["unchanged"] == 1
+    assert len(store.all()) == 2
     # Nothing was left behind in the temporary folders, and the original
     # Claude folder wasn't touched.
     assert sorted(p.name for p in (claude / "projects").iterdir()) == ["C--one", "C--two"]
@@ -294,5 +302,31 @@ def test_a_stop_before_the_question_asks_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(reader_module.BackupReader, "sessions", listing)
     with pytest.raises(InterruptedError):
         restore_backup(made, manifest, None, store=store, cancelled=cancelled,
-                       confirm=lambda plan: asked.append(plan) or True)
+                       confirm=lambda plan, sessions: asked.append(plan) or True)
     assert asked == [] and store.all() == []
+
+
+
+def test_chooser_rows_survive_odd_input():
+    from thechatplace.backup_reader import ImportedSession
+    from thechatplace.imported_store import chooser_rows
+    rows = chooser_rows([
+        ImportedSession("claude", "a", "pc", "One", r"C:\work\proj", 0, 1_790_000_000_000),
+        ImportedSession("codex", "b", "pc", "Two", "", 0, -5),
+        ImportedSession("copilot", "c", "pc", "Three", "/old/x/", 0, 10 ** 20)])
+    assert rows[0].startswith("One, Claude, proj, last active ")
+    assert rows[1] == "Two, Codex, no folder"
+    assert rows[2] == "Three, GitHub Copilot CLI, x"
+
+
+def test_restore_summary_says_hidden_after_the_restored_chats():
+    """#453 review: only newly restored chats are hidden, so it follows them."""
+    from thechatplace.imported_store import RestoreOutcome, restore_summary
+    outcome = RestoreOutcome({"added": 2, "updated": 0, "unchanged": 3, "failed": 0}, [],
+                             hidden=["imported:x"])
+    assert restore_summary(outcome).startswith(
+        "Restore finished: 2 chats restored, 1 of them hidden, as it was "
+        "(View, Show Sessions, Hidden), 3 already here.")
+    outcome = RestoreOutcome({"added": 0, "updated": 0, "unchanged": 3, "failed": 0}, [],
+                             hidden=["imported:x"])
+    assert "hidden" not in restore_summary(outcome)
