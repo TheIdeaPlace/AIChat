@@ -6430,10 +6430,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self._feedback("Restore cancelled. Nothing was restored.")
             return
         self._apply_restored_metadata(outcome)
-        self._feedback(imported_store.restore_summary(outcome))
-        # Not forced: its own spoken summary would follow, and could talk over
-        # this one (#449 review).
         self.refresh_sessions(resort=True)
+        # A message box, as Back Up Now and Check Backup end with: the work ran
+        # in the background with nothing taking focus, so finishing is said
+        # by something that does. It reads itself; the status bar keeps it.
+        summary = imported_store.restore_summary(outcome)
+        self._status(summary)
+        wx.MessageBox(summary, "Restore from Backup",
+                      wx.OK | (wx.ICON_WARNING if outcome.counts.get("failed")
+                               or not outcome.counts.get("added") and outcome.notes
+                               else wx.ICON_INFORMATION), self)
 
     def _apply_restored_metadata(self, outcome):
         """The restored chats' groups and hidden state from the backup (#450):
