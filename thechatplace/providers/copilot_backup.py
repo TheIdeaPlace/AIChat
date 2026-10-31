@@ -1,38 +1,37 @@
 """What Back Up Now (#433) copies for GitHub Copilot CLI.
 
-Copilot CLI keeps each session in its own folder under ``session-state/``
-(events, workspace, plans, checkpoints, file snapshots, research) in
-``COPILOT_HOME``, else ``~/.copilot``, with ``session-store.db`` as an index
-it can rebuild. Copilot can sync history to a GitHub account, depending on
-settings and policy, but that isn't a copy of this computer's sessions, so
-they're backed up anyway. Settings, custom agents, skills, extensions, hooks
-and MCP definitions come too. MCP definitions can hold keys typed into them;
-the user guide says to treat a backup as private.
+Keep complete session folders, the history index and personal configuration,
+agents, skills, extensions, hooks and plugin data. Account sync is useful but
+does not replace recovery of local files and customizations. Configuration
+can contain inline keys; the archive must still be treated as private.
 
-Left out: logs, the installed CLI package, IDE locks and caches, locks, and
-the OAuth and secret stores (``mcp-oauth-config/``, ``mcp-secrets/``, always
-left out by the backup itself).
+Logs, installed CLI packages, IDE runtime state and credential stores are
+excluded. The shared walker snapshots real SQLite databases including WAL
+data and leaves nested links alone, while allowing a linked profile root.
 """
 from __future__ import annotations
 
 import fnmatch
+import stat
 
 from .. import platform_paths
 from ..backup import Area, Inventory, walk
 
-EXCLUDED_DIRS = ("logs", "pkg", "ide", "cache", ".cache", "tmp")
-EXCLUDED_FILES = ("*.lock", "*-cache.json", "vscode.session.metadata.cache.json")
+EXCLUDED_DIRS = ("logs", "pkg", "ide", "cache", ".cache", "tmp",
+                 "session-state/.session-operation-locks")
+EXCLUDED_FILES = ("*.lock", "*-cache.json", "vscode.session.metadata.cache.json",
+                  "vscode.session.worktree.jsonl")
 KNOWN = {
     "session-state", "session-store.db", "settings.json", "config.json", "agents", "skills",
     "extensions", "hooks", "instructions", "copilot-instructions.md", "mcp-config.json",
-    "lsp-config.json", "installed-plugins", "command-history-state.json",
-    "vscode.session.worktree.jsonl", "mcp-oauth-config", "mcp-secrets",
-    *EXCLUDED_DIRS,
+    "lsp-config.json", "permissions-config.json", "providers.json", "installed-plugins",
+    "plugin-data", "command-history-state", "command-history-state.json",
 }
-KNOWN_PATTERNS = ("session-store.db-*", *EXCLUDED_FILES)
+KNOWN_PATTERNS = ("session-store.db-*",)
 SKIPPED = [
     "logs/ and pkg/ (logs and the installed CLI)",
-    "ide/ and caches (rebuilt by Copilot)",
+    "ide/, IDE metadata and worktree state, caches (rebuilt by Copilot)",
+    "session-state/.session-operation-locks/ and *.lock (only meaningful while Copilot runs)",
     "mcp-oauth-config/ and mcp-secrets/ (sign-ins; sign in again)",
 ]
 
@@ -40,20 +39,28 @@ SKIPPED = [
 def inventory() -> Inventory:
     inv = Inventory("copilot", "GitHub Copilot CLI")
     home = platform_paths.copilot_home()
-    if not home.is_dir():
-        inv.notes.append(f"No Copilot CLI folder at {home}.")
+    try:
+        if not stat.S_ISDIR(home.stat().st_mode):
+            inv.failures.append(f"Copilot CLI folder at {home} isn't a folder.")
+            return inv
+    except FileNotFoundError:
+        if home.is_symlink():
+            inv.failures.append(f"Copilot CLI folder at {home} is a broken link.")
+        else:
+            inv.notes.append(f"No Copilot CLI folder at {home}.")
+        return inv
+    except OSError as exc:
+        inv.failures.append(f"Couldn't read Copilot CLI folder at {home} ({exc}).")
         return inv
     inv.areas.append(Area("copilot/home", str(home),
                           "GitHub Copilot CLI: sessions, settings, custom agents and skills"))
     inv.items += walk(home, "copilot/home", exclude_dirs=EXCLUDED_DIRS,
                       exclude_files=EXCLUDED_FILES, inventory=inv)
     inv.skipped += SKIPPED
-    try:
-        unknown = sorted(entry.name for entry in home.iterdir()
-                         if entry.name not in KNOWN
-                         and not any(fnmatch.fnmatchcase(entry.name, p) for p in KNOWN_PATTERNS))
-    except OSError:
-        unknown = []
-    for name in unknown:
-        inv.notes.append(f"Kept, though not a known Copilot CLI file: {name}")
+    # Classify what was actually kept: sidecars, links and credentials must
+    # never be described as successful copies of unknown files.
+    names = {item.arcname[len("copilot/home/"):].split("/", 1)[0] for item in inv.items}
+    for name in sorted(names):
+        if name not in KNOWN and not any(fnmatch.fnmatchcase(name, p) for p in KNOWN_PATTERNS):
+            inv.notes.append(f"Kept, though not a known Copilot CLI file: {name}")
     return inv

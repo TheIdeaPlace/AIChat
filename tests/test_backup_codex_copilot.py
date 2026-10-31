@@ -222,3 +222,257 @@ def test_all_providers_round_trip_into_one_checked_archive(homes, tmp_path, monk
     assert result.complete, result.failures
     assert result.providers == ["The Chat Place", "Claude", "Codex", "GitHub Copilot CLI"]
     assert backup.verify(result.path).ok
+
+@pytest.fixture(autouse=True)
+def isolated_database_override(monkeypatch):
+    # A developer's shell override must never redirect these tests to real data.
+    monkeypatch.delenv("CODEX_SQLITE_HOME", raising=False)
+
+
+@pytest.mark.parametrize("setting", ['""', "false", "0", "123", "[]", "{}"])
+def test_codex_invalid_database_location_is_incomplete(homes, setting):
+    write(homes["codex"] / "config.toml", f"sqlite_home = {setting}\n")
+    # A numeric setting is still invalid when a folder with that name exists.
+    (homes["codex"] / "123").mkdir()
+    write(homes["codex"] / "sessions" / "keep.jsonl")
+    inv = codex_backup.inventory()
+    assert inv.failures, "A present but invalid sqlite_home must not look like the default."
+    assert "codex/home/sessions/keep.jsonl" in items(inv)
+
+
+def test_codex_config_that_is_a_directory_is_a_failure(homes):
+    (homes["codex"] / "config.toml").mkdir(parents=True)
+    assert codex_backup.inventory().failures
+
+
+def test_codex_unreadable_config_preserves_other_history(homes, monkeypatch):
+    config = write(homes["codex"] / "config.toml", 'sqlite_home = "elsewhere"')
+    write(homes["codex"] / "sessions" / "keep.jsonl")
+    read_text = Path.read_text
+
+    def denied(path, *args, **kwargs):
+        if path == config:
+            raise PermissionError(13, "Permission denied", str(path))
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", denied)
+    inv = codex_backup.inventory()
+    assert inv.failures
+    assert "codex/home/sessions/keep.jsonl" in items(inv)
+
+
+def test_codex_unknown_relocated_database_is_kept_and_noted(homes):
+    elsewhere = homes["tmp"] / "database-folder"
+    write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(elsewhere)}'\n")
+    con = wal_db(elsewhere / "future_store_2.sqlite")
+    try:
+        inv = codex_backup.inventory()
+    finally:
+        con.close()
+    assert items(inv)["codex/sqlite-home/future_store_2.sqlite"] is True
+    assert any("future_store_2.sqlite" in note for note in inv.notes)
+    assert not any("future_store_2.sqlite-wal" in note for note in inv.notes)
+    assert not any("future_store_2.sqlite-shm" in note for note in inv.notes)
+
+
+def test_codex_relocated_database_without_a_header_is_not_silently_lost(homes):
+    elsewhere = homes["tmp"] / "database-folder"
+    write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(elsewhere)}'\n")
+    write(elsewhere / "state_5.sqlite", "recoverable bytes from a damaged database")
+    inv = codex_backup.inventory()
+    assert items(inv)["codex/sqlite-home/state_5.sqlite"] is False
+
+
+def test_codex_relative_database_location_uses_the_config_directory(homes, monkeypatch):
+    write(homes["codex"] / "config.toml", "sqlite_home = 'dbs'\n")
+    con = wal_db(homes["codex"] / "dbs" / "state_5.sqlite")
+    monkeypatch.chdir(homes["tmp"])
+    try:
+        inv = codex_backup.inventory()
+    finally:
+        con.close()
+    matches = [i for i in inv.items if i.source.name == "state_5.sqlite"]
+    assert len(matches) == 1 and matches[0].sqlite
+    assert inv.failures == []
+
+
+def test_codex_database_environment_override_and_config_precedence(homes, monkeypatch):
+    elsewhere = homes["tmp"] / "environment-dbs"
+    con = wal_db(elsewhere / "state_5.sqlite")
+    write(homes["codex"] / "config.toml", 'model = "example"\n')
+    monkeypatch.setenv("CODEX_SQLITE_HOME", str(elsewhere))
+    try:
+        assert items(codex_backup.inventory())["codex/sqlite-home/state_5.sqlite"] is True
+        # An explicit config setting takes precedence over the environment.
+        write(homes["codex"] / "config.toml",
+              f"sqlite_home = '{toml_path(homes['codex'])}'\n")
+        inv = codex_backup.inventory()
+        assert not any(i.source.name == "state_5.sqlite" for i in inv.items)
+    finally:
+        con.close()
+
+
+def test_codex_relative_environment_override_uses_the_working_directory(homes, monkeypatch):
+    con = wal_db(homes["tmp"] / "dbs" / "state_5.sqlite")
+    monkeypatch.chdir(homes["tmp"])
+    monkeypatch.setenv("CODEX_SQLITE_HOME", "dbs")
+    try:
+        inv = codex_backup.inventory()
+    finally:
+        con.close()
+    assert items(inv)["codex/sqlite-home/state_5.sqlite"] is True
+    assert inv.failures == []
+
+
+def test_codex_update_cache_does_not_report_an_installed_version(homes):
+    write(homes["codex"] / "version.json", '{"latest_version": "999.0.0"}')
+    assert codex_backup.inventory().version is None
+
+
+@pytest.mark.parametrize("collect,home", [
+    (codex_backup.inventory, "codex"),
+    (copilot_backup.inventory, "copilot"),
+])
+def test_provider_home_that_is_a_file_is_a_failure(homes, collect, home):
+    write(homes[home], "not a profile directory")
+    assert collect().failures
+
+
+def test_codex_excludes_app_server_tokens_and_runtime_files(homes):
+    write(homes["codex"] / "sessions" / "keep.jsonl")
+    for name in ("app-server-token", "app-server-token.old", "auth.json.bak",
+                 "cap_sid.backup", "app-server-control", "app-server-daemon"):
+        write(homes["codex"] / name, "credential or runtime state")
+    inv = codex_backup.inventory()
+    assert list(items(inv)) == ["codex/home/sessions/keep.jsonl"]
+    assert not any("Kept" in note for note in inv.notes)
+
+
+def test_copilot_omits_session_operation_locks_and_ide_runtime(homes):
+    write(homes["copilot"] / "session-state" / "a" / "events.jsonl")
+    write(homes["copilot"] / "session-state" / ".session-operation-locks" / "a.json")
+    write(homes["copilot"] / "vscode.session.worktree.jsonl")
+    assert list(items(copilot_backup.inventory())) == [
+        "copilot/home/session-state/a/events.jsonl"]
+
+
+def test_copilot_customizations_and_unknown_stores_are_preserved(homes):
+    for name in ("hooks/hook.json", "extensions/mine/main.py", "instructions/a.md",
+                 "lsp-config.json", "permissions-config.json", "providers.json",
+                 "command-history-state/history.json", "plugin-data/mine/state.json"):
+        write(homes["copilot"] / name)
+    con = wal_db(homes["copilot"] / "future-index.db")
+    try:
+        inv = copilot_backup.inventory()
+    finally:
+        con.close()
+    assert items(inv)["copilot/home/future-index.db"] is True
+    assert any("future-index.db" in note for note in inv.notes)
+    assert not any("future-index.db-wal" in note for note in inv.notes)
+    assert not any("future-index.db-shm" in note for note in inv.notes)
+    assert len(inv.items) == 9
+
+
+@pytest.mark.parametrize("collect,home", [
+    (codex_backup.inventory, "codex"),
+    (copilot_backup.inventory, "copilot"),
+])
+def test_provider_linked_root_keeps_history_but_skips_child_links(homes, collect, home):
+    real = homes["tmp"] / f"real-{home}"
+    outside = homes["tmp"] / "outside"
+    write(real / "keep.txt")
+    write(outside / "excluded.txt")
+    try:
+        os.symlink(real, homes[home], target_is_directory=True)
+        os.symlink(outside, real / "child", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("can't make a symlink here")
+    inv = collect()
+    assert list(items(inv)) == [f"{home}/home/keep.txt"]
+    assert any("is a link" in note for note in inv.notes)
+    assert any("Not followed" in note for note in inv.notes)
+    assert not inv.failures
+
+
+def test_codex_linked_database_root_is_backed_up(homes):
+    real = homes["tmp"] / "real-databases"
+    con = wal_db(real / "future_1.sqlite")
+    link = homes["tmp"] / "database-link"
+    try:
+        try:
+            os.symlink(real, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("can't make a symlink here")
+        write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(link)}'\n")
+        inv = codex_backup.inventory()
+        assert items(inv)["codex/sqlite-home/future_1.sqlite"] is True
+        assert any("is a link" in note for note in inv.notes)
+        assert not inv.failures
+    finally:
+        con.close()
+
+
+def test_live_provider_databases_round_trip_committed_wal_data(homes, monkeypatch):
+    import zipfile
+
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: homes["tmp"] / "tcp")
+    elsewhere = homes["tmp"] / "databases"
+    write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(elsewhere)}'\n")
+    paths = [elsewhere / "future_1.sqlite",
+             homes["copilot"] / "session-store.db",
+             homes["copilot"] / "session-state" / "a" / "session.db"]
+    cons = [wal_db(path) for path in paths]
+    dest = homes["tmp"] / "dest"
+    dest.mkdir()
+    try:
+        result = backup.create(dest, collectors=[codex_backup.inventory, copilot_backup.inventory])
+        assert result.complete, result.failures
+        assert backup.verify(result.path).ok
+        with zipfile.ZipFile(result.path) as archive:
+            manifest = backup.read_manifest(result.path)
+            database_entries = [f for f in manifest["files"] if f["kind"] == "sqlite"]
+            assert len(database_entries) == 3
+            assert not any(name.endswith(("-wal", "-shm")) for name in archive.namelist())
+            for index, entry in enumerate(database_entries):
+                restored = homes["tmp"] / f"restored-{index}.sqlite"
+                restored.write_bytes(archive.read(entry["path"]))
+                with sqlite3.connect(restored) as con:
+                    assert con.execute("select v from t").fetchall() == [(1,)]
+    finally:
+        for con in cons:
+            con.close()
+
+def test_codex_unreadable_database_folder_preserves_other_history(homes, monkeypatch):
+    elsewhere = homes["tmp"] / "protected-databases"
+    elsewhere.mkdir()
+    write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(elsewhere)}'\n")
+    write(homes["codex"] / "sessions" / "keep.jsonl")
+    real_stat = Path.stat
+
+    def denied(path, *args, **kwargs):
+        if path == elsewhere:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", denied)
+    inv = codex_backup.inventory()
+    assert "codex/home/sessions/keep.jsonl" in items(inv)
+    assert any(str(elsewhere) in failure for failure in inv.failures)
+
+
+@pytest.mark.parametrize("collect,home", [
+    (codex_backup.inventory, "codex"),
+    (copilot_backup.inventory, "copilot"),
+])
+def test_unreadable_provider_root_is_a_listing_failure(homes, monkeypatch, collect, home):
+    root = homes[home]
+    root.mkdir()
+    real_stat = Path.stat
+
+    def denied(path, *args, **kwargs):
+        if path == root:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", denied)
+    assert collect().failures

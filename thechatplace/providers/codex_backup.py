@@ -1,31 +1,25 @@
 """What Back Up Now (#433) copies for Codex.
 
-Codex keeps its threads on this computer (``CODEX_HOME``, else ``~/.codex``):
-rollout files under ``sessions/`` and ``archived_sessions/``, and SQLite
-stores beside them for thread names, projects and relationships
-(``state_*``), persisted turns (``thread_history_*``), memories, goals and
-queued input. Signing in to ChatGPT on a new computer rebuilds none of it.
-Database names carry schema numbers that change between releases, so they're
-matched by kind, and any top-level file or folder this module doesn't
-recognise is kept and named in the backup's notes rather than dropped.
+History and durable state stay in Codex's profile, with databases optionally
+relocated by config.toml or CODEX_SQLITE_HOME. Files are opaque recovery
+copies: readable chat history still goes through app-server. Database names
+carry schema numbers, so unknown stores are kept and noted rather than
+silently discarded. Shared personal skills have their own source area.
 
-``config.toml`` can move the databases (``sqlite_home``); that folder is
-backed up too, and one that's set but can't be read makes the backup
-incomplete. Left out: sign-in and capability files, logs, caches, installed
-packages, the app-server's control and daemon files, writer locks, and
-marketplace plugin copies. A restored queue or goal must never run by
-itself; that's restore's concern, recorded here so it isn't forgotten.
+Authentication, capabilities, caches, packages, logs and live runtime files
+are excluded. A restored queue or goal must never execute automatically.
 """
 from __future__ import annotations
 
 import fnmatch
 import json
 import os
+import stat
 import tomllib
 from pathlib import Path
 
 from .. import platform_paths
-from ..backup import Area, Inventory, is_sqlite, walk
+from ..backup import Area, Inventory, SQLITE_SUFFIXES, walk
 
 EXCLUDED_DIRS = (
     "cache", ".cache", "tmp", ".tmp", "packages", "app-server-control", "app-server-daemon",
@@ -33,24 +27,22 @@ EXCLUDED_DIRS = (
     "plugins/cache", "plugins/openai-curated*", "skills/.system", ".sandbox*",
 )
 EXCLUDED_FILES = (
-    "auth.json", "cap_sid", "installation_id", "*.lock", "logs_*.sqlite*",
-    "models_cache.json", "version.json", ".personality_migration", ".sandbox_migration",
+    "auth.json*", "cap_sid*", "app-server-token*", "installation_id", "*.lock",
+    "logs_*.sqlite*", "models_cache.json", "version.json",
+    ".personality_migration", ".sandbox_migration",
+    "app-server-control", "app-server-daemon", "tui-thread-reference-capabilities",
 )
-# Top-level names this module knows, kept or left out on purpose. Anything
-# else is kept and noted, so a new kind of store isn't silently missed.
+# Only retained names are classified here. Excluded files and SQLite sidecars
+# must not be described as unknown files that were successfully kept.
 KNOWN = {
     "sessions", "archived_sessions", "memories", "rules", "skills", "plugins", "prompts",
     "config.toml", "AGENTS.md", "AGENTS.override.md", "history.jsonl", "session_index.jsonl",
-    *("cache", ".cache", "tmp", ".tmp", "packages", "app-server-control", "app-server-daemon",
-      "thread-writer-locks", "tui-thread-reference-capabilities", "log", "logs"),
-    "auth.json", "cap_sid", "installation_id", "models_cache.json", "version.json",
-    ".personality_migration", ".sandbox_migration",
 }
 KNOWN_PATTERNS = ("state_*.sqlite*", "thread_history_*.sqlite*", "memories_*.sqlite*",
-                  "goals_*.sqlite*", "queue_*.sqlite*", "logs_*.sqlite*", "*.lock",
-                  ".sandbox*")
+                  "goals_*.sqlite*", "queue_*.sqlite*")
 SKIPPED = [
-    "auth.json, cap_sid and installation_id (sign-in and this install's identity; sign in again)",
+    "auth.json and its backups, app-server tokens, capabilities and installation identity "
+    "(sign-in and runtime authority; sign in again)",
     "logs_*.sqlite, cache/, tmp/ and the model list (rebuilt by Codex)",
     "packages/ and marketplace plugin copies (reinstalled)",
     "app-server control and daemon files, writer locks (only meaningful while Codex runs)",
@@ -62,83 +54,133 @@ def _known(name: str) -> bool:
     return name in KNOWN or any(fnmatch.fnmatchcase(name, p) for p in KNOWN_PATTERNS)
 
 
+def _note_unknown(items, area: str, inv: Inventory):
+    prefix = area + "/"
+    names = {item.arcname[len(prefix):].split("/", 1)[0] for item in items}
+    for name in sorted(names):
+        if not _known(name):
+            inv.notes.append(f"Kept, though not a known Codex file: {area}/{name}")
+
+
+def _directory(path: Path, inv: Inventory, label: str, *, required: bool = False,
+               note_missing: bool = True) -> bool:
+    """An absent optional profile is normal; an unreadable or invalid one isn't."""
+    try:
+        if stat.S_ISDIR(path.stat().st_mode):
+            return True
+        inv.failures.append(f"{label} at {path} can't be read: it isn't a folder.")
+    except FileNotFoundError:
+        if required or path.is_symlink():
+            inv.failures.append(f"{label} at {path} can't be read: the folder is missing.")
+        elif note_missing:
+            inv.notes.append(f"No {label} at {path}.")
+    except OSError as exc:
+        inv.failures.append(f"{label} at {path} can't be read ({exc}).")
+    return False
+
+
 def _version(home: Path):
-    """The version Codex last recorded, if it's there to read cheaply."""
+    """The update cache's latest_version is not the installed version."""
     try:
         data = json.loads((home / "version.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    # Not "latest_version": that's the newest release Codex has heard of.
     for key in ("version", "current_version"):
-        if isinstance(data, dict) and isinstance(data.get(key), str):
+        if isinstance(data, dict) and isinstance(data.get(key), str) and data[key]:
             return data[key]
     return None
 
 
 def _sqlite_home(home: Path, inv: Inventory):
-    """Where config.toml moved the databases to, if it did. A config that
-    can't be read is a failure: whatever it said is unknown."""
+    """Find the database override without launching Codex or interpreting shell code."""
     config = home / "config.toml"
-    if not config.is_file():
-        return None
     try:
         settings = tomllib.loads(config.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        settings = {}
+        if config.is_symlink():
+            inv.failures.append(f"Couldn't read {config}: its link target is missing.")
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         inv.failures.append(f"Couldn't read {config} ({exc}); it may move Codex's databases "
                             "elsewhere, so some may be missing.")
         return None
-    value = settings.get("sqlite_home")
-    if not value:
+    if "sqlite_home" in settings:
+        value, base = settings["sqlite_home"], home
+        setting = "sqlite_home in config.toml"
+    else:
+        value = os.environ.get("CODEX_SQLITE_HOME")
+        if not value:
+            return None
+        # The public environment-variable reference defines relative overrides
+        # against the process's working directory; config paths use their layer.
+        base, setting = Path.cwd(), "CODEX_SQLITE_HOME"
+    if not isinstance(value, str) or not value or "\x00" in value:
+        inv.failures.append(f"Codex's {setting} must be a non-empty folder path.")
         return None
-    path = Path(os.path.expandvars(os.path.expanduser(str(value))))
-    if not path.is_absolute():
-        path = home / path
-    return path
+    try:
+        path = Path(value).expanduser()
+        return path if path.is_absolute() else base / path
+    except (OSError, RuntimeError, ValueError) as exc:
+        inv.failures.append(f"Couldn't resolve Codex's {setting} ({exc}).")
+        return None
+
+
+def _source_key(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except (OSError, RuntimeError):
+        return path.absolute()
 
 
 def inventory() -> Inventory:
     inv = Inventory("codex", "Codex")
     home = platform_paths.codex_home()
-    if home.is_dir():
+    if _directory(home, inv, "Codex folder"):
         inv.version = _version(home)
         inv.areas.append(Area("codex/home", str(home),
                               "Codex: conversations, archived conversations, thread databases, "
                               "memories, rules, skills and settings"))
-        inv.items += walk(home, "codex/home", exclude_dirs=EXCLUDED_DIRS,
-                          exclude_files=EXCLUDED_FILES, inventory=inv)
+        kept = walk(home, "codex/home", exclude_dirs=EXCLUDED_DIRS,
+                    exclude_files=EXCLUDED_FILES, inventory=inv)
+        inv.items += kept
+        _note_unknown(kept, "codex/home", inv)
         inv.skipped += SKIPPED
-        try:
-            unknown = sorted(entry.name for entry in home.iterdir() if not _known(entry.name))
-        except OSError:
-            unknown = []
-        for name in unknown:
-            inv.notes.append(f"Kept, though not a known Codex file: {name}")
-        if any(item.arcname.startswith("codex/home/queue_") for item in inv.items):
-            inv.notes.append("Includes Codex's queue of unsent input; a restore must not "
-                             "send it, or resume goals, by itself.")
-        sqlite_home = _sqlite_home(home, inv)
-        if sqlite_home is not None and not _same(sqlite_home, home):
-            if sqlite_home.is_dir():
-                inv.areas.append(Area("codex/sqlite-home", str(sqlite_home),
-                                      "Codex's databases, moved by sqlite_home in config.toml"))
-                inv.items += [item for item in walk(sqlite_home, "codex/sqlite-home",
-                                                    exclude_files=EXCLUDED_FILES, inventory=inv)
-                              if is_sqlite(item.source)]
-            else:
-                inv.failures.append(f"Codex's databases are set to be in {sqlite_home} "
-                                    "(sqlite_home in config.toml), which can't be read.")
-    else:
-        inv.notes.append(f"No Codex folder at {home}.")
+
+    sqlite_home = _sqlite_home(home, inv)
+    if sqlite_home is not None and _source_key(sqlite_home) != _source_key(home):
+        if _directory(sqlite_home, inv, "Codex database folder", required=True):
+            area = "codex/sqlite-home"
+            inv.areas.append(Area(area, str(sqlite_home),
+                                  "Codex's databases, moved by sqlite_home or CODEX_SQLITE_HOME"))
+            listed = walk(sqlite_home, area, exclude_dirs=EXCLUDED_DIRS,
+                          exclude_files=EXCLUDED_FILES, inventory=inv)
+            # Keep even damaged/uninitialised database files as recovery bytes.
+            # Filtering only by a valid SQLite header would silently lose them.
+            databases = [item for item in listed
+                         if item.sqlite or item.source.suffix.lower() in SQLITE_SUFFIXES]
+            for item in listed:
+                if not item.sqlite and item.source.suffix.lower() not in SQLITE_SUFFIXES:
+                    inv.skipped.append(f"{item.arcname} (not a database file)")
+            _note_unknown(databases, area, inv)
+            seen = {_source_key(item.source) for item in inv.items}
+            for item in databases:
+                key = _source_key(item.source)
+                if key not in seen:
+                    inv.items.append(item)
+                    seen.add(key)
+
     skills = platform_paths.agents_skills_dir()
-    if skills.is_dir():
+    if _directory(skills, inv, "shared agent skills folder", note_missing=False):
         inv.areas.append(Area("codex/agents-skills", str(skills),
                               "Your own skills shared by agents such as Codex"))
-        inv.items += walk(skills, "codex/agents-skills", inventory=inv)
+        seen = {_source_key(item.source) for item in inv.items}
+        for item in walk(skills, "codex/agents-skills", inventory=inv):
+            key = _source_key(item.source)
+            if key not in seen:
+                inv.items.append(item)
+                seen.add(key)
+    if any(fnmatch.fnmatchcase(item.source.name, pattern)
+           for item in inv.items for pattern in ("queue_*.sqlite*", "goals_*.sqlite*")):
+        inv.notes.append("Includes Codex's queued input or goals; a restore must not send "
+                         "input, or resume goals, by itself.")
     return inv
-
-
-def _same(a: Path, b: Path) -> bool:
-    try:
-        return a.resolve() == b.resolve()
-    except OSError:
-        return False
