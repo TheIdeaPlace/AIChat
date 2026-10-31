@@ -431,8 +431,9 @@ def test_anything_that_may_reach_outside_still_asks(folder, command):
 @pytest.mark.parametrize("command", ["ni sub/new", "write tim", "sort notes.txt",
                                      "Get-Content notes.txt"])
 def test_only_the_simplest_programs_elsewhere(folder, command):
-    """On a Mac or Linux these are programs on PATH (ni is often npm's)."""
-    assert asks(command, folder)
+    """On a Mac or Linux these are programs on PATH (ni is often npm's): not
+    Auto's. A rule you write for one is yours to write."""
+    assert copilot_folder.check_command(command, folder, Policy(auto=True)) is None
 
 
 def test_file_changes_inside_the_folder_only(folder, tmp_path):

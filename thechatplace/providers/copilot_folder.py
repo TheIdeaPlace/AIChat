@@ -335,11 +335,13 @@ def _guarded(target: str) -> bool:
     # Temp files aren't settings or startup items, and a folder there is an
     # ordinary place to work (tests and builds use it).
     temp = os.path.normcase(os.path.join(home, "AppData", "Local", "Temp"))
-    places = [os.path.join(home, place) for place in _HOME_GUARDED]
-    places += [os.path.join(documents, name) for documents in platform_paths.documents_dirs()
-               for name in _PROFILE_DIRS]
     if not _under(target, temp) and any(
-            _under(target, os.path.normcase(os.path.realpath(place))) for place in places):
+            _under(target, os.path.normcase(os.path.realpath(os.path.join(home, place))))
+            for place in _HOME_GUARDED):
+        return True
+    # PowerShell's profiles, wherever Documents is, temp folder or not.
+    if any(_under(target, os.path.normcase(os.path.realpath(os.path.join(documents, name))))
+           for documents in platform_paths.documents_dirs() for name in _PROFILE_DIRS):
         return True
     parts = target.lower().split(os.sep)
     if parts[-1].endswith("profile.ps1"):
@@ -511,7 +513,9 @@ def _paths_ok(name: str, words, folder: str, locations, *, letters: bool,
             # does too. -Stream reaches a file's hidden streams. PowerShell
             # takes any unambiguous start of a parameter's name: -s is
             # -Stream on Set-Content, -rec is -Recurse. On Windows those
-            # prefixes are refused, so -Raw and -ReadCount still work.
+            # prefixes are refused, so -Raw and -ReadCount still work. On a
+            # Mac or Linux, -L and -H follow links too (cp -aL, for a rule's
+            # cp: CI on the merged fixes).
             # The common parameters that set a variable in the shell
             # (-OutVariable, -ov, ...), and -Wait, which never ends (Claude's
             # review of Auto).
@@ -528,7 +532,7 @@ def _paths_ok(name: str, words, folder: str, locations, *, letters: bool,
                     or (name in _LISTING and lowered.startswith("-de"))
                     or (name in ("new-item", "ni") and _prefix_of(lowered, "-name"))
                     or (not _windows() and not lowered.startswith("--")
-                        and "r" in lowered)):
+                        and ("r" in lowered or "L" in text or "H" in text))):
                 return False
             if (letters and not _windows()
                     and not set(text[1:]) <= POSIX_OPTION_LETTERS.get(name, set())):
@@ -780,9 +784,10 @@ def _moved_to(words, folder: str, locations) -> Optional[tuple]:
     if not _inside_from(text, folder, locations):
         return None
     if os.path.isabs(text) or (_windows() and _WINDOWS_DRIVE.match(text)):
-        new = [text]
+        new = [os.path.normpath(text)]
     else:
-        new = [os.path.join(where, text) for where in locations]
+        # "./sub" is kept as sub, so later paths compare as the same folder.
+        new = [os.path.normpath(os.path.join(where, text)) for where in locations]
     # Every folder it may have been in stays: a command that fails to
     # change folder leaves the shell where it was.
     kept = list(dict.fromkeys([*locations, *new]))
