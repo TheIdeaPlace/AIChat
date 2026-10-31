@@ -207,7 +207,7 @@ def test_unreadable_file_is_a_failure(homes, monkeypatch):
     real_open = open
 
     def fake_open(path, *args, **kwargs):
-        if str(path) == str(target):
+        if str(path).endswith(target.name):
             raise PermissionError(13, "Permission denied", str(path))
         return real_open(path, *args, **kwargs)
 
@@ -313,3 +313,192 @@ def test_temporary_files_are_never_listed(tmp_path):
     for name in ("a.tmp", "b.json.tmp.123", "c.partial", "d~", "keep.json"):
         write(tmp_path / name)
     assert [i.arcname for i in backup.walk(tmp_path, "x")] == ["x/keep.json"]
+
+
+# Review findings on #434 -----------------------------------------------------
+
+def _closed_wal_db(path: Path):
+    """A WAL database whose program closed it cleanly: no -wal or -shm."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(path)
+    con.execute("pragma journal_mode=wal")
+    con.execute("create table t(v)")
+    con.execute("insert into t values (7)")
+    con.commit()
+    con.close()
+    assert sorted(p.name for p in path.parent.iterdir()) == [path.name]
+
+
+def test_backup_never_writes_beside_a_closed_database(homes):
+    db = homes["claude"] / "store.sqlite"
+    _closed_wal_db(db)
+    before = sorted(p.name for p in db.parent.iterdir())
+    result = backup.create(homes["dest"], collectors=[claude_backup.inventory])
+    assert result.complete, result.failures
+    assert sorted(p.name for p in db.parent.iterdir()) == before
+    with zipfile.ZipFile(result.path) as z:
+        copy = homes["tmp"] / "c.sqlite"
+        copy.write_bytes(z.read("claude/home/store.sqlite"))
+    assert sqlite3.connect(copy).execute("select v from t").fetchall() == [(7,)]
+
+
+def test_backup_leaves_every_source_folder_as_it_was(homes):
+    c = homes["claude"]
+    write(c / "projects" / "p" / "s.jsonl", "a\n")
+    _closed_wal_db(c / "dbs" / "x.sqlite")
+    write(homes["data"] / "sessions.json", "{}")
+    backup.computer_identity()   # The Chat Place's own id, its own folder: made first
+
+    def snapshot():
+        return sorted((str(p.relative_to(homes["tmp"])), p.stat().st_size,
+                       p.stat().st_mtime_ns) for p in homes["tmp"].rglob("*")
+                      if p.is_file() and "dest" not in p.parts)
+
+    before = snapshot()
+    backup.create(homes["dest"], collectors=[backup.tcp_inventory, claude_backup.inventory])
+    assert snapshot() == before
+
+
+def test_claude_account_file_and_its_copies_are_left_out(homes, monkeypatch):
+    c = homes["claude"]
+    write(c / "backups" / ".claude.json.backup.1793406267771", '{"oauthAccount": 1}')
+    write(c / "backups" / "other.json")
+    # Where CLAUDE_CONFIG_DIR puts the account file: inside the folder.
+    write(c / ".claude.json", '{"oauthAccount": 1}')
+    got = names(claude_backup.inventory())
+    assert got == {"claude/home/backups/other.json"}
+
+
+def test_tcp_leaves_out_the_session_tools_key_and_computer_id(homes):
+    write(homes["data"] / "session-tools.json", '{"key": "secret"}')
+    write(homes["data"] / "groups.json", "{}")
+    backup.computer_identity()   # makes computer.json
+    assert names(backup.tcp_inventory()) == {"thechatplace/data/groups.json"}
+
+
+def test_verify_catches_corrupt_compressed_data(homes, tmp_path):
+    write(homes["data"] / "big.json", "abcdefgh" * 50000)
+    good = backup.create(homes["dest"], collectors=[backup.tcp_inventory]).path
+    data = bytearray(good.read_bytes())
+    with zipfile.ZipFile(good) as z:
+        info = z.getinfo("thechatplace/data/big.json")
+    start = info.header_offset + 30 + len(info.filename.encode()) + len(info.extra) + 200
+    for i in range(start, start + 8):
+        data[i] ^= 0xFF
+    bad = tmp_path / "bad.zip"
+    bad.write_bytes(bytes(data))
+    check = backup.verify(bad)
+    assert not check.ok and check.problems
+
+
+def test_verify_survives_a_malformed_manifest(homes, tmp_path):
+    for files in (["not a dict"], "not a list", [{"path": 3}]):
+        path = tmp_path / "m.zip"
+        with zipfile.ZipFile(path, "w") as z:
+            z.writestr(backup.MANIFEST, json.dumps(
+                {"format": backup.FORMAT, "format_version": 1, "files": files}))
+        assert not backup.verify(path).ok
+
+
+def test_cancel_during_the_check_is_a_cancel_not_damage(homes):
+    write(homes["data"] / "a.json", "{}")
+    calls = {"n": 0}
+
+    def cancel_on_check():
+        calls["n"] += 1
+        return calls["n"] > 2   # listing and copying pass; the check is cancelled
+
+    with pytest.raises(InterruptedError):
+        backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                      cancelled=cancel_on_check)
+    assert list(homes["dest"].iterdir()) == []
+
+
+def test_a_read_failing_partway_is_incomplete_not_a_lost_backup(homes, monkeypatch):
+    target = write(homes["data"] / "big.json", "x" * (3 * 1024 * 1024))
+    write(homes["data"] / "fine.json", "{}")
+    real_open = open
+
+    class Failing:
+        def __init__(self, handle):
+            self.handle, self.reads = handle, 0
+
+        def read(self, n):
+            self.reads += 1
+            if self.reads > 1:
+                raise PermissionError(33, "The process cannot access the file", str(target))
+            return self.handle.read(n)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.handle.close()
+
+    def fake_open(path, mode="r", *args, **kwargs):
+        handle = real_open(path, mode, *args, **kwargs)
+        if str(path).endswith("big.json") and "r" in mode:
+            return Failing(handle)
+        return handle
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    result = backup.create(homes["dest"], collectors=[backup.tcp_inventory])
+    monkeypatch.undo()
+    assert result.path.exists() and not result.complete
+    assert any("big.json" in f for f in result.failures)
+    check = backup.verify(result.path)
+    assert check.ok, check.problems
+    assert check.manifest["unusable"] == ["thechatplace/data/big.json"]
+
+
+def test_a_destination_write_failure_stops_the_backup(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+    real = backup._hash_into
+
+    def full_disk(handle, out, digest, cancelled=None):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(backup, "_hash_into", full_disk)
+    with pytest.raises(OSError, match="No space"):
+        backup.create(homes["dest"], collectors=[backup.tcp_inventory])
+    monkeypatch.setattr(backup, "_hash_into", real)
+    assert list(homes["dest"].iterdir()) == []
+
+
+def test_publish_without_hard_links(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+
+    def no_links(*_args):
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "link", no_links)
+    first = backup.create(homes["dest"], collectors=[backup.tcp_inventory], filename="b.zip")
+    second = backup.create(homes["dest"], collectors=[backup.tcp_inventory], filename="b.zip")
+    assert (first.path.name, second.path.name) == ("b.zip", "b (2).zip")
+    assert backup.verify(first.path).ok and backup.verify(second.path).ok
+    assert sorted(p.name for p in homes["dest"].iterdir()) == ["b (2).zip", "b.zip"]
+
+
+def test_publish_keeps_the_backup_when_the_temporary_name_is_held(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+    real_unlink = Path.unlink
+
+    def held(self, *args, **kwargs):
+        if self.name.endswith(backup.PARTIAL_SUFFIX):
+            raise PermissionError(32, "in use")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", held)
+    result = backup.create(homes["dest"], collectors=[backup.tcp_inventory], filename="b.zip")
+    monkeypatch.undo()
+    assert result.path.name == "b.zip" and backup.verify(result.path).ok
+    assert any("couldn't be removed" in n for n in result.notes)
+
+
+def test_a_cloud_folder_isnt_called_the_same_disk(homes, monkeypatch):
+    cloud = homes["tmp"] / "OneDrive"
+    cloud.mkdir()
+    monkeypatch.setenv("OneDrive", str(cloud))
+    monkeypatch.setattr(backup, "_inside", lambda child, parent: Path(child) == Path(parent)
+                        or Path(parent) in Path(child).parents)
+    assert backup.same_drive_as_home(cloud) is False

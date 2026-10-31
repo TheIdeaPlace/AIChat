@@ -5872,8 +5872,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             dialog.Destroy()
         job = {"cancel": False, "progress": (0, 0), "said": time.monotonic()}
         self._backup_job = job
-        self._say("Backing up. This can take a few minutes, and the window stays usable. "
-                  "Choose Back Up Now again to stop it.", force=True)
+        self._feedback("Backing up. This can take a few minutes, and the window stays usable. "
+                       "Choose Back Up Now again to stop it.")
 
         def progress(done, total, _name):
             job["progress"] = (done, total)
@@ -5884,6 +5884,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 wx.CallAfter(self._backup_progress, done, total)
 
         def work():
+            # Listing the files comes first and can take a while on a big
+            # ~/.claude; the status bar says so rather than nothing.
+            wx.CallAfter(self._backup_status, "Backing up: finding files.")
             try:
                 result = backup.create(folder, progress=progress,
                                        cancelled=lambda: job["cancel"])
@@ -5896,24 +5899,27 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         job["thread"].start()
 
     def _backup_progress(self, done: int, total: int):
+        self._backup_status(f"Backing up: {done * 100 // total}% ({done} of {total} files).")
+
+    def _backup_status(self, text: str):
         if self._gone() or getattr(self, "_backup_job", None) is None:
             return
-        self._status(f"Backing up: {done * 100 // total}% ({done} of {total} files).")
+        self._status(text)
 
     def _backup_done(self, result, error):
         self._backup_job = None
         if self._gone():
             return
         if isinstance(error, InterruptedError):
-            self._say("Backup stopped. Nothing was saved.", force=True)
+            self._feedback("Backup stopped. Nothing was saved.")
             return
         if error is not None:
-            self._say("The backup didn't finish.", force=True)
+            self._status("The backup didn't finish.")
             wx.MessageBox(f"Couldn't back up: {error}\n\nNothing was saved.", APP_NAME,
                           wx.OK | wx.ICON_ERROR, self)
             return
-        self._say("Backup finished." if result.complete else "Backup finished, incomplete.",
-                  force=True)
+        # Said by the message box itself; the status bar keeps it to read back.
+        self._status("Backup finished." if result.complete else "Backup finished, incomplete.")
         wx.MessageBox(backup.summary(result), "Back Up Now",
                       wx.OK | (wx.ICON_INFORMATION if result.complete else wx.ICON_WARNING),
                       self)
@@ -5936,7 +5942,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._feedback(f"Checking {os.path.basename(path)}.")
 
         def work():
-            check = backup.verify(path)
+            try:
+                check = backup.verify(path)
+            except Exception as exc:  # noqa: BLE001 - always answered, never silent
+                check = backup.Check(ok=False, problems=[f"Couldn't check it: {exc}"])
             wx.CallAfter(self._check_done, path, check)
 
         threading.Thread(target=work, name="check-backup", daemon=True).start()
@@ -5944,7 +5953,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
     def _check_done(self, path, check):
         if self._gone():
             return
-        self._say("The backup is good." if check.ok else "The backup has problems.", force=True)
+        self._status("The backup is good." if check.ok else "The backup has problems.")
         wx.MessageBox(backup.check_text(path, check), "Check Backup",
                       wx.OK | (wx.ICON_INFORMATION if check.ok else wx.ICON_ERROR), self)
 

@@ -29,13 +29,18 @@ HOME_EXCLUDED_DIRS = (
 HOME_EXCLUDED_FILES = (
     "*.lock", "daemon.status.json", "stats-cache.json", "*-cache.json",
     "plugins/plugin-directory-cache*.json",
+    # The account file and Claude Code's own copies of it (backups/), and
+    # where CLAUDE_CONFIG_DIR puts it: the signed-in account, and MCP
+    # servers' keys.
+    ".claude.json", ".claude.json.*", "backups/.claude.json*",
 )
 SKIPPED = [
     "caches, logs and telemetry (rebuilt by Claude Code)",
     "sessions/, session-env/, shell-snapshots/, daemon/ (only meaningful while Claude runs)",
     "scratch/ (Claude's temporary working files)",
     "plugin marketplace copies (reinstalled from the marketplace; the installed lists are kept)",
-    ".credentials.json and ~/.claude.json (sign-in and account; sign in again)",
+    ".credentials.json, ~/.claude.json and its copies in backups/ (sign-in and account; "
+    "sign in again)",
 ]
 
 

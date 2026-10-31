@@ -34,6 +34,7 @@ import tempfile
 import time
 import uuid
 import zipfile
+import zlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +48,9 @@ MANIFEST = "manifest.json"
 FILE_PREFIX = "TheChatPlace-backup-"
 PARTIAL_SUFFIX = ".partial"
 _CHUNK = 1024 * 1024
+# A manifest lists every file; even 100,000 of them is a few tens of MB. One
+# far bigger than this isn't ours, and isn't read into memory.
+MANIFEST_LIMIT = 256 * 1024 * 1024
 
 # Never copied, whoever lists them: sign-in tokens and keys. Histories can
 # still hold secrets someone pasted; the user guide says to treat a backup
@@ -106,6 +110,9 @@ class Result:
     failures: List[str] = field(default_factory=list)
     changed: List[str] = field(default_factory=list)
     gone: List[str] = field(default_factory=list)
+    # Entries part-written when their source failed mid-read: in the zip,
+    # but not a copy of anything.
+    unusable: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
     complete: bool = False
 
@@ -165,6 +172,10 @@ def walk(root: Path, area: str, *, exclude_dirs: Iterable[str] = (),
         reading_root = root.resolve()
         if inventory is not None:
             inventory.notes.append(f"{root} is a link to {reading_root}; backed up from there.")
+    # Claude's project folders encode whole paths into their names, so a
+    # transcript's path can pass Windows' 260 characters; the long form has
+    # no limit. Names in the archive are relative, so they don't change.
+    reading_root = platform_paths.long_path(Path(os.path.abspath(reading_root)))
 
     def unreadable(error: OSError):
         if inventory is not None:
@@ -218,6 +229,11 @@ def is_sqlite(path: Path) -> bool:
 
 # The Chat Place's own data -------------------------------------------------
 
+# The session tools' live address and key (session_tools.CONNECTION_FILE),
+# kept readable only by you on purpose: never put in a backup.
+STATE_FILE_RUNTIME = "session-tools.json"
+
+
 def tcp_inventory() -> Inventory:
     """The Chat Place's own folder: which chats it started, names, groups,
     hidden chats, agent conversations, speech and permissions. Provider
@@ -226,9 +242,12 @@ def tcp_inventory() -> Inventory:
     inv = Inventory("thechatplace", "The Chat Place", version=__version__)
     inv.areas.append(Area("thechatplace/data", str(root),
                           "The Chat Place's settings, groups and session records"))
-    inv.items = walk(root, "thechatplace/data", exclude_files=("*.log", "*.tmp"),
+    inv.items = walk(root, "thechatplace/data",
+                     exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json"),
                      inventory=inv)
-    inv.skipped.append("*.log (diagnostic logs)")
+    inv.skipped += ["*.log (diagnostic logs)",
+                    "session-tools.json (a running chat's connection key, made anew)",
+                    "computer.json (this computer's id; another computer has its own)"]
     return inv
 
 
@@ -294,19 +313,46 @@ def destination_problem(dest: Path, inventories: Sequence[Inventory]) -> Optiona
     return None
 
 
+def cloud_folders() -> List[Path]:
+    """Folders a sync service copies off this computer: OneDrive's (Windows
+    says where), Dropbox, Google Drive, iCloud Drive and macOS's
+    CloudStorage."""
+    home = Path.home()
+    found = [Path(os.environ[name]) for name in ("OneDrive", "OneDriveCommercial",
+                                                 "OneDriveConsumer") if os.environ.get(name)]
+    found += [home / "Dropbox", home / "Google Drive", home / "iCloudDrive",
+              home / "Library" / "CloudStorage", home / "Library" / "Mobile Documents"]
+    return found
+
+
 def same_drive_as_home(dest: Path) -> bool:
-    """True when the backup is on the disk it's protecting, so it wouldn't
-    survive losing the computer (said, not refused: it's still a copy)."""
+    """True when the backup is on the disk it's protecting and not in a
+    folder that syncs to the cloud, so it wouldn't survive losing the
+    computer (said, not refused: it's still a copy)."""
+    if any(_inside(Path(dest), folder) for folder in cloud_folders() if folder.is_dir()):
+        return False
     try:
         return os.stat(dest).st_dev == os.stat(Path.home()).st_dev
     except OSError:
         return False
 
 
-def _hash_into(handle, out, digest) -> int:
+class SourceError(OSError):
+    """Reading a file being backed up failed partway (a lock, a cloud
+    placeholder that won't download): that file is lost to this backup,
+    the rest goes on. A failure writing the backup itself is a plain
+    OSError, and stops it."""
+
+
+def _hash_into(handle, out, digest, cancelled=None) -> int:
     total = 0
     while True:
-        chunk = handle.read(_CHUNK)
+        if cancelled is not None and cancelled():
+            raise InterruptedError("Backup cancelled.")
+        try:
+            chunk = handle.read(_CHUNK)
+        except OSError as exc:
+            raise SourceError(exc.errno, exc.strerror or str(exc), exc.filename) from exc
         if not chunk:
             return total
         digest.update(chunk)
@@ -314,19 +360,38 @@ def _hash_into(handle, out, digest) -> int:
         total += len(chunk)
 
 
-def _sqlite_snapshot(source: Path, scratch: Path) -> Path:
-    """A consistent copy of one database through SQLite's backup API,
-    opened read-only so the provider's file is never changed."""
+def _sqlite_snapshot(source: Path, scratch: Path, cancelled=None) -> Path:
+    """A consistent copy of one database through SQLite's backup API that
+    never writes beside the provider's file.
+
+    Opening a WAL database even read-only makes SQLite create -wal and -shm
+    files when they aren't there, which would be writing in another app's
+    folder. With no -wal or -journal beside it, a database has nothing
+    uncommitted, so it's opened as immutable (no locks, no new files).
+    With one, its program is using it, those files exist already, and a
+    read-only open reads the WAL too. The copy is then checked with
+    ``quick_check``, so a database changed under an immutable open is
+    caught rather than kept torn."""
     target = scratch / (uuid.uuid4().hex + ".sqlite")
     text = str(source)
-    if text.startswith("\\\\?\\") and not text.startswith("\\\\?\\UNC\\"):
-        text = text[4:]  # a long-form path (Cowork's); SQLite wants a plain URI
-    uri = Path(text).resolve().as_uri() + "?mode=ro"
+    if text.startswith("\\\\?\\UNC\\"):
+        text = "\\\\" + text[8:]
+    elif text.startswith("\\\\?\\"):
+        text = text[4:]  # the long form; SQLite wants a plain URI
+    plain = Path(text)
+    live = any(Path(text + suffix).exists() for suffix in ("-wal", "-journal"))
+    uri = plain.resolve().as_uri() + ("?mode=ro" if live else "?mode=ro&immutable=1")
     src = sqlite3.connect(uri, uri=True, timeout=10)
     try:
         dst = sqlite3.connect(target)
         try:
-            src.backup(dst)
+            def step(_status, _remaining, _total):
+                if cancelled is not None and cancelled():
+                    raise InterruptedError("Backup cancelled.")
+            src.backup(dst, pages=256, progress=step)
+            result = dst.execute("pragma quick_check").fetchone()
+            if not result or result[0] != "ok":
+                raise sqlite3.DatabaseError(f"the copy failed its check ({result and result[0]})")
         finally:
             dst.close()
     finally:
@@ -351,6 +416,8 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     inventories: List[Inventory] = []
     result = Result(path=None)
     for collect in collectors:
+        if cancelled is not None and cancelled():
+            raise InterruptedError("Backup cancelled.")
         try:
             inventories.append(collect())
         except Exception as exc:  # noqa: BLE001 - one provider can't stop the rest
@@ -384,15 +451,19 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
                 seen.add(item.arcname)
                 if progress is not None:
                     progress(done, total, item.arcname)
-                entry = _add(archive, inv, item, scratch, result)
+                entry = _add(archive, inv, item, scratch, result, cancelled)
                 if entry is not None:
                     files.append(entry)
             manifest = _manifest(inventories, files, result, computer, started)
             archive.writestr(MANIFEST, json.dumps(manifest, indent=1, ensure_ascii=False))
+        # On the disk, not just in the cache, before it's checked and named:
+        # a USB stick pulled after "finished" mustn't hold half a backup.
+        with open(partial, "rb+") as handle:
+            os.fsync(handle.fileno())
         check = verify(partial, cancelled=cancelled)
         if not check.ok:
             raise OSError("The backup didn't check out: " + "; ".join(check.problems[:3]))
-        final = _publish(partial, final)
+        final = _publish(partial, final, result)
     except BaseException:
         try:
             partial.unlink()
@@ -413,7 +484,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     return result
 
 
-def _publish(partial: Path, final: Path) -> Path:
+def _publish(partial: Path, final: Path, result: Optional[Result] = None) -> Path:
     """Give the checked archive its real name without ever replacing an
     existing file: two backups in the same second, or a name the user already
     has, get " (2)", " (3)"... A hard link fails if the name exists, which
@@ -434,20 +505,34 @@ def _publish(partial: Path, final: Path) -> Path:
                     pass
             except FileExistsError:
                 continue
-            os.replace(partial, target)
+            try:
+                os.replace(partial, target)
+            except OSError:
+                try:
+                    target.unlink()   # never leave an empty file with a backup's name
+                except OSError:
+                    pass
+                raise
             return target
-        partial.unlink()
+        try:
+            partial.unlink()
+        except OSError:
+            # The backup is safely in place under its name; a sync client or
+            # virus scanner holding the temporary one mustn't undo that.
+            if result is not None:
+                result.notes.append(f"{partial.name} couldn't be removed; it's a second copy "
+                                    "and can be deleted.")
         return target
     raise OSError(f"Couldn't find a free name for the backup in {final.parent}.")
 
 
 def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
-         result: Result) -> Optional[dict]:
+         result: Result, cancelled=None) -> Optional[dict]:
     source = Path(item.source)
     try:
         if item.sqlite:
             try:
-                copy = _sqlite_snapshot(source, scratch)
+                copy = _sqlite_snapshot(source, scratch, cancelled)
                 kind = "sqlite"
             except sqlite3.Error as exc:
                 # Not a database after all, or locked past the timeout: say so.
@@ -456,26 +541,50 @@ def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
             read_from = copy
         else:
             read_from, kind = source, "file"
-        before = os.stat(read_from)
+        try:
+            before = os.stat(read_from)
+            handle = open(read_from, "rb")
+        except OSError as exc:
+            raise SourceError(exc.errno, exc.strerror or str(exc), exc.filename) from exc
         digest = hashlib.sha256()
         info = zipfile.ZipInfo(item.arcname, date_time=time.localtime(
             max(before.st_mtime, 315532800))[:6])
         info.compress_type = zipfile.ZIP_DEFLATED
-        with open(read_from, "rb") as handle, archive.open(info, "w", force_zip64=True) as out:
-            size = _hash_into(handle, out, digest)
+        with handle, archive.open(info, "w", force_zip64=True) as out:
+            try:
+                size = _hash_into(handle, out, digest, cancelled)
+            except SourceError:
+                # zipfile has already written part of this entry, and can't
+                # take it back: it's listed as unusable, so it's known.
+                result.unusable.append(item.arcname)
+                raise
         if kind == "file":
-            after = os.stat(read_from)
-            if after.st_size != before.st_size or after.st_mtime_ns != before.st_mtime_ns:
+            try:
+                after = os.stat(read_from)
+                changed = (after.st_size != before.st_size
+                           or after.st_mtime_ns != before.st_mtime_ns)
+            except OSError:
+                changed = True   # gone or locked just after: it was read whole
+            if changed:
                 result.changed.append(item.arcname)
         else:
             try:
                 copy.unlink()
             except OSError:
                 pass
+        try:
+            modified = datetime.fromtimestamp(os.stat(source).st_mtime, timezone.utc)                 .isoformat(timespec="seconds")
+        except (OSError, ValueError, OverflowError):
+            modified = None
         return {"path": item.arcname, "provider": inv.provider, "kind": kind,
-                "size": size, "sha256": digest.hexdigest(),
-                "modified": datetime.fromtimestamp(source.stat().st_mtime, timezone.utc)
-                .isoformat(timespec="seconds") if source.exists() else None}
+                "size": size, "sha256": digest.hexdigest(), "modified": modified}
+    except SourceError as exc:
+        if exc.errno == 2 and item.arcname not in result.unusable:
+            result.gone.append(item.arcname)
+            result.failures.append(f"{item.arcname}: deleted before it could be copied")
+        else:
+            result.failures.append(f"{item.arcname}: {exc.strerror or exc}")
+        return None
     except FileNotFoundError:
         # Gone between listing and reading. Temporary files are never
         # listed, so this is history or setup that's now lost, perhaps to a
@@ -483,9 +592,6 @@ def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
         # is incomplete, and says which (#433).
         result.gone.append(item.arcname)
         result.failures.append(f"{item.arcname}: deleted before it could be copied")
-        return None
-    except OSError as exc:
-        result.failures.append(f"{item.arcname}: {exc.strerror or exc}")
         return None
 
 
@@ -517,6 +623,7 @@ def _manifest(inventories, files, result, computer, started) -> dict:
         "failures": result.failures,
         "changed_while_copying": result.changed,
         "gone_while_copying": result.gone,
+        "unusable": result.unusable,
         "files": files,
     }
 
@@ -548,11 +655,16 @@ def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None) -> Check:
     try:
         with zipfile.ZipFile(path) as archive:
             try:
+                if archive.getinfo(MANIFEST).file_size > MANIFEST_LIMIT:
+                    check.problems.append("Its manifest is far too big; it isn't a Chat Place "
+                                          "backup.")
+                    return check
                 manifest = json.loads(archive.read(MANIFEST).decode("utf-8"))
             except KeyError:
                 check.problems.append("It has no manifest; it isn't a Chat Place backup.")
                 return check
-            if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
+            if (not isinstance(manifest, dict) or manifest.get("format") != FORMAT
+                    or not isinstance(manifest.get("files", []), list)):
                 check.problems.append("It isn't a Chat Place backup.")
                 return check
             check.manifest = manifest
@@ -560,11 +672,14 @@ def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None) -> Check:
                 check.problems.append("It was made by a newer version of The Chat Place.")
                 return check
             names = set(archive.namelist())
-            listed = set()
+            listed = {name for name in manifest.get("unusable") or [] if isinstance(name, str)}
             for entry in manifest.get("files", []):
                 if cancelled is not None and cancelled():
                     raise InterruptedError("Backup cancelled.")
-                name = entry.get("path", "")
+                if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+                    check.problems.append("Its manifest has an entry that isn't a file.")
+                    continue
+                name = entry["path"]
                 listed.add(name)
                 if not _safe_name(name):
                     check.problems.append(f"Unsafe name in the backup: {name}")
@@ -588,7 +703,12 @@ def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None) -> Check:
             extra = sorted(names - listed - {MANIFEST})
             for name in extra[:20]:
                 check.problems.append(f"Not in the manifest: {name}")
-    except (OSError, zipfile.BadZipFile, ValueError, EOFError) as exc:
+    except InterruptedError:
+        raise   # a cancel, not damage (it's an OSError too)
+    except (OSError, zipfile.BadZipFile, zlib.error, ValueError, TypeError, EOFError,
+            RuntimeError, NotImplementedError) as exc:
+        # zlib.error is damaged compressed data; RuntimeError an encrypted
+        # entry; NotImplementedError a compression this Python can't read.
         check.problems.append(f"Couldn't read it: {exc}")
         return check
     check.ok = not check.problems

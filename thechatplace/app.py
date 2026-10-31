@@ -86,6 +86,18 @@ def smoke_test(out_path: str) -> int:
     except Exception as exc:  # noqa: BLE001
         problems.append(f"wx/ui: {exc}")
     try:
+        # Back Up Now (#433): its collectors, tomllib, and SQLite's backup
+        # API (the Linux build uses the system's libsqlite3).
+        from . import backup
+        assert len(backup.default_collectors()) == 4
+        import sqlite3
+        source, copy = sqlite3.connect(":memory:"), sqlite3.connect(":memory:")
+        source.execute("create table t(v)")
+        source.backup(copy)
+        report["backup"] = copy.execute("select count(*) from t").fetchone() == (0,)
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"backup: {exc}")
+    try:
         # Formatted full messages (#190): markdown and its extensions, and
         # wx's WebView2 loader, which a build can leave behind.
         from .rendering import message_page
