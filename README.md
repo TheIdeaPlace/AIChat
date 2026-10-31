@@ -1061,11 +1061,24 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   edited in `thechatplace/assets/user-guide.md`; `python tools/make_docs.py` makes the copies in
   `docs/`.
 - **Report a Bug** (Help menu) asks for a summary, what happened, what you expected and the
-  steps, and shows exactly what else the report includes before it goes anywhere: versions
-  (The Chat Place, Windows, Python, wxPython, Claude Code), the announcement level and speech
-  engine, what happened to the last announcement (which screen reader spoke it, or why none
-  did), the list's view and sort, and how many sessions it lists. Never a session's title,
-  folder or messages. **Open on GitHub** copies the whole report and opens GitHub's new-issue
+  steps, and shows exactly what else the report includes before it goes anywhere:
+  - versions of The Chat Place (and whether it's installed, portable or run from source, with
+    its update channel), the system, Python and wxPython;
+  - for Claude Code, Codex and GitHub Copilot CLI: the version (or "not found"), whether Codex
+    and the Copilot preview are turned on, and whether each is signed in (with the Claude plan
+    or ChatGPT, never the account name or email). It asks each one when you choose Report a
+    Bug, which takes a moment; Codex is asked only when it's turned on;
+  - Codex's and Copilot's recent errors, up to three each from the last day (or the newest, if
+    none is that recent), each saying which provider failed, why in The Chat Place's own words,
+    and how long ago;
+  - the announcement level and speech engine, what happened to the last announcement (which
+    screen reader spoke it, or why none did), the list's view and sort, the display scale and
+    whether High Contrast is on;
+  - how many sessions it lists of each provider and kind, such as "Claude: 2 desktop app, 20
+    Chat Place, 0 terminal; Copilot: 6 Chat Place, 3 Copilot CLI".
+
+  Never a session's title, folder or messages, a group's name, an account, a path, or an
+  error's raw text. **Open on GitHub** copies the whole report and opens GitHub's new-issue
   page with it filled in; **Copy Report** only copies it. Filing on GitHub needs access to the
   repository; anyone else can Copy Report and email it to support@theideaplace.net.
 

@@ -29,10 +29,96 @@ def test_failure_log_and_bug_report_never_include_exception_contents(tmp_path, m
     codex_diagnostics.record_failure(ValueError('private token and /Users/private/chat'))
     assert 'ValueError' in path.read_text() and 'private' not in path.read_text()
     facts = dict(bugreport.environment(SpeechSettings(), {}, claude_version='test'))
-    assert facts['Last Codex error'] == 'Codex worker failed: ValueError; details redacted.'
+    assert facts['Codex error'] == 'just now: ValueError; details redacted.'
     path.write_text('Forged private contents\n')
     assert not codex_diagnostics.last_failure()
-    assert 'Last Codex error' not in dict(bugreport.environment(SpeechSettings(), {}, claude_version='test'))
+    assert 'Codex error' not in dict(bugreport.environment(SpeechSettings(), {}, claude_version='test'))
+
+
+def _copilot_error(text):
+    from thechatplace.providers.copilot_runtime import CopilotChatError
+    return CopilotChatError(text)
+
+
+def test_a_copilot_failure_keeps_the_reason_the_app_wrote(tmp_path, monkeypatch):
+    """#463 got "CopilotChatError; details redacted." instead of the words
+    the user saw; they're app-written (#370), so the report has them (#464)."""
+    path = tmp_path / 'errors.log'
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: path)
+    from thechatplace.providers.copilot_runtime import IN_USE
+    codex_diagnostics.record_failure(_copilot_error(IN_USE))
+    facts = dict(bugreport.environment(SpeechSettings(), {}, claude_version='test'))
+    assert facts['Copilot error'] == f'just now: CopilotChatError: {IN_USE}'
+    assert 'Codex error' not in facts
+
+
+def test_a_copilot_reason_too_long_or_with_control_characters_is_redacted(tmp_path, monkeypatch):
+    path = tmp_path / 'errors.log'
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: path)
+    for text in ('x' * 1001, 'Line one\nLine two', 'Bell\x07', 'Escape \x1b[31m',
+                 # Copilot's own error text can carry a path, an address or a link.
+                 'Couldn\'t open C:\\Users\\kelly\\project', 'No such file /home/kelly/x',
+                 'Signed in as kelly@example.com', 'See https://github.com/acme/x',
+                 'Folder ~/work isn\'t there'):
+        path.unlink(missing_ok=True)
+        codex_diagnostics.record_failure(_copilot_error(text))
+        written = path.read_text()
+        assert written.endswith('Copilot worker failed: CopilotChatError; details redacted.\n'), text
+        assert codex_diagnostics.last_failure() == \
+            'Copilot CopilotChatError; details redacted.'
+    path.unlink()
+    codex_diagnostics.record_failure(_copilot_error('y' * 1000))
+    assert codex_diagnostics.last_failure() == 'Copilot CopilotChatError: ' + 'y' * 1000
+
+
+def test_a_forged_copilot_reason_with_a_path_is_not_reported(tmp_path, monkeypatch):
+    path = tmp_path / 'errors.log'
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: path)
+    path.write_text('2026-10-31T12:00:00Z Copilot worker failed: CopilotChatError. '
+                    'It said: Open C:\\Users\\kelly\\private\n')
+    assert codex_diagnostics.recent_failures() == {}
+
+
+def test_each_provider_keeps_its_own_recent_failures(tmp_path, monkeypatch):
+    """One provider's failure no longer hides another's, and each says how
+    long ago it happened (#464)."""
+    import calendar
+    import time
+    path = tmp_path / 'errors.log'
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: path)
+    now = calendar.timegm(time.strptime('2026-10-31T12:00:00Z', '%Y-%m-%dT%H:%M:%SZ'))
+    path.write_text(
+        '2026-10-01T12:00:00Z Codex worker failed: OldError; details redacted.\n'
+        '2026-10-31T09:00:00Z Copilot worker failed: CopilotChatError. It said: Copilot isn\'t running.\n'
+        '2026-10-31T10:00:00Z Codex worker failed: A; details redacted.\n'
+        '2026-10-31T11:00:00Z Codex connection failure: unsupported_request.\n'
+        '2026-10-31T11:30:00Z Codex worker refused turn: not_idle. Codex said: busy.\n'
+        '2026-10-31T11:57:00Z Codex worker failed: B; details redacted.\n'
+        'Forged private line\n')
+    found = codex_diagnostics.recent_failures(now=now)
+    assert [what for _s, what in found['Codex']] == [
+        'B; details redacted.',
+        'refused turn (not_idle): ' + CodexTurnRejected.REASONS['not_idle'] + ' Codex said: busy.',
+        'connection failure (unsupported_request): '
+        + CodexConnectionFailure.REASONS['unsupported_request']]
+    assert found['Copilot'] == [(3 * 3600, "CopilotChatError: Copilot isn't running.")]
+    facts = bugreport.environment(SpeechSettings(), {}, claude_version='test', now=now)
+    errors = [(label, value) for label, value in facts if label.endswith(' error')]
+    assert errors[0] == ('Codex error', '3 minutes ago: B; details redacted.')
+    assert ('Copilot error', "3 hours ago: CopilotChatError: Copilot isn't running.") in errors
+    assert len(errors) == 4
+
+
+def test_an_old_failure_is_still_reported_when_nothing_is_recent(tmp_path, monkeypatch):
+    import calendar
+    import time
+    path = tmp_path / 'errors.log'
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: path)
+    now = calendar.timegm(time.strptime('2026-10-31T12:00:00Z', '%Y-%m-%dT%H:%M:%SZ'))
+    path.write_text('2026-10-20T12:00:00Z Codex worker failed: A; details redacted.\n'
+                    '2026-10-28T12:00:00Z Codex worker failed: B; details redacted.\n')
+    assert codex_diagnostics.recent_failures(now=now) == {
+        'Codex': [(3 * 86400, 'B; details redacted.')]}
 
 
 def test_diagnostics_are_bounded_and_do_not_block_when_logging_fails(tmp_path, monkeypatch):

@@ -2134,8 +2134,10 @@ in Copilot CLI since you opened it, a message starting with `/`) are in Starting
 ### Reporting a problem
 
 **Something else.** Help, Report a Bug asks what happened and shows exactly what the report
-includes before it goes anywhere: version numbers and settings, never your chats' titles,
-folders or messages. Open on GitHub files it; Copy Report copies it, to email to
+includes before it goes anywhere: version numbers and settings, whether Claude, Codex and Copilot
+are turned on and signed in, their recent errors and how long ago they happened, and how many
+chats of each it lists. Never your chats' titles, folders or messages, or your account. It checks
+each sign-in first, which takes a moment. Open on GitHub files it; Copy Report copies it, to email to
 support@theideaplace.net.
 
 ## Good to know
