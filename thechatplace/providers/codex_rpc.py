@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 import json
 import queue
+import re
 import threading
 
 from .. import __version__, platform_paths
@@ -88,7 +89,13 @@ class CodexTurnRejected(CodexRpcError):
         'auto_review_unavailable': ('Codex could not confirm automatic approval review. This Codex version or managed policy '
                                   'may not allow it. No message was sent. Update Codex or choose human review.'),
         'chatgpt_required': 'Codex turns require ChatGPT sign-in.',
-        'not_idle': 'This Codex chat is not confirmed idle. No new turn was sent.',
+        'not_idle': 'Codex is still working on a turn in this chat. No new turn was sent.',
+        'awaiting_approval': 'Codex is waiting for you to approve something in this chat. Answer it, then send again. No new turn was sent.',
+        'awaiting_input': 'Codex is waiting for your answer to a question in this chat. Answer it, then send again. No new turn was sent.',
+        # Anything else: a reply TCP can't read, or a state it doesn't know.
+        'status_unclear': "The Chat Place couldn't confirm this Codex chat is free to take a message. If it keeps happening, quit and restart The Chat Place. No new turn was sent.",
+        # Not seen yet; Stop can't reload it in place (#448 follow-up).
+        'not_loaded': 'Codex closed this chat in the background. Quit and restart The Chat Place to reopen it. No new turn was sent.',
         'preflight_failed': 'Codex could not verify this chat before sending. No new turn was sent.',
         'billing_route': 'Codex turns require the default ChatGPT billing route',
         'verified_thread': 'Codex turn requires a verified thread',
@@ -102,9 +109,55 @@ class CodexTurnRejected(CodexRpcError):
         'sandbox_unavailable': "Codex reported this chat as read-only, so it can't edit its folder. This usually means Codex's Windows sandbox isn't set up: set it up with Set up Agent sandbox in the Codex app, or with the windows sandbox setting in Codex's config.toml. Otherwise your Codex settings may allow only read-only. Try again, or choose read-only. No new turn was sent.",
     }
 
-    def __init__(self, code):
+    def __init__(self, code, status=''):
         self.code = code if code in self.REASONS else 'preflight_failed'
+        # What Codex reported, for the diagnostics log (#448): fixed tokens only.
+        self.status = status if isinstance(status, str) and re.fullmatch(r'[A-Za-z, ]{0,120}', status) else ''
         super().__init__(self.REASONS[self.code])
+
+
+_ENDED_TURNS = ('completed', 'failed', 'interrupted')
+
+
+def _token(value):
+    return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z]{1,40}', value) else 'unknown'
+
+
+def check_startable(connection, native_id, thread, *, not_loaded=False, check_turns=True):
+    """Refuse a new turn unless Codex reports nothing running in the thread.
+
+    'idle' is startable. So is 'systemError' (#448): Codex reports it after a
+    turn that ended in an error (a usage limit, a model at capacity) and
+    keeps it until the next turn/start, so refusing it left the chat stuck
+    for as long as the app-server lived. It's accepted only once the latest
+    turn is confirmed ended. 'notLoaded' is startable only where the caller
+    resumes the thread itself. 'active' always refuses, saying why."""
+    status = thread.get('status') if isinstance(thread, dict) else None
+    kind = status.get('type') if isinstance(status, dict) else None
+    flags = status.get('activeFlags') if isinstance(status, dict) else None
+    flags = [f for f in flags if isinstance(f, str)] if isinstance(flags, list) else []
+    said = ' '.join([_token(kind)] + [_token(f) for f in flags[:4]])
+    if kind == 'systemError':
+        check_turns = True
+    elif kind not in (('idle', 'notLoaded') if not_loaded else ('idle',)):
+        code = ('awaiting_approval' if 'waitingOnApproval' in flags
+                else 'awaiting_input' if 'waitingOnUserInput' in flags
+                else 'not_loaded' if kind == 'notLoaded'
+                else 'not_idle' if kind == 'active' else 'status_unclear')
+        raise CodexTurnRejected(code, said)
+    if not check_turns:
+        return
+    latest = connection.request('thread/turns/list', {
+        'threadId': native_id, 'limit': 1, 'sortDirection': 'desc', 'itemsView': 'notLoaded'})
+    turns = latest.get('data') if isinstance(latest, dict) else None
+    if (not isinstance(turns, list) or len(turns) > 1
+            or any(not isinstance(turn, dict) or turn.get('status') not in _ENDED_TURNS for turn in turns)):
+        last = turns[0].get('status') if isinstance(turns, list) and turns and isinstance(turns[0], dict) else None
+        raise CodexTurnRejected('not_idle' if last == 'inProgress' else 'status_unclear',
+                                f'{said}, latest turn {_token(last)}')
+    # An error status with no turn at all isn't one a turn ended in.
+    if kind == 'systemError' and not turns:
+        raise CodexTurnRejected('status_unclear', f'{said}, no turns')
 
 
 def is_chatgpt_account(result):

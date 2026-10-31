@@ -85,7 +85,8 @@ def test_owned_resume_retains_native_identity_and_chosen_model():
 
 
 @pytest.mark.parametrize('status,latest', [('active', []), ('notLoaded', [{'status': 'inProgress'}]),
-                                         ('idle', [{'status': 'unknown'}]), ('idle', None)])
+                                         ('idle', [{'status': 'unknown'}]), ('idle', None),
+                                         ('systemError', [{'status': 'inProgress'}]), ('systemError', [])])
 def test_resume_never_overwrites_unfinished_or_uncertain_native_turn(status, latest):
     class BusyConnection(Connection):
         def request(self, method, params):
@@ -97,7 +98,7 @@ def test_resume_never_overwrites_unfinished_or_uncertain_native_turn(status, lat
     result['thread']['status']['type'] = status
     connection = BusyConnection(result)
     record = OwnSession('owned', 'Owned', '/workspace', provider='codex')
-    with pytest.raises(CodexRpcError, match='not confirmed idle'):
+    with pytest.raises(CodexRpcError, match='No new turn was sent'):
         CodexOwnedThreads(connection).resume(record)
     assert not any(method == 'thread/resume' for method, _ in connection.calls)
 
@@ -348,3 +349,51 @@ def test_unverified_external_tool_inventory_never_grants_execution_proof(invento
             return super().request(method, params)
     with pytest.raises(CodexRpcError, match='external tools'):
         CodexOwnedThreads(Unverified()).start('/workspace', 'Title')
+
+
+def test_a_chat_whose_last_turn_failed_reopens(monkeypatch):
+    """#448: after a failed turn Codex reports systemError until a new turn
+    starts; reopening the chat accepts it once that turn is confirmed ended."""
+    class FailedConnection(Connection):
+        def request(self, method, params):
+            if method == 'thread/turns/list':
+                self.calls.append((method, params))
+                return {'data': [{'id': 't', 'status': 'failed'}]}
+            return super().request(method, params)
+    result = response('owned')
+    result['thread']['status']['type'] = 'systemError'
+    connection = FailedConnection(result)
+    record = OwnSession('owned', 'Owned', '/workspace', provider='codex')
+    lease = CodexOwnedThreads(connection).resume(record)
+    assert lease.native_id == 'owned'
+    assert any(method == 'thread/resume' for method, _ in connection.calls)
+
+
+@pytest.mark.parametrize('status,code,words', [
+    ({'type': 'active', 'activeFlags': ['waitingOnApproval']}, 'awaiting_approval', 'approve'),
+    ({'type': 'active', 'activeFlags': ['waitingOnUserInput']}, 'awaiting_input', 'question'),
+    ({'type': 'active', 'activeFlags': []}, 'not_idle', 'still working'),
+    ({'type': 'notLoaded'}, 'not_loaded', 'restart'),
+    ({'type': 'something new'}, 'status_unclear', "couldn't confirm"),
+    ('not a status', 'status_unclear', "couldn't confirm")])
+def test_a_refusal_says_why_and_keeps_what_codex_said(status, code, words):
+    from thechatplace.providers.codex_rpc import CodexTurnRejected, check_startable
+    with pytest.raises(CodexTurnRejected) as refused:
+        check_startable(Connection(), 'owned', {'id': 'owned', 'status': status})
+    assert refused.value.code == code and words in str(refused.value)
+    assert 'No new turn was sent' in str(refused.value)
+    # Only fixed tokens reach the diagnostics log.
+    assert refused.value.status and ' new' not in refused.value.status
+
+
+@pytest.mark.parametrize('latest,code', [([], 'status_unclear'), ([{'status': 'unknown'}], 'status_unclear'),
+                                         ([{'status': 'inProgress'}], 'not_idle')])
+def test_an_error_status_without_an_ended_turn_says_so_honestly(latest, code):
+    """#448 review: only a turn really running is "still working"."""
+    from thechatplace.providers.codex_rpc import CodexTurnRejected, check_startable
+    class Turns(Connection):
+        def request(self, method, params):
+            return {'data': latest} if method == 'thread/turns/list' else super().request(method, params)
+    with pytest.raises(CodexTurnRejected) as refused:
+        check_startable(Turns(), 'owned', {'id': 'owned', 'status': {'type': 'systemError'}})
+    assert refused.value.code == code

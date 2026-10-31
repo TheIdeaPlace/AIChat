@@ -275,6 +275,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._agent_last_reply: Dict[tuple, str] = {}
         self._agent_last_heard: Dict[str, str] = {}
         self._agent_codex_waiting: Dict[str, list] = {}
+        # The last refusal noted for each (conversation, member), until a
+        # hand-off to it goes (#448).
+        self._agent_send_refusals: Dict[tuple, str] = {}
         self._agent_unconfirmed: set = set()
         self._agent_last_sent: Dict[tuple, str] = {}
         #: The latest messages the conversation sent each member, so a Stop

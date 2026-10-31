@@ -1317,3 +1317,46 @@ def test_a_steer_error_that_isnt_a_refusal_is_unconfirmed(server, scenario, tmp_
         assert any(u.unsent == ('Queued one',) for u in updates)
     finally:
         service.close()
+
+
+@pytest.mark.parametrize('scenario', ['owned-turn-system-error', 'owned-turn-system-error-running'])
+def test_a_failed_turn_doesnt_lock_the_chat(server, scenario, tmp_path, monkeypatch):
+    """#448: Codex reports systemError after a turn that failed (a usage limit)
+    until the next turn starts, so refusing it left the chat refused for good.
+    It sends once the latest turn is confirmed ended, and never while it runs."""
+    import time
+    from thechatplace import codex_diagnostics
+    from thechatplace.providers.codex_execution import CodexExecutionConnection
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    start, _ = server
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: tmp_path / 'errors.log')
+    connection = CodexExecutionConnection(scenario, start=start, initialize=False)
+    service = CodexChatRuntime(factory=lambda exe: connection)
+    def wait(predicate):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(.01)
+        assert predicate()
+    try:
+        record = service.create('/workspace', 'Synthetic owned chat')
+        service.send(record, 'First')
+        wait(lambda: service.snapshot('owned').outcome == 'failed')
+        if scenario == 'owned-turn-system-error':
+            service.send(record, 'Second')
+            wait(lambda: service.snapshot('owned').turn_id == 'turn-2'
+                 and service.snapshot('owned').outcome == 'failed')
+            assert not service.snapshot('owned').problem
+        else:
+            with pytest.raises(CodexTurnRejected) as refused:
+                service.send(record, 'Second')
+            assert refused.value.code == 'not_idle'
+            assert service.snapshot('owned').turn_id == 'turn-1'
+            codex_diagnostics.record_failure(refused.value)   # as the window does
+            log = (tmp_path / 'errors.log').read_text(encoding='utf-8')
+            assert 'refused turn: not_idle. Codex said: systemError, latest turn inProgress.' in log
+            assert 'still working on a turn' in codex_diagnostics.last_failure()
+    finally:
+        service.close()

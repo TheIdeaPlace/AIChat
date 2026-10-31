@@ -21,6 +21,9 @@ owned_active = False
 owned_cwd = '/workspace'
 owned_turn = 'turn'
 owned_turn_count = 0
+# Codex 0.163 reports systemError after a turn that ended in an error, until
+# the next turn/start (#448).
+system_error = False
 
 
 def emit(message, partial=False):
@@ -82,6 +85,7 @@ for line in sys.stdin:
         emit({'id': request['id'], 'result': {'data': rows, 'nextCursor': None}})
         continue
     if scenario in ('owned-turn-approval', 'owned-turn-hang', 'owned-turn-unsupported', 'owned-turn-command-output', 'owned-turn-unknown', 'owned-turn-plan', 'owned-turn-kept',
+                    'owned-turn-system-error', 'owned-turn-system-error-running',
                     'owned-turn-steer', 'owned-turn-steer-race', 'owned-turn-steer-close',
                     'owned-turn-steer-internal', 'owned-turn-steer-nocode', 'owned-turn-steer-textcode'):
         if method == 'account/read':
@@ -95,10 +99,25 @@ for line in sys.stdin:
                       'cwd': owned_cwd, 'model': 'synthetic', 'modelProvider': 'openai',
                       'sandbox': {'type': 'readOnly'}, 'approvalPolicy': 'on-request', 'approvalsReviewer': 'user'}
         elif method == 'thread/read':
+            kind = 'active' if owned_active else 'systemError' if system_error else 'idle'
             result = {'thread': {'id': 'owned', 'modelProvider': 'openai', 'cwd': owned_cwd,
-                                'status': {'type': 'active' if owned_active else 'idle'}}}
+                                'status': {'type': kind}}}
+        elif method == 'thread/turns/list':
+            # The running variant claims its latest turn is still going.
+            ended = 'inProgress' if scenario == 'owned-turn-system-error-running' else 'failed'
+            result = {'data': [{'id': owned_turn, 'status': ended}] if owned_turn_count else []}
         elif method == 'turn/start':
             owned_active = True
+            system_error = False
+            if scenario in ('owned-turn-system-error', 'owned-turn-system-error-running'):
+                owned_turn_count += 1
+                owned_turn = f'turn-{owned_turn_count}'
+                emit({'id': request['id'], 'result': {'turn': {'id': owned_turn, 'status': 'inProgress'}}})
+                # The turn fails, as on a usage limit, and leaves systemError.
+                owned_active, system_error = False, True
+                emit({'method': 'turn/completed', 'params': {'threadId': 'owned', 'turn': {
+                      'id': owned_turn, 'status': 'failed', 'error': {'message': 'synthetic limit'}}}})
+                continue
             if scenario == 'owned-turn-kept':
                 owned_turn_count += 1
                 owned_turn = f'turn-{owned_turn_count}'

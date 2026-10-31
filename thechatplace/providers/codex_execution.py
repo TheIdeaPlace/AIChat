@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from .codex_events import CodexTurnBuffer, CodexTokenUsageEvent, CodexEvent, _text
 from .codex_tokens import CodexTokenUsage
 from .codex_owned import CodexLifecycleConnection
-from .codex_rpc import (CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
+from .codex_rpc import (check_startable, CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
                         CodexSteerRefused)
 from .codex_requests import CodexRequest, CodexRequestResolved, CodexRequestDeclined, QUESTIONS
 
@@ -75,10 +75,11 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         super()._verify_turn_route(params)
         metadata = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False})
         thread = metadata.get('thread')
-        if (not isinstance(thread, dict) or thread.get('id') != proof.native_id
-                or not isinstance(thread.get('status'), dict)
-                or thread['status'].get('type') != 'idle'):
-            raise CodexTurnRejected('not_idle')
+        if not isinstance(thread, dict) or thread.get('id') != proof.native_id:
+            raise CodexTurnRejected('status_unclear')
+        # Idle, or an error status after an ended turn (#448); the turn list
+        # is checked only for the latter, as before for idle.
+        check_startable(self, proof.native_id, thread, check_turns=False)
 
 
     @staticmethod
