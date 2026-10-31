@@ -1037,13 +1037,19 @@ def d_message_plain(frame, env):
 
 
 def d_settings(frame, env):
-    return frame.on_settings
+    def show():
+        # Made-up files are tiny. Finish their queued copies so the retention
+        # count is stable across probe captures, independently of scheduling.
+        from thechatplace.history_keeper import keeper
+        keeper().wait_idle()
+        frame.on_settings()
+    return show
 
 
 def d_settings_codex(frame, env):
     from thechatplace import platform_paths
     platform_paths.find_codex = lambda: "synthetic-native-codex"
-    return frame.on_settings
+    return d_settings(frame, env)
 
 
 def d_settings_copilot(frame, env):
@@ -1051,7 +1057,7 @@ def d_settings_copilot(frame, env):
     folder = env["tmp"] / "copilot" / "session-state" / "synthetic-copilot"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "events.jsonl").touch()
-    return frame.on_settings
+    return d_settings(frame, env)
 
 
 def d_settings_speech_problem(frame, env):
@@ -1062,7 +1068,7 @@ def d_settings_speech_problem(frame, env):
     def show():
         speech.speaker.last_problem = "not spoken: JAWS is running but refused the text"
         try:
-            frame.on_settings()
+            d_settings(frame, env)()
         finally:
             speech.speaker.last_problem = ""
     return show

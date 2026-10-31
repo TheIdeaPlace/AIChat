@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   680,
-  639
+  818
  ],
  "client": [
   664,
-  600
+  779
  ],
  "dpi": [
   96,
@@ -23,7 +23,7 @@
     0,
     0,
     664,
-    561
+    740
    ],
    "best": [
     644,
@@ -533,12 +533,70 @@
    "problems": []
   },
   {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "History retention and ke&pt copies:",
+   "rect": [
+    10,
+    571,
+    179,
+    16
+   ],
+   "best": [
+    179,
+    16
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "History retention and kept copies",
+   "label": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\r\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\r\nCopilot CLI: no documented automatic age limit for saved sessions.\r\nThe Chat Place keeps copies of Claude transcripts it sees, including terminal chats. After the original disappears, the copy is read-only. Copies have no automatic expiry and are unencrypted. Back Up Now includes them; a copy on this disk still needs a backup.\r\nKept Claude chats: 2. Copy or catalog problems: 0. New copies may still be running in the background.",
+   "rect": [
+    12,
+    589,
+    644,
+    110
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\nCopilot CLI: no documented automatic age limit for saved sessions.\nThe Chat Place keeps copies"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Open Claude's retention settings",
+   "rect": [
+    10,
+    707,
+    193,
+    23
+   ],
+   "best": [
+    193,
+    23
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "Button",
    "name": "button",
    "label": "OK",
    "rect": [
     494,
-    569,
+    748,
     75,
     23
    ],
@@ -557,7 +615,7 @@
    "label": "Cancel",
    "rect": [
     577,
-    569,
+    748,
     75,
     23
    ],

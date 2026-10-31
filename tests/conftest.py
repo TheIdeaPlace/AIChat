@@ -21,7 +21,14 @@ def _isolated_codex_diagnostics(monkeypatch, tmp_path):
 @pytest.fixture(autouse=True)
 def _isolated_kept_history(monkeypatch, tmp_path):
     from thechatplace import platform_paths, history_keeper
-    monkeypatch.setattr(platform_paths, 'kept_history_dir', lambda: tmp_path / 'kept-history')
+    original_app_data = platform_paths.app_data_dir
+    def kept_root():
+        # A probe test can create several independent TCP worlds in one test.
+        # Follow their overridden data roots, while the default remains isolated.
+        root = (tmp_path/'tcp' if platform_paths.app_data_dir is original_app_data
+                else platform_paths.app_data_dir())
+        return root/'kept-history/claude'
+    monkeypatch.setattr(platform_paths, 'kept_history_dir', kept_root)
     yield
     history_keeper.close_all()
 
