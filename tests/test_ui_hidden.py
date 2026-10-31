@@ -14521,6 +14521,7 @@ def test_check_backup_cancelled_at_the_passphrase(frame, env, monkeypatch, backu
 
 def test_backup_schedule_dialog_round_trip_and_folder_check(frame, env, monkeypatch, backup_boxes):
     from thechatplace.ui.dialogs import BackupScheduleDialog
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: False)
     dialog = BackupScheduleDialog(frame, backup.Schedule("off", "", 5), "No backup made here yet.")
     try:
         # Off: the folder and count are greyed out.
@@ -14606,4 +14607,71 @@ def test_scheduled_backup_doesnt_start_while_one_is_running(frame, env, monkeypa
     monkeypatch.setattr(backup, "run_scheduled", lambda **k: started.append(1))
     frame._run_scheduled_backup_if_due()
     assert started == []
+    frame._backup_job = None
+
+
+def test_backup_schedule_asks_about_a_folder_on_the_same_disk(frame, env, monkeypatch):
+    """#443 review: said before saving, as a question; No goes back to the folder."""
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: True)
+    asked = []
+    answer = [wx.NO]
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or answer[0])
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5))
+    try:
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        dialog._on_save(event)
+        assert "same disk" in asked[-1] and not skipped
+        answer[0] = wx.YES
+        dialog._on_save(event)
+        assert skipped
+    finally:
+        dialog.Destroy()
+
+
+def test_scheduled_backup_progress_reaches_the_status_bar(frame, env, monkeypatch):
+    backup.save_schedule(backup.Schedule("daily", str(env["tmp"]), 3))
+    status = []
+    monkeypatch.setattr(frame, "_status", status.append)
+    monkeypatch.setattr(frame, "_say", lambda *a, **k: None)
+
+    def fake_run(cancelled=None, progress=None, **_kwargs):
+        progress(0, 4, "a")
+        time.sleep(3.1)   # the status bar is updated every few seconds, not every file
+        progress(2, 4, "b")
+        raise InterruptedError("Backup cancelled.")
+
+    monkeypatch.setattr(backup, "run_scheduled", fake_run)
+    frame._run_scheduled_backup_if_due()
+    assert pump(lambda: any("50%" in s for s in status), timeout=20)
+    assert pump(lambda: frame._backup_job is None, timeout=20)
+    assert status[-1] == "Scheduled backup stopped. It will try again later."
+
+
+def test_quitting_during_a_scheduled_backup_says_so(frame, env, monkeypatch):
+    frame._backup_job = {"cancel": False, "progress": (0, 0), "said": 0, "scheduled": True,
+                         "thread": threading.Thread(target=lambda: None)}
+    frame._backup_job["thread"].start()
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.NO)
+
+    class Close:
+        vetoed = False
+
+        def CanVeto(self):
+            return True
+
+        def Veto(self):
+            Close.vetoed = True
+
+        def Skip(self):
+            pass
+    monkeypatch.setattr(frame, "_running_turn_count", lambda: 0)
+    monkeypatch.setattr(frame, "_relay_waiting_text", lambda: "")
+    frame._on_close(Close())
+    assert asked == ["A scheduled backup is running. Quit anyway? It will be stopped, "
+                     "and nothing saved."]
+    assert Close.vetoed
     frame._backup_job = None

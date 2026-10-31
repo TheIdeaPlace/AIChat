@@ -39,6 +39,7 @@ import socket
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager
 import uuid
@@ -391,7 +392,8 @@ def computer_identity() -> dict:
 # Writing -------------------------------------------------------------------
 
 def _safe_computer(computer: str) -> str:
-    return "".join(c if c.isalnum() or c in "-_" else "-" for c in computer).strip("-")         or "computer"
+    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in computer).strip("-")
+    return safe or "computer"
 
 
 def default_filename(computer: str, now: Optional[datetime] = None) -> str:
@@ -931,20 +933,34 @@ def load_state() -> dict:
     return state if isinstance(state, dict) else {}
 
 
-def record(result: Result) -> None:
-    """Remember a finished backup. A failure to save is not the backup's
-    failure, so it's swallowed."""
+# backup.json is changed by the window (Save in Backup Schedule) and by a
+# backup's thread; each change reads, changes and writes it under this lock,
+# so neither loses the other's.
+_STATE_LOCK = threading.RLock()
+
+
+def _update_state(change, quiet: bool = True) -> None:
+    """Read backup.json, let ``change`` alter it, write it back. A failure to
+    save is swallowed when ``quiet`` (it isn't the backup's failure)."""
     from .provider_storage import atomic_write_json
-    state = load_state()
-    state.update({"folder": str(result.path.parent), "last_path": str(result.path),
-                  "last_time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                  "last_files": result.files, "last_bytes": result.archive_bytes,
-                  "last_complete": result.complete})
-    try:
-        platform_paths.app_data_dir().mkdir(parents=True, exist_ok=True)
-        atomic_write_json(platform_paths.app_data_dir() / STATE_FILE, state)
-    except OSError:
-        pass
+    with _STATE_LOCK:
+        state = load_state()
+        change(state)
+        try:
+            platform_paths.app_data_dir().mkdir(parents=True, exist_ok=True)
+            atomic_write_json(platform_paths.app_data_dir() / STATE_FILE, state)
+        except OSError:
+            if not quiet:
+                raise
+
+
+def record(result: Result) -> None:
+    """Remember a finished backup."""
+    _update_state(lambda state: state.update({
+        "folder": str(result.path.parent), "last_path": str(result.path),
+        "last_time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "last_files": result.files, "last_bytes": result.archive_bytes,
+        "last_complete": result.complete}))
 
 
 def last_backup_text(state: Optional[dict] = None) -> str:
@@ -1022,24 +1038,27 @@ def load_schedule(state: Optional[dict] = None) -> Schedule:
     every = raw.get("every") if raw.get("every") in SCHEDULES else "off"
     try:
         keep = max(1, min(MAX_KEEP, int(raw.get("keep", DEFAULT_KEEP))))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         keep = DEFAULT_KEEP
     folder = raw.get("folder") if isinstance(raw.get("folder"), str) else ""
     return Schedule(every, folder, keep)
 
 
 def _save_state(state: dict) -> None:
-    from .provider_storage import atomic_write_json
-    platform_paths.app_data_dir().mkdir(parents=True, exist_ok=True)
-    atomic_write_json(platform_paths.app_data_dir() / STATE_FILE, state)
+    """Replace backup.json (tests use it to set a state up)."""
+    _update_state(lambda current: (current.clear(), current.update(state)), quiet=False)
 
 
 def save_schedule(schedule: Schedule) -> None:
-    """Keep the schedule; raises OSError if it can't be saved (the dialog says so)."""
-    state = load_state()
-    state["schedule"] = {"every": schedule.every, "folder": schedule.folder,
-                         "keep": schedule.keep}
-    _save_state(state)
+    """Keep the schedule; raises OSError if it can't be saved (the dialog
+    says so). Saving forgets a recent failed attempt, so a backup that's due
+    starts now rather than an hour after the failure (#443 review): the
+    user has just fixed the folder or plugged the drive in."""
+    def change(state):
+        state["schedule"] = {"every": schedule.every, "folder": schedule.folder,
+                             "keep": schedule.keep}
+        state.pop("schedule_tried", None)
+    _update_state(change, quiet=False)
 
 
 def _when(text) -> Optional[datetime]:
@@ -1059,47 +1078,45 @@ def schedule_due(state: Optional[dict] = None, now: Optional[datetime] = None) -
     if not schedule.on:
         return False
     now = now or datetime.now(timezone.utc)
+    # A time in the future means the clock was wrong when it was written:
+    # it's ignored, or backups would stop, unsaid, until the clock caught up.
     tried = _when(state.get("schedule_tried"))
-    if tried is not None and (now - tried).total_seconds() < 3600:
+    if tried is not None and 0 <= (now - tried).total_seconds() < 3600:
         return False
     last = _when(state.get("last_time"))
-    return last is None or (now - last).total_seconds() >= SCHEDULE_PERIODS[schedule.every]
+    since = None if last is None else (now - last).total_seconds()
+    return since is None or since < 0 or since >= SCHEDULE_PERIODS[schedule.every]
 
 
 def note_scheduled_attempt(now: Optional[datetime] = None) -> None:
-    state = load_state()
-    state["schedule_tried"] = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
-    try:
-        _save_state(state)
-    except OSError:
-        pass
+    stamp = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+    _update_state(lambda state: state.__setitem__("schedule_tried", stamp))
 
 
 def note_scheduled_failure(reason: str, now: Optional[datetime] = None) -> bool:
     """Remember a failed scheduled backup. True when it should be said now
     (the first failure, or a day since the last one was said)."""
     now = now or datetime.now(timezone.utc)
-    state = load_state()
-    said = _when(state.get("schedule_failure_said"))
-    say = said is None or (now - said).total_seconds() >= FAILURE_NOTICE_SECONDS
-    state["schedule_failure"] = {"time": now.isoformat(timespec="seconds"), "reason": reason}
-    if say:
-        state["schedule_failure_said"] = now.isoformat(timespec="seconds")
-    try:
-        _save_state(state)
-    except OSError:
-        pass
-    return say
+    said_now = []
+
+    def change(state):
+        said = _when(state.get("schedule_failure_said"))
+        say = (said is None or (now - said).total_seconds() < 0
+               or (now - said).total_seconds() >= FAILURE_NOTICE_SECONDS)
+        state["schedule_failure"] = {"time": now.isoformat(timespec="seconds"),
+                                     "reason": reason}
+        if say:
+            state["schedule_failure_said"] = now.isoformat(timespec="seconds")
+        said_now.append(say)
+    _update_state(change)
+    return said_now[0]
 
 
 def clear_scheduled_failure() -> None:
-    state = load_state()
-    if state.pop("schedule_failure", None) is not None or "schedule_failure_said" in state:
+    def change(state):
+        state.pop("schedule_failure", None)
         state.pop("schedule_failure_said", None)
-        try:
-            _save_state(state)
-        except OSError:
-            pass
+    _update_state(change)
 
 
 def failure_text(state: Optional[dict] = None) -> str:
@@ -1114,22 +1131,40 @@ def failure_text(state: Optional[dict] = None) -> str:
     return f"The last scheduled backup failed{when}: {failure.get('reason', 'unknown')}"
 
 
-def prune(folder: Path, keep: int, computer: str, newest: Path) -> List[Path]:
+def _made_by(path: Path) -> Optional[str]:
+    """The computer id in a plain backup's manifest, or None (an encrypted
+    backup, or one that can't be read, is never taken to be ours)."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if archive.getinfo(MANIFEST).file_size > MANIFEST_LIMIT:
+                return None
+            manifest = json.loads(archive.read(MANIFEST).decode("utf-8"))
+        ident = manifest.get("computer", {}).get("id") if manifest.get("format") == FORMAT \
+            else None
+    except (OSError, KeyError, ValueError, AttributeError, zipfile.BadZipFile,
+            RuntimeError, NotImplementedError, EOFError):
+        return None
+    return ident if isinstance(ident, str) else None
+
+
+def prune(folder: Path, keep: int, computer_id: str, newest: Path) -> List[Path]:
     """Delete this computer's oldest backups in ``folder`` so ``keep`` are
     left, counting ``newest`` (the one just made and checked), which is never
-    deleted, nor is anything not named like one of this computer's backups.
-    Returns what was deleted."""
-    prefix = f"{FILE_PREFIX}{_safe_computer(computer)}-"
+    deleted. "This computer's" means its manifest says so (#443 review): a
+    shared cloud folder can hold another computer's backups under a name that
+    cleans up to the same text. Only files named like backups are opened, and
+    an encrypted one or one that can't be read is left alone. Returns what
+    was deleted."""
     mine = []
-    for path in Path(folder).glob(f"{prefix}*.zip"):
-        # Only the stamp may follow: YYYY-MM-DD-HHMMSS, perhaps with " (n)".
-        stamp = path.name[len(prefix):-4].split(" (")[0]
-        if len(stamp) == 17 and stamp.replace("-", "").isdigit() and path.is_file():
+    for path in Path(folder).glob(f"{FILE_PREFIX}*.zip"):
+        # A name, then the stamp: YYYY-MM-DD-HHMMSS, perhaps with " (n)".
+        stamp = path.name[:-4].split(" (")[0][-17:]
+        if (len(stamp) == 17 and stamp.replace("-", "").isdigit() and path.is_file()
+                and path != Path(newest) and _made_by(path) == computer_id):
             mine.append(path)
-    others = sorted((p for p in mine if p != Path(newest)),
-                    key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
+    mine.sort(key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
     deleted = []
-    for path in others[max(1, keep) - 1:]:
+    for path in mine[max(1, keep) - 1:]:
         try:
             path.unlink()
             deleted.append(path)
@@ -1148,6 +1183,14 @@ def copied_roots() -> List[Path]:
     return [Path(root) for root in roots]
 
 
+def schedule_folder_warning(folder: str) -> Optional[str]:
+    """Something to say, not refuse, about a schedule's folder."""
+    if folder and Path(folder).is_dir() and same_drive_as_home(Path(folder)):
+        return (f"{folder} is on the same disk as your data, so its backups won't survive "
+                "losing this computer. Use it anyway?")
+    return None
+
+
 def schedule_folder_problem(folder: str) -> Optional[str]:
     """Why a folder can't take scheduled backups, or None."""
     if not folder:
@@ -1164,7 +1207,8 @@ def schedule_folder_problem(folder: str) -> Optional[str]:
 
 def run_scheduled(cancelled: Optional[Callable[[], bool]] = None,
                   collectors: Optional[Sequence[Callable[[], Inventory]]] = None,
-                  now: Optional[datetime] = None) -> Result:
+                  now: Optional[datetime] = None,
+                  progress: Optional[Callable[[int, int, str], None]] = None) -> Result:
     """One scheduled backup: made, remembered, and old ones pruned to the
     schedule's count, but only after a complete backup checked out, so a
     run of failures never eats the good ones. Raises as create() does; the
@@ -1174,12 +1218,13 @@ def run_scheduled(cancelled: Optional[Callable[[], bool]] = None,
     problem = schedule_folder_problem(schedule.folder)
     if problem:
         raise ValueError(problem)
-    result = create(Path(schedule.folder), cancelled=cancelled, collectors=collectors, now=now)
+    result = create(Path(schedule.folder), cancelled=cancelled, collectors=collectors, now=now,
+                    progress=progress)
     record(result)
     clear_scheduled_failure()
     if result.complete:
         removed = prune(Path(schedule.folder), schedule.keep,
-                        computer_identity()["name"], result.path)
+                        computer_identity()["id"], result.path)
         if removed:
             result.notes.append(f"Removed {len(removed)} older backup"
                                 f"{'s' if len(removed) != 1 else ''}, keeping {schedule.keep}.")

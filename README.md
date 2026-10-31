@@ -904,8 +904,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   checks every file against its manifest. The last folder and backup are kept in
   `backup.json` in The Chat Place's folder. **Backup Schedule** (File menu, #437) backs up every
   day or week to a folder you choose, keeping the number of this computer's backups you set (5 by
-  default). Older ones are pruned only after a complete backup checks out, and only files named
-  like this computer's backups. It runs while the app is open (checked every ten minutes and two
+  default). Older ones are pruned only after a complete backup checks out, and only unencrypted
+  backups whose manifest names this computer's id (by hand or scheduled); a folder on the same
+  disk is allowed after a question. It runs while the app is open (checked every ten minutes and two
   minutes after starting). A failure, such as an unplugged drive, is announced at most once a day
   and retried after an hour. Scheduled backups aren't encrypted. Restoring isn't built yet (#433); the files are in
   the zip under the folders they came from. Claude Code deletes conversations older than its

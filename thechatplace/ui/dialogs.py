@@ -4374,9 +4374,10 @@ class BackupScheduleDialog(wx.Dialog):
         set_accessible_name(self.keep, "Backups to keep")
         sizer.Add(self.keep, 0, wx.LEFT | wx.RIGHT, 8)
 
-        about = ("Scheduled backups run while The Chat Place is open; one that's due when it "
-                 "starts runs then. They aren't encrypted, so choose a private folder, ideally "
-                 "on another drive or in a cloud folder. Older backups from this computer are "
+        about = ("Scheduled backups run while The Chat Place is open; one that came due while "
+                 "it was closed runs a couple of minutes after it starts. They aren't encrypted, "
+                 "so choose a private folder, ideally on another drive or in a cloud folder. "
+                 "Older unencrypted backups made on this computer, by hand or on schedule, are "
                  "removed to keep the number you choose, and only after a new one checks out.")
         text = about + ("\n\n" + status if status else "")
         # Read-only text a screen reader can review by line, as Settings'
@@ -4419,9 +4420,16 @@ class BackupScheduleDialog(wx.Dialog):
 
     def _on_save(self, event):
         if self.every.GetSelection() != 0:
-            problem = self._backup.schedule_folder_problem(self.folder.GetValue().strip())
+            folder = self.folder.GetValue().strip()
+            problem = self._backup.schedule_folder_problem(folder)
             if problem:
                 wx.MessageBox(problem, "Backup Schedule", wx.OK | wx.ICON_WARNING, self)
+                self.folder.SetFocus()
+                return
+            warning = self._backup.schedule_folder_warning(folder)
+            if warning and wx.MessageBox(warning, "Backup Schedule",
+                                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+                                         self) != wx.YES:
                 self.folder.SetFocus()
                 return
         event.Skip()

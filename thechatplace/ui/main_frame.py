@@ -5977,7 +5977,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
 
         def work():
             try:
-                result = backup.run_scheduled(cancelled=lambda: job["cancel"])
+                result = backup.run_scheduled(cancelled=lambda: job["cancel"],
+                                              progress=progress)
                 wx.CallAfter(self._scheduled_backup_done, result, None)
             except Exception as exc:  # noqa: BLE001 - said, not raised
                 wx.CallAfter(self._scheduled_backup_done, None, exc)
@@ -5994,14 +5995,20 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             return
         if error is not None:
             reason = str(error) or type(error).__name__
+            # Said even with announcements off, at most once a day, but never
+            # over what the screen reader is reading: it's background news.
             if backup.note_scheduled_failure(reason):
-                self._say(f"The scheduled backup didn't work: {reason}", force=True)
+                self._say(f"The scheduled backup didn't work: {reason}", force=True,
+                          interrupt=False)
             else:
                 self._status(f"The scheduled backup didn't work: {reason}")
             return
-        text = ("Scheduled backup finished." if result.complete
+        said = ("Scheduled backup finished." if result.complete
                 else "Scheduled backup finished, incomplete; its manifest says what's missing.")
-        self._say(f"{text} {result.path.name}.", interrupt=False)
+        # The file name and any notes (older ones removed, same disk) go to
+        # the status bar to read back, not into speech.
+        self._say(said, interrupt=False)
+        self._status(" ".join([said, f"Saved as {result.path.name}.", *result.notes]))
 
     def _ask_passphrase(self, message: str, title: str,
                         name: str = "Passphrase") -> Optional[str]:
@@ -7125,13 +7132,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 return
         job = getattr(self, "_backup_job", None)
         if job is not None:
+            kind = "A scheduled backup" if job.get("scheduled") else "A backup"
             if event.CanVeto() and wx.MessageBox(
-                    "A backup is running. Quit anyway? It will be stopped, and nothing saved.",
+                    f"{kind} is running. Quit anyway? It will be stopped, and nothing saved.",
                     f"Quit {APP_NAME}", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
                     self) != wx.YES:
                 event.Veto()
                 return
-            # Stopped between files, which removes the unfinished archive;
+            # Stopped between chunks, which removes the unfinished archive;
             # a few seconds at most, for one large file to finish.
             job["cancel"] = True
             job["thread"].join(timeout=10)

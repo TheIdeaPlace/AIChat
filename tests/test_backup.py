@@ -696,7 +696,8 @@ def test_run_scheduled_makes_records_and_prunes_only_its_own(homes):
     write(homes["data"] / "a.json", "{}")
     _schedule(homes, keep=2)
     name = backup.computer_identity()["name"]
-    other = write(homes["dest"] / "TheChatPlace-backup-OtherPC-2026-01-01-000000.zip", "x")
+    other = _fake_backup(homes["dest"], "OtherPC", "someone-else", datetime(2026, 1, 1),
+                         1_700_000_000)
     mine_by_hand = write(homes["dest"] / "holiday photos.zip", "x")
     made = []
     for day in range(4):
@@ -751,14 +752,97 @@ def test_schedule_folder_problems(homes):
     assert backup.schedule_folder_problem(str(homes["dest"])) is None
 
 
+def _fake_backup(folder, name, computer_id, when, mtime):
+    """A real, minimal backup zip with a manifest naming ``computer_id``."""
+    path = folder / backup.default_filename(name, when)
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(backup.MANIFEST, json.dumps({
+            "format": backup.FORMAT, "format_version": 1,
+            "computer": {"id": computer_id, "name": name}, "files": []}))
+    os.utime(path, (mtime,) * 2)
+    return path
+
+
 def test_prune_never_deletes_the_newest_or_below_one(homes):
-    name = backup.computer_identity()["name"]
-    paths = []
-    for i in range(3):
-        p = write(homes["dest"] / backup.default_filename(name, datetime(2026, 1, 1 + i)), "x")
-        os.utime(p, (1_800_000_000 + i,) * 2)
-        paths.append(p)
+    paths = [_fake_backup(homes["dest"], "PC", "me", datetime(2026, 1, 1 + i),
+                          1_800_000_000 + i) for i in range(3)]
     # Even if the "newest" is oldest on disk, it's kept; keep=0 means 1.
-    deleted = backup.prune(homes["dest"], 0, name, paths[0])
+    deleted = backup.prune(homes["dest"], 0, "me", paths[0])
     assert paths[0].exists() and not paths[1].exists() and not paths[2].exists()
     assert len(deleted) == 2
+
+
+def test_prune_goes_by_the_computer_id_not_the_name(homes):
+    """#443 review: "PC!" and "pc" clean up to the same file name as "PC";
+    sharing a cloud folder, they mustn't delete each other's backups."""
+    mine = [_fake_backup(homes["dest"], "PC", "me", datetime(2026, 1, 1 + i),
+                         1_800_000_000 + i) for i in range(2)]
+    theirs = [_fake_backup(homes["dest"], name, "someone-else", datetime(2026, 2, 1 + i),
+                           1_800_000_100 + i) for i, name in enumerate(("PC!", "pc", "PC"))]
+    unreadable = write(homes["dest"] / backup.default_filename("PC", datetime(2026, 3, 1)), "x")
+    encrypted = homes["dest"] / backup.default_filename("PC", datetime(2026, 3, 2))
+    import pyzipper
+    with pyzipper.AESZipFile(encrypted, "w", encryption=pyzipper.WZ_AES) as z:
+        z.setpassword(b"pw")
+        z.writestr("backup.zip", b"x")
+    newest = _fake_backup(homes["dest"], "PC", "me", datetime(2026, 4, 1), 1_800_000_900)
+    deleted = backup.prune(homes["dest"], 1, "me", newest)
+    assert sorted(deleted) == sorted(mine)
+    assert all(p.exists() for p in theirs + [unreadable, encrypted, newest])
+
+
+def test_saving_the_schedule_after_a_failure_lets_it_run_now(homes):
+    """#443 review: a failed attempt waits an hour, but Save (the user has
+    just fixed the folder) starts again straight away."""
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 3))
+    backup.note_scheduled_attempt()
+    assert not backup.schedule_due()
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 3))
+    assert backup.schedule_due()
+
+
+def test_a_clock_that_ran_ahead_doesnt_stop_the_schedule(homes):
+    _schedule(homes, "daily")
+    now = datetime(2026, 10, 31, 12, tzinfo=timezone.utc)
+    state = backup.load_state()
+    state["last_time"] = (now + timedelta(days=300)).isoformat()
+    state["schedule_tried"] = (now + timedelta(days=300)).isoformat()
+    assert backup.schedule_due(state, now=now)
+
+
+def test_odd_keep_values_dont_crash(homes):
+    for keep in (float("inf"), "Infinity", None, [], -5):
+        s = backup.load_schedule({"schedule": {"every": "daily", "folder": "f", "keep": keep}})
+        assert 1 <= s.keep <= backup.MAX_KEEP
+
+
+def test_run_scheduled_reports_progress(homes):
+    write(homes["data"] / "a.json", "{}")
+    _schedule(homes)
+    seen = []
+    backup.run_scheduled(collectors=[backup.tcp_inventory],
+                         progress=lambda done, total, name: seen.append((done, total)))
+    assert seen and seen[-1][0] == seen[-1][1] > 0
+
+
+def test_same_disk_folders_are_warned_about_not_refused(homes, monkeypatch):
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: True)
+    assert "same disk" in backup.schedule_folder_warning(str(homes["dest"]))
+    assert backup.schedule_folder_problem(str(homes["dest"])) is None
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: False)
+    assert backup.schedule_folder_warning(str(homes["dest"])) is None
+
+
+def test_state_changes_from_two_threads_both_stay(homes):
+    import threading
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 3))
+    threads = [threading.Thread(target=backup.note_scheduled_attempt) for _ in range(10)]
+    threads += [threading.Thread(target=backup.save_schedule,
+                                 args=(backup.Schedule("weekly", str(homes["dest"]), 4),))
+                for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    state = backup.load_state()
+    assert state["schedule"]["every"] == "weekly"
