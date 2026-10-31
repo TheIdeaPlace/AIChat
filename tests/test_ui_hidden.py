@@ -14297,3 +14297,135 @@ def test_the_chat_you_have_open_is_not_archived_from_a_session(frame, env):
 def test_self_follows_an_id_claude_changed(frame):
     frame._session_tools_renamed = {"asked-for": "own-1"}
     assert frame._session_tools_view("asked-for").current.key == "own:own-1"
+
+
+# File, Back Up Now and Check Backup (#433) ----------------------------------
+
+from thechatplace import backup  # noqa: E402
+import zipfile  # noqa: E402
+
+
+def _fake_dir_dialog(monkeypatch, folder, answer=None):
+    class Folder:
+        messages = []
+
+        def __init__(self, parent, message, defaultPath="", style=0):
+            Folder.messages.append(message)
+
+        def ShowModal(self):
+            return wx.ID_OK if answer is None else answer
+
+        def GetPath(self):
+            return str(folder)
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(wx, "DirDialog", Folder)
+    return Folder
+
+
+def _fake_open_dialog(monkeypatch, path):
+    class Open:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def GetPath(self):
+            return str(path)
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(wx, "FileDialog", Open)
+
+
+@pytest.fixture
+def backup_boxes(monkeypatch):
+    shown = []
+    monkeypatch.setattr(wx, "MessageBox",
+                        lambda text, *a, **k: shown.append(text) or wx.OK)
+    return shown
+
+
+def test_back_up_now_writes_a_checked_backup_and_says_so(frame, env, monkeypatch, backup_boxes):
+    (env["tmp"] / "claude" / "projects" / "p").mkdir(parents=True, exist_ok=True)
+    (env["tmp"] / "claude" / "projects" / "p" / "s.jsonl").write_text("x\n", encoding="utf-8")
+    dest = env["tmp"] / "backups"
+    dest.mkdir()
+    dialog = _fake_dir_dialog(monkeypatch, dest)
+    frame.on_back_up_now()
+    assert "isn't encrypted" in dialog.messages[-1]
+    assert "No backup made here yet." in dialog.messages[-1]
+    assert env["feedback"][-1].startswith("Backing up.")
+    assert pump(lambda: backup_boxes, timeout=20)
+    assert backup_boxes[-1].startswith("Backed up ")
+    assert frame._backup_job is None
+    made = list(dest.glob("TheChatPlace-backup-*.zip"))
+    assert len(made) == 1 and backup.verify(made[0]).ok
+    with zipfile.ZipFile(made[0]) as z:
+        assert "claude/home/projects/p/s.jsonl" in z.namelist()
+    # Remembered for next time.
+    frame.on_back_up_now()
+    assert "Last backup:" in dialog.messages[-1]
+
+
+def test_back_up_now_cancelled_at_the_folder_does_nothing(frame, env, monkeypatch, backup_boxes):
+    _fake_dir_dialog(monkeypatch, env["tmp"], answer=wx.ID_CANCEL)
+    frame.on_back_up_now()
+    assert getattr(frame, "_backup_job", None) is None and backup_boxes == []
+
+
+def test_back_up_now_into_a_copied_folder_explains(frame, env, monkeypatch, backup_boxes):
+    inside = env["tmp"] / "claude" / "here"
+    inside.mkdir(parents=True)
+    _fake_dir_dialog(monkeypatch, inside)
+    frame.on_back_up_now()
+    assert pump(lambda: backup_boxes, timeout=20)
+    assert backup_boxes[-1].startswith("Couldn't back up:") and "Nothing was saved" in backup_boxes[-1]
+    assert list(inside.iterdir()) == []
+
+
+def test_back_up_now_again_offers_to_stop(frame, env, monkeypatch):
+    frame._backup_job = {"cancel": False, "progress": (5, 10), "said": 0}
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame.on_back_up_now()
+    assert asked == ["A backup is running, 50% done. Stop it?"]
+    assert frame._backup_job["cancel"] is True
+    frame._backup_done(None, InterruptedError("Backup cancelled."))
+    assert env["feedback"][-1] == "Backup stopped. Nothing was saved."
+    assert frame._backup_job is None
+
+
+def test_check_backup_good_and_damaged(frame, env, monkeypatch, backup_boxes):
+    data = env["tmp"] / "appdata"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "groups.json").write_text("{}", encoding="utf-8")
+    dest = env["tmp"] / "out"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[backup.tcp_inventory]).path
+    _fake_open_dialog(monkeypatch, made)
+    frame.on_check_backup()
+    assert pump(lambda: backup_boxes, timeout=20)
+    assert " is good: " in backup_boxes[-1]
+    junk = env["tmp"] / "junk.zip"
+    junk.write_bytes(b"not a zip")
+    _fake_open_dialog(monkeypatch, junk)
+    frame.on_check_backup()
+    assert pump(lambda: len(backup_boxes) == 2, timeout=20)
+    assert "has problems" in backup_boxes[-1]
+
+
+def test_check_backup_always_answers_even_if_checking_crashes(frame, env, monkeypatch, backup_boxes):
+    junk = env["tmp"] / "x.zip"
+    junk.write_bytes(b"x")
+    _fake_open_dialog(monkeypatch, junk)
+
+    def crash(_path):
+        raise MemoryError("boom")   # not caught by verify itself
+
+    monkeypatch.setattr(backup, "verify", crash)
+    frame.on_check_backup()
+    assert pump(lambda: backup_boxes, timeout=20)
+    assert "Couldn't check it" in backup_boxes[-1]

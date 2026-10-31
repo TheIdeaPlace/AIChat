@@ -1617,6 +1617,52 @@ Fix the build 2026-10-26.md in C:\Users\you\Documents". Each message is a headin
 it and when, then its text. Tool activity is included only when Show Tool Activity is on for
 that chat.
 
+## Backing up your chats
+
+Your chats with Claude, Codex and Copilot are kept on this computer, not in your account.
+Signing in on a new computer doesn't bring them back, and neither does reinstalling.
+**File, Back Up Now** saves them in one file you can keep somewhere else.
+
+1. Choose **File, Back Up Now**. A folder dialog opens, with when and where you last backed up.
+2. Choose a folder, ideally on another drive, a USB stick or a cloud folder such as OneDrive.
+   A backup on the same disk won't survive losing the computer, and the summary says so.
+3. Press **Enter**. You hear "Backing up". It works in the background, and the status bar shows
+   how far it has got. To stop it, choose **Back Up Now** again and answer Yes.
+4. When it's done, a message says how many files it saved, how big the backup is and where it
+   went, and whether anything couldn't be copied.
+
+The backup is one zip file named after the computer and the time, such as
+"TheChatPlace-backup-MyPC-2026-10-30-194301.zip". An earlier backup is never replaced.
+It holds:
+
+- **Claude:** every Claude Code conversation (from Claude Code, the desktop app's Code tab and
+  The Chat Place), memory, CLAUDE.md, settings, skills, agents, commands, plans and file
+  checkpoints, and the desktop app's list of Code and Cowork sessions.
+- **Codex:** conversations, archived conversations, Codex's own databases of chat names and
+  history (wherever `sqlite_home` or `CODEX_SQLITE_HOME` puts them), memories, rules, skills,
+  settings, and the skills you share between agents in `~/.agents/skills`.
+- **GitHub Copilot CLI:** each session's folder, settings, custom agents and skills. Its
+  `config.json` is left out if it holds a sign-in token, as it can where there's no keychain.
+- **The Chat Place:** which chats were started here, names, groups, hidden chats, agent
+  conversations, speech settings and permissions.
+
+It leaves out sign-ins (you sign in again on a new computer), caches, logs, and plugins you can
+reinstall. **The backup isn't encrypted.** Conversations can include file contents, command output
+and anything pasted into them, so keep it somewhere private.
+
+**Check Backup** (File menu) reads a backup back and compares every file with the list of what it
+should hold, so you can trust a copy before you need it. It says whether the backup is good,
+where and when it was made, and what's wrong if it isn't.
+
+Restoring from a backup isn't built yet. Until then, the files are in the zip, in the same
+folders as on the computer they came from.
+
+**Claude deletes old conversations.** Claude Code removes conversations older than its
+`cleanupPeriodDays` setting, 30 days unless you change it. Desktop app and Cowork sessions are
+exempt in recent versions. Chats started in The Chat Place and in a terminal aren't. To keep
+them longer, set a larger number in `~/.claude/settings.json`, such as
+`"cleanupPeriodDays": 36500`. A backup keeps what was there when it was made.
+
 ## More things you can do
 
 - **Properties** (Alt+Enter, View menu, or the context menu) lists what can be known about a

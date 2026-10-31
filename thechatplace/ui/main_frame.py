@@ -52,8 +52,8 @@ import wx
 
 from ..changes import summary_text
 from ..codeblocks import find_code_blocks
-from .. import (__version__, about_you, announce, attachments, bugreport, codex_signin,
-               copilot_signin, signin, export, hub, links,
+from .. import (__version__, about_you, announce, attachments, backup, bugreport,
+               codex_signin, copilot_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
@@ -550,6 +550,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._item(session, "&Manage Groups...", lambda e: self.on_manage_groups())
         session.AppendSeparator()
         self._item(session, "&Settings...\tCtrl+,", self.on_settings, wx.ID_PREFERENCES)
+        session.AppendSeparator()
+        # Back up and check (#433). Every letter of "Check Backup" is another
+        # item's access key, so it's reached by arrowing.
+        self._item(session, "Back Up No&w...", lambda e: self.on_back_up_now())
+        self._item(session, "Check Backup...", lambda e: self.on_check_backup())
         session.AppendSeparator()
         self._item(session, "E&xit", lambda e: self.Close(), wx.ID_EXIT)
         bar.Append(session, "&File")
@@ -5838,6 +5843,120 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._feedback("Recent folders cleared. A folder comes back when a session works "
                        "in it again.")
 
+    def on_back_up_now(self):
+        """File, Back Up Now (#433): one zip of every provider's history,
+        memory and settings, and The Chat Place's own data, in a folder the
+        user picks. Choosing it again while one runs offers to stop it."""
+        running = getattr(self, "_backup_job", None)
+        if running is not None:
+            done, total = running["progress"]
+            percent = f", {done * 100 // total}% done" if total else ""
+            if wx.MessageBox(f"A backup is running{percent}. Stop it?", "Back Up Now",
+                             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES:
+                running["cancel"] = True
+                self._feedback("Stopping the backup.")
+            return
+        state = backup.load_state()
+        start = state.get("folder") or os.path.join(os.path.expanduser("~"), "Documents")
+        dialog = wx.DirDialog(
+            self, "Back up to which folder? Another drive or a cloud folder is best. "
+                  "The backup isn't encrypted, so choose somewhere private. "
+                  + backup.last_backup_text(state),
+            defaultPath=start if os.path.isdir(start) else "",
+            style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            folder = dialog.GetPath()
+        finally:
+            dialog.Destroy()
+        job = {"cancel": False, "progress": (0, 0), "said": time.monotonic()}
+        self._backup_job = job
+        self._feedback("Backing up. This can take a few minutes, and the window stays usable. "
+                       "Choose Back Up Now again to stop it.")
+
+        def progress(done, total, _name):
+            job["progress"] = (done, total)
+            # The status bar every few seconds, not every file.
+            now = time.monotonic()
+            if total and now - job["said"] >= 3:
+                job["said"] = now
+                wx.CallAfter(self._backup_progress, done, total)
+
+        def work():
+            # Listing the files comes first and can take a while on a big
+            # ~/.claude; the status bar says so rather than nothing.
+            wx.CallAfter(self._backup_status, "Backing up: finding files.")
+            try:
+                result = backup.create(folder, progress=progress,
+                                       cancelled=lambda: job["cancel"])
+                backup.record(result)
+                wx.CallAfter(self._backup_done, result, None)
+            except Exception as exc:  # noqa: BLE001 - said, not raised
+                wx.CallAfter(self._backup_done, None, exc)
+
+        job["thread"] = threading.Thread(target=work, name="back-up", daemon=True)
+        job["thread"].start()
+
+    def _backup_progress(self, done: int, total: int):
+        self._backup_status(f"Backing up: {done * 100 // total}% ({done} of {total} files).")
+
+    def _backup_status(self, text: str):
+        if self._gone() or getattr(self, "_backup_job", None) is None:
+            return
+        self._status(text)
+
+    def _backup_done(self, result, error):
+        self._backup_job = None
+        if self._gone():
+            return
+        if isinstance(error, InterruptedError):
+            self._feedback("Backup stopped. Nothing was saved.")
+            return
+        if error is not None:
+            self._status("The backup didn't finish.")
+            wx.MessageBox(f"Couldn't back up: {error}\n\nNothing was saved.", APP_NAME,
+                          wx.OK | wx.ICON_ERROR, self)
+            return
+        # Said by the message box itself; the status bar keeps it to read back.
+        self._status("Backup finished." if result.complete else "Backup finished, incomplete.")
+        wx.MessageBox(backup.summary(result), "Back Up Now",
+                      wx.OK | (wx.ICON_INFORMATION if result.complete else wx.ICON_WARNING),
+                      self)
+
+    def on_check_backup(self):
+        """File, Check Backup (#433): read a backup back and compare every
+        file with its manifest, so a copy on another drive can be trusted
+        before it's needed."""
+        start = backup.load_state().get("folder") or ""
+        dialog = wx.FileDialog(self, "Check which backup?",
+                               defaultDir=start if os.path.isdir(start) else "",
+                               wildcard="Chat Place backups (*.zip)|*.zip|All files|*.*",
+                               style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            path = dialog.GetPath()
+        finally:
+            dialog.Destroy()
+        self._feedback(f"Checking {os.path.basename(path)}.")
+
+        def work():
+            try:
+                check = backup.verify(path)
+            except Exception as exc:  # noqa: BLE001 - always answered, never silent
+                check = backup.Check(ok=False, problems=[f"Couldn't check it: {exc}"])
+            wx.CallAfter(self._check_done, path, check)
+
+        threading.Thread(target=work, name="check-backup", daemon=True).start()
+
+    def _check_done(self, path, check):
+        if self._gone():
+            return
+        self._status("The backup is good." if check.ok else "The backup has problems.")
+        wx.MessageBox(backup.check_text(path, check), "Check Backup",
+                      wx.OK | (wx.ICON_INFORMATION if check.ok else wx.ICON_ERROR), self)
+
     def on_settings(self, _event=None):
         previous_providers = (self.speech.includes_codex(), self.speech.copilot_enabled)
         options = self._speech_options or default_options()
@@ -6849,6 +6968,18 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if answer != wx.YES:
                 event.Veto()
                 return
+        job = getattr(self, "_backup_job", None)
+        if job is not None:
+            if event.CanVeto() and wx.MessageBox(
+                    "A backup is running. Quit anyway? It will be stopped, and nothing saved.",
+                    f"Quit {APP_NAME}", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                    self) != wx.YES:
+                event.Veto()
+                return
+            # Stopped between files, which removes the unfinished archive;
+            # a few seconds at most, for one large file to finish.
+            job["cancel"] = True
+            job["thread"].join(timeout=10)
         self._closing = True
         for runner in list(self._runners.values()):
             runner.cancel()
