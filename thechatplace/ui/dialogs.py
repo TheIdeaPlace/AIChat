@@ -4367,10 +4367,12 @@ class FindResultsDialog(wx.Dialog):
 
 class BackupScheduleDialog(wx.Dialog):
     """File, Backup Schedule (#437): back up by itself every day or week to
-    a folder, keeping so many. Says plainly that it runs only while The
-    Chat Place is open and that scheduled backups aren't encrypted."""
+    a folder, keeping so many, encrypted if you like with a passphrase the
+    system keeps for it (#442). Says plainly that it runs only while The
+    Chat Place is open."""
 
-    def __init__(self, parent, schedule, status: str = ""):
+    def __init__(self, parent, schedule, status: str = "", *, can_encrypt: bool = True,
+                 has_passphrase: bool = False):
         from .. import backup
         super().__init__(parent, title="Backup Schedule", size=dialog_size(parent, 600, 420),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
@@ -4400,11 +4402,31 @@ class BackupScheduleDialog(wx.Dialog):
         set_accessible_name(self.keep, "Backups to keep")
         sizer.Add(self.keep, 0, wx.LEFT | wx.RIGHT, 8)
 
+        # Encrypted with a passphrase the system keeps (#442): typed once
+        # here, then used by every scheduled backup with nobody there.
+        self._can_encrypt, self._has_passphrase = can_encrypt, has_passphrase
+        self.new_passphrase = None
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.encrypt = wx.CheckBox(self, label="&Encrypt them with a passphrase kept on this computer")
+        self.encrypt.SetValue(bool(schedule.encrypt) and can_encrypt)
+        self.encrypt.Bind(wx.EVT_CHECKBOX, lambda e: self._sync())
+        row.Add(self.encrypt, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.change_passphrase = wx.Button(self, label="Change &Passphrase...")
+        self.change_passphrase.Bind(wx.EVT_BUTTON, lambda e: self._ask_passphrase())
+        row.Add(self.change_passphrase, 0)
+        sizer.Add(row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+
         about = ("Scheduled backups run while The Chat Place is open; one that came due while "
-                 "it was closed runs a couple of minutes after it starts. They aren't encrypted, "
-                 "so choose a private folder, ideally on another drive or in a cloud folder. "
-                 "Older unencrypted backups made on this computer, by hand or on schedule, are "
-                 "removed to keep the number you choose, and only after a new one checks out.")
+                 "it was closed runs a couple of minutes after it starts. Choose a private "
+                 "folder, ideally on another drive or in a cloud folder. Older backups this "
+                 "computer made are removed to keep the number you choose, and only after a new "
+                 "one checks out.\n\nEncrypted, they need the passphrase to open, but the "
+                 "passphrase is kept on this computer for the schedule to use: anyone signed in "
+                 "as you here could make or open them. If you forget it, the backups can't be "
+                 "opened anywhere else.")
+        if not can_encrypt:
+            about += ("\n\nThis computer can't keep a passphrase protected, so scheduled "
+                      "backups can't be encrypted here (on Linux, install secret-tool).")
         text = about + ("\n\n" + status if status else "")
         # Read-only text a screen reader can review by line, as Settings'
         # Speech problem box is.
@@ -4431,6 +4453,37 @@ class BackupScheduleDialog(wx.Dialog):
         on = self.every.GetSelection() != 0
         for control in (self.folder_label, self.folder, self.browse, self.keep_label, self.keep):
             control.Enable(on)
+        self.encrypt.Enable(on and self._can_encrypt)
+        self.change_passphrase.Enable(on and self._can_encrypt and self.encrypt.GetValue()
+                                      and (self._has_passphrase or self.new_passphrase is not None))
+
+    def _ask_one(self, message, name):
+        dialog = wx.PasswordEntryDialog(self, message, "Backup Schedule")
+        for child in dialog.GetChildren():
+            if isinstance(child, wx.TextCtrl):
+                set_accessible_name(child, name)
+        try:
+            return dialog.GetValue() if dialog.ShowModal() == wx.ID_OK else None
+        finally:
+            dialog.Destroy()
+
+    def _ask_passphrase(self) -> bool:
+        """The scheduled backups' passphrase, typed twice. False if cancelled."""
+        while True:
+            first = self._ask_one(
+                "If you forget it, these backups can't be opened anywhere else.\n"
+                "Passphrase for scheduled backups:", "Passphrase for scheduled backups")
+            if not first:
+                return False
+            again = self._ask_one("Type the passphrase again:", "Passphrase again")
+            if again is None:
+                return False
+            if again == first:
+                self.new_passphrase = first
+                self._sync()
+                return True
+            wx.MessageBox("The two passphrases are different. Type it again.", "Backup Schedule",
+                          wx.OK | wx.ICON_WARNING, self)
 
     def _on_browse(self, _event):
         start = self.folder.GetValue()
@@ -4458,6 +4511,11 @@ class BackupScheduleDialog(wx.Dialog):
                                          self) != wx.YES:
                 self.folder.SetFocus()
                 return
+            # Encrypting with no passphrase kept yet: ask for one now.
+            if (self.encrypt.GetValue() and not self._has_passphrase
+                    and self.new_passphrase is None and not self._ask_passphrase()):
+                self.encrypt.SetFocus()
+                return
         event.Skip()
 
     def _on_key(self, event):
@@ -4467,4 +4525,5 @@ class BackupScheduleDialog(wx.Dialog):
 
     def value(self):
         return self._backup.Schedule(self._backup.SCHEDULES[self.every.GetSelection()],
-                                     self.folder.GetValue().strip(), self.keep.GetValue())
+                                     self.folder.GetValue().strip(), self.keep.GetValue(),
+                                     bool(self.encrypt.GetValue() and self._can_encrypt))

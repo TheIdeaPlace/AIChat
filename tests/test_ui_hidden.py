@@ -14557,8 +14557,9 @@ def test_backup_schedule_saves_and_runs_a_due_backup_quietly(frame, env, monkeyp
     dest.mkdir()
 
     class Fake:
-        def __init__(self, parent, schedule, status=""):
+        def __init__(self, parent, schedule, status="", **kwargs):
             Fake.status = status
+            self.new_passphrase = None
 
         def ShowModal(self):
             return wx.ID_OK
@@ -14830,3 +14831,84 @@ def test_restore_holds_the_backup_slot_while_it_checks(frame, env, monkeypatch, 
     assert pump(lambda: frame._backup_job is None, timeout=20)
     assert env["feedback"][-1] == "Restore cancelled. Nothing was restored."
     assert made.exists()
+
+
+
+# Encrypted scheduled backups (#442) ------------------------------------------------
+
+def test_backup_schedule_asks_for_a_passphrase_when_encrypting(frame, env, monkeypatch,
+                                                               backup_boxes, passphrases):
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: False)
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5),
+                                  can_encrypt=True, has_passphrase=False)
+    try:
+        assert dialog.encrypt.IsEnabled() and not dialog.change_passphrase.IsEnabled()
+        dialog.encrypt.SetValue(True)
+        dialog._sync()
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        passphrases.answers = ["one", "two", "pw", "pw"]   # a mismatch first
+        dialog._on_save(event)
+        assert skipped and dialog.new_passphrase == "pw"
+        assert backup_boxes == ["The two passphrases are different. Type it again."]
+        assert dialog.value().encrypt is True
+        assert dialog.change_passphrase.IsEnabled()
+        # Cancel at the passphrase keeps the dialog open.
+        dialog.new_passphrase = None
+        passphrases.answers = [None]
+        skipped.clear()
+        dialog._on_save(event)
+        assert not skipped
+    finally:
+        dialog.Destroy()
+
+
+def test_backup_schedule_without_a_protected_store_cant_encrypt(frame, env):
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5, True),
+                                  can_encrypt=False)
+    try:
+        assert not dialog.encrypt.IsEnabled() and not dialog.value().encrypt
+        assert "install secret-tool" in dialog.about.GetValue()
+    finally:
+        dialog.Destroy()
+
+
+def test_saving_an_encrypted_schedule_keeps_the_passphrase_first(frame, env, monkeypatch,
+                                                                 backup_boxes):
+    from thechatplace.ui import main_frame
+    dest = env["tmp"] / "enc-sched"
+    dest.mkdir()
+    kept = []
+
+    class Fake:
+        def __init__(self, parent, schedule, status="", **kwargs):
+            self.new_passphrase = "pw"
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def value(self):
+            return backup.Schedule("weekly", str(dest), 3, True)
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(main_frame, "BackupScheduleDialog", Fake)
+    monkeypatch.setattr(platform_paths, "backup_secret_available", lambda: True)
+    monkeypatch.setattr(platform_paths, "load_backup_secret", lambda: kept[-1] if kept else None)
+    monkeypatch.setattr(platform_paths, "save_backup_secret", kept.append)
+    monkeypatch.setattr(frame, "_run_scheduled_backup_if_due", lambda: None)
+    frame.on_backup_schedule()
+    assert kept == ["pw"] and backup.load_schedule().encrypt is True
+    assert env["feedback"][-1].startswith(f"Backing up every week, encrypted, to {dest}")
+    assert "pw" not in (env["tmp"] / "appdata" / "backup.json").read_text(encoding="utf-8")
+    # The store refusing leaves the schedule as it was.
+    def refuse(_text):
+        raise OSError("no keychain")
+    monkeypatch.setattr(platform_paths, "save_backup_secret", refuse)
+    before = backup.load_schedule()
+    frame.on_backup_schedule()
+    assert "Couldn't keep the passphrase" in backup_boxes[-1]
+    assert backup.load_schedule() == before

@@ -1675,9 +1675,11 @@ was made, and what's wrong if it isn't.
    a cloud folder is best. A folder inside one the backup copies is refused.
 3. **Backups to keep** is how many of this computer's backups to keep in that folder (5 unless you
    change it). Older ones are deleted, but only after a new backup has been made and checked.
-   Only unencrypted backups this computer made are counted, by hand or on schedule. Encrypted
-   ones, other computers' backups and anything else in the folder are never touched.
-4. Press **Enter** (Save). A folder on the same disk as your chats is allowed, but you're asked
+   Only backups this computer made are counted: scheduled ones, and unencrypted ones made by
+   hand. Other computers' backups and anything else in the folder are never touched.
+4. To encrypt them, check **Encrypt them with a passphrase kept on this computer** (Alt+E).
+   When you save, you type a passphrase twice. **Change Passphrase** (Alt+P) changes it later.
+5. Press **Enter** (Save). A folder on the same disk as your chats is allowed, but you're asked
    first, since it won't survive losing the computer. If a backup is due, one starts straight
    away.
 
@@ -1687,8 +1689,15 @@ status bar, and you hear when it's finished. If one fails, for example because t
 isn't plugged in, you hear why. A failure is said at most once a day, and it's tried again an
 hour later or as soon as you save the schedule. A backup made by hand counts too: the next
 scheduled one comes a day or a week after it. The box at the bottom of Backup Schedule shows
-the last backup and the last failure. Scheduled backups aren't encrypted, because nobody is
-there to type a passphrase. To stop one, choose **File, Back Up Now**.
+the last backup and the last failure. To stop one, choose **File, Back Up Now**.
+
+**About the scheduled backups' passphrase.** Nobody is there to type it when a backup runs, so
+it's kept where the system protects it: on Windows, tied to your Windows sign-in; on a Mac, in
+your login keychain; on Linux, in your keyring through secret-tool (without secret-tool,
+scheduled backups can't be encrypted). It's never in The Chat Place's files or in a backup. A
+backup that leaves this computer needs the passphrase to open, but anyone signed in as you
+here could make or open one. If you forget it, the backups can't be opened anywhere else.
+Turning encryption off forgets the kept passphrase.
 
 ### Restoring from a backup
 

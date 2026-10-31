@@ -908,7 +908,12 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   backups whose manifest names this computer's id (by hand or scheduled); a folder on the same
   disk is allowed after a question. It runs while the app is open (checked every ten minutes and two
   minutes after starting). A failure, such as an unplugged drive, is announced at most once a day
-  and retried after an hour. Scheduled backups aren't encrypted. **Restore from Backup** (File
+  and retried after an hour. Scheduled backups can be **encrypted** (#442): the passphrase,
+  typed twice in Backup Schedule, is kept by the system (DPAPI on Windows in
+  `backup-passphrase.dpapi`, the login keychain on a Mac, the Secret Service through
+  `secret-tool` on Linux), never in `backup.json` or a backup; a missing passphrase fails the
+  backup rather than writing it unencrypted, and turning encryption off deletes it. Scheduled
+  backups are remembered by path and size, so encrypted ones can be pruned too. **Restore from Backup** (File
   menu, #436) checks a backup (asking for its passphrase), says how many chats it holds for each
   AI and from which computer, and on Yes keeps them all as read-only **imported chats** in
   `imported/` in The Chat Place's folder: each one's history as JSON, whichever AI it was with,

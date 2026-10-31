@@ -864,3 +864,49 @@ def test_kept_copies_of_present_originals_arent_backed_up_twice(homes):
     # With saved earlier versions, even a present one is kept.
     write(kept / ("a" * 64) / "versions" / "old.jsonl", "y")
     assert any(("a" * 64) in n for n in names(backup.tcp_inventory()))
+
+
+# Encrypted scheduled backups (#442) -----------------------------------------------
+
+def test_an_encrypted_schedule_uses_the_kept_passphrase(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 2, encrypt=True))
+    assert backup.load_schedule().encrypt is True
+    assert "passphrase" not in json.dumps(backup.load_state()).replace('"encrypt"', "")
+    monkeypatch.setattr(platform_paths, "load_backup_secret", lambda: "kept pw")
+    result = backup.run_scheduled(collectors=[backup.tcp_inventory])
+    assert result.encrypted and backup.is_encrypted(result.path)
+    assert backup.verify(result.path, passphrase="kept pw").ok
+
+
+def test_an_encrypted_schedule_without_its_passphrase_never_goes_unencrypted(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 2, encrypt=True))
+    monkeypatch.setattr(platform_paths, "load_backup_secret", lambda: None)
+    with pytest.raises(ValueError, match="passphrase isn't on this computer"):
+        backup.run_scheduled(collectors=[backup.tcp_inventory])
+    assert list(homes["dest"].iterdir()) == []
+
+
+def test_old_encrypted_scheduled_backups_are_pruned_by_record(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 2, encrypt=True))
+    monkeypatch.setattr(platform_paths, "load_backup_secret", lambda: "kept pw")
+    made = []
+    for day in range(4):
+        made.append(backup.run_scheduled(collectors=[backup.tcp_inventory],
+                                         now=datetime(2026, 11, 1 + day, 9)).path)
+        os.utime(made[-1], (1_800_000_000 + day * 100,) * 2)
+    left = sorted(p.name for p in homes["dest"].glob("*.zip"))
+    assert left == sorted([made[2].name, made[3].name])
+    # One that changed since (another computer's under the same name, say) isn't ours.
+    other = homes["dest"] / backup.default_filename("x", datetime(2020, 1, 1))
+    write(other, "not ours")
+    assert backup.prune(homes["dest"], 1, "no-such-id", made[3]) == [made[2]]
+    assert other.exists()
+
+
+def test_the_protected_passphrase_file_isnt_backed_up(homes):
+    write(homes["data"] / platform_paths.BACKUP_SECRET_FILE, "protected")
+    write(homes["data"] / "a.json", "{}")
+    assert names(backup.tcp_inventory()) == {"thechatplace/data/a.json"}

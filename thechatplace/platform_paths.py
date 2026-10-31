@@ -2271,3 +2271,153 @@ def start_codex_archive_server(profile: Path, executable=None) -> CodexServerPro
         owned.close()
         raise
     return owned
+
+
+# The scheduled-backup passphrase (#442) ---------------------------------------
+#
+# Kept where the system protects it, never in a file of The Chat Place's in
+# plain text: Windows' DPAPI (only this Windows user can unprotect it), the
+# macOS login keychain, or the Secret Service through ``secret-tool`` on
+# Linux. Whoever is signed in as you can use it, which is what lets a
+# schedule run with nobody there to type; a backup that leaves the computer
+# stays locked without it.
+
+BACKUP_SECRET_FILE = "backup-passphrase.dpapi"
+_SECRET_SERVICE = "The Chat Place"
+_SECRET_ACCOUNT = "scheduled-backup-passphrase"
+
+
+def backup_secret_available() -> bool:
+    """Whether this computer can keep the passphrase protected."""
+    if sys.platform == "win32" or sys.platform == "darwin":
+        return True
+    import shutil
+    return shutil.which("secret-tool") is not None
+
+
+def _dpapi(data: bytes, protect: bool) -> bytes:
+    import ctypes
+    from ctypes import wintypes
+
+    class Blob(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    buffer = ctypes.create_string_buffer(data, len(data))
+    source = Blob(len(data), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_char)))
+    result = Blob()
+    function = crypt32.CryptProtectData if protect else crypt32.CryptUnprotectData
+    function.argtypes = [ctypes.POINTER(Blob), wintypes.LPCWSTR, ctypes.POINTER(Blob),
+                         ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
+    function.restype = wintypes.BOOL
+    UI_FORBIDDEN = 0x1
+    if not function(ctypes.byref(source), None, None, None, None, UI_FORBIDDEN,
+                    ctypes.byref(result)):
+        raise OSError(ctypes.get_last_error(), "Windows couldn't protect the passphrase")
+    try:
+        return ctypes.string_at(result.pbData, result.cbData)
+    finally:
+        kernel32.LocalFree(result.pbData)
+
+
+def _keychain():
+    import ctypes
+    security = ctypes.CDLL("/System/Library/Frameworks/Security.framework/Security")
+    core = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+    return ctypes, security, core
+
+
+def _keychain_find(ctypes, security):
+    service, account = _SECRET_SERVICE.encode(), _SECRET_ACCOUNT.encode()
+    length, data, item = ctypes.c_uint32(), ctypes.c_void_p(), ctypes.c_void_p()
+    status = security.SecKeychainFindGenericPassword(
+        None, len(service), service, len(account), account,
+        ctypes.byref(length), ctypes.byref(data), ctypes.byref(item))
+    return status, length, data, item
+
+
+def save_backup_secret(passphrase: str) -> None:
+    """Keep the passphrase protected; raises OSError if it can't be."""
+    data = passphrase.encode("utf-8")
+    if sys.platform == "win32":
+        folder = app_data_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / BACKUP_SECRET_FILE
+        temporary = target.with_name(target.name + ".tmp")
+        temporary.write_bytes(_dpapi(data, protect=True))
+        os.replace(temporary, target)
+        return
+    if sys.platform == "darwin":
+        ctypes, security, core = _keychain()
+        status, _length, found, item = _keychain_find(ctypes, security)
+        if status == 0:
+            security.SecKeychainItemFreeContent(None, found)
+            status = security.SecKeychainItemModifyAttributesAndData(item, None, len(data), data)
+            core.CFRelease(item)
+        else:
+            service, account = _SECRET_SERVICE.encode(), _SECRET_ACCOUNT.encode()
+            status = security.SecKeychainAddGenericPassword(
+                None, len(service), service, len(account), account, len(data), data, None)
+        if status != 0:
+            raise OSError(f"The keychain didn't keep the passphrase (error {status}).")
+        return
+    import subprocess
+    try:
+        done = subprocess.run(["secret-tool", "store", "--label", "The Chat Place backup passphrase",
+                               "service", _SECRET_SERVICE, "account", _SECRET_ACCOUNT],
+                              input=data, capture_output=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise OSError(f"secret-tool couldn't keep the passphrase: {exc}") from None
+    if done.returncode != 0:
+        raise OSError("secret-tool couldn't keep the passphrase: "
+                      + done.stderr.decode("utf-8", "replace").strip())
+
+
+def load_backup_secret() -> Optional[str]:
+    """The kept passphrase, or None if there isn't one or it can't be read."""
+    try:
+        if sys.platform == "win32":
+            path = app_data_dir() / BACKUP_SECRET_FILE
+            if not path.is_file():
+                return None
+            return _dpapi(path.read_bytes(), protect=False).decode("utf-8")
+        if sys.platform == "darwin":
+            ctypes, security, core = _keychain()
+            status, length, found, item = _keychain_find(ctypes, security)
+            if status != 0:
+                return None
+            try:
+                return ctypes.string_at(found, length.value).decode("utf-8")
+            finally:
+                security.SecKeychainItemFreeContent(None, found)
+                core.CFRelease(item)
+        import subprocess
+        done = subprocess.run(["secret-tool", "lookup", "service", _SECRET_SERVICE,
+                               "account", _SECRET_ACCOUNT], capture_output=True, timeout=30)
+        return done.stdout.decode("utf-8") if done.returncode == 0 and done.stdout else None
+    except (OSError, ValueError, UnicodeDecodeError, AttributeError):
+        return None
+    except Exception:  # noqa: BLE001 - a subprocess timeout and the like: none to give
+        return None
+
+
+def delete_backup_secret() -> None:
+    """Forget the kept passphrase, wherever it is (nothing if there's none)."""
+    try:
+        if sys.platform == "win32":
+            (app_data_dir() / BACKUP_SECRET_FILE).unlink(missing_ok=True)
+            return
+        if sys.platform == "darwin":
+            ctypes, security, core = _keychain()
+            status, _length, found, item = _keychain_find(ctypes, security)
+            if status == 0:
+                security.SecKeychainItemFreeContent(None, found)
+                security.SecKeychainItemDelete(item)
+                core.CFRelease(item)
+            return
+        import subprocess
+        subprocess.run(["secret-tool", "clear", "service", _SECRET_SERVICE,
+                        "account", _SECRET_ACCOUNT], capture_output=True, timeout=30)
+    except Exception:  # noqa: BLE001 - forgetting must never raise
+        pass
