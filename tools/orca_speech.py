@@ -153,8 +153,10 @@ STEPS = [
          expect=["What changed"],
          expect_dbus=["Copilot needs your answer", "npm test"]),
     # Agent, marked "(now)", is selected; Auto is the third choice.
+    # Orca 46 reads the choice the list starts on, not the dialog's title
+    # (CI on #426: worth a look for the choice dialog in general).
     Step("Change Permission Mode", ["ctrl+shift+o"],
-         expect=["Change Permission Mode", "Agent: asks before running commands", "(now)"]),
+         expect=["Agent: asks before running commands", "(now)"]),
     Step("Auto", ["Down", "Down"], expect=["Auto: reads, and changes files"]),
     # The warning is a Yes/No message box, No the default.
     Step("the Auto warning", ["Return"],
@@ -174,8 +176,9 @@ STEPS = [
     Step("Copilot's Chat Permissions", ["ctrl+shift+h"],
          expect=["Chat Permissions", "Allowed for this chat", "npm run lint"]),
     Step("the command just kept", ["Down"], expect=["Exactly this command: npm test"]),
+    # Back on the row it left, which Orca 46 reads without the list's name.
     Step("Chat Permissions closed, back in the messages", ["Escape"],
-         expect=[f"Messages in {COPILOT_TITLE}"]),
+         expect=[f"{COPILOT_TITLE} — The Chat Place", "What changed"]),
 ]
 
 #: The question "question" asks (STEPS above).
