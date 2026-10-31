@@ -1473,7 +1473,8 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   own data folder. After an original disappears, its chat remains as a **kept chat (read-only)**.
   Copies refresh in the background, including after turns; a transcript deleted before the first
   successful copy cannot be recovered. Rewrites retain the previous copy in `versions`.
-  Settings (Ctrl+Comma) shows provider retention and opens Claude's settings in your editor.
+  Settings (Ctrl+Comma) shows provider retention: Alt+Y reaches the report, and Tab reaches
+  the button that opens Claude's settings in your editor.
   Copies have no automatic expiry, are unencrypted, and Back Up Now includes them. They still
   need a backup on another disk. Delete Session Permanently also removes that chat's kept copy.
 - The Chat Place's own sessions, and terminal sessions, don't appear in the desktop app, so Open in
