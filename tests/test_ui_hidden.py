@@ -14360,6 +14360,9 @@ def passphrases(monkeypatch):
             Box.messages.append(message)
             self.answer = Box.answers.pop(0) if Box.answers else ""
 
+        def GetChildren(self):
+            return []
+
         def ShowModal(self):
             return wx.ID_CANCEL if self.answer is None else wx.ID_OK
 

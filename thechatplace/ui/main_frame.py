@@ -5901,9 +5901,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         job["thread"] = threading.Thread(target=work, name="back-up", daemon=True)
         job["thread"].start()
 
-    def _ask_passphrase(self, message: str, title: str) -> Optional[str]:
-        """One passphrase from a password box, or None if cancelled."""
+    def _ask_passphrase(self, message: str, title: str,
+                        name: str = "Passphrase") -> Optional[str]:
+        """One passphrase from a password box, or None if cancelled. wx makes
+        each line of the message its own label and the box takes the nearest
+        one, so the box is named here (#441: with the question first, it was
+        read as the warning line)."""
         dialog = wx.PasswordEntryDialog(self, message, title)
+        for child in dialog.GetChildren():
+            if isinstance(child, wx.TextCtrl):
+                set_accessible_name(child, name)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return None
@@ -5916,12 +5923,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         no encryption; None, cancelled."""
         while True:
             first = self._ask_passphrase(
-                "Passphrase to encrypt the backup, or leave it empty for no encryption.\n"
-                "If you forget it, the backup can't be opened, by you or anyone else.",
-                "Back Up Now")
+                "If you forget the passphrase, the backup can't be opened, by you or anyone "
+                "else.\nPassphrase to encrypt the backup, or leave it empty for no encryption:",
+                "Back Up Now", "Passphrase, or empty for no encryption")
             if not first:
                 return first
-            again = self._ask_passphrase("Type the passphrase again.", "Back Up Now")
+            again = self._ask_passphrase("Type the passphrase again:", "Back Up Now",
+                                         "Passphrase again")
             if again is None:
                 return None
             if again == first:
