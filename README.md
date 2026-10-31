@@ -1466,3 +1466,5 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 ## Developing
 
 Building, testing and releasing: see [DEVELOPING.md](DEVELOPING.md).
+
+The backup history reader for #436 is implemented; Restore from Backup still needs its UI. It reads Claude and Copilot archives directly, and Codex history through a native app-server in a temporary copied profile. Imported identities include the source computer and never grant ownership.
