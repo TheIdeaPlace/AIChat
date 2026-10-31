@@ -173,7 +173,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
             # Locked by another program, say: there, but not read.
             lines.append(f"Transcript read: failed ({read_error or 'unknown error'})")
     elif info.provider == "imported":
-        lines.append(f"History: restored from a backup, {info.detail or 'from another computer'}"
+        lines.append(f"History: {info.detail or 'imported from another computer'}"
                      + ("" if transcript is not None else " (unavailable)"))
     elif info.provider != "claude":
         lines.append(f"History: {'read' if transcript is not None else 'unavailable'} "

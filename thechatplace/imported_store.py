@@ -103,15 +103,22 @@ def transcript_from_json(data: dict) -> Transcript:
 
 class ImportedStore:
     """The imported chats in ``<app data>/imported``: an index for the list,
-    and one file per chat with its history."""
+    and one file per chat with its history.
+
+    The index is kept in memory and read again only when its file changes,
+    since the list asks for it on every refresh. Each chat file holds its own
+    record too, so a missing or damaged index is rebuilt from them, never
+    written over: losing the index must not lose the chats (#449 review)."""
 
     def __init__(self, folder: Optional[Path] = None):
         self.folder = Path(folder) if folder else platform_paths.app_data_dir() / FOLDER
         self._lock = threading.RLock()
+        self._cache: Optional[Dict[str, dict]] = None
+        self._cache_stamp = None
 
     def _chat_file(self, key: str) -> Path:
         # The key is "imported:" + 64 hex digits; only the digits name the file.
-        digest = key.split(":", 1)[-1]
+        digest = key.split(":", 1)[-1] if isinstance(key, str) else ""
         if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
             raise ValueError("Invalid imported chat key")
         return self.folder / f"{digest}.json"
@@ -121,30 +128,79 @@ class ImportedStore:
         self.folder.mkdir(parents=True, exist_ok=True)
         atomic_write_json(path, payload)
 
-    def _index(self) -> Dict[str, dict]:
+    def _stamp(self):
         try:
-            raw = json.loads((self.folder / INDEX).read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            return {}
-        except (OSError, ValueError):
-            return {}
-        chats = raw.get("chats") if isinstance(raw, dict) else None
-        return chats if isinstance(chats, dict) else {}
+            info = (self.folder / INDEX).stat()
+        except OSError:
+            return None
+        return info.st_mtime_ns, info.st_size
+
+    def _rebuild(self) -> Dict[str, dict]:
+        """The index from the chat files themselves."""
+        chats: Dict[str, dict] = {}
+        for path in sorted(self.folder.glob("*.json")):
+            if path.name == INDEX:
+                continue
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                record = raw["chat"]
+                if raw.get("key") == record.get("key") and self._chat_file(raw["key"]) == path:
+                    chats[raw["key"]] = record
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                continue
+        return chats
+
+    def _index(self) -> Dict[str, dict]:
+        stamp = self._stamp()
+        if self._cache is not None and stamp == self._cache_stamp:
+            return self._cache
+        chats = None
+        if stamp is not None:
+            try:
+                raw = json.loads((self.folder / INDEX).read_text(encoding="utf-8"))
+                found = raw.get("chats") if isinstance(raw, dict) else None
+                chats = found if isinstance(found, dict) else None
+            except (OSError, ValueError):
+                chats = None
+        if chats is None:
+            chats = self._rebuild() if self.folder.is_dir() else {}
+            if chats:
+                try:
+                    self._save_index(chats)
+                    stamp = self._stamp()
+                except OSError:
+                    pass
+        self._cache, self._cache_stamp = chats, stamp
+        return chats
+
+    def _save_index(self, chats: Dict[str, dict]) -> None:
+        self._write(self.folder / INDEX, {"format_version": FORMAT_VERSION, "chats": chats})
+        self._cache, self._cache_stamp = chats, self._stamp()
+
+    @staticmethod
+    def _chat(key: str, raw) -> Optional[ImportedChat]:
+        try:
+            chat = ImportedChat(**_known(ImportedChat, raw))
+        except TypeError:
+            return None
+        return chat if chat.key == key else None
 
     def all(self) -> List[ImportedChat]:
         with self._lock:
-            chats = []
-            for key, raw in self._index().items():
-                try:
-                    chat = ImportedChat(**_known(ImportedChat, raw))
-                except TypeError:
-                    continue
-                if chat.key == key:
-                    chats.append(chat)
-            return chats
+            return [chat for key, raw in self._index().items()
+                    if (chat := self._chat(key, raw)) is not None]
 
     def get(self, key: str) -> Optional[ImportedChat]:
-        return next((chat for chat in self.all() if chat.key == key), None)
+        with self._lock:
+            raw = self._index().get(key)
+            return self._chat(key, raw) if raw is not None else None
+
+    def last_reply(self, key: str) -> str:
+        """The last reply's first line, kept in the index (for the list's
+        Last message column, without reading every history)."""
+        with self._lock:
+            raw = self._index().get(key) or {}
+            return str(raw.get("last_reply") or "")
 
     def load(self, key: str) -> Transcript:
         """A chat's history. Raises LookupError if it's gone, ValueError if
@@ -155,24 +211,42 @@ class ImportedStore:
                 raw = json.loads(path.read_text(encoding="utf-8"))
             except FileNotFoundError:
                 raise LookupError("This imported chat's history is gone.") from None
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"This imported chat's history couldn't be read: {exc}") from None
             if not isinstance(raw, dict) or raw.get("key") != key:
                 raise ValueError("This imported chat's history is damaged.")
-            return transcript_from_json(raw.get("transcript"))
+            try:
+                return transcript_from_json(raw.get("transcript"))
+            except (TypeError, AttributeError) as exc:
+                raise ValueError(f"This imported chat's history is damaged: {exc}") from None
 
-    def save(self, chat: ImportedChat, transcript: Transcript) -> str:
+    def _readable(self, key: str) -> bool:
+        try:
+            self.load(key)
+            return True
+        except (LookupError, ValueError):
+            return False
+
+    def save(self, chat: ImportedChat, transcript: Transcript, *, write_index: bool = True) -> str:
         """Add or update one chat: "added", "updated" or "unchanged". A copy
-        from an older backup never replaces a newer one already here."""
+        from an older backup never replaces a newer one already here; one
+        whose file is gone or damaged, or whose title changed, is replaced.
+        With ``write_index`` False the index is written later by
+        ``flush`` (a restore writes it once, not once per chat)."""
         if chat.key != chat_key(*chat.identity):
             raise ValueError("Imported chat key doesn't match its identity")
         with self._lock:
             index = self._index()
             old = index.get(chat.key)
-            if old is not None:
-                older = (int(old.get("last_activity_ms") or 0) > chat.last_activity_ms
-                         or (int(old.get("last_activity_ms") or 0) == chat.last_activity_ms
-                             and int(old.get("messages") or 0) >= len(transcript.messages)))
+            if old is not None and self._readable(chat.key):
+                old_last = int(old.get("last_activity_ms") or 0)
+                older = (old_last > chat.last_activity_ms
+                         or (old_last == chat.last_activity_ms
+                             and int(old.get("messages") or 0) >= len(transcript.messages)
+                             and old.get("title") == chat.title))
                 if older:
                     return "unchanged"
+            reply = transcript.last_reply()
             chat = dataclasses.replace(
                 chat, messages=len(transcript.messages),
                 imported_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
@@ -180,17 +254,28 @@ class ImportedStore:
                 "format_version": FORMAT_VERSION, "key": chat.key,
                 "chat": dataclasses.asdict(chat),
                 "transcript": transcript_to_json(transcript)})
-            index[chat.key] = dataclasses.asdict(chat)
-            self._write(self.folder / INDEX, {"format_version": FORMAT_VERSION, "chats": index})
+            index = dict(index)
+            index[chat.key] = {**dataclasses.asdict(chat),
+                               "last_reply": reply.first_line() if reply is not None else ""}
+            if write_index:
+                self._save_index(index)
+            else:
+                self._cache = index    # written by flush()
             return "updated" if old is not None else "added"
+
+    def flush(self) -> None:
+        """Write the index after saves made with ``write_index=False``."""
+        with self._lock:
+            if self._cache is not None:
+                self._save_index(self._cache)
 
     def remove(self, key: str) -> bool:
         """Delete The Chat Place's copy of an imported chat (nothing else)."""
         with self._lock:
-            index = self._index()
+            index = dict(self._index())
             if index.pop(key, None) is None:
                 return False
-            self._write(self.folder / INDEX, {"format_version": FORMAT_VERSION, "chats": index})
+            self._save_index(index)
             try:
                 self._chat_file(key).unlink()
             except FileNotFoundError:
@@ -207,29 +292,49 @@ def import_sessions(store: ImportedStore, reader, sessions, *, backup_name: str 
     computer = manifest.get("computer") or {}
     counts = {"added": 0, "updated": 0, "unchanged": 0, "failed": 0}
     sessions = list(sessions)
-    for done, session in enumerate(sessions):
-        if cancelled is not None and cancelled():
-            raise InterruptedError("Restore cancelled.")
-        if progress is not None:
-            progress(done, len(sessions), session.title)
-        try:
-            transcript = reader.read(session)
-            chat = ImportedChat(
-                key=session.key, provider=session.provider, native_id=session.native_id,
-                computer_id=session.computer_id, computer_name=str(computer.get("name") or ""),
-                title=session.title, cwd=session.cwd, created_ms=int(session.created_ms or 0),
-                last_activity_ms=int(session.last_activity_ms or 0),
-                archived=bool(session.archived), backup_name=backup_name,
-                backup_created=str(manifest.get("created") or ""),
-                source_key=session.source_key)
-            counts[store.save(chat, transcript)] += 1
-        except InterruptedError:
-            raise
-        except Exception:  # noqa: BLE001 - one chat mustn't stop the others
-            counts["failed"] += 1
+    try:
+        for done, session in enumerate(sessions):
+            if cancelled is not None and cancelled():
+                raise InterruptedError("Restore cancelled.")
+            if progress is not None:
+                progress(done, len(sessions), session.title)
+            _import_one(store, reader, session, manifest, computer, backup_name, counts)
+            if done % INDEX_EVERY == INDEX_EVERY - 1:
+                store.flush()
+    finally:
+        # Whatever was saved is listed, even after a stop or an error.
+        store.flush()
     if progress is not None:
         progress(len(sessions), len(sessions), "")
     return counts
+
+
+# A restore writes the index after this many chats, and at the end, rather
+# than after every one (each write is the whole index).
+INDEX_EVERY = 50
+
+
+def _import_one(store, reader, session, manifest, computer, backup_name, counts) -> None:
+    try:
+        transcript = reader.read(session)
+        chat = ImportedChat(
+            key=session.key, provider=session.provider, native_id=session.native_id,
+            computer_id=session.computer_id, computer_name=str(computer.get("name") or ""),
+            title=session.title, cwd=session.cwd, created_ms=int(session.created_ms or 0),
+            last_activity_ms=int(session.last_activity_ms or 0),
+            archived=bool(session.archived), backup_name=backup_name,
+            backup_created=str(manifest.get("created") or ""),
+            source_key=session.source_key)
+        counts[store.save(chat, transcript, write_index=False)] += 1
+    except InterruptedError:
+        raise
+    except Exception:  # noqa: BLE001 - one chat mustn't stop the others
+        counts["failed"] += 1
+    finally:
+        # Saved: its parsed history needn't stay in memory for the rest.
+        release = getattr(reader, "release", None)
+        if release is not None:
+            release(session)
 
 
 @dataclass
@@ -260,16 +365,39 @@ def describe_plan(plan: RestorePlan) -> str:
             "them, not continue them. Nothing is written to Claude's, Codex's or Copilot's "
             "folders. Restoring the same backup again updates them instead of adding copies.")
     if plan.notes:
-        text += "\n\nSome of it couldn't be read: " + " ".join(plan.notes[:5])
+        text += "\n\nSome of it couldn't be read. " + notes_text(plan.notes)
     return text
+
+
+def notes_text(notes, limit: int = 3) -> str:
+    """The reader's notes as sentences: each once, the first few, and how
+    many more."""
+    unique = []
+    for note in notes:
+        note = str(note).strip()
+        if note and not note.endswith((".", "!", "?")):
+            note += "."
+        if note and note not in unique:
+            unique.append(note)
+    text = " ".join(unique[:limit])
+    if len(unique) > limit:
+        text += f" And {len(unique) - limit} more."
+    return text
+
+
+@dataclass
+class RestoreOutcome:
+    counts: Dict[str, int]
+    notes: List[str] = field(default_factory=list)
 
 
 def restore_backup(path, manifest: dict, passphrase: Optional[str], *, confirm,
                    store: Optional[ImportedStore] = None, cancelled=None,
-                   progress=None) -> Optional[Dict[str, int]]:
+                   progress=None) -> Optional[RestoreOutcome]:
     """Restore a backup that ``backup.verify`` has passed (``manifest`` is
     its manifest): read its chats, ask ``confirm(plan)``, then keep them all
-    as imported chats. Returns the counts, or None if the answer was no.
+    as imported chats. Returns the counts and the reader's notes, or None if
+    the answer was no.
     The decrypted copy and any provider reader live only inside this call."""
     import zipfile
     from . import backup
@@ -284,14 +412,24 @@ def restore_backup(path, manifest: dict, passphrase: Optional[str], *, confirm,
         computer = manifest.get("computer") or {}
         plan = RestorePlan(str(computer.get("name") or ""), str(manifest.get("created") or ""),
                            counts, list(reader.notes))
-        if not sessions or not confirm(plan):
-            return None if sessions else {"added": 0, "updated": 0, "unchanged": 0, "failed": 0}
-        return import_sessions(store, reader, sessions, backup_name=Path(path).name,
-                               cancelled=cancelled, progress=progress)
+        if not sessions:
+            # Nothing readable: say why (a Codex-only backup on a computer
+            # without Codex, say), rather than "no chats".
+            return RestoreOutcome({"added": 0, "updated": 0, "unchanged": 0, "failed": 0},
+                                  list(reader.notes))
+        if cancelled is not None and cancelled():
+            raise InterruptedError("Restore cancelled.")
+        if not confirm(plan):
+            return None
+        counts = import_sessions(store, reader, sessions, backup_name=Path(path).name,
+                                 cancelled=cancelled, progress=progress)
+        return RestoreOutcome(counts, list(reader.notes))
 
 
-def restore_summary(counts: Dict[str, int]) -> str:
+def restore_summary(outcome) -> str:
     """What's said when a restore finishes."""
+    counts = outcome.counts if isinstance(outcome, RestoreOutcome) else outcome
+    notes = outcome.notes if isinstance(outcome, RestoreOutcome) else []
     def n(count, word):
         return f"{count} {word}{'s' if count != 1 else ''}"
     parts = []
@@ -304,6 +442,8 @@ def restore_summary(counts: Dict[str, int]) -> str:
     if counts.get("failed"):
         parts.append(f"{counts['failed']} couldn't be read")
     if not parts:
+        if notes:
+            return "Nothing could be restored. " + notes_text(notes)
         return "The backup has no chats to restore."
     return ("Restore finished: " + ", ".join(parts) + ". They're in the session list, "
             "marked as imported.")

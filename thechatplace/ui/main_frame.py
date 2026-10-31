@@ -1367,7 +1367,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if info.is_own:
             prompt = f"New name for {info.title}:"
         else:
-            keeper = (info.provider.capitalize() if info.provider != "claude" else
+            keeper = ("the backup" if info.provider == IMPORTED else
+                      info.provider.capitalize() if info.provider != "claude" else
                       "Claude Code" if info.is_terminal else "the Claude desktop app")
             prompt = (f"New name for {info.title}. It shows only in The Chat Place; "
                       f"{keeper} keeps its own name for it. Leave it empty to go "
@@ -1404,7 +1405,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                                      provider=info.provider, title=title):
                 return
         else:
-            keeper = (f"{info.provider.capitalize()}'s" if info.provider != "claude" else
+            keeper = ("the backup's" if info.provider == IMPORTED else
+                      f"{info.provider.capitalize()}'s" if info.provider != "claude" else
                       "Claude Code's" if info.is_terminal else "the desktop app's")
             if not title and info.key not in self.titles:
                 self._feedback(f"{old} already has {keeper} name.")
@@ -1546,6 +1548,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self.groups.forget(info.key)
         if info.key in self.hidden:
             self.hidden.show(info.key)
+        if info.key in self.titles:
+            self.titles.remove(info.key)
         self.tool_activity.discard(info.key)
         was_loaded = self._open is not None and self._open.key == info.key
         self._leave_list(info, refocus=was_loaded)
@@ -1929,6 +1933,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             # Copilot writes a chat's log only once its first message arrives.
             line = "No messages yet."
             self._chat_loaded = False  # keep looking until it appears
+        elif info.provider == IMPORTED:
+            line = ("This restored chat's history is gone. Restoring the backup again "
+                    "brings it back.")
         elif info.provider != "claude":
             line = f"Chat history is unavailable from {info.provider.capitalize()}. Try refreshing."
         elif info.is_own and (info.cli_session_id in self._runners
@@ -2933,6 +2940,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         info = self._selected_session()
         if info is None:
             self._feedback("No session selected.")
+            return
+        if info.provider == IMPORTED:
+            self._feedback(f"{info.title} was restored from a backup: it's read-only.")
             return
         if info.provider != "claude":
             self._feedback(f"Open in Claude isn't available for {info.provider.capitalize()} chats.")
@@ -5924,7 +5934,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if wx.MessageBox(f"{kind} is running{percent}. Stop it?", "Back Up Now",
                              wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES:
                 running["cancel"] = True
-                self._feedback("Stopping the backup.")
+                self._feedback("Stopping the restore." if running.get("restore")
+                               else "Stopping the backup.")
             return
         state = backup.load_state()
         start = state.get("folder") or os.path.join(os.path.expanduser("~"), "Documents")
@@ -6171,8 +6182,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         """File, Restore from Backup (#436): every chat in a backup comes
         back as a read-only imported chat, after a question saying how many
         and from where. Nothing is written to any provider's folder."""
-        running = getattr(self, "_backup_job", None)
-        if running is not None:
+        if getattr(self, "_backup_job", None) is not None:
             self._feedback("A backup or restore is running. Wait for it to finish, or choose "
                            "Back Up Now to stop it.")
             return
@@ -6187,50 +6197,82 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             path = dialog.GetPath()
         finally:
             dialog.Destroy()
+        # Held from here, through the check and any passphrase question, so a
+        # scheduled backup or Back Up Now can't start beside it (#449 review).
+        if getattr(self, "_backup_job", None) is not None:
+            self._feedback("A backup started meanwhile. Restore when it has finished.")
+            return
+        self._backup_job = {"cancel": False, "progress": (0, 0), "said": time.monotonic(),
+                            "restore": True}
         self._restore_check(path, None)
+
+    def _restore_job(self):
+        job = getattr(self, "_backup_job", None)
+        return job if job is not None and job.get("restore") else None
+
+    def _restore_stop(self, said: str):
+        """The restore ends before reading anything: free the slot, say why."""
+        self._backup_job = None
+        self._feedback(said)
 
     def _restore_check(self, path: str, passphrase: Optional[str]):
         """Check the backup first, asking for its passphrase if it has one,
         as Check Backup does: nothing is read from a backup that's damaged."""
         self._feedback(f"Checking {os.path.basename(path)}.")
+        job = self._restore_job()
 
         def work():
             try:
-                check = backup.verify(path, passphrase=passphrase)
+                check = backup.verify(path, passphrase=passphrase,
+                                      cancelled=lambda: bool(job and job["cancel"]))
+            except InterruptedError:
+                check = None
             except Exception as exc:  # noqa: BLE001 - always answered
                 check = backup.Check(ok=False, problems=[f"Couldn't check it: {exc}"])
             wx.CallAfter(self._restore_checked, path, check, passphrase)
 
-        threading.Thread(target=work, name="restore-check", daemon=True).start()
+        if job is not None:
+            job["thread"] = threading.Thread(target=work, name="restore-check", daemon=True)
+            job["thread"].start()
+        else:
+            threading.Thread(target=work, name="restore-check", daemon=True).start()
 
     def _restore_checked(self, path, check, passphrase):
         if self._gone():
+            return
+        job = self._restore_job()
+        if job is None or job["cancel"] or check is None:
+            self._restore_stop("Restore stopped. Nothing was restored.")
             return
         if check.needs_passphrase:
             message = (f"{os.path.basename(path)} is encrypted. Type its passphrase."
                        if passphrase is None else "That passphrase is wrong. Type it again.")
             again = self._ask_passphrase(message, "Restore from Backup")
-            if again:
+            if again and not job["cancel"]:
                 self._restore_check(path, again)
             else:
-                self._status("Restore cancelled.")
+                self._restore_stop("Restore cancelled. Nothing was restored.")
             return
         if not check.ok:
+            self._backup_job = None
             self._status("The backup can't be restored.")
             wx.MessageBox(backup.check_text(path, check) + "\n\nNothing was restored.",
                           "Restore from Backup", wx.OK | wx.ICON_ERROR, self)
             return
-        self._restore_run(path, check.manifest, passphrase)
+        self._restore_run(path, check.manifest, passphrase, job)
 
-    def _ask_from_worker(self, ask):
+    def _ask_from_worker(self, ask, job=None):
         """Run ``ask`` on the window's thread and wait for its answer, so a
         worker can ask a question while it holds open what it's reading.
-        False if the window goes away first."""
+        False, without asking, if the window is closing or the job was
+        stopped meanwhile: a question must never open over Quit's (#449)."""
         done, answer = threading.Event(), []
 
         def on_ui():
             try:
-                answer.append(False if self._gone() else bool(ask()))
+                stopped = job is not None and job.get("cancel")
+                answer.append(False if (self._gone() or self._closing or stopped)
+                              else bool(ask()))
             finally:
                 done.set()
         wx.CallAfter(on_ui)
@@ -6239,18 +6281,18 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 return False
         return bool(answer and answer[0])
 
-    def _restore_run(self, path, manifest, passphrase):
-        job = {"cancel": False, "progress": (0, 0), "said": time.monotonic(), "restore": True}
-        self._backup_job = job
+    def _restore_run(self, path, manifest, passphrase, job):
+        job["said"] = time.monotonic()
         self._feedback("Reading the backup's chats.")
 
         def confirm(plan):
             return self._ask_from_worker(lambda: wx.MessageBox(
                 imported_store.describe_plan(plan), "Restore from Backup",
-                wx.YES_NO | wx.ICON_QUESTION, self) == wx.YES)
+                wx.YES_NO | wx.ICON_QUESTION, self) == wx.YES, job)
 
         def progress(done, total, _title):
             job["progress"] = (done, total)
+            job["importing"] = True
             now = time.monotonic()
             if total and now - job["said"] >= 2:
                 job["said"] = now
@@ -6259,36 +6301,39 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
 
         def work():
             try:
-                counts = imported_store.restore_backup(
+                outcome = imported_store.restore_backup(
                     path, manifest, passphrase, confirm=confirm,
                     store=self._imported.store, cancelled=lambda: job["cancel"],
                     progress=progress)
-                wx.CallAfter(self._restore_done, counts, None)
+                wx.CallAfter(self._restore_done, outcome, None, job)
             except Exception as exc:  # noqa: BLE001 - said, not raised
-                wx.CallAfter(self._restore_done, None, exc)
+                wx.CallAfter(self._restore_done, None, exc, job)
 
         job["thread"] = threading.Thread(target=work, name="restore", daemon=True)
         job["thread"].start()
 
-    def _restore_done(self, counts, error):
+    def _restore_done(self, outcome, error, job):
         self._backup_job = None
         if self._gone():
             return
         if isinstance(error, InterruptedError):
-            self._feedback("Restore stopped. Chats already restored stay; restoring the "
-                           "backup again finishes the rest.")
-            self.refresh_sessions(force=True)
+            self._feedback("Restore stopped. Chats already restored stay, and restoring the "
+                           "backup again finishes the rest." if job.get("importing")
+                           else "Restore stopped. Nothing was restored.")
+            self.refresh_sessions(resort=True)
             return
         if error is not None:
             self._status("The restore didn't finish.")
-            wx.MessageBox(f"Couldn't restore the backup: {error}", APP_NAME,
+            wx.MessageBox(f"Couldn't restore the backup: {error}", "Restore from Backup",
                           wx.OK | wx.ICON_ERROR, self)
             return
-        if counts is None:
+        if outcome is None:
             self._feedback("Restore cancelled. Nothing was restored.")
             return
-        self._feedback(imported_store.restore_summary(counts))
-        self.refresh_sessions(force=True)
+        self._feedback(imported_store.restore_summary(outcome))
+        # Not forced: its own spoken summary would follow, and could talk over
+        # this one (#449 review).
+        self.refresh_sessions(resort=True)
 
     def on_settings(self, _event=None):
         previous_providers = (self.speech.includes_codex(), self.speech.copilot_enabled)
@@ -7316,7 +7361,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             # Stopped between chunks, which removes the unfinished archive;
             # a few seconds at most, for one large file to finish.
             job["cancel"] = True
-            job["thread"].join(timeout=10)
+            if job.get("thread") is not None:
+                job["thread"].join(timeout=10)
         self._closing = True
         for runner in list(self._runners.values()):
             runner.cancel()

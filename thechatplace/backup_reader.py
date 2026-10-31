@@ -206,6 +206,11 @@ class BackupReader:
         reader.refresh()
         return reader.transcript
 
+    def release(self, session):
+        """Forget a chat's parsed history once it's been kept elsewhere, so a
+        large backup's histories aren't all in memory at once."""
+        self._readers.pop(getattr(session, "identity", None), None)
+
     def _claude_sessions(self):
         facts_cache = SessionFactsCache()
         from .sessions import load_desktop_sessions

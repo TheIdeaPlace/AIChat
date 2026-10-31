@@ -1487,4 +1487,3 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 ## Developing
 
 Building, testing and releasing: see [DEVELOPING.md](DEVELOPING.md).
-

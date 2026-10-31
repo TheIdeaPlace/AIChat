@@ -87,6 +87,8 @@ def test_damaged_files_dont_break_the_list(tmp_path):
     (tmp_path / "imported" / f"{key.split(':')[1]}.json").write_text("{not json", encoding="utf-8")
     with pytest.raises(ValueError):
         store.load(key)
+    # A damaged index is rebuilt from the chat files, never lost (#449 review):
+    # this chat's file is damaged too, so it alone is missing.
     (tmp_path / "imported" / "index.json").write_text("[]", encoding="utf-8")
     assert store.all() == []
 
@@ -188,8 +190,8 @@ def test_restore_backup_asks_first_and_imports_everything(tmp_path, monkeypatch)
     question = describe_plan(asked[0])
     assert question.startswith("Restore 2 chats from ") and "Claude 2" in question
     assert "read-only" in question and "Nothing is written" in question
-    counts = restore_backup(made, manifest, None, store=store, confirm=lambda plan: True)
-    assert counts["added"] == 2 and len(store.all()) == 2
+    outcome = restore_backup(made, manifest, None, store=store, confirm=lambda plan: True)
+    assert outcome.counts["added"] == 2 and len(store.all()) == 2
     # Nothing was left behind in the temporary folders, and the original
     # Claude folder wasn't touched.
     assert sorted(p.name for p in (claude / "projects").iterdir()) == ["C--one", "C--two"]
@@ -200,3 +202,97 @@ def test_describe_plan_handles_odd_dates_and_notes():
     text = describe_plan(RestorePlan("", "not a date", {"codex": 1}, ["Codex history could not be listed."]))
     assert text.startswith("Restore 1 chat from another computer? Codex 1.")
     assert "couldn't be read" in text
+
+
+def test_a_damaged_index_is_rebuilt_from_the_chat_files(tmp_path):
+    store = ImportedStore(tmp_path / "imported")
+    store.save(chat(native="a"), transcript())
+    store.save(chat(native="b"), transcript())
+    (tmp_path / "imported" / "index.json").write_text("{trunc", encoding="utf-8")
+    fresh = ImportedStore(tmp_path / "imported")
+    assert sorted(c.native_id for c in fresh.all()) == ["a", "b"]
+    # A save after that keeps both, plus the new one.
+    fresh.save(chat(native="c"), transcript())
+    assert sorted(c.native_id for c in ImportedStore(tmp_path / "imported").all()) == ["a", "b", "c"]
+
+
+def test_last_reply_comes_from_the_index_and_a_bad_file_hides_nothing(tmp_path):
+    store = ImportedStore(tmp_path / "imported")
+    store.save(chat(native="a"), transcript(2))
+    store.save(chat(native="b"), transcript(4))
+    provider = ImportedChats(store)
+    infos = provider.collect().sessions
+    for info in infos:
+        (tmp_path / "imported" / f"{info.key.split(':')[1]}.json").write_text("x", encoding="utf-8")
+    provider.fill_last_messages(infos)
+    assert sorted(i.last_message for i in infos) == ["message 1", "message 3"]
+    assert len(provider.collect().sessions) == 2
+
+
+def test_a_missing_or_damaged_chat_file_is_replaced_on_restore(tmp_path):
+    store = ImportedStore(tmp_path / "imported")
+    store.save(chat(), transcript())
+    key = store.all()[0].key
+    (tmp_path / "imported" / f"{key.split(':')[1]}.json").unlink()
+    assert store.save(chat(), transcript()) == "updated"
+    assert store.load(key).messages[0].text == "message 0"
+    # A new title from a newer backup with the same activity time updates it too.
+    assert store.save(chat(title="Renamed"), transcript()) == "updated"
+    assert store.get(key).title == "Renamed"
+
+
+def test_saves_without_the_index_are_listed_after_flush(tmp_path):
+    store = ImportedStore(tmp_path / "imported")
+    store.save(chat(native="a"), transcript(), write_index=False)
+    assert [c.native_id for c in store.all()] == ["a"]       # in memory already
+    store.flush()
+    assert [c.native_id for c in ImportedStore(tmp_path / "imported").all()] == ["a"]
+
+
+def test_nothing_readable_says_why():
+    from thechatplace.imported_store import RestoreOutcome, notes_text, restore_summary
+    outcome = RestoreOutcome({"added": 0, "updated": 0, "unchanged": 0, "failed": 0},
+                             ["Codex history could not be listed. Install Codex"])
+    text = restore_summary(outcome)
+    assert text.startswith("Nothing could be restored. Codex history could not be listed.")
+    assert notes_text(["a", "a", "b", "c", "d", "e"]) == "a. b. c. And 2 more."
+
+
+def test_a_stop_before_the_question_asks_nothing(tmp_path, monkeypatch):
+    from thechatplace.imported_store import restore_backup
+    claude = tmp_path / "claude"
+    project = claude / "projects" / "C--one"
+    project.mkdir(parents=True)
+    (project / "one-id.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in [user_text("Q", entrypoint="cli", cwd="/o"),
+                                                assistant_block(text_block("R"))]),
+        encoding="utf-8")
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path / "tcp")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+
+    def collector():
+        from thechatplace import backup as b
+        return b.Inventory("claude", "Claude", items=b.walk(claude, "claude/home"))
+    made = backup.create(dest, collectors=[collector]).path
+    manifest = backup.verify(made).manifest
+    stop = {"now": False}
+
+    def cancelled():
+        return stop["now"]
+    asked = []
+    store = ImportedStore(tmp_path / "imported")
+
+    # Stopped while the chats were being listed: the question isn't asked.
+    import thechatplace.backup_reader as reader_module
+    real = reader_module.BackupReader.sessions
+
+    def listing(self):
+        result = real(self)
+        stop["now"] = True
+        return result
+    monkeypatch.setattr(reader_module.BackupReader, "sessions", listing)
+    with pytest.raises(InterruptedError):
+        restore_backup(made, manifest, None, store=store, cancelled=cancelled,
+                       confirm=lambda plan: asked.append(plan) or True)
+    assert asked == [] and store.all() == []

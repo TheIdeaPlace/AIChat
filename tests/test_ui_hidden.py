@@ -14782,3 +14782,49 @@ def test_deleting_a_restored_chat_removes_only_its_copy(frame, env, monkeypatch)
     assert asked[0].startswith("Delete Restored copy, restored from a backup?")
     assert frame._imported.store.all() == [] and removed_own == []
     assert env["feedback"][-1] == "Deleted Restored copy."
+
+
+def test_restore_of_an_encrypted_backup_asks_for_its_passphrase(frame, env, monkeypatch,
+                                                                 passphrases):
+    from records import assistant_block, text_block, user_text
+    source = env["tmp"] / "enc-claude"
+    project = source / "projects" / "C--old"
+    project.mkdir(parents=True)
+    (project / "enc-native.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
+        user_text("Encrypted question", entrypoint="cli", cwd="/old"),
+        assistant_block(text_block("Encrypted reply"))]), encoding="utf-8")
+    dest = env["tmp"] / "enc-backups"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[lambda: backup.Inventory(
+        "claude", "Claude", items=backup.walk(source, "claude/home"))], passphrase="pw").path
+    _fake_open_dialog(monkeypatch, made)
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: wx.YES)
+    passphrases.answers = ["wrong", "pw"]
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    assert "is encrypted. Type its passphrase." in passphrases.messages[0]
+    assert passphrases.messages[1] == "That passphrase is wrong. Type it again."
+    assert frame._backup_job is None
+
+
+def test_restore_holds_the_backup_slot_while_it_checks(frame, env, monkeypatch, passphrases):
+    """#449 review: a scheduled backup must not start while a restore is
+    being checked, and cancelling the passphrase frees the slot."""
+    made = _backup_with_a_claude_chat(env)
+    encrypted = backup.create(env["tmp"] / "backups", filename="e.zip", passphrase="pw",
+                              collectors=[lambda: backup.Inventory(
+                                  "claude", "Claude",
+                                  items=backup.walk(env["tmp"] / "old-claude",
+                                                    "claude/home"))]).path
+    _fake_open_dialog(monkeypatch, encrypted)
+    started = []
+    monkeypatch.setattr(backup, "schedule_due", lambda *a, **k: True)
+    monkeypatch.setattr(backup, "run_scheduled", lambda **k: started.append(1))
+    passphrases.answers = [None]          # cancel at the passphrase
+    frame.on_restore_backup()
+    assert frame._backup_job is not None and frame._backup_job.get("restore")
+    frame._run_scheduled_backup_if_due()
+    assert started == []
+    assert pump(lambda: frame._backup_job is None, timeout=20)
+    assert env["feedback"][-1] == "Restore cancelled. Nothing was restored."
+    assert made.exists()

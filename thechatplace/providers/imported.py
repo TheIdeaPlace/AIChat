@@ -62,16 +62,16 @@ class ImportedChats:
         return StoredReader(self.store, session.key)
 
     def fill_last_messages(self, sessions) -> None:
-        """The Last message column (discovery asks when it's shown)."""
+        """The Last message column (discovery asks on every refresh while it's
+        shown): from the index, never by reading each history (#449 review)."""
         for info in sessions:
             info.last_message = self.last_reply(info)
 
     def last_reply(self, session: SessionInfo) -> str:
         try:
-            reply = self.store.load(session.key).last_reply()
-        except (LookupError, ValueError):
+            return self.store.last_reply(session.key)
+        except Exception:  # noqa: BLE001 - one chat mustn't hide the others
             return ""
-        return reply.first_line() if reply is not None else ""
 
     def capabilities(self, session: SessionInfo) -> SessionCapabilities:
         # Read only: no send, steer, fork, attachments, approvals or links.
