@@ -34,3 +34,23 @@ def test_kept_chat_keyboard_command_never_starts_continue_here(frame, env, monke
     frame._open = info
     frame._update_send_state()
     assert not frame.send_btn.IsEnabled() and not frame.stop_btn.IsEnabled()
+
+
+def test_missing_original_revokes_sending_even_before_discovery(frame, env):
+    from fake_env import add_transcript
+    from records import user_text, assistant_block, text_block
+    from thechatplace.providers.claude import keep_session
+    from thechatplace.history_keeper import keeper
+    info=frame.store.get('own-1').to_info()
+    path=add_transcript(env,info.cwd,info.cli_session_id,[
+        user_text('Invented question'),assistant_block(text_block('Invented reply'))])
+    keep_session(info);assert keeper().wait_idle()
+    path.unlink()
+    assert not frame._send_claude(info,'Must not be sent',[])
+    assert info.source==KEPT and not frame._runners
+    frame._open=info
+    frame.own_reply.Show()
+    frame._update_send_state()
+    assert not frame.own_reply.IsShown() and frame.desktop_reply.IsShown()
+    assert 'kept copy' in frame.desktop_note.GetValue()
+    assert not frame.continue_btn.IsShown() and not frame.reply_claude_btn.IsShown()
