@@ -346,6 +346,19 @@ def test_a_codex_send_that_fails_later_gives_the_message_back(tmp_path):
     assert w.reply_text.value == 'review this'
 
 
+def test_the_same_send_failure_again_adds_no_new_line(tmp_path):
+    """#448: every later hand-off met the same refusal and noted it again."""
+    w = Window(tmp_path)
+    for _ in range(3):
+        w.send('@Codex review this')
+        w.codex_sent[-1][2]('Codex is still working on a turn in this chat.', True)
+    notes = [n.text for n in w.saved.notes if n.text.startswith("Couldn't send")]
+    assert notes == ["Couldn't send to Codex: Codex is still working on a turn in this chat."]
+    w.send('@Codex review this')
+    w.codex_sent[-1][2]('Codex connection interrupted.', True)   # a different one is noted
+    assert w.saved.notes[-1].text == "Couldn't send to Codex: Codex connection interrupted."
+
+
 def test_a_conversation_not_loaded_puts_a_failed_message_on_the_clipboard(tmp_path):
     w = Window(tmp_path, codex_ready=False)
     w.send('@Codex review this')

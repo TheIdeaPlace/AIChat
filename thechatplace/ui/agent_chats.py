@@ -548,7 +548,11 @@ class AgentChats:
         reason = problem if isinstance(problem, str) and problem else "it couldn't be sent"
         conversation.paused, conversation.stop_reason = True, f"Couldn't send to {member.name}."
         conversation.next_index = index  # the text comes back without its @name
-        self._agent_note(conversation, f"Couldn't send to {member.name}: {reason}")
+        note = f"Couldn't send to {member.name}: {reason}"
+        # The same refusal again (each later hand-off meets it) adds no new
+        # line: 18 identical ones filled a conversation (#448).
+        if not conversation.notes or conversation.notes[-1].text != note:
+            self._agent_note(conversation, note)
         self._agent_after_change(conversation)
         body = text.partition(agents.SETUP_END)[2].strip() or text
         body = self._agent_keep_unseen(conversation_id, index, body)
