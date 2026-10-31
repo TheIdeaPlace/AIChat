@@ -153,7 +153,7 @@
   {
    "class": "TextCtrl",
    "name": "About scheduled backups",
-   "label": "Scheduled backups run while The Chat Place is open; one that's due when it starts runs then. They aren't encrypted, so choose a private folder, ideally on another drive or in a cloud folder. Older backups from this computer are removed to keep the number you choose, and only after a new one checks out.\r\n\r\nLast backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last scheduled backup failed on 31 October at 09:00: E:\\Backups isn't a folder that exists.",
+   "label": "Scheduled backups run while The Chat Place is open; one that came due while it was closed runs a couple of minutes after it starts. They aren't encrypted, so choose a private folder, ideally on another drive or in a cloud folder. Older unencrypted backups made on this computer, by hand or on schedule, are removed to keep the number you choose, and only after a new one checks out.\r\n\r\nLast backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last scheduled backup failed on 31 October at 09:00: E:\\Backups isn't a folder that exists.",
    "rect": [
     10,
     151,
@@ -168,7 +168,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Scheduled backups run while The Chat Place is open; one that's due when it starts runs then. They aren't encrypted, so choose a private folder, ideally on another drive or in a cloud folder. Older backups from this computer are removed to keep the number you choose, and only after a new one checks out.\n\nLast backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last scheduled backup faile"
+   "value": "Scheduled backups run while The Chat Place is open; one that came due while it was closed runs a couple of minutes after it starts. They aren't encrypted, so choose a private folder, ideally on another drive or in a cloud folder. Older unencrypted backups made on this computer, by hand or on schedule, are removed to keep the number you choose, and only after a new one checks out.\n\nLast backup: 30 "
   },
   {
    "class": "Button",
