@@ -9203,7 +9203,7 @@ def test_remote_control_wraps_but_says_all_it_says(frame):
         # Several lines, so it fits; the same words, so it's read the same.
         assert label.count("\n") >= 1
         assert " ".join(label.split()) == (
-            "Turn on Remote &Control for The Chat Place's sessions, so you can reach them "
+            "T&urn on Remote Control for The Chat Place's sessions, so you can reach them "
             "from claude.ai and other devices. Their conversations are copied to claude.ai "
             "and kept there. (File, Remote Control changes one session.)")
         box = dialog.remote_control
@@ -9232,11 +9232,11 @@ def test_settings_is_no_taller_than_its_controls(frame):
     dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
     try:
         dialog.Layout()
-        # The scrolling body (#231) is exactly as tall as the settings: no
-        # band of empty space above the buttons.
+        # There is no empty band above the buttons. A shorter body scrolls
+        # when the current display cannot fit all settings (#231, #438).
         body = dialog._body
         spare = body.GetClientSize().height - body.GetSizer().GetMinSize().height
-        assert 0 <= spare <= 2
+        assert spare <= 2
     finally:
         dialog.Destroy()
 
@@ -11518,8 +11518,10 @@ def test_settings_scroll_on_a_short_screen_and_keep_ok_and_cancel_whole(frame, m
         dialog.Destroy()
 
 
-def test_settings_that_fit_dont_scroll(frame):
+def test_settings_that_fit_dont_scroll(frame, monkeypatch):
+    from thechatplace.ui import dialogs
     from thechatplace.ui.dialogs import SettingsDialog
+    monkeypatch.setattr(dialogs, 'screen_area', lambda window: wx.Rect(0, 0, 1920, 1200))
     dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
     try:
         body = dialog._body
@@ -14548,14 +14550,42 @@ def backup_boxes(monkeypatch):
     return shown
 
 
-def test_back_up_now_writes_a_checked_backup_and_says_so(frame, env, monkeypatch, backup_boxes):
+@pytest.fixture
+def passphrases(monkeypatch):
+    """Answers for wx.PasswordEntryDialog, in order (None is Cancel); empty
+    by default, which is "no encryption" at Back Up Now (#435)."""
+    class Box:
+        answers = []
+        messages = []
+
+        def __init__(self, parent, message, caption=""):
+            Box.messages.append(message)
+            self.answer = Box.answers.pop(0) if Box.answers else ""
+
+        def GetChildren(self):
+            return []
+
+        def ShowModal(self):
+            return wx.ID_CANCEL if self.answer is None else wx.ID_OK
+
+        def GetValue(self):
+            return self.answer or ""
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(wx, "PasswordEntryDialog", Box)
+    return Box
+
+
+def test_back_up_now_writes_a_checked_backup_and_says_so(frame, env, monkeypatch, backup_boxes, passphrases):
     (env["tmp"] / "claude" / "projects" / "p").mkdir(parents=True, exist_ok=True)
     (env["tmp"] / "claude" / "projects" / "p" / "s.jsonl").write_text("x\n", encoding="utf-8")
     dest = env["tmp"] / "backups"
     dest.mkdir()
     dialog = _fake_dir_dialog(monkeypatch, dest)
     frame.on_back_up_now()
-    assert "isn't encrypted" in dialog.messages[-1]
+    assert "You can encrypt it next." in dialog.messages[-1]
+    assert "leave it empty for no encryption" in passphrases.messages[-1]
     assert "No backup made here yet." in dialog.messages[-1]
     assert env["feedback"][-1].startswith("Backing up.")
     assert pump(lambda: backup_boxes, timeout=20)
@@ -14570,13 +14600,13 @@ def test_back_up_now_writes_a_checked_backup_and_says_so(frame, env, monkeypatch
     assert "Last backup:" in dialog.messages[-1]
 
 
-def test_back_up_now_cancelled_at_the_folder_does_nothing(frame, env, monkeypatch, backup_boxes):
+def test_back_up_now_cancelled_at_the_folder_does_nothing(frame, env, monkeypatch, backup_boxes, passphrases):
     _fake_dir_dialog(monkeypatch, env["tmp"], answer=wx.ID_CANCEL)
     frame.on_back_up_now()
     assert getattr(frame, "_backup_job", None) is None and backup_boxes == []
 
 
-def test_back_up_now_into_a_copied_folder_explains(frame, env, monkeypatch, backup_boxes):
+def test_back_up_now_into_a_copied_folder_explains(frame, env, monkeypatch, backup_boxes, passphrases):
     inside = env["tmp"] / "claude" / "here"
     inside.mkdir(parents=True)
     _fake_dir_dialog(monkeypatch, inside)
@@ -14598,7 +14628,7 @@ def test_back_up_now_again_offers_to_stop(frame, env, monkeypatch):
     assert frame._backup_job is None
 
 
-def test_check_backup_good_and_damaged(frame, env, monkeypatch, backup_boxes):
+def test_check_backup_good_and_damaged(frame, env, monkeypatch, backup_boxes, passphrases):
     data = env["tmp"] / "appdata"
     data.mkdir(parents=True, exist_ok=True)
     (data / "groups.json").write_text("{}", encoding="utf-8")
@@ -14617,15 +14647,664 @@ def test_check_backup_good_and_damaged(frame, env, monkeypatch, backup_boxes):
     assert "has problems" in backup_boxes[-1]
 
 
-def test_check_backup_always_answers_even_if_checking_crashes(frame, env, monkeypatch, backup_boxes):
+def test_check_backup_always_answers_even_if_checking_crashes(frame, env, monkeypatch, backup_boxes, passphrases):
     junk = env["tmp"] / "x.zip"
     junk.write_bytes(b"x")
     _fake_open_dialog(monkeypatch, junk)
 
-    def crash(_path):
+    def crash(_path, **_kwargs):
         raise MemoryError("boom")   # not caught by verify itself
 
     monkeypatch.setattr(backup, "verify", crash)
     frame.on_check_backup()
     assert pump(lambda: backup_boxes, timeout=20)
     assert "Couldn't check it" in backup_boxes[-1]
+
+
+def test_back_up_now_with_a_passphrase_typed_twice(frame, env, monkeypatch, backup_boxes,
+                                                   passphrases):
+    (env["tmp"] / "appdata").mkdir(parents=True, exist_ok=True)
+    (env["tmp"] / "appdata" / "groups.json").write_text("{}", encoding="utf-8")
+    dest = env["tmp"] / "enc"
+    dest.mkdir()
+    _fake_dir_dialog(monkeypatch, dest)
+    # A mismatch first: told, and asked again.
+    passphrases.answers = ["one", "two", "secret", "secret"]
+    frame.on_back_up_now()
+    assert pump(lambda: any(t.startswith("Backed up") for t in backup_boxes), timeout=20)
+    assert backup_boxes[0] == "The two passphrases are different. Type it again."
+    assert "encrypted with your passphrase" in backup_boxes[-1]
+    made = next(dest.glob("TheChatPlace-backup-*.zip"))
+    assert backup.is_encrypted(made) and backup.verify(made, passphrase="secret").ok
+    assert "secret" not in (env["tmp"] / "appdata" / "backup.json").read_text(encoding="utf-8")
+
+
+def test_back_up_now_cancelled_at_the_passphrase_does_nothing(frame, env, monkeypatch,
+                                                              backup_boxes, passphrases):
+    _fake_dir_dialog(monkeypatch, env["tmp"])
+    passphrases.answers = [None]
+    frame.on_back_up_now()
+    assert getattr(frame, "_backup_job", None) is None and backup_boxes == []
+
+
+def test_check_backup_asks_for_the_passphrase_until_its_right(frame, env, monkeypatch,
+                                                              backup_boxes, passphrases):
+    (env["tmp"] / "appdata").mkdir(parents=True, exist_ok=True)
+    (env["tmp"] / "appdata" / "groups.json").write_text("{}", encoding="utf-8")
+    dest = env["tmp"] / "out"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[backup.tcp_inventory], passphrase="pw").path
+    _fake_open_dialog(monkeypatch, made)
+    passphrases.answers = ["wrong", "pw"]
+    frame.on_check_backup()
+    assert pump(lambda: backup_boxes, timeout=20)
+    assert "is encrypted. Type its passphrase." in passphrases.messages[0]
+    assert passphrases.messages[1] == "That passphrase is wrong. Type it again."
+    assert " is good: " in backup_boxes[-1] and "It's encrypted." in backup_boxes[-1]
+
+
+def test_check_backup_cancelled_at_the_passphrase(frame, env, monkeypatch, backup_boxes,
+                                                  passphrases):
+    (env["tmp"] / "appdata").mkdir(parents=True, exist_ok=True)
+    (env["tmp"] / "appdata" / "groups.json").write_text("{}", encoding="utf-8")
+    dest = env["tmp"] / "out"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[backup.tcp_inventory], passphrase="pw").path
+    _fake_open_dialog(monkeypatch, made)
+    passphrases.answers = [None]
+    said = []
+    monkeypatch.setattr(frame, "_status", said.append)
+    frame.on_check_backup()
+    assert pump(lambda: "Check Backup cancelled." in said, timeout=20)
+    assert backup_boxes == []
+
+
+# Backup Schedule (#437) ---------------------------------------------------------
+
+def test_backup_schedule_dialog_round_trip_and_folder_check(frame, env, monkeypatch, backup_boxes):
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: False)
+    dialog = BackupScheduleDialog(frame, backup.Schedule("off", "", 5), "No backup made here yet.")
+    try:
+        # Off: the folder and count are greyed out.
+        assert not dialog.folder.IsEnabled() and not dialog.keep.IsEnabled()
+        dialog.every.SetSelection(1)
+        dialog._sync()
+        assert dialog.folder.IsEnabled() and dialog.keep.IsEnabled()
+        assert "Encrypted, they need the passphrase" in dialog.about.GetValue()
+        assert "No backup made here yet." in dialog.about.GetValue()
+        # Saving with no folder is refused, with a reason.
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        dialog._on_save(event)
+        assert backup_boxes[-1] == "Choose a folder for the backups." and not skipped
+        dialog.folder.SetValue(str(env["tmp"]))
+        dialog.keep.SetValue(7)
+        dialog._on_save(event)
+        assert skipped
+        assert dialog.value() == backup.Schedule("daily", str(env["tmp"]), 7)
+    finally:
+        dialog.Destroy()
+
+
+def test_backup_schedule_saves_and_runs_a_due_backup_quietly(frame, env, monkeypatch,
+                                                            backup_boxes):
+    from thechatplace.ui import main_frame
+    (env["tmp"] / "appdata").mkdir(parents=True, exist_ok=True)
+    (env["tmp"] / "appdata" / "groups.json").write_text("{}", encoding="utf-8")
+    dest = env["tmp"] / "scheduled"
+    dest.mkdir()
+
+    class Fake:
+        def __init__(self, parent, schedule, status="", **kwargs):
+            Fake.status = status
+            self.new_passphrase = None
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def value(self):
+            return backup.Schedule("daily", str(dest), 3)
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(main_frame, "BackupScheduleDialog", Fake)
+    spoken = []
+    monkeypatch.setattr(frame, "_say", lambda text, *a, **k: spoken.append(text))
+    frame.on_backup_schedule()
+    assert env["feedback"][-1].startswith(f"Backing up every day to {dest}, keeping 3.")
+    assert backup.load_schedule().every == "daily"
+    # Never backed up, so one is due and starts straight away, in the background.
+    assert pump(lambda: spoken, timeout=20)
+    assert spoken[-1].startswith("Scheduled backup finished.")
+    assert backup_boxes == []        # no message box for a scheduled one
+    assert len(list(dest.glob("TheChatPlace-backup-*.zip"))) == 1
+    # Not due again straight after.
+    frame._run_scheduled_backup_if_due()
+    assert getattr(frame, "_backup_job", None) is None
+
+
+def test_a_failing_scheduled_backup_is_said_once_a_day(frame, env, monkeypatch):
+    backup.save_schedule(backup.Schedule("daily", str(env["tmp"] / "unplugged"), 3))
+    spoken, status = [], []
+    monkeypatch.setattr(frame, "_say", lambda text, *a, **k: spoken.append(text))
+    monkeypatch.setattr(frame, "_status", status.append)
+    frame._run_scheduled_backup_if_due()
+    assert pump(lambda: spoken, timeout=20)
+    assert spoken[-1].startswith("The scheduled backup didn't work:")
+    assert "isn't a folder" in spoken[-1]
+    # The next failure within a day goes to the status bar only.
+    state = backup.load_state()
+    state.pop("schedule_tried", None)
+    backup._save_state(state)
+    frame._run_scheduled_backup_if_due()
+    assert pump(lambda: any("didn't work" in s for s in status), timeout=20)
+    assert len(spoken) == 1
+
+
+def test_scheduled_backup_doesnt_start_while_one_is_running(frame, env, monkeypatch):
+    backup.save_schedule(backup.Schedule("daily", str(env["tmp"]), 3))
+    frame._backup_job = {"cancel": False, "progress": (0, 0), "said": 0}
+    started = []
+    monkeypatch.setattr(backup, "run_scheduled", lambda **k: started.append(1))
+    frame._run_scheduled_backup_if_due()
+    assert started == []
+    frame._backup_job = None
+
+
+def test_backup_schedule_asks_about_a_folder_on_the_same_disk(frame, env, monkeypatch):
+    """#443 review: said before saving, as a question; No goes back to the folder."""
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: True)
+    asked = []
+    answer = [wx.NO]
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or answer[0])
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5))
+    try:
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        dialog._on_save(event)
+        assert "same disk" in asked[-1] and not skipped
+        answer[0] = wx.YES
+        dialog._on_save(event)
+        assert skipped
+    finally:
+        dialog.Destroy()
+
+
+def test_scheduled_backup_progress_reaches_the_status_bar(frame, env, monkeypatch):
+    backup.save_schedule(backup.Schedule("daily", str(env["tmp"]), 3))
+    status = []
+    monkeypatch.setattr(frame, "_status", status.append)
+    monkeypatch.setattr(frame, "_say", lambda *a, **k: None)
+
+    def fake_run(cancelled=None, progress=None, **_kwargs):
+        progress(0, 4, "a")
+        time.sleep(3.1)   # the status bar is updated every few seconds, not every file
+        progress(2, 4, "b")
+        raise InterruptedError("Backup cancelled.")
+
+    monkeypatch.setattr(backup, "run_scheduled", fake_run)
+    frame._run_scheduled_backup_if_due()
+    assert pump(lambda: any("50%" in s for s in status), timeout=20)
+    assert pump(lambda: frame._backup_job is None, timeout=20)
+    assert status[-1] == "Scheduled backup stopped. It will try again later."
+
+
+def test_quitting_during_a_scheduled_backup_says_so(frame, env, monkeypatch):
+    frame._backup_job = {"cancel": False, "progress": (0, 0), "said": 0, "scheduled": True,
+                         "thread": threading.Thread(target=lambda: None)}
+    frame._backup_job["thread"].start()
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.NO)
+
+    class Close:
+        vetoed = False
+
+        def CanVeto(self):
+            return True
+
+        def Veto(self):
+            Close.vetoed = True
+
+        def Skip(self):
+            pass
+    monkeypatch.setattr(frame, "_running_turn_count", lambda: 0)
+    monkeypatch.setattr(frame, "_relay_waiting_text", lambda: "")
+    frame._on_close(Close())
+    assert asked == ["A scheduled backup is running. Quit anyway? It will be stopped, "
+                     "and nothing saved."]
+    assert Close.vetoed
+    frame._backup_job = None
+
+
+# Restore from Backup (#436) ------------------------------------------------------
+
+def _backup_with_a_claude_chat(env, title_words="Restored question"):
+    from records import assistant_block, text_block, user_text
+    source = env["tmp"] / "old-claude"
+    project = source / "projects" / "C--old"
+    project.mkdir(parents=True)
+    records = [user_text(title_words, entrypoint="cli", cwd="/old/workspace"),
+               assistant_block(text_block("Restored reply"))]
+    (project / "old-native-id.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    dest = env["tmp"] / "backups"
+    dest.mkdir(exist_ok=True)
+
+    def collector():
+        return backup.Inventory("claude", "Claude", items=backup.walk(source, "claude/home"))
+    return backup.create(dest, collectors=[collector]).path
+
+
+def _fake_chooser(monkeypatch, answer=None, pick=None):
+    """Restore's chooser (#450) without a window: records what it's shown and
+    answers OK with every chat (or ``pick``), or ``answer``."""
+    from thechatplace.ui import main_frame
+
+    class Chooser:
+        headings, rows = [], []
+
+        def __init__(self, parent, heading, rows, say=None):
+            Chooser.headings.append(heading)
+            Chooser.rows.append(list(rows))
+            self._count = len(rows)
+
+        def ShowModal(self):
+            return wx.ID_OK if answer is None else answer
+
+        def chosen_indexes(self):
+            return list(range(self._count)) if pick is None else pick
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(main_frame, "RestoreChooserDialog", Chooser)
+    return Chooser
+
+
+def test_restore_from_backup_asks_then_lists_read_only_chats(frame, env, monkeypatch):
+    from thechatplace.providers.imported import IMPORTED
+    made = _backup_with_a_claude_chat(env)
+    _fake_open_dialog(monkeypatch, made)
+    chooser = _fake_chooser(monkeypatch)
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame.on_restore_backup()
+    # It ends with a message box, as Back Up Now and Check Backup do.
+    assert pump(lambda: any(f.startswith("Restore finished") for f in asked), timeout=30)
+    assert frame._status_latest.startswith("Restore finished")   # kept to read back
+    heading = chooser.headings[0]
+    assert heading.startswith("Restore 1 chat from ") and "Claude 1" in heading
+    assert "read-only" in heading
+    assert chooser.rows[0][0].startswith("Restored question, Claude, workspace")
+    assert frame._backup_job is None
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: any(frame._current_info(k) is not None
+                            and frame._current_info(k).provider == IMPORTED
+                            for k in frame._list_keys), timeout=20)
+    key = next(k for k in frame._list_keys if frame._current_info(k).provider == IMPORTED)
+    info = frame._current_info(key)
+    assert info.provider_label == "Claude" and info.kind_label == "imported chat"
+    frame.session_list.SetSelection(frame._list_keys.index(key))
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded, timeout=20)
+    assert "restored from a backup" in frame.desktop_note.GetValue()
+    assert any("Restored reply" in m.text for m in frame._chat_messages)
+    # Nothing a restored chat can't do is offered or reachable.
+    menu, actions = frame._session_menu()
+    labels = {menu.FindItemById(i).GetItemLabelText(): menu.FindItemById(i).IsEnabled()
+              for i in actions}
+    menu.Destroy()
+    assert not labels.get("Copy Session Link...", False)
+    assert not labels.get("Remote Control...", False)
+    assert "Continue Here..." not in labels
+    assert "Delete Session Permanently..." in labels
+    frame.on_continue_here()
+    assert env["feedback"][-1].endswith("was restored from a backup: it's read-only.")
+    # Restoring the same backup again adds nothing.
+    asked.clear()
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in asked), timeout=30)
+    assert "1 already here" in asked[-1]
+
+
+def test_restore_answered_no_restores_nothing(frame, env, monkeypatch):
+    made = _backup_with_a_claude_chat(env)
+    _fake_open_dialog(monkeypatch, made)
+    _fake_chooser(monkeypatch, answer=wx.ID_CANCEL)
+    frame.on_restore_backup()
+    assert pump(lambda: env["feedback"][-1] == "Restore cancelled. Nothing was restored.",
+                timeout=30)
+    assert frame._imported.store.all() == []
+
+
+def test_restore_of_a_damaged_backup_says_so(frame, env, monkeypatch):
+    junk = env["tmp"] / "junk.zip"
+    junk.write_bytes(b"not a zip")
+    _fake_open_dialog(monkeypatch, junk)
+    shown = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: shown.append(text) or wx.OK)
+    frame.on_restore_backup()
+    assert pump(lambda: shown, timeout=20)
+    assert "has problems" in shown[-1] and "Nothing was restored." in shown[-1]
+
+
+def test_deleting_a_restored_chat_removes_only_its_copy(frame, env, monkeypatch):
+    from thechatplace.imported_store import ImportedChat, chat_key
+    from thechatplace.providers.imported import IMPORTED
+    from thechatplace.transcript import ASSISTANT, ChatMessage, Transcript
+    # A restored chat whose native id is also one of this computer's own.
+    native = "same-native-id"
+    frame._imported.store.save(
+        ImportedChat(chat_key("claude", native, "other-pc"), "claude", native, "other-pc",
+                     "Other PC", "Restored copy", last_activity_ms=1),
+        Transcript(messages=[ChatMessage(ASSISTANT, "hi")]))
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: any(frame._current_info(k) is not None
+                            and frame._current_info(k).provider == IMPORTED
+                            for k in frame._list_keys), timeout=20)
+    key = next(k for k in frame._list_keys if frame._current_info(k).provider == IMPORTED)
+    frame.session_list.SetSelection(frame._list_keys.index(key))
+    removed_own = []
+    monkeypatch.setattr(frame.store, "remove", lambda *a, **k: removed_own.append(a))
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame.on_delete_permanently()
+    assert asked[0].startswith("Delete Restored copy, restored from a backup?")
+    assert frame._imported.store.all() == [] and removed_own == []
+    assert env["feedback"][-1] == "Deleted Restored copy."
+
+
+def test_restore_of_an_encrypted_backup_asks_for_its_passphrase(frame, env, monkeypatch,
+                                                                 passphrases):
+    from records import assistant_block, text_block, user_text
+    source = env["tmp"] / "enc-claude"
+    project = source / "projects" / "C--old"
+    project.mkdir(parents=True)
+    (project / "enc-native.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
+        user_text("Encrypted question", entrypoint="cli", cwd="/old"),
+        assistant_block(text_block("Encrypted reply"))]), encoding="utf-8")
+    dest = env["tmp"] / "enc-backups"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[lambda: backup.Inventory(
+        "claude", "Claude", items=backup.walk(source, "claude/home"))], passphrase="pw").path
+    _fake_open_dialog(monkeypatch, made)
+    _fake_chooser(monkeypatch)
+    passphrases.answers = ["wrong", "pw"]
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
+    assert "is encrypted. Type its passphrase." in passphrases.messages[0]
+    assert passphrases.messages[1] == "That passphrase is wrong. Type it again."
+    assert frame._backup_job is None
+
+
+def test_restore_holds_the_backup_slot_while_it_checks(frame, env, monkeypatch, passphrases):
+    """#449 review: a scheduled backup must not start while a restore is
+    being checked, and cancelling the passphrase frees the slot."""
+    made = _backup_with_a_claude_chat(env)
+    encrypted = backup.create(env["tmp"] / "backups", filename="e.zip", passphrase="pw",
+                              collectors=[lambda: backup.Inventory(
+                                  "claude", "Claude",
+                                  items=backup.walk(env["tmp"] / "old-claude",
+                                                    "claude/home"))]).path
+    _fake_open_dialog(monkeypatch, encrypted)
+    started = []
+    monkeypatch.setattr(backup, "schedule_due", lambda *a, **k: True)
+    monkeypatch.setattr(backup, "run_scheduled", lambda **k: started.append(1))
+    passphrases.answers = [None]          # cancel at the passphrase
+    frame.on_restore_backup()
+    assert frame._backup_job is not None and frame._backup_job.get("restore")
+    frame._run_scheduled_backup_if_due()
+    assert started == []
+    assert pump(lambda: frame._backup_job is None, timeout=20)
+    assert env["feedback"][-1] == "Restore cancelled. Nothing was restored."
+    assert made.exists()
+
+
+
+# Encrypted scheduled backups (#442) ------------------------------------------------
+
+def test_backup_schedule_asks_for_a_passphrase_when_encrypting(frame, env, monkeypatch,
+                                                               backup_boxes, passphrases):
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: False)
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5),
+                                  can_encrypt=True, has_passphrase=False)
+    try:
+        assert dialog.encrypt.IsEnabled() and not dialog.change_passphrase.IsEnabled()
+        dialog.encrypt.SetValue(True)
+        dialog._sync()
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        passphrases.answers = ["one", "two", "pw", "pw"]   # a mismatch first
+        dialog._on_save(event)
+        assert skipped and dialog.new_passphrase == "pw"
+        assert backup_boxes == ["The two passphrases are different. Type it again."]
+        assert dialog.value().encrypt is True
+        assert dialog.change_passphrase.IsEnabled()
+        # Cancel at the passphrase keeps the dialog open.
+        dialog.new_passphrase = None
+        passphrases.answers = [None]
+        skipped.clear()
+        dialog._on_save(event)
+        assert not skipped
+    finally:
+        dialog.Destroy()
+
+
+# Restore: choose chats, and their groups (#450) ---------------------------------------
+
+def test_restore_chooser_switches_rows_by_space_and_names_its_state(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import RestoreChooserDialog
+    said = []
+    dialog = RestoreChooserDialog(frame, "Restore 3 chats from PC?", ["A, Claude", "B, Codex",
+                                                                    "C, Claude"], say=said.append)
+    try:
+        assert dialog.list.GetString(0) == "Restore: A, Claude"
+        assert dialog.restore.GetLabel().replace("&", "") == "Restore 3 Chats"
+        dialog.toggle(1)
+        assert dialog.list.GetString(1) == "Skip: B, Codex"
+        assert said[-1] == "Skip, 2 of 3 chosen."
+        assert dialog.chosen_indexes() == [0, 2]
+        dialog._set_all(False)
+        assert dialog.chosen_indexes() == [] and said[-1] == "0 of 3 chosen."
+        assert dialog.restore.GetLabel().replace("&", "") == "Restore 0 Chats"
+        shown = []
+        monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: shown.append(text) or wx.OK)
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        dialog._on_restore(event)
+        assert shown and not skipped
+        dialog._set_all(True)
+        dialog._on_restore(event)
+        assert skipped
+        # Space on the list switches the selected row.
+        dialog.list.SetSelection(2)
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.list))
+        key = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        key.SetKeyCode(wx.WXK_SPACE)
+        dialog._on_list_key(key)
+        assert dialog.list.GetString(2) == "Skip: C, Claude"
+        assert dialog.list.GetName() == "Chats"
+        # Enter on the list presses Restore, never switching the row (GTK
+        # activates a row on Enter): with none chosen, it says so.
+        dialog._set_all(False)
+        enter = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        enter.SetKeyCode(wx.WXK_RETURN)
+        dialog._on_list_key(enter)
+        assert len(shown) == 2 and dialog.chosen_indexes() == []
+    finally:
+        dialog.Destroy()
+
+
+def test_backup_schedule_without_a_protected_store_cant_encrypt(frame, env):
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5, True),
+                                  can_encrypt=False)
+    try:
+        # Disabled, but an encrypted schedule stays encrypted (#452 review).
+        assert not dialog.encrypt.IsEnabled() and dialog.value().encrypt
+        assert "install secret-tool" in dialog.about.GetValue()
+    finally:
+        dialog.Destroy()
+
+
+def test_saving_an_encrypted_schedule_keeps_the_passphrase_first(frame, env, monkeypatch,
+                                                                 backup_boxes):
+    from thechatplace.ui import main_frame
+    dest = env["tmp"] / "enc-sched"
+    dest.mkdir()
+    kept = []
+
+    class Fake:
+        def __init__(self, parent, schedule, status="", **kwargs):
+            self.new_passphrase = "pw"
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def value(self):
+            return backup.Schedule("weekly", str(dest), 3, True)
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(main_frame, "BackupScheduleDialog", Fake)
+    monkeypatch.setattr(platform_paths, "backup_secret_available", lambda: True)
+    monkeypatch.setattr(platform_paths, "load_backup_secret", lambda: kept[-1] if kept else None)
+    monkeypatch.setattr(platform_paths, "save_backup_secret", kept.append)
+    monkeypatch.setattr(frame, "_run_scheduled_backup_if_due", lambda: None)
+    frame.on_backup_schedule()
+    assert kept == ["pw"] and backup.load_schedule().encrypt is True
+    assert env["feedback"][-1].startswith("Backing up every week, encrypted to ")
+    assert "enc-sched" in env["feedback"][-1]
+    assert "pw" not in (env["tmp"] / "appdata" / "backup.json").read_text(encoding="utf-8")
+    # The store refusing leaves the schedule as it was.
+    def refuse(_text):
+        raise OSError("no keychain")
+    monkeypatch.setattr(platform_paths, "save_backup_secret", refuse)
+    before = backup.load_schedule()
+    frame.on_backup_schedule()
+    assert "Couldn't keep the passphrase" in backup_boxes[-1]
+    assert backup.load_schedule() == before
+
+
+def test_an_empty_scheduled_passphrase_is_asked_for_again(frame, env, monkeypatch,
+                                                           backup_boxes, passphrases):
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5),
+                                  can_encrypt=True)
+    try:
+        passphrases.answers = ["", "pw", "pw"]
+        assert dialog._ask_passphrase() is True and dialog.new_passphrase == "pw"
+        assert backup_boxes == ["Type a passphrase, or uncheck Encrypt."]
+        passphrases.answers = ["x", "x"]
+        dialog._ask_passphrase(changing=True)
+        assert passphrases.messages[-2].startswith("Backups already made keep the passphrase")
+    finally:
+        dialog.Destroy()
+
+
+def test_restore_brings_back_groups_and_hidden_for_chosen_chats(frame, env, monkeypatch):
+    from records import assistant_block, text_block, user_text
+    from thechatplace.groups import GroupStore
+    from thechatplace.hidden import HiddenStore
+    source = env["tmp"] / "grp-claude"
+    data = env["tmp"] / "grp-tcp"
+    for name in ("one", "two"):
+        project = source / "projects" / f"C--{name}"
+        project.mkdir(parents=True)
+        (project / f"{name}-id.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
+            user_text(f"Question {name}", entrypoint="cli", cwd=f"/old/{name}"),
+            assistant_block(text_block("Reply"))]), encoding="utf-8")
+    # The old computer's Chat Place had "one" in a group and "two" hidden.
+    data.mkdir()
+    old_groups = GroupStore(data / "groups.json")
+    old_groups.create("Old work")
+    old_groups.add("Old work", "terminal:one-id")
+    HiddenStore(data / "hidden.json").hide("terminal:two-id")
+    dest = env["tmp"] / "grp-backups"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[
+        lambda: backup.Inventory("claude", "Claude", items=backup.walk(source, "claude/home")),
+        lambda: backup.Inventory("thechatplace", "TCP", items=backup.walk(data, "thechatplace/data"))]).path
+    _fake_open_dialog(monkeypatch, made)
+    chooser = _fake_chooser(monkeypatch)
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
+    keys = {c.native_id: c.key for c in frame._imported.store.all()}
+    assert set(keys) == {"one-id", "two-id"}
+    assert frame.groups.groups_of(keys["one-id"]) == ["Old work"]
+    assert keys["two-id"] in frame.hidden and keys["one-id"] not in frame.hidden
+
+
+def test_restore_of_only_the_chosen_chats(frame, env, monkeypatch):
+    made = _backup_with_a_claude_chat(env)
+    _fake_open_dialog(monkeypatch, made)
+    _fake_chooser(monkeypatch, pick=[])          # chose none: nothing restored
+    frame.on_restore_backup()
+    assert pump(lambda: env["feedback"][-1] == "Restore cancelled. Nothing was restored.",
+                timeout=30)
+    assert frame._imported.store.all() == []
+
+
+
+@msaa
+def test_restore_chooser_list_is_named_for_screen_readers(frame):
+    from thechatplace.ui.dialogs import RestoreChooserDialog
+    dialog = RestoreChooserDialog(frame, "Restore 1 chat?", ["A, Claude"])
+    try:
+        status, name = dialog.list.GetAccessible().GetName(0)
+        assert name == "Chats"
+    finally:
+        dialog.Destroy()
+
+
+def test_an_encrypted_schedule_stays_encrypted_when_the_store_is_unavailable(frame, env):
+    """#452 review: saving never quietly turns encryption off."""
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5, True),
+                                  can_encrypt=False)
+    try:
+        assert dialog.value().encrypt is True
+    finally:
+        dialog.Destroy()
+
+
+def test_a_second_restore_doesnt_put_back_what_you_changed(frame, env, monkeypatch):
+    from records import assistant_block, text_block, user_text
+    from thechatplace.groups import GroupStore
+    from thechatplace.hidden import HiddenStore
+    source = env["tmp"] / "again-claude"
+    data = env["tmp"] / "again-tcp"
+    project = source / "projects" / "C--one"
+    project.mkdir(parents=True)
+    (project / "again-id.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
+        user_text("Question", entrypoint="cli", cwd="/old/one"),
+        assistant_block(text_block("Reply"))]), encoding="utf-8")
+    data.mkdir()
+    old = GroupStore(data / "groups.json")
+    old.create("Old work")
+    old.add("Old work", "terminal:again-id")
+    HiddenStore(data / "hidden.json").hide("terminal:again-id")
+    dest = env["tmp"] / "again-backups"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[
+        lambda: backup.Inventory("claude", "Claude", items=backup.walk(source, "claude/home")),
+        lambda: backup.Inventory("thechatplace", "TCP", items=backup.walk(data, "thechatplace/data"))]).path
+    _fake_open_dialog(monkeypatch, made)
+    _fake_chooser(monkeypatch)
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
+    assert "1 of them hidden, as it was" in [f for f in env["boxes"] if f.startswith("Restore finished")][-1]
+    key = frame._imported.store.all()[0].key
+    # You take it out of the group and unhide it; restoring again leaves that alone.
+    frame.groups.remove("Old work", key)
+    frame.hidden.show(key)
+    env["boxes"].clear()
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
+    assert frame.groups.groups_of(key) == [] and key not in frame.hidden

@@ -1133,7 +1133,7 @@ class SettingsDialog(wx.Dialog):
         # edge (#176). A check box's label is its spoken name, so screen
         # readers hear the same sentence as before.
         self.remote_control = wx.CheckBox(body, label=_wrapped(
-            self, "Turn on Remote &Control for The Chat Place's sessions, so you can reach "
+            self, "T&urn on Remote Control for The Chat Place's sessions, so you can reach "
                   "them from claude.ai and other devices. Their conversations are copied to "
                   "claude.ai and kept there. (File, Remote Control changes one session.)",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
@@ -1173,7 +1173,7 @@ class SettingsDialog(wx.Dialog):
         if (speech.copilot_enabled or platform_paths.copilot_has_sessions()
                 or platform_paths.find_copilot() is not None):
             self.copilot_enabled = wx.CheckBox(body, label=_wrapped(
-                self, "Include GitHub C&opilot CLI chats (preview; restart required)",
+                self, "&Include GitHub Copilot CLI chats (preview; restart required)",
                 self.GetClientSize().width - 20 - _check_box_glyph(self)))
             self.copilot_enabled.SetValue(speech.copilot_enabled)
             outer.Add(self.copilot_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -1195,6 +1195,19 @@ class SettingsDialog(wx.Dialog):
             body, label="&Tell me when an update has been installed, with a link to what's new")
         self.update_notice.SetValue(speech.update_installed_notice)
         outer.Add(self.update_notice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        from ..retention import describe as describe_retention
+        outer.Add(wx.StaticText(body, label="Histor&y retention and kept copies:"),
+                  0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        self.retention = wx.TextCtrl(body, value=describe_retention(),
+                                    size=(-1, self.FromDIP(110)),
+                                    style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.retention, "History retention and kept copies")
+        self.retention.SetInsertionPoint(0)
+        outer.Add(self.retention, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        self.retention_settings = wx.Button(body, label="Open Claude's retention settings")
+        self.retention_settings.Bind(wx.EVT_BUTTON, self._open_retention_settings)
+        outer.Add(self.retention_settings, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         buttons = wx.StdDialogButtonSizer()
         ok = wx.Button(self, wx.ID_OK)
@@ -1222,6 +1235,19 @@ class SettingsDialog(wx.Dialog):
         self.engine_choice.Bind(wx.EVT_CHOICE, lambda e: self._update_rate_state())
         self._update_rate_state()
         wx.CallAfter(self.level.SetFocus)
+
+    def _open_retention_settings(self, _event):
+        path = platform_paths.claude_home() / 'settings.json'
+        if not path.is_file():
+            wx.MessageBox("Claude's settings.json does not exist yet. Set cleanupPeriodDays "
+                          "in Claude Code's user settings; The Chat Place never creates or edits it.",
+                          "History Retention", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        try:
+            platform_paths.edit_file(path)
+        except OSError:
+            wx.MessageBox("Couldn't open Claude's settings in your editor.",
+                          "History Retention", wx.OK | wx.ICON_ERROR, self)
 
     def _on_clear_recent(self, clear_recent):
         if wx.MessageBox("Clear all of New Session's recent folders? Each comes back when a "
@@ -4375,3 +4401,297 @@ class FindResultsDialog(wx.Dialog):
         if 0 <= index < len(self._matches):
             self.chosen = self._matches[index]
             _end_modal(self, wx.ID_OK)
+
+
+class BackupScheduleDialog(wx.Dialog):
+    """File, Backup Schedule (#437): back up by itself every day or week to
+    a folder, keeping so many, encrypted if you like with a passphrase the
+    system keeps for it (#442). Says plainly that it runs only while The
+    Chat Place is open."""
+
+    def __init__(self, parent, schedule, status: str = "", *, can_encrypt: bool = True,
+                 has_passphrase: bool = False):
+        from .. import backup
+        super().__init__(parent, title="Backup Schedule", size=dialog_size(parent, 620, 500),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._backup = backup
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(self, label="&Back up automatically:"), 0, wx.LEFT | wx.TOP, 8)
+        self.every = wx.Choice(self, choices=[backup.SCHEDULE_LABELS[s] for s in backup.SCHEDULES])
+        self.every.SetSelection(backup.SCHEDULES.index(schedule.every))
+        set_accessible_name(self.every, "Back up automatically")
+        self.every.Bind(wx.EVT_CHOICE, lambda e: self._sync())
+        sizer.Add(self.every, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+
+        self.folder_label = wx.StaticText(self, label="&Folder for the backups:")
+        sizer.Add(self.folder_label, 0, wx.LEFT | wx.TOP, 8)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.folder = wx.TextCtrl(self, value=schedule.folder)
+        set_accessible_name(self.folder, "Folder for the backups")
+        row.Add(self.folder, 1, wx.RIGHT, 6)
+        self.browse = wx.Button(self, label="B&rowse...")
+        self.browse.Bind(wx.EVT_BUTTON, self._on_browse)
+        row.Add(self.browse, 0)
+        sizer.Add(row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+
+        self.keep_label = wx.StaticText(self, label="Backups to &keep:")
+        sizer.Add(self.keep_label, 0, wx.LEFT | wx.TOP, 8)
+        self.keep = wx.SpinCtrl(self, min=1, max=backup.MAX_KEEP, initial=schedule.keep)
+        set_accessible_name(self.keep, "Backups to keep")
+        sizer.Add(self.keep, 0, wx.LEFT | wx.RIGHT, 8)
+
+        # Encrypted with a passphrase the system keeps (#442): typed once
+        # here, then used by every scheduled backup with nobody there.
+        self._can_encrypt, self._has_passphrase = can_encrypt, has_passphrase
+        # Encrypted already but can't be here now (secret-tool gone, say):
+        # kept on, so scheduled backups fail loudly rather than quietly
+        # going unencrypted (#452 review).
+        self._was_encrypted = bool(schedule.encrypt)
+        self.new_passphrase = None
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.encrypt = wx.CheckBox(self, label="&Encrypt them with a passphrase kept on this computer")
+        self.encrypt.SetValue(bool(schedule.encrypt) and can_encrypt)
+        self.encrypt.Bind(wx.EVT_CHECKBOX, lambda e: self._sync())
+        row.Add(self.encrypt, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.change_passphrase = wx.Button(self, label="Change &Passphrase...")
+        self.change_passphrase.Bind(wx.EVT_BUTTON, lambda e: self._ask_passphrase(changing=True))
+        row.Add(self.change_passphrase, 0)
+        sizer.Add(row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+
+        about = ("Scheduled backups run while The Chat Place is open; one that came due while "
+                 "it was closed runs a couple of minutes after it starts. Choose a private "
+                 "folder, ideally on another drive or in a cloud folder. Older backups this "
+                 "computer made are removed to keep the number you choose, and only after a new "
+                 "one checks out.\n\nEncrypted, they need the passphrase to open, but the "
+                 "passphrase is kept on this computer for the schedule to use: anyone signed in "
+                 "as you here could make or open them. If you forget it, the backups can't be "
+                 "opened anywhere else.")
+        if not can_encrypt:
+            about += ("\n\nThis computer can't keep a passphrase protected, so scheduled "
+                      "backups can't be encrypted here (on Linux, install secret-tool).")
+        text = about + ("\n\n" + status if status else "")
+        # Read-only text a screen reader can review by line, as Settings'
+        # Speech problem box is.
+        self.about = wx.TextCtrl(self, value=text,
+                                 style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.about, "About scheduled backups")
+        self.about.SetMinSize(dip(self, -1, 110))
+        sizer.Add(self.about, 1, wx.EXPAND | wx.ALL, 8)
+
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        save = wx.Button(self, wx.ID_OK, "&Save")
+        save.SetDefault()
+        save.Bind(wx.EVT_BUTTON, self._on_save)
+        buttons.Add(save, 0, wx.RIGHT, 6)
+        buttons.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
+        sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        self._sync()
+        wx.CallAfter(self.every.SetFocus)
+
+    def _sync(self):
+        on = self.every.GetSelection() != 0
+        for control in (self.folder_label, self.folder, self.browse, self.keep_label, self.keep):
+            control.Enable(on)
+        self.encrypt.Enable(on and self._can_encrypt)
+        self.change_passphrase.Enable(on and self._can_encrypt and self.encrypt.GetValue()
+                                      and (self._has_passphrase or self.new_passphrase is not None))
+
+    def _ask_one(self, message, name):
+        dialog = wx.PasswordEntryDialog(self, message, "Backup Schedule")
+        for child in dialog.GetChildren():
+            if isinstance(child, wx.TextCtrl):
+                set_accessible_name(child, name)
+        try:
+            return dialog.GetValue() if dialog.ShowModal() == wx.ID_OK else None
+        finally:
+            dialog.Destroy()
+
+    def _ask_passphrase(self, changing: bool = False) -> bool:
+        """The scheduled backups' passphrase, typed twice. False if cancelled.
+        An empty one is asked for again, with why (#452 review)."""
+        while True:
+            note = ("Backups already made keep the passphrase they were made with: keep the old "
+                    "one until they've been removed.\n" if changing else "")
+            first = self._ask_one(
+                note + "If you forget it, these backups can't be opened anywhere else.\n"
+                "Passphrase for scheduled backups:", "Passphrase for scheduled backups")
+            if first is None:
+                return False
+            if not first:
+                wx.MessageBox("Type a passphrase, or uncheck Encrypt.", "Backup Schedule",
+                              wx.OK | wx.ICON_INFORMATION, self)
+                continue
+            again = self._ask_one("Type the passphrase again:", "Passphrase again")
+            if again is None:
+                return False
+            if again == first:
+                self.new_passphrase = first
+                self._sync()
+                return True
+            wx.MessageBox("The two passphrases are different. Type it again.", "Backup Schedule",
+                          wx.OK | wx.ICON_WARNING, self)
+
+    def _on_browse(self, _event):
+        start = self.folder.GetValue()
+        dialog = wx.DirDialog(self, "Scheduled backups go in which folder?",
+                              defaultPath=start if os.path.isdir(start) else "",
+                              style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
+        try:
+            if dialog.ShowModal() == wx.ID_OK:
+                self.folder.SetValue(dialog.GetPath())
+        finally:
+            dialog.Destroy()
+        self.folder.SetFocus()
+
+    def _on_save(self, event):
+        if self.every.GetSelection() != 0:
+            folder = self.folder.GetValue().strip()
+            problem = self._backup.schedule_folder_problem(folder)
+            if problem:
+                wx.MessageBox(problem, "Backup Schedule", wx.OK | wx.ICON_WARNING, self)
+                self.folder.SetFocus()
+                return
+            warning = self._backup.schedule_folder_warning(folder)
+            if warning and wx.MessageBox(warning, "Backup Schedule",
+                                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+                                         self) != wx.YES:
+                self.folder.SetFocus()
+                return
+            # Encrypting with no passphrase kept yet: ask for one now.
+            if (self.encrypt.GetValue() and not self._has_passphrase
+                    and self.new_passphrase is None and not self._ask_passphrase()):
+                self.encrypt.SetFocus()
+                return
+        event.Skip()
+
+    def _on_key(self, event):
+        if press_focused_button_on_a_mac(event):
+            return
+        event.Skip()
+
+    def value(self):
+        return self._backup.Schedule(self._backup.SCHEDULES[self.every.GetSelection()],
+                                     self.folder.GetValue().strip(), self.keep.GetValue(),
+                                     bool(self.encrypt.GetValue() and self._can_encrypt)
+                                     or (self._was_encrypted and not self._can_encrypt))
+
+
+class RestoreChooserDialog(wx.Dialog):
+    """Restore from Backup's choice (#450): which of a backup's chats to
+    restore. Each row says Restore or Skip in its own text, so every screen
+    reader reads it (a check list box's checks aren't exposed on Windows);
+    Space switches the row, and Select All and Select None do all of them."""
+
+    RESTORE, SKIP = "Restore", "Skip"
+
+    def __init__(self, parent, heading: str, rows, say=None):
+        super().__init__(parent, title="Restore from Backup", size=dialog_size(parent, 680, 520),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._rows = list(rows)
+        self.chosen = [True] * len(self._rows)
+        self._say = say or (lambda text: None)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.heading = _read_only_text(self, heading, "About this backup", min_height=90)
+        sizer.Add(self.heading, 0, wx.EXPAND | wx.ALL, 8)
+        sizer.Add(wx.StaticText(self, label="Chat &list (Space switches Restore and Skip):"),
+                  0, wx.LEFT | wx.RIGHT, 8)
+        self.list = wx.ListBox(self, choices=[self._text(i) for i in range(len(self._rows))],
+                               style=wx.LB_SINGLE)
+        set_list_items_accessible(self.list, lambda: "Chats", lambda index: None)
+        self.list.SetName("Chats")
+        mac_a11y.set_label(self.list, "Chats")  # VoiceOver; the line above is MSAA and ATK
+        # On the dialog, as every dialog here does: Space on the list
+        # switches the row, and Enter presses Restore on every platform
+        # (GTK would otherwise take it as activating the row, which would
+        # switch it). A double-click switches the row too.
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_list_key)
+        self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.toggle(self.list.GetSelection()))
+        if self._rows:
+            self.list.SetSelection(0)
+        sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        select_all = wx.Button(self, label="Select &All")
+        select_all.Bind(wx.EVT_BUTTON, lambda e: self._set_all(True))
+        select_none = wx.Button(self, label="Select &None")
+        select_none.Bind(wx.EVT_BUTTON, lambda e: self._set_all(False))
+        buttons.Add(select_all, 0, wx.RIGHT, 6)
+        buttons.Add(select_none, 0, wx.RIGHT, 6)
+        buttons.AddStretchSpacer()
+        self.restore = wx.Button(self, wx.ID_OK, "&Restore")
+        self.restore.SetDefault()
+        self.restore.Bind(wx.EVT_BUTTON, self._on_restore)
+        buttons.Add(self.restore, 0, wx.RIGHT, 6)
+        buttons.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
+        sizer.Add(buttons, 0, wx.EXPAND | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self._update_restore()
+        wx.CallAfter(self.list.SetFocus)
+
+    def _text(self, index: int) -> str:
+        return f"{self.RESTORE if self.chosen[index] else self.SKIP}: {self._rows[index]}"
+
+    def _count(self) -> int:
+        return sum(self.chosen)
+
+    def _update_restore(self):
+        count = self._count()
+        self.restore.SetLabel(f"&Restore {count} Chat{'s' if count != 1 else ''}")
+        self.Layout()
+
+    def _refresh_rows(self):
+        # Only the rows that changed: on Windows each SetString removes and
+        # re-adds the row, which a screen reader hears.
+        self.list.Freeze()
+        try:
+            for index in range(len(self._rows)):
+                text = self._text(index)
+                if self.list.GetString(index) != text:
+                    self.list.SetString(index, text)
+        finally:
+            self.list.Thaw()
+        self._update_restore()
+
+    def toggle(self, index: int):
+        if not 0 <= index < len(self._rows):
+            return
+        self.chosen[index] = not self.chosen[index]
+        self.list.SetString(index, self._text(index))
+        self.list.SetSelection(index)
+        self._update_restore()
+        self._say(f"{self.RESTORE if self.chosen[index] else self.SKIP}, "
+                  f"{self._count()} of {len(self._rows)} chosen.")
+
+    def _set_all(self, value: bool):
+        self.chosen = [value] * len(self._rows)
+        self._refresh_rows()
+        self._say(f"{self._count()} of {len(self._rows)} chosen.")
+        self.list.SetFocus()
+
+    def _on_list_key(self, event):
+        if press_focused_button_on_a_mac(event):
+            return
+        on_list = wx.Window.FindFocus() is self.list and not event.HasAnyModifiers()
+        if on_list and event.GetKeyCode() == wx.WXK_SPACE:
+            self.toggle(self.list.GetSelection())
+            return
+        if on_list and event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            click = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+            click.SetEventObject(self.restore)
+            self.restore.GetEventHandler().ProcessEvent(click)
+            return
+        event.Skip()
+
+    def _on_restore(self, event):
+        if not self._count():
+            wx.MessageBox("Choose at least one chat to restore, or Cancel.", "Restore from Backup",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            self.list.SetFocus()
+            return
+        event.Skip()
+
+    def chosen_indexes(self):
+        return [i for i, chosen in enumerate(self.chosen) if chosen]

@@ -1154,6 +1154,34 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Claude asks about text it wrote just before, with an option's preview"
+  },
+  "backup-schedule": {
+   "kind": "dialog",
+   "png": "backup-schedule-hc-desert-100.png",
+   "json": "backup-schedule-hc-desert-100.json",
+   "title": "Backup Schedule",
+   "class": "BackupScheduleDialog",
+   "size": [
+    620,
+    500
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Backup Schedule, daily, after a failure"
+  },
+  "restore-chooser": {
+   "kind": "dialog",
+   "png": "restore-chooser-hc-desert-100.png",
+   "json": "restore-chooser-hc-desert-100.json",
+   "title": "Restore from Backup",
+   "class": "RestoreChooserDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Restore from Backup, choosing chats"
   }
  },
  "seconds": 92.2

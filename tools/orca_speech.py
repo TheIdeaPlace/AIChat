@@ -95,6 +95,8 @@ STEPS = [
     Step("settings", ["ctrl+comma"], expect=["Settings", "Announcements", "Full"],
          refuse=["unlabeled", "unlabelled"]),
     Step("settings, tab", ["Tab"], expect=["Announce when any listed session", "check box"]),
+    Step("settings, history retention", ["alt+y"],
+         expect=["History retention and kept copies"]),
     Step("settings closed", ["Escape"], expect=["Messages in Visual probe"]),
     Step("F10, the menu bar", ["F10"], expect=["File", "menu"]),
     Step("menu closed, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),
@@ -119,6 +121,24 @@ STEPS = [
     Step("Tab to the choices", ["Tab"], expect=["Keep it as is"],
          refuse=["your own answer"]),
     Step("answer later, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),
+    # Back Up Now (#433, #435): the folder question, and Escape back out.
+    Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
+    Step("folder question closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # Backup Schedule (#437), then Restore from Backup (#436), the last items
+    # before Exit: Up from the top goes to Exit first.
+    # Lands on the schedule's choice box, which Orca reads with or without
+    # its name depending on timing (#454): until that's fixed, only that the
+    # menu reached Backup Schedule is checked.
+    Step("Backup Schedule", ["alt+f", "Up", "Up", "Up", "Return"],
+         expect=["Backup Schedule"]),
+    Step("Backup Schedule closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # GTK's file picker is announced by its file list, not its title.
+    Step("Restore from Backup", ["alt+f", "Up", "Up", "Return"],
+         expect=["Restore from Backup", "Files"]),
+    Step("restore's file question closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
 ]
 
 #: The question "question" asks (STEPS above).

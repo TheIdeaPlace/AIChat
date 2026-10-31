@@ -10,7 +10,7 @@ def test_known_refusal_reports_only_a_fixed_reason(tmp_path, monkeypatch):
     error.args = ('private command and credentials',)
     codex_diagnostics.record_failure(error)
     assert 'not_idle' in path.read_text() and 'private' not in path.read_text()
-    assert 'not confirmed idle' in codex_diagnostics.last_failure()
+    assert 'still working on a turn' in codex_diagnostics.last_failure()
 
 
 def test_stream_failure_reason_is_specific_without_logging_payload(tmp_path, monkeypatch):

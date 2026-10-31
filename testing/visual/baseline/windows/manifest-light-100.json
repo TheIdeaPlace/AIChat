@@ -225,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    654
+    833
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -561,7 +561,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    639
+    818
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1065,7 +1065,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    679
+    858
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1233,7 +1233,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    706
+    885
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1350,6 +1350,48 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Change Permission Mode for an owned Copilot chat in plan mode"
+  },
+  "backup-schedule": {
+   "kind": "dialog",
+   "png": "backup-schedule-light-100.png",
+   "json": "backup-schedule-light-100.json",
+   "title": "Backup Schedule",
+   "class": "BackupScheduleDialog",
+   "size": [
+    620,
+    500
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Backup Schedule, daily, after a failure"
+  },
+  "main-kept": {
+   "kind": "window",
+   "png": "main-kept-light-100.png",
+   "json": "main-kept-light-100.json",
+   "title": "Fix the flaky upload test — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Kept Claude history after its original transcript is removed: read-only"
+  },
+  "restore-chooser": {
+   "kind": "dialog",
+   "png": "restore-chooser-light-100.png",
+   "json": "restore-chooser-light-100.json",
+   "title": "Restore from Backup",
+   "class": "RestoreChooserDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Restore from Backup, choosing chats"
   }
  },
  "seconds": 94.1

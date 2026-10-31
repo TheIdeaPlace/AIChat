@@ -10,7 +10,7 @@ from .providers.codex_rpc import CodexTurnRejected, CodexSteerRefused, CodexConn
 _LOCK = threading.Lock()
 _LIMIT = 65536
 _RECORD = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ (Codex|Copilot) worker failed: ([A-Za-z_][A-Za-z0-9_]{0,63}); details redacted\.')
-_REASON = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ Codex worker refused turn: ([a-z_]+)\.')
+_REASON = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ Codex worker refused turn: ([a-z_]+)\.(?: Codex said: [A-Za-z, ]{1,120}\.)?')
 _CONNECTION = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ Codex connection failure: ([a-z_]+)\.')
 
 
@@ -42,6 +42,9 @@ def record_failure(error):
     line = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + f' {worker} worker failed: {name}; details redacted.'
     if type(error) is CodexTurnRejected and error.code in CodexTurnRejected.REASONS:
         line = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + f' Codex worker refused turn: {error.code}.'
+        # What Codex reported, so a refusal can be explained later (#448).
+        if getattr(error, 'status', ''):
+            line += f' Codex said: {error.status}.'
     elif type(error) is CodexConnectionFailure and error.code in CodexConnectionFailure.REASONS:
         line = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + f' Codex connection failure: {error.code}.'
     try:

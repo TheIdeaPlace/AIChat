@@ -544,3 +544,369 @@ def test_a_wal_without_shm_is_copied_without_writing_beside_it(homes):
         copy = homes["tmp"] / "c.sqlite"
         copy.write_bytes(z.read("claude/home/state.sqlite"))
     assert sqlite3.connect(copy).execute("select v from t").fetchall() == [("kept",)]
+
+
+# Passphrase (#435) -------------------------------------------------------------
+
+def test_an_encrypted_backup_round_trips_and_hides_everything(homes):
+    write(homes["claude"] / "projects" / "secret-project" / "s.jsonl", "private words\n")
+    write(homes["data"] / "groups.json", "{}")
+    result = backup.create(homes["dest"], collectors=[backup.tcp_inventory,
+                                                      claude_backup.inventory],
+                           passphrase="correct horse")
+    assert result.complete and result.encrypted
+    assert "encrypted with your passphrase" in backup.summary(result)
+    raw = result.path.read_bytes()
+    assert b"private words" not in raw and b'"format"' not in raw
+    # Names too: Claude's project folders are named after whole paths.
+    assert b"secret-project" not in raw and b"thechatplace/data" not in raw
+    assert backup.is_encrypted(result.path)
+    # Every entry is encrypted, the manifest included.
+    with zipfile.ZipFile(result.path) as z:
+        assert all(info.flag_bits & 0x1 for info in z.infolist())
+    check = backup.verify(result.path, passphrase="correct horse")
+    assert check.ok and check.encrypted and check.manifest["encrypted"] is True
+    assert backup.read_manifest(result.path, "correct horse")["format"] == backup.FORMAT
+
+
+def test_an_encrypted_backup_without_or_with_the_wrong_passphrase(homes):
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pw").path
+    missing = backup.verify(path)
+    assert not missing.ok and missing.needs_passphrase
+    assert "passphrase is needed" in missing.problems[0]
+    wrong = backup.verify(path, passphrase="nope")
+    assert not wrong.ok and wrong.needs_passphrase
+    assert wrong.problems == ["The passphrase is wrong."]
+    with pytest.raises(backup.PassphraseError):
+        backup.read_manifest(path)
+
+
+def test_7zip_style_readers_can_open_an_encrypted_backup(homes):
+    """WinZip AES, so tools other than The Chat Place can open it."""
+    import pyzipper
+    write(homes["data"] / "a.json", '{"v": 1}')
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pw").path
+    import io
+    with pyzipper.AESZipFile(path) as z:
+        assert z.namelist() == ["backup.zip"]     # nothing else shows
+        z.setpassword(b"pw")
+        inner = z.read("backup.zip")
+    # Inside is an ordinary zip, the backup as it would be unencrypted.
+    with zipfile.ZipFile(io.BytesIO(inner)) as plain:
+        assert plain.read("thechatplace/data/a.json") == b'{"v": 1}'
+
+
+def test_an_unencrypted_backup_ignores_a_passphrase_when_checking(homes):
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory]).path
+    assert not backup.is_encrypted(path)
+    check = backup.verify(path, passphrase="anything")
+    assert check.ok and not check.encrypted
+
+
+def test_a_unicode_passphrase(homes):
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pässwörd ✓").path
+    assert backup.verify(path, passphrase="pässwörd ✓").ok
+    assert backup.verify(path, passphrase="passwort").needs_passphrase
+
+
+def test_a_failing_encryption_leaves_nothing(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+
+    def broken(*_args, **_kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(backup, "_encrypt", broken)
+    with pytest.raises(OSError, match="No space"):
+        backup.create(homes["dest"], collectors=[backup.tcp_inventory], passphrase="pw")
+    assert list(homes["dest"].iterdir()) == []
+
+
+def test_wrong_or_damaged_at_the_final_check(homes, monkeypatch):
+    """1 wrong passphrase in 65,536 passes the quick check and fails the
+    HMAC at the end, as damage does: asked again, said as either."""
+    import pyzipper
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pw").path
+
+    def hmac_fails(*_a, **_k):
+        raise pyzipper.BadZipFile("Bad HMAC check for file 'backup.zip'")
+
+    monkeypatch.setattr(pyzipper.AESZipFile, "open", hmac_fails)
+    check = backup.verify(path, passphrase="pw")
+    assert check.needs_passphrase and check.encrypted
+    assert check.problems == ["The passphrase is wrong, or the backup is damaged."]
+
+
+def test_opened_gives_a_plain_zip_and_cleans_up(homes):
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pw").path
+    with backup.opened(path, "pw") as plain:
+        kept = plain
+        with zipfile.ZipFile(plain) as z:
+            assert "manifest.json" in z.namelist()
+    assert not kept.exists()
+    with pytest.raises(backup.PassphraseError):
+        with backup.opened(path, None):
+            pass
+# Scheduled backups (#437) ------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+
+def _schedule(homes, every="daily", keep=3):
+    backup.save_schedule(backup.Schedule(every, str(homes["dest"]), keep))
+
+
+def test_schedule_off_by_default_and_odd_values_read_as_off(homes):
+    assert backup.load_schedule() == backup.Schedule("off", "", backup.DEFAULT_KEEP)
+    assert not backup.schedule_due()
+    s = backup.load_schedule({"schedule": {"every": "hourly", "folder": 3, "keep": "x"}})
+    assert s == backup.Schedule("off", "", backup.DEFAULT_KEEP)
+    assert backup.load_schedule({"schedule": {"every": "daily", "folder": "f", "keep": 999}}).keep \
+        == backup.MAX_KEEP
+
+
+def test_schedule_due_after_its_period_since_any_good_backup(homes):
+    _schedule(homes, "daily")
+    now = datetime(2026, 10, 31, 12, tzinfo=timezone.utc)
+    assert backup.schedule_due(now=now)               # never backed up
+    state = backup.load_state()
+    state["last_time"] = (now - timedelta(hours=23)).isoformat()
+    assert not backup.schedule_due(state, now=now)
+    state["last_time"] = (now - timedelta(hours=25)).isoformat()
+    assert backup.schedule_due(state, now=now)
+    state["schedule"]["every"] = "weekly"
+    assert not backup.schedule_due(state, now=now)
+    state["last_time"] = (now - timedelta(days=8)).isoformat()
+    assert backup.schedule_due(state, now=now)
+    # Tried within the hour: waits.
+    state["schedule_tried"] = (now - timedelta(minutes=20)).isoformat()
+    assert not backup.schedule_due(state, now=now)
+
+
+def test_run_scheduled_makes_records_and_prunes_only_its_own(homes):
+    write(homes["data"] / "a.json", "{}")
+    _schedule(homes, keep=2)
+    name = backup.computer_identity()["name"]
+    other = _fake_backup(homes["dest"], "OtherPC", "someone-else", datetime(2026, 1, 1),
+                         1_700_000_000)
+    mine_by_hand = write(homes["dest"] / "holiday photos.zip", "x")
+    made = []
+    for day in range(4):
+        result = backup.run_scheduled(collectors=[backup.tcp_inventory],
+                                      now=datetime(2026, 10, 1 + day, 9))
+        made.append(result.path)
+        os.utime(result.path, (1_800_000_000 + day * 100,) * 2)
+    left = sorted(p.name for p in homes["dest"].iterdir())
+    assert made[-1].name in left and made[-2].name in left
+    assert made[0].name not in left and made[1].name not in left
+    assert other.exists() and mine_by_hand.exists()   # not this computer's, not touched
+    assert backup.load_state()["last_complete"] is True
+    assert any("Removed" in n for n in result.notes)
+    assert name   # the computer's name is what the files are matched by
+
+
+def test_an_incomplete_scheduled_backup_prunes_nothing(homes):
+    write(homes["data"] / "a.json", "{}")
+    _schedule(homes, keep=1)
+    first = backup.run_scheduled(collectors=[backup.tcp_inventory],
+                                 now=datetime(2026, 10, 1, 9)).path
+
+    def broken():
+        inv = backup.Inventory("t", "T")
+        inv.failures.append("couldn't read something")
+        return inv
+
+    second = backup.run_scheduled(collectors=[backup.tcp_inventory, broken],
+                                  now=datetime(2026, 10, 2, 9))
+    assert not second.complete and first.exists() and second.path.exists()
+
+
+def test_run_scheduled_to_a_missing_folder_raises_and_is_remembered_once_a_day(homes):
+    backup.save_schedule(backup.Schedule("daily", str(homes["tmp"] / "unplugged"), 3))
+    with pytest.raises(ValueError, match="isn't a folder"):
+        backup.run_scheduled(collectors=[backup.tcp_inventory])
+    now = datetime(2026, 10, 31, 12, tzinfo=timezone.utc)
+    assert backup.note_scheduled_failure("gone", now=now) is True
+    assert backup.note_scheduled_failure("gone", now=now + timedelta(hours=2)) is False
+    assert backup.note_scheduled_failure("gone", now=now + timedelta(hours=25)) is True
+    assert "failed" in backup.failure_text() and "gone" in backup.failure_text()
+    backup.clear_scheduled_failure()
+    assert backup.failure_text() == ""
+
+
+def test_schedule_folder_problems(homes):
+    assert "Choose a folder" in backup.schedule_folder_problem("")
+    assert "isn't a folder" in backup.schedule_folder_problem(str(homes["tmp"] / "nope"))
+    inside = homes["claude"] / "b"
+    inside.mkdir(parents=True)
+    assert "inside" in backup.schedule_folder_problem(str(inside))
+    assert backup.schedule_folder_problem(str(homes["dest"])) is None
+
+
+def _fake_backup(folder, name, computer_id, when, mtime):
+    """A real, minimal backup zip with a manifest naming ``computer_id``."""
+    path = folder / backup.default_filename(name, when)
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(backup.MANIFEST, json.dumps({
+            "format": backup.FORMAT, "format_version": 1,
+            "computer": {"id": computer_id, "name": name}, "files": []}))
+    os.utime(path, (mtime,) * 2)
+    return path
+
+
+def test_prune_never_deletes_the_newest_or_below_one(homes):
+    paths = [_fake_backup(homes["dest"], "PC", "me", datetime(2026, 1, 1 + i),
+                          1_800_000_000 + i) for i in range(3)]
+    # Even if the "newest" is oldest on disk, it's kept; keep=0 means 1.
+    deleted = backup.prune(homes["dest"], 0, "me", paths[0])
+    assert paths[0].exists() and not paths[1].exists() and not paths[2].exists()
+    assert len(deleted) == 2
+
+
+def test_prune_goes_by_the_computer_id_not_the_name(homes):
+    """#443 review: "PC!" and "pc" clean up to the same file name as "PC";
+    sharing a cloud folder, they mustn't delete each other's backups."""
+    mine = [_fake_backup(homes["dest"], "PC", "me", datetime(2026, 1, 1 + i),
+                         1_800_000_000 + i) for i in range(2)]
+    theirs = [_fake_backup(homes["dest"], name, "someone-else", datetime(2026, 2, 1 + i),
+                           1_800_000_100 + i) for i, name in enumerate(("PC!", "pc", "PC"))]
+    unreadable = write(homes["dest"] / backup.default_filename("PC", datetime(2026, 3, 1)), "x")
+    encrypted = homes["dest"] / backup.default_filename("PC", datetime(2026, 3, 2))
+    import pyzipper
+    with pyzipper.AESZipFile(encrypted, "w", encryption=pyzipper.WZ_AES) as z:
+        z.setpassword(b"pw")
+        z.writestr("backup.zip", b"x")
+    newest = _fake_backup(homes["dest"], "PC", "me", datetime(2026, 4, 1), 1_800_000_900)
+    deleted = backup.prune(homes["dest"], 1, "me", newest)
+    assert sorted(deleted) == sorted(mine)
+    assert all(p.exists() for p in theirs + [unreadable, encrypted, newest])
+
+
+def test_saving_the_schedule_after_a_failure_lets_it_run_now(homes):
+    """#443 review: a failed attempt waits an hour, but Save (the user has
+    just fixed the folder) starts again straight away."""
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 3))
+    backup.note_scheduled_attempt()
+    assert not backup.schedule_due()
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 3))
+    assert backup.schedule_due()
+
+
+def test_a_clock_that_ran_ahead_doesnt_stop_the_schedule(homes):
+    _schedule(homes, "daily")
+    now = datetime(2026, 10, 31, 12, tzinfo=timezone.utc)
+    state = backup.load_state()
+    state["last_time"] = (now + timedelta(days=300)).isoformat()
+    state["schedule_tried"] = (now + timedelta(days=300)).isoformat()
+    assert backup.schedule_due(state, now=now)
+
+
+def test_odd_keep_values_dont_crash(homes):
+    for keep in (float("inf"), "Infinity", None, [], -5):
+        s = backup.load_schedule({"schedule": {"every": "daily", "folder": "f", "keep": keep}})
+        assert 1 <= s.keep <= backup.MAX_KEEP
+
+
+def test_run_scheduled_reports_progress(homes):
+    write(homes["data"] / "a.json", "{}")
+    _schedule(homes)
+    seen = []
+    backup.run_scheduled(collectors=[backup.tcp_inventory],
+                         progress=lambda done, total, name: seen.append((done, total)))
+    assert seen and seen[-1][0] == seen[-1][1] > 0
+
+
+def test_same_disk_folders_are_warned_about_not_refused(homes, monkeypatch):
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: True)
+    assert "same disk" in backup.schedule_folder_warning(str(homes["dest"]))
+    assert backup.schedule_folder_problem(str(homes["dest"])) is None
+    monkeypatch.setattr(backup, "same_drive_as_home", lambda folder: False)
+    assert backup.schedule_folder_warning(str(homes["dest"])) is None
+
+
+def test_state_changes_from_two_threads_both_stay(homes):
+    import threading
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 3))
+    threads = [threading.Thread(target=backup.note_scheduled_attempt) for _ in range(10)]
+    threads += [threading.Thread(target=backup.save_schedule,
+                                 args=(backup.Schedule("weekly", str(homes["dest"]), 4),))
+                for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    state = backup.load_state()
+    assert state["schedule"]["every"] == "weekly"
+
+
+def test_kept_copies_of_present_originals_arent_backed_up_twice(homes):
+    """#451 review: the kept copy of a chat whose transcript is still in
+    Claude's folder is left out; one whose original is gone stays."""
+    kept = homes["data"] / "kept-history" / "claude"
+    home = str(homes["claude"])
+    write(homes["claude"] / "projects" / "C--p" / "present.jsonl", "x")
+    for token, native in (("a" * 64, "present"), ("b" * 64, "gone")):
+        write(kept / token / "record.json",
+              json.dumps({"identity": ["claude", native, home], "metadata": {}}))
+        write(kept / token / "transcript.jsonl", "x")
+    got = names(backup.tcp_inventory())
+    assert not any(("a" * 64) in n for n in got)
+    assert f"thechatplace/data/kept-history/claude/{'b' * 64}/transcript.jsonl" in got
+    # With saved earlier versions, even a present one is kept.
+    write(kept / ("a" * 64) / "versions" / "old.jsonl", "y")
+    assert any(("a" * 64) in n for n in names(backup.tcp_inventory()))
+
+
+# Encrypted scheduled backups (#442) -----------------------------------------------
+
+def test_an_encrypted_schedule_uses_the_kept_passphrase(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 2, encrypt=True))
+    assert backup.load_schedule().encrypt is True
+    assert "passphrase" not in json.dumps(backup.load_state()).replace('"encrypt"', "")
+    monkeypatch.setattr(platform_paths, "load_backup_secret", lambda: "kept pw")
+    result = backup.run_scheduled(collectors=[backup.tcp_inventory])
+    assert result.encrypted and backup.is_encrypted(result.path)
+    assert backup.verify(result.path, passphrase="kept pw").ok
+
+
+def test_an_encrypted_schedule_without_its_passphrase_never_goes_unencrypted(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 2, encrypt=True))
+    monkeypatch.setattr(platform_paths, "load_backup_secret", lambda: None)
+    with pytest.raises(ValueError, match="passphrase isn't on this computer"):
+        backup.run_scheduled(collectors=[backup.tcp_inventory])
+    assert list(homes["dest"].iterdir()) == []
+
+
+def test_old_encrypted_scheduled_backups_are_pruned_by_record(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+    backup.save_schedule(backup.Schedule("daily", str(homes["dest"]), 2, encrypt=True))
+    monkeypatch.setattr(platform_paths, "load_backup_secret", lambda: "kept pw")
+    made = []
+    for day in range(4):
+        made.append(backup.run_scheduled(collectors=[backup.tcp_inventory],
+                                         now=datetime(2026, 11, 1 + day, 9)).path)
+        os.utime(made[-1], (1_800_000_000 + day * 100,) * 2)
+    left = sorted(p.name for p in homes["dest"].glob("*.zip"))
+    assert left == sorted([made[2].name, made[3].name])
+    # One that changed since (another computer's under the same name, say) isn't ours.
+    other = homes["dest"] / backup.default_filename("x", datetime(2020, 1, 1))
+    write(other, "not ours")
+    assert backup.prune(homes["dest"], 1, "no-such-id", made[3]) == [made[2]]
+    assert other.exists()
+
+
+def test_the_protected_passphrase_file_isnt_backed_up(homes):
+    write(homes["data"] / platform_paths.BACKUP_SECRET_FILE, "protected")
+    write(homes["data"] / "a.json", "{}")
+    assert names(backup.tcp_inventory()) == {"thechatplace/data/a.json"}

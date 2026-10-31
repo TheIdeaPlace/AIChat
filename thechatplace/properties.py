@@ -84,8 +84,10 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     ``OwnSession`` for one of The Chat Place's own; ``reported_window`` the
     context window Claude Code reported for its model, 0 if none."""
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+    # A restored chat (#436) or an agent conversation names its AI here.
+    name = info.provider_label or info.provider.capitalize()
     lines = [f"Title: {info.title or 'Untitled session'}",
-             f"Provider: {info.provider.capitalize()}",
+             f"Provider: {name}",
              f"Kind: {session_kind(info)}"]
     if info.cowork:
         lines.append(f"Folder: {info.cowork_folder or 'none'}")
@@ -125,7 +127,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         conversation = _conversation(transcript)
         lines.append(f"Messages: {len(conversation):,}")
         lines.append(f"Your messages: {sum(1 for m in conversation if m.kind == USER):,}")
-        lines.append(f"{info.provider.capitalize()}'s replies: "
+        lines.append(f"{name}'s replies: "
                      f"{sum(1 for m in conversation if m.kind == ASSISTANT):,}")
         lines.append(f"Tool calls: {sum(1 for m in transcript.messages if m.kind == TOOL):,}")
         lines.append(f"Links: {len(find_links(conversation)):,}")
@@ -170,6 +172,9 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         if transcript is None:
             # Locked by another program, say: there, but not read.
             lines.append(f"Transcript read: failed ({read_error or 'unknown error'})")
+    elif info.provider == "imported":
+        lines.append(f"History: {info.detail or 'imported from another computer'}"
+                     + ("" if transcript is not None else " (unavailable)"))
     elif info.provider != "claude":
         lines.append(f"History: {'read' if transcript is not None else 'unavailable'} "
                      f"from {info.provider.capitalize()}")

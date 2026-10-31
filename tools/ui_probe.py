@@ -717,6 +717,23 @@ def s_main_desktop(frame, env):
     _open(frame, "Fix the flaky upload test")
 
 
+def s_main_kept(frame, env):
+    import fake_env
+    from thechatplace.providers.claude import keep_session
+    from thechatplace.history_keeper import keeper
+    info = next(info for info in frame._snapshot.sessions if info.title == 'Fix the flaky upload test')
+    keep_session(info)
+    if not keeper().wait_idle():
+        raise RuntimeError('The synthetic kept copy did not finish')
+    original = info.transcript_path()
+    original.unlink()
+    frame.refresh_sessions(force=True)
+    if not fake_env.pump(lambda: any(s.key == info.key and s.source == 'kept'
+                                    for s in frame._snapshot.sessions), timeout=10):
+        raise RuntimeError('The synthetic kept chat was not listed')
+    _open(frame, info.title)
+
+
 def s_main_codex(frame, env, *, file_changes=False):
     """Synthetic prototype only; no installed CLI/account or UI opt-in."""
     import dataclasses
@@ -1037,13 +1054,19 @@ def d_message_plain(frame, env):
 
 
 def d_settings(frame, env):
-    return frame.on_settings
+    def show():
+        # Made-up files are tiny. Finish their queued copies so the retention
+        # count is stable across probe captures, independently of scheduling.
+        from thechatplace.history_keeper import keeper
+        keeper().wait_idle()
+        frame.on_settings()
+    return show
 
 
 def d_settings_codex(frame, env):
     from thechatplace import platform_paths
     platform_paths.find_codex = lambda: "synthetic-native-codex"
-    return frame.on_settings
+    return d_settings(frame, env)
 
 
 def d_settings_copilot(frame, env):
@@ -1051,7 +1074,7 @@ def d_settings_copilot(frame, env):
     folder = env["tmp"] / "copilot" / "session-state" / "synthetic-copilot"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "events.jsonl").touch()
-    return frame.on_settings
+    return d_settings(frame, env)
 
 
 def d_settings_speech_problem(frame, env):
@@ -1062,7 +1085,7 @@ def d_settings_speech_problem(frame, env):
     def show():
         speech.speaker.last_problem = "not spoken: JAWS is running but refused the text"
         try:
-            frame.on_settings()
+            d_settings(frame, env)()
         finally:
             speech.speaker.last_problem = ""
     return show
@@ -1653,6 +1676,40 @@ def d_prompts(frame, env):
     return frame.on_prompts
 
 
+def d_backup_schedule(frame, env):
+    """File, Backup Schedule (#437), turned on, with a last backup and a
+    failure to report, so the read-only box has its longest text."""
+    from thechatplace import backup
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    schedule = backup.Schedule("daily", str(env["tmp"]), 5, encrypt=True)
+    status = ("Last backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last "
+              "scheduled backup failed on 31 October at 09:00: E:\\Backups isn't a folder "
+              "that exists.")
+    return lambda: frame._modal(BackupScheduleDialog(frame, schedule, status,
+                                                     has_passphrase=True))
+
+
+def d_restore_chooser(frame, env):
+    """Restore from Backup's chooser (#450): a backup's chats, one skipped."""
+    from thechatplace.ui.dialogs import RestoreChooserDialog
+    heading = ("Restore 4 chats from SURFACEPRO7, backed up on 31 October 2026 at 09:00? "
+               "Claude 3, Codex 1.\n\nThey come back read-only, marked as imported: you can "
+               "read, find and export them, not continue them. Nothing is written to Claude's, "
+               "Codex's or Copilot's folders. Restoring the same backup again updates them "
+               "instead of adding copies.")
+    rows = ["Fix the flaky upload test, Claude, Uploader, last active 30 October 2026",
+            "Visual probe, Claude, AIChat, last active 29 October 2026",
+            "Release notes for 0.3.3, Codex, AIChat, last active 28 October 2026",
+            "Plan the Linux port, Claude, AIChat, last active 2 October 2026"]
+
+    def show():
+        dialog = RestoreChooserDialog(frame, heading, rows)
+        dialog.toggle(2)
+        dialog.list.SetSelection(0)
+        frame._modal(dialog)
+    return show
+
+
 def d_prompt_edit(frame, env):
     from thechatplace.ui.dialogs import PromptEditDialog
     return lambda: frame._modal(PromptEditDialog(frame, "Edit Prompt", "Review",
@@ -1688,6 +1745,8 @@ SURFACES = {
                          "An own session with two files attached to the next message"),
     "main-desktop": ("window", s_main_desktop,
                      "A desktop app session loaded: the read-only panel instead of a reply box"),
+    "main-kept": ("window", s_main_kept,
+                  "Kept Claude history after its original transcript is removed: read-only"),
     "main-codex": ("window", s_main_codex,
                    "Synthetic Codex history in the shared window: read-only controls and Codex labels"),
     "main-codex-owned": ("window", s_main_codex_owned,
@@ -1795,6 +1854,8 @@ SURFACES = {
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
     "prompts": ("dialog", d_prompts, "File, Prompts"),
     "prompt-edit": ("dialog", d_prompt_edit, "Editing a saved prompt"),
+    "restore-chooser": ("dialog", d_restore_chooser, "Restore from Backup, choosing chats"),
+    "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
                                          "new Codex chat"),
@@ -1887,6 +1948,8 @@ DIALOG_CLASSES = {
     "session-columns": "SessionColumnsDialog",
     "prompts": "PromptsDialog",
     "prompt-edit": "PromptEditDialog",
+    "restore-chooser": "RestoreChooserDialog",
+    "backup-schedule": "BackupScheduleDialog",
     "relay": "RelayDialog",
     "agent-new": "AgentConversationDialog",
     "agent-new-three": "AgentConversationDialog",

@@ -18,7 +18,7 @@ Keyboard shortcuts: [a web page](https://theideaplace.github.io/AIChat/keyboard-
 [Markdown](docs/keyboard-shortcuts.md) and [plain text](docs/keyboard-shortcuts.txt): the same list
 as Help, Keyboard Shortcuts (F1) in the app.
 
-> **Status: version 0.3.2, a pre-release** (0.1.0, the first release, came out on 7 October 2026). The Linux
+> **Status: version 0.3.3, a pre-release** (0.1.0, the first release, came out on 7 October 2026). The Linux
 > build is a preview. How it has been tested is in [DEVELOPING.md](DEVELOPING.md#how-its-been-tested).
 
 The Chat Place brings Claude and Codex chats into one accessible list. Read each conversation,
@@ -560,7 +560,7 @@ on the clipboard.
 ### GitHub Copilot CLI chats
 
 **Settings: GitHub Copilot CLI chats.** Enable **Include GitHub Copilot CLI
-chats (preview; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
+chats (preview; restart required)** (Alt+I), save and restart to list GitHub Copilot CLI
 sessions alongside Claude, and to start Copilot chats of your own. The option appears once
 Copilot CLI is installed or has saved a session on this computer: to decide that, Settings looks
 for the Copilot CLI program and at the names of the folders in Copilot's session folder and
@@ -974,11 +974,43 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   The zip has a `manifest.json` listing every file with its size and SHA-256, where each folder
   came from, what was left out and anything that couldn't be read. It's written under a
   temporary name and renamed only after it reads back correctly, and never replaces an earlier
-  backup. It works in the background; choosing Back Up Now again offers to stop it. **It isn't
-  encrypted**, so keep it somewhere private. **Check Backup** (File menu) reads a backup back and
+  backup. After the folder it asks for an optional **passphrase**, typed twice: with one, the
+  checked backup goes whole, as `backup.zip`, into a zip whose one entry is AES-256 encrypted
+  (WinZip's kind), so file names and folder paths are hidden too; 7-Zip, WinZip or Keka opens it,
+  Windows' zip folders and Archive Utility can't. The passphrase is never stored, so a forgotten
+  one means a lost backup (#435). Checking one decrypts it to a private temporary folder, deleted
+  afterwards. It works in the
+  background, taking no focus, with its progress in the status bar (Ctrl+9; Check Backup shows
+  only that it's checking); choosing Back Up Now again offers to stop it. Back Up Now, Check
+  Backup and Restore from Backup each end with a message box saying what happened; a scheduled
+  backup is announced (not when announcements are silent) and kept in the status bar. **Check Backup** (File menu) reads a
+  backup back, asking for the passphrase of an encrypted one, and
   checks every file against its manifest. The last folder and backup are kept in
-  `backup.json` in The Chat Place's folder. Restoring isn't built yet (#433); the files are in
-  the zip under the folders they came from. Claude Code deletes conversations older than its
+  `backup.json` in The Chat Place's folder. **Backup Schedule** (File menu, #437) backs up every
+  day or week to a folder you choose, keeping the number of this computer's backups you set (5 by
+  default). Older ones are pruned only after a complete backup checks out, and only unencrypted
+  backups whose manifest names this computer's id (by hand or scheduled); a folder on the same
+  disk is allowed after a question. It runs while the app is open (checked every ten minutes and two
+  minutes after starting). A failure, such as an unplugged drive, is announced at most once a day
+  and retried after an hour. Scheduled backups can be **encrypted** (#442): the passphrase,
+  typed twice in Backup Schedule, is kept by the system (DPAPI on Windows in
+  `backup-passphrase.dpapi`, the login keychain on a Mac, the Secret Service through
+  `secret-tool` on Linux), never in `backup.json` or a backup; a missing passphrase fails the
+  backup rather than writing it unencrypted, and turning encryption off deletes it. Scheduled
+  backups are remembered by path and size, so encrypted ones can be pruned too. **Restore from Backup** (File
+  menu, #436) checks a backup (asking for its passphrase), then lists its chats, each one
+  "Restore:" or "Skip:" in its own text (Space switches it; Select All, Select None), under how
+  many chats it holds for each AI and from which computer (#450). Restore keeps the chosen ones
+  as read-only **imported chats**, in the groups and hidden state the backup's Chat Place had for
+  them (mapped by their old keys; a same-named group is used or made), in
+  `imported/` in The Chat Place's folder: each one's history as JSON, whichever AI it was with,
+  so none needs its provider afterwards. Claude and Copilot histories are read straight from the
+  backup; Codex's through the Codex app-server, started against a temporary copy of the backed-up
+  profile with no sign-in, never your own. Identity is provider, native id and the source
+  computer's id, so restoring again updates rather than duplicates. Imported rows are their own
+  backend (`provider "imported"`): they can be read, found, exported and their changes listed,
+  never sent to, resumed, forked or linked, and Delete Session Permanently removes only The Chat
+  Place's copy. Nothing is written to any provider's folder. Claude Code deletes conversations older than its
   `cleanupPeriodDays` setting (30 days by default), which includes chats started here; set a
   larger number in `~/.claude/settings.json` to keep them.
 
@@ -1528,8 +1560,19 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   between, but Orca didn't read it line by line.
 - "Needs you" for desktop sessions depends on the desktop app's turn summary, which it doesn't
   always write. A session without one shows as idle once it stops working.
-- A desktop session's transcript can be gone if it's older than Claude Code's retention period
-  (`cleanupPeriodDays` in Claude Code's settings). The chat says so.
+- Claude Code can delete old transcripts according to `cleanupPeriodDays`. The Chat Place
+  keeps copies of Claude transcripts it discovers or reads, under `kept-history/claude` in its
+  own data folder. After an original disappears, its chat remains as a **kept chat (read-only)**.
+  Copies refresh in the background, including after turns; a transcript deleted before the first
+  successful copy cannot be recovered. Rewrites retain the previous copy in `versions`.
+  Settings (Ctrl+Comma) shows provider retention: Alt+Y reaches the report, and Tab reaches
+  the button that opens Claude's settings in your editor.
+  Copies have no automatic expiry, are unencrypted, and Back Up Now includes them. They still
+  need a backup on another disk. Copies grow by appending what's new, and only a rewritten
+  transcript is copied whole (the earlier copy kept in `versions/`). A kept row keeps its
+  original kind for the Desktop, Chat Place and Terminal views, and Delete Session Permanently on
+  it deletes only the copy (on an own chat, the transcript and its copy). Back Up Now leaves out
+  kept copies whose original is in the backup too, unless they have earlier versions.
 - The Chat Place's own sessions, and terminal sessions, don't appear in the desktop app, so Open in
   Claude doesn't work for them; the app says so.
 - Cowork sessions can't be continued here. Their conversation is in the session's own Claude Code

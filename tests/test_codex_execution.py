@@ -113,7 +113,7 @@ def test_preflight_refusal_keeps_other_chat_running_and_stoppable():
             raise CodexTurnRejected('not_idle')
         return original(method, params)
     c.request = request
-    with pytest.raises(CodexTurnRejected, match='not confirmed idle'):
+    with pytest.raises(CodexTurnRejected, match='No new turn was sent'):
         executor.start(two, 'Refused')
     assert not c.closed and active.status == 'inProgress'
     assert executor.interrupt(one)
@@ -176,15 +176,29 @@ def test_wire_route_requires_registered_persistent_proof_and_exact_pinned_option
         c._verify_turn_route(params)
 
 
+def _route_answers(status, latest):
+    return lambda method, args: ({'thread': {'id': 'owned', 'modelProvider': 'openai',
+        'cwd': '/workspace', 'status': {'type': status}}} if method == 'thread/read'
+        else {'data': latest} if method == 'thread/turns/list'
+        else {'data': []} if method == 'mcpServerStatus/list' else {'config': {}, 'layers': [{'name': {'type': 'project',
+        'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]})
+
+
 def test_unknown_or_busy_thread_cannot_start_a_new_turn():
     c, proof, params = runtime_connection()
-    for status in ['notLoaded', 'active']:
-        c.request = lambda method, args: ({'thread': {'id': 'owned', 'modelProvider': 'openai',
-            'cwd': '/workspace', 'status': {'type': status}}} if method == 'thread/read'
-            else {'data': []} if method == 'mcpServerStatus/list' else {'config': {}, 'layers': [{'name': {'type': 'project',
-            'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]})
-        with pytest.raises(CodexRpcError, match='confirmed idle'):
+    for status, latest in [('notLoaded', []), ('active', []), ('systemError', [{'status': 'inProgress'}]),
+                           ('systemError', [])]:
+        c.request = _route_answers(status, latest)
+        with pytest.raises(CodexRpcError, match='No new turn was sent'):
             c._verify_turn_route(params)
+
+
+def test_a_thread_whose_last_turn_failed_can_start_a_new_turn():
+    """#448: Codex keeps systemError after a failed turn until turn/start."""
+    c, proof, params = runtime_connection()
+    for latest in ([{'status': 'failed'}], [{'status': 'completed'}], [{'status': 'interrupted'}]):
+        c.request = _route_answers('systemError', latest)
+        c._verify_turn_route(params)
 
 
 def test_events_before_start_response_are_preserved_even_after_previous_turn():

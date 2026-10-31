@@ -197,27 +197,45 @@ This is a 720 by 520 dialog titled "Message: Claude" (it was "Message from Claud
 
 ## settings: Settings
 
-This is a 680 by 654 dialog (550 in 0.1.6; the Codex check box added 40, the task-list check box another 40, #231, the agent conversations check box 21, #248, and the changed-lines choice 3, #174). At the top, a framed group, "Announcements", runs the full width with three radio buttons: "Full: read the whole reply" (chosen, with the focus outline), "Summary: the session's name and the reply's first sentence" and "Silent: status bar only". Below it are two ticked check boxes, then a second framed group, "Reading messages", with two more ticked boxes. Then come four label-and-dropdown rows in one grid, their labels in a column at the left and their dropdowns lined up at x=151. "Speech engine" has a dropdown to the right edge, "Automatic (your screen reader, or a system voice when none is running)". "Speaking rate" has a small greyed-out "Default" dropdown with the note "Voice and rate follow your screen reader's own settings." beside it on the same line (it had a line of its own before #174). "Windows notifications" has a dropdown 335 wide, "When your sessions finish a turn, or any session needs you". "Mark changed lines with", its H underlined, has a dropdown about 270 wide showing "Words (Added, Removed, Unchanged)" (#174). Under it, "Recent folders New Session offers:" has a small number box showing 20 and a "Clear Recent Folders" button beside it (#215). Five check boxes follow. The Remote Control one (unticked) wraps its label onto two lines (624 by 30): "Turn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices." and "Their conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)". Under it, the ticked "Let Claude keep a task list in The Chat Place's sessions, as it does in the desktop app, so View, Tasks shows how far along it is (from the next message)" wraps onto two lines, with its access key K underlined (#231). Under that, the unticked "Include Codex chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then restart." also wraps onto two lines, with "restart." alone on the second. Next, the unticked "Let agent conversations hand replies across automatically" fits one line, with a little less space under it than the others (6 pixels, so Settings still fits a 768-high screen). It lines up at x=10 with the other check boxes; until #368 it sat 4 pixels further left. The last, "Tell me when an update has been installed, with a link to what's new", is ticked. "OK" (blue-outlined, the default) and "Cancel" sit at the bottom right, 8 pixels above the dialog's bottom edge.
+The light-100 picture is 680 by 833 (#438), 179 pixels taller than the preceding
+baseline. The upper groups, dropdown grid, recent-folder row and check boxes
+keep their previous layout. Full announcements is chosen, with a dotted focus
+rectangle. Below the update-notice check box is "History retention and kept copies",
+with Y underlined. A read-only box 644 wide and 110 high fills most of the width;
+its scrollbar reaches the remaining retention and copy-status text. Below it,
+"Open Claude's retention settings" sits at the left. OK and Cancel remain together
+at the bottom right. The dialog fits its contents at this 1920 by 1080 work area.
+On a shorter screen the body scrolls above the fixed buttons.
 
-**What looks off:** The four dropdowns all start at x=151 since #174, but their widths are uneven (503, 68, 335 and 271). The number box on the Recent folders row, outside that grid, starts at x=199, so it doesn't line up with the dropdowns above it. The whole dialog fits its contents, with no empty band below the buttons.
-
-**At 150% and 175%:** everything is in view at 150% (1020 by 895). At 175% (1190 by 996) the settings are taller than the screen, so they scroll above OK and Cancel (#231): a scroll bar runs down the right of the settings, the wrapped check box labels break short of it, and the last check box is half in view at the bottom until you scroll. OK and Cancel are their full size below it.
+The light picture has a pale grey dialog, white text boxes and black text. Pixel
+samples inside the retention box are #000000 on #FFFFFF, 21:1. High Contrast
+Aquatic uses #FFFFFF on #202020, 16.29:1, with white group frames, control outlines
+and focus marks; OK has an aqua fill. All eight pictures were inspected. The probe
+reported no clipping, overlaps or controls outside the window. No new visual defect
+was found at the two captured 100% variants. Higher scaling was not recaptured for
+#438; its earlier descriptions should not be read as validation of the new controls.
 
 ## settings-codex: Settings with Codex automatically included
 
-The same dialog, 680 by 639, on a computer where Codex is found. The Codex check box is ticked and its label is one line, "Include Codex chats (restart required)", so the dialog is 15 pixels shorter than settings and everything below the check box moves up. Below it come the unticked agent conversations check box and the ticked update notice, as in settings (the baseline was 615 high before the agent check box; taken again for #368). In High Contrast Aquatic both Settings pictures follow the theme: near-black background (#202020), white text (16.3:1), white group frames and check boxes, and OK filled light aqua.
-
-**What looks off:** Nothing.
+The same layout, 680 by 818. The Codex check box is ticked and fits one line, moving
+the controls below it 15 pixels above their positions in the ordinary Settings
+picture. The new retention box and editor button remain full width and fully inside
+the dialog. High Contrast follows the same dark background and white text as Settings.
 
 ## settings-copilot: Settings once Copilot CLI has a session
 
-The same dialog as settings, 680 by 679 (25 taller), on a computer where GitHub Copilot CLI has saved a session (#352, #355). A new unticked check box, "Include GitHub Copilot CLI chats (preview; restart required)" (it said "read-only" before #372), fits on one line (343 wide) between the Codex check box and the agent conversations one, with its access key O underlined. Every check box below the Reading messages group starts at x=10. In High Contrast Aquatic and Desert it follows the theme like the rest of Settings, and dark-100 looks the same as light-100 (#177).
-
-**What looks off:** Nothing at 100% and 150%. At 175% the settings scroll (#231), as in settings, and the Copilot check box is the one cut through at the bottom until you scroll.
+The same layout, 680 by 858. The unticked Copilot check box sits between the Codex
+and agent-conversation check boxes; the new retention area follows the update notice.
+All check boxes line up at the left. Both captured themes have intact labels and
+separate OK and Cancel buttons below the body. No new visual defect was found.
 
 ## settings-speech-problem: Settings after an announcement wasn't spoken
 
-The same dialog as settings, 680 by 706 (52 taller), after the last announcement couldn't be spoken (#98). A read-only text box, 52 high, sits right under the Speaking rate row, in the dropdowns' column from x=151 to the right edge, reading "Last announcement not spoken: JAWS is running but refused the text." Everything below it moves down. In High Contrast Aquatic the box follows the theme: a white outline around near-black, with white text.
+The same layout, 680 by 885. A separate read-only Speech problem box remains below
+Speaking rate, in the dropdowns' column. The retention area is below all check boxes,
+and its editor button is separate from the dialog's confirmation buttons. The High
+Contrast picture uses white text and outlines on the dark background for both boxes.
+No new visual defect was found.
 
 ## new-session: File, New Session
 
@@ -690,5 +708,37 @@ A 680 by 520 dialog. Permission mode and Change run across the top. A 648 by 186
 The 680 by 520 Chat Permissions dialog, titled "Chat Permissions: Automatic review preview", laid out exactly like chat-permissions-codex. The mode box reads "Can edit files in this folder; automatic approval review", with Change... beside it. The list holds one selected row, "No command approvals are remembered for this chat.", and Remove..., Remove All... and Close sit below it. The About box (648 by 169) is scrolled to its end, which reads "Recent automatic review decisions (oldest first):", a blank line, "Codex automatic review allowed the request.", "Command: git status", "Reason: Read the project status.", a blank line, "Codex automatic review denied the request." and "Reason: Access was outside the requested task.", leaving about a third of the box empty below. The scroll thumb sits at the bottom of its track.
 
 Text is black on white (21:1) and the selected row white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1) and the selected row #263B50 on aqua #8EE3F0 (7.9:1); in Desert the text is dark on cream (#FFFAEF, 10.4:1 or better) and the selected row cream on rust brown (#FFF5E3 on #903909, 7.0:1). At 175% (1190 by 910) the same lines show larger, with more space below them.
+
+**What looks off:** Nothing.
+
+## backup-schedule: File, Backup Schedule, daily, encrypted, after a failure (#437, #442)
+
+The 606 by 493 Backup Schedule dialog. From the top: "Back up automatically:" over a full-width box reading "Every day". "Folder for the backups:" over the folder path, with Browse... beside it. "Backups to keep:" over a narrow spin box reading 5. Then a row with the checked box "Encrypt them with a passphrase kept on this computer" and, at the right, Change Passphrase.... Below is a read-only box filling the width and most of the remaining height, with three paragraphs: how scheduled backups run and are pruned; what the kept passphrase means; and the last backup and the last failure. All of it wraps inside the box, with about a third of it empty below. Save (the default) and Cancel are at the bottom right. Nothing is cut off or overlapping.
+
+Labels are black on #F0F0F0 (18.4:1), the box text black on white (21:1), and the buttons' text black on #FDFDFD (20.6:1). In High Contrast Desert, text is #202020 on cream #FFFAEF (15.7:1), and the default Save button is cream on rust brown (#FFF5E3 on #903909, 7.0:1).
+
+**What looks off:** Nothing.
+
+## main-kept: Claude history after its original transcript disappears
+
+The two reviewed 100% pictures show a 1000 by 720 window. The session list
+fills the left two fifths and the chat fills the right. The selected row and
+heading say the original transcript is gone; the heading identifies a kept
+Claude chat as read-only. Four invented messages remain readable. Below them,
+About replying contains a read-only note explaining the kept copy and backups;
+there is no reply box, Continue Here or Open in Claude button. Show tool activity,
+New Session and Refresh remain below the note. The note has generous space beneath
+its three visible lines and the controls do not overlap.
+
+The light picture uses black text on white in the messages and note, with blue
+selection. High Contrast uses white text on #202020, white outlines and aqua
+selection; its dotted selection focus is visible. The probe reported no layout
+problems in either picture. No new visual defect was found.
+
+## restore-chooser: Restore from Backup, choosing chats (#450)
+
+The 666 by 513 Restore from Backup chooser. At the top, a read-only box with the backup's description: "Restore 4 chats from SURFACEPRO7, backed up on 31 October 2026 at 09:00? Claude 3, Codex 1.", a blank line, then what restored chats are, wrapped to four lines with a scroll bar. Below it, "Chat list (Space switches Restore and Skip):" over a list filling most of the dialog: four rows, the first selected, each starting "Restore:" or "Skip:" (the third is "Skip: Release notes for 0.3.3, Codex, AIChat, last active 28 October 2026"). Select All and Select None at the bottom left; "Restore 3 Chats" (the default) and Cancel at the bottom right. Nothing is cut off or overlapping.
+
+Text is black on white (21:1), the label black on #F0F0F0 (18.4:1), and the selected row white on #0078D4 (4.5:1). In High Contrast Desert, rows are #3D3D3D on cream (10.4:1), the selected row cream on rust brown (#FFFAEF on #903909, 7.3:1), and the default button #FFF5E3 on #903909 (7.0:1).
 
 **What looks off:** Nothing.

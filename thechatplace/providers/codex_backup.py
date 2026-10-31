@@ -31,6 +31,9 @@ EXCLUDED_DIRS = (
 )
 EXCLUDED_FILES = (
     "auth.json*", "cap_sid*", "app-server-token*", "installation_id", "*.lock",
+    # Held open by a running Codex, so Windows refuses to read it: a lock,
+    # not data, which made a backup "incomplete" for nothing.
+    ".codex-provisioning-*.guard",
     "logs_*.sqlite*", "models_cache.json", "version.json",
     ".personality_migration", ".sandbox_migration",
     "app-server-control", "app-server-daemon", "tui-thread-reference-capabilities",
@@ -51,7 +54,8 @@ SKIPPED = [
     "(sign-in and runtime authority; sign in again)",
     "logs_*.sqlite, cache/, tmp/ and the model list (rebuilt by Codex)",
     "packages/ and marketplace plugin copies (reinstalled)",
-    "app-server control and daemon files, writer locks (only meaningful while Codex runs)",
+    "app-server control and daemon files, writer locks and provisioning guards "
+    "(only meaningful while Codex runs)",
     "skills/.system (Codex's own built-in skills)",
 ]
 

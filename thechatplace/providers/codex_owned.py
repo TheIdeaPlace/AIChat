@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, replace
 from .. import platform_paths
 from ..own_store import OwnSession
 from ..sessions import SessionInfo
-from .codex_rpc import (verify_codex_rule_layers, codex_tool_overrides, verify_codex_tools,
+from .codex_rpc import (check_startable, verify_codex_rule_layers, codex_tool_overrides, verify_codex_tools,
                         is_chatgpt_account, CodexRpcError, CodexTurnRejected,
                         ReadOnlyCodexConnection)
 from .codex_models import read_models
@@ -81,20 +81,12 @@ class CodexOwnedThreads:
         # still-owned empty thread has no persisted rollout to list yet.
         metadata = self.connection.request('thread/read', {'threadId': native_id, 'includeTurns': False})
         thread = metadata.get('thread')
-        statuses = ('idle',) if loaded else ('idle', 'notLoaded')
-        if (not isinstance(thread, dict) or thread.get('id') != native_id
-                or not isinstance(thread.get('status'), dict)
-                or thread['status'].get('type') not in statuses):
-            raise CodexTurnRejected('not_idle')
-        if empty:
-            return
-        latest = self.connection.request('thread/turns/list', {
-            'threadId': native_id, 'limit': 1, 'sortDirection': 'desc', 'itemsView': 'notLoaded'})
-        turns = latest.get('data')
-        if (not isinstance(turns, list) or len(turns) > 1
-                or any(not isinstance(turn, dict) or turn.get('status') not in
-                       ('completed', 'failed', 'interrupted') for turn in turns)):
-            raise CodexTurnRejected('not_idle')
+        if not isinstance(thread, dict) or thread.get('id') != native_id:
+            raise CodexTurnRejected('status_unclear')
+        # A thread whose last turn failed reports systemError until a new
+        # turn starts, so reopening or rechecking it must accept that (#448).
+        check_startable(self.connection, native_id, thread, not_loaded=not loaded,
+                        check_turns=not empty)
 
     def verify_loaded(self, proof, *, empty=False):
         """Recheck retained ownership without resuming or replacing the thread."""
@@ -178,7 +170,8 @@ class CodexOwnedThreads:
                 or (model is not None and result["model"] != model)
                 or (effort is not None and result.get("reasoningEffort") != effort)
                 or result.get("approvalsReviewer") != policy.reviewer
-                or not isinstance(status, dict) or status.get("type") != "idle"
+                or not isinstance(status, dict)
+                or status.get("type") not in (("idle", "systemError") if method == "thread/resume" else ("idle",))
                 or thread.get("ephemeral") is not ephemeral
                 or (method == "thread/resume" and actual_id != native_id)
                 or (method == "thread/fork" and actual_id == native_id)):

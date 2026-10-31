@@ -19,6 +19,13 @@ The zip is written under a temporary name in the destination folder and only
 renamed into place after it has been read back and every file's checksum
 matched, so a failed or interrupted backup never looks like a good one and
 never replaces one. Restore is a later step (#433, with #228's import).
+
+With a passphrase (#435) the backup is made as usual, then put whole, as
+``backup.zip``, inside a zip whose one entry is AES-256 encrypted the WinZip
+way. Encrypting the entries of the backup itself would leave their names in
+plain text, and Claude's project folders are named after whole paths. So
+nothing shows but that one name; 7-Zip or WinZip opens it with the
+passphrase. The passphrase is never stored: forgotten, the backup is lost.
 """
 from __future__ import annotations
 
@@ -32,7 +39,9 @@ import socket
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
+from contextlib import contextmanager
 import uuid
 import zipfile
 import zlib
@@ -40,6 +49,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional, Sequence
+
+import pyzipper
 
 from . import __version__, platform_paths
 
@@ -111,6 +122,7 @@ class Result:
     failures: List[str] = field(default_factory=list)
     changed: List[str] = field(default_factory=list)
     gone: List[str] = field(default_factory=list)
+    encrypted: bool = False
     # Entries part-written when their source failed mid-read: in the zip,
     # but not a copy of anything.
     unusable: List[str] = field(default_factory=list)
@@ -124,6 +136,99 @@ class Check:
     files: int = 0
     problems: List[str] = field(default_factory=list)
     manifest: Optional[dict] = None
+    # Set when the backup is encrypted and no passphrase, or the wrong one,
+    # was given: ask for it and check again.
+    needs_passphrase: bool = False
+    encrypted: bool = False
+
+
+class PassphraseError(ValueError):
+    """An encrypted backup and no passphrase ("needed"), the wrong one
+    ("wrong"), or one that failed only the final check, which a wrong
+    passphrase or damage can cause ("wrong-or-damaged")."""
+
+
+# The one entry of an encrypted backup: the whole backup, encrypted.
+INNER = "backup.zip"
+
+PASSPHRASE_PROBLEMS = {
+    "needed": "It's encrypted; its passphrase is needed.",
+    "wrong": "The passphrase is wrong.",
+    "wrong-or-damaged": "The passphrase is wrong, or the backup is damaged.",
+}
+
+
+def is_encrypted(path) -> bool:
+    """True for an encrypted backup: one encrypted entry, backup.zip."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            infos = archive.infolist()
+    except (OSError, zipfile.BadZipFile, ValueError, EOFError):
+        return False
+    return len(infos) == 1 and infos[0].filename == INNER and bool(infos[0].flag_bits & 0x1)
+
+
+def _encrypt(inner: Path, outer: Path, passphrase: str, cancelled=None) -> str:
+    """Put ``inner`` whole into ``outer`` as its one AES-256 entry (stored:
+    it's compressed already). Returns the SHA-256 of what went in."""
+    digest = hashlib.sha256()
+    with pyzipper.AESZipFile(outer, "w", compression=pyzipper.ZIP_STORED, allowZip64=True,
+                             encryption=pyzipper.WZ_AES) as archive:
+        archive.setpassword(passphrase.encode("utf-8"))
+        archive.setencryption(pyzipper.WZ_AES, nbits=256)
+        info = archive.zipinfo_cls(INNER, date_time=time.localtime()[:6])
+        info.compress_type = pyzipper.ZIP_STORED
+        with open(inner, "rb") as source, archive.open(info, "w", force_zip64=True) as out:
+            _hash_into(source, out, digest, cancelled)
+    return digest.hexdigest()
+
+
+def _decrypt_to(path, passphrase: Optional[str], out, cancelled=None) -> str:
+    """Write an encrypted backup's inner zip to ``out`` (a file, or None to
+    only read it) and return its SHA-256. Raises PassphraseError. Whether
+    it's needed or wrong is told by whether one was given, not by
+    pyzipper's wording."""
+    if not passphrase:
+        raise PassphraseError("needed")
+    digest = hashlib.sha256()
+    try:
+        with pyzipper.AESZipFile(path) as archive:
+            archive.setpassword(passphrase.encode("utf-8"))
+            with archive.open(INNER) as source:
+                while True:
+                    if cancelled is not None and cancelled():
+                        raise InterruptedError("Backup cancelled.")
+                    chunk = source.read(_CHUNK)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    if out is not None:
+                        out.write(chunk)
+    except RuntimeError as exc:
+        # The passphrase's own 2-byte check failed.
+        raise PassphraseError("wrong") from exc
+    except pyzipper.BadZipFile as exc:
+        # The final HMAC failed: about 1 wrong passphrase in 65,536 gets
+        # this far, and damage ends here too.
+        if "hmac" in str(exc).lower():
+            raise PassphraseError("wrong-or-damaged") from exc
+        raise
+    return digest.hexdigest()
+
+
+@contextmanager
+def opened(path, passphrase: Optional[str] = None, cancelled=None):
+    """The path of a backup as a plain zip, for reading: the file itself,
+    or for an encrypted one its decrypted inner zip in a private temporary
+    folder that's deleted afterwards. Raises PassphraseError."""
+    if not is_encrypted(path):
+        yield Path(path)
+        return
+    with tempfile.TemporaryDirectory(prefix="tcp-backup-open-") as folder:
+        target = Path(folder) / INNER
+        with open(target, "wb") as out:
+            _decrypt_to(path, passphrase, out, cancelled)
+        yield target
 
 
 def _arc(*parts: str) -> str:
@@ -244,12 +349,48 @@ def tcp_inventory() -> Inventory:
     inv.areas.append(Area("thechatplace/data", str(root),
                           "The Chat Place's settings, groups and session records"))
     inv.items = walk(root, "thechatplace/data",
-                     exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json"),
+                     exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json",
+                                    platform_paths.BACKUP_SECRET_FILE + "*"),
                      inventory=inv)
     inv.skipped += ["*.log (diagnostic logs)",
                     "session-tools.json (a running chat's connection key, made anew)",
-                    "computer.json (this computer's id; another computer has its own)"]
+                    "computer.json (this computer's id; another computer has its own)",
+                    "the scheduled backups' protected passphrase (it only works here)"]
+    duplicates = _kept_copies_of_present_originals(root)
+    if duplicates:
+        prefix = "thechatplace/data/kept-history/claude/"
+        inv.items = [item for item in inv.items
+                     if not (item.arcname.startswith(prefix)
+                             and item.arcname[len(prefix):].split("/", 1)[0] in duplicates)]
+        inv.skipped.append(f"{len(duplicates)} kept copies of Claude chats whose original "
+                           "transcript is in the backup too")
     return inv
+
+
+def _kept_copies_of_present_originals(root: Path) -> set:
+    """Kept copies (#438) whose original transcript is still in Claude's
+    folder, which the backup copies anyway: left out, so a backup isn't
+    twice the size of the Claude history (#451 review). One with saved
+    earlier versions (history the original no longer has) is kept."""
+    kept = Path(root) / "kept-history" / "claude"
+    if not kept.is_dir():
+        return set()
+    home = platform_paths.claude_home()
+    try:
+        present = {path.stem for path in (home / "projects").glob("*/*.jsonl")}
+    except OSError:
+        return set()
+    duplicates = set()
+    for record_file in kept.glob("*/record.json"):
+        folder = record_file.parent
+        try:
+            identity = json.loads(record_file.read_text(encoding="utf-8"))["identity"]
+            same_home = Path(identity[2]) == home
+        except (OSError, ValueError, KeyError, TypeError, IndexError):
+            continue
+        if same_home and identity[1] in present and not (folder / "versions").exists():
+            duplicates.add(folder.name)
+    return duplicates
 
 
 def default_collectors() -> List[Callable[[], Inventory]]:
@@ -286,10 +427,14 @@ def computer_identity() -> dict:
 
 # Writing -------------------------------------------------------------------
 
+def _safe_computer(computer: str) -> str:
+    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in computer).strip("-")
+    return safe or "computer"
+
+
 def default_filename(computer: str, now: Optional[datetime] = None) -> str:
     now = now or datetime.now()
-    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in computer).strip("-") or "computer"
-    return f"{FILE_PREFIX}{safe}-{now:%Y-%m-%d-%H%M%S}.zip"
+    return f"{FILE_PREFIX}{_safe_computer(computer)}-{now:%Y-%m-%d-%H%M%S}.zip"
 
 
 def _inside(child: Path, parent: Path) -> bool:
@@ -422,7 +567,8 @@ def _sqlite_snapshot(source: Path, scratch: Path, cancelled=None) -> Path:
 def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Inventory]]] = None,
            progress: Optional[Callable[[int, int, str], None]] = None,
            cancelled: Optional[Callable[[], bool]] = None,
-           filename: Optional[str] = None, now: Optional[datetime] = None) -> Result:
+           filename: Optional[str] = None, now: Optional[datetime] = None,
+           passphrase: Optional[str] = None) -> Result:
     """Write one backup into ``dest_dir`` and return what happened.
 
     ``progress(done, total, arcname)`` is called from this (background)
@@ -458,6 +604,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     now = now or datetime.now()
     final = dest_dir / (filename or default_filename(computer["name"], now))
     partial = final.with_name(f"{final.name}.{uuid.uuid4().hex[:8]}{PARTIAL_SUFFIX}")
+    made = [partial]   # unfinished files, removed if anything goes wrong
     items = [(inv, item) for inv in inventories for item in inv.items]
     total = len(items)
     files: List[dict] = []
@@ -480,6 +627,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
                 if entry is not None:
                     files.append(entry)
             manifest = _manifest(inventories, files, result, computer, started)
+            manifest["encrypted"] = bool(passphrase)
             archive.writestr(MANIFEST, json.dumps(manifest, indent=1, ensure_ascii=False))
         # On the disk, not just in the cache, before it's checked and named:
         # a USB stick pulled after "finished" mustn't hold half a backup.
@@ -488,12 +636,26 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
         check = verify(partial, cancelled=cancelled)
         if not check.ok:
             raise OSError("The backup didn't check out: " + "; ".join(check.problems[:3]))
-        final = _publish(partial, final, result)
-    except BaseException:
-        try:
+        if passphrase:
+            # The checked backup goes whole into the encrypted one, which is
+            # then read back and compared before the plain one is deleted.
+            sealed = partial.with_name(partial.name.replace(PARTIAL_SUFFIX, ".enc" + PARTIAL_SUFFIX))
+            made.append(sealed)
+            written = _encrypt(partial, sealed, passphrase, cancelled)
+            with open(sealed, "rb+") as handle:
+                os.fsync(handle.fileno())
+            if _decrypt_to(sealed, passphrase, None, cancelled) != written:
+                raise OSError("The encrypted backup didn't read back the same.")
             partial.unlink()
-        except OSError:
-            pass
+            final = _publish(sealed, final, result)
+        else:
+            final = _publish(partial, final, result)
+    except BaseException:
+        for leftover in made:
+            try:
+                leftover.unlink()
+            except OSError:
+                pass
         raise
     result.path = final
     result.files = len(files)
@@ -501,6 +663,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     result.archive_bytes = final.stat().st_size
     result.providers = [inv.label for inv in inventories if inv.items]
     result.complete = not result.failures
+    result.encrypted = bool(passphrase)
     if same_drive_as_home(dest_dir):
         result.notes.append("This backup is on the same disk as your data, so it won't survive "
                             "losing this computer. Copy it to another drive or a cloud folder.")
@@ -551,7 +714,7 @@ def _publish(partial: Path, final: Path, result: Optional[Result] = None) -> Pat
     raise OSError(f"Couldn't find a free name for the backup in {final.parent}.")
 
 
-def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
+def _add(archive, inv: Inventory, item: Item, scratch: Path,
          result: Result, cancelled=None) -> Optional[dict]:
     source = Path(item.source)
     try:
@@ -655,8 +818,10 @@ def _manifest(inventories, files, result, computer, started) -> dict:
 
 # Checking ------------------------------------------------------------------
 
-def read_manifest(path: Path) -> dict:
-    with zipfile.ZipFile(path) as archive:
+def read_manifest(path: Path, passphrase: Optional[str] = None) -> dict:
+    """A backup's manifest. Raises PassphraseError for an encrypted backup
+    without its passphrase, or with the wrong one."""
+    with opened(path, passphrase) as plain, zipfile.ZipFile(plain) as archive:
         manifest = json.loads(archive.read(MANIFEST).decode("utf-8"))
     if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
         raise ValueError(f"{Path(path).name} isn't a Chat Place backup.")
@@ -671,11 +836,31 @@ def _safe_name(name: str) -> bool:
     return ".." not in name.replace("\\", "/").split("/")
 
 
-def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None) -> Check:
+def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None,
+           passphrase: Optional[str] = None) -> Check:
     """Read the whole archive back and compare every file with the manifest:
     present, the right size, the right SHA-256, nothing unlisted, no unsafe
     names. A newer format version is a problem (this release can't vouch
-    for it)."""
+    for it). An encrypted backup needs its passphrase: without it, or with
+    the wrong one, ``needs_passphrase`` is set. It's decrypted to a private
+    temporary folder to be checked, and that copy deleted."""
+    if not is_encrypted(path):
+        return _verify_plain(path, cancelled)
+    try:
+        with opened(path, passphrase, cancelled) as plain:
+            check = _verify_plain(plain, cancelled)
+    except InterruptedError:
+        raise
+    except PassphraseError as exc:
+        check = Check(ok=False, needs_passphrase=True,
+                      problems=[PASSPHRASE_PROBLEMS.get(str(exc), str(exc))])
+    except (OSError, pyzipper.BadZipFile, zlib.error, ValueError, EOFError) as exc:
+        check = Check(ok=False, problems=[f"Couldn't read it: {exc}"])
+    check.encrypted = True
+    return check
+
+
+def _verify_plain(path, cancelled=None) -> Check:
     check = Check(ok=False)
     try:
         with zipfile.ZipFile(path) as archive:
@@ -758,7 +943,12 @@ def summary(result: Result) -> str:
     if result.failures:
         text += (f" {len(result.failures)} item{'s' if len(result.failures) != 1 else ''} "
                  "couldn't be copied, so it's incomplete; the details are in its manifest.")
-    text += " It's not encrypted and holds your conversations, so keep it somewhere private."
+    if result.encrypted:
+        text += (" It's encrypted with your passphrase. Without it the backup can't be opened, "
+                 "so keep the passphrase safe.")
+    else:
+        text += (" It's not encrypted and holds your conversations, so keep it somewhere "
+                 "private.")
     for note in result.notes:
         text += " " + note
     return text
@@ -779,20 +969,34 @@ def load_state() -> dict:
     return state if isinstance(state, dict) else {}
 
 
-def record(result: Result) -> None:
-    """Remember a finished backup. A failure to save is not the backup's
-    failure, so it's swallowed."""
+# backup.json is changed by the window (Save in Backup Schedule) and by a
+# backup's thread; each change reads, changes and writes it under this lock,
+# so neither loses the other's.
+_STATE_LOCK = threading.RLock()
+
+
+def _update_state(change, quiet: bool = True) -> None:
+    """Read backup.json, let ``change`` alter it, write it back. A failure to
+    save is swallowed when ``quiet`` (it isn't the backup's failure)."""
     from .provider_storage import atomic_write_json
-    state = load_state()
-    state.update({"folder": str(result.path.parent), "last_path": str(result.path),
-                  "last_time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                  "last_files": result.files, "last_bytes": result.archive_bytes,
-                  "last_complete": result.complete})
-    try:
-        platform_paths.app_data_dir().mkdir(parents=True, exist_ok=True)
-        atomic_write_json(platform_paths.app_data_dir() / STATE_FILE, state)
-    except OSError:
-        pass
+    with _STATE_LOCK:
+        state = load_state()
+        change(state)
+        try:
+            platform_paths.app_data_dir().mkdir(parents=True, exist_ok=True)
+            atomic_write_json(platform_paths.app_data_dir() / STATE_FILE, state)
+        except OSError:
+            if not quiet:
+                raise
+
+
+def record(result: Result) -> None:
+    """Remember a finished backup."""
+    _update_state(lambda state: state.update({
+        "folder": str(result.path.parent), "last_path": str(result.path),
+        "last_time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "last_files": result.files, "last_bytes": result.archive_bytes,
+        "last_complete": result.complete}))
 
 
 def last_backup_text(state: Optional[dict] = None) -> str:
@@ -825,6 +1029,8 @@ def check_text(path: Path, check: Check) -> str:
         match = "its 1 file matches" if check.files == 1 else f"all {check.files} files match"
         text = (f"{name} is good: {match}. It was made on "
                 f"{computer}{when}.")
+        if check.encrypted:
+            text += " It's encrypted."
         if manifest.get("complete") is False:
             failures = manifest.get("failures") or []
             text += (f" It's incomplete: {len(failures)} item"
@@ -836,3 +1042,277 @@ def check_text(path: Path, check: Check) -> str:
     if more > 0:
         text += f"\n...and {more} more."
     return text
+
+
+# Scheduled backups (#437) ----------------------------------------------------
+
+SCHEDULES = ("off", "daily", "weekly")
+SCHEDULE_LABELS = {"off": "Off", "daily": "Every day", "weekly": "Every week"}
+SCHEDULE_PERIODS = {"daily": 24 * 3600, "weekly": 7 * 24 * 3600}
+DEFAULT_KEEP = 5
+MAX_KEEP = 100
+# A failed scheduled backup is said at most this often, so a folder on a
+# drive that's unplugged for a week doesn't nag every ten minutes.
+FAILURE_NOTICE_SECONDS = 24 * 3600
+
+
+@dataclass
+class Schedule:
+    every: str = "off"           # one of SCHEDULES
+    folder: str = ""
+    keep: int = DEFAULT_KEEP
+    # Encrypted with the passphrase kept in the system's protected store
+    # (#442), never in backup.json.
+    encrypt: bool = False
+
+    @property
+    def on(self) -> bool:
+        return self.every in SCHEDULE_PERIODS and bool(self.folder)
+
+
+def load_schedule(state: Optional[dict] = None) -> Schedule:
+    """The schedule kept in backup.json; anything odd in it reads as off."""
+    state = load_state() if state is None else state
+    raw = state.get("schedule") if isinstance(state.get("schedule"), dict) else {}
+    every = raw.get("every") if raw.get("every") in SCHEDULES else "off"
+    try:
+        keep = max(1, min(MAX_KEEP, int(raw.get("keep", DEFAULT_KEEP))))
+    except (TypeError, ValueError, OverflowError):
+        keep = DEFAULT_KEEP
+    folder = raw.get("folder") if isinstance(raw.get("folder"), str) else ""
+    return Schedule(every, folder, keep, raw.get("encrypt") is True)
+
+
+def _save_state(state: dict) -> None:
+    """Replace backup.json (tests use it to set a state up)."""
+    _update_state(lambda current: (current.clear(), current.update(state)), quiet=False)
+
+
+def save_schedule(schedule: Schedule) -> None:
+    """Keep the schedule; raises OSError if it can't be saved (the dialog
+    says so). Saving forgets a recent failed attempt, so a backup that's due
+    starts now rather than an hour after the failure (#443 review): the
+    user has just fixed the folder or plugged the drive in."""
+    def change(state):
+        state["schedule"] = {"every": schedule.every, "folder": schedule.folder,
+                             "keep": schedule.keep, "encrypt": bool(schedule.encrypt)}
+        state.pop("schedule_tried", None)
+    _update_state(change, quiet=False)
+
+
+def _when(text) -> Optional[datetime]:
+    try:
+        moment = datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def schedule_due(state: Optional[dict] = None, now: Optional[datetime] = None) -> bool:
+    """True when the schedule is on and its period has passed since the last
+    good backup, by hand or scheduled (a backup is a backup), or there's
+    never been one. A failed attempt waits an hour before trying again."""
+    state = load_state() if state is None else state
+    schedule = load_schedule(state)
+    if not schedule.on:
+        return False
+    now = now or datetime.now(timezone.utc)
+    # A time in the future means the clock was wrong when it was written:
+    # it's ignored, or backups would stop, unsaid, until the clock caught up.
+    tried = _when(state.get("schedule_tried"))
+    if tried is not None and 0 <= (now - tried).total_seconds() < 3600:
+        return False
+    last = _when(state.get("last_time"))
+    since = None if last is None else (now - last).total_seconds()
+    return since is None or since < 0 or since >= SCHEDULE_PERIODS[schedule.every]
+
+
+def note_scheduled_attempt(now: Optional[datetime] = None) -> None:
+    stamp = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+    _update_state(lambda state: state.__setitem__("schedule_tried", stamp))
+
+
+def note_scheduled_failure(reason: str, now: Optional[datetime] = None) -> bool:
+    """Remember a failed scheduled backup. True when it should be said now
+    (the first failure, or a day since the last one was said)."""
+    now = now or datetime.now(timezone.utc)
+    said_now = []
+
+    def change(state):
+        said = _when(state.get("schedule_failure_said"))
+        say = (said is None or (now - said).total_seconds() < 0
+               or (now - said).total_seconds() >= FAILURE_NOTICE_SECONDS)
+        state["schedule_failure"] = {"time": now.isoformat(timespec="seconds"),
+                                     "reason": reason}
+        if say:
+            state["schedule_failure_said"] = now.isoformat(timespec="seconds")
+        said_now.append(say)
+    _update_state(change)
+    return said_now[0]
+
+
+def clear_scheduled_failure() -> None:
+    def change(state):
+        state.pop("schedule_failure", None)
+        state.pop("schedule_failure_said", None)
+    _update_state(change)
+
+
+def failure_text(state: Optional[dict] = None) -> str:
+    """"The last scheduled backup failed on ...: why." or ""."""
+    state = load_state() if state is None else state
+    failure = state.get("schedule_failure")
+    if not isinstance(failure, dict):
+        return ""
+    moment = _when(failure.get("time"))
+    when = f" on {moment.astimezone().day} {moment.astimezone():%B} at " \
+           f"{moment.astimezone():%H:%M}" if moment else ""
+    return f"The last scheduled backup failed{when}: {failure.get('reason', 'unknown')}"
+
+
+def _made_by(path: Path) -> Optional[str]:
+    """The computer id in a plain backup's manifest, or None (an encrypted
+    backup, or one that can't be read, is never taken to be ours)."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if archive.getinfo(MANIFEST).file_size > MANIFEST_LIMIT:
+                return None
+            manifest = json.loads(archive.read(MANIFEST).decode("utf-8"))
+        ident = manifest.get("computer", {}).get("id") if manifest.get("format") == FORMAT \
+            else None
+    except (OSError, KeyError, ValueError, AttributeError, zipfile.BadZipFile,
+            RuntimeError, NotImplementedError, EOFError):
+        return None
+    return ident if isinstance(ident, str) else None
+
+
+MADE_KEEP = 200     # how many scheduled backups' names are remembered
+
+
+def note_made(path: Path) -> None:
+    """Remember a scheduled backup this computer made (its path and size)."""
+    try:
+        entry = {"path": str(path), "size": Path(path).stat().st_size}
+    except OSError:
+        return
+
+    def change(state):
+        made = [m for m in state.get("schedule_made") or [] if isinstance(m, dict)
+                and m.get("path") != entry["path"]]
+        state["schedule_made"] = (made + [entry])[-MADE_KEEP:]
+    _update_state(change)
+
+
+def _same_path(path) -> str:
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
+def _made_here(path: Path, made: dict) -> bool:
+    """A scheduled backup this computer recorded making, unchanged since."""
+    size = made.get(_same_path(path))
+    try:
+        return size is not None and path.stat().st_size == size
+    except OSError:
+        return False
+
+
+def prune(folder: Path, keep: int, computer_id: str, newest: Path) -> List[Path]:
+    """Delete this computer's oldest backups in ``folder`` so ``keep`` are
+    left, counting ``newest`` (the one just made and checked), which is never
+    deleted. "This computer's" means its manifest says so (#443 review): a
+    shared cloud folder can hold another computer's backups under a name that
+    cleans up to the same text. An encrypted one's manifest can't be read, so
+    a scheduled backup recorded as made here, the same size since, counts too
+    (#442). Anything else, including a backup that can't be read, is left
+    alone. Returns what was deleted."""
+    made = {_same_path(m.get("path")): m.get("size")
+            for m in load_state().get("schedule_made") or []
+            if isinstance(m, dict) and isinstance(m.get("path"), str)}
+    mine = []
+    for path in Path(folder).glob(f"{FILE_PREFIX}*.zip"):
+        # A name, then the stamp: YYYY-MM-DD-HHMMSS, perhaps with " (n)".
+        stamp = path.name[:-4].split(" (")[0][-17:]
+        if (len(stamp) == 17 and stamp.replace("-", "").isdigit() and path.is_file()
+                and path != Path(newest)
+                and (_made_here(path, made) or _made_by(path) == computer_id)):
+            mine.append(path)
+    mine.sort(key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
+    deleted = []
+    for path in mine[max(1, keep) - 1:]:
+        try:
+            path.unlink()
+            deleted.append(path)
+        except OSError:
+            pass
+    gone = {_same_path(path) for path in deleted}
+    if gone:
+        _update_state(lambda state: state.__setitem__("schedule_made", [
+            m for m in state.get("schedule_made") or []
+            if isinstance(m, dict) and _same_path(m.get("path", "")) not in gone]))
+    return deleted
+
+
+def copied_roots() -> List[Path]:
+    """The folders a backup copies, found without listing them, so a folder
+    chosen for scheduled backups can be refused straight away if it's
+    inside one (it would copy itself)."""
+    roots = [platform_paths.app_data_dir(), platform_paths.claude_home(),
+             platform_paths.codex_home(), platform_paths.copilot_home(),
+             *platform_paths.desktop_sessions_dirs(), *platform_paths.cowork_sessions_dirs()]
+    return [Path(root) for root in roots]
+
+
+def schedule_folder_warning(folder: str) -> Optional[str]:
+    """Something to say, not refuse, about a schedule's folder."""
+    if folder and Path(folder).is_dir() and same_drive_as_home(Path(folder)):
+        return (f"{folder} is on the same disk as your data, so its backups won't survive "
+                "losing this computer. Use it anyway?")
+    return None
+
+
+def schedule_folder_problem(folder: str) -> Optional[str]:
+    """Why a folder can't take scheduled backups, or None."""
+    if not folder:
+        return "Choose a folder for the backups."
+    path = Path(folder)
+    if not path.is_dir():
+        return f"{folder} isn't a folder that exists."
+    for root in copied_roots():
+        if _inside(path, root):
+            return (f"{folder} is inside {root}, which the backup copies. Choose a folder "
+                    "outside it, ideally on another drive.")
+    return None
+
+
+def run_scheduled(cancelled: Optional[Callable[[], bool]] = None,
+                  collectors: Optional[Sequence[Callable[[], Inventory]]] = None,
+                  now: Optional[datetime] = None,
+                  progress: Optional[Callable[[int, int, str], None]] = None) -> Result:
+    """One scheduled backup: made, remembered, and old ones pruned to the
+    schedule's count, but only after a complete backup checked out, so a
+    run of failures never eats the good ones. Raises as create() does; the
+    caller notes the failure."""
+    schedule = load_schedule()
+    note_scheduled_attempt(now)
+    problem = schedule_folder_problem(schedule.folder)
+    if problem:
+        raise ValueError(problem)
+    passphrase = None
+    if schedule.encrypt:
+        passphrase = platform_paths.load_backup_secret()
+        if not passphrase:
+            # Never quietly unencrypted: the user chose encryption (#442).
+            raise ValueError("The scheduled backups' passphrase isn't on this computer any more. "
+                             "Set it again in File, Backup Schedule.")
+    result = create(Path(schedule.folder), cancelled=cancelled, collectors=collectors, now=now,
+                    progress=progress, passphrase=passphrase)
+    record(result)
+    note_made(result.path)
+    clear_scheduled_failure()
+    if result.complete:
+        removed = prune(Path(schedule.folder), schedule.keep,
+                        computer_identity()["id"], result.path)
+        if removed:
+            result.notes.append(f"Removed {len(removed)} older backup"
+                                f"{'s' if len(removed) != 1 else ''}, keeping {schedule.keep}.")
+    return result

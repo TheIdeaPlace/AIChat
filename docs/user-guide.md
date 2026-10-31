@@ -790,7 +790,7 @@ requirements an administrator set.
 
 ### Turning them on
 
-Turn on **Include GitHub Copilot CLI chats (preview; restart required)** in Settings (Alt+O),
+Turn on **Include GitHub Copilot CLI chats (preview; restart required)** in Settings (Alt+I),
 save and restart. The option appears once Copilot CLI is installed or has saved a session on
 this computer: Settings looks for the Copilot CLI program, and checks the names of the folders in
 Copilot's session folder and whether each has a conversation log, never what's in them. With the
@@ -1641,14 +1641,14 @@ setting moves straight to it.
 - **Clear Recent Folders** (Alt+L) asks first, with No as the default, and then clears the list
   at once: Cancel in Settings doesn't bring it back. A folder comes back when a chat works in it
   again.
-- **Turn on Remote Control for The Chat Place's sessions** (Alt+C): Claude chats started here
+- **Turn on Remote Control for The Chat Place's sessions** (Alt+U): Claude chats started here
   only, and off at first. It counts from each chat's next turn. File, Remote Control can set one
   chat on or off instead (see "Remote Control").
 - **Let Claude keep a task list** (Alt+K): Claude chats started here only, from your next
   message. On at first.
 - **Include Codex chats (restart required)** (Alt+X): on once Codex is found. Restart The Chat
   Place for a change to count; you hear that when you press OK.
-- **Include GitHub Copilot CLI chats (preview; restart required)** (Alt+O): shown only once
+- **Include GitHub Copilot CLI chats (preview; restart required)** (Alt+I): shown only once
   Copilot CLI is installed or has saved a session on this computer. Off at first. Restart for a
   change to count.
 - **Let agent conversations hand replies across automatically** (Alt+G): off at first. With it
@@ -1704,12 +1704,24 @@ Your chats with Claude, Codex and Copilot are kept on this computer, not in your
 Signing in on a new computer doesn't bring them back, and neither does reinstalling.
 **File, Back Up Now** saves them in one file you can keep somewhere else.
 
+**Backups are designed to stay out of your way.** Back Up Now, Check Backup and Restore from
+Backup work in the background: once you've started one, nothing takes focus while it runs, and
+you can go on using The Chat Place. To see how it's going, read the status bar: Back Up Now and
+Restore from Backup show how far they've got, and Check Backup says it's checking. Press
+**Ctrl+9** (or **F6** until you reach it), use **Left** and **Right** to move between its parts,
+and **Escape** to go back, or use your screen reader's read-status-bar key. When a backup, check
+or restore is finished, a message box tells you what happened. Scheduled backups don't show one,
+since nobody may be there: you hear when they finish (unless announcements are set to silent),
+and the status bar keeps the result.
+
 1. Choose **File, Back Up Now**. A folder dialog opens, with when and where you last backed up.
 2. Choose a folder, ideally on another drive, a USB stick or a cloud folder such as OneDrive.
    A backup on the same disk won't survive losing the computer, and the summary says so.
-3. Press **Enter**. You hear "Backing up". It works in the background, and the status bar shows
-   how far it has got. To stop it, choose **Back Up Now** again and answer Yes.
-4. When it's done, a message says how many files it saved, how big the backup is and where it
+3. Press **Enter**. A box asks for a **passphrase** to encrypt the backup. Type one, then type
+   it again, or leave it empty and press Enter for no encryption.
+4. You hear "Backing up". It works in the background, and the status bar shows how far it has
+   got. To stop it, choose **Back Up Now** again and answer Yes.
+5. When it's done, a message says how many files it saved, how big the backup is and where it
    went, and whether anything couldn't be copied.
 
 The backup is one zip file named after the computer and the time, such as
@@ -1728,21 +1740,121 @@ It holds:
   conversations, speech settings and permissions.
 
 It leaves out sign-ins (you sign in again on a new computer), caches, logs, and plugins you can
-reinstall. **The backup isn't encrypted.** Conversations can include file contents, command output
-and anything pasted into them, so keep it somewhere private.
+reinstall.
+
+**Encrypt it if it's leaving this computer.** Conversations can include file contents, command
+output and anything pasted into them. With a passphrase, everything in the backup is encrypted
+(AES-256), the names of its files and folders too. The passphrase isn't kept anywhere:
+**if you forget it, nobody can open the backup.** Without one, keep the backup somewhere private.
+
+To open an encrypted backup by hand, use 7-Zip or WinZip (on a Mac, Keka): with the passphrase
+you get `backup.zip`, an ordinary zip of the backup. Windows' own zip folders and the Mac's
+Archive Utility can't open encrypted zips.
 
 **Check Backup** (File menu) reads a backup back and compares every file with the list of what it
-should hold, so you can trust a copy before you need it. It says whether the backup is good,
-where and when it was made, and what's wrong if it isn't.
+should hold, so you can trust a copy before you need it. An encrypted backup asks for its
+passphrase, and asks again if it's wrong. It says whether the backup is good, where and when it
+was made, and what's wrong if it isn't.
 
-Restoring from a backup isn't built yet. Until then, the files are in the zip, in the same
-folders as on the computer they came from.
+### Backing up by itself
+
+**File, Backup Schedule** backs up every day or every week without asking.
+
+1. Choose **File, Backup Schedule**. Focus starts on **Back up automatically**: choose Every day
+   or Every week.
+2. In **Folder for the backups**, type a folder or choose **Browse**. Another drive, a USB stick or
+   a cloud folder is best. A folder inside one the backup copies is refused.
+3. **Backups to keep** is how many of this computer's backups to keep in that folder (5 unless you
+   change it). Older ones are deleted, but only after a new backup has been made and checked.
+   Only backups this computer made are counted: scheduled ones, and unencrypted ones made by
+   hand. Other computers' backups and anything else in the folder are never touched.
+4. To encrypt them, check **Encrypt them with a passphrase kept on this computer** (Alt+E).
+   When you save, you type a passphrase twice. **Change Passphrase** (Alt+P) changes it later;
+   backups already made keep the passphrase they were made with.
+5. Press **Enter** (Save). A folder on the same disk as your chats is allowed, but you're asked
+   first, since it won't survive losing the computer. If a backup is due, one starts straight
+   away.
+
+Scheduled backups run while The Chat Place is open. One that came due while it was closed runs
+a couple of minutes after it starts. Each runs in the background, with its progress in the
+status bar, and you hear when it's finished. If one fails, for example because the USB stick
+isn't plugged in, you hear why. A failure is said at most once a day, and it's tried again an
+hour later or as soon as you save the schedule. A backup made by hand counts too: the next
+scheduled one comes a day or a week after it. The box at the bottom of Backup Schedule shows
+the last backup and the last failure. To stop one, choose **File, Back Up Now**.
+
+**About the scheduled backups' passphrase.** Nobody is there to type it when a backup runs, so
+it's kept where the system protects it: on Windows, tied to your Windows sign-in; on a Mac, in
+your login keychain; on Linux, in your keyring through secret-tool (without secret-tool,
+scheduled backups can't be encrypted). It's never in plain text in The Chat Place's files, or
+in a backup. A
+backup that leaves this computer needs the passphrase to open, but anyone signed in as you
+here could make or open one. If you forget it, the backups can't be opened anywhere else.
+Turning encryption off forgets the kept passphrase.
+
+### Restoring from a backup
+
+**File, Restore from Backup** brings the chats in a backup back into the session list, on this
+computer or a new one.
+
+1. Choose **File, Restore from Backup**, then the backup's zip file.
+2. It's checked first. An encrypted backup asks for its passphrase, and a damaged one is said
+   and not used.
+3. A list of the backup's chats opens, all chosen. The box at the top says how many it holds,
+   for each AI, and which computer they came from. Each chat starts with **Restore** or
+   **Skip**; **Space** switches the one you're on, and you hear how many are chosen.
+   **Select All** (Alt+A) and **Select None** (Alt+N) do every chat.
+4. Press **Enter** (Restore). The status bar shows how far it has got, and when it's done a
+   message says how many were restored. They're in the session list.
+
+Chats come back in the groups they were in on the computer they came from, and ones that were
+hidden there are hidden here. A group with the same name is used, or made; your other groups
+aren't changed.
+
+Restored chats are **read-only**. You can read them, find in them (Find in All Sessions too),
+export them and list their changes, but not reply to them or continue them. Each row says
+"imported chat", the Provider column says which AI it was with, and View, Show Sessions lists it
+with that AI's chats. Properties says which computer it came from.
+
+Restoring writes nothing to Claude's, Codex's or Copilot's folders: the chats are kept in The
+Chat Place's own folder. Restoring the same backup again, or a newer one from the same computer,
+updates chats instead of adding copies. The same chat from two computers shows twice.
+**Delete Session Permanently** (Shift+Delete) on a restored chat deletes only The Chat Place's
+copy of it.
+
+Reading a backup's Codex chats needs the Codex app or command-line tool installed. Without it,
+the other chats are restored and you're told the Codex ones couldn't be read. To stop a restore,
+choose **File, Back Up Now**. Chats already restored stay, and restoring the backup again finishes
+the rest.
 
 **Claude deletes old conversations.** Claude Code removes conversations older than its
 `cleanupPeriodDays` setting, 30 days unless you change it. Desktop app and Cowork sessions are
 exempt in recent versions. Chats started in The Chat Place and in a terminal aren't. To keep
 them longer, set a larger number in `~/.claude/settings.json`, such as
 `"cleanupPeriodDays": 36500`. A backup keeps what was there when it was made.
+
+### Chats Claude has deleted
+
+The Chat Place keeps its own copy of every Claude chat it lists, and adds to it as the chat
+grows. When Claude Code deletes a chat's transcript, the chat stays in the list as a
+**kept chat (read-only)**: you can read, find and export it, but not reply to it or continue it. It
+stays in the view it was in before, such as Terminal Sessions or Chat Place Sessions. A chat
+deleted before its first copy was made can't be recovered.
+
+**Settings** (Ctrl+Comma) shows how long each AI keeps chats. **History** (Alt+Y) is that
+report, and the button after it opens Claude's settings file in your editor; The Chat Place
+never changes it.
+
+**Delete Session Permanently** (Shift+Delete) on a kept chat deletes The Chat Place's copy, and
+on one of The Chat Place's own chats deletes its copy along with the transcript. To take a kept
+chat out of the list without deleting it, hide it.
+
+The copies are in `kept-history/claude` in The Chat Place's folder, aren't encrypted and never
+expire. If Claude rewrites a transcript, the earlier copy is kept too. Back Up Now includes the
+copies of chats whose transcript Claude has deleted, so a backup isn't twice the size of your
+Claude history. The copies are on this computer's disk: keep a backup elsewhere for a lost
+computer.
+
 
 ## More things you can do
 
@@ -2043,7 +2155,7 @@ again doesn't reconnect it.
 ### GitHub Copilot CLI
 
 **Copilot chats aren't listed, or Copilot isn't offered in New Session.** Turn on
-**Include GitHub Copilot CLI chats (preview; restart required)** in Settings (Alt+O), save and
+**Include GitHub Copilot CLI chats (preview; restart required)** in Settings (Alt+I), save and
 restart. The option appears only once Copilot CLI is installed or has saved a session on this
 computer. If the option is on and Copilot still isn't offered in New Session, The Chat Place
 hasn't found a native Copilot CLI: install it as below. New Session checks again each time.
