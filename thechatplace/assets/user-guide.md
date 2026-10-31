@@ -1625,11 +1625,13 @@ Signing in on a new computer doesn't bring them back, and neither does reinstall
 
 **Backups are designed to stay out of your way.** Back Up Now, Check Backup and Restore from
 Backup work in the background: once you've started one, nothing takes focus while it runs, and
-you can go on using The Chat Place. To see how it's going, read the status bar. Press **Ctrl+9**
-(or **F6** until you reach it), use **Left** and **Right** to move between its parts, and
-**Escape** to go back, or use your screen reader's read-status-bar key. When a backup, check or
-restore is finished, a message box tells you what happened. Scheduled backups don't show one,
-since nobody may be there: you hear when they finish, and the status bar keeps the result.
+you can go on using The Chat Place. To see how it's going, read the status bar: Back Up Now and
+Restore from Backup show how far they've got, and Check Backup says it's checking. Press
+**Ctrl+9** (or **F6** until you reach it), use **Left** and **Right** to move between its parts,
+and **Escape** to go back, or use your screen reader's read-status-bar key. When a backup, check
+or restore is finished, a message box tells you what happened. Scheduled backups don't show one,
+since nobody may be there: you hear when they finish (unless announcements are set to silent),
+and the status bar keeps the result.
 
 1. Choose **File, Back Up Now**. A folder dialog opens, with when and where you last backed up.
 2. Choose a folder, ideally on another drive, a USB stick or a cloud folder such as OneDrive.

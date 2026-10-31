@@ -899,9 +899,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Windows' zip folders and Archive Utility can't. The passphrase is never stored, so a forgotten
   one means a lost backup (#435). Checking one decrypts it to a private temporary folder, deleted
   afterwards. It works in the
-  background, taking no focus, with its progress in the status bar (Ctrl+9); choosing Back Up Now
-  again offers to stop it. Back Up Now, Check Backup and Restore from Backup each end with a
-  message box saying what happened; scheduled backups are only said and kept in the status bar. **Check Backup** (File menu) reads a
+  background, taking no focus, with its progress in the status bar (Ctrl+9; Check Backup shows
+  only that it's checking); choosing Back Up Now again offers to stop it. Back Up Now, Check
+  Backup and Restore from Backup each end with a message box saying what happened; a scheduled
+  backup is announced (not when announcements are silent) and kept in the status bar. **Check Backup** (File menu) reads a
   backup back, asking for the passphrase of an encrypted one, and
   checks every file against its manifest. The last folder and backup are kept in
   `backup.json` in The Chat Place's folder. **Backup Schedule** (File menu, #437) backs up every

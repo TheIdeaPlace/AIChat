@@ -6437,7 +6437,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         summary = imported_store.restore_summary(outcome)
         self._status(summary)
         wx.MessageBox(summary, "Restore from Backup",
-                      wx.OK | (wx.ICON_WARNING if outcome.counts.get("failed") or outcome.notes
+                      wx.OK | (wx.ICON_WARNING if outcome.counts.get("failed")
+                               or not outcome.counts.get("added") and outcome.notes
                                else wx.ICON_INFORMATION), self)
 
     def _apply_restored_metadata(self, outcome):

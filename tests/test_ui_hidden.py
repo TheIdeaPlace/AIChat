@@ -14832,7 +14832,6 @@ def test_restore_of_an_encrypted_backup_asks_for_its_passphrase(frame, env, monk
         "claude", "Claude", items=backup.walk(source, "claude/home"))], passphrase="pw").path
     _fake_open_dialog(monkeypatch, made)
     _fake_chooser(monkeypatch)
-    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: wx.YES)
     passphrases.answers = ["wrong", "pw"]
     frame.on_restore_backup()
     assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
