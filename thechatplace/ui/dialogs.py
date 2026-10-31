@@ -4556,19 +4556,19 @@ class RestoreChooserDialog(wx.Dialog):
         self.chosen = [True] * len(self._rows)
         self._say = say or (lambda text: None)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.heading = wx.TextCtrl(self, value=heading,
-                                   style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
-        set_accessible_name(self.heading, "About this backup")
-        self.heading.SetMinSize(dip(self, -1, 90))
+        self.heading = _read_only_text(self, heading, "About this backup", min_height=90)
         sizer.Add(self.heading, 0, wx.EXPAND | wx.ALL, 8)
         sizer.Add(wx.StaticText(self, label="Chat &list (Space switches Restore and Skip):"),
                   0, wx.LEFT | wx.RIGHT, 8)
         self.list = wx.ListBox(self, choices=[self._text(i) for i in range(len(self._rows))],
                                style=wx.LB_SINGLE)
         set_list_items_accessible(self.list, lambda: "Chats", lambda index: None)
+        self.list.SetName("Chats")
+        mac_a11y.set_label(self.list, "Chats")  # VoiceOver; the line above is MSAA and ATK
         # On the dialog, as every dialog here does: Space on the list
-        # switches the row. A double-click (or Enter where GTK treats it as
-        # activating the row) switches it too.
+        # switches the row, and Enter presses Restore on every platform
+        # (GTK would otherwise take it as activating the row, which would
+        # switch it). A double-click switches the row too.
         self.Bind(wx.EVT_CHAR_HOOK, self._on_list_key)
         self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.toggle(self.list.GetSelection()))
         if self._rows:
@@ -4605,8 +4605,16 @@ class RestoreChooserDialog(wx.Dialog):
         self.Layout()
 
     def _refresh_rows(self):
-        for index in range(len(self._rows)):
-            self.list.SetString(index, self._text(index))
+        # Only the rows that changed: on Windows each SetString removes and
+        # re-adds the row, which a screen reader hears.
+        self.list.Freeze()
+        try:
+            for index in range(len(self._rows)):
+                text = self._text(index)
+                if self.list.GetString(index) != text:
+                    self.list.SetString(index, text)
+        finally:
+            self.list.Thaw()
         self._update_restore()
 
     def toggle(self, index: int):
@@ -4626,9 +4634,16 @@ class RestoreChooserDialog(wx.Dialog):
         self.list.SetFocus()
 
     def _on_list_key(self, event):
-        if (event.GetKeyCode() == wx.WXK_SPACE and not event.HasAnyModifiers()
-                and wx.Window.FindFocus() is self.list):
+        if press_focused_button_on_a_mac(event):
+            return
+        on_list = wx.Window.FindFocus() is self.list and not event.HasAnyModifiers()
+        if on_list and event.GetKeyCode() == wx.WXK_SPACE:
             self.toggle(self.list.GetSelection())
+            return
+        if on_list and event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            click = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+            click.SetEventObject(self.restore)
+            self.restore.GetEventHandler().ProcessEvent(click)
             return
         event.Skip()
 

@@ -482,7 +482,8 @@ def restore_backup(path, manifest: dict, passphrase: Optional[str], *, confirm,
         answer = confirm(plan, sessions)
         if not answer:
             return None
-        chosen = sessions if answer is True else [s for s in answer if s in sessions]
+        offered = {id(s) for s in sessions}
+        chosen = sessions if answer is True else [s for s in answer if id(s) in offered]
         if not chosen:
             return None
         results: Dict[str, str] = {}
@@ -503,18 +504,19 @@ def restore_summary(outcome) -> str:
     def n(count, word):
         return f"{count} {word}{'s' if count != 1 else ''}"
     parts = []
+    # Hidden counts only newly restored chats, so it follows "restored".
+    hidden = len(outcome.hidden) if isinstance(outcome, RestoreOutcome) else 0
     if counts.get("added"):
         parts.append(f"{n(counts['added'], 'chat')} restored")
+        if hidden:
+            parts.append(f"{hidden} of them hidden, as {'it was' if hidden == 1 else 'they were'} "
+                         "(View, Show Sessions, Hidden)")
     if counts.get("updated"):
         parts.append(f"{n(counts['updated'], 'chat')} updated")
     if counts.get("unchanged"):
         parts.append(f"{counts['unchanged']} already here")
     if counts.get("failed"):
         parts.append(f"{counts['failed']} couldn't be read")
-    hidden = len(outcome.hidden) if isinstance(outcome, RestoreOutcome) else 0
-    if hidden and parts:
-        parts.append(f"{hidden} of them hidden, as {'it was' if hidden == 1 else 'they were'} "
-                     "(View, Show Sessions, Hidden)")
     if not parts:
         if notes:
             return "Nothing could be restored. " + notes_text(notes)

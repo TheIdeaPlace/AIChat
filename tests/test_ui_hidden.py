@@ -14928,6 +14928,14 @@ def test_restore_chooser_switches_rows_by_space_and_names_its_state(frame, env, 
         key.SetKeyCode(wx.WXK_SPACE)
         dialog._on_list_key(key)
         assert dialog.list.GetString(2) == "Skip: C, Claude"
+        assert dialog.list.GetName() == "Chats"
+        # Enter on the list presses Restore, never switching the row (GTK
+        # activates a row on Enter): with none chosen, it says so.
+        dialog._set_all(False)
+        enter = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        enter.SetKeyCode(wx.WXK_RETURN)
+        dialog._on_list_key(enter)
+        assert len(shown) == 2 and dialog.chosen_indexes() == []
     finally:
         dialog.Destroy()
 

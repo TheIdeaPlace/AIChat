@@ -6446,11 +6446,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                     self.groups.add(group, key)
                 except (OSError, ValueError):
                     continue   # groups off (damaged file) or a bad name: skipped
+        hidden = []
         for key in getattr(outcome, "hidden", None) or []:
             try:
                 self.hidden.hide(key)
             except (OSError, ValueError):
                 continue
+            hidden.append(key)
+        if isinstance(getattr(outcome, "hidden", None), list):
+            outcome.hidden[:] = hidden   # the summary says only what was hidden
 
     def on_settings(self, _event=None):
         previous_providers = (self.speech.includes_codex(), self.speech.copilot_enabled)
