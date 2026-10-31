@@ -718,3 +718,19 @@ The 586 by 413 Backup Schedule dialog. From the top: "Back up automatically:" ov
 Text is black on #F0F0F0 for the labels (18.4:1) and black on white in the boxes (21:1). In High Contrast Desert, text is #202020 on cream #FFFAEF (15.7:1), the folder path #3D3D3D on cream (10.4:1), and the default Save button cream on rust brown (#FFF5E3 on #903909, 7.0:1).
 
 **What looks off:** Nothing.
+
+## main-kept: Claude history after its original transcript disappears
+
+The two reviewed 100% pictures show a 1000 by 720 window. The session list
+fills the left two fifths and the chat fills the right. The selected row and
+heading say the original transcript is gone; the heading identifies a kept
+Claude chat as read-only. Four invented messages remain readable. Below them,
+About replying contains a read-only note explaining the kept copy and backups;
+there is no reply box, Continue Here or Open in Claude button. Show tool activity,
+New Session and Refresh remain below the note. The note has generous space beneath
+its three visible lines and the controls do not overlap.
+
+The light picture uses black text on white in the messages and note, with blue
+selection. High Contrast uses white text on #202020, white outlines and aqua
+selection; its dotted selection focus is visible. The probe reported no layout
+problems in either picture. No new visual defect was found.
