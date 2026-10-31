@@ -123,6 +123,10 @@ STEPS = [
     Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
     Step("folder question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Backup Schedule (#437): the last item but Exit, so Up twice from the top.
+    Step("Backup Schedule", ["alt+f", "Up", "Up", "Return"], expect=["Back up automatically"]),
+    Step("Backup Schedule closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
 ]
 
 #: The question "question" asks (STEPS above).

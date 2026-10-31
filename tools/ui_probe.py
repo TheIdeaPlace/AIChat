@@ -1617,6 +1617,18 @@ def d_prompts(frame, env):
     return frame.on_prompts
 
 
+def d_backup_schedule(frame, env):
+    """File, Backup Schedule (#437), turned on, with a last backup and a
+    failure to report, so the read-only box has its longest text."""
+    from thechatplace import backup
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    schedule = backup.Schedule("daily", str(env["tmp"]), 5)
+    status = ("Last backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last "
+              "scheduled backup failed on 31 October at 09:00: E:\\Backups isn't a folder "
+              "that exists.")
+    return lambda: frame._modal(BackupScheduleDialog(frame, schedule, status))
+
+
 def d_prompt_edit(frame, env):
     from thechatplace.ui.dialogs import PromptEditDialog
     return lambda: frame._modal(PromptEditDialog(frame, "Edit Prompt", "Review",
@@ -1755,6 +1767,7 @@ SURFACES = {
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
     "prompts": ("dialog", d_prompts, "File, Prompts"),
     "prompt-edit": ("dialog", d_prompt_edit, "Editing a saved prompt"),
+    "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
                                          "new Codex chat"),
@@ -1845,6 +1858,7 @@ DIALOG_CLASSES = {
     "session-columns": "SessionColumnsDialog",
     "prompts": "PromptsDialog",
     "prompt-edit": "PromptEditDialog",
+    "backup-schedule": "BackupScheduleDialog",
     "relay": "RelayDialog",
     "agent-new": "AgentConversationDialog",
     "agent-new-three": "AgentConversationDialog",

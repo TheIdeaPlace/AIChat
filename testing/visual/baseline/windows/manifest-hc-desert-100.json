@@ -1154,6 +1154,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Claude asks about text it wrote just before, with an option's preview"
+  },
+  "backup-schedule": {
+   "kind": "dialog",
+   "png": "backup-schedule-hc-desert-100.png",
+   "json": "backup-schedule-hc-desert-100.json",
+   "title": "Backup Schedule",
+   "class": "BackupScheduleDialog",
+   "size": [
+    600,
+    420
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Backup Schedule, daily, after a failure"
   }
  },
  "seconds": 92.2

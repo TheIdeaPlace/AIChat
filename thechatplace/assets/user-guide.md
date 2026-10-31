@@ -1665,6 +1665,31 @@ should hold, so you can trust a copy before you need it. An encrypted backup ask
 passphrase, and asks again if it's wrong. It says whether the backup is good, where and when it
 was made, and what's wrong if it isn't.
 
+### Backing up by itself
+
+**File, Backup Schedule** backs up every day or every week without asking.
+
+1. Choose **File, Backup Schedule**. Focus starts on **Back up automatically**: choose Every day
+   or Every week.
+2. In **Folder for the backups**, type a folder or choose **Browse**. Another drive, a USB stick or
+   a cloud folder is best. A folder inside one the backup copies is refused.
+3. **Backups to keep** is how many of this computer's backups to keep in that folder (5 unless you
+   change it). Older ones are deleted, but only after a new backup has been made and checked.
+   Only unencrypted backups this computer made are counted, by hand or on schedule. Encrypted
+   ones, other computers' backups and anything else in the folder are never touched.
+4. Press **Enter** (Save). A folder on the same disk as your chats is allowed, but you're asked
+   first, since it won't survive losing the computer. If a backup is due, one starts straight
+   away.
+
+Scheduled backups run while The Chat Place is open. One that came due while it was closed runs
+a couple of minutes after it starts. Each runs in the background, with its progress in the
+status bar, and you hear when it's finished. If one fails, for example because the USB stick
+isn't plugged in, you hear why. A failure is said at most once a day, and it's tried again an
+hour later or as soon as you save the schedule. A backup made by hand counts too: the next
+scheduled one comes a day or a week after it. The box at the bottom of Backup Schedule shows the last backup and the
+last failure. Scheduled backups aren't encrypted, because nobody is there to type a
+passphrase. To stop one, choose **File, Back Up Now**.
+
 Restoring from a backup isn't built yet. Until then, the files are in the zip, in the same
 folders as on the computer they came from.
 
