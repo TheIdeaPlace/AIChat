@@ -882,7 +882,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   session never freezes the window), and says where it saved; the status bar keeps that to read
   back. Headings carry the time, and the date whenever the day changes.
 - **Export Chats** (File menu, the last item before Exit, #461) exports many chats at once. It
-  lists the session list's chats that have a history, newest first, hidden ones left out, each
+  lists the chats in the session list's current view that have a history (found off the
+  window's thread), newest first, hidden ones left out, each
   row "Export:" or "Skip:" in its own text (title, AI, folder, last active), none chosen to begin
   with: Space switches a row, Select All and Select None do every one, and the button says how
   many ("Export 3 Chats"). A **Format** choice (Markdown, Web page, Plain text) is in the same
@@ -891,8 +892,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   file or another chat in the export, gets a number, and nothing is replaced (files are created
   exclusively). It runs in the background with "Exporting chats: N of M" in the status bar;
   choosing it again offers to stop it. It ends with a message box: how many were exported, to
-  where, and any that couldn't be (one failing doesn't stop the rest). The format and folder are
-  offered again until the app closes.
+  where, and any that couldn't be (one failing doesn't stop the rest; a failed write leaves no
+  partial file). Quitting during one asks first, and stops it before the next chat. The format and
+  folder are offered again until the app closes.
 - **Back up** (File, Back Up Now) saves your AI chats, memory and settings in one zip in a
   folder you choose, preferably on another drive or a cloud folder: Claude Code's
   conversations, memory, instructions, settings, skills and plans, the desktop app's Code and

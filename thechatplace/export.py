@@ -204,11 +204,20 @@ def export_many(chats, folder: str, fmt: str, read, *, cancelled=lambda: False,
             for number in range(1, 1000):
                 path = os.path.join(folder, name if number == 1 else _numbered(name, number))
                 try:
-                    with open(path, "x", encoding="utf-8", newline="\n") as handle:
-                        handle.write(text)
-                    break
+                    handle = open(path, "x", encoding="utf-8", newline="\n")
                 except FileExistsError:
                     continue
+                try:
+                    with handle:
+                        handle.write(text)
+                except BaseException:
+                    # Nothing half written stays to take the name (#462 review).
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                    raise
+                break
             else:
                 raise OSError("too many files with its name")
             result.written.append((title, path, len(messages)))

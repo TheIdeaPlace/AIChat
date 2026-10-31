@@ -1619,10 +1619,11 @@ that chat.
 
 ### Exporting many chats
 
-**File, Export Chats** (the last item before Exit: **Alt+F**, then **Up** twice) exports as many
-chats as you choose, each to its own file.
+**File, Export Chats** (on Windows and Linux, the last item before Exit: **Alt+F**, then **Up**
+twice) exports as many chats as you choose, each to its own file.
 
-1. A list of the chats in the session list opens, newest first, with hidden chats left out.
+1. A list of the chats in the session list's current view opens (choose a group or view first to
+   narrow it), newest first, with hidden chats left out.
    None are chosen to begin with. Each chat starts with **Skip** or **Export**; **Space**
    switches the one you're on, and you hear how many are chosen. **Select All** (Alt+A) and
    **Select None** (Alt+N) do every chat.

@@ -2997,28 +2997,51 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         in the status bar; choosing it again offers to stop it."""
         job = self._export_many_job
         if job is not None:
-            if wx.MessageBox("Chats are being exported. Stop?", "Export Chats",
-                             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES:
+            if job.get("listing"):
+                self._feedback("Still finding the chats to export.")
+                return
+            answer = wx.MessageBox("Chats are being exported. Stop?", "Export Chats",
+                                   wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
+            # It may have finished while the question was open.
+            if answer == wx.YES and self._export_many_job is job:
                 job["cancel"] = True
                 self._feedback("Stopping the export.")
             return
-        def exportable(info):
-            try:   # a local check, as Export Session makes
-                return self.sessions.has_history(info)
-            except (ValueError, OSError):
-                return False
-        infos = [info for info in (self._current_info(key) for key in self._list_keys)
-                 if info is not None and info.key not in self.hidden and exportable(info)]
-        infos.sort(key=lambda info: info.last_activity_ms or 0, reverse=True)
+        by_key = {info.key: info for info in self._snapshot.sessions}
+        candidates = [by_key[key] for key in self._list_keys
+                      if key in by_key and key not in self.hidden]
+        # Whether each has a history can mean searching Claude's project
+        # folders, so it's checked off the window's thread (#462 review).
+        listing = {"listing": True}
+        self._export_many_job = listing
+
+        def find():
+            found = []
+            for info in candidates:
+                try:   # a local check, as Export Session makes
+                    if self.sessions.has_history(info):
+                        found.append(info)
+                except Exception:  # noqa: BLE001 - not exportable, so not listed
+                    continue
+            wx.CallAfter(self._export_chats_choose, listing, found)
+
+        self._pool.submit(find)
+
+    def _export_chats_choose(self, listing, infos):
+        if self._gone() or self._export_many_job is not listing:
+            return
+        self._export_many_job = None
+        infos = sorted(infos, key=lambda info: info.last_activity_ms or 0, reverse=True)
         if not infos:
             wx.MessageBox("There are no chats in the session list to export.", "Export Chats",
                           wx.OK | wx.ICON_INFORMATION, self)
             return
         rows = [export.chat_row(info.title, info.provider_label or info.provider.capitalize(),
                                 info.cwd, info.last_activity_ms) for info in infos]
-        heading = (f"{len(infos)} chat{'s' if len(infos) != 1 else ''} in the session list, newest "
-                   "first. Choose the ones to export and the format; the folder comes next. Each "
-                   "chat becomes its own file, and no file is ever replaced.")
+        heading = (f"{len(infos)} chat{'s' if len(infos) != 1 else ''} in the session list's "
+                   "current view, newest first. Choose the ones to export and the format; the "
+                   "folder comes next. Each chat becomes its own file, and no file is ever "
+                   "replaced.")
         dialog = ExportChatsDialog(self, heading, rows, say=lambda text: self._say(text, interrupt=True),
                                    fmt=self._export_many_format)
         try:
@@ -3045,9 +3068,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         # shows it, and each chat's own Show Tool Activity choice.
         chats = []
         for info in chosen:
-            messages, _source = self._export_source(info)
-            show_activity = (self._show_activity if self._open is not None
-                             and info.key == self._open.key else info.key in self.tool_activity)
+            loaded = self._open is not None and info.key == self._open.key
+            messages = ([m for m in self._visible_messages() if m.kind not in TAIL_KINDS]
+                        if loaded and self._chat_loaded else None)
+            show_activity = self._show_activity if loaded else info.key in self.tool_activity
             chats.append((info.title, info.cwd, (info, messages, show_activity)))
         job = {"cancel": False}
         self._export_many_job = job
@@ -7587,6 +7611,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if answer != wx.YES:
                 event.Veto()
                 return
+        export_job = getattr(self, "_export_many_job", None)
+        if export_job is not None and not export_job.get("listing"):
+            if event.CanVeto() and wx.MessageBox(
+                    "Chats are being exported. Quit anyway? Files already written stay.",
+                    f"Quit {APP_NAME}", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                    self) != wx.YES:
+                event.Veto()
+                return
+            export_job["cancel"] = True   # stopped before the next chat (#462 review)
         job = getattr(self, "_backup_job", None)
         if job is not None:
             kind = ("A restore" if job.get("restore") else

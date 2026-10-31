@@ -15167,11 +15167,12 @@ def test_export_chats_writes_only_the_chosen_ones(frame, env, monkeypatch):
         monkeypatch, out, pick=lambda rows: [i for i, r in enumerate(rows) if r.startswith("Quiet one")],
         fmt="html")
     frame.on_export_chats()
+    assert pump(lambda: chooser.made, timeout=20)   # found off the window's thread
     made = chooser.made[-1]
     # Only chats with a history are listed (Hub probe has none).
     assert sorted(r.split(",")[0] for r in made.rows) == ["Blocked one", "Quiet one"]
     assert any(r.startswith("Quiet one, Claude, Repo, last active ") for r in made.rows)
-    assert made.heading.startswith("2 chats in the session list")
+    assert made.heading.startswith("2 chats in the session list's current view")
     assert folders.asked[-1] == "Export 1 chat to which folder?"
     assert env["feedback"][-1] == "Exporting 1 chat. Progress is in the status bar."
     assert pump(lambda: any(b.startswith("Exported 1 chat to ") for b in env["boxes"]), timeout=20)
@@ -15182,6 +15183,7 @@ def test_export_chats_writes_only_the_chosen_ones(frame, env, monkeypatch):
     assert frame._export_many_job is None
     # The format and folder are offered again next time.
     frame.on_export_chats()
+    assert pump(lambda: len(chooser.made) == 2, timeout=20)
     assert chooser.made[-1].start_format == "html"
 
 
@@ -15193,14 +15195,17 @@ def test_export_chats_leaves_out_hidden_chats(frame, env, monkeypatch):
     frame.hidden.hide(key)
     chooser, _folders = _fake_export_dialogs(monkeypatch, env["tmp"], ok=False)
     frame.on_export_chats()
+    assert pump(lambda: chooser.made, timeout=20)
     assert [r.split(",")[0] for r in chooser.made[-1].rows] == ["Quiet one"]
 
 
 def test_export_chats_with_nothing_to_export_says_so(frame, env, monkeypatch):
     chooser, _folders = _fake_export_dialogs(monkeypatch, env["tmp"])
     frame.on_export_chats()
+    assert pump(lambda: env["boxes"], timeout=20)
     assert chooser.made == []
     assert env["boxes"][-1] == "There are no chats in the session list to export."
+    assert frame._export_many_job is None
 
 
 def test_export_chats_again_while_running_offers_to_stop(frame, env, monkeypatch):
@@ -15209,7 +15214,38 @@ def test_export_chats_again_while_running_offers_to_stop(frame, env, monkeypatch
     frame.on_export_chats()   # env's MessageBox answers Yes
     assert env["boxes"][-1] == "Chats are being exported. Stop?"
     assert job["cancel"] and env["feedback"][-1] == "Stopping the export."
-    frame._export_many_job = None
+    # It finished while the question was open: nothing to stop, nothing said.
+    finished = {"cancel": False}
+    frame._export_many_job = finished
+    def answer(*a, **k):
+        frame._export_many_job = None
+        return wx.YES
+    monkeypatch.setattr(wx, "MessageBox", answer)
+    env["feedback"].clear()
+    frame.on_export_chats()
+    assert not finished["cancel"] and env["feedback"] == []
+
+
+def test_export_chats_follows_each_chats_tool_activity_and_the_loaded_view(frame, env,
+                                                                         monkeypatch):
+    for cli in ("cli-a", "cli-b"):
+        add_transcript(env, "C:\\G\\Repo", cli, [
+            user_text("q"), assistant_block(tool_use_block("Bash", {"command": "ls"}, "t1"), "m1"),
+            assistant_block(text_block(f"done {cli}"), "m2")])
+    select(frame, "Blocked one")
+    frame.tool_activity.add(frame._list_keys[frame.session_list.GetSelection()])
+    # Quiet one is loaded, showing no tool activity: its export is the list as shown.
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded)
+    out = env["tmp"] / "activity"
+    out.mkdir()
+    _fake_export_dialogs(monkeypatch, out, pick=lambda rows: list(range(len(rows))))
+    frame.on_export_chats()
+    assert pump(lambda: any(b.startswith("Exported 2 chats") for b in env["boxes"]), timeout=20)
+    texts = {p.name.split(" ")[0]: p.read_text(encoding="utf-8") for p in out.iterdir()}
+    assert "done cli-a" in texts["Quiet"] and "ls" not in texts["Quiet"]
+    assert "done cli-b" in texts["Blocked"] and "ls" in texts["Blocked"]
 
 
 def test_export_chats_dialog_starts_with_none_chosen(frame, env, monkeypatch):

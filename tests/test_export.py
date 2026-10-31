@@ -125,6 +125,14 @@ def test_export_many_stops_when_asked(tmp_path):
     assert all(p.suffix == ".html" for p in tmp_path.iterdir())
 
 
+def test_export_many_leaves_no_partial_file_when_a_write_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(export, "render", lambda *a, **k: 12345)   # not text: write fails
+    result = export.export_many([("Chat", "", "a")], str(tmp_path), export.MARKDOWN,
+                                lambda source: [msg(USER, "Hi")])
+    assert not result.written and result.failed[0][0] == "Chat"
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_export_many_summary_when_nothing_went(tmp_path):
     result = export.ManyResult()
     result.failed = [(f"T{n}", "no") for n in range(12)]
