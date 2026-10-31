@@ -354,7 +354,41 @@ def tcp_inventory() -> Inventory:
     inv.skipped += ["*.log (diagnostic logs)",
                     "session-tools.json (a running chat's connection key, made anew)",
                     "computer.json (this computer's id; another computer has its own)"]
+    duplicates = _kept_copies_of_present_originals(root)
+    if duplicates:
+        prefix = "thechatplace/data/kept-history/claude/"
+        inv.items = [item for item in inv.items
+                     if not (item.arcname.startswith(prefix)
+                             and item.arcname[len(prefix):].split("/", 1)[0] in duplicates)]
+        inv.skipped.append(f"{len(duplicates)} kept copies of Claude chats whose original "
+                           "transcript is in the backup too")
     return inv
+
+
+def _kept_copies_of_present_originals(root: Path) -> set:
+    """Kept copies (#438) whose original transcript is still in Claude's
+    folder, which the backup copies anyway: left out, so a backup isn't
+    twice the size of the Claude history (#451 review). One with saved
+    earlier versions (history the original no longer has) is kept."""
+    kept = Path(root) / "kept-history" / "claude"
+    if not kept.is_dir():
+        return set()
+    home = platform_paths.claude_home()
+    try:
+        present = {path.stem for path in (home / "projects").glob("*/*.jsonl")}
+    except OSError:
+        return set()
+    duplicates = set()
+    for record_file in kept.glob("*/record.json"):
+        folder = record_file.parent
+        try:
+            identity = json.loads(record_file.read_text(encoding="utf-8"))["identity"]
+            same_home = Path(identity[2]) == home
+        except (OSError, ValueError, KeyError, TypeError, IndexError):
+            continue
+        if same_home and identity[1] in present and not (folder / "versions").exists():
+            duplicates.add(folder.name)
+    return duplicates
 
 
 def default_collectors() -> List[Callable[[], Inventory]]:

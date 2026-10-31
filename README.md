@@ -1476,7 +1476,11 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   Settings (Ctrl+Comma) shows provider retention: Alt+Y reaches the report, and Tab reaches
   the button that opens Claude's settings in your editor.
   Copies have no automatic expiry, are unencrypted, and Back Up Now includes them. They still
-  need a backup on another disk. Delete Session Permanently also removes that chat's kept copy.
+  need a backup on another disk. Copies grow by appending what's new, and only a rewritten
+  transcript is copied whole (the earlier copy kept in `versions/`). A kept row keeps its
+  original kind for the Desktop, Chat Place and Terminal views, and Delete Session Permanently on
+  it deletes only the copy (on an own chat, the transcript and its copy). Back Up Now leaves out
+  kept copies whose original is in the backup too, unless they have earlier versions.
 - The Chat Place's own sessions, and terminal sessions, don't appear in the desktop app, so Open in
   Claude doesn't work for them; the app says so.
 - Cowork sessions can't be continued here. Their conversation is in the session's own Claude Code

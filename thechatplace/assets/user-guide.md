@@ -1560,7 +1560,7 @@ setting moves straight to it.
 - **Clear Recent Folders** (Alt+L) asks first, with No as the default, and then clears the list
   at once: Cancel in Settings doesn't bring it back. A folder comes back when a chat works in it
   again.
-- **Turn on Remote Control for The Chat Place's sessions** (Alt+C): Claude chats started here
+- **Turn on Remote Control for The Chat Place's sessions** (Alt+N): Claude chats started here
   only, and off at first. It counts from each chat's next turn. File, Remote Control can set one
   chat on or off instead (see "Remote Control").
 - **Let Claude keep a task list** (Alt+K): Claude chats started here only, from your next
@@ -1724,17 +1724,27 @@ exempt in recent versions. Chats started in The Chat Place and in a terminal are
 them longer, set a larger number in `~/.claude/settings.json`, such as
 `"cleanupPeriodDays": 36500`. A backup keeps what was there when it was made.
 
-The Chat Place now keeps its own copies of Claude transcripts it discovers or reads, refreshed
-in the background and after turns. If Claude removes an original, its row becomes a **kept chat (read-only)**: you can read and search it, but cannot send to it or Continue Here. Terminal
-chats stay listed too. A transcript removed before its first successful copy cannot be recovered.
-Settings (Ctrl+Comma) shows retention for each provider and offers **Open Claude's retention settings**, which opens an existing settings file in your editor; The Chat Place never edits it. In Settings, Alt+Y reaches the
-retention report; Tab then reaches the button to open Claude's settings.
+### Chats Claude has deleted
 
-Copies live under `kept-history/claude` in The Chat Place's data folder and have no automatic
-expiry. If Claude rewrites a transcript, the preceding copy stays in `versions`. The copies are
-unencrypted and Back Up Now includes them. They protect against provider cleanup on this disk;
-keep a backup elsewhere for a lost computer. Delete Session Permanently also removes that
-chat's kept copy. You can hide any kept chat from the list without deleting its copy.
+The Chat Place keeps its own copy of every Claude chat it lists, and adds to it as the chat
+grows. When Claude Code deletes a chat's transcript, the chat stays in the list as a
+**kept chat (read-only)**: you can read, find and export it, but not reply to it or continue it. It
+stays in the view it was in before, such as Terminal Sessions or Chat Place Sessions. A chat
+deleted before its first copy was made can't be recovered.
+
+**Settings** (Ctrl+Comma) shows how long each AI keeps chats. **History** (Alt+Y) is that
+report, and the button after it opens Claude's settings file in your editor; The Chat Place
+never changes it.
+
+**Delete Session Permanently** (Shift+Delete) on a kept chat deletes The Chat Place's copy, and
+on one of The Chat Place's own chats deletes its copy along with the transcript. To take a kept
+chat out of the list without deleting it, hide it.
+
+The copies are in `kept-history/claude` in The Chat Place's folder, aren't encrypted and never
+expire. If Claude rewrites a transcript, the earlier copy is kept too. Back Up Now includes the
+copies of chats whose transcript Claude has deleted, so a backup isn't twice the size of your
+Claude history. The copies are on this computer's disk: keep a backup elsewhere for a lost
+computer.
 
 
 ## More things you can do

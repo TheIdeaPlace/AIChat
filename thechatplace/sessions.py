@@ -146,6 +146,9 @@ class SessionInfo:
 
     #: Only set by the Claude adapter after the original has disappeared.
     kept_transcript: Optional[Path] = None
+    #: For a kept row (#438): where the chat came from before Claude Code
+    #: removed its transcript (desktop, own, terminal), so its views keep it.
+    kept_from: str = ""
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -394,7 +397,6 @@ VIEW_DESKTOP = "desktop"
 VIEW_COWORK = "cowork"
 VIEW_OWN = "own"
 VIEW_TERMINAL = "terminal"
-KEPT = "kept"
 VIEW_REMOTE = "remote"
 VIEW_UNGROUPED = "ungrouped"
 VIEW_ARCHIVED = "archived"
@@ -477,13 +479,13 @@ def in_view(info: SessionInfo, view: str) -> bool:
         return (info.state == IDLE if info.provider != "claude"
                 else info.state not in (NEEDS_YOU, WORKING))
     if view == VIEW_DESKTOP:
-        return info.source == DESKTOP
+        return info.source == DESKTOP or info.kept_from == DESKTOP
     if view == VIEW_COWORK:
         return info.cowork
     if view == VIEW_OWN:
-        return info.is_own
+        return info.is_own or info.kept_from == OWN
     if view == VIEW_TERMINAL:
-        return info.is_terminal
+        return info.is_terminal or info.kept_from == TERMINAL
     if view == VIEW_REMOTE:
         return info.remote
     if view == VIEW_UNGROUPED:

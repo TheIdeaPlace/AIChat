@@ -4,6 +4,8 @@ Keeps desktop ownership guards, terminal deduplication and live state intact.
 """
 from __future__ import annotations
 
+import time
+
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -88,17 +90,13 @@ class ClaudeConversations:
 
     def close(self):
         from ..history_keeper import close_all
-        close_all()
+        close_all(final=True)
 
     def capabilities(self, session):
         from .base import SessionCapabilities
 
         if session.provider != self.provider_id:
             raise ValueError("Not a Claude session")
-        if session.source != KEPT and platform_paths.is_safe_id(session.cli_session_id):
-            from ..history_keeper import keeper
-            if keeper().saved(kept_identity(session)) is not None:
-                _history_path(session)
         if session.source == KEPT:
             return SessionCapabilities(usage=True, changes=True)
         own = session.is_own
@@ -180,7 +178,23 @@ def keep_session(session, path=None):
     if path is not None:
         metadata = {key: getattr(session, key) for key in _KEEP_FIELDS}
         metadata['claude_home'] = str(session.claude_home or platform_paths.claude_home())
+        metadata['source'] = session.source
         keeper().enqueue(kept_identity(session), path, metadata)
+
+
+# Originals known to be gone, by kept token: (last activity then, when
+# checked). Looking for one globs every project folder, so it's looked for
+# again only when the chat shows new activity or after a few minutes.
+_MISSING = {}
+MISSING_RECHECK_SECONDS = 300
+
+
+def _known_missing(token, session, saved) -> bool:
+    if token not in saved:
+        return False
+    seen = _MISSING.get(token)
+    return (seen is not None and seen[0] == session.last_activity_ms
+            and time.monotonic() - seen[1] < MISSING_RECHECK_SECONDS)
 
 
 def preserve_sessions(sessions):
@@ -194,10 +208,12 @@ def preserve_sessions(sessions):
             continue
         token = store.token(kept_identity(session))
         seen.add(token)
-        path = session.transcript_path()
+        path = None if _known_missing(token, session, saved) else session.transcript_path()
         if path is not None:
+            _MISSING.pop(token, None)
             keep_session(session, path)
         elif token in saved:
+            _MISSING[token] = (session.last_activity_ms, time.monotonic())
             session = _as_kept(session, store.path(token))
         result.append(session)
     for token, metadata in saved.items():
@@ -214,7 +230,8 @@ def preserve_sessions(sessions):
                 continue
             values = {key: metadata[key] for key in _KEEP_FIELDS}
             home = metadata.get('claude_home')
-            session = SessionInfo(source=KEPT, **values,
+            source = metadata.get('source') if isinstance(metadata.get('source'), str) else ''
+            session = SessionInfo(source=KEPT, **values, kept_from=source,
                                   claude_home=Path(home) if home else None)
             if store.token(kept_identity(session)) != token:
                 continue
@@ -228,7 +245,8 @@ def _as_kept(session, path):
     if session.is_own and session.state in (WORKING, NEEDS_YOU):
         return session  # A temporary rewrite must not remove Stop from a live turn.
     return replace(session, source=KEPT, state=IDLE, detail='original transcript is gone',
-                   kept_transcript=path, remote=False, unread=False)
+                   kept_transcript=path, remote=False, unread=False,
+                   kept_from=session.kept_from if session.source == KEPT else session.source)
 
 
 class KeptClaudeReader:

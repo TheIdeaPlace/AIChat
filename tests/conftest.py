@@ -29,6 +29,9 @@ def _isolated_kept_history(monkeypatch, tmp_path):
                 else platform_paths.app_data_dir())
         return root/'kept-history/claude'
     monkeypatch.setattr(platform_paths, 'kept_history_dir', kept_root)
+    # A window closed by an earlier test shuts keepers down for good, as the
+    # app does on exit; each test starts with them open again.
+    monkeypatch.setattr(history_keeper, '_closed_all', False)
     yield
     history_keeper.close_all()
 

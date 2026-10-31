@@ -846,3 +846,21 @@ def test_state_changes_from_two_threads_both_stay(homes):
         t.join()
     state = backup.load_state()
     assert state["schedule"]["every"] == "weekly"
+
+
+def test_kept_copies_of_present_originals_arent_backed_up_twice(homes):
+    """#451 review: the kept copy of a chat whose transcript is still in
+    Claude's folder is left out; one whose original is gone stays."""
+    kept = homes["data"] / "kept-history" / "claude"
+    home = str(homes["claude"])
+    write(homes["claude"] / "projects" / "C--p" / "present.jsonl", "x")
+    for token, native in (("a" * 64, "present"), ("b" * 64, "gone")):
+        write(kept / token / "record.json",
+              json.dumps({"identity": ["claude", native, home], "metadata": {}}))
+        write(kept / token / "transcript.jsonl", "x")
+    got = names(backup.tcp_inventory())
+    assert not any(("a" * 64) in n for n in got)
+    assert f"thechatplace/data/kept-history/claude/{'b' * 64}/transcript.jsonl" in got
+    # With saved earlier versions, even a present one is kept.
+    write(kept / ("a" * 64) / "versions" / "old.jsonl", "y")
+    assert any(("a" * 64) in n for n in names(backup.tcp_inventory()))

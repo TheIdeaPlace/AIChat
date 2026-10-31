@@ -214,3 +214,123 @@ def test_stale_busy_state_cannot_resume_a_missing_original(tmp_path,monkeypatch)
     path.unlink();info.state=WORKING
     check_kept_before_send(info,active=False)
     assert info.source==KEPT and not ClaudeConversations().capabilities(info).send
+
+
+# #451 review ---------------------------------------------------------------------
+
+def test_a_growing_transcript_appends_only_the_new_bytes(tmp_path, monkeypatch):
+    info, path = session(tmp_path, monkeypatch)
+    keeper = history_keeper.keeper()
+    keeper.capture(kept_identity(info), path, {'title': 't'})
+    kept = keeper.saved(kept_identity(info))
+    first = kept.read_bytes()
+    # Grow the original; count what the keeper reads from it.
+    with path.open('ab') as handle:
+        handle.write(b'{"type": "summary", "summary": "more"}\n')
+    reads = []
+    real_open = Path.open
+
+    def counting_open(self, mode='r', *args, **kwargs):
+        handle = real_open(self, mode, *args, **kwargs)
+        if self == path and 'b' in mode:
+            original_read = handle.read
+            handle.read = lambda n=-1: (lambda data: reads.append(len(data)) or data)(original_read(n))
+        return handle
+    monkeypatch.setattr(Path, 'open', counting_open)
+    assert keeper.capture(kept_identity(info), path, {'title': 't'}) is True
+    monkeypatch.undo()
+    assert kept.read_bytes() == path.read_bytes() and kept.read_bytes().startswith(first)
+    # The tail check plus the new line: far less than the whole file twice over.
+    assert sum(reads) < len(first) + 200
+    assert not (kept.parent / 'versions').exists()
+
+
+def test_a_rewritten_transcript_keeps_the_old_copy_in_versions(tmp_path, monkeypatch):
+    info, path = session(tmp_path, monkeypatch)
+    keeper = history_keeper.keeper()
+    keeper.capture(kept_identity(info), path, {})
+    transcript(path, text='Compacted answer')    # same size class, different bytes
+    path.write_bytes(path.read_bytes() + b'\n')
+    assert keeper.capture(kept_identity(info), path, {}) is True
+    kept = keeper.saved(kept_identity(info))
+    assert kept.read_bytes() == path.read_bytes()
+    assert len(list((kept.parent / 'versions').glob('*.jsonl'))) == 1
+
+
+def test_closing_drops_queued_work_and_returns_quickly(tmp_path, monkeypatch):
+    import time
+    info, path = session(tmp_path, monkeypatch)
+    keeper = HistoryKeeper(tmp_path / 'kept')
+    started = time.monotonic()
+    with keeper._condition:
+        for n in range(200):
+            keeper._pending[str(n)] = (['claude', f'id{n}', 'home'], path, {})
+    keeper.close()
+    assert not keeper._pending and time.monotonic() - started < 2
+    keeper.enqueue(kept_identity(info), path, {})
+    assert not keeper._pending                       # closed: nothing new is queued
+
+
+def test_leftover_temporary_copies_are_swept_at_start(tmp_path):
+    folder = tmp_path / 'kept' / ('a' * 64)
+    folder.mkdir(parents=True)
+    (folder / 'copy-xyz.tmp').write_bytes(b'half')
+    HistoryKeeper(tmp_path / 'kept')
+    assert not (folder / 'copy-xyz.tmp').exists()
+
+
+def test_forget_never_waits_for_a_running_copy(tmp_path, monkeypatch):
+    import threading, time
+    info, path = session(tmp_path, monkeypatch)
+    keeper = HistoryKeeper(tmp_path / 'kept')
+    keeper.capture(kept_identity(info), path, {})
+    folder = keeper.saved(kept_identity(info)).parent
+    keeper._copy_lock.acquire()          # a copy in progress
+    try:
+        started = time.monotonic()
+        keeper.forget(kept_identity(info))
+        assert time.monotonic() - started < 1
+        assert keeper.saved(kept_identity(info)) is None
+        assert folder.exists()            # removed once the copy lets go
+    finally:
+        keeper._copy_lock.release()
+    keeper._delete_doomed()
+    assert not folder.exists()
+
+
+def test_a_missing_original_isnt_searched_for_on_every_refresh(tmp_path, monkeypatch):
+    from thechatplace.providers import claude as claude_provider
+    info, path = session(tmp_path, monkeypatch)
+    keep_session(info)
+    assert history_keeper.keeper().wait_idle()
+    path.unlink()
+    looked = []
+    real = SessionInfo.transcript_path
+
+    def counting(self):
+        looked.append(self.key)
+        return real(self)
+    monkeypatch.setattr(SessionInfo, 'transcript_path', counting)
+    claude_provider._MISSING.clear()
+    for _ in range(5):
+        kept, = preserve_sessions([info])
+        assert kept.source == KEPT and kept.kept_from == TERMINAL
+    assert looked == [info.key]          # once, not five times
+    # New activity looks again.
+    preserve_sessions([replace(info, last_activity_ms=999)])
+    assert looked == [info.key, info.key]
+
+
+def test_kept_rows_stay_in_their_original_view(tmp_path, monkeypatch):
+    from thechatplace.sessions import VIEW_OWN, VIEW_TERMINAL, in_view
+    info, path = session(tmp_path, monkeypatch, OWN)
+    keep_session(info)
+    assert history_keeper.keeper().wait_idle()
+    path.unlink()
+    kept, = preserve_sessions([info])
+    assert kept.kept_from == OWN
+    assert in_view(kept, VIEW_OWN) and not in_view(kept, VIEW_TERMINAL)
+    # And after a restart, from the record alone.
+    history_keeper.close_all()
+    again, = preserve_sessions([])
+    assert again.kept_from == OWN and in_view(again, VIEW_OWN)

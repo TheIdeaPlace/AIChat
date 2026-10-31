@@ -1010,6 +1010,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if info.provider == IMPORTED:
                 self._feedback(f"{info.title} was restored from a backup: it's read-only.")
                 return supported
+            if info.source == "kept":
+                self._feedback(f"{info.title} is a kept copy (Claude Code removed the "
+                               "original): it's read-only.")
+                return supported
             kind = ("agent conversations" if info.provider == AGENTS
                     else f"{info.provider.capitalize()} chats")
             self._feedback(f"This action isn't available for {kind} yet.")
@@ -1463,6 +1467,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if info is None:
             self._feedback("No session selected.")
             return
+        if info.source == "kept":
+            # Its original is already gone: only The Chat Place's copy is
+            # left to delete, and nothing else is touched (#451 review).
+            self._delete_kept(info)
+            return
         if info.is_terminal:
             self._feedback(f"{info.title} is a terminal session: The Chat Place doesn't "
                            "delete it. Here it can only be hidden.")
@@ -1504,12 +1513,17 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self.unload_session()
         failed = None
         try:
-            from ..history_keeper import keeper
-            from ..providers.claude import kept_identity
-            keeper().forget(kept_identity(info))
             _delete_transcript(path)
         except OSError as exc:
             failed = exc
+        # Its kept copy too, separately: a copy that can't be removed yet
+        # (being read) mustn't stop the transcript going (#451 review).
+        try:
+            from ..history_keeper import keeper
+            from ..providers.claude import kept_identity
+            keeper().forget(kept_identity(info))
+        except (OSError, ValueError):
+            pass
         # A deleted session left in a group or the hidden list is harmless.
         try:
             self.groups.forget(info.key)
@@ -1538,6 +1552,36 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                            "still on this computer.")
         else:
             self._feedback(f"Deleted {info.title} permanently.")
+
+    def _delete_kept(self, info: SessionInfo):
+        """Delete a kept chat (#438): Claude Code already removed its
+        transcript, so this deletes The Chat Place's copy and, for one of its
+        own, its record. Never a transcript: there isn't one."""
+        if wx.MessageBox(f"Delete {info.title}? Claude Code has already removed its original; "
+                         "this deletes The Chat Place's kept copy, and it leaves the list. It "
+                         "can't be brought back.", "Delete Session Permanently",
+                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self) != wx.YES:
+            return
+        try:
+            from ..history_keeper import keeper
+            from ..providers.claude import kept_identity
+            keeper().forget(kept_identity(info))
+        except (OSError, ValueError) as exc:
+            self._feedback(f"Couldn't delete {info.title}: {exc}")
+            return
+        if info.kept_from == "own" and self.store.contains(info.cli_session_id):
+            self._store_write(self.store.remove, info.cli_session_id)
+        for forget in (lambda: self.groups.forget(info.key),
+                       lambda: self.hidden.show(info.key) if info.key in self.hidden else None,
+                       lambda: self.titles.remove(info.key) if info.key in self.titles else None,
+                       lambda: self.tool_activity.discard(info.key)):
+            try:
+                forget()
+            except OSError:
+                pass   # a key nothing has any more; harmless
+        was_loaded = self._open is not None and self._open.key == info.key
+        self._leave_list(info, refocus=was_loaded)
+        self._feedback(f"Deleted {info.title}.")
 
     def _delete_imported(self, info: SessionInfo):
         """Remove The Chat Place's copy of a restored chat (#436). Nothing
