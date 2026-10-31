@@ -1067,7 +1067,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   - for Claude Code, Codex and GitHub Copilot CLI: the version (or "not found"), whether Codex
     and the Copilot preview are turned on, and whether each is signed in (with the Claude plan
     or ChatGPT, never the account name or email). It asks each one when you choose Report a
-    Bug, which takes a moment; Codex is asked only when it's turned on;
+    Bug, which takes a moment; Codex is asked only when it's turned on. If you open another
+    dialog meanwhile, the report doesn't open over it: it says the details are ready, and
+    choosing Report a Bug again within two minutes opens it straight away;
   - Codex's and Copilot's recent errors, up to three each from the last day (or the newest, if
     none is that recent), each saying which provider failed, why in The Chat Place's own words,
     and how long ago;
