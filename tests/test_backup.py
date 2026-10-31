@@ -508,3 +508,39 @@ def test_nothing_to_back_up_saves_nothing(homes):
     with pytest.raises(ValueError, match="nothing to back up"):
         backup.create(homes["dest"], collectors=[backup.tcp_inventory, claude_backup.inventory])
     assert list(homes["dest"].iterdir()) == []
+
+
+def _orphaned(path: Path, keep: str):
+    """A database left with committed changes only in its -wal (or a hot
+    -journal) and nothing else beside it, as after a crash."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(path)
+    if keep == "-wal":
+        con.execute("pragma journal_mode=wal")
+        con.execute("pragma wal_autocheckpoint=0")
+    con.execute("create table t(v)")
+    con.execute("insert into t values ('kept')")
+    con.commit()
+    saved = {s: Path(str(path) + s).read_bytes() for s in ("-wal",)
+             if Path(str(path) + s).exists()}
+    main = path.read_bytes()
+    con.close()   # a clean close checkpoints and deletes -wal; put the crash state back
+    path.write_bytes(main)
+    for suffix, data in saved.items():
+        Path(str(path) + suffix).write_bytes(data)
+    for suffix in ("-shm",):
+        Path(str(path) + suffix).unlink(missing_ok=True)
+
+
+def test_a_wal_without_shm_is_copied_without_writing_beside_it(homes):
+    db = homes["claude"] / "state.sqlite"
+    _orphaned(db, "-wal")
+    before = sorted(p.name for p in db.parent.iterdir())
+    assert before == ["state.sqlite", "state.sqlite-wal"]
+    result = backup.create(homes["dest"], collectors=[claude_backup.inventory])
+    assert result.complete, result.failures
+    assert sorted(p.name for p in db.parent.iterdir()) == before
+    with zipfile.ZipFile(result.path) as z:
+        copy = homes["tmp"] / "c.sqlite"
+        copy.write_bytes(z.read("claude/home/state.sqlite"))
+    assert sqlite3.connect(copy).execute("select v from t").fetchall() == [("kept",)]

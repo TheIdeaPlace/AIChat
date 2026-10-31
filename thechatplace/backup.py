@@ -27,6 +27,7 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 import socket
 import sqlite3
 import sys
@@ -366,12 +367,21 @@ def _sqlite_snapshot(source: Path, scratch: Path, cancelled=None) -> Path:
 
     Opening a WAL database even read-only makes SQLite create -wal and -shm
     files when they aren't there, which would be writing in another app's
-    folder. With no -wal or -journal beside it, a database has nothing
-    uncommitted, so it's opened as immutable (no locks, no new files).
-    With one, its program is using it, those files exist already, and a
-    read-only open reads the WAL too. The copy is then checked with
-    ``quick_check``, so a database changed under an immutable open is
-    caught rather than kept torn."""
+    folder. So, by what's beside it:
+
+    * nothing: no uncommitted changes, so it's opened as immutable (no
+      locks, no new files);
+    * -wal and -shm: its program has it open, both files exist, and a
+      read-only open reads the WAL through them;
+    * -wal without -shm, or a -journal: no program has it open (-shm lives
+      as long as a connection does) but changes were left behind. Even a
+      read-only open would create -shm or need to roll the journal back,
+      so the database and that file are copied as they are into the
+      scratch folder and opened there, where SQLite finishes the job
+      (#434 review).
+
+    The copy is then checked with ``quick_check``, so a database changed
+    under an immutable open is caught rather than kept torn."""
     target = scratch / (uuid.uuid4().hex + ".sqlite")
     text = str(source)
     if text.startswith("\\\\?\\UNC\\"):
@@ -379,8 +389,18 @@ def _sqlite_snapshot(source: Path, scratch: Path, cancelled=None) -> Path:
     elif text.startswith("\\\\?\\"):
         text = text[4:]  # the long form; SQLite wants a plain URI
     plain = Path(text)
-    live = any(Path(text + suffix).exists() for suffix in ("-wal", "-journal"))
-    uri = plain.resolve().as_uri() + ("?mode=ro" if live else "?mode=ro&immutable=1")
+    beside = {suffix: Path(str(source) + suffix).exists()
+              for suffix in ("-wal", "-shm", "-journal")}
+    if beside["-journal"] or (beside["-wal"] and not beside["-shm"]):
+        left = "-journal" if beside["-journal"] else "-wal"
+        work = scratch / uuid.uuid4().hex
+        work.mkdir()
+        shutil.copyfile(source, work / "db.sqlite")
+        shutil.copyfile(str(source) + left, str(work / "db.sqlite") + left)
+        uri = (work / "db.sqlite").as_uri()
+    else:
+        uri = plain.resolve().as_uri() + ("?mode=ro" if beside["-wal"]
+                                          else "?mode=ro&immutable=1")
     src = sqlite3.connect(uri, uri=True, timeout=10)
     try:
         dst = sqlite3.connect(target)
