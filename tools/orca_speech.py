@@ -148,8 +148,9 @@ STEPS = [
     # list's discovery (copilot_chat below): a chat of the app's own in agent
     # mode, with Copilot asking to run npm test and npm run lint already
     # allowed for the chat.
+    # Orca 46 reads the row the focus lands on, not the list's name.
     Step("a Copilot chat asks to run a command", [], trigger="copilot",
-         expect=[f"Messages in {COPILOT_TITLE}"],
+         expect=["What changed"],
          expect_dbus=["Copilot needs your answer", "npm test"]),
     # Agent, marked "(now)", is selected; Auto is the third choice.
     Step("Change Permission Mode", ["ctrl+shift+o"],
@@ -256,6 +257,11 @@ def copilot_chat(frame, env) -> None:
     from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
     from thechatplace.sessions import IDLE, NEEDS_YOU, WORKING
 
+    # The real message box from here on (these steps are last): the probe's
+    # stand-in answers Yes at once, so Auto's warning would never be shown
+    # or read, and Return couldn't take its default, No.
+    import wx._core
+    wx.MessageBox = wx._core.MessageBox
     # Opening it moves the focus to its messages, which Orca says.
     frame.session_list.SetFocus()
     ui_probe.s_main_copilot(frame, env, title=COPILOT_TITLE)
