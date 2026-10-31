@@ -3536,6 +3536,9 @@ def test_a_report_gathered_behind_another_dialog_waits(frame, env, monkeypatch):
         assert fills.seen is None
         assert env["feedback"][-1].startswith("The details for your report are ready.")
     finally:
+        # Hidden first, as a closed dialog is: Destroy alone takes effect at
+        # idle time on Windows and Linux.
+        other.Hide()
         other.Destroy()
     monkeypatch.setattr("thechatplace.bugreport.gather_sign_ins",
                         lambda *a, **k: pytest.fail("gathered twice"))
