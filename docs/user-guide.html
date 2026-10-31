@@ -1642,8 +1642,10 @@ It holds:</p>
   The Chat Place), memory, CLAUDE.md, settings, skills, agents, commands, plans and file
   checkpoints, and the desktop app's list of Code and Cowork sessions.</li>
 <li><strong>Codex:</strong> conversations, archived conversations, Codex's own databases of chat names and
-  history, memories, rules, skills and settings.</li>
-<li><strong>GitHub Copilot CLI:</strong> each session's folder, settings, custom agents and skills.</li>
+  history (wherever <code>sqlite_home</code> or <code>CODEX_SQLITE_HOME</code> puts them), memories, rules, skills,
+  settings, and the skills you share between agents in <code>~/.agents/skills</code>.</li>
+<li><strong>GitHub Copilot CLI:</strong> each session's folder, settings, custom agents and skills. Its
+  <code>config.json</code> is left out if it holds a sign-in token, as it can where there's no keychain.</li>
 <li><strong>The Chat Place:</strong> which chats were started here, names, groups, hidden chats, agent
   conversations, speech settings and permissions.</li>
 </ul>

@@ -174,7 +174,7 @@ def test_copilot_keeps_sessions_and_setup(homes):
     store = wal_db(p / "session-store.db")
     for name in ("settings.json", "config.json", "agents/a.agent.md", "skills/k/SKILL.md",
                  "mcp-config.json"):
-        write(p / name)
+        write(p / name, "{}")
     inv = copilot_backup.inventory()
     session_db.close()
     store.close()
@@ -476,3 +476,39 @@ def test_unreadable_provider_root_is_a_listing_failure(homes, monkeypatch, colle
 
     monkeypatch.setattr(Path, "stat", denied)
     assert collect().failures
+
+
+def test_codex_relocated_folder_is_read_only_at_the_top(homes):
+    """A broad sqlite_home (say "~") mustn't sweep in other programs'
+    databases from folders below it (#434 review)."""
+    elsewhere = homes["tmp"] / "broad"
+    write(homes["codex"] / "config.toml", f"sqlite_home = '{toml_path(elsewhere)}'\n")
+    top = wal_db(elsewhere / "state_5.sqlite")
+    deep = wal_db(elsewhere / "AppData" / "Firefox" / "key4.db")
+    inv = codex_backup.inventory()
+    top.close()
+    deep.close()
+    got = items(inv)
+    assert got["codex/sqlite-home/state_5.sqlite"] is True
+    assert not any("key4.db" in name for name in got)
+
+
+def test_copilot_config_with_a_plaintext_token_is_left_out(homes):
+    """Copilot CLI's fallback without a keychain (#434 review)."""
+    p = homes["copilot"]
+    write(p / "settings.json", "{}")
+    write(p / "config.json", '{"logged_in_users": [{"login": "me"}], '
+                             '"copilot_tokens": {"https://github.com:me": "gho_x"}}')
+    inv = copilot_backup.inventory()
+    assert "copilot/home/config.json" not in items(inv)
+    assert any("sign-in token" in s for s in inv.skipped)
+
+
+def test_copilot_config_without_a_token_is_kept(homes):
+    write(homes["copilot"] / "config.json", '{"banner": "never", "firstLaunchAt": "x"}')
+    assert "copilot/home/config.json" in items(copilot_backup.inventory())
+
+
+def test_copilot_unreadable_config_is_not_risked(homes):
+    write(homes["copilot"] / "config.json", "{not json")
+    assert "copilot/home/config.json" not in items(copilot_backup.inventory())

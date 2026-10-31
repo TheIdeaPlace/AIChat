@@ -152,8 +152,12 @@ def inventory() -> Inventory:
             area = "codex/sqlite-home"
             inv.areas.append(Area(area, str(sqlite_home),
                                   "Codex's databases, moved by sqlite_home or CODEX_SQLITE_HOME"))
-            listed = walk(sqlite_home, area, exclude_dirs=EXCLUDED_DIRS,
-                          exclude_files=EXCLUDED_FILES, inventory=inv)
+            # Codex keeps its databases at the top of this folder, so only the
+            # top is read: a broad setting (sqlite_home = "~") mustn't sweep in
+            # other programs' databases, such as a browser's saved passwords.
+            listed = [item for item in walk(sqlite_home, area, exclude_dirs=("*",),
+                                            exclude_files=EXCLUDED_FILES, inventory=inv)
+                      if "/" not in item.arcname[len(area) + 1:]]
             # Keep even damaged/uninitialised database files as recovery bytes.
             # Filtering only by a valid SQLite header would silently lose them.
             databases = [item for item in listed

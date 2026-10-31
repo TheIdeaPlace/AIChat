@@ -12,6 +12,7 @@ data and leaves nested links alone, while allowing a linked profile root.
 from __future__ import annotations
 
 import fnmatch
+import json
 import stat
 
 from .. import platform_paths
@@ -36,6 +37,26 @@ SKIPPED = [
 ]
 
 
+def _holds_a_token(path) -> bool:
+    """True when a JSON file has a key naming a token, secret or password
+    anywhere in it, or can't be read to tell (then it's not risked)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError):
+        return True
+
+    def walk_keys(value) -> bool:
+        if isinstance(value, dict):
+            return any(any(word in str(key).lower() for word in ("token", "secret", "password"))
+                       or walk_keys(item) for key, item in value.items())
+        if isinstance(value, list):
+            return any(walk_keys(item) for item in value)
+        return False
+    return walk_keys(data)
+
+
 def inventory() -> Inventory:
     inv = Inventory("copilot", "GitHub Copilot CLI")
     home = platform_paths.copilot_home()
@@ -57,6 +78,13 @@ def inventory() -> Inventory:
     inv.items += walk(home, "copilot/home", exclude_dirs=EXCLUDED_DIRS,
                       exclude_files=EXCLUDED_FILES, inventory=inv)
     inv.skipped += SKIPPED
+    # Without a system keychain (Linux with no libsecret) Copilot CLI keeps
+    # its sign-in token in config.json in plain text: such a file is left
+    # out whole rather than trusted to a list of key names (#434 review).
+    config = home / "config.json"
+    if _holds_a_token(config):
+        inv.items = [item for item in inv.items if item.arcname != "copilot/home/config.json"]
+        inv.skipped.append("config.json (it holds a sign-in token; sign in again)")
     # Classify what was actually kept: sidecars, links and credentials must
     # never be described as successful copies of unknown files.
     names = {item.arcname[len("copilot/home/"):].split("/", 1)[0] for item in inv.items}

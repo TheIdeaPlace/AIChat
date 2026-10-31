@@ -884,8 +884,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 - **Back up** (File, Back Up Now) saves your AI chats, memory and settings in one zip in a
   folder you choose, preferably on another drive or a cloud folder: Claude Code's
   conversations, memory, instructions, settings, skills and plans, the desktop app's Code and
-  Cowork session lists, Codex's conversations, databases, memories, rules and settings, Copilot
-  CLI's sessions and settings, and The Chat Place's own folder. Signing in on a new computer
+  Cowork session lists, Codex's conversations, databases (also where `sqlite_home` or
+  `CODEX_SQLITE_HOME` moves them), memories, rules, settings and `~/.agents/skills`, Copilot
+  CLI's sessions and settings (its `config.json` only if it holds no sign-in token), and The Chat
+  Place's own folder. Signing in on a new computer
   brings none of these back. Sign-ins, caches, logs and reinstallable plugins are left out, and
   each database is copied with SQLite's own backup, so a chat that's running doesn't spoil it.
   The zip has a `manifest.json` listing every file with its size and SHA-256, where each folder
