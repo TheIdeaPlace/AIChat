@@ -1620,8 +1620,8 @@ that chat.
 ## Backing up your chats
 
 Your chats with Claude, Codex and Copilot are kept on this computer, not in your account.
-Signing in on a new computer doesn't bring them back, and neither does reinstalling. **File, Back
-Up Now** saves them in one file you can keep somewhere else.
+Signing in on a new computer doesn't bring them back, and neither does reinstalling.
+**File, Back Up Now** saves them in one file you can keep somewhere else.
 
 1. Choose **File, Back Up Now**. A folder dialog opens, with when and where you last backed up.
 2. Choose a folder, ideally on another drive, a USB stick or a cloud folder such as OneDrive.
