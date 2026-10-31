@@ -87,6 +87,9 @@ class Inventory:
     items: List[Item] = field(default_factory=list)
     skipped: List[str] = field(default_factory=list)   # "cache/ (rebuilt by Claude)"
     notes: List[str] = field(default_factory=list)
+    # What couldn't be read while listing (an unreadable folder, a bad
+    # config): any of these makes the backup incomplete.
+    failures: List[str] = field(default_factory=list)
     version: Optional[str] = None
 
 
@@ -99,6 +102,7 @@ class Result:
     providers: List[str] = field(default_factory=list)
     failures: List[str] = field(default_factory=list)
     changed: List[str] = field(default_factory=list)
+    gone: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
     complete: bool = False
 
@@ -136,7 +140,10 @@ def walk(root: Path, area: str, *, exclude_dirs: Iterable[str] = (),
     the path relative to ``root`` (forward slashes), so ``"cache"`` leaves
     out only the top-level cache folder, ``"plugins/marketplaces"`` only that
     one, and ``"*.log"`` (``*`` crosses folders) every log. Credentials are always left
-    out. Links aren't followed; each is noted on ``inventory``. With
+    out. Links inside ``root`` aren't followed; each is noted on
+    ``inventory``. A ``root`` that is itself a link is read where it points
+    (someone who moved ~/.claude elsewhere wants that backed up), and noted.
+    A folder that can't be read is a failure on ``inventory``. With
     ``sqlite``, SQLite databases are marked to be copied safely and their
     -wal/-shm files left to that copy.
     """
@@ -151,7 +158,16 @@ def walk(root: Path, area: str, *, exclude_dirs: Iterable[str] = (),
         return any(fnmatch.fnmatchcase(rel, p) for p in patterns)
 
     reading_root = root
-    for current, dirs, files in os.walk(reading_root):
+    if _is_link(root):
+        reading_root = root.resolve()
+        if inventory is not None:
+            inventory.notes.append(f"{root} is a link to {reading_root}; backed up from there.")
+
+    def unreadable(error: OSError):
+        if inventory is not None:
+            inventory.failures.append(f"Couldn't read {error.filename}: {error.strerror or error}")
+
+    for current, dirs, files in os.walk(reading_root, onerror=unreadable):
         here = Path(current)
         rel_dir = here.relative_to(reading_root).as_posix()
         rel_dir = "" if rel_dir == "." else rel_dir
@@ -343,6 +359,8 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
         except Exception as exc:  # noqa: BLE001 - one provider can't stop the rest
             name = getattr(collect, "__module__", "a provider").rsplit(".", 1)[-1]
             result.failures.append(f"Couldn't list {name}'s files: {exc}")
+    for inv in inventories:
+        result.failures.extend(f"{inv.label}: {failure}" for failure in inv.failures)
     problem = destination_problem(dest_dir, inventories)
     if problem:
         raise ValueError(problem)
@@ -350,7 +368,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     computer = computer_identity()
     now = now or datetime.now()
     final = dest_dir / (filename or default_filename(computer["name"], now))
-    partial = final.with_name(final.name + PARTIAL_SUFFIX)
+    partial = final.with_name(f"{final.name}.{uuid.uuid4().hex[:8]}{PARTIAL_SUFFIX}")
     items = [(inv, item) for inv in inventories for item in inv.items]
     total = len(items)
     files: List[dict] = []
@@ -374,10 +392,10 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
                     files.append(entry)
             manifest = _manifest(inventories, files, result, computer, started)
             archive.writestr(MANIFEST, json.dumps(manifest, indent=1, ensure_ascii=False))
-        check = verify(partial)
+        check = verify(partial, cancelled=cancelled)
         if not check.ok:
             raise OSError("The backup didn't check out: " + "; ".join(check.problems[:3]))
-        os.replace(partial, final)
+        final = _publish(partial, final)
     except BaseException:
         try:
             partial.unlink()
@@ -396,6 +414,34 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     if progress is not None:
         progress(total, total, "")
     return result
+
+
+def _publish(partial: Path, final: Path) -> Path:
+    """Give the checked archive its real name without ever replacing an
+    existing file: two backups in the same second, or a name the user already
+    has, get " (2)", " (3)"... A hard link fails if the name exists, which
+    rename doesn't promise everywhere."""
+    stem, suffix = final.stem, final.suffix
+    for attempt in range(1, 100):
+        target = final if attempt == 1 else final.with_name(f"{stem} ({attempt}){suffix}")
+        try:
+            os.link(partial, target)
+        except FileExistsError:
+            continue
+        except OSError:
+            # No hard links on this drive (FAT, some network shares): an
+            # exclusive create reserves the name, then the archive replaces
+            # that empty placeholder.
+            try:
+                with open(target, "xb"):
+                    pass
+            except FileExistsError:
+                continue
+            os.replace(partial, target)
+            return target
+        partial.unlink()
+        return target
+    raise OSError(f"Couldn't find a free name for the backup in {final.parent}.")
 
 
 def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
@@ -434,7 +480,9 @@ def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
                 "modified": datetime.fromtimestamp(source.stat().st_mtime, timezone.utc)
                 .isoformat(timespec="seconds") if source.exists() else None}
     except FileNotFoundError:
-        # Gone between listing and reading (a temp file, a finished turn).
+        # Gone between listing and reading (a temp file, a finished turn):
+        # nothing left to copy, so not a failure, but listed in the manifest.
+        result.gone.append(item.arcname)
         return None
     except OSError as exc:
         result.failures.append(f"{item.arcname}: {exc.strerror or exc}")
@@ -468,6 +516,7 @@ def _manifest(inventories, files, result, computer, started) -> dict:
         } for inv in inventories],
         "failures": result.failures,
         "changed_while_copying": result.changed,
+        "gone_while_copying": result.gone,
         "files": files,
     }
 
@@ -490,7 +539,7 @@ def _safe_name(name: str) -> bool:
     return ".." not in name.replace("\\", "/").split("/")
 
 
-def verify(path: Path) -> Check:
+def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None) -> Check:
     """Read the whole archive back and compare every file with the manifest:
     present, the right size, the right SHA-256, nothing unlisted, no unsafe
     names. A newer format version is a problem (this release can't vouch
@@ -513,6 +562,8 @@ def verify(path: Path) -> Check:
             names = set(archive.namelist())
             listed = set()
             for entry in manifest.get("files", []):
+                if cancelled is not None and cancelled():
+                    raise InterruptedError("Backup cancelled.")
                 name = entry.get("path", "")
                 listed.add(name)
                 if not _safe_name(name):
@@ -555,12 +606,88 @@ def describe_size(count: int) -> str:
 
 def summary(result: Result) -> str:
     """What a finished backup says, in a sentence or two."""
-    text = (f"Backed up {result.files} files ({describe_size(result.bytes)}, "
+    files = "1 file" if result.files == 1 else f"{result.files} files"
+    text = (f"Backed up {files} ({describe_size(result.bytes)}, "
             f"{describe_size(result.archive_bytes)} compressed) from "
             f"{', '.join(result.providers) or 'nothing'} to {result.path.name}.")
     if result.failures:
         text += (f" {len(result.failures)} item{'s' if len(result.failures) != 1 else ''} "
                  "couldn't be copied, so it's incomplete; the details are in its manifest.")
+    text += " It's not encrypted and holds your conversations, so keep it somewhere private."
     for note in result.notes:
         text += " " + note
+    return text
+
+
+# What Back Up Now remembers -------------------------------------------------
+
+STATE_FILE = "backup.json"
+
+
+def load_state() -> dict:
+    """The last folder chosen and the last good backup (where, when, how
+    big, whether complete), from The Chat Place's own folder."""
+    try:
+        state = json.loads((platform_paths.app_data_dir() / STATE_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def record(result: Result) -> None:
+    """Remember a finished backup. A failure to save is not the backup's
+    failure, so it's swallowed."""
+    from .provider_storage import atomic_write_json
+    state = load_state()
+    state.update({"folder": str(result.path.parent), "last_path": str(result.path),
+                  "last_time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                  "last_files": result.files, "last_bytes": result.archive_bytes,
+                  "last_complete": result.complete})
+    try:
+        platform_paths.app_data_dir().mkdir(parents=True, exist_ok=True)
+        atomic_write_json(platform_paths.app_data_dir() / STATE_FILE, state)
+    except OSError:
+        pass
+
+
+def last_backup_text(state: Optional[dict] = None) -> str:
+    """What the folder question says about the last backup made here:
+    when, how big and where, or that there hasn't been one."""
+    state = load_state() if state is None else state
+    when = state.get("last_time")
+    try:
+        moment = datetime.fromisoformat(when).astimezone()
+    except (TypeError, ValueError):
+        return "No backup made here yet."
+    text = (f"Last backup: {moment.day} {moment:%B %Y} at {moment:%H:%M}, "
+            f"{describe_size(int(state.get('last_bytes') or 0))}, in {state.get('folder', '?')}")
+    if state.get("last_complete") is False:
+        text += " (incomplete)"
+    return text + "."
+
+
+def check_text(path: Path, check: Check) -> str:
+    """What Check Backup says about one archive."""
+    name = Path(path).name
+    manifest = check.manifest or {}
+    if check.ok:
+        computer = (manifest.get("computer") or {}).get("name", "an unknown computer")
+        try:
+            moment = datetime.fromisoformat(manifest.get("created", "")).astimezone()
+            when = f" on {moment.day} {moment:%B %Y} at {moment:%H:%M}"
+        except ValueError:
+            when = ""
+        match = "its 1 file matches" if check.files == 1 else f"all {check.files} files match"
+        text = (f"{name} is good: {match}. It was made on "
+                f"{computer}{when}.")
+        if manifest.get("complete") is False:
+            failures = manifest.get("failures") or []
+            text += (f" It's incomplete: {len(failures)} item"
+                     f"{'s' if len(failures) != 1 else ''} couldn't be copied when it was made.")
+        return text
+    shown = check.problems[:10]
+    more = len(check.problems) - len(shown)
+    text = f"{name} has problems:\n" + "\n".join(shown)
+    if more > 0:
+        text += f"\n...and {more} more."
     return text

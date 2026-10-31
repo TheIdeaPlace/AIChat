@@ -34,7 +34,7 @@ Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guid
 <p>The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
 Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products.</p>
-<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#reviewing-changed-files">Reviewing changed files</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstalling">Uninstalling</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
+<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#reviewing-changed-files">Reviewing changed files</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#backing-up-your-chats">Backing up your chats</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstalling">Uninstalling</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
 <p>You need:</p>
 <ul>
 <li>Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
@@ -1621,6 +1621,45 @@ read:</p>
 Fix the build 2026-10-26.md in C:\Users\you\Documents". Each message is a heading with who wrote
 it and when, then its text. Tool activity is included only when Show Tool Activity is on for
 that chat.</p>
+<h2 id="backing-up-your-chats">Backing up your chats</h2>
+<p>Your chats with Claude, Codex and Copilot are kept on this computer, not in your account.
+Signing in on a new computer doesn't bring them back, and neither does reinstalling. <strong>File, Back
+Up Now</strong> saves them in one file you can keep somewhere else.</p>
+<ol>
+<li>Choose <strong>File, Back Up Now</strong>. A folder dialog opens, with when and where you last backed up.</li>
+<li>Choose a folder, ideally on another drive, a USB stick or a cloud folder such as OneDrive.
+   A backup on the same disk won't survive losing the computer, and the summary says so.</li>
+<li>Press <strong>Enter</strong>. You hear "Backing up". It works in the background, and the status bar shows
+   how far it has got. To stop it, choose <strong>Back Up Now</strong> again and answer Yes.</li>
+<li>When it's done, a message says how many files it saved, how big the backup is and where it
+   went, and whether anything couldn't be copied.</li>
+</ol>
+<p>The backup is one zip file named after the computer and the time, such as
+"TheChatPlace-backup-MyPC-2026-10-30-194301.zip". An earlier backup is never replaced.
+It holds:</p>
+<ul>
+<li><strong>Claude:</strong> every Claude Code conversation (from Claude Code, the desktop app's Code tab and
+  The Chat Place), memory, CLAUDE.md, settings, skills, agents, commands, plans and file
+  checkpoints, and the desktop app's list of Code and Cowork sessions.</li>
+<li><strong>Codex:</strong> conversations, archived conversations, Codex's own databases of chat names and
+  history, memories, rules, skills and settings.</li>
+<li><strong>GitHub Copilot CLI:</strong> each session's folder, settings, custom agents and skills.</li>
+<li><strong>The Chat Place:</strong> which chats were started here, names, groups, hidden chats, agent
+  conversations, speech settings and permissions.</li>
+</ul>
+<p>It leaves out sign-ins (you sign in again on a new computer), caches, logs, and plugins you can
+reinstall. <strong>The backup isn't encrypted.</strong> Conversations can include file contents, command output
+and anything pasted into them, so keep it somewhere private.</p>
+<p><strong>Check Backup</strong> (File menu) reads a backup back and compares every file with the list of what it
+should hold, so you can trust a copy before you need it. It says whether the backup is good,
+where and when it was made, and what's wrong if it isn't.</p>
+<p>Restoring from a backup isn't built yet. Until then, the files are in the zip, in the same
+folders as on the computer they came from.</p>
+<p><strong>Claude deletes old conversations.</strong> Claude Code removes conversations older than its
+<code>cleanupPeriodDays</code> setting, 30 days unless you change it. Desktop app and Cowork sessions are
+exempt in recent versions. Chats started in The Chat Place and in a terminal aren't. To keep
+them longer, set a larger number in <code>~/.claude/settings.json</code>, such as
+<code>"cleanupPeriodDays": 36500</code>. A backup keeps what was there when it was made.</p>
 <h2 id="more-things-you-can-do">More things you can do</h2>
 <ul>
 <li><strong>Properties</strong> (Alt+Enter, View menu, or the context menu) lists what can be known about a
