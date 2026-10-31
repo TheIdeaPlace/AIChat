@@ -556,7 +556,11 @@ class CopilotProvider:
         self._listed_before: set = set()
         if execution and runtime is None:
             from .copilot_runtime import CopilotChatRuntime
-            self.runtime = CopilotChatRuntime(on_update, sessions_dir=sessions_dir)
+            from . import copilot_auto_store, copilot_folder
+            self.runtime = CopilotChatRuntime(
+                on_update, sessions_dir=sessions_dir,
+                rules=lambda: copilot_folder.read_rules(copilot_auto_store.rules_file()),
+                auto_ended=lambda native_id: copilot_auto_store.save_auto(native_id, False))
         # native id -> _Entry, so an unchanged session isn't re-read on every
         # refresh of the list, and a changed log is read once for its state,
         # title and last message together.
@@ -802,6 +806,68 @@ class CopilotProvider:
         return OwnSession(native_id, title, cwd, provider=PROVIDER_ID, started=True,
                           created_ms=int(time.time() * 1000))
 
+    def set_auto_owned(self, record, on: bool) -> None:
+        """Auto (copilot_folder), on or off, kept for the next time the chat
+        is opened. Turned off at once, saved or not; turned on only once
+        Copilot is in agent mode (set_auto refuses otherwise)."""
+        from . import copilot_auto_store
+        self.runtime.set_auto(record.cli_session_id, on)
+        self._say_mode_problem(record.cli_session_id,
+                               copilot_auto_store.save_auto(record.cli_session_id, on))
+
+    # -- Allow for This Chat (#426), in Chat Permissions' shapes ----------------
+
+    def chat_rule_candidate_owned(self, record, request):
+        """What Allow for This Chat would keep for a waiting command, or None
+        when it can't be kept (Copilot then asks each time)."""
+        from .copilot_auto_store import Kept
+        command = self.runtime.chat_candidate(record.cli_session_id, request.request_id)
+        return Kept(command) if command else None
+
+    def allow_for_chat_owned(self, record, request):
+        """Keep a waiting command for this chat, then allow it once. If the
+        answer can't go to Copilot, the command isn't kept."""
+        from . import copilot_auto_store
+        from .copilot_runtime import ALLOW_ONCE, CopilotChatError
+        native_id = record.cli_session_id
+        command = self.runtime.chat_candidate(native_id, request.request_id)
+        if not command:
+            raise CopilotChatError("This command can't be kept for the chat; open Answer again.")
+        kept, problem = copilot_auto_store.add(native_id, command)
+        # The ones it already had too: if the file couldn't be read, add()
+        # returns none of them (Claude's review of Auto).
+        self.runtime.keep_allowed(native_id, set(self.runtime.allowed_here(native_id))
+                                  | {k.command for k in kept} | {command})
+        try:
+            self.runtime.answer(native_id, request.request_id, ALLOW_ONCE)
+        except Exception:
+            copilot_auto_store.remove(native_id, command)
+            self.runtime.keep_allowed(native_id, self.runtime.allowed_here(native_id) - {command})
+            raise
+        self._say_mode_problem(native_id, problem)
+        return problem or None
+
+    def chat_rules_owned(self, record):
+        from . import copilot_auto_store
+        _auto, kept, _problem = copilot_auto_store.load(record.cli_session_id)
+        return kept
+
+    def remove_chat_rule_owned(self, record, rule_id):
+        """Stop keeping one command (rule_id), or all (None). The runtime
+        forgets it first, so nothing is answered from it meanwhile."""
+        from . import copilot_auto_store
+        native_id = record.cli_session_id
+        _auto, before, _problem = copilot_auto_store.load(native_id)
+        if rule_id is not None and not any(k.command == rule_id for k in before):
+            raise ValueError("That command is no longer kept.")
+        self.runtime.keep_allowed(native_id, [k.command for k in before
+                                              if rule_id is not None and k.command != rule_id])
+        kept, problem = copilot_auto_store.remove(native_id, rule_id)
+        if problem == copilot_auto_store.NOT_SAVED:
+            raise ValueError(problem)
+        self._say_mode_problem(native_id, problem)  # saved, but the old file was set aside
+        return kept
+
     def set_mode_owned(self, record, mode: str) -> str:
         """Change Permission Mode: agent or plan. The mode Copilot reports
         afterwards, which is kept for the next time the chat is opened only
@@ -823,10 +889,25 @@ class CopilotProvider:
     def prepare_owned(self, record) -> None:
         """Open a chat from the window's own record of it (the only place
         the runtime is told a chat is the app's), in the folder recorded."""
-        self.runtime.adopt(record.cli_session_id)
-        mode, problem = chosen_mode(record.cli_session_id)
-        self.runtime.prepare(record.cli_session_id, record.cwd, mode=mode)
-        self._say_mode_problem(record.cli_session_id, problem)
+        from . import copilot_auto_store
+        from .copilot_runtime import AGENT_MODE, CopilotChatError
+        native_id = record.cli_session_id
+        self.runtime.adopt(native_id)
+        mode, problem = chosen_mode(native_id)
+        # The commands allowed for it, before it can ask anything.
+        auto, kept, kept_problem = copilot_auto_store.load(native_id)
+        self.runtime.keep_allowed(native_id, [k.command for k in kept])
+        self.runtime.prepare(native_id, record.cwd, mode=mode)
+        self._say_mode_problem(native_id, problem or kept_problem)
+        # Auto, if it was chosen and the chat is in agent mode again.
+        if auto and mode in ("", AGENT_MODE):
+            try:
+                self.runtime.set_auto(native_id, True)
+            except CopilotChatError as exc:
+                # Not left on to come back by itself another time it opens
+                # in agent mode (Claude's review of Auto).
+                copilot_auto_store.save_auto(native_id, False)
+                self._say_mode_problem(native_id, str(exc))
         self._remember_models()
 
     def set_model_owned(self, record, model: str) -> None:

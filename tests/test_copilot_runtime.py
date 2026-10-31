@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from thechatplace import platform_paths
-from thechatplace.providers import copilot_acp
+from thechatplace.providers import copilot_acp, copilot_folder
 from thechatplace.providers.copilot_runtime import (ALLOW_ONCE, COMMAND, MAX_DIFF_CHARS,
                                                     MAX_TEXT_CHARS, REJECT, CopilotChatError,
                                                     CopilotChatRuntime, CopilotRequest, Stopped,
@@ -55,12 +55,13 @@ class Process:
 def make(tmp_path):
     made = []
 
-    def build(mode="answer"):
+    def build(mode="answer", rules=None, auto_ended=None):
         env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
                    FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
         updates = []
         runtime = CopilotChatRuntime(updates.append, start=lambda: Process(mode, env),
-                                     sessions_dir=tmp_path / "sessions", billing_wait=1.0)
+                                     sessions_dir=tmp_path / "sessions", billing_wait=1.0,
+                                     rules=rules, auto_ended=auto_ended)
         made.append(runtime)
         return runtime, updates
 
@@ -774,6 +775,18 @@ def test_a_content_diff_shows_only_what_changed():
     assert "-line 250" in request.diff and "+line two hundred and fifty" in request.diff
     assert "line 100" not in request.diff  # not the whole file twice
     assert request.offered() == (ALLOW_ONCE, REJECT)
+
+
+def test_a_path_cut_short_is_marked_so_nothing_answers_it():
+    # What's kept of a cut-off path may be inside the folder when the whole
+    # path isn't (Copilot's review of the fixes).
+    options = [{"optionId": "a", "kind": "allow_once"}, {"optionId": "r", "kind": "reject_once"}]
+    request = CopilotRequest.decode(1, {"toolCall": {"kind": "edit", "rawInput": {},
+        "locations": [{"path": "a" * 5000 + ".txt"}]}, "options": options})
+    assert request.paths_too_long
+    request = CopilotRequest.decode(1, {"toolCall": {"kind": "edit", "rawInput": {},
+        "locations": [{"path": "short.txt"}]}, "options": options})
+    assert not request.paths_too_long
 
 
 def test_a_change_too_long_to_show_can_only_be_denied():
@@ -2577,3 +2590,246 @@ def test_a_failed_save_of_a_mode_is_the_chats_notice(provider, tmp_path, monkeyp
     monkeypatch.setattr("thechatplace.provider_storage.atomic_write_json", full)
     record = copilot.create_owned(str(tmp_path), "Unsaved", copilot_mode=PLAN_MODE)
     assert runtime.snapshot(record.cli_session_id).notice == MODE_NOT_SAVED
+
+
+# -- Auto, your rules and Allow for This Chat (copilot_folder, #426) ----------------------
+
+
+def test_auto_answers_a_command_inside_the_folder_for_you(make, tmp_path):
+    runtime, _ = make("ask")  # each prompt asks to run "echo synthetic"
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    runtime.send(chat, "Run it")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    state = runtime.snapshot(chat)
+    assert state.replies[-1][1] == "Allowed" and state.requests == ()
+    assert state.auto and state.auto_allowed == ((1, "Command: echo synthetic"),)
+    answer = next(m for m in received(tmp_path) if "result" in m and "method" not in m)
+    assert answer["result"] == {"outcome": {"outcome": "selected", "optionId": "allow_once"}}
+    # Off again, it asks.
+    runtime.set_auto(chat, False)
+    runtime.send(chat, "Run it again")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert len(runtime.snapshot(chat).auto_allowed) == 1
+
+
+def test_auto_never_runs_a_command_that_writes(make, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "Remove-Item notes.txt")
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    runtime.send(chat, "Delete it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert runtime.snapshot(chat).auto_allowed == ()
+
+
+def test_your_rule_answers_without_auto(make, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "npm test")
+    allow = copilot_folder.Rules(allow=(copilot_folder.parse_rule("npm test"),))
+    runtime, _ = make("ask", rules=lambda: allow)
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Test it")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert runtime.snapshot(chat).auto_allowed == ((1, "Command: npm test (your rule)"),)
+    assert not runtime.snapshot(chat).auto
+
+
+def test_an_ask_rule_beats_auto(make, tmp_path):
+    ask = copilot_folder.Rules(ask=(copilot_folder.parse_rule("echo"),))
+    runtime, _ = make("ask", rules=lambda: ask)
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    runtime.send(chat, "Run it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert runtime.snapshot(chat).auto_allowed == ()
+
+
+def test_rules_that_cant_be_read_answer_nothing(make, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "npm test")
+
+    def broken():
+        raise OSError("locked")
+    runtime, _ = make("ask", rules=broken)
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Test it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+
+
+def test_a_command_allowed_for_the_chat_is_answered_next_time(make, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "npm run build")
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Build it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    request = runtime.snapshot(chat).requests[0]
+    assert runtime.chat_candidate(chat, request.request_id) == "npm run build"
+    runtime.keep_allowed(chat, ["npm run build"])
+    runtime.answer(chat, request.request_id, ALLOW_ONCE)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    runtime.send(chat, "Build it again")
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
+                and runtime.snapshot(chat).auto_allowed)
+    assert runtime.snapshot(chat).auto_allowed == (
+        (1, "Command: npm run build (allowed for this chat)"),)
+    # Forgotten, it asks again.
+    runtime.keep_allowed(chat, [])
+    runtime.send(chat, "Once more")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+
+
+def test_a_command_that_reaches_outside_cant_be_kept_for_the_chat(make, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "cat /etc/passwd")
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Read it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert runtime.chat_candidate(chat, runtime.snapshot(chat).requests[0].request_id) == ""
+
+
+def test_a_change_of_folder_you_allow_is_followed(make, tmp_path, monkeypatch):
+    """Allowing cd sub by hand doesn't stop Auto: the shell's new folder is
+    kept, and paths are read from it too."""
+    (tmp_path / "sub").mkdir()
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "cd sub" if sys.platform == "win32" else "cd ./sub")
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Go there")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    runtime.answer(chat, runtime.snapshot(chat).requests[0].request_id, ALLOW_ONCE)
+    assert not runtime.snapshot(chat).location_changed
+    assert os.path.join(str(tmp_path), "sub") in runtime._chats[chat].locations
+
+
+def test_a_command_you_allow_that_may_move_the_shell_stops_commands(make, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "cd ..")
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Go up")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    runtime.answer(chat, runtime.snapshot(chat).requests[0].request_id, ALLOW_ONCE)
+    assert runtime.snapshot(chat).location_changed
+
+
+def test_a_program_you_allow_doesnt_stop_auto(make, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "npm install")
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    runtime.send(chat, "Install")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    runtime.answer(chat, runtime.snapshot(chat).requests[0].request_id, ALLOW_ONCE)
+    assert not runtime.snapshot(chat).location_changed
+
+
+def test_auto_still_asks_for_a_file_outside_the_folder(make, tmp_path):
+    runtime, _ = make("edit")  # asks to create C:/synthetic/a.txt, outside tmp_path
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    runtime.send(chat, "Make a.txt")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert runtime.snapshot(chat).auto_allowed == ()
+
+
+def test_auto_is_for_agent_mode_only(make, tmp_path):
+    """Plan mode promises not to edit your files: Auto never answers for it,
+    can't be turned on in it, and ends when the chat leaves agent mode (the
+    reviews of #426), which the provider is told so it isn't kept."""
+    from thechatplace.providers.copilot_runtime import AUTO_ENDED, PLAN_MODE
+    ended = []
+    runtime, _ = make(auto_ended=ended.append)
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    assert runtime.snapshot(chat).auto
+    runtime.set_mode(chat, PLAN_MODE)
+    state = runtime.snapshot(chat)
+    assert not state.auto and AUTO_ENDED in state.notice and ended == [chat]
+    with pytest.raises(CopilotChatError, match="agent mode"):
+        runtime.set_auto(chat, True)
+
+
+def test_a_restart_starts_every_chat_asking_again(make, tmp_path):
+    """The runtime keeps Auto in memory only; the provider puts it back from
+    what it kept when the chat is opened again."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    runtime.close()
+    again, _ = make()
+    again.adopt(chat)
+    assert again.snapshot(chat) is None or not again.snapshot(chat).auto
+
+
+def test_allowing_a_command_never_clears_the_moved_flag(make, tmp_path):
+    """Two answers at once mustn't undo each other: the flag is only set."""
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime._chats[chat].location_changed = True
+    runtime.send(chat, "Run it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    request = runtime.snapshot(chat).requests[0]  # echo synthetic: can't move the shell
+    runtime.answer(chat, request.request_id, ALLOW_ONCE)
+    assert runtime.snapshot(chat).location_changed
+
+
+def test_a_new_copilot_process_starts_the_shell_in_the_folder_again(make, tmp_path):
+    """Reopened on a Copilot process it wasn't open on, the chat's shell is
+    new, so commands may be answered for you again."""
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    runtime._chats[chat].location_changed = True
+    runtime._connection.request("session/close", {"sessionId": chat})
+    runtime._chats[chat].open_on = object()   # as if open on an earlier Copilot
+    runtime._chats[chat].elsewhere = True     # so prepare opens it again
+    runtime._chats[chat].locations = (str(tmp_path), str(tmp_path / "sub"))
+    runtime.prepare(chat, str(tmp_path))
+    assert not runtime._chats[chat].location_changed and not runtime._chats[chat].locations
+
+
+def test_auto_isnt_allowed_where_an_organisation_manages_copilot(make, tmp_path, monkeypatch):
+    """No documented policy says whether automatic approval is allowed, so
+    any Copilot policy on the computer means each request asks (#426)."""
+    from thechatplace.providers.copilot_runtime import MANAGED
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    monkeypatch.setattr(platform_paths, "copilot_policy_texts",
+                        lambda: [("C:/ProgramData/GitHub/Copilot/policy.d/org.json", "{}")])
+    with pytest.raises(CopilotChatError) as raised:
+        runtime.set_auto(chat, True)
+    assert str(raised.value) == MANAGED and not runtime.snapshot(chat).auto
+    runtime.set_auto(chat, False)  # turning it off is always fine
+
+
+def test_auto_turned_off_while_a_request_is_worked_out_doesnt_answer_it(make, tmp_path,
+                                                                        monkeypatch):
+    """Claude's review of Auto: the decision is made outside the lock, so
+    turning Auto off meanwhile must still stop it being answered."""
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    real = copilot_folder.decide
+
+    def decide_then_turn_off(*args, **kwargs):
+        answer = real(*args, **kwargs)
+        runtime.set_auto(chat, False)
+        return answer
+    monkeypatch.setattr(copilot_folder, "decide", decide_then_turn_off)
+    runtime.send(chat, "Run it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert runtime.snapshot(chat).auto_allowed == ()
+
+
+def test_a_kept_command_removed_while_a_request_is_worked_out_doesnt_answer_it(
+        make, tmp_path, monkeypatch):
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.keep_allowed(chat, ["echo synthetic"])
+    real = copilot_folder.decide
+
+    def decide_then_remove(*args, **kwargs):
+        answer = real(*args, **kwargs)
+        runtime.keep_allowed(chat, [])
+        return answer
+    monkeypatch.setattr(copilot_folder, "decide", decide_then_remove)
+    runtime.send(chat, "Run it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert runtime.snapshot(chat).auto_allowed == ()
