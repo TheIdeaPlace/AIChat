@@ -1629,8 +1629,10 @@ Signing in on a new computer doesn't bring them back, and neither does reinstall
 <li>Choose <strong>File, Back Up Now</strong>. A folder dialog opens, with when and where you last backed up.</li>
 <li>Choose a folder, ideally on another drive, a USB stick or a cloud folder such as OneDrive.
    A backup on the same disk won't survive losing the computer, and the summary says so.</li>
-<li>Press <strong>Enter</strong>. You hear "Backing up". It works in the background, and the status bar shows
-   how far it has got. To stop it, choose <strong>Back Up Now</strong> again and answer Yes.</li>
+<li>Press <strong>Enter</strong>. A box asks for a <strong>passphrase</strong> to encrypt the backup. Type one, then type
+   it again, or leave it empty and press Enter for no encryption.</li>
+<li>You hear "Backing up". It works in the background, and the status bar shows how far it has
+   got. To stop it, choose <strong>Back Up Now</strong> again and answer Yes.</li>
 <li>When it's done, a message says how many files it saved, how big the backup is and where it
    went, and whether anything couldn't be copied.</li>
 </ol>
@@ -1650,11 +1652,18 @@ It holds:</p>
   conversations, speech settings and permissions.</li>
 </ul>
 <p>It leaves out sign-ins (you sign in again on a new computer), caches, logs, and plugins you can
-reinstall. <strong>The backup isn't encrypted.</strong> Conversations can include file contents, command output
-and anything pasted into them, so keep it somewhere private.</p>
+reinstall.</p>
+<p><strong>Encrypt it if it's leaving this computer.</strong> Conversations can include file contents, command
+output and anything pasted into them. With a passphrase, everything in the backup is encrypted
+(AES-256), the names of its files and folders too. The passphrase isn't kept anywhere:
+<strong>if you forget it, nobody can open the backup.</strong> Without one, keep the backup somewhere private.</p>
+<p>To open an encrypted backup by hand, use 7-Zip or WinZip (on a Mac, Keka): with the passphrase
+you get <code>backup.zip</code>, an ordinary zip of the backup. Windows' own zip folders and the Mac's
+Archive Utility can't open encrypted zips.</p>
 <p><strong>Check Backup</strong> (File menu) reads a backup back and compares every file with the list of what it
-should hold, so you can trust a copy before you need it. It says whether the backup is good,
-where and when it was made, and what's wrong if it isn't.</p>
+should hold, so you can trust a copy before you need it. An encrypted backup asks for its
+passphrase, and asks again if it's wrong. It says whether the backup is good, where and when it
+was made, and what's wrong if it isn't.</p>
 <p>Restoring from a backup isn't built yet. Until then, the files are in the zip, in the same
 folders as on the computer they came from.</p>
 <p><strong>Claude deletes old conversations.</strong> Claude Code removes conversations older than its

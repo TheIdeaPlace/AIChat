@@ -95,6 +95,19 @@ def smoke_test(out_path: str) -> int:
         source.execute("create table t(v)")
         source.backup(copy)
         report["backup"] = copy.execute("select count(*) from t").fetchone() == (0,)
+        # Encrypted backups (#435): pyzipper and Cryptodome's compiled AES,
+        # which a build could leave behind.
+        import io
+        import pyzipper
+        buffer = io.BytesIO()
+        with pyzipper.AESZipFile(buffer, "w", encryption=pyzipper.WZ_AES) as archive:
+            archive.setpassword(b"smoke")
+            archive.writestr("a", b"backup")
+        with pyzipper.AESZipFile(buffer) as archive:
+            archive.setpassword(b"smoke")
+            report["backup_encryption"] = archive.read("a") == b"backup"
+        if not report["backup_encryption"]:
+            problems.append("backup: an encrypted round trip read back the wrong bytes")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"backup: {exc}")
     try:

@@ -14348,14 +14348,42 @@ def backup_boxes(monkeypatch):
     return shown
 
 
-def test_back_up_now_writes_a_checked_backup_and_says_so(frame, env, monkeypatch, backup_boxes):
+@pytest.fixture
+def passphrases(monkeypatch):
+    """Answers for wx.PasswordEntryDialog, in order (None is Cancel); empty
+    by default, which is "no encryption" at Back Up Now (#435)."""
+    class Box:
+        answers = []
+        messages = []
+
+        def __init__(self, parent, message, caption=""):
+            Box.messages.append(message)
+            self.answer = Box.answers.pop(0) if Box.answers else ""
+
+        def GetChildren(self):
+            return []
+
+        def ShowModal(self):
+            return wx.ID_CANCEL if self.answer is None else wx.ID_OK
+
+        def GetValue(self):
+            return self.answer or ""
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(wx, "PasswordEntryDialog", Box)
+    return Box
+
+
+def test_back_up_now_writes_a_checked_backup_and_says_so(frame, env, monkeypatch, backup_boxes, passphrases):
     (env["tmp"] / "claude" / "projects" / "p").mkdir(parents=True, exist_ok=True)
     (env["tmp"] / "claude" / "projects" / "p" / "s.jsonl").write_text("x\n", encoding="utf-8")
     dest = env["tmp"] / "backups"
     dest.mkdir()
     dialog = _fake_dir_dialog(monkeypatch, dest)
     frame.on_back_up_now()
-    assert "isn't encrypted" in dialog.messages[-1]
+    assert "You can encrypt it next." in dialog.messages[-1]
+    assert "leave it empty for no encryption" in passphrases.messages[-1]
     assert "No backup made here yet." in dialog.messages[-1]
     assert env["feedback"][-1].startswith("Backing up.")
     assert pump(lambda: backup_boxes, timeout=20)
@@ -14370,13 +14398,13 @@ def test_back_up_now_writes_a_checked_backup_and_says_so(frame, env, monkeypatch
     assert "Last backup:" in dialog.messages[-1]
 
 
-def test_back_up_now_cancelled_at_the_folder_does_nothing(frame, env, monkeypatch, backup_boxes):
+def test_back_up_now_cancelled_at_the_folder_does_nothing(frame, env, monkeypatch, backup_boxes, passphrases):
     _fake_dir_dialog(monkeypatch, env["tmp"], answer=wx.ID_CANCEL)
     frame.on_back_up_now()
     assert getattr(frame, "_backup_job", None) is None and backup_boxes == []
 
 
-def test_back_up_now_into_a_copied_folder_explains(frame, env, monkeypatch, backup_boxes):
+def test_back_up_now_into_a_copied_folder_explains(frame, env, monkeypatch, backup_boxes, passphrases):
     inside = env["tmp"] / "claude" / "here"
     inside.mkdir(parents=True)
     _fake_dir_dialog(monkeypatch, inside)
@@ -14398,7 +14426,7 @@ def test_back_up_now_again_offers_to_stop(frame, env, monkeypatch):
     assert frame._backup_job is None
 
 
-def test_check_backup_good_and_damaged(frame, env, monkeypatch, backup_boxes):
+def test_check_backup_good_and_damaged(frame, env, monkeypatch, backup_boxes, passphrases):
     data = env["tmp"] / "appdata"
     data.mkdir(parents=True, exist_ok=True)
     (data / "groups.json").write_text("{}", encoding="utf-8")
@@ -14417,15 +14445,73 @@ def test_check_backup_good_and_damaged(frame, env, monkeypatch, backup_boxes):
     assert "has problems" in backup_boxes[-1]
 
 
-def test_check_backup_always_answers_even_if_checking_crashes(frame, env, monkeypatch, backup_boxes):
+def test_check_backup_always_answers_even_if_checking_crashes(frame, env, monkeypatch, backup_boxes, passphrases):
     junk = env["tmp"] / "x.zip"
     junk.write_bytes(b"x")
     _fake_open_dialog(monkeypatch, junk)
 
-    def crash(_path):
+    def crash(_path, **_kwargs):
         raise MemoryError("boom")   # not caught by verify itself
 
     monkeypatch.setattr(backup, "verify", crash)
     frame.on_check_backup()
     assert pump(lambda: backup_boxes, timeout=20)
     assert "Couldn't check it" in backup_boxes[-1]
+
+
+def test_back_up_now_with_a_passphrase_typed_twice(frame, env, monkeypatch, backup_boxes,
+                                                   passphrases):
+    (env["tmp"] / "appdata").mkdir(parents=True, exist_ok=True)
+    (env["tmp"] / "appdata" / "groups.json").write_text("{}", encoding="utf-8")
+    dest = env["tmp"] / "enc"
+    dest.mkdir()
+    _fake_dir_dialog(monkeypatch, dest)
+    # A mismatch first: told, and asked again.
+    passphrases.answers = ["one", "two", "secret", "secret"]
+    frame.on_back_up_now()
+    assert pump(lambda: any(t.startswith("Backed up") for t in backup_boxes), timeout=20)
+    assert backup_boxes[0] == "The two passphrases are different. Type it again."
+    assert "encrypted with your passphrase" in backup_boxes[-1]
+    made = next(dest.glob("TheChatPlace-backup-*.zip"))
+    assert backup.is_encrypted(made) and backup.verify(made, passphrase="secret").ok
+    assert "secret" not in (env["tmp"] / "appdata" / "backup.json").read_text(encoding="utf-8")
+
+
+def test_back_up_now_cancelled_at_the_passphrase_does_nothing(frame, env, monkeypatch,
+                                                              backup_boxes, passphrases):
+    _fake_dir_dialog(monkeypatch, env["tmp"])
+    passphrases.answers = [None]
+    frame.on_back_up_now()
+    assert getattr(frame, "_backup_job", None) is None and backup_boxes == []
+
+
+def test_check_backup_asks_for_the_passphrase_until_its_right(frame, env, monkeypatch,
+                                                              backup_boxes, passphrases):
+    (env["tmp"] / "appdata").mkdir(parents=True, exist_ok=True)
+    (env["tmp"] / "appdata" / "groups.json").write_text("{}", encoding="utf-8")
+    dest = env["tmp"] / "out"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[backup.tcp_inventory], passphrase="pw").path
+    _fake_open_dialog(monkeypatch, made)
+    passphrases.answers = ["wrong", "pw"]
+    frame.on_check_backup()
+    assert pump(lambda: backup_boxes, timeout=20)
+    assert "is encrypted. Type its passphrase." in passphrases.messages[0]
+    assert passphrases.messages[1] == "That passphrase is wrong. Type it again."
+    assert " is good: " in backup_boxes[-1] and "It's encrypted." in backup_boxes[-1]
+
+
+def test_check_backup_cancelled_at_the_passphrase(frame, env, monkeypatch, backup_boxes,
+                                                  passphrases):
+    (env["tmp"] / "appdata").mkdir(parents=True, exist_ok=True)
+    (env["tmp"] / "appdata" / "groups.json").write_text("{}", encoding="utf-8")
+    dest = env["tmp"] / "out"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[backup.tcp_inventory], passphrase="pw").path
+    _fake_open_dialog(monkeypatch, made)
+    passphrases.answers = [None]
+    said = []
+    monkeypatch.setattr(frame, "_status", said.append)
+    frame.on_check_backup()
+    assert pump(lambda: "Check Backup cancelled." in said, timeout=20)
+    assert backup_boxes == []

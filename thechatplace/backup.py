@@ -19,6 +19,13 @@ The zip is written under a temporary name in the destination folder and only
 renamed into place after it has been read back and every file's checksum
 matched, so a failed or interrupted backup never looks like a good one and
 never replaces one. Restore is a later step (#433, with #228's import).
+
+With a passphrase (#435) the backup is made as usual, then put whole, as
+``backup.zip``, inside a zip whose one entry is AES-256 encrypted the WinZip
+way. Encrypting the entries of the backup itself would leave their names in
+plain text, and Claude's project folders are named after whole paths. So
+nothing shows but that one name; 7-Zip or WinZip opens it with the
+passphrase. The passphrase is never stored: forgotten, the backup is lost.
 """
 from __future__ import annotations
 
@@ -33,6 +40,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 import uuid
 import zipfile
 import zlib
@@ -40,6 +48,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional, Sequence
+
+import pyzipper
 
 from . import __version__, platform_paths
 
@@ -111,6 +121,7 @@ class Result:
     failures: List[str] = field(default_factory=list)
     changed: List[str] = field(default_factory=list)
     gone: List[str] = field(default_factory=list)
+    encrypted: bool = False
     # Entries part-written when their source failed mid-read: in the zip,
     # but not a copy of anything.
     unusable: List[str] = field(default_factory=list)
@@ -124,6 +135,99 @@ class Check:
     files: int = 0
     problems: List[str] = field(default_factory=list)
     manifest: Optional[dict] = None
+    # Set when the backup is encrypted and no passphrase, or the wrong one,
+    # was given: ask for it and check again.
+    needs_passphrase: bool = False
+    encrypted: bool = False
+
+
+class PassphraseError(ValueError):
+    """An encrypted backup and no passphrase ("needed"), the wrong one
+    ("wrong"), or one that failed only the final check, which a wrong
+    passphrase or damage can cause ("wrong-or-damaged")."""
+
+
+# The one entry of an encrypted backup: the whole backup, encrypted.
+INNER = "backup.zip"
+
+PASSPHRASE_PROBLEMS = {
+    "needed": "It's encrypted; its passphrase is needed.",
+    "wrong": "The passphrase is wrong.",
+    "wrong-or-damaged": "The passphrase is wrong, or the backup is damaged.",
+}
+
+
+def is_encrypted(path) -> bool:
+    """True for an encrypted backup: one encrypted entry, backup.zip."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            infos = archive.infolist()
+    except (OSError, zipfile.BadZipFile, ValueError, EOFError):
+        return False
+    return len(infos) == 1 and infos[0].filename == INNER and bool(infos[0].flag_bits & 0x1)
+
+
+def _encrypt(inner: Path, outer: Path, passphrase: str, cancelled=None) -> str:
+    """Put ``inner`` whole into ``outer`` as its one AES-256 entry (stored:
+    it's compressed already). Returns the SHA-256 of what went in."""
+    digest = hashlib.sha256()
+    with pyzipper.AESZipFile(outer, "w", compression=pyzipper.ZIP_STORED, allowZip64=True,
+                             encryption=pyzipper.WZ_AES) as archive:
+        archive.setpassword(passphrase.encode("utf-8"))
+        archive.setencryption(pyzipper.WZ_AES, nbits=256)
+        info = archive.zipinfo_cls(INNER, date_time=time.localtime()[:6])
+        info.compress_type = pyzipper.ZIP_STORED
+        with open(inner, "rb") as source, archive.open(info, "w", force_zip64=True) as out:
+            _hash_into(source, out, digest, cancelled)
+    return digest.hexdigest()
+
+
+def _decrypt_to(path, passphrase: Optional[str], out, cancelled=None) -> str:
+    """Write an encrypted backup's inner zip to ``out`` (a file, or None to
+    only read it) and return its SHA-256. Raises PassphraseError. Whether
+    it's needed or wrong is told by whether one was given, not by
+    pyzipper's wording."""
+    if not passphrase:
+        raise PassphraseError("needed")
+    digest = hashlib.sha256()
+    try:
+        with pyzipper.AESZipFile(path) as archive:
+            archive.setpassword(passphrase.encode("utf-8"))
+            with archive.open(INNER) as source:
+                while True:
+                    if cancelled is not None and cancelled():
+                        raise InterruptedError("Backup cancelled.")
+                    chunk = source.read(_CHUNK)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    if out is not None:
+                        out.write(chunk)
+    except RuntimeError as exc:
+        # The passphrase's own 2-byte check failed.
+        raise PassphraseError("wrong") from exc
+    except pyzipper.BadZipFile as exc:
+        # The final HMAC failed: about 1 wrong passphrase in 65,536 gets
+        # this far, and damage ends here too.
+        if "hmac" in str(exc).lower():
+            raise PassphraseError("wrong-or-damaged") from exc
+        raise
+    return digest.hexdigest()
+
+
+@contextmanager
+def opened(path, passphrase: Optional[str] = None, cancelled=None):
+    """The path of a backup as a plain zip, for reading: the file itself,
+    or for an encrypted one its decrypted inner zip in a private temporary
+    folder that's deleted afterwards. Raises PassphraseError."""
+    if not is_encrypted(path):
+        yield Path(path)
+        return
+    with tempfile.TemporaryDirectory(prefix="tcp-backup-open-") as folder:
+        target = Path(folder) / INNER
+        with open(target, "wb") as out:
+            _decrypt_to(path, passphrase, out, cancelled)
+        yield target
 
 
 def _arc(*parts: str) -> str:
@@ -422,7 +526,8 @@ def _sqlite_snapshot(source: Path, scratch: Path, cancelled=None) -> Path:
 def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Inventory]]] = None,
            progress: Optional[Callable[[int, int, str], None]] = None,
            cancelled: Optional[Callable[[], bool]] = None,
-           filename: Optional[str] = None, now: Optional[datetime] = None) -> Result:
+           filename: Optional[str] = None, now: Optional[datetime] = None,
+           passphrase: Optional[str] = None) -> Result:
     """Write one backup into ``dest_dir`` and return what happened.
 
     ``progress(done, total, arcname)`` is called from this (background)
@@ -458,6 +563,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     now = now or datetime.now()
     final = dest_dir / (filename or default_filename(computer["name"], now))
     partial = final.with_name(f"{final.name}.{uuid.uuid4().hex[:8]}{PARTIAL_SUFFIX}")
+    made = [partial]   # unfinished files, removed if anything goes wrong
     items = [(inv, item) for inv in inventories for item in inv.items]
     total = len(items)
     files: List[dict] = []
@@ -480,6 +586,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
                 if entry is not None:
                     files.append(entry)
             manifest = _manifest(inventories, files, result, computer, started)
+            manifest["encrypted"] = bool(passphrase)
             archive.writestr(MANIFEST, json.dumps(manifest, indent=1, ensure_ascii=False))
         # On the disk, not just in the cache, before it's checked and named:
         # a USB stick pulled after "finished" mustn't hold half a backup.
@@ -488,12 +595,26 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
         check = verify(partial, cancelled=cancelled)
         if not check.ok:
             raise OSError("The backup didn't check out: " + "; ".join(check.problems[:3]))
-        final = _publish(partial, final, result)
-    except BaseException:
-        try:
+        if passphrase:
+            # The checked backup goes whole into the encrypted one, which is
+            # then read back and compared before the plain one is deleted.
+            sealed = partial.with_name(partial.name.replace(PARTIAL_SUFFIX, ".enc" + PARTIAL_SUFFIX))
+            made.append(sealed)
+            written = _encrypt(partial, sealed, passphrase, cancelled)
+            with open(sealed, "rb+") as handle:
+                os.fsync(handle.fileno())
+            if _decrypt_to(sealed, passphrase, None, cancelled) != written:
+                raise OSError("The encrypted backup didn't read back the same.")
             partial.unlink()
-        except OSError:
-            pass
+            final = _publish(sealed, final, result)
+        else:
+            final = _publish(partial, final, result)
+    except BaseException:
+        for leftover in made:
+            try:
+                leftover.unlink()
+            except OSError:
+                pass
         raise
     result.path = final
     result.files = len(files)
@@ -501,6 +622,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     result.archive_bytes = final.stat().st_size
     result.providers = [inv.label for inv in inventories if inv.items]
     result.complete = not result.failures
+    result.encrypted = bool(passphrase)
     if same_drive_as_home(dest_dir):
         result.notes.append("This backup is on the same disk as your data, so it won't survive "
                             "losing this computer. Copy it to another drive or a cloud folder.")
@@ -551,7 +673,7 @@ def _publish(partial: Path, final: Path, result: Optional[Result] = None) -> Pat
     raise OSError(f"Couldn't find a free name for the backup in {final.parent}.")
 
 
-def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
+def _add(archive, inv: Inventory, item: Item, scratch: Path,
          result: Result, cancelled=None) -> Optional[dict]:
     source = Path(item.source)
     try:
@@ -655,8 +777,10 @@ def _manifest(inventories, files, result, computer, started) -> dict:
 
 # Checking ------------------------------------------------------------------
 
-def read_manifest(path: Path) -> dict:
-    with zipfile.ZipFile(path) as archive:
+def read_manifest(path: Path, passphrase: Optional[str] = None) -> dict:
+    """A backup's manifest. Raises PassphraseError for an encrypted backup
+    without its passphrase, or with the wrong one."""
+    with opened(path, passphrase) as plain, zipfile.ZipFile(plain) as archive:
         manifest = json.loads(archive.read(MANIFEST).decode("utf-8"))
     if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
         raise ValueError(f"{Path(path).name} isn't a Chat Place backup.")
@@ -671,11 +795,31 @@ def _safe_name(name: str) -> bool:
     return ".." not in name.replace("\\", "/").split("/")
 
 
-def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None) -> Check:
+def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None,
+           passphrase: Optional[str] = None) -> Check:
     """Read the whole archive back and compare every file with the manifest:
     present, the right size, the right SHA-256, nothing unlisted, no unsafe
     names. A newer format version is a problem (this release can't vouch
-    for it)."""
+    for it). An encrypted backup needs its passphrase: without it, or with
+    the wrong one, ``needs_passphrase`` is set. It's decrypted to a private
+    temporary folder to be checked, and that copy deleted."""
+    if not is_encrypted(path):
+        return _verify_plain(path, cancelled)
+    try:
+        with opened(path, passphrase, cancelled) as plain:
+            check = _verify_plain(plain, cancelled)
+    except InterruptedError:
+        raise
+    except PassphraseError as exc:
+        check = Check(ok=False, needs_passphrase=True,
+                      problems=[PASSPHRASE_PROBLEMS.get(str(exc), str(exc))])
+    except (OSError, pyzipper.BadZipFile, zlib.error, ValueError, EOFError) as exc:
+        check = Check(ok=False, problems=[f"Couldn't read it: {exc}"])
+    check.encrypted = True
+    return check
+
+
+def _verify_plain(path, cancelled=None) -> Check:
     check = Check(ok=False)
     try:
         with zipfile.ZipFile(path) as archive:
@@ -758,7 +902,12 @@ def summary(result: Result) -> str:
     if result.failures:
         text += (f" {len(result.failures)} item{'s' if len(result.failures) != 1 else ''} "
                  "couldn't be copied, so it's incomplete; the details are in its manifest.")
-    text += " It's not encrypted and holds your conversations, so keep it somewhere private."
+    if result.encrypted:
+        text += (" It's encrypted with your passphrase. Without it the backup can't be opened, "
+                 "so keep the passphrase safe.")
+    else:
+        text += (" It's not encrypted and holds your conversations, so keep it somewhere "
+                 "private.")
     for note in result.notes:
         text += " " + note
     return text
@@ -825,6 +974,8 @@ def check_text(path: Path, check: Check) -> str:
         match = "its 1 file matches" if check.files == 1 else f"all {check.files} files match"
         text = (f"{name} is good: {match}. It was made on "
                 f"{computer}{when}.")
+        if check.encrypted:
+            text += " It's encrypted."
         if manifest.get("complete") is False:
             failures = manifest.get("failures") or []
             text += (f" It's incomplete: {len(failures)} item"

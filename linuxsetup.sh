@@ -89,7 +89,7 @@ fi
 # pip's exit code isn't proof the environment works: check the imports the
 # app and the build need.
 PROBLEMS=0
-for module in wx markdown velopack truststore PyInstaller pytest; do
+for module in wx markdown velopack truststore pyzipper Cryptodome PyInstaller pytest; do
     if .venv/bin/python -c "import $module" 2>/dev/null; then
         echo "  ok       $module"
     else

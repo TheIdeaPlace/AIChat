@@ -544,3 +544,115 @@ def test_a_wal_without_shm_is_copied_without_writing_beside_it(homes):
         copy = homes["tmp"] / "c.sqlite"
         copy.write_bytes(z.read("claude/home/state.sqlite"))
     assert sqlite3.connect(copy).execute("select v from t").fetchall() == [("kept",)]
+
+
+# Passphrase (#435) -------------------------------------------------------------
+
+def test_an_encrypted_backup_round_trips_and_hides_everything(homes):
+    write(homes["claude"] / "projects" / "secret-project" / "s.jsonl", "private words\n")
+    write(homes["data"] / "groups.json", "{}")
+    result = backup.create(homes["dest"], collectors=[backup.tcp_inventory,
+                                                      claude_backup.inventory],
+                           passphrase="correct horse")
+    assert result.complete and result.encrypted
+    assert "encrypted with your passphrase" in backup.summary(result)
+    raw = result.path.read_bytes()
+    assert b"private words" not in raw and b'"format"' not in raw
+    # Names too: Claude's project folders are named after whole paths.
+    assert b"secret-project" not in raw and b"thechatplace/data" not in raw
+    assert backup.is_encrypted(result.path)
+    # Every entry is encrypted, the manifest included.
+    with zipfile.ZipFile(result.path) as z:
+        assert all(info.flag_bits & 0x1 for info in z.infolist())
+    check = backup.verify(result.path, passphrase="correct horse")
+    assert check.ok and check.encrypted and check.manifest["encrypted"] is True
+    assert backup.read_manifest(result.path, "correct horse")["format"] == backup.FORMAT
+
+
+def test_an_encrypted_backup_without_or_with_the_wrong_passphrase(homes):
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pw").path
+    missing = backup.verify(path)
+    assert not missing.ok and missing.needs_passphrase
+    assert "passphrase is needed" in missing.problems[0]
+    wrong = backup.verify(path, passphrase="nope")
+    assert not wrong.ok and wrong.needs_passphrase
+    assert wrong.problems == ["The passphrase is wrong."]
+    with pytest.raises(backup.PassphraseError):
+        backup.read_manifest(path)
+
+
+def test_7zip_style_readers_can_open_an_encrypted_backup(homes):
+    """WinZip AES, so tools other than The Chat Place can open it."""
+    import pyzipper
+    write(homes["data"] / "a.json", '{"v": 1}')
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pw").path
+    import io
+    with pyzipper.AESZipFile(path) as z:
+        assert z.namelist() == ["backup.zip"]     # nothing else shows
+        z.setpassword(b"pw")
+        inner = z.read("backup.zip")
+    # Inside is an ordinary zip, the backup as it would be unencrypted.
+    with zipfile.ZipFile(io.BytesIO(inner)) as plain:
+        assert plain.read("thechatplace/data/a.json") == b'{"v": 1}'
+
+
+def test_an_unencrypted_backup_ignores_a_passphrase_when_checking(homes):
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory]).path
+    assert not backup.is_encrypted(path)
+    check = backup.verify(path, passphrase="anything")
+    assert check.ok and not check.encrypted
+
+
+def test_a_unicode_passphrase(homes):
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pässwörd ✓").path
+    assert backup.verify(path, passphrase="pässwörd ✓").ok
+    assert backup.verify(path, passphrase="passwort").needs_passphrase
+
+
+def test_a_failing_encryption_leaves_nothing(homes, monkeypatch):
+    write(homes["data"] / "a.json", "{}")
+
+    def broken(*_args, **_kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(backup, "_encrypt", broken)
+    with pytest.raises(OSError, match="No space"):
+        backup.create(homes["dest"], collectors=[backup.tcp_inventory], passphrase="pw")
+    assert list(homes["dest"].iterdir()) == []
+
+
+def test_wrong_or_damaged_at_the_final_check(homes, monkeypatch):
+    """1 wrong passphrase in 65,536 passes the quick check and fails the
+    HMAC at the end, as damage does: asked again, said as either."""
+    import pyzipper
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pw").path
+
+    def hmac_fails(*_a, **_k):
+        raise pyzipper.BadZipFile("Bad HMAC check for file 'backup.zip'")
+
+    monkeypatch.setattr(pyzipper.AESZipFile, "open", hmac_fails)
+    check = backup.verify(path, passphrase="pw")
+    assert check.needs_passphrase and check.encrypted
+    assert check.problems == ["The passphrase is wrong, or the backup is damaged."]
+
+
+def test_opened_gives_a_plain_zip_and_cleans_up(homes):
+    write(homes["data"] / "a.json", "{}")
+    path = backup.create(homes["dest"], collectors=[backup.tcp_inventory],
+                         passphrase="pw").path
+    with backup.opened(path, "pw") as plain:
+        kept = plain
+        with zipfile.ZipFile(plain) as z:
+            assert "manifest.json" in z.namelist()
+    assert not kept.exists()
+    with pytest.raises(backup.PassphraseError):
+        with backup.opened(path, None):
+            pass

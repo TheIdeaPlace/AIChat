@@ -893,8 +893,14 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   The zip has a `manifest.json` listing every file with its size and SHA-256, where each folder
   came from, what was left out and anything that couldn't be read. It's written under a
   temporary name and renamed only after it reads back correctly, and never replaces an earlier
-  backup. It works in the background; choosing Back Up Now again offers to stop it. **It isn't
-  encrypted**, so keep it somewhere private. **Check Backup** (File menu) reads a backup back and
+  backup. After the folder it asks for an optional **passphrase**, typed twice: with one, the
+  checked backup goes whole, as `backup.zip`, into a zip whose one entry is AES-256 encrypted
+  (WinZip's kind), so file names and folder paths are hidden too; 7-Zip, WinZip or Keka opens it,
+  Windows' zip folders and Archive Utility can't. The passphrase is never stored, so a forgotten
+  one means a lost backup (#435). Checking one decrypts it to a private temporary folder, deleted
+  afterwards. It works in the
+  background; choosing Back Up Now again offers to stop it. **Check Backup** (File menu) reads a
+  backup back, asking for the passphrase of an encrypted one, and
   checks every file against its manifest. The last folder and backup are kept in
   `backup.json` in The Chat Place's folder. Restoring isn't built yet (#433); the files are in
   the zip under the folders they came from. Claude Code deletes conversations older than its
