@@ -14675,3 +14675,156 @@ def test_quitting_during_a_scheduled_backup_says_so(frame, env, monkeypatch):
                      "and nothing saved."]
     assert Close.vetoed
     frame._backup_job = None
+
+
+# Restore from Backup (#436) ------------------------------------------------------
+
+def _backup_with_a_claude_chat(env, title_words="Restored question"):
+    from records import assistant_block, text_block, user_text
+    source = env["tmp"] / "old-claude"
+    project = source / "projects" / "C--old"
+    project.mkdir(parents=True)
+    records = [user_text(title_words, entrypoint="cli", cwd="/old/workspace"),
+               assistant_block(text_block("Restored reply"))]
+    (project / "old-native-id.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    dest = env["tmp"] / "backups"
+    dest.mkdir(exist_ok=True)
+
+    def collector():
+        return backup.Inventory("claude", "Claude", items=backup.walk(source, "claude/home"))
+    return backup.create(dest, collectors=[collector]).path
+
+
+def test_restore_from_backup_asks_then_lists_read_only_chats(frame, env, monkeypatch):
+    from thechatplace.providers.imported import IMPORTED
+    made = _backup_with_a_claude_chat(env)
+    _fake_open_dialog(monkeypatch, made)
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    assert asked and asked[0].startswith("Restore 1 chat from ") and "Claude 1" in asked[0]
+    assert "read-only" in asked[0]
+    assert frame._backup_job is None
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: any(frame._current_info(k) is not None
+                            and frame._current_info(k).provider == IMPORTED
+                            for k in frame._list_keys), timeout=20)
+    key = next(k for k in frame._list_keys if frame._current_info(k).provider == IMPORTED)
+    info = frame._current_info(key)
+    assert info.provider_label == "Claude" and info.kind_label == "imported chat"
+    frame.session_list.SetSelection(frame._list_keys.index(key))
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded, timeout=20)
+    assert "restored from a backup" in frame.desktop_note.GetValue()
+    assert any("Restored reply" in m.text for m in frame._chat_messages)
+    # Nothing a restored chat can't do is offered or reachable.
+    menu, actions = frame._session_menu()
+    labels = {menu.FindItemById(i).GetItemLabelText(): menu.FindItemById(i).IsEnabled()
+              for i in actions}
+    menu.Destroy()
+    assert not labels.get("Copy Session Link...", False)
+    assert not labels.get("Remote Control...", False)
+    assert "Continue Here..." not in labels
+    assert "Delete Session Permanently..." in labels
+    frame.on_continue_here()
+    assert env["feedback"][-1].endswith("was restored from a backup: it's read-only.")
+    # Restoring the same backup again adds nothing.
+    asked.clear()
+    frame.on_restore_backup()
+    assert pump(lambda: env["feedback"][-1].startswith("Restore finished"), timeout=30)
+    assert "1 already here" in env["feedback"][-1]
+
+
+def test_restore_answered_no_restores_nothing(frame, env, monkeypatch):
+    made = _backup_with_a_claude_chat(env)
+    _fake_open_dialog(monkeypatch, made)
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: wx.NO)
+    frame.on_restore_backup()
+    assert pump(lambda: env["feedback"][-1] == "Restore cancelled. Nothing was restored.",
+                timeout=30)
+    assert frame._imported.store.all() == []
+
+
+def test_restore_of_a_damaged_backup_says_so(frame, env, monkeypatch):
+    junk = env["tmp"] / "junk.zip"
+    junk.write_bytes(b"not a zip")
+    _fake_open_dialog(monkeypatch, junk)
+    shown = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: shown.append(text) or wx.OK)
+    frame.on_restore_backup()
+    assert pump(lambda: shown, timeout=20)
+    assert "has problems" in shown[-1] and "Nothing was restored." in shown[-1]
+
+
+def test_deleting_a_restored_chat_removes_only_its_copy(frame, env, monkeypatch):
+    from thechatplace.imported_store import ImportedChat, chat_key
+    from thechatplace.providers.imported import IMPORTED
+    from thechatplace.transcript import ASSISTANT, ChatMessage, Transcript
+    # A restored chat whose native id is also one of this computer's own.
+    native = "same-native-id"
+    frame._imported.store.save(
+        ImportedChat(chat_key("claude", native, "other-pc"), "claude", native, "other-pc",
+                     "Other PC", "Restored copy", last_activity_ms=1),
+        Transcript(messages=[ChatMessage(ASSISTANT, "hi")]))
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: any(frame._current_info(k) is not None
+                            and frame._current_info(k).provider == IMPORTED
+                            for k in frame._list_keys), timeout=20)
+    key = next(k for k in frame._list_keys if frame._current_info(k).provider == IMPORTED)
+    frame.session_list.SetSelection(frame._list_keys.index(key))
+    removed_own = []
+    monkeypatch.setattr(frame.store, "remove", lambda *a, **k: removed_own.append(a))
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame.on_delete_permanently()
+    assert asked[0].startswith("Delete Restored copy, restored from a backup?")
+    assert frame._imported.store.all() == [] and removed_own == []
+    assert env["feedback"][-1] == "Deleted Restored copy."
+
+
+def test_restore_of_an_encrypted_backup_asks_for_its_passphrase(frame, env, monkeypatch,
+                                                                 passphrases):
+    from records import assistant_block, text_block, user_text
+    source = env["tmp"] / "enc-claude"
+    project = source / "projects" / "C--old"
+    project.mkdir(parents=True)
+    (project / "enc-native.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
+        user_text("Encrypted question", entrypoint="cli", cwd="/old"),
+        assistant_block(text_block("Encrypted reply"))]), encoding="utf-8")
+    dest = env["tmp"] / "enc-backups"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[lambda: backup.Inventory(
+        "claude", "Claude", items=backup.walk(source, "claude/home"))], passphrase="pw").path
+    _fake_open_dialog(monkeypatch, made)
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: wx.YES)
+    passphrases.answers = ["wrong", "pw"]
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    assert "is encrypted. Type its passphrase." in passphrases.messages[0]
+    assert passphrases.messages[1] == "That passphrase is wrong. Type it again."
+    assert frame._backup_job is None
+
+
+def test_restore_holds_the_backup_slot_while_it_checks(frame, env, monkeypatch, passphrases):
+    """#449 review: a scheduled backup must not start while a restore is
+    being checked, and cancelling the passphrase frees the slot."""
+    made = _backup_with_a_claude_chat(env)
+    encrypted = backup.create(env["tmp"] / "backups", filename="e.zip", passphrase="pw",
+                              collectors=[lambda: backup.Inventory(
+                                  "claude", "Claude",
+                                  items=backup.walk(env["tmp"] / "old-claude",
+                                                    "claude/home"))]).path
+    _fake_open_dialog(monkeypatch, encrypted)
+    started = []
+    monkeypatch.setattr(backup, "schedule_due", lambda *a, **k: True)
+    monkeypatch.setattr(backup, "run_scheduled", lambda **k: started.append(1))
+    passphrases.answers = [None]          # cancel at the passphrase
+    frame.on_restore_backup()
+    assert frame._backup_job is not None and frame._backup_job.get("restore")
+    frame._run_scheduled_backup_if_due()
+    assert started == []
+    assert pump(lambda: frame._backup_job is None, timeout=20)
+    assert env["feedback"][-1] == "Restore cancelled. Nothing was restored."
+    assert made.exists()

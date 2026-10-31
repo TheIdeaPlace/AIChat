@@ -2225,3 +2225,44 @@ def write_desktop_entry(command: str) -> None:
                 subprocess.run([program, *argv[1:]], capture_output=True, timeout=20)
             except (OSError, subprocess.SubprocessError):
                 pass
+
+
+def codex_archive_environment(profile: Path, environ=None) -> dict:
+    """No credentials, endpoint overrides or paths into a live user profile."""
+    source = os.environ if environ is None else environ
+    allowed = {'PATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'SYSTEMDRIVE',
+               'PROCESSOR_ARCHITECTURE', 'NUMBER_OF_PROCESSORS', 'LANG', 'LC_ALL'}
+    environment = {key: value for key, value in source.items() if key.upper() in allowed}
+    profile = Path(profile).resolve()
+    for key in ('HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME',
+                'XDG_DATA_HOME', 'XDG_STATE_HOME', 'TMP', 'TEMP', 'TMPDIR'):
+        folder = profile.parent / key.lower()
+        folder.mkdir(parents=True, exist_ok=True)
+        environment[key] = str(folder)
+    environment['CODEX_HOME'] = str(profile)
+    environment['CODEX_SQLITE_HOME'] = str(profile)
+    return environment
+
+
+def start_codex_archive_server(profile: Path, executable=None) -> CodexServerProcess:
+    """History-only process rooted at a scratch profile, never the live launcher."""
+    import subprocess
+    executable = executable or find_codex()
+    if not executable or not _native_codex(executable):
+        raise OSError('Install the native Codex CLI to import Codex history.')
+    tree = ProcessTree()
+    try:
+        process = subprocess.Popen([executable, 'app-server', '--listen', 'stdio://'],
+                                   env=codex_archive_environment(profile), cwd=profile.parent,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+    except BaseException:
+        tree.close()
+        raise
+    owned = CodexServerProcess(process, tree)
+    try:
+        tree.attach(process)
+    except BaseException:
+        owned.close()
+        raise
+    return owned

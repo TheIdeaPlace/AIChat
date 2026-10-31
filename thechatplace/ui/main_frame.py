@@ -70,6 +70,8 @@ from .. import lists, tasklist
 from ..session_controller import SessionController
 from ..providers.base import ConversationReader
 from ..providers.claude import ClaudeConversations
+from ..providers.imported import IMPORTED, ImportedChats
+from .. import imported_store
 from ..own_store import OwnSession, OwnSessionStore
 from ..search import Target, search_sessions
 from ..groups import GroupStore
@@ -152,6 +154,11 @@ _DESKTOP_NOTE = (
     "Continue Here starts a Chat Place copy of it, with the whole "
     "conversation so far, that you can reply to here; the desktop app "
     "session isn't changed.")
+#: A chat restored from a backup (#436).
+_IMPORTED_NOTE = (
+    "This chat was restored from a backup, so it's read-only: you can read, find, "
+    "export and list its changes, not continue it. Delete Session Permanently removes "
+    "The Chat Place's copy of it, nothing else.")
 #: The same for a Cowork session (#91), which can't be continued here.
 _COWORK_NOTE = (
     "This is a Cowork session in the Claude desktop app, so you reply to it "
@@ -230,7 +237,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._relay_partners: Dict[str, str] = {}
         self._relay_waiting: Dict[str, str] = {}
         if sessions is None:
-            providers = [ClaudeConversations()]
+            # Chats restored from a backup (#436): their own read-only backend.
+            self._imported = ImportedChats()
+            providers = [ClaudeConversations(), self._imported]
             if self.speech.includes_codex():
                 from ..providers.codex import CodexProvider
                 providers.append(CodexProvider(execution=True,
@@ -243,6 +252,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                     on_update=lambda state: wx.CallAfter(self._on_owned_update, "copilot", state)))
             sessions = SessionController(providers)
         self.sessions = sessions
+        if not hasattr(self, "_imported"):
+            # A controller handed in (tests) lists no imported chats, but a
+            # restore still has somewhere to keep them.
+            self._imported = ImportedChats()
         # Agent conversations (#248): their record, and a backend that reads
         # their members through the controller. What each is waiting for
         # lives here, not in the record: (provider, native id) -> (conversation
@@ -576,6 +589,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._item(session, "Back Up No&w...", lambda e: self.on_back_up_now())
         self._item(session, "Check Backup...", lambda e: self.on_check_backup())
         self._item(session, "Backup Schedule...", lambda e: self.on_backup_schedule())
+        # Every letter of "Restore from Backup" is another item's access key.
+        self._item(session, "Restore from Backup...", lambda e: self.on_restore_backup())
         session.AppendSeparator()
         self._item(session, "E&xit", lambda e: self.Close(), wx.ID_EXIT)
         bar.Append(session, "&File")
@@ -988,6 +1003,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         except ValueError:
             supported = False
         if not supported:
+            if info.provider == IMPORTED:
+                self._feedback(f"{info.title} was restored from a backup: it's read-only.")
+                return supported
             kind = ("agent conversations" if info.provider == AGENTS
                     else f"{info.provider.capitalize()} chats")
             self._feedback(f"This action isn't available for {kind} yet.")
@@ -1349,7 +1367,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if info.is_own:
             prompt = f"New name for {info.title}:"
         else:
-            keeper = (info.provider.capitalize() if info.provider != "claude" else
+            keeper = ("the backup" if info.provider == IMPORTED else
+                      info.provider.capitalize() if info.provider != "claude" else
                       "Claude Code" if info.is_terminal else "the Claude desktop app")
             prompt = (f"New name for {info.title}. It shows only in The Chat Place; "
                       f"{keeper} keeps its own name for it. Leave it empty to go "
@@ -1386,7 +1405,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                                      provider=info.provider, title=title):
                 return
         else:
-            keeper = (f"{info.provider.capitalize()}'s" if info.provider != "claude" else
+            keeper = ("the backup's" if info.provider == IMPORTED else
+                      f"{info.provider.capitalize()}'s" if info.provider != "claude" else
                       "Claude Code's" if info.is_terminal else "the desktop app's")
             if not title and info.key not in self.titles:
                 self._feedback(f"{old} already has {keeper} name.")
@@ -1420,6 +1440,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         info = self._selected_session()
         if info is not None and info.provider == AGENTS:
             self._agent_delete(info)
+            return
+        if info is not None and info.provider == IMPORTED:
+            # Before anything else: its native id is another computer's, and
+            # could be one of this computer's own chats (#436).
+            self._delete_imported(info)
             return
         if info is not None and info.is_own:
             conversation = self.agents.containing(info.provider, info.cli_session_id)
@@ -1506,6 +1531,29 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                            "still on this computer.")
         else:
             self._feedback(f"Deleted {info.title} permanently.")
+
+    def _delete_imported(self, info: SessionInfo):
+        """Remove The Chat Place's copy of a restored chat (#436). Nothing
+        else is touched; restoring the backup again brings it back."""
+        if wx.MessageBox(f"Delete {info.title}, restored from a backup? Only The Chat Place's "
+                         "copy is deleted. Restoring the backup again brings it back.",
+                         "Delete Session Permanently",
+                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+            return
+        try:
+            removed = self._imported.remove(info)
+        except (OSError, ValueError) as exc:
+            self._feedback(f"Couldn't delete {info.title}: {exc}")
+            return
+        self.groups.forget(info.key)
+        if info.key in self.hidden:
+            self.hidden.show(info.key)
+        if info.key in self.titles:
+            self.titles.remove(info.key)
+        self.tool_activity.discard(info.key)
+        was_loaded = self._open is not None and self._open.key == info.key
+        self._leave_list(info, refocus=was_loaded)
+        self._feedback(f"Deleted {info.title}." if removed else f"{info.title} was already gone.")
 
     def _leave_list(self, info: SessionInfo, refocus: bool = False):
         """``info`` leaves the list: the neighbour moves into its row, and if
@@ -1629,6 +1677,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 f"This is a {provider_name(info.provider)} chat. The Chat Place currently "
                 f"reads its local history. Reply in {home_app(info.provider)}."
                 if info.provider in LISTED_PROVIDERS else
+                _IMPORTED_NOTE if info.provider == IMPORTED else
                 _COWORK_NOTE if info.cowork else
                                        _TERMINAL_NOTE if info.is_terminal else _DESKTOP_NOTE)
             self.continue_btn.Show(self.sessions.capabilities(info).fork)
@@ -1884,6 +1933,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             # Copilot writes a chat's log only once its first message arrives.
             line = "No messages yet."
             self._chat_loaded = False  # keep looking until it appears
+        elif info.provider == IMPORTED:
+            line = ("This restored chat's history is gone. Restoring the backup again "
+                    "brings it back.")
         elif info.provider != "claude":
             line = f"Chat history is unavailable from {info.provider.capitalize()}. Try refreshing."
         elif info.is_own and (info.cli_session_id in self._runners
@@ -2690,13 +2742,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             # and none of a single chat's Claude commands.
             add("Agent Conversation &Members...", self.on_agent_members)
             add("&Hand-offs...", self.on_agent_mode)
+        imported = info.provider == IMPORTED
         add("Open in &Claude\tCtrl+O", self.on_open_in_claude, info.can_open_in_claude)
-        add("Copy Session Lin&k...\tCtrl+Shift+L", self.on_copy_session_link, not conversation)
-        if not info.is_own and not conversation:
+        add("Copy Session Lin&k...\tCtrl+Shift+L", self.on_copy_session_link,
+            not conversation and not imported)
+        if not info.is_own and not conversation and not imported:
             # Heard as unavailable for a Cowork session (#91), whose button is hidden.
             add("Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here, not info.cowork)
         add("Re&name Session...\tF2", self.on_rename)
-        add("&Remote Control...", self.on_remote_control, not conversation)
+        add("&Remote Control...", self.on_remote_control, not conversation and not imported)
         menu.AppendSeparator()
         add("Add to &Group...\tCtrl+G", self.on_add_to_group)
         add("Remove from Gro&up...", self.on_remove_from_group,
@@ -2707,7 +2761,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             add("&Bring Back Session", self.on_unhide)
         else:
             add("H&ide Session\tDelete", self.on_hide)
-        if info.is_own or conversation:
+        if info.is_own or conversation or imported:
             add("Delete Session &Permanently...\tShift+Delete", self.on_delete_permanently)
         menu.AppendSeparator()
         add("Pr&operties...\tAlt+Enter", self.on_properties)
@@ -2886,6 +2940,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         info = self._selected_session()
         if info is None:
             self._feedback("No session selected.")
+            return
+        if info.provider == IMPORTED:
+            self._feedback(f"{info.title} was restored from a backup: it's read-only.")
             return
         if info.provider != "claude":
             self._feedback(f"Open in Claude isn't available for {info.provider.capitalize()} chats.")
@@ -5872,11 +5929,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if running is not None:
             done, total = running["progress"]
             percent = f", {done * 100 // total}% done" if total else ""
-            kind = "A scheduled backup" if running.get("scheduled") else "A backup"
+            kind = ("A restore" if running.get("restore") else
+                    "A scheduled backup" if running.get("scheduled") else "A backup")
             if wx.MessageBox(f"{kind} is running{percent}. Stop it?", "Back Up Now",
                              wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES:
                 running["cancel"] = True
-                self._feedback("Stopping the backup.")
+                self._feedback("Stopping the restore." if running.get("restore")
+                               else "Stopping the backup.")
             return
         state = backup.load_state()
         start = state.get("folder") or os.path.join(os.path.expanduser("~"), "Documents")
@@ -6118,6 +6177,163 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._status("The backup is good." if check.ok else "The backup has problems.")
         wx.MessageBox(backup.check_text(path, check), "Check Backup",
                       wx.OK | (wx.ICON_INFORMATION if check.ok else wx.ICON_ERROR), self)
+
+    def on_restore_backup(self):
+        """File, Restore from Backup (#436): every chat in a backup comes
+        back as a read-only imported chat, after a question saying how many
+        and from where. Nothing is written to any provider's folder."""
+        if getattr(self, "_backup_job", None) is not None:
+            self._feedback("A backup or restore is running. Wait for it to finish, or choose "
+                           "Back Up Now to stop it.")
+            return
+        start = backup.load_state().get("folder") or ""
+        dialog = wx.FileDialog(self, "Restore which backup?",
+                               defaultDir=start if os.path.isdir(start) else "",
+                               wildcard="Chat Place backups (*.zip)|*.zip|All files|*.*",
+                               style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            path = dialog.GetPath()
+        finally:
+            dialog.Destroy()
+        # Held from here, through the check and any passphrase question, so a
+        # scheduled backup or Back Up Now can't start beside it (#449 review).
+        if getattr(self, "_backup_job", None) is not None:
+            self._feedback("A backup started meanwhile. Restore when it has finished.")
+            return
+        self._backup_job = {"cancel": False, "progress": (0, 0), "said": time.monotonic(),
+                            "restore": True}
+        self._restore_check(path, None)
+
+    def _restore_job(self):
+        job = getattr(self, "_backup_job", None)
+        return job if job is not None and job.get("restore") else None
+
+    def _restore_stop(self, said: str):
+        """The restore ends before reading anything: free the slot, say why."""
+        self._backup_job = None
+        self._feedback(said)
+
+    def _restore_check(self, path: str, passphrase: Optional[str]):
+        """Check the backup first, asking for its passphrase if it has one,
+        as Check Backup does: nothing is read from a backup that's damaged."""
+        self._feedback(f"Checking {os.path.basename(path)}.")
+        job = self._restore_job()
+
+        def work():
+            try:
+                check = backup.verify(path, passphrase=passphrase,
+                                      cancelled=lambda: bool(job and job["cancel"]))
+            except InterruptedError:
+                check = None
+            except Exception as exc:  # noqa: BLE001 - always answered
+                check = backup.Check(ok=False, problems=[f"Couldn't check it: {exc}"])
+            wx.CallAfter(self._restore_checked, path, check, passphrase)
+
+        if job is not None:
+            job["thread"] = threading.Thread(target=work, name="restore-check", daemon=True)
+            job["thread"].start()
+        else:
+            threading.Thread(target=work, name="restore-check", daemon=True).start()
+
+    def _restore_checked(self, path, check, passphrase):
+        if self._gone():
+            return
+        job = self._restore_job()
+        if job is None or job["cancel"] or check is None:
+            self._restore_stop("Restore stopped. Nothing was restored.")
+            return
+        if check.needs_passphrase:
+            message = (f"{os.path.basename(path)} is encrypted. Type its passphrase."
+                       if passphrase is None else "That passphrase is wrong. Type it again.")
+            again = self._ask_passphrase(message, "Restore from Backup")
+            if again and not job["cancel"]:
+                self._restore_check(path, again)
+            else:
+                self._restore_stop("Restore cancelled. Nothing was restored.")
+            return
+        if not check.ok:
+            self._backup_job = None
+            self._status("The backup can't be restored.")
+            wx.MessageBox(backup.check_text(path, check) + "\n\nNothing was restored.",
+                          "Restore from Backup", wx.OK | wx.ICON_ERROR, self)
+            return
+        self._restore_run(path, check.manifest, passphrase, job)
+
+    def _ask_from_worker(self, ask, job=None):
+        """Run ``ask`` on the window's thread and wait for its answer, so a
+        worker can ask a question while it holds open what it's reading.
+        False, without asking, if the window is closing or the job was
+        stopped meanwhile: a question must never open over Quit's (#449)."""
+        done, answer = threading.Event(), []
+
+        def on_ui():
+            try:
+                stopped = job is not None and job.get("cancel")
+                answer.append(False if (self._gone() or self._closing or stopped)
+                              else bool(ask()))
+            finally:
+                done.set()
+        wx.CallAfter(on_ui)
+        while not done.wait(0.5):
+            if self._gone():
+                return False
+        return bool(answer and answer[0])
+
+    def _restore_run(self, path, manifest, passphrase, job):
+        job["said"] = time.monotonic()
+        self._feedback("Reading the backup's chats.")
+
+        def confirm(plan):
+            return self._ask_from_worker(lambda: wx.MessageBox(
+                imported_store.describe_plan(plan), "Restore from Backup",
+                wx.YES_NO | wx.ICON_QUESTION, self) == wx.YES, job)
+
+        def progress(done, total, _title):
+            job["progress"] = (done, total)
+            job["importing"] = True
+            now = time.monotonic()
+            if total and now - job["said"] >= 2:
+                job["said"] = now
+                wx.CallAfter(self._backup_status,
+                             f"Restoring: {done * 100 // total}% ({done} of {total} chats).")
+
+        def work():
+            try:
+                outcome = imported_store.restore_backup(
+                    path, manifest, passphrase, confirm=confirm,
+                    store=self._imported.store, cancelled=lambda: job["cancel"],
+                    progress=progress)
+                wx.CallAfter(self._restore_done, outcome, None, job)
+            except Exception as exc:  # noqa: BLE001 - said, not raised
+                wx.CallAfter(self._restore_done, None, exc, job)
+
+        job["thread"] = threading.Thread(target=work, name="restore", daemon=True)
+        job["thread"].start()
+
+    def _restore_done(self, outcome, error, job):
+        self._backup_job = None
+        if self._gone():
+            return
+        if isinstance(error, InterruptedError):
+            self._feedback("Restore stopped. Chats already restored stay, and restoring the "
+                           "backup again finishes the rest." if job.get("importing")
+                           else "Restore stopped. Nothing was restored.")
+            self.refresh_sessions(resort=True)
+            return
+        if error is not None:
+            self._status("The restore didn't finish.")
+            wx.MessageBox(f"Couldn't restore the backup: {error}", "Restore from Backup",
+                          wx.OK | wx.ICON_ERROR, self)
+            return
+        if outcome is None:
+            self._feedback("Restore cancelled. Nothing was restored.")
+            return
+        self._feedback(imported_store.restore_summary(outcome))
+        # Not forced: its own spoken summary would follow, and could talk over
+        # this one (#449 review).
+        self.refresh_sessions(resort=True)
 
     def on_settings(self, _event=None):
         previous_providers = (self.speech.includes_codex(), self.speech.copilot_enabled)
@@ -7132,9 +7348,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 return
         job = getattr(self, "_backup_job", None)
         if job is not None:
-            kind = "A scheduled backup" if job.get("scheduled") else "A backup"
+            kind = ("A restore" if job.get("restore") else
+                    "A scheduled backup" if job.get("scheduled") else "A backup")
             if event.CanVeto() and wx.MessageBox(
-                    f"{kind} is running. Quit anyway? It will be stopped, and nothing saved.",
+                    f"{kind} is running. Quit anyway? It will be stopped"
+                    + ("; chats already restored stay." if job.get("restore")
+                       else ", and nothing saved."),
                     f"Quit {APP_NAME}", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
                     self) != wx.YES:
                 event.Veto()
@@ -7142,7 +7361,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             # Stopped between chunks, which removes the unfinished archive;
             # a few seconds at most, for one large file to finish.
             job["cancel"] = True
-            job["thread"].join(timeout=10)
+            if job.get("thread") is not None:
+                job["thread"].join(timeout=10)
         self._closing = True
         for runner in list(self._runners.values()):
             runner.cancel()

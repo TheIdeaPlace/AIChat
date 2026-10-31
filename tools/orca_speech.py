@@ -123,9 +123,16 @@ STEPS = [
     Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
     Step("folder question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # Backup Schedule (#437): the last item but Exit, so Up twice from the top.
-    Step("Backup Schedule", ["alt+f", "Up", "Up", "Return"], expect=["Back up automatically"]),
+    # Backup Schedule (#437), then Restore from Backup (#436), the last items
+    # before Exit: Up from the top goes to Exit first.
+    Step("Backup Schedule", ["alt+f", "Up", "Up", "Up", "Return"],
+         expect=["Back up automatically"]),
     Step("Backup Schedule closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # GTK's file picker is announced by its file list, not its title.
+    Step("Restore from Backup", ["alt+f", "Up", "Up", "Return"],
+         expect=["Restore from Backup", "Files"]),
+    Step("restore's file question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
 ]
 

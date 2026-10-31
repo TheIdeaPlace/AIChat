@@ -90,6 +90,9 @@ def smoke_test(out_path: str) -> int:
         # API (the Linux build uses the system's libsqlite3).
         from . import backup
         assert len(backup.default_collectors()) == 4
+        from .backup_reader import BackupReader, ImportedSession
+        from .providers.codex_archive import CodexArchive
+        report['backup_reader'] = bool(BackupReader and ImportedSession and CodexArchive)
         import sqlite3
         source, copy = sqlite3.connect(":memory:"), sqlite3.connect(":memory:")
         source.execute("create table t(v)")
