@@ -1653,6 +1653,27 @@ def d_backup_schedule(frame, env):
                                                      has_passphrase=True))
 
 
+def d_restore_chooser(frame, env):
+    """Restore from Backup's chooser (#450): a backup's chats, one skipped."""
+    from thechatplace.ui.dialogs import RestoreChooserDialog
+    heading = ("Restore 4 chats from SURFACEPRO7, backed up on 31 October 2026 at 09:00? "
+               "Claude 3, Codex 1.\n\nThey come back read-only, marked as imported: you can "
+               "read, find and export them, not continue them. Nothing is written to Claude's, "
+               "Codex's or Copilot's folders. Restoring the same backup again updates them "
+               "instead of adding copies.")
+    rows = ["Fix the flaky upload test, Claude, Uploader, last active 30 October 2026",
+            "Visual probe, Claude, AIChat, last active 29 October 2026",
+            "Release notes for 0.3.3, Codex, AIChat, last active 28 October 2026",
+            "Plan the Linux port, Claude, AIChat, last active 2 October 2026"]
+
+    def show():
+        dialog = RestoreChooserDialog(frame, heading, rows)
+        dialog.toggle(2)
+        dialog.list.SetSelection(0)
+        frame._modal(dialog)
+    return show
+
+
 def d_prompt_edit(frame, env):
     from thechatplace.ui.dialogs import PromptEditDialog
     return lambda: frame._modal(PromptEditDialog(frame, "Edit Prompt", "Review",
@@ -1793,6 +1814,7 @@ SURFACES = {
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
     "prompts": ("dialog", d_prompts, "File, Prompts"),
     "prompt-edit": ("dialog", d_prompt_edit, "Editing a saved prompt"),
+    "restore-chooser": ("dialog", d_restore_chooser, "Restore from Backup, choosing chats"),
     "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
@@ -1884,6 +1906,7 @@ DIALOG_CLASSES = {
     "session-columns": "SessionColumnsDialog",
     "prompts": "PromptsDialog",
     "prompt-edit": "PromptEditDialog",
+    "restore-chooser": "RestoreChooserDialog",
     "backup-schedule": "BackupScheduleDialog",
     "relay": "RelayDialog",
     "agent-new": "AgentConversationDialog",

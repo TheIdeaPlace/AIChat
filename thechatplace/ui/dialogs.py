@@ -4539,3 +4539,101 @@ class BackupScheduleDialog(wx.Dialog):
                                      self.folder.GetValue().strip(), self.keep.GetValue(),
                                      bool(self.encrypt.GetValue() and self._can_encrypt)
                                      or (self._was_encrypted and not self._can_encrypt))
+
+
+class RestoreChooserDialog(wx.Dialog):
+    """Restore from Backup's choice (#450): which of a backup's chats to
+    restore. Each row says Restore or Skip in its own text, so every screen
+    reader reads it (a check list box's checks aren't exposed on Windows);
+    Space switches the row, and Select All and Select None do all of them."""
+
+    RESTORE, SKIP = "Restore", "Skip"
+
+    def __init__(self, parent, heading: str, rows, say=None):
+        super().__init__(parent, title="Restore from Backup", size=dialog_size(parent, 680, 520),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._rows = list(rows)
+        self.chosen = [True] * len(self._rows)
+        self._say = say or (lambda text: None)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.heading = wx.TextCtrl(self, value=heading,
+                                   style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.heading, "About this backup")
+        self.heading.SetMinSize(dip(self, -1, 90))
+        sizer.Add(self.heading, 0, wx.EXPAND | wx.ALL, 8)
+        sizer.Add(wx.StaticText(self, label="Chat &list (Space switches Restore and Skip):"),
+                  0, wx.LEFT | wx.RIGHT, 8)
+        self.list = wx.ListBox(self, choices=[self._text(i) for i in range(len(self._rows))],
+                               style=wx.LB_SINGLE)
+        set_list_items_accessible(self.list, "Chats", lambda i: self._text(i))
+        self.list.Bind(wx.EVT_CHAR_HOOK, self._on_list_key)
+        if self._rows:
+            self.list.SetSelection(0)
+        sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        select_all = wx.Button(self, label="Select &All")
+        select_all.Bind(wx.EVT_BUTTON, lambda e: self._set_all(True))
+        select_none = wx.Button(self, label="Select &None")
+        select_none.Bind(wx.EVT_BUTTON, lambda e: self._set_all(False))
+        buttons.Add(select_all, 0, wx.RIGHT, 6)
+        buttons.Add(select_none, 0, wx.RIGHT, 6)
+        buttons.AddStretchSpacer()
+        self.restore = wx.Button(self, wx.ID_OK, "&Restore")
+        self.restore.SetDefault()
+        self.restore.Bind(wx.EVT_BUTTON, self._on_restore)
+        buttons.Add(self.restore, 0, wx.RIGHT, 6)
+        buttons.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
+        sizer.Add(buttons, 0, wx.EXPAND | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self._update_restore()
+        wx.CallAfter(self.list.SetFocus)
+
+    def _text(self, index: int) -> str:
+        return f"{self.RESTORE if self.chosen[index] else self.SKIP}: {self._rows[index]}"
+
+    def _count(self) -> int:
+        return sum(self.chosen)
+
+    def _update_restore(self):
+        count = self._count()
+        self.restore.SetLabel(f"&Restore {count} Chat{'s' if count != 1 else ''}")
+        self.Layout()
+
+    def _refresh_rows(self):
+        for index in range(len(self._rows)):
+            self.list.SetString(index, self._text(index))
+        self._update_restore()
+
+    def toggle(self, index: int):
+        if not 0 <= index < len(self._rows):
+            return
+        self.chosen[index] = not self.chosen[index]
+        self.list.SetString(index, self._text(index))
+        self.list.SetSelection(index)
+        self._update_restore()
+        self._say(f"{self.RESTORE if self.chosen[index] else self.SKIP}. "
+                  f"{self._count()} of {len(self._rows)} chosen.")
+
+    def _set_all(self, value: bool):
+        self.chosen = [value] * len(self._rows)
+        self._refresh_rows()
+        self._say(f"{self._count()} of {len(self._rows)} chosen.")
+        self.list.SetFocus()
+
+    def _on_list_key(self, event):
+        if event.GetKeyCode() == wx.WXK_SPACE and not event.HasAnyModifiers():
+            self.toggle(self.list.GetSelection())
+            return
+        event.Skip()
+
+    def _on_restore(self, event):
+        if not self._count():
+            wx.MessageBox("Choose at least one chat to restore, or Cancel.", "Restore from Backup",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            self.list.SetFocus()
+            return
+        event.Skip()
+
+    def chosen_indexes(self):
+        return [i for i, chosen in enumerate(self.chosen) if chosen]

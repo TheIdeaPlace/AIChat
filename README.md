@@ -914,8 +914,11 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   `secret-tool` on Linux), never in `backup.json` or a backup; a missing passphrase fails the
   backup rather than writing it unencrypted, and turning encryption off deletes it. Scheduled
   backups are remembered by path and size, so encrypted ones can be pruned too. **Restore from Backup** (File
-  menu, #436) checks a backup (asking for its passphrase), says how many chats it holds for each
-  AI and from which computer, and on Yes keeps them all as read-only **imported chats** in
+  menu, #436) checks a backup (asking for its passphrase), then lists its chats, each one
+  "Restore:" or "Skip:" in its own text (Space switches it; Select All, Select None), under how
+  many chats it holds for each AI and from which computer (#450). Restore keeps the chosen ones
+  as read-only **imported chats**, in the groups and hidden state the backup's Chat Place had for
+  them (mapped by their old keys; a same-named group is used or made), in
   `imported/` in The Chat Place's folder: each one's history as JSON, whichever AI it was with,
   so none needs its provider afterwards. Claude and Copilot histories are read straight from the
   backup; Codex's through the Codex app-server, started against a temporary copy of the backed-up

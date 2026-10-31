@@ -185,12 +185,12 @@ def test_restore_backup_asks_first_and_imports_everything(tmp_path, monkeypatch)
     store = ImportedStore(tmp_path / "imported")
     asked = []
     assert restore_backup(made, manifest, None, store=store,
-                          confirm=lambda plan: asked.append(plan) or False) is None
+                          confirm=lambda plan, sessions: asked.append(plan) or False) is None
     assert store.all() == [] and asked[0].counts == {"claude": 2}
     question = describe_plan(asked[0])
     assert question.startswith("Restore 2 chats from ") and "Claude 2" in question
     assert "read-only" in question and "Nothing is written" in question
-    outcome = restore_backup(made, manifest, None, store=store, confirm=lambda plan: True)
+    outcome = restore_backup(made, manifest, None, store=store, confirm=lambda plan, sessions: True)
     assert outcome.counts["added"] == 2 and len(store.all()) == 2
     # Nothing was left behind in the temporary folders, and the original
     # Claude folder wasn't touched.
@@ -294,5 +294,5 @@ def test_a_stop_before_the_question_asks_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(reader_module.BackupReader, "sessions", listing)
     with pytest.raises(InterruptedError):
         restore_backup(made, manifest, None, store=store, cancelled=cancelled,
-                       confirm=lambda plan: asked.append(plan) or True)
+                       confirm=lambda plan, sessions: asked.append(plan) or True)
     assert asked == [] and store.all() == []

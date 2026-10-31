@@ -14699,16 +14699,44 @@ def _backup_with_a_claude_chat(env, title_words="Restored question"):
     return backup.create(dest, collectors=[collector]).path
 
 
+def _fake_chooser(monkeypatch, answer=None, pick=None):
+    """Restore's chooser (#450) without a window: records what it's shown and
+    answers OK with every chat (or ``pick``), or ``answer``."""
+    from thechatplace.ui import main_frame
+
+    class Chooser:
+        headings, rows = [], []
+
+        def __init__(self, parent, heading, rows, say=None):
+            Chooser.headings.append(heading)
+            Chooser.rows.append(list(rows))
+            self._count = len(rows)
+
+        def ShowModal(self):
+            return wx.ID_OK if answer is None else answer
+
+        def chosen_indexes(self):
+            return list(range(self._count)) if pick is None else pick
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(main_frame, "RestoreChooserDialog", Chooser)
+    return Chooser
+
+
 def test_restore_from_backup_asks_then_lists_read_only_chats(frame, env, monkeypatch):
     from thechatplace.providers.imported import IMPORTED
     made = _backup_with_a_claude_chat(env)
     _fake_open_dialog(monkeypatch, made)
+    chooser = _fake_chooser(monkeypatch)
     asked = []
     monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
     frame.on_restore_backup()
     assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
-    assert asked and asked[0].startswith("Restore 1 chat from ") and "Claude 1" in asked[0]
-    assert "read-only" in asked[0]
+    heading = chooser.headings[0]
+    assert heading.startswith("Restore 1 chat from ") and "Claude 1" in heading
+    assert "read-only" in heading
+    assert chooser.rows[0][0].startswith("Restored question, Claude, workspace")
     assert frame._backup_job is None
     frame.refresh_sessions(force=True)
     assert pump(lambda: any(frame._current_info(k) is not None
@@ -14743,7 +14771,7 @@ def test_restore_from_backup_asks_then_lists_read_only_chats(frame, env, monkeyp
 def test_restore_answered_no_restores_nothing(frame, env, monkeypatch):
     made = _backup_with_a_claude_chat(env)
     _fake_open_dialog(monkeypatch, made)
-    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: wx.NO)
+    _fake_chooser(monkeypatch, answer=wx.ID_CANCEL)
     frame.on_restore_backup()
     assert pump(lambda: env["feedback"][-1] == "Restore cancelled. Nothing was restored.",
                 timeout=30)
@@ -14801,6 +14829,7 @@ def test_restore_of_an_encrypted_backup_asks_for_its_passphrase(frame, env, monk
     made = backup.create(dest, collectors=[lambda: backup.Inventory(
         "claude", "Claude", items=backup.walk(source, "claude/home"))], passphrase="pw").path
     _fake_open_dialog(monkeypatch, made)
+    _fake_chooser(monkeypatch)
     monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: wx.YES)
     passphrases.answers = ["wrong", "pw"]
     frame.on_restore_backup()
@@ -14861,6 +14890,44 @@ def test_backup_schedule_asks_for_a_passphrase_when_encrypting(frame, env, monke
         skipped.clear()
         dialog._on_save(event)
         assert not skipped
+    finally:
+        dialog.Destroy()
+
+
+# Restore: choose chats, and their groups (#450) ---------------------------------------
+
+def test_restore_chooser_switches_rows_by_space_and_names_its_state(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import RestoreChooserDialog
+    said = []
+    dialog = RestoreChooserDialog(frame, "Restore 3 chats from PC?", ["A, Claude", "B, Codex",
+                                                                    "C, Claude"], say=said.append)
+    try:
+        assert dialog.list.GetString(0) == "Restore: A, Claude"
+        assert dialog.restore.GetLabel().replace("&", "") == "Restore 3 Chats"
+        dialog.toggle(1)
+        assert dialog.list.GetString(1) == "Skip: B, Codex"
+        assert said[-1] == "Skip, 2 of 3 chosen."
+        assert dialog.chosen_indexes() == [0, 2]
+        dialog._set_all(False)
+        assert dialog.chosen_indexes() == [] and said[-1] == "0 of 3 chosen."
+        assert dialog.restore.GetLabel().replace("&", "") == "Restore 0 Chats"
+        shown = []
+        monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: shown.append(text) or wx.OK)
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        dialog._on_restore(event)
+        assert shown and not skipped
+        dialog._set_all(True)
+        dialog._on_restore(event)
+        assert skipped
+        # Space on the list switches the selected row.
+        dialog.list.SetSelection(2)
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.list))
+        key = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        key.SetKeyCode(wx.WXK_SPACE)
+        dialog._on_list_key(key)
+        assert dialog.list.GetString(2) == "Skip: C, Claude"
     finally:
         dialog.Destroy()
 
@@ -14932,6 +14999,61 @@ def test_an_empty_scheduled_passphrase_is_asked_for_again(frame, env, monkeypatc
         dialog.Destroy()
 
 
+def test_restore_brings_back_groups_and_hidden_for_chosen_chats(frame, env, monkeypatch):
+    from records import assistant_block, text_block, user_text
+    from thechatplace.groups import GroupStore
+    from thechatplace.hidden import HiddenStore
+    source = env["tmp"] / "grp-claude"
+    data = env["tmp"] / "grp-tcp"
+    for name in ("one", "two"):
+        project = source / "projects" / f"C--{name}"
+        project.mkdir(parents=True)
+        (project / f"{name}-id.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
+            user_text(f"Question {name}", entrypoint="cli", cwd=f"/old/{name}"),
+            assistant_block(text_block("Reply"))]), encoding="utf-8")
+    # The old computer's Chat Place had "one" in a group and "two" hidden.
+    data.mkdir()
+    old_groups = GroupStore(data / "groups.json")
+    old_groups.create("Old work")
+    old_groups.add("Old work", "terminal:one-id")
+    HiddenStore(data / "hidden.json").hide("terminal:two-id")
+    dest = env["tmp"] / "grp-backups"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[
+        lambda: backup.Inventory("claude", "Claude", items=backup.walk(source, "claude/home")),
+        lambda: backup.Inventory("thechatplace", "TCP", items=backup.walk(data, "thechatplace/data"))]).path
+    _fake_open_dialog(monkeypatch, made)
+    chooser = _fake_chooser(monkeypatch)
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    keys = {c.native_id: c.key for c in frame._imported.store.all()}
+    assert set(keys) == {"one-id", "two-id"}
+    assert frame.groups.groups_of(keys["one-id"]) == ["Old work"]
+    assert keys["two-id"] in frame.hidden and keys["one-id"] not in frame.hidden
+
+
+def test_restore_of_only_the_chosen_chats(frame, env, monkeypatch):
+    made = _backup_with_a_claude_chat(env)
+    _fake_open_dialog(monkeypatch, made)
+    _fake_chooser(monkeypatch, pick=[])          # chose none: nothing restored
+    frame.on_restore_backup()
+    assert pump(lambda: env["feedback"][-1] == "Restore cancelled. Nothing was restored.",
+                timeout=30)
+    assert frame._imported.store.all() == []
+
+
+
+@msaa
+def test_restore_chooser_list_is_named_for_screen_readers(frame):
+    from thechatplace.ui.dialogs import RestoreChooserDialog
+    dialog = RestoreChooserDialog(frame, "Restore 1 chat?", ["A, Claude"])
+    try:
+        status, name = dialog.list.GetAccessible().GetName(0)
+        assert name == "Chats"
+    finally:
+        dialog.Destroy()
+
+
 def test_an_encrypted_schedule_stays_encrypted_when_the_store_is_unavailable(frame, env):
     """#452 review: saving never quietly turns encryption off."""
     from thechatplace.ui.dialogs import BackupScheduleDialog
@@ -14941,3 +15063,39 @@ def test_an_encrypted_schedule_stays_encrypted_when_the_store_is_unavailable(fra
         assert dialog.value().encrypt is True
     finally:
         dialog.Destroy()
+
+
+def test_a_second_restore_doesnt_put_back_what_you_changed(frame, env, monkeypatch):
+    from records import assistant_block, text_block, user_text
+    from thechatplace.groups import GroupStore
+    from thechatplace.hidden import HiddenStore
+    source = env["tmp"] / "again-claude"
+    data = env["tmp"] / "again-tcp"
+    project = source / "projects" / "C--one"
+    project.mkdir(parents=True)
+    (project / "again-id.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
+        user_text("Question", entrypoint="cli", cwd="/old/one"),
+        assistant_block(text_block("Reply"))]), encoding="utf-8")
+    data.mkdir()
+    old = GroupStore(data / "groups.json")
+    old.create("Old work")
+    old.add("Old work", "terminal:again-id")
+    HiddenStore(data / "hidden.json").hide("terminal:again-id")
+    dest = env["tmp"] / "again-backups"
+    dest.mkdir()
+    made = backup.create(dest, collectors=[
+        lambda: backup.Inventory("claude", "Claude", items=backup.walk(source, "claude/home")),
+        lambda: backup.Inventory("thechatplace", "TCP", items=backup.walk(data, "thechatplace/data"))]).path
+    _fake_open_dialog(monkeypatch, made)
+    _fake_chooser(monkeypatch)
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    assert "1 of them hidden, as it was" in [f for f in env["feedback"] if f.startswith("Restore finished")][-1]
+    key = frame._imported.store.all()[0].key
+    # You take it out of the group and unhide it; restoring again leaves that alone.
+    frame.groups.remove("Old work", key)
+    frame.hidden.show(key)
+    env["feedback"].clear()
+    frame.on_restore_backup()
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    assert frame.groups.groups_of(key) == [] and key not in frame.hidden
