@@ -5860,8 +5860,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         start = state.get("folder") or os.path.join(os.path.expanduser("~"), "Documents")
         dialog = wx.DirDialog(
             self, "Back up to which folder? Another drive or a cloud folder is best. "
-                  "The backup isn't encrypted, so choose somewhere private. "
-                  + backup.last_backup_text(state),
+                  "You can encrypt it next. " + backup.last_backup_text(state),
             defaultPath=start if os.path.isdir(start) else "",
             style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
         try:
@@ -5870,6 +5869,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             folder = dialog.GetPath()
         finally:
             dialog.Destroy()
+        passphrase = self._ask_new_passphrase()
+        if passphrase is None:
+            return
         job = {"cancel": False, "progress": (0, 0), "said": time.monotonic()}
         self._backup_job = job
         self._feedback("Backing up. This can take a few minutes, and the window stays usable. "
@@ -5889,7 +5891,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             wx.CallAfter(self._backup_status, "Backing up: finding files.")
             try:
                 result = backup.create(folder, progress=progress,
-                                       cancelled=lambda: job["cancel"])
+                                       cancelled=lambda: job["cancel"],
+                                       passphrase=passphrase or None)
                 backup.record(result)
                 wx.CallAfter(self._backup_done, result, None)
             except Exception as exc:  # noqa: BLE001 - said, not raised
@@ -5897,6 +5900,34 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
 
         job["thread"] = threading.Thread(target=work, name="back-up", daemon=True)
         job["thread"].start()
+
+    def _ask_passphrase(self, message: str, title: str) -> Optional[str]:
+        """One passphrase from a password box, or None if cancelled."""
+        dialog = wx.PasswordEntryDialog(self, message, title)
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return None
+            return dialog.GetValue()
+        finally:
+            dialog.Destroy()
+
+    def _ask_new_passphrase(self) -> Optional[str]:
+        """Back Up Now's passphrase (#435): typed twice, never kept. "" means
+        no encryption; None, cancelled."""
+        while True:
+            first = self._ask_passphrase(
+                "Passphrase to encrypt the backup, or leave it empty for no encryption. "
+                "If you forget it, the backup can't be opened, by you or anyone else.",
+                "Back Up Now")
+            if not first:
+                return first
+            again = self._ask_passphrase("Type the passphrase again.", "Back Up Now")
+            if again is None:
+                return None
+            if again == first:
+                return first
+            wx.MessageBox("The two passphrases are different. Type it again.", "Back Up Now",
+                          wx.OK | wx.ICON_WARNING, self)
 
     def _backup_progress(self, done: int, total: int):
         self._backup_status(f"Backing up: {done * 100 // total}% ({done} of {total} files).")
@@ -5939,19 +5970,33 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             path = dialog.GetPath()
         finally:
             dialog.Destroy()
+        self._check_backup(path, None)
+
+    def _check_backup(self, path: str, passphrase: Optional[str]):
         self._feedback(f"Checking {os.path.basename(path)}.")
 
         def work():
             try:
-                check = backup.verify(path)
+                check = backup.verify(path, passphrase=passphrase)
             except Exception as exc:  # noqa: BLE001 - always answered, never silent
                 check = backup.Check(ok=False, problems=[f"Couldn't check it: {exc}"])
-            wx.CallAfter(self._check_done, path, check)
+            wx.CallAfter(self._check_done, path, check, passphrase)
 
         threading.Thread(target=work, name="check-backup", daemon=True).start()
 
-    def _check_done(self, path, check):
+    def _check_done(self, path, check, passphrase=None):
         if self._gone():
+            return
+        if check.needs_passphrase:
+            # Encrypted (#435): ask, and check again; a wrong one asks again.
+            message = (f"{os.path.basename(path)} is encrypted. Type its passphrase."
+                       if passphrase is None else
+                       "That passphrase is wrong. Type it again.")
+            again = self._ask_passphrase(message, "Check Backup")
+            if again:
+                self._check_backup(path, again)
+            else:
+                self._status("Check Backup cancelled.")
             return
         self._status("The backup is good." if check.ok else "The backup has problems.")
         wx.MessageBox(backup.check_text(path, check), "Check Backup",

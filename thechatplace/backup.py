@@ -19,6 +19,10 @@ The zip is written under a temporary name in the destination folder and only
 renamed into place after it has been read back and every file's checksum
 matched, so a failed or interrupted backup never looks like a good one and
 never replaces one. Restore is a later step (#433, with #228's import).
+
+With a passphrase (#435) every entry, the manifest included, is AES-256
+encrypted the WinZip way, so 7-Zip or WinZip can open it too without The
+Chat Place. The passphrase is never stored: forgotten, the backup is lost.
 """
 from __future__ import annotations
 
@@ -40,6 +44,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional, Sequence
+
+import pyzipper
 
 from . import __version__, platform_paths
 
@@ -111,6 +117,7 @@ class Result:
     failures: List[str] = field(default_factory=list)
     changed: List[str] = field(default_factory=list)
     gone: List[str] = field(default_factory=list)
+    encrypted: bool = False
     # Entries part-written when their source failed mid-read: in the zip,
     # but not a copy of anything.
     unusable: List[str] = field(default_factory=list)
@@ -124,6 +131,50 @@ class Check:
     files: int = 0
     problems: List[str] = field(default_factory=list)
     manifest: Optional[dict] = None
+    # Set when the backup is encrypted and no passphrase, or the wrong one,
+    # was given: ask for it and check again.
+    needs_passphrase: bool = False
+    encrypted: bool = False
+
+
+class PassphraseError(ValueError):
+    """A backup is encrypted and the passphrase is missing or wrong."""
+
+
+def _open_archive(path, mode: str = "r", passphrase: Optional[str] = None):
+    """A zip for reading or writing, encrypted with ``passphrase`` (AES-256,
+    WinZip's kind) when one is given. pyzipper reads plain zips as well, so
+    every backup is opened this one way."""
+    if mode == "w":
+        archive = pyzipper.AESZipFile(path, "w", compression=pyzipper.ZIP_DEFLATED,
+                                      compresslevel=6, allowZip64=True,
+                                      encryption=pyzipper.WZ_AES if passphrase else None)
+        if passphrase:
+            archive.setpassword(passphrase.encode("utf-8"))
+            archive.setencryption(pyzipper.WZ_AES, nbits=256)
+        return archive
+    archive = pyzipper.AESZipFile(path, "r")
+    if passphrase:
+        archive.setpassword(passphrase.encode("utf-8"))
+    return archive
+
+
+def is_encrypted(path) -> bool:
+    """True when a backup's entries are encrypted (its manifest is, too)."""
+    with pyzipper.AESZipFile(path) as archive:
+        return any(info.flag_bits & 0x1 for info in archive.infolist())
+
+
+def _read_manifest_from(archive) -> dict:
+    """The manifest, or PassphraseError when it can't be read for want of
+    the right passphrase."""
+    try:
+        return json.loads(archive.read(MANIFEST).decode("utf-8"))
+    except RuntimeError as exc:
+        text = str(exc).lower()
+        if "password" in text:
+            raise PassphraseError("bad" if "bad" in text else "needed") from exc
+        raise
 
 
 def _arc(*parts: str) -> str:
@@ -422,7 +473,8 @@ def _sqlite_snapshot(source: Path, scratch: Path, cancelled=None) -> Path:
 def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Inventory]]] = None,
            progress: Optional[Callable[[int, int, str], None]] = None,
            cancelled: Optional[Callable[[], bool]] = None,
-           filename: Optional[str] = None, now: Optional[datetime] = None) -> Result:
+           filename: Optional[str] = None, now: Optional[datetime] = None,
+           passphrase: Optional[str] = None) -> Result:
     """Write one backup into ``dest_dir`` and return what happened.
 
     ``progress(done, total, arcname)`` is called from this (background)
@@ -465,8 +517,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     seen = set()
     try:
         with tempfile.TemporaryDirectory(prefix="tcp-backup-") as scratch_dir, \
-                zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED, compresslevel=6,
-                                allowZip64=True) as archive:
+                _open_archive(partial, "w", passphrase) as archive:
             scratch = Path(scratch_dir)
             for done, (inv, item) in enumerate(items):
                 if cancelled is not None and cancelled():
@@ -480,12 +531,13 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
                 if entry is not None:
                     files.append(entry)
             manifest = _manifest(inventories, files, result, computer, started)
+            manifest["encrypted"] = bool(passphrase)
             archive.writestr(MANIFEST, json.dumps(manifest, indent=1, ensure_ascii=False))
         # On the disk, not just in the cache, before it's checked and named:
         # a USB stick pulled after "finished" mustn't hold half a backup.
         with open(partial, "rb+") as handle:
             os.fsync(handle.fileno())
-        check = verify(partial, cancelled=cancelled)
+        check = verify(partial, cancelled=cancelled, passphrase=passphrase)
         if not check.ok:
             raise OSError("The backup didn't check out: " + "; ".join(check.problems[:3]))
         final = _publish(partial, final, result)
@@ -501,6 +553,7 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     result.archive_bytes = final.stat().st_size
     result.providers = [inv.label for inv in inventories if inv.items]
     result.complete = not result.failures
+    result.encrypted = bool(passphrase)
     if same_drive_as_home(dest_dir):
         result.notes.append("This backup is on the same disk as your data, so it won't survive "
                             "losing this computer. Copy it to another drive or a cloud folder.")
@@ -551,7 +604,7 @@ def _publish(partial: Path, final: Path, result: Optional[Result] = None) -> Pat
     raise OSError(f"Couldn't find a free name for the backup in {final.parent}.")
 
 
-def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
+def _add(archive, inv: Inventory, item: Item, scratch: Path,
          result: Result, cancelled=None) -> Optional[dict]:
     source = Path(item.source)
     try:
@@ -572,9 +625,9 @@ def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
         except OSError as exc:
             raise SourceError(exc.errno, exc.strerror or str(exc), exc.filename) from exc
         digest = hashlib.sha256()
-        info = zipfile.ZipInfo(item.arcname, date_time=time.localtime(
+        info = archive.zipinfo_cls(item.arcname, date_time=time.localtime(
             max(before.st_mtime, 315532800))[:6])
-        info.compress_type = zipfile.ZIP_DEFLATED
+        info.compress_type = pyzipper.ZIP_DEFLATED
         with handle, archive.open(info, "w", force_zip64=True) as out:
             try:
                 size = _hash_into(handle, out, digest, cancelled)
@@ -655,9 +708,11 @@ def _manifest(inventories, files, result, computer, started) -> dict:
 
 # Checking ------------------------------------------------------------------
 
-def read_manifest(path: Path) -> dict:
-    with zipfile.ZipFile(path) as archive:
-        manifest = json.loads(archive.read(MANIFEST).decode("utf-8"))
+def read_manifest(path: Path, passphrase: Optional[str] = None) -> dict:
+    """A backup's manifest. Raises PassphraseError for an encrypted backup
+    without its passphrase."""
+    with _open_archive(path, "r", passphrase) as archive:
+        manifest = _read_manifest_from(archive)
     if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
         raise ValueError(f"{Path(path).name} isn't a Chat Place backup.")
     return manifest
@@ -671,22 +726,30 @@ def _safe_name(name: str) -> bool:
     return ".." not in name.replace("\\", "/").split("/")
 
 
-def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None) -> Check:
+def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None,
+           passphrase: Optional[str] = None) -> Check:
     """Read the whole archive back and compare every file with the manifest:
     present, the right size, the right SHA-256, nothing unlisted, no unsafe
     names. A newer format version is a problem (this release can't vouch
-    for it)."""
+    for it). An encrypted backup needs its passphrase: without it, or with
+    the wrong one, ``needs_passphrase`` is set."""
     check = Check(ok=False)
     try:
-        with zipfile.ZipFile(path) as archive:
+        with _open_archive(path, "r", passphrase) as archive:
+            check.encrypted = any(info.flag_bits & 0x1 for info in archive.infolist())
             try:
                 if archive.getinfo(MANIFEST).file_size > MANIFEST_LIMIT:
                     check.problems.append("Its manifest is far too big; it isn't a Chat Place "
                                           "backup.")
                     return check
-                manifest = json.loads(archive.read(MANIFEST).decode("utf-8"))
+                manifest = _read_manifest_from(archive)
             except KeyError:
                 check.problems.append("It has no manifest; it isn't a Chat Place backup.")
+                return check
+            except PassphraseError as exc:
+                check.needs_passphrase = True
+                check.problems.append("The passphrase is wrong." if str(exc) == "bad"
+                                      else "It's encrypted; its passphrase is needed.")
                 return check
             if (not isinstance(manifest, dict) or manifest.get("format") != FORMAT
                     or not isinstance(manifest.get("files", []), list)):
@@ -730,8 +793,8 @@ def verify(path: Path, cancelled: Optional[Callable[[], bool]] = None) -> Check:
                 check.problems.append(f"Not in the manifest: {name}")
     except InterruptedError:
         raise   # a cancel, not damage (it's an OSError too)
-    except (OSError, zipfile.BadZipFile, zlib.error, ValueError, TypeError, EOFError,
-            RuntimeError, NotImplementedError) as exc:
+    except (OSError, zipfile.BadZipFile, pyzipper.BadZipFile, zlib.error, ValueError,
+            TypeError, EOFError, RuntimeError, NotImplementedError) as exc:
         # zlib.error is damaged compressed data; RuntimeError an encrypted
         # entry; NotImplementedError a compression this Python can't read.
         check.problems.append(f"Couldn't read it: {exc}")
@@ -758,7 +821,12 @@ def summary(result: Result) -> str:
     if result.failures:
         text += (f" {len(result.failures)} item{'s' if len(result.failures) != 1 else ''} "
                  "couldn't be copied, so it's incomplete; the details are in its manifest.")
-    text += " It's not encrypted and holds your conversations, so keep it somewhere private."
+    if result.encrypted:
+        text += (" It's encrypted with your passphrase. Without it the backup can't be opened, "
+                 "so keep the passphrase safe.")
+    else:
+        text += (" It's not encrypted and holds your conversations, so keep it somewhere "
+                 "private.")
     for note in result.notes:
         text += " " + note
     return text
@@ -825,6 +893,8 @@ def check_text(path: Path, check: Check) -> str:
         match = "its 1 file matches" if check.files == 1 else f"all {check.files} files match"
         text = (f"{name} is good: {match}. It was made on "
                 f"{computer}{when}.")
+        if check.encrypted:
+            text += " It's encrypted."
         if manifest.get("complete") is False:
             failures = manifest.get("failures") or []
             text += (f" It's incomplete: {len(failures)} item"

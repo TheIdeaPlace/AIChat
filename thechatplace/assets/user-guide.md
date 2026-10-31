@@ -1626,9 +1626,11 @@ Signing in on a new computer doesn't bring them back, and neither does reinstall
 1. Choose **File, Back Up Now**. A folder dialog opens, with when and where you last backed up.
 2. Choose a folder, ideally on another drive, a USB stick or a cloud folder such as OneDrive.
    A backup on the same disk won't survive losing the computer, and the summary says so.
-3. Press **Enter**. You hear "Backing up". It works in the background, and the status bar shows
-   how far it has got. To stop it, choose **Back Up Now** again and answer Yes.
-4. When it's done, a message says how many files it saved, how big the backup is and where it
+3. Press **Enter**. A box asks for a **passphrase** to encrypt the backup. Type one, then type
+   it again, or leave it empty and press Enter for no encryption.
+4. You hear "Backing up". It works in the background, and the status bar shows how far it has
+   got. To stop it, choose **Back Up Now** again and answer Yes.
+5. When it's done, a message says how many files it saved, how big the backup is and where it
    went, and whether anything couldn't be copied.
 
 The backup is one zip file named after the computer and the time, such as
@@ -1647,12 +1649,18 @@ It holds:
   conversations, speech settings and permissions.
 
 It leaves out sign-ins (you sign in again on a new computer), caches, logs, and plugins you can
-reinstall. **The backup isn't encrypted.** Conversations can include file contents, command output
-and anything pasted into them, so keep it somewhere private.
+reinstall.
+
+**Encrypt it if it's leaving this computer.** Conversations can include file contents, command
+output and anything pasted into them. With a passphrase, everything in the backup is encrypted
+(AES-256), and 7-Zip or WinZip can open it with the passphrase too. The passphrase isn't kept
+anywhere: **if you forget it, nobody can open the backup.** Without one, keep the backup somewhere
+private.
 
 **Check Backup** (File menu) reads a backup back and compares every file with the list of what it
-should hold, so you can trust a copy before you need it. It says whether the backup is good,
-where and when it was made, and what's wrong if it isn't.
+should hold, so you can trust a copy before you need it. An encrypted backup asks for its
+passphrase, and asks again if it's wrong. It says whether the backup is good, where and when it
+was made, and what's wrong if it isn't.
 
 Restoring from a backup isn't built yet. Until then, the files are in the zip, in the same
 folders as on the computer they came from.
