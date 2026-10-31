@@ -1623,6 +1623,14 @@ Your chats with Claude, Codex and Copilot are kept on this computer, not in your
 Signing in on a new computer doesn't bring them back, and neither does reinstalling.
 **File, Back Up Now** saves them in one file you can keep somewhere else.
 
+**Backups are designed to stay out of your way.** Back Up Now, Check Backup and Restore from
+Backup work in the background: once you've started one, nothing takes focus while it runs, and
+you can go on using The Chat Place. To see how it's going, read the status bar. Press **Ctrl+9**
+(or **F6** until you reach it), use **Left** and **Right** to move between its parts, and
+**Escape** to go back, or use your screen reader's read-status-bar key. When a backup, check or
+restore is finished, a message box tells you what happened. Scheduled backups don't show one,
+since nobody may be there: you hear when they finish, and the status bar keeps the result.
+
 1. Choose **File, Back Up Now**. A folder dialog opens, with when and where you last backed up.
 2. Choose a folder, ideally on another drive, a USB stick or a cloud folder such as OneDrive.
    A backup on the same disk won't survive losing the computer, and the summary says so.
@@ -1713,7 +1721,8 @@ computer or a new one.
    for each AI, and which computer they came from. Each chat starts with **Restore** or
    **Skip**; **Space** switches the one you're on, and you hear how many are chosen.
    **Select All** (Alt+A) and **Select None** (Alt+N) do every chat.
-4. Press **Enter** (Restore). You hear how many were restored, and they're in the session list.
+4. Press **Enter** (Restore). The status bar shows how far it has got, and when it's done a
+   message says how many were restored. They're in the session list.
 
 Chats come back in the groups they were in on the computer they came from, and ones that were
 hidden there are hidden here. A group with the same name is used, or made; your other groups

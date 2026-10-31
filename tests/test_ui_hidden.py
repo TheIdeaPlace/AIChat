@@ -14732,7 +14732,9 @@ def test_restore_from_backup_asks_then_lists_read_only_chats(frame, env, monkeyp
     asked = []
     monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
     frame.on_restore_backup()
-    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    # It ends with a message box, as Back Up Now and Check Backup do.
+    assert pump(lambda: any(f.startswith("Restore finished") for f in asked), timeout=30)
+    assert frame._status_latest.startswith("Restore finished")   # kept to read back
     heading = chooser.headings[0]
     assert heading.startswith("Restore 1 chat from ") and "Claude 1" in heading
     assert "read-only" in heading
@@ -14764,8 +14766,8 @@ def test_restore_from_backup_asks_then_lists_read_only_chats(frame, env, monkeyp
     # Restoring the same backup again adds nothing.
     asked.clear()
     frame.on_restore_backup()
-    assert pump(lambda: env["feedback"][-1].startswith("Restore finished"), timeout=30)
-    assert "1 already here" in env["feedback"][-1]
+    assert pump(lambda: any(f.startswith("Restore finished") for f in asked), timeout=30)
+    assert "1 already here" in asked[-1]
 
 
 def test_restore_answered_no_restores_nothing(frame, env, monkeypatch):
@@ -14833,7 +14835,7 @@ def test_restore_of_an_encrypted_backup_asks_for_its_passphrase(frame, env, monk
     monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: wx.YES)
     passphrases.answers = ["wrong", "pw"]
     frame.on_restore_backup()
-    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
     assert "is encrypted. Type its passphrase." in passphrases.messages[0]
     assert passphrases.messages[1] == "That passphrase is wrong. Type it again."
     assert frame._backup_job is None
@@ -15033,7 +15035,7 @@ def test_restore_brings_back_groups_and_hidden_for_chosen_chats(frame, env, monk
     _fake_open_dialog(monkeypatch, made)
     chooser = _fake_chooser(monkeypatch)
     frame.on_restore_backup()
-    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
     keys = {c.native_id: c.key for c in frame._imported.store.all()}
     assert set(keys) == {"one-id", "two-id"}
     assert frame.groups.groups_of(keys["one-id"]) == ["Old work"]
@@ -15097,13 +15099,13 @@ def test_a_second_restore_doesnt_put_back_what_you_changed(frame, env, monkeypat
     _fake_open_dialog(monkeypatch, made)
     _fake_chooser(monkeypatch)
     frame.on_restore_backup()
-    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
-    assert "1 of them hidden, as it was" in [f for f in env["feedback"] if f.startswith("Restore finished")][-1]
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
+    assert "1 of them hidden, as it was" in [f for f in env["boxes"] if f.startswith("Restore finished")][-1]
     key = frame._imported.store.all()[0].key
     # You take it out of the group and unhide it; restoring again leaves that alone.
     frame.groups.remove("Old work", key)
     frame.hidden.show(key)
-    env["feedback"].clear()
+    env["boxes"].clear()
     frame.on_restore_backup()
-    assert pump(lambda: any(f.startswith("Restore finished") for f in env["feedback"]), timeout=30)
+    assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
     assert frame.groups.groups_of(key) == [] and key not in frame.hidden
