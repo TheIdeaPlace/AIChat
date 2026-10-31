@@ -1,4 +1,4 @@
-wxPython>=4.2
+wxPython>=4.3.2
 # Shared with GHManage: how Changed Files marks each changed line (difftext, #174).
 # A commit of TheIdeaPlace/app-kit's main, so builds don't move under us; an archive, so
 # no builder needs git.
