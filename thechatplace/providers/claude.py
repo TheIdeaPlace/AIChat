@@ -95,6 +95,10 @@ class ClaudeConversations:
 
         if session.provider != self.provider_id:
             raise ValueError("Not a Claude session")
+        if session.source != KEPT and platform_paths.is_safe_id(session.cli_session_id):
+            from ..history_keeper import keeper
+            if keeper().saved(kept_identity(session)) is not None:
+                _history_path(session)
         if session.source == KEPT:
             return SessionCapabilities(usage=True, changes=True)
         own = session.is_own
@@ -107,18 +111,18 @@ class ClaudeConversations:
     def has_history(self, session) -> bool:
         if session.provider != self.provider_id:
             raise ValueError("Not a Claude session")
-        return session.transcript_path() is not None
+        return _history_path(session) is not None
 
     def open_reader(self, session):
         if session.provider != self.provider_id:
             raise ValueError("Not a Claude session")
-        path = session.transcript_path()
+        path = _history_path(session)
         return KeptClaudeReader(session, path) if path is not None else None
 
     def last_reply(self, session) -> str:
         if session.provider != self.provider_id:
             raise ValueError("Not a Claude session")
-        path = session.transcript_path()
+        path = _history_path(session)
         return last_reply_from_tail(path) if path is not None else ""
 
     def open_reader_with_facts(self, session):
@@ -126,7 +130,7 @@ class ClaudeConversations:
         from ..properties import transcript_facts
         if session.provider != self.provider_id:
             raise ValueError("Not a Claude session")
-        path = session.transcript_path()
+        path = _history_path(session)
         if path is None:
             return None, "", 0
         name, size = transcript_facts(path)
@@ -221,6 +225,8 @@ def preserve_sessions(sessions):
 
 
 def _as_kept(session, path):
+    if session.is_own and session.state in (WORKING, NEEDS_YOU):
+        return session  # A temporary rewrite must not remove Stop from a live turn.
     return replace(session, source=KEPT, state=IDLE, detail='original transcript is gone',
                    kept_transcript=path, remote=False, unread=False)
 
@@ -247,6 +253,27 @@ class KeptClaudeReader:
             return changed
         saved = keeper().saved(kept_identity(self.session))
         if saved is not None and saved != self._reader.path:
+            _mark_kept(self.session, saved)
             self._reader = TranscriptReader(saved)
             return self._reader.refresh() or changed
         return changed
+
+
+def _mark_kept(session, path):
+    if session.is_own and session.state in (WORKING, NEEDS_YOU):
+        return
+    session.source = KEPT
+    session.state, session.detail = IDLE, 'original transcript is gone'
+    session.kept_transcript = path
+    session.remote = session.unread = False
+
+
+def _history_path(session):
+    path = session.transcript_path()
+    if path is None and platform_paths.is_safe_id(session.cli_session_id):
+        from ..history_keeper import keeper
+        saved = keeper().saved(kept_identity(session))
+        if saved is not None:
+            _mark_kept(session, saved)
+            return saved
+    return path

@@ -159,6 +159,10 @@ _IMPORTED_NOTE = (
     "This chat was restored from a backup, so it's read-only: you can read, find, "
     "export and list its changes, not continue it. Delete Session Permanently removes "
     "The Chat Place's copy of it, nothing else.")
+_KEPT_NOTE = (
+    "The original Claude transcript is gone. You are reading The Chat Place's kept copy. "
+    "This copy is read-only: it cannot send messages or Continue Here. Back Up Now includes "
+    "it; keep a backup elsewhere to protect it if this computer is lost.")
 #: The same for a Cowork session (#91), which can't be continued here.
 _COWORK_NOTE = (
     "This is a Cowork session in the Claude desktop app, so you reply to it "
@@ -1681,6 +1685,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 f"reads its local history. Reply in {home_app(info.provider)}."
                 if info.provider in LISTED_PROVIDERS else
                 _IMPORTED_NOTE if info.provider == IMPORTED else
+                _KEPT_NOTE if info.source == "kept" else
                 _COWORK_NOTE if info.cowork else
                                        _TERMINAL_NOTE if info.is_terminal else _DESKTOP_NOTE)
             self.continue_btn.Show(self.sessions.capabilities(info).fork)
@@ -1776,6 +1781,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             kind = f"Agent conversation, {info.provider_label}"
         elif info.provider != "claude":
             kind = f"{info.provider.capitalize()} chat" + ("" if self._can_edit(info) else ", read-only")
+        elif info.source == "kept":
+            kind = "Kept Claude chat, read-only"
         elif info.is_own:
             kind = "Chat Place session"
         elif info.cowork:
@@ -3003,9 +3010,22 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         running = info is not None and info.cli_session_id in self._runners
         # Always enabled: a disabled button drops out of the Tab order, and
         # Send and Stop must stay where Kelly's fingers expect them.
-        own = bool(info and info.is_own and info.provider == "claude")
+        own = bool(info and info.is_own and info.provider == "claude"
+                   and self.sessions.capabilities(info).send)
         self.send_btn.Enable(own)
         self.stop_btn.Enable(own)
+        if info is not None and info.source == "kept" and (
+                self.own_reply.IsShown() or self.desktop_note.GetValue() != _KEPT_NOTE):
+            focused_reply = wx.Window.FindFocus() is self.reply_text
+            self.own_reply.Hide()
+            self.desktop_reply.Show()
+            self.desktop_note.SetValue(_KEPT_NOTE)
+            self.continue_btn.Hide()
+            self.reply_claude_btn.Hide()
+            self.session_view.Layout()
+            self._update_heading()
+            if focused_reply:
+                self.desktop_note.SetFocus()
         if own:
             waiting = self._pending.get(info.cli_session_id)
             runner = self._runners.get(info.cli_session_id)
@@ -4401,6 +4421,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         with the caller (still stopping, or a problem shown). Send Reply to
         Another Chat (#248) uses it too, and agent conversations, which say
         what was sent themselves (``announce_send``)."""
+        if not self._require_capability('send', info):
+            return False
+
         session_id = info.cli_session_id
         runner = self._runners.get(session_id)
         if runner is not None and runner.cancelled:

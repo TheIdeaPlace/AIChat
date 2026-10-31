@@ -179,3 +179,28 @@ def test_managed_retention_overrides_user_settings(tmp_path, monkeypatch):
     policy = tmp_path/'managed.json'; policy.write_text('{"cleanupPeriodDays": 7}')
     monkeypatch.setattr(platform_paths, 'claude_managed_settings', lambda: [policy])
     assert '7 days' in describe()
+
+
+def test_cleanup_before_opening_uses_copy_without_waiting_for_discovery(tmp_path, monkeypatch):
+    info, path = session(tmp_path, monkeypatch, OWN)
+    keep_session(info); assert history_keeper.keeper().wait_idle()
+    path.unlink()
+    adapter = ClaudeConversations()
+    assert adapter.has_history(info) and info.source == KEPT
+    reader = adapter.open_reader(info); reader.refresh()
+    assert reader.transcript.last_reply().text == 'Kept answer'
+    assert adapter.last_reply(info) == 'Kept answer'
+    assert not adapter.capabilities(info).send
+
+
+def test_temporary_missing_file_during_live_turn_does_not_remove_stop(tmp_path, monkeypatch):
+    from thechatplace.sessions import WORKING
+    info,path = session(tmp_path,monkeypatch,OWN)
+    keep_session(info); assert history_keeper.keeper().wait_idle()
+    info.state = WORKING
+    path.unlink()
+    current, = preserve_sessions([info])
+    assert current.is_own and current.state == WORKING
+    reader=ClaudeConversations().open_reader(current);reader.refresh()
+    assert reader.transcript.last_reply().text == 'Kept answer'
+    assert current.is_own
