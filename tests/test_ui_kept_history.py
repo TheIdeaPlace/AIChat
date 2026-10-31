@@ -54,3 +54,19 @@ def test_missing_original_revokes_sending_even_before_discovery(frame, env):
     assert not frame.own_reply.IsShown() and frame.desktop_reply.IsShown()
     assert 'kept copy' in frame.desktop_note.GetValue()
     assert not frame.continue_btn.IsShown() and not frame.reply_claude_btn.IsShown()
+
+
+def test_settings_declared_access_keys_are_unique(frame):
+    import re
+    dialog=SettingsDialog(frame,speech.SpeechSettings(copilot_enabled=True),speech.default_options())
+    seen={}
+    def visit(window):
+        label=window.GetLabel() if hasattr(window,'GetLabel') else ''
+        for key in re.findall(r'(?<!&)&([^&])',label):
+            assert key.casefold() not in seen, (key,seen.get(key.casefold()),label)
+            seen[key.casefold()]=label
+        for child in window.GetChildren():visit(child)
+    try:
+        visit(dialog)
+        assert seen['y']=='Histor&y retention and kept copies:'
+    finally:dialog.Destroy()

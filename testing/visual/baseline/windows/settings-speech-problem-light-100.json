@@ -555,7 +555,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "History retention and ke&pt copies:",
+   "label": "Histor&y retention and kept copies:",
    "rect": [
     10,
     638,

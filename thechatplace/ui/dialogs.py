@@ -1166,7 +1166,7 @@ class SettingsDialog(wx.Dialog):
         outer.Add(self.update_notice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         from ..retention import describe as describe_retention
-        outer.Add(wx.StaticText(body, label="History retention and ke&pt copies:"),
+        outer.Add(wx.StaticText(body, label="Histor&y retention and kept copies:"),
                   0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
         self.retention = wx.TextCtrl(body, value=describe_retention(),
                                     size=(-1, self.FromDIP(110)),

@@ -1666,7 +1666,8 @@ them longer, set a larger number in `~/.claude/settings.json`, such as
 The Chat Place now keeps its own copies of Claude transcripts it discovers or reads, refreshed
 in the background and after turns. If Claude removes an original, its row becomes a **kept chat (read-only)**: you can read and search it, but cannot send to it or Continue Here. Terminal
 chats stay listed too. A transcript removed before its first successful copy cannot be recovered.
-Settings (Ctrl+Comma) shows retention for each provider and offers **Open Claude's retention settings**, which opens an existing settings file in your editor; The Chat Place never edits it.
+Settings (Ctrl+Comma) shows retention for each provider and offers **Open Claude's retention settings**, which opens an existing settings file in your editor; The Chat Place never edits it. In Settings, Alt+Y reaches the
+retention report; Tab then reaches the button to open Claude's settings.
 
 Copies live under `kept-history/claude` in The Chat Place's data folder and have no automatic
 expiry. If Claude rewrites a transcript, the preceding copy stays in `versions`. The copies are

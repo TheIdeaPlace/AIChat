@@ -95,7 +95,7 @@ STEPS = [
     Step("settings", ["ctrl+comma"], expect=["Settings", "Announcements", "Full"],
          refuse=["unlabeled", "unlabelled"]),
     Step("settings, tab", ["Tab"], expect=["Announce when any listed session", "check box"]),
-    Step("settings, history retention", ["alt+p"],
+    Step("settings, history retention", ["alt+y"],
          expect=["History retention and kept copies"]),
     Step("settings closed", ["Escape"], expect=["Messages in Visual probe"]),
     Step("F10, the menu bar", ["F10"], expect=["File", "menu"]),

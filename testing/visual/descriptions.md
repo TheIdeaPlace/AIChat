@@ -201,7 +201,7 @@ The light-100 picture is 680 by 833 (#438), 179 pixels taller than the preceding
 baseline. The upper groups, dropdown grid, recent-folder row and check boxes
 keep their previous layout. Full announcements is chosen, with a dotted focus
 rectangle. Below the update-notice check box is "History retention and kept copies",
-with P underlined. A read-only box 644 wide and 110 high fills most of the width;
+with Y underlined. A read-only box 644 wide and 110 high fills most of the width;
 its scrollbar reaches the remaining retention and copy-status text. Below it,
 "Open Claude's retention settings" sits at the left. OK and Cancel remain together
 at the bottom right. The dialog fits its contents at this 1920 by 1080 work area.
