@@ -1677,9 +1677,9 @@ def d_restore_chooser(frame, env):
 def d_export_chats(frame, env):
     """File, Export Chats (#461): the session list's chats, two chosen."""
     from thechatplace.ui.dialogs import ExportChatsDialog
-    heading = ("5 chats in the session list, newest first. Choose the ones to export and the "
-               "format; the folder comes next. Each chat becomes its own file, and no file is "
-               "ever replaced.")
+    heading = ("5 chats in the session list's current view, newest first. Choose the ones to "
+               "export and the format; the folder comes next. Each chat becomes its own file, "
+               "and no file is ever replaced.")
     rows = ["Fix the flaky upload test, Claude, Uploader, last active 31 October 2026",
             "Visual probe, Claude, AIChat, last active 30 October 2026",
             "Release notes for 0.3.3, Codex, AIChat, last active 29 October 2026",

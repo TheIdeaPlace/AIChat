@@ -1,0 +1,201 @@
+{
+ "title": "Export Chats",
+ "class": "ExportChatsDialog",
+ "size": [
+  680,
+  520
+ ],
+ "client": [
+  664,
+  481
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "TextCtrl",
+   "name": "About this export",
+   "label": "5 chats in the session list's current view, newest first. Choose the ones to export and the format; the folder comes next. Each chat becomes its own file, and no file is ever replaced.",
+   "rect": [
+    10,
+    10,
+    648,
+    90
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "5 chats in the session list's current view, newest first. Choose the ones to export and the format; the folder comes next. Each chat becomes its own file, and no file is ever replaced."
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Chat &list (Space switches Export and Skip):",
+   "rect": [
+    8,
+    106,
+    221,
+    16
+   ],
+   "best": [
+    221,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Chats",
+   "label": "",
+   "rect": [
+    10,
+    124,
+    648,
+    289
+   ],
+   "best": [
+    448,
+    79
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Export: Fix the flaky upload test, Claude, Uploader, last active 31 October 2026",
+    "Skip: Visual probe, Claude, AIChat, last active 30 October 2026",
+    "Export: Release notes for 0.3.3, Codex, AIChat, last active 29 October 2026",
+    "Skip: Try plan mode, GitHub Copilot CLI, AIChat, last active 28 October 2026",
+    "Skip: Plan the Linux port, Claude, AIChat, last active 2 October 2026"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Format:",
+   "rect": [
+    8,
+    422,
+    42,
+    16
+   ],
+   "best": [
+    42,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Format",
+   "label": "",
+   "rect": [
+    56,
+    419,
+    85,
+    23
+   ],
+   "best": [
+    85,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Markdown"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Select &All",
+   "rect": [
+    8,
+    450,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Select &None",
+   "rect": [
+    89,
+    450,
+    84,
+    23
+   ],
+   "best": [
+    84,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Export 2 Chats",
+   "rect": [
+    479,
+    450,
+    96,
+    23
+   ],
+   "best": [
+    96,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    581,
+    450,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

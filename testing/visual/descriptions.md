@@ -742,3 +742,11 @@ The 666 by 513 Restore from Backup chooser. At the top, a read-only box with the
 Text is black on white (21:1), the label black on #F0F0F0 (18.4:1), and the selected row white on #0078D4 (4.5:1). In High Contrast Desert, rows are #3D3D3D on cream (10.4:1), the selected row cream on rust brown (#FFFAEF on #903909, 7.3:1), and the default button #FFF5E3 on #903909 (7.0:1).
 
 **What looks off:** Nothing.
+
+## export-chats: Export Chats, choosing chats and a format (#461)
+
+The 666 by 513 Export Chats dialog, made from the same chooser as Restore from Backup. At the top, a read-only box: "5 chats in the session list's current view, newest first. Choose the ones to export and the format; the folder comes next. Each chat becomes its own file, and no file is ever replaced.", wrapped to two lines. Below it, "Chat list (Space switches Export and Skip):" over a list filling most of the dialog: five rows, the first selected, the first and third starting "Export:" and the rest "Skip:" (the fourth is "Skip: Try plan mode, GitHub Copilot CLI, AIChat, last active 28 October 2026"). Under the list, "Format:" and a Markdown choice box. Select All and Select None at the bottom left; "Export 2 Chats" (the default) and Cancel at the bottom right. Nothing is cut off or overlapping.
+
+Text is black on white (21:1), the labels black on #F0F0F0 (18.4:1), and the selected row white on #0078D4 (4.5:1). In High Contrast Desert, the heading, labels and Format box are #202020 on cream (15.7:1), rows #3D3D3D on cream (10.4:1), the selected row cream on rust brown (#FFFAEF on #903909, 7.3:1), and the default button #FFF5E3 on #903909 (7.0:1).
+
+**What looks off:** Nothing.
