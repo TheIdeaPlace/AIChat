@@ -14515,3 +14515,95 @@ def test_check_backup_cancelled_at_the_passphrase(frame, env, monkeypatch, backu
     frame.on_check_backup()
     assert pump(lambda: "Check Backup cancelled." in said, timeout=20)
     assert backup_boxes == []
+
+
+# Backup Schedule (#437) ---------------------------------------------------------
+
+def test_backup_schedule_dialog_round_trip_and_folder_check(frame, env, monkeypatch, backup_boxes):
+    from thechatplace.ui.dialogs import BackupScheduleDialog
+    dialog = BackupScheduleDialog(frame, backup.Schedule("off", "", 5), "No backup made here yet.")
+    try:
+        # Off: the folder and count are greyed out.
+        assert not dialog.folder.IsEnabled() and not dialog.keep.IsEnabled()
+        dialog.every.SetSelection(1)
+        dialog._sync()
+        assert dialog.folder.IsEnabled() and dialog.keep.IsEnabled()
+        assert "aren't encrypted" in dialog.about.GetValue()
+        assert "No backup made here yet." in dialog.about.GetValue()
+        # Saving with no folder is refused, with a reason.
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        dialog._on_save(event)
+        assert backup_boxes[-1] == "Choose a folder for the backups." and not skipped
+        dialog.folder.SetValue(str(env["tmp"]))
+        dialog.keep.SetValue(7)
+        dialog._on_save(event)
+        assert skipped
+        assert dialog.value() == backup.Schedule("daily", str(env["tmp"]), 7)
+    finally:
+        dialog.Destroy()
+
+
+def test_backup_schedule_saves_and_runs_a_due_backup_quietly(frame, env, monkeypatch,
+                                                            backup_boxes):
+    from thechatplace.ui import main_frame
+    (env["tmp"] / "appdata").mkdir(parents=True, exist_ok=True)
+    (env["tmp"] / "appdata" / "groups.json").write_text("{}", encoding="utf-8")
+    dest = env["tmp"] / "scheduled"
+    dest.mkdir()
+
+    class Fake:
+        def __init__(self, parent, schedule, status=""):
+            Fake.status = status
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def value(self):
+            return backup.Schedule("daily", str(dest), 3)
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(main_frame, "BackupScheduleDialog", Fake)
+    spoken = []
+    monkeypatch.setattr(frame, "_say", lambda text, *a, **k: spoken.append(text))
+    frame.on_backup_schedule()
+    assert env["feedback"][-1].startswith(f"Backing up every day to {dest}, keeping 3.")
+    assert backup.load_schedule().every == "daily"
+    # Never backed up, so one is due and starts straight away, in the background.
+    assert pump(lambda: spoken, timeout=20)
+    assert spoken[-1].startswith("Scheduled backup finished.")
+    assert backup_boxes == []        # no message box for a scheduled one
+    assert len(list(dest.glob("TheChatPlace-backup-*.zip"))) == 1
+    # Not due again straight after.
+    frame._run_scheduled_backup_if_due()
+    assert getattr(frame, "_backup_job", None) is None
+
+
+def test_a_failing_scheduled_backup_is_said_once_a_day(frame, env, monkeypatch):
+    backup.save_schedule(backup.Schedule("daily", str(env["tmp"] / "unplugged"), 3))
+    spoken, status = [], []
+    monkeypatch.setattr(frame, "_say", lambda text, *a, **k: spoken.append(text))
+    monkeypatch.setattr(frame, "_status", status.append)
+    frame._run_scheduled_backup_if_due()
+    assert pump(lambda: spoken, timeout=20)
+    assert spoken[-1].startswith("The scheduled backup didn't work:")
+    assert "isn't a folder" in spoken[-1]
+    # The next failure within a day goes to the status bar only.
+    state = backup.load_state()
+    state.pop("schedule_tried", None)
+    backup._save_state(state)
+    frame._run_scheduled_backup_if_due()
+    assert pump(lambda: any("didn't work" in s for s in status), timeout=20)
+    assert len(spoken) == 1
+
+
+def test_scheduled_backup_doesnt_start_while_one_is_running(frame, env, monkeypatch):
+    backup.save_schedule(backup.Schedule("daily", str(env["tmp"]), 3))
+    frame._backup_job = {"cancel": False, "progress": (0, 0), "said": 0}
+    started = []
+    monkeypatch.setattr(backup, "run_scheduled", lambda **k: started.append(1))
+    frame._run_scheduled_backup_if_due()
+    assert started == []
+    frame._backup_job = None

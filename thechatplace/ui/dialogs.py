@@ -4337,3 +4337,100 @@ class FindResultsDialog(wx.Dialog):
         if 0 <= index < len(self._matches):
             self.chosen = self._matches[index]
             _end_modal(self, wx.ID_OK)
+
+
+class BackupScheduleDialog(wx.Dialog):
+    """File, Backup Schedule (#437): back up by itself every day or week to
+    a folder, keeping so many. Says plainly that it runs only while The
+    Chat Place is open and that scheduled backups aren't encrypted."""
+
+    def __init__(self, parent, schedule, status: str = ""):
+        from .. import backup
+        super().__init__(parent, title="Backup Schedule", size=dialog_size(parent, 600, 420),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._backup = backup
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(self, label="&Back up automatically:"), 0, wx.LEFT | wx.TOP, 8)
+        self.every = wx.Choice(self, choices=[backup.SCHEDULE_LABELS[s] for s in backup.SCHEDULES])
+        self.every.SetSelection(backup.SCHEDULES.index(schedule.every))
+        set_accessible_name(self.every, "Back up automatically")
+        self.every.Bind(wx.EVT_CHOICE, lambda e: self._sync())
+        sizer.Add(self.every, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+
+        self.folder_label = wx.StaticText(self, label="&Folder for the backups:")
+        sizer.Add(self.folder_label, 0, wx.LEFT | wx.TOP, 8)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.folder = wx.TextCtrl(self, value=schedule.folder)
+        set_accessible_name(self.folder, "Folder for the backups")
+        row.Add(self.folder, 1, wx.RIGHT, 6)
+        self.browse = wx.Button(self, label="B&rowse...")
+        self.browse.Bind(wx.EVT_BUTTON, self._on_browse)
+        row.Add(self.browse, 0)
+        sizer.Add(row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+
+        self.keep_label = wx.StaticText(self, label="Backups to &keep:")
+        sizer.Add(self.keep_label, 0, wx.LEFT | wx.TOP, 8)
+        self.keep = wx.SpinCtrl(self, min=1, max=backup.MAX_KEEP, initial=schedule.keep)
+        set_accessible_name(self.keep, "Backups to keep")
+        sizer.Add(self.keep, 0, wx.LEFT | wx.RIGHT, 8)
+
+        about = ("Scheduled backups run while The Chat Place is open; one that's due when it "
+                 "starts runs then. They aren't encrypted, so choose a private folder, ideally "
+                 "on another drive or in a cloud folder. Older backups from this computer are "
+                 "removed to keep the number you choose, and only after a new one checks out.")
+        text = about + ("\n\n" + status if status else "")
+        # Read-only text a screen reader can review by line, as Settings'
+        # Speech problem box is.
+        self.about = wx.TextCtrl(self, value=text,
+                                 style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.about, "About scheduled backups")
+        self.about.SetMinSize(dip(self, -1, 110))
+        sizer.Add(self.about, 1, wx.EXPAND | wx.ALL, 8)
+
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        save = wx.Button(self, wx.ID_OK, "&Save")
+        save.SetDefault()
+        save.Bind(wx.EVT_BUTTON, self._on_save)
+        buttons.Add(save, 0, wx.RIGHT, 6)
+        buttons.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
+        sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        self._sync()
+        wx.CallAfter(self.every.SetFocus)
+
+    def _sync(self):
+        on = self.every.GetSelection() != 0
+        for control in (self.folder_label, self.folder, self.browse, self.keep_label, self.keep):
+            control.Enable(on)
+
+    def _on_browse(self, _event):
+        start = self.folder.GetValue()
+        dialog = wx.DirDialog(self, "Scheduled backups go in which folder?",
+                              defaultPath=start if os.path.isdir(start) else "",
+                              style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
+        try:
+            if dialog.ShowModal() == wx.ID_OK:
+                self.folder.SetValue(dialog.GetPath())
+        finally:
+            dialog.Destroy()
+        self.folder.SetFocus()
+
+    def _on_save(self, event):
+        if self.every.GetSelection() != 0:
+            problem = self._backup.schedule_folder_problem(self.folder.GetValue().strip())
+            if problem:
+                wx.MessageBox(problem, "Backup Schedule", wx.OK | wx.ICON_WARNING, self)
+                self.folder.SetFocus()
+                return
+        event.Skip()
+
+    def _on_key(self, event):
+        if press_focused_button_on_a_mac(event):
+            return
+        event.Skip()
+
+    def value(self):
+        return self._backup.Schedule(self._backup.SCHEDULES[self.every.GetSelection()],
+                                     self.folder.GetValue().strip(), self.keep.GetValue())

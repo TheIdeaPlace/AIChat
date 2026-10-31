@@ -390,10 +390,13 @@ def computer_identity() -> dict:
 
 # Writing -------------------------------------------------------------------
 
+def _safe_computer(computer: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_" else "-" for c in computer).strip("-")         or "computer"
+
+
 def default_filename(computer: str, now: Optional[datetime] = None) -> str:
     now = now or datetime.now()
-    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in computer).strip("-") or "computer"
-    return f"{FILE_PREFIX}{safe}-{now:%Y-%m-%d-%H%M%S}.zip"
+    return f"{FILE_PREFIX}{_safe_computer(computer)}-{now:%Y-%m-%d-%H%M%S}.zip"
 
 
 def _inside(child: Path, parent: Path) -> bool:
@@ -987,3 +990,197 @@ def check_text(path: Path, check: Check) -> str:
     if more > 0:
         text += f"\n...and {more} more."
     return text
+
+
+# Scheduled backups (#437) ----------------------------------------------------
+
+SCHEDULES = ("off", "daily", "weekly")
+SCHEDULE_LABELS = {"off": "Off", "daily": "Every day", "weekly": "Every week"}
+SCHEDULE_PERIODS = {"daily": 24 * 3600, "weekly": 7 * 24 * 3600}
+DEFAULT_KEEP = 5
+MAX_KEEP = 100
+# A failed scheduled backup is said at most this often, so a folder on a
+# drive that's unplugged for a week doesn't nag every ten minutes.
+FAILURE_NOTICE_SECONDS = 24 * 3600
+
+
+@dataclass
+class Schedule:
+    every: str = "off"           # one of SCHEDULES
+    folder: str = ""
+    keep: int = DEFAULT_KEEP
+
+    @property
+    def on(self) -> bool:
+        return self.every in SCHEDULE_PERIODS and bool(self.folder)
+
+
+def load_schedule(state: Optional[dict] = None) -> Schedule:
+    """The schedule kept in backup.json; anything odd in it reads as off."""
+    state = load_state() if state is None else state
+    raw = state.get("schedule") if isinstance(state.get("schedule"), dict) else {}
+    every = raw.get("every") if raw.get("every") in SCHEDULES else "off"
+    try:
+        keep = max(1, min(MAX_KEEP, int(raw.get("keep", DEFAULT_KEEP))))
+    except (TypeError, ValueError):
+        keep = DEFAULT_KEEP
+    folder = raw.get("folder") if isinstance(raw.get("folder"), str) else ""
+    return Schedule(every, folder, keep)
+
+
+def _save_state(state: dict) -> None:
+    from .provider_storage import atomic_write_json
+    platform_paths.app_data_dir().mkdir(parents=True, exist_ok=True)
+    atomic_write_json(platform_paths.app_data_dir() / STATE_FILE, state)
+
+
+def save_schedule(schedule: Schedule) -> None:
+    """Keep the schedule; raises OSError if it can't be saved (the dialog says so)."""
+    state = load_state()
+    state["schedule"] = {"every": schedule.every, "folder": schedule.folder,
+                         "keep": schedule.keep}
+    _save_state(state)
+
+
+def _when(text) -> Optional[datetime]:
+    try:
+        moment = datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def schedule_due(state: Optional[dict] = None, now: Optional[datetime] = None) -> bool:
+    """True when the schedule is on and its period has passed since the last
+    good backup, by hand or scheduled (a backup is a backup), or there's
+    never been one. A failed attempt waits an hour before trying again."""
+    state = load_state() if state is None else state
+    schedule = load_schedule(state)
+    if not schedule.on:
+        return False
+    now = now or datetime.now(timezone.utc)
+    tried = _when(state.get("schedule_tried"))
+    if tried is not None and (now - tried).total_seconds() < 3600:
+        return False
+    last = _when(state.get("last_time"))
+    return last is None or (now - last).total_seconds() >= SCHEDULE_PERIODS[schedule.every]
+
+
+def note_scheduled_attempt(now: Optional[datetime] = None) -> None:
+    state = load_state()
+    state["schedule_tried"] = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+    try:
+        _save_state(state)
+    except OSError:
+        pass
+
+
+def note_scheduled_failure(reason: str, now: Optional[datetime] = None) -> bool:
+    """Remember a failed scheduled backup. True when it should be said now
+    (the first failure, or a day since the last one was said)."""
+    now = now or datetime.now(timezone.utc)
+    state = load_state()
+    said = _when(state.get("schedule_failure_said"))
+    say = said is None or (now - said).total_seconds() >= FAILURE_NOTICE_SECONDS
+    state["schedule_failure"] = {"time": now.isoformat(timespec="seconds"), "reason": reason}
+    if say:
+        state["schedule_failure_said"] = now.isoformat(timespec="seconds")
+    try:
+        _save_state(state)
+    except OSError:
+        pass
+    return say
+
+
+def clear_scheduled_failure() -> None:
+    state = load_state()
+    if state.pop("schedule_failure", None) is not None or "schedule_failure_said" in state:
+        state.pop("schedule_failure_said", None)
+        try:
+            _save_state(state)
+        except OSError:
+            pass
+
+
+def failure_text(state: Optional[dict] = None) -> str:
+    """"The last scheduled backup failed on ...: why." or ""."""
+    state = load_state() if state is None else state
+    failure = state.get("schedule_failure")
+    if not isinstance(failure, dict):
+        return ""
+    moment = _when(failure.get("time"))
+    when = f" on {moment.astimezone().day} {moment.astimezone():%B} at " \
+           f"{moment.astimezone():%H:%M}" if moment else ""
+    return f"The last scheduled backup failed{when}: {failure.get('reason', 'unknown')}"
+
+
+def prune(folder: Path, keep: int, computer: str, newest: Path) -> List[Path]:
+    """Delete this computer's oldest backups in ``folder`` so ``keep`` are
+    left, counting ``newest`` (the one just made and checked), which is never
+    deleted, nor is anything not named like one of this computer's backups.
+    Returns what was deleted."""
+    prefix = f"{FILE_PREFIX}{_safe_computer(computer)}-"
+    mine = []
+    for path in Path(folder).glob(f"{prefix}*.zip"):
+        # Only the stamp may follow: YYYY-MM-DD-HHMMSS, perhaps with " (n)".
+        stamp = path.name[len(prefix):-4].split(" (")[0]
+        if len(stamp) == 17 and stamp.replace("-", "").isdigit() and path.is_file():
+            mine.append(path)
+    others = sorted((p for p in mine if p != Path(newest)),
+                    key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
+    deleted = []
+    for path in others[max(1, keep) - 1:]:
+        try:
+            path.unlink()
+            deleted.append(path)
+        except OSError:
+            pass
+    return deleted
+
+
+def copied_roots() -> List[Path]:
+    """The folders a backup copies, found without listing them, so a folder
+    chosen for scheduled backups can be refused straight away if it's
+    inside one (it would copy itself)."""
+    roots = [platform_paths.app_data_dir(), platform_paths.claude_home(),
+             platform_paths.codex_home(), platform_paths.copilot_home(),
+             *platform_paths.desktop_sessions_dirs(), *platform_paths.cowork_sessions_dirs()]
+    return [Path(root) for root in roots]
+
+
+def schedule_folder_problem(folder: str) -> Optional[str]:
+    """Why a folder can't take scheduled backups, or None."""
+    if not folder:
+        return "Choose a folder for the backups."
+    path = Path(folder)
+    if not path.is_dir():
+        return f"{folder} isn't a folder that exists."
+    for root in copied_roots():
+        if _inside(path, root):
+            return (f"{folder} is inside {root}, which the backup copies. Choose a folder "
+                    "outside it, ideally on another drive.")
+    return None
+
+
+def run_scheduled(cancelled: Optional[Callable[[], bool]] = None,
+                  collectors: Optional[Sequence[Callable[[], Inventory]]] = None,
+                  now: Optional[datetime] = None) -> Result:
+    """One scheduled backup: made, remembered, and old ones pruned to the
+    schedule's count, but only after a complete backup checked out, so a
+    run of failures never eats the good ones. Raises as create() does; the
+    caller notes the failure."""
+    schedule = load_schedule()
+    note_scheduled_attempt(now)
+    problem = schedule_folder_problem(schedule.folder)
+    if problem:
+        raise ValueError(problem)
+    result = create(Path(schedule.folder), cancelled=cancelled, collectors=collectors, now=now)
+    record(result)
+    clear_scheduled_failure()
+    if result.complete:
+        removed = prune(Path(schedule.folder), schedule.keep,
+                        computer_identity()["name"], result.path)
+        if removed:
+            result.notes.append(f"Removed {len(removed)} older backup"
+                                f"{'s' if len(removed) != 1 else ''}, keeping {schedule.keep}.")
+    return result

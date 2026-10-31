@@ -106,7 +106,8 @@ from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
-from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, ChatPermissionsDialog,
+from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
+                      ChatPermissionsDialog,
                       FindResultsDialog,
                       FormattedMessageDialog, ListsDialog, WrappingText,
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
@@ -116,6 +117,10 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, ChatP
                       single_choice_dialog)
 
 APP_NAME = "The Chat Place"
+# Scheduled backups (#437): how often to look whether one is due, and how
+# long after starting to look first (after the first list and sign-in checks).
+BACKUP_CHECK_MS = 10 * 60 * 1000
+BACKUP_STARTUP_DELAY_MS = 2 * 60 * 1000
 LIST_REFRESH_MS = 5000
 #: How often the window looks for a link another copy handed it (#144).
 LINK_CHECK_MS = 1000
@@ -434,6 +439,21 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         link_timer.Bind(wx.EVT_TIMER, link_tick)
         self._link_timer = link_timer
         self._link_timer.Start(LINK_CHECK_MS)
+        # Scheduled backups (#437): looked at every few minutes, and soon
+        # after starting, so one that came due while the app was closed runs.
+        # Its own handler, as the link timer is, for the same reason.
+        backup_timer = wx.Timer()
+
+        def backup_tick(_event):
+            if self._gone():
+                backup_timer.Stop()
+                return
+            self._run_scheduled_backup_if_due()
+        backup_timer.Bind(wx.EVT_TIMER, backup_tick)
+        self._backup_timer = backup_timer
+        self._backup_timer.Start(BACKUP_CHECK_MS)
+        self._startup_backup_check = wx.CallLater(BACKUP_STARTUP_DELAY_MS,
+                                                  self._run_scheduled_backup_if_due)
 
         if self.agents.load_error:
             wx.CallAfter(wx.MessageBox, self.agents.load_error, APP_NAME,
@@ -555,6 +575,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         # item's access key, so it's reached by arrowing.
         self._item(session, "Back Up No&w...", lambda e: self.on_back_up_now())
         self._item(session, "Check Backup...", lambda e: self.on_check_backup())
+        self._item(session, "Backup Schedule...", lambda e: self.on_backup_schedule())
         session.AppendSeparator()
         self._item(session, "E&xit", lambda e: self.Close(), wx.ID_EXIT)
         bar.Append(session, "&File")
@@ -5851,7 +5872,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if running is not None:
             done, total = running["progress"]
             percent = f", {done * 100 // total}% done" if total else ""
-            if wx.MessageBox(f"A backup is running{percent}. Stop it?", "Back Up Now",
+            kind = "A scheduled backup" if running.get("scheduled") else "A backup"
+            if wx.MessageBox(f"{kind} is running{percent}. Stop it?", "Back Up Now",
                              wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES:
                 running["cancel"] = True
                 self._feedback("Stopping the backup.")
@@ -5900,6 +5922,86 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
 
         job["thread"] = threading.Thread(target=work, name="back-up", daemon=True)
         job["thread"].start()
+
+    def on_backup_schedule(self):
+        """File, Backup Schedule (#437): every day or week, to a folder,
+        keeping so many."""
+        state = backup.load_state()
+        status = " ".join(t for t in (backup.last_backup_text(state),
+                                      backup.failure_text(state)) if t)
+        dialog = BackupScheduleDialog(self, backup.load_schedule(state), status)
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            schedule = dialog.value()
+        finally:
+            dialog.Destroy()
+        try:
+            backup.save_schedule(schedule)
+        except OSError as exc:
+            wx.MessageBox(f"Couldn't save the backup schedule: {exc}", APP_NAME,
+                          wx.OK | wx.ICON_ERROR, self)
+            return
+        if not schedule.on:
+            self._feedback("Scheduled backups are off.")
+            return
+        every = "every day" if schedule.every == "daily" else "every week"
+        self._feedback(f"Backing up {every} to {schedule.folder}, keeping {schedule.keep}.")
+        self._run_scheduled_backup_if_due()
+
+    def _run_scheduled_backup_if_due(self):
+        """Start a scheduled backup in the background if one is due and no
+        backup is running. Quiet: the status bar, then a word when it ends
+        (a failure is said even with announcements off, once a day)."""
+        if self._gone() or getattr(self, "_backup_job", None) is not None:
+            return
+        try:
+            due = backup.schedule_due()
+        except Exception:  # noqa: BLE001 - a bad backup.json must not break the timer
+            return
+        if not due:
+            return
+        job = {"cancel": False, "progress": (0, 0), "said": time.monotonic(),
+               "scheduled": True}
+        self._backup_job = job
+        self._status("Scheduled backup: finding files.")
+
+        def progress(done, total, _name):
+            job["progress"] = (done, total)
+            now = time.monotonic()
+            if total and now - job["said"] >= 3:
+                job["said"] = now
+                wx.CallAfter(self._backup_status,
+                             f"Scheduled backup: {done * 100 // total}% ({done} of {total} "
+                             "files).")
+
+        def work():
+            try:
+                result = backup.run_scheduled(cancelled=lambda: job["cancel"])
+                wx.CallAfter(self._scheduled_backup_done, result, None)
+            except Exception as exc:  # noqa: BLE001 - said, not raised
+                wx.CallAfter(self._scheduled_backup_done, None, exc)
+
+        job["thread"] = threading.Thread(target=work, name="scheduled-backup", daemon=True)
+        job["thread"].start()
+
+    def _scheduled_backup_done(self, result, error):
+        self._backup_job = None
+        if self._gone():
+            return
+        if isinstance(error, InterruptedError):
+            self._status("Scheduled backup stopped. It will try again later.")
+            return
+        if error is not None:
+            reason = str(error) or type(error).__name__
+            if backup.note_scheduled_failure(reason):
+                self._say(f"The scheduled backup didn't work: {reason}", force=True)
+            else:
+                self._status(f"The scheduled backup didn't work: {reason}")
+            return
+        text = ("Scheduled backup finished." if result.complete
+                else "Scheduled backup finished, incomplete; its manifest says what's missing.")
+        self._say(f"{text} {result.path.name}.", interrupt=False)
 
     def _ask_passphrase(self, message: str, title: str,
                         name: str = "Passphrase") -> Optional[str]:
@@ -7084,7 +7186,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._list_timer.Stop()
         self._chat_timer.Stop()
         self._link_timer.Stop()
-        for name in ("_startup_sign_in", "_startup_update_check",
+        self._backup_timer.Stop()
+        for name in ("_startup_sign_in", "_startup_update_check", "_startup_backup_check",
                      "_startup_update_notice", "_update_notice_wait", "_find_all_timer"):
             timer = getattr(self, name, None)
             if timer is not None:

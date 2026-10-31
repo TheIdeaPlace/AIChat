@@ -902,7 +902,12 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   background; choosing Back Up Now again offers to stop it. **Check Backup** (File menu) reads a
   backup back, asking for the passphrase of an encrypted one, and
   checks every file against its manifest. The last folder and backup are kept in
-  `backup.json` in The Chat Place's folder. Restoring isn't built yet (#433); the files are in
+  `backup.json` in The Chat Place's folder. **Backup Schedule** (File menu, #437) backs up every
+  day or week to a folder you choose, keeping the number of this computer's backups you set (5 by
+  default). Older ones are pruned only after a complete backup checks out, and only files named
+  like this computer's backups. It runs while the app is open (checked every ten minutes and two
+  minutes after starting). A failure, such as an unplugged drive, is announced at most once a day
+  and retried after an hour. Scheduled backups aren't encrypted. Restoring isn't built yet (#433); the files are in
   the zip under the folders they came from. Claude Code deletes conversations older than its
   `cleanupPeriodDays` setting (30 days by default), which includes chats started here; set a
   larger number in `~/.claude/settings.json` to keep them.

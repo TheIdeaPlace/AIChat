@@ -656,3 +656,109 @@ def test_opened_gives_a_plain_zip_and_cleans_up(homes):
     with pytest.raises(backup.PassphraseError):
         with backup.opened(path, None):
             pass
+# Scheduled backups (#437) ------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+
+def _schedule(homes, every="daily", keep=3):
+    backup.save_schedule(backup.Schedule(every, str(homes["dest"]), keep))
+
+
+def test_schedule_off_by_default_and_odd_values_read_as_off(homes):
+    assert backup.load_schedule() == backup.Schedule("off", "", backup.DEFAULT_KEEP)
+    assert not backup.schedule_due()
+    s = backup.load_schedule({"schedule": {"every": "hourly", "folder": 3, "keep": "x"}})
+    assert s == backup.Schedule("off", "", backup.DEFAULT_KEEP)
+    assert backup.load_schedule({"schedule": {"every": "daily", "folder": "f", "keep": 999}}).keep \
+        == backup.MAX_KEEP
+
+
+def test_schedule_due_after_its_period_since_any_good_backup(homes):
+    _schedule(homes, "daily")
+    now = datetime(2026, 10, 31, 12, tzinfo=timezone.utc)
+    assert backup.schedule_due(now=now)               # never backed up
+    state = backup.load_state()
+    state["last_time"] = (now - timedelta(hours=23)).isoformat()
+    assert not backup.schedule_due(state, now=now)
+    state["last_time"] = (now - timedelta(hours=25)).isoformat()
+    assert backup.schedule_due(state, now=now)
+    state["schedule"]["every"] = "weekly"
+    assert not backup.schedule_due(state, now=now)
+    state["last_time"] = (now - timedelta(days=8)).isoformat()
+    assert backup.schedule_due(state, now=now)
+    # Tried within the hour: waits.
+    state["schedule_tried"] = (now - timedelta(minutes=20)).isoformat()
+    assert not backup.schedule_due(state, now=now)
+
+
+def test_run_scheduled_makes_records_and_prunes_only_its_own(homes):
+    write(homes["data"] / "a.json", "{}")
+    _schedule(homes, keep=2)
+    name = backup.computer_identity()["name"]
+    other = write(homes["dest"] / "TheChatPlace-backup-OtherPC-2026-01-01-000000.zip", "x")
+    mine_by_hand = write(homes["dest"] / "holiday photos.zip", "x")
+    made = []
+    for day in range(4):
+        result = backup.run_scheduled(collectors=[backup.tcp_inventory],
+                                      now=datetime(2026, 10, 1 + day, 9))
+        made.append(result.path)
+        os.utime(result.path, (1_800_000_000 + day * 100,) * 2)
+    left = sorted(p.name for p in homes["dest"].iterdir())
+    assert made[-1].name in left and made[-2].name in left
+    assert made[0].name not in left and made[1].name not in left
+    assert other.exists() and mine_by_hand.exists()   # not this computer's, not touched
+    assert backup.load_state()["last_complete"] is True
+    assert any("Removed" in n for n in result.notes)
+    assert name   # the computer's name is what the files are matched by
+
+
+def test_an_incomplete_scheduled_backup_prunes_nothing(homes):
+    write(homes["data"] / "a.json", "{}")
+    _schedule(homes, keep=1)
+    first = backup.run_scheduled(collectors=[backup.tcp_inventory],
+                                 now=datetime(2026, 10, 1, 9)).path
+
+    def broken():
+        inv = backup.Inventory("t", "T")
+        inv.failures.append("couldn't read something")
+        return inv
+
+    second = backup.run_scheduled(collectors=[backup.tcp_inventory, broken],
+                                  now=datetime(2026, 10, 2, 9))
+    assert not second.complete and first.exists() and second.path.exists()
+
+
+def test_run_scheduled_to_a_missing_folder_raises_and_is_remembered_once_a_day(homes):
+    backup.save_schedule(backup.Schedule("daily", str(homes["tmp"] / "unplugged"), 3))
+    with pytest.raises(ValueError, match="isn't a folder"):
+        backup.run_scheduled(collectors=[backup.tcp_inventory])
+    now = datetime(2026, 10, 31, 12, tzinfo=timezone.utc)
+    assert backup.note_scheduled_failure("gone", now=now) is True
+    assert backup.note_scheduled_failure("gone", now=now + timedelta(hours=2)) is False
+    assert backup.note_scheduled_failure("gone", now=now + timedelta(hours=25)) is True
+    assert "failed" in backup.failure_text() and "gone" in backup.failure_text()
+    backup.clear_scheduled_failure()
+    assert backup.failure_text() == ""
+
+
+def test_schedule_folder_problems(homes):
+    assert "Choose a folder" in backup.schedule_folder_problem("")
+    assert "isn't a folder" in backup.schedule_folder_problem(str(homes["tmp"] / "nope"))
+    inside = homes["claude"] / "b"
+    inside.mkdir(parents=True)
+    assert "inside" in backup.schedule_folder_problem(str(inside))
+    assert backup.schedule_folder_problem(str(homes["dest"])) is None
+
+
+def test_prune_never_deletes_the_newest_or_below_one(homes):
+    name = backup.computer_identity()["name"]
+    paths = []
+    for i in range(3):
+        p = write(homes["dest"] / backup.default_filename(name, datetime(2026, 1, 1 + i)), "x")
+        os.utime(p, (1_800_000_000 + i,) * 2)
+        paths.append(p)
+    # Even if the "newest" is oldest on disk, it's kept; keep=0 means 1.
+    deleted = backup.prune(homes["dest"], 0, name, paths[0])
+    assert paths[0].exists() and not paths[1].exists() and not paths[2].exists()
+    assert len(deleted) == 2
