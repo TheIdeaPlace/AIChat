@@ -1142,7 +1142,7 @@ class SettingsDialog(wx.Dialog):
         if (speech.copilot_enabled or platform_paths.copilot_has_sessions()
                 or platform_paths.find_copilot() is not None):
             self.copilot_enabled = wx.CheckBox(body, label=_wrapped(
-                self, "Include GitHub C&opilot CLI chats (preview; restart required)",
+                self, "&Include GitHub Copilot CLI chats (preview; restart required)",
                 self.GetClientSize().width - 20 - _check_box_glyph(self)))
             self.copilot_enabled.SetValue(speech.copilot_enabled)
             outer.Add(self.copilot_enabled, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)

@@ -560,7 +560,7 @@ on the clipboard.
 ### GitHub Copilot CLI chats
 
 **Settings: GitHub Copilot CLI chats.** Enable **Include GitHub Copilot CLI
-chats (preview; restart required)** (Alt+O), save and restart to list GitHub Copilot CLI
+chats (preview; restart required)** (Alt+I), save and restart to list GitHub Copilot CLI
 sessions alongside Claude, and to start Copilot chats of your own. The option appears once
 Copilot CLI is installed or has saved a session on this computer: to decide that, Settings looks
 for the Copilot CLI program and at the names of the folders in Copilot's session folder and

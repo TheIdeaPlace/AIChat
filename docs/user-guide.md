@@ -790,7 +790,7 @@ requirements an administrator set.
 
 ### Turning them on
 
-Turn on **Include GitHub Copilot CLI chats (preview; restart required)** in Settings (Alt+O),
+Turn on **Include GitHub Copilot CLI chats (preview; restart required)** in Settings (Alt+I),
 save and restart. The option appears once Copilot CLI is installed or has saved a session on
 this computer: Settings looks for the Copilot CLI program, and checks the names of the folders in
 Copilot's session folder and whether each has a conversation log, never what's in them. With the
@@ -1567,7 +1567,7 @@ setting moves straight to it.
   message. On at first.
 - **Include Codex chats (restart required)** (Alt+X): on once Codex is found. Restart The Chat
   Place for a change to count; you hear that when you press OK.
-- **Include GitHub Copilot CLI chats (preview; restart required)** (Alt+O): shown only once
+- **Include GitHub Copilot CLI chats (preview; restart required)** (Alt+I): shown only once
   Copilot CLI is installed or has saved a session on this computer. Off at first. Restart for a
   change to count.
 - **Let agent conversations hand replies across automatically** (Alt+G): off at first. With it
@@ -2046,7 +2046,7 @@ again doesn't reconnect it.
 ### GitHub Copilot CLI
 
 **Copilot chats aren't listed, or Copilot isn't offered in New Session.** Turn on
-**Include GitHub Copilot CLI chats (preview; restart required)** in Settings (Alt+O), save and
+**Include GitHub Copilot CLI chats (preview; restart required)** in Settings (Alt+I), save and
 restart. The option appears only once Copilot CLI is installed or has saved a session on this
 computer. If the option is on and Copilot still isn't offered in New Session, The Chat Place
 hasn't found a native Copilot CLI: install it as below. New Session checks again each time.
