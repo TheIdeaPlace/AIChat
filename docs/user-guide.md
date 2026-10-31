@@ -1686,9 +1686,9 @@ a couple of minutes after it starts. Each runs in the background, with its progr
 status bar, and you hear when it's finished. If one fails, for example because the USB stick
 isn't plugged in, you hear why. A failure is said at most once a day, and it's tried again an
 hour later or as soon as you save the schedule. A backup made by hand counts too: the next
-scheduled one comes a day or a week after it. The box at the bottom of Backup Schedule shows the last backup and the
-last failure. Scheduled backups aren't encrypted, because nobody is there to type a
-passphrase. To stop one, choose **File, Back Up Now**.
+scheduled one comes a day or a week after it. The box at the bottom of Backup Schedule shows
+the last backup and the last failure. Scheduled backups aren't encrypted, because nobody is
+there to type a passphrase. To stop one, choose **File, Back Up Now**.
 
 Restoring from a backup isn't built yet. Until then, the files are in the zip, in the same
 folders as on the computer they came from.
