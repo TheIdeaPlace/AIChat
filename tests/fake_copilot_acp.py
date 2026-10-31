@@ -202,11 +202,13 @@ def prompt(message_id, session, text=""):
     if MODE == "hookran":
         log_event(session, "hook.start", {"hookType": "preToolUse", "input": {}})
     if MODE in ("edit", "editcontent"):
+        # FAKE_COPILOT_EDIT_PATH: the file it asks to create instead.
+        target = os.environ.get("FAKE_COPILOT_EDIT_PATH", "C:/synthetic/a.txt")
         call = {"toolCallId": "call-e", "title": "Create file", "kind": "edit",
-                "locations": [{"path": "C:/synthetic/a.txt"}]}
+                "locations": [{"path": target}]}
         if MODE == "edit":
-            call["rawInput"] = {"fileName": "C:/synthetic/a.txt",
-                                "diff": "--- a/dev/null\n+++ b/C:/synthetic/a.txt\n+hello\n"}
+            call["rawInput"] = {"fileName": target,
+                                "diff": f"--- a/dev/null\n+++ b/{target}\n+hello\n"}
         else:
             call["rawInput"] = {}
             call["content"] = [{"type": "diff", "path": "C:/synthetic/a.txt",
@@ -274,8 +276,21 @@ def prompt(message_id, session, text=""):
         return
     if MODE == "ask":
         ask_id = "perm-" + uuid.uuid4().hex[:8]
-        update(session, {"sessionUpdate": "tool_call", "toolCallId": "call-1",
-                         "title": "Run a synthetic command", "kind": "execute", "status": "pending"})
+        # As Copilot 1.0.105 previews a command, with its full input, before
+        # asking (FAKE_COPILOT_PREVIEW: "async" or "detach" runs it in the
+        # background, "none" sends no input, "other" previews another one).
+        preview = os.environ.get("FAKE_COPILOT_PREVIEW", "")
+        shown = {"command": ASK_COMMAND if preview != "other" else "echo other",
+                 "description": "Run it"}
+        if preview == "async":
+            shown.update(mode="async", initial_wait=10)
+        elif preview == "detach":
+            shown.update(mode="async", detach=True, initial_wait=10)
+        call = {"sessionUpdate": "tool_call", "toolCallId": "call-1",
+                "title": "Run a synthetic command", "kind": "execute", "status": "pending"}
+        if preview != "none":
+            call["rawInput"] = shown
+        update(session, call)
         done = threading.Event()
         answers[ask_id] = [done, None]
         send({"jsonrpc": "2.0", "id": ask_id, "method": "session/request_permission", "params": {
@@ -283,8 +298,8 @@ def prompt(message_id, session, text=""):
             "toolCall": {"toolCallId": "call-1", "title": "Run a synthetic command",
                          "kind": "execute", "rawInput": {
                              "command": ASK_COMMAND,
-                             # As Copilot 1.0.103 lists the commands it found.
-                             "commands": [{"identifier": ASK_COMMAND, "readOnly": False}]}},
+                             # As Copilot 1.0.105 lists the commands it found.
+                             "commands": [ASK_COMMAND]}},
             "options": [{"optionId": "allow_once", "name": "Allow once", "kind": "allow_once"},
                         {"optionId": "allow_always", "name": "Always", "kind": "allow_always"},
                         {"optionId": "reject_once", "name": "Reject", "kind": "reject_once"}]}})

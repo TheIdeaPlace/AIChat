@@ -78,13 +78,18 @@ class Step:
     #: name as the app starts; 46 says only the row it lands on.
     expect_50: List[str] = field(default_factory=list)
     #: Something to happen in the app before the keys: "question" has Claude
-    #: ask one in the open chat, as a turn would (``serve`` watches for it).
+    #: ask one in the open chat, as a turn would; "copilot" opens a Copilot
+    #: chat of the app's own that asks to run a command (``serve`` watches
+    #: for them, TRIGGERS).
     trigger: str = ""
 
 
 #: The probe's sessions (tools/ui_probe.py build_world): "Fix the flaky upload
 #: test" first, as it needs you, then "Visual probe", the app's own, whose
 #: messages are the user's request and Claude's long reply.
+#: The Copilot chat "copilot" opens (tools/ui_probe.py s_main_copilot's).
+COPILOT_TITLE = "Copilot history preview"
+
 STEPS = [
     Step("start", [], expect=["Fix the flaky upload test", "needs you"],
          expect_50=["The Chat Place", "Session list"]),
@@ -139,6 +144,37 @@ STEPS = [
          expect=["Restore from Backup", "Files"]),
     Step("restore's file question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Copilot's Auto (#426), last, as the Copilot chat replaces the session
+    # list's discovery (copilot_chat below): a chat of the app's own in agent
+    # mode, with Copilot asking to run npm test and npm run lint already
+    # allowed for the chat.
+    Step("a Copilot chat asks to run a command", [], trigger="copilot",
+         expect=[f"Messages in {COPILOT_TITLE}"],
+         expect_dbus=["Copilot needs your answer", "npm test"]),
+    # Agent, marked "(now)", is selected; Auto is the third choice.
+    Step("Change Permission Mode", ["ctrl+shift+o"],
+         expect=["Change Permission Mode", "Agent: asks before running commands", "(now)"]),
+    Step("Auto", ["Down", "Down"], expect=["Auto: reads, and changes files"]),
+    # The warning is a Yes/No message box, No the default.
+    Step("the Auto warning", ["Return"],
+         expect=["In Auto, Copilot reads and searches", "Turn on Auto for this chat"]),
+    # Return takes the default, No: the chat still asks.
+    Step("No, the default, so it still asks", ["Return"],
+         expect=[f"Messages in {COPILOT_TITLE}"],
+         expect_dbus=["still asks before Copilot acts"], refuse=["Auto. It reads"]),
+    # Answer opens on the Request box; Tab goes to Allow for This Chat, whose
+    # name says what it keeps.
+    Step("answer Copilot", ["ctrl+shift+a"], expect=["Copilot needs permission", "Request"]),
+    Step("Tab to Allow for This Chat", ["Tab"],
+         expect=["Allow for this chat", "exactly this command: npm test"]),
+    Step("Alt+C allows it for this chat", ["alt+c"], expect=[f"Messages in {COPILOT_TITLE}"],
+         expect_dbus=["Approval kept for this chat and answer sent to Copilot"]),
+    # Chat Permissions lists npm run lint, kept before, then npm test.
+    Step("Copilot's Chat Permissions", ["ctrl+shift+h"],
+         expect=["Chat Permissions", "Allowed for this chat", "npm run lint"]),
+    Step("the command just kept", ["Down"], expect=["Exactly this command: npm test"]),
+    Step("Chat Permissions closed, back in the messages", ["Escape"],
+         expect=[f"Messages in {COPILOT_TITLE}"]),
 ]
 
 #: The question "question" asks (STEPS above).
@@ -176,10 +212,11 @@ def serve(root: Path) -> int:
 
     def watch(_event):
         # A step's trigger: check writes ROOT/<name>.trigger before its keys.
-        trigger = root / "question.trigger"
-        if trigger.exists():
-            trigger.unlink()
-            ask_question(frame)
+        for name, action in TRIGGERS.items():
+            trigger = root / f"{name}.trigger"
+            if trigger.exists():
+                trigger.unlink()
+                action(frame, env)
     timer = wx.Timer(frame)
     frame.Bind(wx.EVT_TIMER, watch, timer)
     timer.Start(200)
@@ -200,6 +237,72 @@ def ask_question(frame) -> None:
     request = PermissionRequest("q1", "AskUserQuestion", QUESTION, suggestions=[])
     frame._on_turn_event({"id": "own-1"}, "Visual probe",
                          TurnEvent("permission", text=request.summary(), request=request))
+
+
+def copilot_chat(frame, env) -> None:
+    """A Copilot chat of the app's own (tools/ui_probe.py's made-up Copilot
+    session), open in agent mode, with npm run lint allowed for it and Copilot
+    asking to run npm test, as copilot_runtime reports a request. Copilot is a
+    stand-in: nothing is run. The Chat Place's own record of the commands
+    allowed for a chat (in the made-up app data folder) is real, so Allow for
+    This Chat keeps npm test and Chat Permissions lists it."""
+    import dataclasses
+    from types import SimpleNamespace
+    import wx
+    import fake_env
+    import ui_probe
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers import copilot_auto_store
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
+    from thechatplace.sessions import IDLE, NEEDS_YOU, WORKING
+
+    # Opening it moves the focus to its messages, which Orca says.
+    frame.session_list.SetFocus()
+    ui_probe.s_main_copilot(frame, env, title=COPILOT_TITLE)
+    info = frame._open
+    native = info.cli_session_id
+    record = OwnSession(native, info.title, info.cwd, provider="copilot", started=True)
+    frame.store.add(record)
+    copilot_auto_store.add(native, "npm run lint")
+    request = ui_probe._copilot_request({
+        "toolCallId": "call-1", "kind": "execute", "title": "Run the tests",
+        "rawInput": {"command": "npm test",
+                     "commands": [{"identifier": "npm test", "readOnly": False}]}})
+    now = {"state": CopilotChatState(native, IDLE, "1", "completed", mode=AGENT_MODE)}
+    allowed = set()
+
+    def answer(_native, _request_id, _choice):
+        # Copilot goes on with its turn, the request answered.
+        now["state"] = dataclasses.replace(now["state"], state=WORKING, requests=())
+        wx.CallAfter(frame._on_owned_update, "copilot", now["state"])
+
+    def keep_allowed(_native, commands):
+        allowed.clear()
+        allowed.update(commands)
+
+    frame.sessions._providers["copilot"].runtime = SimpleNamespace(
+        known=lambda: [(native, info.cwd)], snapshot=lambda _native: now["state"],
+        ready=lambda _native: True, adopt=lambda _native: None,
+        prepare=lambda _native, _cwd: None, close=lambda: None,
+        chat_candidate=lambda _native, _request_id: request.command,
+        allowed_here=lambda _native: set(allowed), keep_allowed=keep_allowed, answer=answer,
+        set_mode=lambda _native, mode: mode, set_auto=lambda _native, on: None)
+    frame._codex_states[info.key] = now["state"]
+    frame.open_session(dataclasses.replace(record.to_info(), state=IDLE))
+    fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy
+                  and not frame._codex_preparing, timeout=10)
+    # The row is the app's own from the next refresh (as
+    # ui_probe.s_main_copilot_owned), which the File menu's items go by.
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None,
+                  timeout=10)
+    now["state"] = dataclasses.replace(now["state"], state=NEEDS_YOU, turn_id="2",
+                                       outcome="inProgress", requests=(request,))
+    frame._on_owned_update("copilot", now["state"])
+
+
+#: What each step's trigger does in ``serve`` (Step.trigger).
+TRIGGERS = {"question": lambda frame, env: ask_question(frame), "copilot": copilot_chat}
 
 
 # -- Orca -----------------------------------------------------------------------------------

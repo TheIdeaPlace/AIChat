@@ -14,6 +14,8 @@ resume a session, send a prompt or spend a premium request.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from collections import OrderedDict
 from datetime import datetime
 import json
@@ -197,6 +199,18 @@ def _tool_output(data: dict) -> str:
             if _text(result.get(key)):
                 return result[key]
     return ""
+
+
+#: Said when Allow for This Chat allowed a command once but couldn't keep it.
+NOT_KEPT = ("Answer sent to Copilot, but the command couldn't be kept for this chat: The "
+            "Chat Place couldn't save it. Copilot will ask about it again.")
+
+
+@dataclass(frozen=True)
+class AllowedNotKept:
+    """Allow for This Chat's answer went to Copilot, but the command isn't
+    kept: ``said`` is what the window says instead of "kept"."""
+    said: str
 
 
 class CopilotParser:
@@ -834,16 +848,24 @@ class CopilotProvider:
         if not command:
             raise CopilotChatError("This command can't be kept for the chat; open Answer again.")
         kept, problem = copilot_auto_store.add(native_id, command)
-        # The ones it already had too: if the file couldn't be read, add()
-        # returns none of them (Claude's review of Auto).
-        self.runtime.keep_allowed(native_id, set(self.runtime.allowed_here(native_id))
-                                  | {k.command for k in kept} | {command})
+        # Kept only once it's saved: one kept in memory alone would be
+        # answered but missing from Chat Permissions, so it couldn't be seen
+        # or removed (Kelly's review of 58c5f03). It's still allowed once.
+        saved = problem not in (copilot_auto_store.NOT_SAVED, copilot_auto_store.UNREADABLE)
+        if saved:
+            # What the file now keeps, so one trimmed from it (past MAX_KEPT,
+            # or set aside unreadable) isn't still allowed unseen.
+            self.runtime.keep_allowed(native_id, {k.command for k in kept} | {command})
         try:
             self.runtime.answer(native_id, request.request_id, ALLOW_ONCE)
         except Exception:
-            copilot_auto_store.remove(native_id, command)
-            self.runtime.keep_allowed(native_id, self.runtime.allowed_here(native_id) - {command})
+            if saved:
+                copilot_auto_store.remove(native_id, command)
+                self.runtime.keep_allowed(native_id,
+                                          self.runtime.allowed_here(native_id) - {command})
             raise
+        if not saved:
+            return AllowedNotKept(NOT_KEPT)
         self._say_mode_problem(native_id, problem)
         return problem or None
 

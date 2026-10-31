@@ -130,6 +130,59 @@ def _listed_command(entry):
     return entry if isinstance(entry, str) else None
 
 
+def _answered(chat, call_id: str) -> None:
+    """Note a command answered, by toolCallId (_remember_preview)."""
+    chat.answered_calls[call_id] = True
+    while len(chat.answered_calls) > MAX_PREVIEWS:
+        chat.answered_calls.pop(next(iter(chat.answered_calls)))
+
+
+#: The most tool calls whose preview is kept for one chat.
+MAX_PREVIEWS = 64
+
+
+def _remember_preview(chat, update: dict) -> None:
+    """Keep what a tool_call update says a command is, by its toolCallId.
+    Once anything says it runs in the background, it stays so. A finished or
+    failed one is no longer running."""
+    raw = update.get("rawInput")
+    call_id = update.get("toolCallId")
+    if isinstance(call_id, str) and update.get("status") in ("completed", "failed"):
+        chat.running.discard(call_id)
+    if not isinstance(raw, dict) or not isinstance(call_id, str):
+        return
+    background = (raw.get("mode") not in (None, "sync") or "detach" in raw
+                  or "shellId" in raw)
+    if background and call_id in chat.answered_calls:
+        # Answered as a foreground command, it now runs in the background:
+        # it may change the folder while later requests are checked.
+        chat.location_changed = True
+    before = chat.previews.pop(call_id, None)
+    if "command" not in raw:
+        if before is None and not background:
+            return
+        command = before[0] if before is not None else None
+    else:
+        command = raw.get("command") if isinstance(raw.get("command"), str) else None
+        if before is not None and before[0] != command:
+            command = None  # changed: not the command it first said
+    if before is not None:
+        background = background or before[1]
+    chat.previews[call_id] = (command, background)
+    while len(chat.previews) > MAX_PREVIEWS:
+        chat.previews.pop(next(iter(chat.previews)))
+
+
+def _preview(chat, request) -> tuple:
+    """(the previewed command, whether it runs in the background), where
+    whether is None when there was no preview of this very command: then it
+    isn't answered for you either."""
+    seen = chat.previews.get(request.item_id)
+    if seen is None or seen[0] is None or seen[0] != request.command:
+        return None, None
+    return seen
+
+
 def _command(raw: dict) -> tuple:
     """(command, too long) from ``rawInput``: ``command``, which is what
     runs, then any ``commands`` entry it doesn't already contain (Copilot
@@ -223,6 +276,11 @@ _BY = {copilot_folder.AUTO: "", copilot_folder.RULE: " (your rule)",
 #: Said when Copilot leaves agent mode while a chat is in Auto.
 AUTO_ENDED = ("This chat is no longer in Auto, since Copilot isn't in agent mode: it asks "
               "before it acts again.")
+
+
+#: Said once a run when your rules file for Copilot can't be used.
+RULES_PROBLEM = ("Your rules file for Copilot, copilot-rules.json, {problem}, so none of its rules "
+                 "are used until it's fixed. File, Chat Permissions says where it is.")
 
 
 #: Said when a chat's folder is a whole drive or the home folder.
@@ -828,6 +886,35 @@ class _Chat:
         #: You allowed a command that may move Copilot's shell somewhere not
         #: followed: no command is answered for you after it.
         self.location_changed = False
+        #: Auto answered a file change since you last allowed a command
+        #: yourself: your rules and kept commands ask until you do. A program
+        #: you allowed (npm test, pytest) runs files Auto lets Copilot change,
+        #: and settings such as .npmrc or conftest.py can make it run anything
+        #: (Kelly's review of 58c5f03; Tim chose to ask).
+        self.edited = False
+        #: toolCallId -> (command, runs in the background), from the
+        #: tool_call update Copilot sends just before each request. Only that
+        #: update says a command runs in the background (mode async, detach,
+        #: a shellId): the request leaves it out (probed against 1.0.105 for
+        #: Kelly's review of 58c5f03). Such a command keeps running while
+        #: later requests are checked, so it always asks.
+        self.previews: dict = {}
+        #: toolCallIds of programs allowed to run (by a rule, for this chat,
+        #: or by you) that Copilot hasn't said have finished: while one runs,
+        #: Auto's file changes ask, so it can't change what that program is
+        #: running (Copilot's review of the stricter Auto). Auto's own reads
+        #: aren't counted. Cleared at each turn's start.
+        self.running: set = set()
+        #: How many file changes Auto has answered, and the count when each
+        #: waiting request came: a command you allow clears ``edited`` only
+        #: if it was asked after Auto's last edit, not one already waiting
+        #: (Claude's review of the stricter Auto).
+        self.edit_seq = 0
+        self.asked_at: dict = {}
+        #: toolCallIds of commands that were answered (for you or by you),
+        #: newest last: one that later turns out to run in the background
+        #: stops commands being answered (Claude's review of the stricter Auto).
+        self.answered_calls: dict = {}
         #: Something may be answered for you in this chat (Auto, a rule or a
         #: kept command), as last worked out: the window says when commands
         #: ask again only then.
@@ -1073,10 +1160,22 @@ class CopilotChatRuntime:
             return copilot_folder.Policy()
         rules = self._read_rules()
         with self._lock:
+            # A rules file that can't be used is said once a run, in the chat
+            # it was found in, not only in Chat Permissions: one typo turns
+            # off every rule (Kelly's review of 58c5f03). Said again if it
+            # breaks again after being fixed.
+            problem = rules.problem
+            said = bool(problem) and problem != getattr(self, "_rules_said", "")
+            if said:
+                text = RULES_PROBLEM.format(problem=problem)
+                chat.notice = f"{chat.notice} {text}" if chat.notice else text
+            self._rules_said = problem
             auto, exact = chat.auto, self._allowed_here.get(chat.native_id, frozenset())
             policy = copilot_folder.Policy(auto=auto, allow=rules.allow, ask=rules.ask,
                                            exact=exact)
             chat.answering = policy.any
+        if said:
+            self._notify(chat)  # said now, not only with the next change
         return policy
 
     def _read_rules(self) -> "copilot_folder.Rules":
@@ -1286,6 +1385,10 @@ class CopilotChatRuntime:
                 # in the chat's folder: where an earlier command may have
                 # moved the old one no longer matters (copilot_folder).
                 chat.location_changed, chat.locations = False, ()
+                # What Auto changed before isn't kept: your rules and kept
+                # commands ask once in a chat opened again (Claude's review of
+                # the stricter Auto).
+                chat.edited = True
             chat.loading, chat.connection, chat.open_on = True, connection, connection
             self._chats[native_id] = chat
         if open_here:
@@ -1471,6 +1574,7 @@ class CopilotChatRuntime:
         said the previous turn ended."""
         chat.busy, chat.outcome, chat.notice = True, "inProgress", ""
         chat.answered = False
+        chat.running = set()
         chat.prompt_queued = False
         chat.sending = False
         chat.turns += 1
@@ -1802,6 +1906,17 @@ class CopilotChatRuntime:
                 raise CopilotChatError(self._halted)
             reply = request.approval_answer(decision)  # raises before anything is removed
             del chat.requests[request_id]
+            asked_at = chat.asked_at.pop(request_id, None)
+            if decision == ALLOW_ONCE and request.method == COMMAND:
+                if asked_at == chat.edit_seq:
+                    chat.edited = False  # asked after Auto's last edit, and seen
+                chat.running.add(request.item_id)
+                _answered(chat, request.item_id)
+                # One you allow to run in the background may change the
+                # folder while later requests are checked: commands ask from
+                # then on, as after one that may move the shell.
+                if _preview(chat, request)[1] is not False:
+                    chat.location_changed = True
             # Before Copilot hears the answer, so nothing after the command
             # can be answered for you first.
             if moves or (followed is not None and not _follow(chat, followed.locations)):
@@ -1866,11 +1981,28 @@ class CopilotChatRuntime:
                     and (covered.by != copilot_folder.AUTO or chat.auto)
                     and (covered.by != copilot_folder.CHAT
                          or request.command.strip() in self._allowed_here.get(chat.native_id, ()))
+                    # A command only as Copilot previewed it, in the
+                    # foreground (_remember_preview).
+                    and (request.method != COMMAND or _preview(chat, request)[1] is False)
+                    # Auto's file changes ask while a program allowed in
+                    # this chat may still be running.
+                    and not (request.method == FILES and chat.running)
+                    # After Auto changed a file, your rules and kept commands
+                    # ask until you allow a command yourself.
+                    and not (chat.edited and covered.by in (copilot_folder.RULE,
+                                                            copilot_folder.CHAT))
                     and not (request.method == COMMAND
                              and (chat.location_changed or command_waiting
                                   or chat.locations != places
                                   or not _follow(chat, covered.locations))))
             if auto:
+                if request.method == FILES:
+                    chat.edited = True
+                    chat.edit_seq += 1
+                else:
+                    _answered(chat, request.item_id)
+                    if covered.by != copilot_folder.AUTO:
+                        chat.running.add(request.item_id)
                 chat.auto_count += 1
                 # The whole command, not its first line: all of it ran.
                 what = (f"Command: {' '.join(request.command.split())}"
@@ -1881,6 +2013,7 @@ class CopilotChatRuntime:
                 chat.auto_allowed = (chat.auto_allowed + [(chat.auto_count, said[:500])])[-200:]
             elif watched and request is not None:
                 chat.requests[request_id] = request
+                chat.asked_at[request_id] = chat.edit_seq
             elif watched:
                 chat.notice = problem
         if auto:
@@ -1937,6 +2070,7 @@ class CopilotChatRuntime:
                 chat.last_chunk_notice = now
             elif kind in ("tool_call", "tool_call_update"):
                 chat.reply_open = False  # text after a tool is a new reply
+                _remember_preview(chat, update)
                 if _text(update.get("title"), 500):
                     chat.activity = _text(update.get("title"), 500)
             elif kind == "usage_update":

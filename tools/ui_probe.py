@@ -1242,14 +1242,17 @@ def d_codex_mode(frame, env):
 
 def d_copilot_change_mode(frame, env):
     """File, Change Permission Mode for an owned Copilot chat in plan mode
-    (#424): agent or plan, the current one marked "(now)" and selected, as
-    main_frame._change_setting builds it. Plan's is the longer label."""
+    (#424): agent, plan or Auto (#426), the current one marked "(now)" and
+    selected, as codex_chats._change_copilot_mode and
+    main_frame._change_setting build it where no organisation manages
+    Copilot. Auto's is the longest label."""
     from thechatplace.providers.copilot_runtime import PLAN_MODE
-    from thechatplace.ui.dialogs import (COPILOT_SESSION_MODES, copilot_mode_name,
-                                         single_choice_dialog)
+    from thechatplace.ui.dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
+                                         copilot_mode_name, single_choice_dialog)
     title = "Plan the synthetic probe project's long refactor"
+    offered = COPILOT_SESSION_MODES + ((COPILOT_AUTO, COPILOT_AUTO_LABEL),)
     labels = [f"{label} (now)" if value == PLAN_MODE else label
-              for value, label in COPILOT_SESSION_MODES]
+              for value, label in offered]
     dialog = single_choice_dialog(frame, f"Mode for {title}, now {copilot_mode_name(PLAN_MODE)}:",
                                   "Change Permission Mode", labels)
     dialog.SetSelection(1)

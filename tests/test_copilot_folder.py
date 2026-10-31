@@ -247,7 +247,8 @@ def test_an_exact_rule_matches_only_those_words(folder):
     assert copilot_folder.check_command("npm install", folder, policy) is None
 
 
-def test_a_prefix_rule_takes_more_words_read_the_strict_way(folder):
+def test_a_prefix_rule_takes_more_words_read_the_strict_way(repo):
+    folder = repo
     policy = rules("git commit *")
     assert copilot_folder.check_command("git commit -m 'Fix the test'", folder, policy).by == RULE
     assert copilot_folder.check_command("git commit --amend", folder, policy).by == RULE
@@ -707,8 +708,12 @@ def test_git_isnt_answered_outside_a_real_repository_in_the_chats_folder(repo):
     Auto's own file changes can write those: so git is answered only with
     the shell in the chat's folder, and that folder holding a real .git."""
     fake = os.path.join(repo, "x")
-    for name in ("HEAD", "config", os.path.join("objects", "k"), os.path.join("refs", "k")):
+    for name in ("config", os.path.join("objects", "k"), os.path.join("refs", "k")):
         assert copilot_folder.file_change_allowed(os.path.join(fake, name), (), repo)
+    # HEAD is what would make it a repository: never written for you
+    # (Kelly's review of 58c5f03).
+    for name in ("HEAD", "head", "HEAD."):
+        assert not copilot_folder.file_change_allowed(os.path.join(fake, name), (), repo), name
     assert copilot_folder.check_command("cd x; git status", repo, Policy(auto=True)) is None
     moved = copilot_folder.check_command(CD_SUB, repo, Policy(auto=True)).locations
     assert copilot_folder.check_command("git status", repo, Policy(auto=True), moved) is None
@@ -976,3 +981,106 @@ def test_cd_without_dot_slash_asks_elsewhere(folder, command):
 def test_cd_to_a_full_path_inside_is_followed_elsewhere(folder):
     answer = copilot_folder.check_command(f"cd {folder}/sub", folder, Policy(auto=True))
     assert answer is not None and os.path.join(folder, "sub") in answer.locations
+
+
+# -- Kelly's review of 58c5f03 ------------------------------------------------------------
+
+
+def test_a_git_rule_gets_gits_checks(repo):
+    # Case A: with the rule "git status", a repository whose config names a
+    # program asked under Auto but was answered by the rule, and ran it.
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write("[core]\n\tfsmonitor = calc\n")
+    for rule in ("git status", "git *", "git log *"):
+        command = "git status" if rule != "git log *" else "git log"
+        assert copilot_folder.check_command(command, repo, rules(rule)) is None, rule
+
+
+def test_a_git_rule_isnt_answered_outside_the_chats_repository(repo):
+    # Case B: cd sub, then a rule's git status in a repository Auto's own
+    # edits could have built there.
+    sub_cd = CD_SUB
+    policy = Policy(auto=True, allow=(parse_rule("git status"),))
+    moved = copilot_folder.check_command(sub_cd, repo, policy).locations
+    assert copilot_folder.check_command("git status", repo, policy, moved) is None
+    assert copilot_folder.check_command("git status", repo, policy) is not None
+
+
+def test_a_git_rule_isnt_answered_without_a_repository(folder):
+    assert copilot_folder.check_command("git status", folder, rules("git status")) is None
+
+
+@pytest.mark.parametrize("command", [
+    "git log --ext-diff -p", "git log --output x.txt", "git log --output=x.txt",
+    "git format-patch -o out HEAD~1", "git grep -O notes", "git rebase -x calc HEAD~1",
+    "git log --textconv -p", "git -c core.pager=calc log", "git -C sub log",
+    "git --git-dir=x log", "git log --exec-path", "git difftool --tool=x",
+])
+def test_a_git_rule_never_takes_options_that_write_or_run(repo, command):
+    policy = rules("git *")
+    assert copilot_folder.check_command(command, repo, policy) is None, command
+
+
+def test_a_git_rule_still_takes_ordinary_options(repo):
+    policy = rules("git *")
+    for command in ("git log --oneline -5", "git commit -m 'x y'", "git add notes.txt",
+                    "git status --short", "git push origin main"):
+        assert copilot_folder.check_command(command, repo, policy).by == RULE, command
+
+
+def test_a_git_rule_that_shows_differences_asks_with_a_diff_program(repo, monkeypatch):
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, "git_names_diff_program", lambda folder: True)
+    policy = rules("git *")
+    assert copilot_folder.check_command("git diff", repo, policy) is None
+    assert copilot_folder.check_command("git stash show -p", repo, policy) is None
+    assert copilot_folder.check_command("git commit -m x", repo, policy).by == RULE
+
+
+def test_redirected_settings_folders_are_guarded(tmp_path, monkeypatch):
+    # Folder redirection can put AppData and Startup on another drive or a
+    # share (Kelly's review of 58c5f03).
+    redirected = tmp_path / "share" / "AppData" / "Roaming"
+    startup = redirected / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+    startup.mkdir(parents=True)
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.setattr(copilot_folder.platform_paths, "settings_dirs",
+                        lambda: [str(redirected), str(startup)])
+    # The real temp folder is exempt; this test's lives elsewhere.
+    monkeypatch.setattr(copilot_folder, "_temp", lambda: os.path.normcase(str(tmp_path / "t")))
+    assert not copilot_folder.file_change_allowed(str(startup / "x.cmd"), (), str(work))
+    assert copilot_folder.folder_too_broad(str(redirected))
+    assert copilot_folder.file_change_allowed(str(work / "notes.txt"), (), str(work))
+
+
+def test_the_temp_folder_itself_is_too_broad(tmp_path):
+    import tempfile
+    assert copilot_folder.folder_too_broad(tempfile.gettempdir())
+    assert not copilot_folder.folder_too_broad(str(tmp_path))
+
+
+def test_github_actions_are_guarded(tmp_path):
+    # Copilot's review of the stricter Auto: local actions run in CI.
+    actions = tmp_path / "proj" / ".github" / "actions" / "build"
+    actions.mkdir(parents=True)
+    assert copilot_folder.folder_too_broad(str(actions))
+    assert not copilot_folder.file_change_allowed(str(actions / "action.yml"), (),
+                                                  str(tmp_path / "proj"))
+
+
+@pytest.mark.parametrize("command", [
+    "git grep -Ocalc hello", "git grep -iOcalc hello", "git rebase -xcalc base",
+    "git format-patch -oout -1", "git rebase --exe calc base", "git rebase --strat x base",
+    "git commit --templ x", "git difftool --ext x", "git rebase -x calc base",
+    "git format-patch -o out -1",
+])
+def test_a_git_rule_refuses_short_and_shortened_options(repo, command):
+    # Claude's review of the git rules: git reads -Ocalc as -O calc, and any
+    # unambiguous start of a long option (--exe is --exec); real git ran each.
+    assert copilot_folder.check_command(command, repo, rules("git *")) is None, command
+
+
+def test_a_git_rule_still_takes_grep_and_log_options(repo):
+    for command in ("git grep -e hello", "git grep -E hello", "git log -c", "git commit -am x"):
+        assert copilot_folder.check_command(command, repo, rules("git *")).by == RULE, command

@@ -222,8 +222,7 @@ class CopilotPermissions:
         return True, ''
 
     def change_mode(self, done):
-        self.frame._change_copilot_mode(self.info)
-        done()
+        self.frame._change_copilot_mode(self.info, after=done)
 
     def note(self) -> str:
         from ..providers.copilot_auto_store import rules_file
@@ -235,7 +234,9 @@ class CopilotPermissions:
             'Auto, a Permission mode, also allows reading, listing and searching inside the '
             'folder, changing to a folder inside it, reading git, and Copilot\'s own file '
             'changes there. It never deletes, moves or writes through a command, and never '
-            'changes .git, .github, .copilot, .claude, .vscode or .mcp.json.',
+            'changes files that can make a program run, such as .git, .github, .vscode and '
+            '.mcp.json. After Auto changes a file, your rules and the commands below ask once '
+            'before running.',
             f'Your own rules for Copilot are in {rules_file()}: "allow" lists commands that run '
             'without asking in any agent-mode chat (a trailing * allows more words after '
             'them), and "ask" lists ones that always ask. A command you allow can run what is '

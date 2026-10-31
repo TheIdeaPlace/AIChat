@@ -213,7 +213,16 @@ class CodexChats:
                 self._feedback(f'{info.title} now uses {names[chosen]}, from its next turn.')
         self._codex_work(lambda: self.sessions.owned_action('set_model', record, chosen), done)
 
-    def _change_copilot_mode(self, info):
+    def _change_copilot_mode(self, info, after=None):
+        """Change Permission Mode for a Copilot chat (_start_copilot_mode_change).
+        ``after()`` runs once it's finished, refused or cancelled, so File, Chat
+        Permissions shows the new mode (Kelly's review of 58c5f03), as Codex's
+        does (#329)."""
+        after = after or (lambda: None)
+        if not self._start_copilot_mode_change(info, after):
+            after()
+
+    def _start_copilot_mode_change(self, info, after) -> bool:
         """Change Permission Mode (Ctrl+Shift+O) for a Copilot chat: agent or
         plan mode, as Copilot's own Shift+Tab switches them, or Auto
         (copilot_folder, #426), after a warning. Copilot asks before it acts
@@ -224,26 +233,26 @@ class CodexChats:
         if not info.is_own:
             self._feedback(f"{info.title} wasn't started in The Chat Place: its mode is set in "
                            "Copilot CLI.")
-            return
+            return False
         if not self._can_edit(info):
             self._feedback(f"Copilot isn't available here now, so {info.title} is read-only and "
                            "its mode can't be changed.")
-            return
+            return False
         record = self.store.get(info.cli_session_id, provider='copilot')
         if record is None:
             self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
-            return
+            return False
         state = self._codex_states.get(info.key)
         if state is None or not getattr(state, 'mode', ''):
             self._feedback(f"{info.title} isn't open in Copilot yet, so its mode isn't known. "
                            "Select it, wait until it's ready, then change its mode.")
-            return
+            return False
         pending = self._copilot_mode_pending = getattr(self, '_copilot_mode_pending', set())
         if info.key in pending:
             # One switch at a time: a second, on its way at once, could
             # finish first (Claude's review of #426).
             self._feedback(f"{info.title}'s mode is still being switched. Try again in a moment.")
-            return
+            return False
         auto_now = getattr(state, 'auto', False)
         now = COPILOT_AUTO if auto_now else state.mode
         # A chat that can't send until its mode is chosen again (plan mode
@@ -260,20 +269,20 @@ class CodexChats:
                                       f'Mode for {info.title}, now {now_name}:',
                                       offered, '' if blocked else now)
         if chosen is None:
-            return
+            return False
         folder = record.cwd
         if chosen == COPILOT_AUTO and not auto_now:
             from ..providers.copilot_folder import folder_too_broad
             from ..providers.copilot_runtime import TOO_BROAD
             if folder_too_broad(folder):
                 self._feedback(TOO_BROAD)
-                return
+                return False
             answer = wx.MessageBox(copilot_auto_warning(folder), 'Auto',
                                    wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self)
             if answer != wx.YES:
                 self._feedback(f'{info.title} still asks before Copilot acts.')
-                return
-        elif chosen != COPILOT_AUTO:
+                return False
+        elif chosen != COPILOT_AUTO and auto_now:
             # Off at once, here, not on the worker: a message sent while the
             # switch is on its way mustn't be answered for you (Copilot's
             # review of #426). Turning it off waits on nothing.
@@ -300,31 +309,35 @@ class CodexChats:
         ended = (' Auto is off; Copilot asks before it acts.'
                  if auto_now and chosen != COPILOT_AUTO else '')
         def done(outcome, error):
-            pending.discard(info.key)
-            result, refused = outcome if not error else (outcome, '')
-            if error:
-                self._feedback((result if isinstance(result, str) and result
-                                else "Copilot couldn't switch modes.") + ended)
-            elif chosen == COPILOT_AUTO and result == AGENT_MODE and not refused:
-                moved = getattr(self._codex_states.get(info.key), 'location_changed', False)
-                self._feedback(f'{info.title}: Auto. It reads, and changes files, in {folder} '
-                               'without asking, and asks before anything else.'
-                               + (" Its commands ask for now, since a command you allowed "
-                                  "earlier may have moved Copilot's shell; file changes are "
-                                  "allowed for you." if moved else ''))
-            elif chosen == COPILOT_AUTO and result == AGENT_MODE:
-                self._feedback(f'{info.title}: agent mode. {refused}')
-            elif result == mode:
-                self._feedback(f'{info.title}: {copilot_mode_name(chosen)}.{ended}')
-            else:
-                self._feedback(f"Copilot didn't switch {info.title} to "
-                               f"{copilot_mode_name(mode)}; it's in "
-                               f"{copilot_mode_name(result)}."
-                               + (" It isn't in Auto." if chosen == COPILOT_AUTO else ended))
-            self._update_send_state()
-            if self._open is not None and self._open.key == info.key:
-                self._update_heading()
+            try:
+                pending.discard(info.key)
+                result, refused = outcome if not error else (outcome, '')
+                if error:
+                    self._feedback((result if isinstance(result, str) and result
+                                    else "Copilot couldn't switch modes.") + ended)
+                elif chosen == COPILOT_AUTO and result == AGENT_MODE and not refused:
+                    moved = getattr(self._codex_states.get(info.key), 'location_changed', False)
+                    self._feedback(f'{info.title}: Auto. It reads, and changes files, in {folder} '
+                                   'without asking, and asks before anything else.'
+                                   + (" Its commands ask for now, since a command you allowed "
+                                      "earlier may have moved Copilot's shell; file changes are "
+                                      "allowed for you." if moved else ''))
+                elif chosen == COPILOT_AUTO and result == AGENT_MODE:
+                    self._feedback(f'{info.title}: agent mode. {refused}')
+                elif result == mode:
+                    self._feedback(f'{info.title}: {copilot_mode_name(chosen)}.{ended}')
+                else:
+                    self._feedback(f"Copilot didn't switch {info.title} to "
+                                   f"{copilot_mode_name(mode)}; it's in "
+                                   f"{copilot_mode_name(result)}."
+                                   + (" It isn't in Auto." if chosen == COPILOT_AUTO else ended))
+                self._update_send_state()
+                if self._open is not None and self._open.key == info.key:
+                    self._update_heading()
+            finally:
+                after()  # once, whatever happened above
         self._codex_work(change, done)
+        return True
 
     def _keep_first_message(self, message, provider='codex'):
         """New Session is gone when Codex refuses, so keep its first message
@@ -913,8 +926,10 @@ class CodexChats:
             dialog.Destroy()
         def done(_result, error):
             name = provider_name(info.provider)
+            not_kept = getattr(_result, 'said', '') if keep and not error else ''
             self._feedback((_result or f'This {name} request could not be answered. It may no longer be waiting.')
-                           if error else f'Approval kept for this chat and answer sent to {name}.' if keep else f'Answer sent to {name}.')
+                           if error else not_kept or (f'Approval kept for this chat and answer sent to {name}.'
+                                                      if keep else f'Answer sent to {name}.'))
             agent_answered = getattr(self, '_agent_member_answered', None)
             if not error and agent_answered is not None:
                 # An approval or an answer lets an agent conversation's

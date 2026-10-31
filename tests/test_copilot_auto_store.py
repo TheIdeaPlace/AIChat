@@ -175,13 +175,17 @@ def test_auto_isnt_kept_if_the_runtime_refuses_it(tmp_path, data):
 def test_a_kept_command_already_loaded_stays_when_the_file_cant_be_read(tmp_path, data,
                                                                         monkeypatch):
     """Claude's review of Auto: add() returns no commands when the file
-    can't be opened; the ones the chat already had stay allowed."""
+    can't be opened; the ones the chat already had stay allowed. The new one
+    is allowed once but not kept: kept only in memory, Chat Permissions
+    couldn't show or remove it (Kelly's review of 58c5f03)."""
+    from thechatplace.providers.copilot import NOT_KEPT
     runtime = Runtime()
     runtime.kept = {"npm run build"}
     monkeypatch.setattr(store, "add", lambda native_id, command: ((), store.NOT_SAVED))
     provider = CopilotProvider(tmp_path, runtime=runtime)
-    provider.allow_for_chat_owned(_record(tmp_path), SimpleNamespace(request_id="perm-1"))
-    assert runtime.kept == {"npm run build", "npm test"}
+    result = provider.allow_for_chat_owned(_record(tmp_path), SimpleNamespace(request_id="perm-1"))
+    assert runtime.kept == {"npm run build"}
+    assert result.said == NOT_KEPT
 
 
 def test_auto_saved_for_a_chat_that_reopens_in_another_mode_is_turned_off(tmp_path, data):

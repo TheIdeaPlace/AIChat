@@ -27,6 +27,7 @@ the list has terminal sessions and The Chat Place's own.
 """
 from __future__ import annotations
 
+import functools
 import json
 import ntpath
 import os
@@ -194,33 +195,56 @@ def _copilot_policy_values(winreg, hive, hive_name) -> list:
 COPILOT_SETTINGS_BYTES = 2 * 1024 * 1024
 
 
+@functools.lru_cache(maxsize=None)
+def _known_folder(guid_text: str) -> Optional[str]:
+    """A Windows known folder where the shell says it is (OneDrive or an
+    organisation's folder redirection moves Documents, AppData and Startup),
+    or None. Asked once per run: the copilot_folder check asks for each path."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    import uuid
+    try:
+        raw = uuid.UUID(guid_text).bytes_le
+        guid = (ctypes.c_byte * 16).from_buffer_copy(raw)
+        path = ctypes.c_wchar_p()
+        shell32 = ctypes.WinDLL("shell32")
+        ole32 = ctypes.WinDLL("ole32")
+        shell32.SHGetKnownFolderPath.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_wchar_p)]
+        ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+        if shell32.SHGetKnownFolderPath(ctypes.byref(guid), 0, None, ctypes.byref(path)) != 0:
+            return None
+        found = path.value
+        ole32.CoTaskMemFree(path)
+        return found or None
+    except (OSError, AttributeError, ValueError, ctypes.ArgumentError):
+        return None
+
+
+#: FOLDERID_Documents, RoamingAppData, LocalAppData and Startup.
+_DOCUMENTS = "FDD39AD0-238F-46AF-ADB4-6C85480369C7"
+_SETTINGS_FOLDERS = ("3EB685DB-65F9-4CF6-A03A-E3EF65729F3D",
+                     "F1B32785-6FBA-4FCF-9D55-7B8E7F157091",
+                     "B97D20BB-F46A-4C97-BA10-5E3608430854")
+
+
 def documents_dirs() -> List[str]:
     """The Documents folder, where PowerShell keeps its profiles: on Windows
     the one the shell reports (OneDrive moves it, Claude's review of #426) as
     well as the home folder's own."""
     found = [os.path.join(os.path.expanduser("~"), "Documents")]
-    if sys.platform == "win32":
-        import ctypes
-        import uuid
-        try:
-            # FOLDERID_Documents
-            raw = uuid.UUID("FDD39AD0-238F-46AF-ADB4-6C85480369C7").bytes_le
-            guid = (ctypes.c_byte * 16).from_buffer_copy(raw)
-            path = ctypes.c_wchar_p()
-            shell32 = ctypes.WinDLL("shell32")
-            ole32 = ctypes.WinDLL("ole32")
-            shell32.SHGetKnownFolderPath.argtypes = [
-                ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p,
-                ctypes.POINTER(ctypes.c_wchar_p)]
-            ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
-            if shell32.SHGetKnownFolderPath(ctypes.byref(guid), 0, None,
-                                            ctypes.byref(path)) == 0:
-                if path.value:
-                    found.append(path.value)
-                ole32.CoTaskMemFree(path)
-        except (OSError, AttributeError, ValueError):
-            pass
-    return found
+    real = _known_folder(_DOCUMENTS)
+    return found + [real] if real else found
+
+
+def settings_dirs() -> List[str]:
+    """Where Windows keeps a person's settings and startup programs, as the
+    shell reports them: AppData (Roaming and Local) and the Startup folder,
+    wherever folder redirection put them (Kelly's review of 58c5f03). Empty
+    elsewhere: the home folder's own places are listed in copilot_folder."""
+    return [path for path in map(_known_folder, _SETTINGS_FOLDERS) if path]
 
 
 def copilot_sessions_dir() -> Path:

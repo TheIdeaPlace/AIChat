@@ -641,17 +641,24 @@ PowerShell profiles, even with Documents in OneDrive.
   common options such as `--oneline` and `--stat`), and make its own file changes inside the
   folder. git is answered only when the chat's folder is the top of a repository (it has a `.git`
   folder) and Copilot's shell is there, the repository has no submodules, and only if that
-  repository's settings name no program for git to run; git diff, show, log and blame also ask if any of your git settings name a
+  repository's settings name no program for git to run (the same goes for git commands your
+  rules allow, which also never take options that write a file, run a program or point git
+  elsewhere, such as `--output`, `--ext-diff` or `-c`); git diff, show, log and blame also ask if any of your git settings name a
   program for showing differences (a diff driver), which a repository can choose. It never deletes, moves, copies or writes through a command, never deletes a file
   through a file change, and never changes anything in `.git` or another git repository's own
   folder, `.githooks`, `.github`, `.copilot`, `.claude`, `.codex`, `.vscode`, `.idea`, `.husky`
   or `.devcontainer`, or `.mcp.json`, `.envrc`, `.gitmodules`, `.gitattributes` or
   `.pre-commit-config.yaml`, whose files can make a program run (git's settings, Copilot's and
   Claude's hooks, MCP servers). A Claude Code worktree (`.claude\worktrees\...`) is an ordinary
-  folder. **Auto with your rules or Allow for This Chat:** a program you've allowed, such as
-  `npm test` or `python build.py`, runs what's in the folder, and Auto lets Copilot change those
-  files without asking, so the next time that command is answered for you it runs what Copilot
-  wrote. The chat's heading ends "Auto", and Auto is kept
+  folder. **After Auto changes a file, your rules and kept commands ask once:** a program you've
+  allowed, such as `npm test` or `python build.py`, runs what's in the folder (and settings such
+  as `.npmrc` or `conftest.py` can make it run anything), so once Auto has let Copilot change a
+  file, the next command your rules or Allow for This Chat would allow asks you first. Allowing
+  a command yourself, once Copilot asks after that change, lets them be answered again until
+  Auto changes another file; a chat opened again asks once too, since what Auto changed before
+  isn't kept. A command Copilot runs in the background (it says so just before asking), or
+  doesn't describe before asking, always asks; once you allow one, commands ask until Copilot
+  is next started, since it may still be changing the folder. The chat's heading ends "Auto", and Auto is kept
   for the chat, so it's on again when the chat is opened again, until you choose Agent or Plan.
   If Copilot switches to plan mode, Auto ends and the chat says so.
 - **Your rules**, in `%APPDATA%\TheChatPlace\copilot-rules.json` (on a Mac,
@@ -690,7 +697,8 @@ script before running a command your rule allows.
 Copilot's shell keeps its folder between commands. Changes of folder inside the chat's folder are
 followed, so paths are checked from wherever the shell may be. Once you allow by hand a command
 that may have moved it somewhere not followed (cd .., a script, iex), commands in that chat ask
-again until Copilot is next started; file changes, which name their full path, are still allowed
+again until Copilot is next started (close The Chat Place and open it again, which starts
+Copilot afresh in each chat's own folder); file changes, which name their full path, are still allowed
 in Auto. It relies on Copilot asking about every command: commands your own Copilot settings
 already allow never come to The Chat Place at all. None of this is offered on a computer where
 your organisation has installed GitHub Copilot policy (in `C:\ProgramData\GitHub\Copilot\policy.d`,
@@ -1304,8 +1312,8 @@ shows it as plain text instead.
 | Anywhere | Alt+V, H | Show Sessions: choose which sessions are listed |
 | Anywhere | Alt+V, E | Session List Columns: choose what each session's line says, and in what order |
 | Anywhere | Ctrl+Shift+N | Continue the selected (or loaded) chat from the desktop app, a terminal or another app here, as a copy |
-| Anywhere | Ctrl+Shift+O | Change Permission Mode: Claude permission modes, Codex file access and approval reviewer, or Copilot agent or plan mode for the selected (or loaded) Chat Place session |
-| Anywhere | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode and kept rules, to read and remove |
+| Anywhere | Ctrl+Shift+O | Change Permission Mode: Claude permission modes, Codex file access and approval reviewer, or Copilot agent mode, plan mode or Auto for the selected (or loaded) Chat Place session |
+| Anywhere | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode and kept rules (for Copilot, the commands allowed for the chat and your rules), to read and remove |
 | Session list | F5 | Refresh the list now and put it in order |
 | Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
 | Session list | Shift+Delete | Delete a Claude chat started here permanently, after you confirm; on an agent conversation, delete the conversation and keep its chats |

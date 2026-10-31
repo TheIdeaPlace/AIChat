@@ -135,7 +135,7 @@ _HOME_GUARDED = (".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".confi
                  ".copilot", ".claude", ".codex", ".vscode", ".git-credentials", ".gitconfig",
                  ".netrc", ".npmrc", ".pypirc", ".bashrc", ".bash_profile", ".profile",
                  ".zshrc", ".zprofile", ".zshenv", "AppData", "Library")
-_GITHUB_CODE = frozenset({"hooks", "copilot", "workflows"})
+_GITHUB_CODE = frozenset({"hooks", "copilot", "workflows", "actions"})
 #: PowerShell's profiles, in the Documents folder wherever it is (OneDrive
 #: moves it: Claude's review of the fixes).
 _PROFILE_DIRS = ("WindowsPowerShell", "PowerShell")
@@ -339,6 +339,12 @@ def _guarded(target: str) -> bool:
             _under(target, os.path.normcase(os.path.realpath(os.path.join(home, place))))
             for place in _HOME_GUARDED):
         return True
+    # AppData and Startup wherever folder redirection put them, but for the
+    # temp folder inside them (Kelly's review of 58c5f03).
+    if not _under(target, _temp()) and any(
+            _under(target, os.path.normcase(os.path.realpath(place)))
+            for place in platform_paths.settings_dirs()):
+        return True
     # PowerShell's profiles, wherever Documents is, temp folder or not.
     if any(_under(target, os.path.normcase(os.path.realpath(os.path.join(documents, name))))
            for documents in platform_paths.documents_dirs() for name in _PROFILE_DIRS):
@@ -370,6 +376,12 @@ def _guarded(target: str) -> bool:
         folder = parent
 
 
+def _temp() -> str:
+    """The temp folder the shell uses, as a real, normalised path."""
+    import tempfile
+    return os.path.normcase(os.path.realpath(tempfile.gettempdir()))
+
+
 def folder_too_broad(folder: str) -> bool:
     """A chat folder where nothing is answered for you: a whole drive, the
     home folder, a folder holding the home folder, or a guarded place itself
@@ -378,7 +390,11 @@ def folder_too_broad(folder: str) -> bool:
         base = os.path.normcase(os.path.realpath(folder))
     except (OSError, ValueError, TypeError):
         return True
-    return os.path.dirname(base) == base or _under(_home(), base) or _guarded(base)
+    # The temp folder itself holds every program's scratch files (Kelly's
+    # review of 58c5f03); a folder made inside it is fine.
+    return (os.path.dirname(base) == base or _under(_home(), base) or base == _temp()
+            or base == os.path.normcase(os.path.join(_home(), "AppData", "Local", "Temp"))
+            or _guarded(base))
 
 
 def _protected(path: str, folder: str) -> bool:
@@ -424,8 +440,14 @@ def _plain_file(path: str) -> bool:
     rest = path[2:] if _windows() and _WINDOWS_DRIVE.match(path) else path
     if ":" in rest:
         return False
-    name = os.path.basename(path.replace("\\", "/")).lower().rstrip(" .").split(".")[0]
-    return name not in _DEVICES
+    whole = os.path.basename(path.replace("\\", "/")).lower().rstrip(" .")
+    # A file named HEAD is what makes a folder with objects and refs a git
+    # repository, whose config git then reads and runs (Kelly's review of
+    # 58c5f03: Auto's edits built one in sub, then a rule's git status ran
+    # its core.fsmonitor). No file change makes one for you.
+    if whole == "head":
+        return False
+    return whole.split(".")[0] not in _DEVICES
 
 
 def file_change_allowed(file_name: str, paths, folder: str, kind: str = "") -> bool:
@@ -733,6 +755,67 @@ def _git_ok(words, folder: str, locations) -> bool:
     return True
 
 
+#: git options a rule may never add, however it's written: ones that write a
+#: file (--output, format-patch's -o), run a program (--ext-diff, --textconv,
+#: --exec, rebase's -x, grep's -O, a tool or editor), or point git at other
+#: settings or another repository (Kelly's review of 58c5f03: a "git log *"
+#: rule let --ext-diff and --output through).
+_GIT_RULE_REFUSED = ("output", "output-directory", "ext-diff", "textconv", "exec",
+                     "exec-path", "upload-pack", "receive-pack", "config", "config-env",
+                     "git-dir", "work-tree", "open-files-in-pager", "tool", "extcmd",
+                     "template", "command", "pager", "editor", "sequence-editor", "namespace",
+                     "super-prefix", "strategy", "strategy-option", "run", "include", "hook",
+                     "gpg", "gpg-sign", "ssh", "filter", "attr-source")
+#: Short options that write a file (-o), run a program (-x, grep's -O) or
+#: point git elsewhere (-C), with their value attached or not, alone or among
+#: other letters (-iOcalc): git reads -Ocalc as -O calc (Claude's review of
+#: the git rules).
+_GIT_RULE_LETTERS = frozenset("oxOC")
+
+
+def _git_rule_option_refused(text: str) -> bool:
+    """Whether an option a git rule can't take: any letter of
+    _GIT_RULE_LETTERS among a short option's letters, or a long option that
+    is, starts or (git takes any unambiguous start: --exe is --exec) begins
+    one of _GIT_RULE_REFUSED."""
+    if not text.startswith("--"):
+        return bool(set(text[1:]) & _GIT_RULE_LETTERS)
+    name = text[2:].split("=")[0].lower()
+    return any(name.startswith(refused) or (len(name) >= 1 and refused.startswith(name))
+               for refused in _GIT_RULE_REFUSED)
+#: git commands that may show differences, so run a diff driver or textconv.
+_GIT_DIFFS = _GIT_SHOWS_CHANGES | {"format-patch", "range-diff", "whatchanged", "stash", "grep",
+                                   "add", "cherry", "difftool", "mergetool"}
+
+
+def _git_rule_ok(words, folder: str, locations) -> bool:
+    """A git command your rule allows gets the checks Auto's git does
+    (Kelly's review of 58c5f03: a rule's git status ran a repository's
+    core.fsmonitor): the shell in the chat's own repository, its settings
+    naming no program, no submodules, and no diff program for one that shows
+    differences. Its options are yours, except ones that write, run a
+    program or point git elsewhere (_GIT_RULE_REFUSED). Options before its
+    command, other than the two Copilot adds, ask."""
+    plain = [_unquote(w) for w in words]
+    index = 1
+    while index < len(plain) and plain[index].lower() in ("--no-pager", "--no-optional-locks"):
+        index += 1
+    if index >= len(plain) or plain[index].startswith("-"):
+        return False
+    sub = plain[index].lower()
+    for text in plain[index + 1:]:
+        if text == "--":
+            break
+        if text.startswith("-") and len(text) > 1 and _git_rule_option_refused(text):
+            return False
+    if not (_git_repository_here(folder, locations) and _git_config_safe(locations)):
+        return False
+    if sub in _GIT_DIFFS:
+        from .. import platform_paths as paths
+        return paths.git_names_diff_program(folder) is False
+    return True
+
+
 def _git_repository_here(folder: str, locations) -> bool:
     """git is answered only with the shell in the chat's own folder, and that
     folder holding a real .git folder (not a link, not a .git file): git
@@ -911,7 +994,8 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
     for rule in policy.allow:
         if rule.matches(words) and not may_move(" ".join(words)):
             extra = words[len(rule.words):]
-            if _paths_ok(name, extra, folder, locations, letters=False, long_options=True):
+            if (_paths_ok(name, extra, folder, locations, letters=False, long_options=True)
+                    and (name not in ("git", "git.exe") or _git_rule_ok(words, folder, locations))):
                 return RULE, locations
     return None, locations
 

@@ -13175,7 +13175,7 @@ def test_change_permission_mode_switches_a_copilot_chat_to_plan(frame, env, monk
         # at once, before the switch goes to Copilot.
         assert asked == [("Mode for Planning Copilot, now agent mode:",
                           [AGENT_MODE, PLAN_MODE, "auto"], AGENT_MODE)]
-        assert pump(lambda: calls == [("set_auto", (False,)), ("set_mode", (PLAN_MODE,))]
+        assert pump(lambda: calls == [("set_mode", (PLAN_MODE,))]
                     and env["feedback"][-1:] == ["Planning Copilot: plan mode."])
         # What's said is the mode Copilot then reports, not the one asked for.
         recorded[0] = AGENT_MODE
@@ -13211,7 +13211,7 @@ def test_change_permission_mode_unblocks_a_chat_plan_mode_was_refused_for(frame,
     try:
         frame.on_change_permission_mode()
         assert nows == [""]
-        assert pump(lambda: calls == [("set_auto", (False,)), ("set_mode", (AGENT_MODE,))]
+        assert pump(lambda: calls == [("set_mode", (AGENT_MODE,))]
                     and env["feedback"][-1:] == ["Blocked Copilot: agent mode."])
     finally:
         frame._codex_states.clear()
