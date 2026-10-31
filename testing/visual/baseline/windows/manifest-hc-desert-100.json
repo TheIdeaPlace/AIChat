@@ -1182,6 +1182,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Restore from Backup, choosing chats"
+  },
+  "export-chats": {
+   "kind": "dialog",
+   "png": "export-chats-hc-desert-100.png",
+   "json": "export-chats-hc-desert-100.json",
+   "title": "Export Chats",
+   "class": "ExportChatsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Export Chats, choosing chats and a format"
   }
  },
  "seconds": 92.2

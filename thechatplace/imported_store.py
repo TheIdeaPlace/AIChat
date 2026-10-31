@@ -431,20 +431,10 @@ def _backup_metadata(reader, sessions):
 
 def chooser_rows(sessions) -> List[str]:
     """One line per chat for the chooser: title, AI, folder, last active."""
+    from .export import chat_row
     from .providers.imported import PROVIDER_NAMES
-    rows = []
-    for session in sessions:
-        folder = (session.cwd or "").replace("\\", "/").rstrip("/").split("/")[-1] or "no folder"
-        when = ""
-        try:
-            if session.last_activity_ms and session.last_activity_ms > 0:
-                moment = datetime.fromtimestamp(session.last_activity_ms / 1000).astimezone()
-                when = f", last active {moment.day} {moment:%B %Y}"
-        except (OSError, OverflowError, ValueError, TypeError):
-            when = ""
-        rows.append(f"{session.title}, {PROVIDER_NAMES.get(session.provider, session.provider)}, "
-                    f"{folder}{when}")
-    return rows
+    return [chat_row(session.title, PROVIDER_NAMES.get(session.provider, session.provider),
+                     session.cwd, session.last_activity_ms) for session in sessions]
 
 
 def restore_backup(path, manifest: dict, passphrase: Optional[str], *, confirm,

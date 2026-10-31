@@ -33,6 +33,11 @@ powershell -File tools\ui_probe_vm.ps1 -Variant light-100,dark-100 -Surface sett
 vmtest save                                                  # when done for now
 ```
 
+With `VMTEST_HOST` set (vmtest's "Using VMs on another PC"), the probe uses that PC's VMs: vmtest's
+commands go there by themselves, and the probe copies its files in and the pictures out through
+the same saved sign-in. Setting it for one PowerShell window (`$env:VMTEST_HOST='THESTADIUM'`)
+is enough.
+
 The variants are in `tools/ui_probe_plan.json`:
 - light at 100, 150 and 175% scaling;
 - dark apps;

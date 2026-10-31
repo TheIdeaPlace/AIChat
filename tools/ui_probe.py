@@ -1674,6 +1674,27 @@ def d_restore_chooser(frame, env):
     return show
 
 
+def d_export_chats(frame, env):
+    """File, Export Chats (#461): the session list's chats, two chosen."""
+    from thechatplace.ui.dialogs import ExportChatsDialog
+    heading = ("5 chats in the session list's current view, newest first. Choose the ones to "
+               "export and the format; the folder comes next. Each chat becomes its own file, "
+               "and no file is ever replaced.")
+    rows = ["Fix the flaky upload test, Claude, Uploader, last active 31 October 2026",
+            "Visual probe, Claude, AIChat, last active 30 October 2026",
+            "Release notes for 0.3.3, Codex, AIChat, last active 29 October 2026",
+            "Try plan mode, GitHub Copilot CLI, AIChat, last active 28 October 2026",
+            "Plan the Linux port, Claude, AIChat, last active 2 October 2026"]
+
+    def show():
+        dialog = ExportChatsDialog(frame, heading, rows)
+        dialog.toggle(0)
+        dialog.toggle(2)
+        dialog.list.SetSelection(0)
+        frame._modal(dialog)
+    return show
+
+
 def d_prompt_edit(frame, env):
     from thechatplace.ui.dialogs import PromptEditDialog
     return lambda: frame._modal(PromptEditDialog(frame, "Edit Prompt", "Review",
@@ -1815,6 +1836,7 @@ SURFACES = {
     "prompts": ("dialog", d_prompts, "File, Prompts"),
     "prompt-edit": ("dialog", d_prompt_edit, "Editing a saved prompt"),
     "restore-chooser": ("dialog", d_restore_chooser, "Restore from Backup, choosing chats"),
+    "export-chats": ("dialog", d_export_chats, "Export Chats, choosing chats and a format"),
     "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
@@ -1838,6 +1860,7 @@ EMPTY_WORLD = {"main-empty"}
 #: ``tests/test_ui_probe.py`` fails on any dialog class in neither list.
 NOT_PHOTOGRAPHED = {
     "LinesDialog": "the list Usage and Context and Properties are made from, shown as those",
+    "ChatChooserDialog": "the list Restore from Backup and Export Chats are made from, shown as those",
 }
 
 #: Which of our dialog classes each dialog surface shows. "rename" shows
@@ -1907,6 +1930,7 @@ DIALOG_CLASSES = {
     "prompts": "PromptsDialog",
     "prompt-edit": "PromptEditDialog",
     "restore-chooser": "RestoreChooserDialog",
+    "export-chats": "ExportChatsDialog",
     "backup-schedule": "BackupScheduleDialog",
     "relay": "RelayDialog",
     "agent-new": "AgentConversationDialog",

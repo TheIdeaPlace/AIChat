@@ -4541,24 +4541,27 @@ class BackupScheduleDialog(wx.Dialog):
                                      or (self._was_encrypted and not self._can_encrypt))
 
 
-class RestoreChooserDialog(wx.Dialog):
-    """Restore from Backup's choice (#450): which of a backup's chats to
-    restore. Each row says Restore or Skip in its own text, so every screen
-    reader reads it (a check list box's checks aren't exposed on Windows);
-    Space switches the row, and Select All and Select None do all of them."""
+class ChatChooserDialog(wx.Dialog):
+    """A list of chats to act on, choosing which (#450, #461). Each row says
+    whether it's chosen in its own text ("Restore:" or "Skip:"), so every
+    screen reader reads it (a check list box's checks aren't exposed on
+    Windows); Space switches the row, and Select All and Select None do all
+    of them. The default button says how many: "Restore 3 Chats"."""
 
-    RESTORE, SKIP = "Restore", "Skip"
+    SKIP = "Skip"
 
-    def __init__(self, parent, heading: str, rows, say=None):
-        super().__init__(parent, title="Restore from Backup", size=dialog_size(parent, 680, 520),
+    def __init__(self, parent, *, title: str, verb: str, heading: str, heading_name: str,
+                 rows, chosen: bool = True, say=None):
+        super().__init__(parent, title=title, size=dialog_size(parent, 680, 520),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._title, self._verb = title, verb
         self._rows = list(rows)
-        self.chosen = [True] * len(self._rows)
+        self.chosen = [chosen] * len(self._rows)
         self._say = say or (lambda text: None)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.heading = _read_only_text(self, heading, "About this backup", min_height=90)
+        self.heading = _read_only_text(self, heading, heading_name, min_height=90)
         sizer.Add(self.heading, 0, wx.EXPAND | wx.ALL, 8)
-        sizer.Add(wx.StaticText(self, label="Chat &list (Space switches Restore and Skip):"),
+        sizer.Add(wx.StaticText(self, label=f"Chat &list (Space switches {verb} and Skip):"),
                   0, wx.LEFT | wx.RIGHT, 8)
         self.list = wx.ListBox(self, choices=[self._text(i) for i in range(len(self._rows))],
                                style=wx.LB_SINGLE)
@@ -4566,14 +4569,15 @@ class RestoreChooserDialog(wx.Dialog):
         self.list.SetName("Chats")
         mac_a11y.set_label(self.list, "Chats")  # VoiceOver; the line above is MSAA and ATK
         # On the dialog, as every dialog here does: Space on the list
-        # switches the row, and Enter presses Restore on every platform
-        # (GTK would otherwise take it as activating the row, which would
-        # switch it). A double-click switches the row too.
+        # switches the row, and Enter presses the default button on every
+        # platform (GTK would otherwise take it as activating the row, which
+        # would switch it). A double-click switches the row too.
         self.Bind(wx.EVT_CHAR_HOOK, self._on_list_key)
         self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.toggle(self.list.GetSelection()))
         if self._rows:
             self.list.SetSelection(0)
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        self._add_options(sizer)
         buttons = wx.BoxSizer(wx.HORIZONTAL)
         select_all = wx.Button(self, label="Select &All")
         select_all.Bind(wx.EVT_BUTTON, lambda e: self._set_all(True))
@@ -4582,26 +4586,29 @@ class RestoreChooserDialog(wx.Dialog):
         buttons.Add(select_all, 0, wx.RIGHT, 6)
         buttons.Add(select_none, 0, wx.RIGHT, 6)
         buttons.AddStretchSpacer()
-        self.restore = wx.Button(self, wx.ID_OK, "&Restore")
-        self.restore.SetDefault()
-        self.restore.Bind(wx.EVT_BUTTON, self._on_restore)
-        buttons.Add(self.restore, 0, wx.RIGHT, 6)
+        self.go = wx.Button(self, wx.ID_OK, f"&{verb}")
+        self.go.SetDefault()
+        self.go.Bind(wx.EVT_BUTTON, self._on_go)
+        buttons.Add(self.go, 0, wx.RIGHT, 6)
         buttons.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
         sizer.Add(buttons, 0, wx.EXPAND | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
-        self._update_restore()
+        self._update_go()
         wx.CallAfter(self.list.SetFocus)
 
+    def _add_options(self, sizer):
+        """Controls between the list and the buttons; none by default."""
+
     def _text(self, index: int) -> str:
-        return f"{self.RESTORE if self.chosen[index] else self.SKIP}: {self._rows[index]}"
+        return f"{self._verb if self.chosen[index] else self.SKIP}: {self._rows[index]}"
 
     def _count(self) -> int:
         return sum(self.chosen)
 
-    def _update_restore(self):
+    def _update_go(self):
         count = self._count()
-        self.restore.SetLabel(f"&Restore {count} Chat{'s' if count != 1 else ''}")
+        self.go.SetLabel(f"&{self._verb} {count} Chat{'s' if count != 1 else ''}")
         self.Layout()
 
     def _refresh_rows(self):
@@ -4615,7 +4622,7 @@ class RestoreChooserDialog(wx.Dialog):
                     self.list.SetString(index, text)
         finally:
             self.list.Thaw()
-        self._update_restore()
+        self._update_go()
 
     def toggle(self, index: int):
         if not 0 <= index < len(self._rows):
@@ -4623,8 +4630,8 @@ class RestoreChooserDialog(wx.Dialog):
         self.chosen[index] = not self.chosen[index]
         self.list.SetString(index, self._text(index))
         self.list.SetSelection(index)
-        self._update_restore()
-        self._say(f"{self.RESTORE if self.chosen[index] else self.SKIP}, "
+        self._update_go()
+        self._say(f"{self._verb if self.chosen[index] else self.SKIP}, "
                   f"{self._count()} of {len(self._rows)} chosen.")
 
     def _set_all(self, value: bool):
@@ -4642,18 +4649,60 @@ class RestoreChooserDialog(wx.Dialog):
             return
         if on_list and event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             click = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
-            click.SetEventObject(self.restore)
-            self.restore.GetEventHandler().ProcessEvent(click)
+            click.SetEventObject(self.go)
+            self.go.GetEventHandler().ProcessEvent(click)
             return
         event.Skip()
 
-    def _on_restore(self, event):
+    def _on_go(self, event):
         if not self._count():
-            wx.MessageBox("Choose at least one chat to restore, or Cancel.", "Restore from Backup",
-                          wx.OK | wx.ICON_INFORMATION, self)
+            wx.MessageBox(f"Choose at least one chat to {self._verb.lower()}, or Cancel.",
+                          self._title, wx.OK | wx.ICON_INFORMATION, self)
             self.list.SetFocus()
             return
         event.Skip()
 
     def chosen_indexes(self):
         return [i for i, chosen in enumerate(self.chosen) if chosen]
+
+
+class RestoreChooserDialog(ChatChooserDialog):
+    """Restore from Backup's choice (#450): which of a backup's chats to
+    restore, all chosen to begin with."""
+
+    RESTORE = "Restore"
+
+    def __init__(self, parent, heading: str, rows, say=None):
+        super().__init__(parent, title="Restore from Backup", verb=self.RESTORE, heading=heading,
+                         heading_name="About this backup", rows=rows, chosen=True, say=say)
+        self.restore = self.go
+
+
+class ExportChatsDialog(ChatChooserDialog):
+    """File, Export Chats (#461): which chats to export, and the format.
+    None are chosen to begin with, so a long list isn't all exported by one
+    Enter; the folder is asked for afterwards."""
+
+    EXPORT = "Export"
+    FORMAT_LABELS = ["Markdown", "Web page", "Plain text"]
+
+    def __init__(self, parent, heading: str, rows, say=None, fmt: str = ""):
+        self._initial_format = fmt
+        super().__init__(parent, title="Export Chats", verb=self.EXPORT, heading=heading,
+                         heading_name="About this export", rows=rows, chosen=False, say=say)
+
+    def _add_options(self, sizer):
+        from .. import export
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        row.Add(wx.StaticText(self, label="&Format:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.format = wx.Choice(self, choices=self.FORMAT_LABELS)
+        set_accessible_name(self.format, "Format")
+        codes = [fmt for fmt, _part in export.FORMATS]
+        self.format.SetSelection(codes.index(self._initial_format)
+                                 if self._initial_format in codes else 0)
+        row.Add(self.format, 0)
+        sizer.Add(row, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+
+    def chosen_format(self) -> str:
+        from .. import export
+        return export.FORMATS[max(0, self.format.GetSelection())][0]
