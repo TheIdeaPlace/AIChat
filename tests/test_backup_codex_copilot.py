@@ -76,7 +76,8 @@ def test_codex_leaves_out_sign_in_logs_caches_and_runtime(homes):
     c = homes["codex"]
     write(c / "sessions" / "r.jsonl")
     for name in ("auth.json", "cap_sid", "installation_id", "models_cache.json",
-                 "version.json", ".sqlite-maintenance.lock", "cache/a", "tmp/b",
+                 "version.json", ".sqlite-maintenance.lock",
+                 ".codex-provisioning-9541988537dc28fd.guard", "cache/a", "tmp/b",
                  "packages/c/codex.exe", "app-server-daemon/d", "app-server-control/e",
                  "thread-writer-locks/f", "plugins/cache/g", "plugins/openai-curated-remote/h",
                  "skills/.system/i/SKILL.md", ".sandbox-bin/j"):
