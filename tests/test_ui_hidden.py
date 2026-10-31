@@ -14531,7 +14531,7 @@ def test_backup_schedule_dialog_round_trip_and_folder_check(frame, env, monkeypa
         dialog.every.SetSelection(1)
         dialog._sync()
         assert dialog.folder.IsEnabled() and dialog.keep.IsEnabled()
-        assert "aren't encrypted" in dialog.about.GetValue()
+        assert "Encrypted, they need the passphrase" in dialog.about.GetValue()
         assert "No backup made here yet." in dialog.about.GetValue()
         # Saving with no folder is refused, with a reason.
         event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
@@ -14870,7 +14870,8 @@ def test_backup_schedule_without_a_protected_store_cant_encrypt(frame, env):
     dialog = BackupScheduleDialog(frame, backup.Schedule("daily", str(env["tmp"]), 5, True),
                                   can_encrypt=False)
     try:
-        assert not dialog.encrypt.IsEnabled() and not dialog.value().encrypt
+        # Disabled, but an encrypted schedule stays encrypted (#452 review).
+        assert not dialog.encrypt.IsEnabled() and dialog.value().encrypt
         assert "install secret-tool" in dialog.about.GetValue()
     finally:
         dialog.Destroy()
@@ -14902,7 +14903,8 @@ def test_saving_an_encrypted_schedule_keeps_the_passphrase_first(frame, env, mon
     monkeypatch.setattr(frame, "_run_scheduled_backup_if_due", lambda: None)
     frame.on_backup_schedule()
     assert kept == ["pw"] and backup.load_schedule().encrypt is True
-    assert env["feedback"][-1].startswith(f"Backing up every week, encrypted, to {dest}")
+    assert env["feedback"][-1].startswith("Backing up every week, encrypted, to ")
+    assert "enc-sched" in env["feedback"][-1]
     assert "pw" not in (env["tmp"] / "appdata" / "backup.json").read_text(encoding="utf-8")
     # The store refusing leaves the schedule as it was.
     def refuse(_text):
