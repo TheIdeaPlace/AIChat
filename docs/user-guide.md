@@ -1690,8 +1690,33 @@ scheduled one comes a day or a week after it. The box at the bottom of Backup Sc
 the last backup and the last failure. Scheduled backups aren't encrypted, because nobody is
 there to type a passphrase. To stop one, choose **File, Back Up Now**.
 
-Restoring from a backup isn't built yet. Until then, the files are in the zip, in the same
-folders as on the computer they came from.
+### Restoring from a backup
+
+**File, Restore from Backup** brings the chats in a backup back into the session list, on this
+computer or a new one.
+
+1. Choose **File, Restore from Backup**, then the backup's zip file.
+2. It's checked first. An encrypted backup asks for its passphrase, and a damaged one is said
+   and not used.
+3. A question says how many chats it holds, for each AI, and which computer they came from. Choose
+   **Yes** to restore them all.
+4. You hear how many were restored. They're in the session list straight away.
+
+Restored chats are **read-only**. You can read them, find in them (Find in All Sessions too),
+export them and list their changes, but not reply to them or continue them. Each row says
+"imported chat", the Provider column says which AI it was with, and View, Show Sessions lists it
+with that AI's chats. Properties says which computer it came from.
+
+Restoring writes nothing to Claude's, Codex's or Copilot's folders: the chats are kept in The
+Chat Place's own folder. Restoring the same backup again, or a newer one from the same computer,
+updates chats instead of adding copies. The same chat from two computers shows twice.
+**Delete Session Permanently** (Shift+Delete) on a restored chat deletes only The Chat Place's
+copy of it.
+
+Reading a backup's Codex chats needs the Codex app or command-line tool installed. Without it,
+the other chats are restored and you're told the Codex ones couldn't be read. To stop a restore,
+choose **File, Back Up Now**. Chats already restored stay, and restoring the backup again finishes
+the rest.
 
 **Claude deletes old conversations.** Claude Code removes conversations older than its
 `cleanupPeriodDays` setting, 30 days unless you change it. Desktop app and Cowork sessions are

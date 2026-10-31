@@ -908,8 +908,17 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   backups whose manifest names this computer's id (by hand or scheduled); a folder on the same
   disk is allowed after a question. It runs while the app is open (checked every ten minutes and two
   minutes after starting). A failure, such as an unplugged drive, is announced at most once a day
-  and retried after an hour. Scheduled backups aren't encrypted. Restoring isn't built yet (#433); the files are in
-  the zip under the folders they came from. Claude Code deletes conversations older than its
+  and retried after an hour. Scheduled backups aren't encrypted. **Restore from Backup** (File
+  menu, #436) checks a backup (asking for its passphrase), says how many chats it holds for each
+  AI and from which computer, and on Yes keeps them all as read-only **imported chats** in
+  `imported/` in The Chat Place's folder: each one's history as JSON, whichever AI it was with,
+  so none needs its provider afterwards. Claude and Copilot histories are read straight from the
+  backup; Codex's through the Codex app-server, started against a temporary copy of the backed-up
+  profile with no sign-in, never your own. Identity is provider, native id and the source
+  computer's id, so restoring again updates rather than duplicates. Imported rows are their own
+  backend (`provider "imported"`): they can be read, found, exported and their changes listed,
+  never sent to, resumed, forked or linked, and Delete Session Permanently removes only The Chat
+  Place's copy. Nothing is written to any provider's folder. Claude Code deletes conversations older than its
   `cleanupPeriodDays` setting (30 days by default), which includes chats started here; set a
   larger number in `~/.claude/settings.json` to keep them.
 
@@ -1479,4 +1488,3 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 
 Building, testing and releasing: see [DEVELOPING.md](DEVELOPING.md).
 
-The backup history reader for #436 is implemented; Restore from Backup still needs its UI. It reads Claude and Copilot archives directly, and Codex history through a native app-server in a temporary copied profile. Imported identities include the source computer and never grant ownership.

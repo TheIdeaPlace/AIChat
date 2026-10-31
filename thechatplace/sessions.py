@@ -168,7 +168,7 @@ class SessionInfo:
         if self.cowork:
             return "Cowork session"
         return {DESKTOP: "desktop app session", TERMINAL: "terminal session",
-                "agents": "agent conversation",
+                "agents": "agent conversation", "imported": "imported chat",
                 "editor": "editor session", "command_line": "command-line session",
                 "app_server": "other app session"}.get(self.source, "external session")
 
