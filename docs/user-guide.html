@@ -1662,6 +1662,17 @@ folders as on the computer they came from.</p>
 exempt in recent versions. Chats started in The Chat Place and in a terminal aren't. To keep
 them longer, set a larger number in <code>~/.claude/settings.json</code>, such as
 <code>"cleanupPeriodDays": 36500</code>. A backup keeps what was there when it was made.</p>
+<p>The Chat Place now keeps its own copies of Claude transcripts it discovers or reads, refreshed
+in the background and after turns. If Claude removes an original, its row becomes a <strong>kept chat
+(read-only)</strong>: you can read and search it, but cannot send to it or Continue Here. Terminal
+chats stay listed too. A transcript removed before its first successful copy cannot be recovered.
+Settings (Ctrl+Comma) shows retention for each provider and offers <strong>Open Claude's retention
+settings</strong>, which opens an existing settings file in your editor; The Chat Place never edits it.</p>
+<p>Copies live under <code>kept-history/claude</code> in The Chat Place's data folder and have no automatic
+expiry. If Claude rewrites a transcript, the preceding copy stays in <code>versions</code>. The copies are
+unencrypted and Back Up Now includes them. They protect against provider cleanup on this disk;
+keep a backup elsewhere for a lost computer. Delete Session Permanently also removes that
+chat's kept copy. You can hide any kept chat from the list without deleting its copy.</p>
 <h2 id="more-things-you-can-do">More things you can do</h2>
 <ul>
 <li><strong>Properties</strong> (Alt+Enter, View menu, or the context menu) lists what can be known about a

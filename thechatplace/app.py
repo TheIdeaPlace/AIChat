@@ -90,6 +90,10 @@ def smoke_test(out_path: str) -> int:
         # API (the Linux build uses the system's libsqlite3).
         from . import backup
         assert len(backup.default_collectors()) == 4
+        from .history_keeper import HistoryKeeper  # noqa: F401
+        from .retention import describe as describe_retention
+        assert 'Claude' in describe_retention()
+        report['kept_history'] = True
         import sqlite3
         source, copy = sqlite3.connect(":memory:"), sqlite3.connect(":memory:")
         source.execute("create table t(v)")

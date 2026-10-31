@@ -49,6 +49,11 @@ def claude_home() -> Path:
     return Path.home() / ".claude"
 
 
+def kept_history_dir() -> Path:
+    """TCP's own copies; provider homes remain read-only (#438)."""
+    return app_data_dir() / "kept-history" / "claude"
+
+
 def claude_config_file() -> Path:
     """``~/.claude.json``, where Claude Code records which folders you've
     trusted (inside CLAUDE_CONFIG_DIR when that is set)."""

@@ -18,6 +18,14 @@ def _isolated_codex_diagnostics(monkeypatch, tmp_path):
     monkeypatch.setattr(codex_runtime, 'CodexReviewStore', lambda: CodexReviewStore(tmp_path / 'permissions'))
 
 
+@pytest.fixture(autouse=True)
+def _isolated_kept_history(monkeypatch, tmp_path):
+    from thechatplace import platform_paths, history_keeper
+    monkeypatch.setattr(platform_paths, 'kept_history_dir', lambda: tmp_path / 'kept-history')
+    yield
+    history_keeper.close_all()
+
+
 @pytest.fixture(scope="session")
 def app():
     """Keep one wx application alive across every GUI test module.

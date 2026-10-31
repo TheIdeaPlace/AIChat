@@ -125,7 +125,7 @@ def finished_turns(previous: Dict[str, str], current: Iterable[SessionInfo],
     """
     ended = []
     for info in current:
-        if info.archived or info.provider in (stale_providers or ()):
+        if info.source == "kept" or info.archived or info.provider in (stale_providers or ()):
             continue
         if info.provider in LISTED_PROVIDERS and info.state != IDLE:
             continue
