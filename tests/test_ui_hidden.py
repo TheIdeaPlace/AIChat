@@ -9203,7 +9203,7 @@ def test_remote_control_wraps_but_says_all_it_says(frame):
         # Several lines, so it fits; the same words, so it's read the same.
         assert label.count("\n") >= 1
         assert " ".join(label.split()) == (
-            "Tur&n on Remote Control for The Chat Place's sessions, so you can reach them "
+            "T&urn on Remote Control for The Chat Place's sessions, so you can reach them "
             "from claude.ai and other devices. Their conversations are copied to claude.ai "
             "and kept there. (File, Remote Control changes one session.)")
         box = dialog.remote_control

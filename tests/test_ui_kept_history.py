@@ -70,3 +70,40 @@ def test_settings_declared_access_keys_are_unique(frame):
         visit(dialog)
         assert seen['y']=='Histor&y retention and kept copies:'
     finally:dialog.Destroy()
+
+
+def test_deleting_a_kept_own_chat_removes_its_copy_and_record_only(frame, env, monkeypatch):
+    """#451 review: a chat Claude already deleted can still be deleted here;
+    only The Chat Place's copy and record go, never any transcript."""
+    from fake_env import add_transcript
+    from records import user_text, assistant_block, text_block
+    from thechatplace.providers.claude import keep_session, kept_identity, preserve_sessions
+    from thechatplace.history_keeper import keeper
+    info = frame.store.get('own-1').to_info()
+    path = add_transcript(env, info.cwd, info.cli_session_id, [
+        user_text('Invented question'), assistant_block(text_block('Invented reply'))])
+    keep_session(info)
+    assert keeper().wait_idle()
+    path.unlink()
+    kept, = [s for s in preserve_sessions([info]) if s.key == info.key]
+    assert kept.source == KEPT and kept.kept_from == 'own'
+    monkeypatch.setattr(frame, '_selected_session', lambda: kept)
+    deleted = []
+    from thechatplace.ui import main_frame
+    monkeypatch.setattr(main_frame, '_delete_transcript', lambda p: deleted.append(p))
+    asked = []
+    monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame.on_delete_permanently()
+    assert asked and 'already removed its original' in asked[0]
+    assert deleted == []                                  # no transcript touched
+    assert keeper().saved(kept_identity(kept)) is None
+    assert not frame.store.contains(info.cli_session_id)
+    assert env['feedback'][-1] == f'Deleted {kept.title}.'
+
+
+def test_continue_here_on_a_kept_chat_says_why(frame, env, monkeypatch):
+    info = SessionInfo(KEPT, 'terminal:kept2', 'Kept chat two', '', 'kept2')
+    monkeypatch.setattr(frame, '_selected_session', lambda: info)
+    frame.on_continue_here()
+    assert env['feedback'][-1] == ('Kept chat two is a kept copy (Claude Code removed the '
+                                   'original): it\'s read-only.')

@@ -1102,7 +1102,7 @@ class SettingsDialog(wx.Dialog):
         # edge (#176). A check box's label is its spoken name, so screen
         # readers hear the same sentence as before.
         self.remote_control = wx.CheckBox(body, label=_wrapped(
-            self, "Tur&n on Remote Control for The Chat Place's sessions, so you can reach "
+            self, "T&urn on Remote Control for The Chat Place's sessions, so you can reach "
                   "them from claude.ai and other devices. Their conversations are copied to "
                   "claude.ai and kept there. (File, Remote Control changes one session.)",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))

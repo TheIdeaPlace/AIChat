@@ -1560,7 +1560,7 @@ setting moves straight to it.
 - **Clear Recent Folders** (Alt+L) asks first, with No as the default, and then clears the list
   at once: Cancel in Settings doesn't bring it back. A folder comes back when a chat works in it
   again.
-- **Turn on Remote Control for The Chat Place's sessions** (Alt+N): Claude chats started here
+- **Turn on Remote Control for The Chat Place's sessions** (Alt+U): Claude chats started here
   only, and off at first. It counts from each chat's next turn. File, Remote Control can set one
   chat on or off instead (see "Remote Control").
 - **Let Claude keep a task list** (Alt+K): Claude chats started here only, from your next
