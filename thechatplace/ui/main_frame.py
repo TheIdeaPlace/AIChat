@@ -4343,6 +4343,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         with the caller (still stopping, or a problem shown). Send Reply to
         Another Chat (#248) uses it too, and agent conversations, which say
         what was sent themselves (``announce_send``)."""
+        from ..providers.claude import check_kept_before_send
+        check_kept_before_send(info, active=info.cli_session_id in self._runners)
         if not self._require_capability('send', info):
             return False
 

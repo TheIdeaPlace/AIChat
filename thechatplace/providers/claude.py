@@ -277,3 +277,18 @@ def _history_path(session):
             _mark_kept(session, saved)
             return saved
     return path
+
+
+def check_kept_before_send(session, *, active):
+    """A stale busy row cannot authorize resuming a deleted original.
+
+    The window knows whether it still owns a running process. Only that
+    positive knowledge permits an active transcript rewrite to keep its turn.
+    """
+    if session.source == KEPT or active or not platform_paths.is_safe_id(session.cli_session_id):
+        return
+    from ..history_keeper import keeper
+    saved = keeper().saved(kept_identity(session))
+    if saved is not None and session.transcript_path() is None:
+        session.state = IDLE
+        _mark_kept(session, saved)

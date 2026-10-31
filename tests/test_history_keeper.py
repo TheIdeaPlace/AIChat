@@ -204,3 +204,13 @@ def test_temporary_missing_file_during_live_turn_does_not_remove_stop(tmp_path, 
     reader=ClaudeConversations().open_reader(current);reader.refresh()
     assert reader.transcript.last_reply().text == 'Kept answer'
     assert current.is_own
+
+
+def test_stale_busy_state_cannot_resume_a_missing_original(tmp_path,monkeypatch):
+    from thechatplace.sessions import WORKING
+    from thechatplace.providers.claude import check_kept_before_send
+    info,path=session(tmp_path,monkeypatch,OWN)
+    keep_session(info);assert history_keeper.keeper().wait_idle()
+    path.unlink();info.state=WORKING
+    check_kept_before_send(info,active=False)
+    assert info.source==KEPT and not ClaudeConversations().capabilities(info).send

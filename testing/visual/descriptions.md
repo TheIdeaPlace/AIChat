@@ -710,3 +710,19 @@ The 680 by 520 Chat Permissions dialog, titled "Chat Permissions: Automatic revi
 Text is black on white (21:1) and the selected row white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1) and the selected row #263B50 on aqua #8EE3F0 (7.9:1); in Desert the text is dark on cream (#FFFAEF, 10.4:1 or better) and the selected row cream on rust brown (#FFF5E3 on #903909, 7.0:1). At 175% (1190 by 910) the same lines show larger, with more space below them.
 
 **What looks off:** Nothing.
+
+## main-kept: Claude history after its original transcript disappears
+
+The two reviewed 100% pictures show a 1000 by 720 window. The session list
+fills the left two fifths and the chat fills the right. The selected row and
+heading say the original transcript is gone; the heading identifies a kept
+Claude chat as read-only. Four invented messages remain readable. Below them,
+About replying contains a read-only note explaining the kept copy and backups;
+there is no reply box, Continue Here or Open in Claude button. Show tool activity,
+New Session and Refresh remain below the note. The note has generous space beneath
+its three visible lines and the controls do not overlap.
+
+The light picture uses black text on white in the messages and note, with blue
+selection. High Contrast uses white text on #202020, white outlines and aqua
+selection; its dotted selection focus is visible. The probe reported no layout
+problems in either picture. No new visual defect was found.

@@ -1350,6 +1350,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Change Permission Mode for an owned Copilot chat in plan mode"
+  },
+  "main-kept": {
+   "kind": "window",
+   "png": "main-kept-light-100.png",
+   "json": "main-kept-light-100.json",
+   "title": "Fix the flaky upload test — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Kept Claude history after its original transcript is removed: read-only"
   }
  },
  "seconds": 94.1
