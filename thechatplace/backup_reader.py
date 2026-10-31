@@ -8,6 +8,7 @@ Readers and their temporary native profile live only until close().
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -145,7 +146,13 @@ class BackupReader:
                     checksum.update(chunk); output.write(chunk)
             if copied != expected_size or checksum.hexdigest() != digest:
                 raise ValueError('Backup file checksum does not match')
-            stamp = time.mktime((*info.date_time, 0, 0, -1))
+            try:
+                modified = datetime.fromisoformat(entry.get('modified') or '')
+                if modified.tzinfo is None:
+                    raise ValueError('Missing timezone')
+                stamp = modified.timestamp()
+            except (ValueError, TypeError, OverflowError):
+                stamp = time.mktime((*info.date_time, 0, 0, -1))
             os.utime(destination, (stamp, stamp))
         if set(members) - listed - {backup.MANIFEST}:
             raise ValueError('Archive contains unlisted files')

@@ -227,3 +227,26 @@ def test_aes_archive_handle_works_without_reader_password_storage():
         with BackupReader(zipped,manifest) as reader:
             session,=reader.sessions()
             assert reader.read(session).last_reply().text=='Invented reply'
+
+
+def test_extraction_preserves_manifest_utc_timestamp():
+    from datetime import datetime
+    zipped,manifest=archive({'claude/home/projects/p/native.jsonl':claude_bytes()})
+    moment='2026-10-01T12:34:56+00:00'
+    manifest['files'][0]['modified']=moment
+    with zipped, BackupReader(zipped,manifest) as reader:
+        path=reader.root/'claude/home/projects/p/native.jsonl'
+        assert path.stat().st_mtime==datetime.fromisoformat(moment).timestamp()
+
+
+def test_file_import_does_not_consult_live_provider_or_tcp_folders(monkeypatch):
+    def forbidden(): raise AssertionError('Consulted a live data folder')
+    for name in ('claude_home','projects_dir','copilot_home','copilot_sessions_dir','app_data_dir'):
+        monkeypatch.setattr(platform_paths,name,forbidden)
+    copilot='copilot/home/session-state/'+ONE+'/'
+    zipped,manifest=archive({'claude/home/projects/p/native.jsonl':claude_bytes(),
+        copilot+'workspace.yaml':f'id: {ONE}\nname: Archived\n'.encode(),
+        copilot+'events.jsonl':''.join(json.dumps(e)+'\n' for e in answered_turn()).encode()})
+    with zipped, BackupReader(zipped,manifest) as reader:
+        for session in reader.sessions():
+            assert reader.read(session).messages
