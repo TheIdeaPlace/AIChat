@@ -4565,8 +4565,12 @@ class RestoreChooserDialog(wx.Dialog):
                   0, wx.LEFT | wx.RIGHT, 8)
         self.list = wx.ListBox(self, choices=[self._text(i) for i in range(len(self._rows))],
                                style=wx.LB_SINGLE)
-        set_list_items_accessible(self.list, "Chats", lambda i: self._text(i))
-        self.list.Bind(wx.EVT_CHAR_HOOK, self._on_list_key)
+        set_list_items_accessible(self.list, lambda: "Chats", lambda index: None)
+        # On the dialog, as every dialog here does: Space on the list
+        # switches the row. A double-click (or Enter where GTK treats it as
+        # activating the row) switches it too.
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_list_key)
+        self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.toggle(self.list.GetSelection()))
         if self._rows:
             self.list.SetSelection(0)
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
@@ -4612,7 +4616,7 @@ class RestoreChooserDialog(wx.Dialog):
         self.list.SetString(index, self._text(index))
         self.list.SetSelection(index)
         self._update_restore()
-        self._say(f"{self.RESTORE if self.chosen[index] else self.SKIP}. "
+        self._say(f"{self.RESTORE if self.chosen[index] else self.SKIP}, "
                   f"{self._count()} of {len(self._rows)} chosen.")
 
     def _set_all(self, value: bool):
@@ -4622,7 +4626,8 @@ class RestoreChooserDialog(wx.Dialog):
         self.list.SetFocus()
 
     def _on_list_key(self, event):
-        if event.GetKeyCode() == wx.WXK_SPACE and not event.HasAnyModifiers():
+        if (event.GetKeyCode() == wx.WXK_SPACE and not event.HasAnyModifiers()
+                and wx.Window.FindFocus() is self.list):
             self.toggle(self.list.GetSelection())
             return
         event.Skip()

@@ -6354,7 +6354,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
     def _ask_from_worker(self, ask, job=None):
         """Run ``ask`` on the window's thread and wait for its answer, so a
         worker can ask a question while it holds open what it's reading.
-        False, without asking, if the window is closing or the job was
+        None, without asking, if the window is closing or the job was
         stopped meanwhile: a question must never open over Quit's (#449)."""
         done, answer = threading.Event(), []
 
@@ -6377,9 +6377,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         def confirm(plan, sessions):
             # Which chats (#450): all of them chosen to start with.
             def ask():
-                dialog = RestoreChooserDialog(self, imported_store.describe_plan(plan),
-                                              imported_store.chooser_rows(sessions),
-                                              say=self._feedback)
+                dialog = RestoreChooserDialog(
+                    self, imported_store.describe_plan(plan),
+                    imported_store.chooser_rows(sessions),
+                    say=lambda text: self._say(text, interrupt=True))
                 try:
                     if dialog.ShowModal() != wx.ID_OK:
                         return None

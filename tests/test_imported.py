@@ -296,3 +296,16 @@ def test_a_stop_before_the_question_asks_nothing(tmp_path, monkeypatch):
         restore_backup(made, manifest, None, store=store, cancelled=cancelled,
                        confirm=lambda plan, sessions: asked.append(plan) or True)
     assert asked == [] and store.all() == []
+
+
+
+def test_chooser_rows_survive_odd_input():
+    from thechatplace.backup_reader import ImportedSession
+    from thechatplace.imported_store import chooser_rows
+    rows = chooser_rows([
+        ImportedSession("claude", "a", "pc", "One", "C:\work\proj", 0, 1_790_000_000_000),
+        ImportedSession("codex", "b", "pc", "Two", "", 0, -5),
+        ImportedSession("copilot", "c", "pc", "Three", "/old/x/", 0, 10 ** 20)])
+    assert rows[0].startswith("One, Claude, proj, last active ")
+    assert rows[1] == "Two, Codex, no folder"
+    assert rows[2] == "Three, GitHub Copilot CLI, x"
