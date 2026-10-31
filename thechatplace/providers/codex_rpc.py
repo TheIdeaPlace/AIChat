@@ -90,8 +90,10 @@ class CodexTurnRejected(CodexRpcError):
                                   'may not allow it. No message was sent. Update Codex or choose human review.'),
         'chatgpt_required': 'Codex turns require ChatGPT sign-in.',
         'not_idle': 'Codex is still working on a turn in this chat. No new turn was sent.',
-        'awaiting_approval': 'Codex is waiting for you to approve something in this chat: Answer (Ctrl+Shift+A). No new turn was sent.',
-        'awaiting_input': 'Codex is waiting for your answer to a question in this chat: Answer (Ctrl+Shift+A). No new turn was sent.',
+        'awaiting_approval': 'Codex is waiting for you to approve something in this chat. Answer it, then send again. No new turn was sent.',
+        'awaiting_input': 'Codex is waiting for your answer to a question in this chat. Answer it, then send again. No new turn was sent.',
+        # Anything else: a reply TCP can't read, or a state it doesn't know.
+        'status_unclear': "The Chat Place couldn't confirm this Codex chat is free to take a message. If it keeps happening, quit and restart The Chat Place. No new turn was sent.",
         # Not seen yet; Stop can't reload it in place (#448 follow-up).
         'not_loaded': 'Codex closed this chat in the background. Quit and restart The Chat Place to reopen it. No new turn was sent.',
         'preflight_failed': 'Codex could not verify this chat before sending. No new turn was sent.',
@@ -140,7 +142,8 @@ def check_startable(connection, native_id, thread, *, not_loaded=False, check_tu
     elif kind not in (('idle', 'notLoaded') if not_loaded else ('idle',)):
         code = ('awaiting_approval' if 'waitingOnApproval' in flags
                 else 'awaiting_input' if 'waitingOnUserInput' in flags
-                else 'not_loaded' if kind == 'notLoaded' else 'not_idle')
+                else 'not_loaded' if kind == 'notLoaded'
+                else 'not_idle' if kind == 'active' else 'status_unclear')
         raise CodexTurnRejected(code, said)
     if not check_turns:
         return
@@ -150,10 +153,11 @@ def check_startable(connection, native_id, thread, *, not_loaded=False, check_tu
     if (not isinstance(turns, list) or len(turns) > 1
             or any(not isinstance(turn, dict) or turn.get('status') not in _ENDED_TURNS for turn in turns)):
         last = turns[0].get('status') if isinstance(turns, list) and turns and isinstance(turns[0], dict) else None
-        raise CodexTurnRejected('not_idle', f'{said}, latest turn {_token(last)}')
+        raise CodexTurnRejected('not_idle' if last == 'inProgress' else 'status_unclear',
+                                f'{said}, latest turn {_token(last)}')
     # An error status with no turn at all isn't one a turn ended in.
     if kind == 'systemError' and not turns:
-        raise CodexTurnRejected('not_idle', f'{said}, no turns')
+        raise CodexTurnRejected('status_unclear', f'{said}, no turns')
 
 
 def is_chatgpt_account(result):

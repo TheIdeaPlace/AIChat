@@ -48,6 +48,7 @@ class Window(AgentChats):
         self._agent_awaiting, self._agent_asked = {}, set()
         self._agent_last_reply, self._agent_last_heard = {}, {}
         self._agent_codex_waiting = {}
+        self._agent_send_refusals = {}
         self._agent_unconfirmed, self._agent_last_sent = set(), {}
         self._agent_sent_texts = {}
         self._agent_codex_preparing, self._agent_answered_early = set(), set()
@@ -357,6 +358,13 @@ def test_the_same_send_failure_again_adds_no_new_line(tmp_path):
     w.send('@Codex review this')
     w.codex_sent[-1][2]('Codex connection interrupted.', True)   # a different one is noted
     assert w.saved.notes[-1].text == "Couldn't send to Codex: Codex connection interrupted."
+    # Once a hand-off goes, the same refusal later is noted where it happens.
+    w.send('@Codex review this')
+    w.codex_sent[-1][2](False, None)
+    w.send('@Codex review this')
+    w.codex_sent[-1][2]('Codex connection interrupted.', True)
+    assert [n.text for n in w.saved.notes].count(
+        "Couldn't send to Codex: Codex connection interrupted.") == 2
 
 
 def test_a_conversation_not_loaded_puts_a_failed_message_on_the_clipboard(tmp_path):

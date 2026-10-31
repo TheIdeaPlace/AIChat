@@ -493,6 +493,8 @@ class AgentChats:
         def result(queued, error):
             if error:
                 self._agent_send_failed(conversation_id, index, message, queued)
+            else:
+                self._agent_send_refusals.pop((conversation_id, index), None)
 
         try:
             ready = self.sessions.owned_action("ready", record)
@@ -520,7 +522,8 @@ class AgentChats:
                 else:
                     self._send_codex_owned(record, text, announce_send=False, restore=False,
                                            on_result=lambda q, e, cid=cid, slot=slot, text=text:
-                                           e and self._agent_send_failed(cid, slot, text, q))
+                                           self._agent_send_failed(cid, slot, text, q) if e
+                                           else self._agent_send_refusals.pop((cid, slot), None))
             self.refresh_sessions()
         self._codex_work(prepare, done)
         self.refresh_sessions()
@@ -549,10 +552,11 @@ class AgentChats:
         conversation.paused, conversation.stop_reason = True, f"Couldn't send to {member.name}."
         conversation.next_index = index  # the text comes back without its @name
         note = f"Couldn't send to {member.name}: {reason}"
-        # The same refusal again (each later hand-off meets it) adds no new
-        # line: 18 identical ones filled a conversation (#448).
-        if not conversation.notes or conversation.notes[-1].text != note:
+        # The same refusal again, with nothing sent to this member since,
+        # adds no new line: 18 identical ones filled a conversation (#448).
+        if self._agent_send_refusals.get((conversation_id, index)) != note:
             self._agent_note(conversation, note)
+            self._agent_send_refusals[(conversation_id, index)] = note
         self._agent_after_change(conversation)
         body = text.partition(agents.SETUP_END)[2].strip() or text
         body = self._agent_keep_unseen(conversation_id, index, body)

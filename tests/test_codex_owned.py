@@ -374,8 +374,8 @@ def test_a_chat_whose_last_turn_failed_reopens(monkeypatch):
     ({'type': 'active', 'activeFlags': ['waitingOnUserInput']}, 'awaiting_input', 'question'),
     ({'type': 'active', 'activeFlags': []}, 'not_idle', 'still working'),
     ({'type': 'notLoaded'}, 'not_loaded', 'restart'),
-    ({'type': 'something new'}, 'not_idle', 'still working'),
-    ('not a status', 'not_idle', 'still working')])
+    ({'type': 'something new'}, 'status_unclear', "couldn't confirm"),
+    ('not a status', 'status_unclear', "couldn't confirm")])
 def test_a_refusal_says_why_and_keeps_what_codex_said(status, code, words):
     from thechatplace.providers.codex_rpc import CodexTurnRejected, check_startable
     with pytest.raises(CodexTurnRejected) as refused:
@@ -384,3 +384,16 @@ def test_a_refusal_says_why_and_keeps_what_codex_said(status, code, words):
     assert 'No new turn was sent' in str(refused.value)
     # Only fixed tokens reach the diagnostics log.
     assert refused.value.status and ' new' not in refused.value.status
+
+
+@pytest.mark.parametrize('latest,code', [([], 'status_unclear'), ([{'status': 'unknown'}], 'status_unclear'),
+                                         ([{'status': 'inProgress'}], 'not_idle')])
+def test_an_error_status_without_an_ended_turn_says_so_honestly(latest, code):
+    """#448 review: only a turn really running is "still working"."""
+    from thechatplace.providers.codex_rpc import CodexTurnRejected, check_startable
+    class Turns(Connection):
+        def request(self, method, params):
+            return {'data': latest} if method == 'thread/turns/list' else super().request(method, params)
+    with pytest.raises(CodexTurnRejected) as refused:
+        check_startable(Turns(), 'owned', {'id': 'owned', 'status': {'type': 'systemError'}})
+    assert refused.value.code == code

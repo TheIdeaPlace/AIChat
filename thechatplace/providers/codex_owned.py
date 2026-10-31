@@ -82,7 +82,7 @@ class CodexOwnedThreads:
         metadata = self.connection.request('thread/read', {'threadId': native_id, 'includeTurns': False})
         thread = metadata.get('thread')
         if not isinstance(thread, dict) or thread.get('id') != native_id:
-            raise CodexTurnRejected('not_idle')
+            raise CodexTurnRejected('status_unclear')
         # A thread whose last turn failed reports systemError until a new
         # turn starts, so reopening or rechecking it must accept that (#448).
         check_startable(self.connection, native_id, thread, not_loaded=not loaded,

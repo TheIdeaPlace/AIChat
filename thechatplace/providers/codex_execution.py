@@ -76,7 +76,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         metadata = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False})
         thread = metadata.get('thread')
         if not isinstance(thread, dict) or thread.get('id') != proof.native_id:
-            raise CodexTurnRejected('not_idle')
+            raise CodexTurnRejected('status_unclear')
         # Idle, or an error status after an ended turn (#448); the turn list
         # is checked only for the latter, as before for idle.
         check_startable(self, proof.native_id, thread, check_turns=False)
