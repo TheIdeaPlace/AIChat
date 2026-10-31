@@ -14903,7 +14903,7 @@ def test_saving_an_encrypted_schedule_keeps_the_passphrase_first(frame, env, mon
     monkeypatch.setattr(frame, "_run_scheduled_backup_if_due", lambda: None)
     frame.on_backup_schedule()
     assert kept == ["pw"] and backup.load_schedule().encrypt is True
-    assert env["feedback"][-1].startswith("Backing up every week, encrypted, to ")
+    assert env["feedback"][-1].startswith("Backing up every week, encrypted to ")
     assert "enc-sched" in env["feedback"][-1]
     assert "pw" not in (env["tmp"] / "appdata" / "backup.json").read_text(encoding="utf-8")
     # The store refusing leaves the schedule as it was.
