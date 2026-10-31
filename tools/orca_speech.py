@@ -129,8 +129,9 @@ STEPS = [
          expect=["Back up automatically"]),
     Step("Backup Schedule closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # GTK's file picker is announced by its file list, not its title.
     Step("Restore from Backup", ["alt+f", "Up", "Up", "Return"],
-         expect=["Restore which backup"]),
+         expect=["Restore from Backup", "Files"]),
     Step("restore's file question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
 ]
