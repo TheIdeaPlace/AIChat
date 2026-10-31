@@ -60,6 +60,9 @@ CREDENTIAL_DIRS = frozenset({"mcp-oauth-config", "mcp-secrets"})
 # itself (the backup API reads them); copied raw they'd be torn.
 SQLITE_SIDECARS = ("-wal", "-shm", "-journal")
 SQLITE_SUFFIXES = (".sqlite", ".sqlite3", ".db")
+# Half-written files programs rename into place: never history, and they
+# come and go while a backup runs.
+TEMPORARY_PATTERNS = ("*.tmp", "*.tmp.*", "*.partial", "*~")
 
 
 @dataclass
@@ -185,7 +188,8 @@ def walk(root: Path, area: str, *, exclude_dirs: Iterable[str] = (),
         names = set(files)
         for name in sorted(files):
             rel = f"{rel_dir}/{name}" if rel_dir else name
-            if name in CREDENTIAL_NAMES or matches(rel, name, exclude_files):
+            if (name in CREDENTIAL_NAMES or matches(rel, name, exclude_files)
+                    or any(fnmatch.fnmatchcase(name, p) for p in TEMPORARY_PATTERNS)):
                 continue
             path = here / name
             if _is_link(path):
@@ -229,18 +233,11 @@ def tcp_inventory() -> Inventory:
 
 
 def default_collectors() -> List[Callable[[], Inventory]]:
-    """Every provider's inventory, The Chat Place's first. Imported here so a
-    provider's module failing to import doesn't stop the others."""
-    collectors: List[Callable[[], Inventory]] = [tcp_inventory]
-    from .providers import claude_backup
-    collectors.append(claude_backup.inventory)
-    for name in ("codex_backup", "copilot_backup"):
-        try:
-            module = __import__(f"thechatplace.providers.{name}", fromlist=["inventory"])
-        except ImportError:
-            continue
-        collectors.append(module.inventory)
-    return collectors
+    """Every provider's inventory, The Chat Place's first. Imported here
+    (plainly, so PyInstaller bundles them) because they import this module."""
+    from .providers import claude_backup, codex_backup, copilot_backup
+    return [tcp_inventory, claude_backup.inventory, codex_backup.inventory,
+            copilot_backup.inventory]
 
 
 # Identity ------------------------------------------------------------------
@@ -480,9 +477,12 @@ def _add(archive: zipfile.ZipFile, inv: Inventory, item: Item, scratch: Path,
                 "modified": datetime.fromtimestamp(source.stat().st_mtime, timezone.utc)
                 .isoformat(timespec="seconds") if source.exists() else None}
     except FileNotFoundError:
-        # Gone between listing and reading (a temp file, a finished turn):
-        # nothing left to copy, so not a failure, but listed in the manifest.
+        # Gone between listing and reading. Temporary files are never
+        # listed, so this is history or setup that's now lost, perhaps to a
+        # provider's own cleanup, the very loss a backup is for: the backup
+        # is incomplete, and says which (#433).
         result.gone.append(item.arcname)
+        result.failures.append(f"{item.arcname}: deleted before it could be copied")
         return None
     except OSError as exc:
         result.failures.append(f"{item.arcname}: {exc.strerror or exc}")

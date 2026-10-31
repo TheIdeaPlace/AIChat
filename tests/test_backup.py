@@ -217,7 +217,7 @@ def test_unreadable_file_is_a_failure(homes, monkeypatch):
     assert any("locked.json" in f for f in result.failures)
 
 
-def test_a_file_gone_before_copying_is_listed_not_failed(homes):
+def test_a_file_gone_before_copying_makes_it_incomplete(homes):
     write(homes["data"] / "a.json", "{}")
 
     def ghost():
@@ -226,7 +226,8 @@ def test_a_file_gone_before_copying_is_listed_not_failed(homes):
         return inv
 
     result = backup.create(homes["dest"], collectors=[backup.tcp_inventory, ghost])
-    assert result.complete and result.gone == ["t/never.json"]
+    assert not result.complete and result.gone == ["t/never.json"]
+    assert any("deleted before" in f for f in result.failures)
     assert backup.read_manifest(result.path)["gone_while_copying"] == ["t/never.json"]
 
 
@@ -306,3 +307,9 @@ def test_check_text_good_and_bad(homes, tmp_path):
     assert "is good: its 1 file matches" in backup.check_text(path, backup.verify(path))
     junk = write(tmp_path / "j.zip", "x")
     assert "has problems" in backup.check_text(junk, backup.verify(junk))
+
+
+def test_temporary_files_are_never_listed(tmp_path):
+    for name in ("a.tmp", "b.json.tmp.123", "c.partial", "d~", "keep.json"):
+        write(tmp_path / name)
+    assert [i.arcname for i in backup.walk(tmp_path, "x")] == ["x/keep.json"]
