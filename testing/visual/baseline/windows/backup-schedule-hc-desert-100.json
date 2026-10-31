@@ -2,12 +2,12 @@
  "title": "Backup Schedule",
  "class": "BackupScheduleDialog",
  "size": [
-  600,
-  420
+  620,
+  500
  ],
  "client": [
-  584,
-  381
+  604,
+  461
  ],
  "dpi": [
   96,
@@ -41,7 +41,7 @@
    "rect": [
     8,
     24,
-    568,
+    588,
     23
    ],
    "best": [
@@ -80,7 +80,7 @@
    "rect": [
     10,
     73,
-    487,
+    507,
     23
    ],
    "best": [
@@ -98,7 +98,7 @@
    "name": "button",
    "label": "B&rowse...",
    "rect": [
-    501,
+    521,
     71,
     75,
     23
@@ -151,14 +151,52 @@
    "problems": []
   },
   {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "&Encrypt them with a passphrase kept on this computer",
+   "rect": [
+    8,
+    153,
+    450,
+    15
+   ],
+   "best": [
+    309,
+    15
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Change &Passphrase...",
+   "rect": [
+    464,
+    149,
+    132,
+    23
+   ],
+   "best": [
+    132,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "TextCtrl",
    "name": "About scheduled backups",
-   "label": "Scheduled backups run while The Chat Place is open; one that came due while it was closed runs a couple of minutes after it starts. They aren't encrypted, so choose a private folder, ideally on another drive or in a cloud folder. Older unencrypted backups made on this computer, by hand or on schedule, are removed to keep the number you choose, and only after a new one checks out.\r\n\r\nLast backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last scheduled backup failed on 31 October at 09:00: E:\\Backups isn't a folder that exists.",
+   "label": "Scheduled backups run while The Chat Place is open; one that came due while it was closed runs a couple of minutes after it starts. Choose a private folder, ideally on another drive or in a cloud folder. Older backups this computer made are removed to keep the number you choose, and only after a new one checks out.\r\n\r\nEncrypted, they need the passphrase to open, but the passphrase is kept on this computer for the schedule to use: anyone signed in as you here could make or open them. If you forget it, the backups can't be opened anywhere else.\r\n\r\nLast backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last scheduled backup failed on 31 October at 09:00: E:\\Backups isn't a folder that exists.",
    "rect": [
     10,
-    151,
-    568,
-    185
+    182,
+    588,
+    234
    ],
    "best": [
     127,
@@ -168,15 +206,15 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Scheduled backups run while The Chat Place is open; one that came due while it was closed runs a couple of minutes after it starts. They aren't encrypted, so choose a private folder, ideally on another drive or in a cloud folder. Older unencrypted backups made on this computer, by hand or on schedule, are removed to keep the number you choose, and only after a new one checks out.\n\nLast backup: 30 "
+   "value": "Scheduled backups run while The Chat Place is open; one that came due while it was closed runs a couple of minutes after it starts. Choose a private folder, ideally on another drive or in a cloud folder. Older backups this computer made are removed to keep the number you choose, and only after a new one checks out.\n\nEncrypted, they need the passphrase to open, but the passphrase is kept on this co"
   },
   {
    "class": "Button",
    "name": "button",
    "label": "&Save",
    "rect": [
-    420,
-    350,
+    440,
+    430,
     75,
     23
    ],
@@ -194,8 +232,8 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    501,
-    350,
+    521,
+    430,
     75,
     23
    ],

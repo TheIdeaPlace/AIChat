@@ -1162,8 +1162,8 @@
    "title": "Backup Schedule",
    "class": "BackupScheduleDialog",
    "size": [
-    600,
-    420
+    620,
+    500
    ],
    "capture": "PrintWindow",
    "problems": [],
