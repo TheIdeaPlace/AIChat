@@ -90,6 +90,7 @@ _NEEDS_YOU_CATEGORIES = {"blocked", "review_ready", "needs_input", "waiting",
 DESKTOP = "desktop"
 OWN = "own"
 TERMINAL = "terminal"
+KEPT = "kept"
 
 
 @dataclass
@@ -143,6 +144,9 @@ class SessionInfo:
     #: Copilot copy's first message carries the history (#423).
     continued_from: str = ""
 
+    #: Only set by the Claude adapter after the original has disappeared.
+    kept_transcript: Optional[Path] = None
+
     @property
     def identity(self) -> tuple[str, str]:
         """Backend and native ID; presentation keys never become native IDs.
@@ -163,6 +167,8 @@ class SessionInfo:
     @property
     def kind_label(self) -> str:
         """Where a chat originated, independent of which AI provides it."""
+        if self.source == KEPT:
+            return "kept chat (read-only)"
         if self.is_own:
             return "Chat Place session"
         if self.cowork:
@@ -192,12 +198,14 @@ class SessionInfo:
 
     @property
     def can_open_in_claude(self) -> bool:
-        return self.provider == "claude" and bool(self.desktop_session_id)
+        return self.provider == "claude" and self.source != KEPT and bool(self.desktop_session_id)
 
     def transcript_path(self) -> Optional[Path]:
         """Its transcript, or None when it isn't on disk (or has no cli id)."""
         if self.provider != "claude" or not self.cli_session_id:
             return None
+        if self.source == KEPT:
+            return self.kept_transcript if self.kept_transcript and self.kept_transcript.is_file() else None
         root = self.claude_home / "projects" if self.claude_home is not None else None
         return platform_paths.transcript_path(self.cwd, self.cli_session_id, root)
 
@@ -386,6 +394,7 @@ VIEW_DESKTOP = "desktop"
 VIEW_COWORK = "cowork"
 VIEW_OWN = "own"
 VIEW_TERMINAL = "terminal"
+KEPT = "kept"
 VIEW_REMOTE = "remote"
 VIEW_UNGROUPED = "ungrouped"
 VIEW_ARCHIVED = "archived"

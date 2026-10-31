@@ -1165,6 +1165,19 @@ class SettingsDialog(wx.Dialog):
         self.update_notice.SetValue(speech.update_installed_notice)
         outer.Add(self.update_notice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        from ..retention import describe as describe_retention
+        outer.Add(wx.StaticText(body, label="History &retention and kept copies:"),
+                  0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        self.retention = wx.TextCtrl(body, value=describe_retention(),
+                                    size=(-1, self.FromDIP(110)),
+                                    style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.retention, "History retention and kept copies")
+        self.retention.SetInsertionPoint(0)
+        outer.Add(self.retention, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        self.retention_settings = wx.Button(body, label="Open Claude's retention settings")
+        self.retention_settings.Bind(wx.EVT_BUTTON, self._open_retention_settings)
+        outer.Add(self.retention_settings, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         buttons = wx.StdDialogButtonSizer()
         ok = wx.Button(self, wx.ID_OK)
         ok.SetDefault()
@@ -1191,6 +1204,19 @@ class SettingsDialog(wx.Dialog):
         self.engine_choice.Bind(wx.EVT_CHOICE, lambda e: self._update_rate_state())
         self._update_rate_state()
         wx.CallAfter(self.level.SetFocus)
+
+    def _open_retention_settings(self, _event):
+        path = platform_paths.claude_home() / 'settings.json'
+        if not path.is_file():
+            wx.MessageBox("Claude's settings.json does not exist yet. Set cleanupPeriodDays "
+                          "in Claude Code's user settings; The Chat Place never creates or edits it.",
+                          "History Retention", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        try:
+            platform_paths.edit_file(path)
+        except OSError:
+            wx.MessageBox("Couldn't open Claude's settings in your editor.",
+                          "History Retention", wx.OK | wx.ICON_ERROR, self)
 
     def _on_clear_recent(self, clear_recent):
         if wx.MessageBox("Clear all of New Session's recent folders? Each comes back when a "

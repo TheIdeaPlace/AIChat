@@ -1500,6 +1500,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self.unload_session()
         failed = None
         try:
+            from ..history_keeper import keeper
+            from ..providers.claude import kept_identity
+            keeper().forget(kept_identity(info))
             _delete_transcript(path)
         except OSError as exc:
             failed = exc
@@ -4242,7 +4245,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         ``remote_control`` "on" puts the copy on Remote Control from its
         first turn (#96)."""
         info = self._selected_session()
-        if info is not None and info.provider != "claude" and not self._require_capability("fork", info):
+        if (info is not None and (info.provider != "claude" or info.source == "kept")
+                and not self._require_capability("fork", info)):
             return
         if info is None:
             self._feedback("No session selected.")

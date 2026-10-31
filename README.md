@@ -1468,8 +1468,14 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   between, but Orca didn't read it line by line.
 - "Needs you" for desktop sessions depends on the desktop app's turn summary, which it doesn't
   always write. A session without one shows as idle once it stops working.
-- A desktop session's transcript can be gone if it's older than Claude Code's retention period
-  (`cleanupPeriodDays` in Claude Code's settings). The chat says so.
+- Claude Code can delete old transcripts according to `cleanupPeriodDays`. The Chat Place
+  keeps copies of Claude transcripts it discovers or reads, under `kept-history/claude` in its
+  own data folder. After an original disappears, its chat remains as a **kept chat (read-only)**.
+  Copies refresh in the background, including after turns; a transcript deleted before the first
+  successful copy cannot be recovered. Rewrites retain the previous copy in `versions`.
+  Settings (Ctrl+Comma) shows provider retention and opens Claude's settings in your editor.
+  Copies have no automatic expiry, are unencrypted, and Back Up Now includes them. They still
+  need a backup on another disk. Delete Session Permanently also removes that chat's kept copy.
 - The Chat Place's own sessions, and terminal sessions, don't appear in the desktop app, so Open in
   Claude doesn't work for them; the app says so.
 - Cowork sessions can't be continued here. Their conversation is in the session's own Claude Code
