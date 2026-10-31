@@ -1653,9 +1653,12 @@ reinstall.
 
 **Encrypt it if it's leaving this computer.** Conversations can include file contents, command
 output and anything pasted into them. With a passphrase, everything in the backup is encrypted
-(AES-256), and 7-Zip or WinZip can open it with the passphrase too. The passphrase isn't kept
-anywhere: **if you forget it, nobody can open the backup.** Without one, keep the backup somewhere
-private.
+(AES-256), the names of its files and folders too. The passphrase isn't kept anywhere:
+**if you forget it, nobody can open the backup.** Without one, keep the backup somewhere private.
+
+To open an encrypted backup by hand, use 7-Zip or WinZip (on a Mac, Keka): with the passphrase
+you get `backup.zip`, an ordinary zip of the backup. Windows' own zip folders and the Mac's
+Archive Utility can't open encrypted zips.
 
 **Check Backup** (File menu) reads a backup back and compares every file with the list of what it
 should hold, so you can trust a copy before you need it. An encrypted backup asks for its

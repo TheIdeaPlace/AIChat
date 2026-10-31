@@ -119,6 +119,10 @@ STEPS = [
     Step("Tab to the choices", ["Tab"], expect=["Keep it as is"],
          refuse=["your own answer"]),
     Step("answer later, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),
+    # Back Up Now (#433, #435): the folder question, and Escape back out.
+    Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
+    Step("folder question closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
 ]
 
 #: The question "question" asks (STEPS above).

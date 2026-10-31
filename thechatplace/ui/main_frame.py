@@ -5916,7 +5916,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         no encryption; None, cancelled."""
         while True:
             first = self._ask_passphrase(
-                "Passphrase to encrypt the backup, or leave it empty for no encryption. "
+                "Passphrase to encrypt the backup, or leave it empty for no encryption.\n"
                 "If you forget it, the backup can't be opened, by you or anyone else.",
                 "Back Up Now")
             if not first:

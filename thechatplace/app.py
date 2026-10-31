@@ -106,6 +106,8 @@ def smoke_test(out_path: str) -> int:
         with pyzipper.AESZipFile(buffer) as archive:
             archive.setpassword(b"smoke")
             report["backup_encryption"] = archive.read("a") == b"backup"
+        if not report["backup_encryption"]:
+            problems.append("backup: an encrypted round trip read back the wrong bytes")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"backup: {exc}")
     try:
