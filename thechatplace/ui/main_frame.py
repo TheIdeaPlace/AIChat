@@ -6061,13 +6061,28 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         state = backup.load_state()
         status = " ".join(t for t in (backup.last_backup_text(state),
                                       backup.failure_text(state)) if t)
-        dialog = BackupScheduleDialog(self, backup.load_schedule(state), status)
+        can_encrypt = platform_paths.backup_secret_available()
+        has_passphrase = can_encrypt and platform_paths.has_backup_secret()
+        dialog = BackupScheduleDialog(self, backup.load_schedule(state), status,
+                                      can_encrypt=can_encrypt, has_passphrase=has_passphrase)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
             schedule = dialog.value()
+            passphrase = dialog.new_passphrase
         finally:
             dialog.Destroy()
+        # The passphrase goes to the system's protected store first: a
+        # schedule saved as encrypted with no passphrase would only fail.
+        try:
+            if schedule.encrypt and passphrase:
+                platform_paths.save_backup_secret(passphrase)
+            elif not schedule.encrypt and has_passphrase:
+                platform_paths.delete_backup_secret()
+        except OSError as exc:
+            wx.MessageBox(f"Couldn't keep the passphrase: {exc}\n\nThe schedule wasn't changed.",
+                          APP_NAME, wx.OK | wx.ICON_ERROR, self)
+            return
         try:
             backup.save_schedule(schedule)
         except OSError as exc:
@@ -6078,7 +6093,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self._feedback("Scheduled backups are off.")
             return
         every = "every day" if schedule.every == "daily" else "every week"
-        self._feedback(f"Backing up {every} to {schedule.folder}, keeping {schedule.keep}.")
+        locked = ", encrypted" if schedule.encrypt else ""
+        self._feedback(f"Backing up {every}{locked} to {schedule.folder}, keeping {schedule.keep}.")
         self._run_scheduled_backup_if_due()
 
     def _run_scheduled_backup_if_due(self):

@@ -101,6 +101,13 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "codex_home", lambda: root / "codex")
     patch(platform_paths, "agents_skills_dir", lambda: root / "agents-skills")
     patch(platform_paths, "edit_file", lambda path: opened.append(("edit", path)))
+    # Nor the real keychain or keyring (#442): a kept passphrase in memory.
+    secret = {}
+    patch(platform_paths, "backup_secret_available", lambda: True)
+    patch(platform_paths, "has_backup_secret", lambda: "pw" in secret)
+    patch(platform_paths, "load_backup_secret", lambda: secret.get("pw"))
+    patch(platform_paths, "save_backup_secret", lambda text: secret.__setitem__("pw", text))
+    patch(platform_paths, "delete_backup_secret", lambda: secret.pop("pw", None))
     patch(platform_paths, "show_in_folder", lambda path: opened.append(("show", path)))
     boxes = []
     patch(wx, "MessageBox", lambda *a, **k: boxes.append(a[0]) or wx.YES)

@@ -349,11 +349,13 @@ def tcp_inventory() -> Inventory:
     inv.areas.append(Area("thechatplace/data", str(root),
                           "The Chat Place's settings, groups and session records"))
     inv.items = walk(root, "thechatplace/data",
-                     exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json"),
+                     exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json",
+                                    platform_paths.BACKUP_SECRET_FILE + "*"),
                      inventory=inv)
     inv.skipped += ["*.log (diagnostic logs)",
                     "session-tools.json (a running chat's connection key, made anew)",
-                    "computer.json (this computer's id; another computer has its own)"]
+                    "computer.json (this computer's id; another computer has its own)",
+                    "the scheduled backups' protected passphrase (it only works here)"]
     duplicates = _kept_copies_of_present_originals(root)
     if duplicates:
         prefix = "thechatplace/data/kept-history/claude/"
@@ -1059,6 +1061,9 @@ class Schedule:
     every: str = "off"           # one of SCHEDULES
     folder: str = ""
     keep: int = DEFAULT_KEEP
+    # Encrypted with the passphrase kept in the system's protected store
+    # (#442), never in backup.json.
+    encrypt: bool = False
 
     @property
     def on(self) -> bool:
@@ -1075,7 +1080,7 @@ def load_schedule(state: Optional[dict] = None) -> Schedule:
     except (TypeError, ValueError, OverflowError):
         keep = DEFAULT_KEEP
     folder = raw.get("folder") if isinstance(raw.get("folder"), str) else ""
-    return Schedule(every, folder, keep)
+    return Schedule(every, folder, keep, raw.get("encrypt") is True)
 
 
 def _save_state(state: dict) -> None:
@@ -1090,7 +1095,7 @@ def save_schedule(schedule: Schedule) -> None:
     user has just fixed the folder or plugged the drive in."""
     def change(state):
         state["schedule"] = {"every": schedule.every, "folder": schedule.folder,
-                             "keep": schedule.keep}
+                             "keep": schedule.keep, "encrypt": bool(schedule.encrypt)}
         state.pop("schedule_tried", None)
     _update_state(change, quiet=False)
 
@@ -1181,20 +1186,55 @@ def _made_by(path: Path) -> Optional[str]:
     return ident if isinstance(ident, str) else None
 
 
+MADE_KEEP = 200     # how many scheduled backups' names are remembered
+
+
+def note_made(path: Path) -> None:
+    """Remember a scheduled backup this computer made (its path and size)."""
+    try:
+        entry = {"path": str(path), "size": Path(path).stat().st_size}
+    except OSError:
+        return
+
+    def change(state):
+        made = [m for m in state.get("schedule_made") or [] if isinstance(m, dict)
+                and m.get("path") != entry["path"]]
+        state["schedule_made"] = (made + [entry])[-MADE_KEEP:]
+    _update_state(change)
+
+
+def _same_path(path) -> str:
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
+def _made_here(path: Path, made: dict) -> bool:
+    """A scheduled backup this computer recorded making, unchanged since."""
+    size = made.get(_same_path(path))
+    try:
+        return size is not None and path.stat().st_size == size
+    except OSError:
+        return False
+
+
 def prune(folder: Path, keep: int, computer_id: str, newest: Path) -> List[Path]:
     """Delete this computer's oldest backups in ``folder`` so ``keep`` are
     left, counting ``newest`` (the one just made and checked), which is never
     deleted. "This computer's" means its manifest says so (#443 review): a
     shared cloud folder can hold another computer's backups under a name that
-    cleans up to the same text. Only files named like backups are opened, and
-    an encrypted one or one that can't be read is left alone. Returns what
-    was deleted."""
+    cleans up to the same text. An encrypted one's manifest can't be read, so
+    a scheduled backup recorded as made here, the same size since, counts too
+    (#442). Anything else, including a backup that can't be read, is left
+    alone. Returns what was deleted."""
+    made = {_same_path(m.get("path")): m.get("size")
+            for m in load_state().get("schedule_made") or []
+            if isinstance(m, dict) and isinstance(m.get("path"), str)}
     mine = []
     for path in Path(folder).glob(f"{FILE_PREFIX}*.zip"):
         # A name, then the stamp: YYYY-MM-DD-HHMMSS, perhaps with " (n)".
         stamp = path.name[:-4].split(" (")[0][-17:]
         if (len(stamp) == 17 and stamp.replace("-", "").isdigit() and path.is_file()
-                and path != Path(newest) and _made_by(path) == computer_id):
+                and path != Path(newest)
+                and (_made_here(path, made) or _made_by(path) == computer_id)):
             mine.append(path)
     mine.sort(key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
     deleted = []
@@ -1204,6 +1244,11 @@ def prune(folder: Path, keep: int, computer_id: str, newest: Path) -> List[Path]
             deleted.append(path)
         except OSError:
             pass
+    gone = {_same_path(path) for path in deleted}
+    if gone:
+        _update_state(lambda state: state.__setitem__("schedule_made", [
+            m for m in state.get("schedule_made") or []
+            if isinstance(m, dict) and _same_path(m.get("path", "")) not in gone]))
     return deleted
 
 
@@ -1252,9 +1297,17 @@ def run_scheduled(cancelled: Optional[Callable[[], bool]] = None,
     problem = schedule_folder_problem(schedule.folder)
     if problem:
         raise ValueError(problem)
+    passphrase = None
+    if schedule.encrypt:
+        passphrase = platform_paths.load_backup_secret()
+        if not passphrase:
+            # Never quietly unencrypted: the user chose encryption (#442).
+            raise ValueError("The scheduled backups' passphrase isn't on this computer any more. "
+                             "Set it again in File, Backup Schedule.")
     result = create(Path(schedule.folder), cancelled=cancelled, collectors=collectors, now=now,
-                    progress=progress)
+                    progress=progress, passphrase=passphrase)
     record(result)
+    note_made(result.path)
     clear_scheduled_failure()
     if result.complete:
         removed = prune(Path(schedule.folder), schedule.keep,

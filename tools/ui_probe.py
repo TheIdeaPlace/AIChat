@@ -1645,11 +1645,12 @@ def d_backup_schedule(frame, env):
     failure to report, so the read-only box has its longest text."""
     from thechatplace import backup
     from thechatplace.ui.dialogs import BackupScheduleDialog
-    schedule = backup.Schedule("daily", str(env["tmp"]), 5)
+    schedule = backup.Schedule("daily", str(env["tmp"]), 5, encrypt=True)
     status = ("Last backup: 30 October 2026 at 19:43, 212.4 MB, in E:\\Backups. The last "
               "scheduled backup failed on 31 October at 09:00: E:\\Backups isn't a folder "
               "that exists.")
-    return lambda: frame._modal(BackupScheduleDialog(frame, schedule, status))
+    return lambda: frame._modal(BackupScheduleDialog(frame, schedule, status,
+                                                     has_passphrase=True))
 
 
 def d_prompt_edit(frame, env):

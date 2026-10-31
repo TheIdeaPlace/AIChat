@@ -711,11 +711,11 @@ Text is black on white (21:1) and the selected row white on #0078D4 (4.5:1). In 
 
 **What looks off:** Nothing.
 
-## backup-schedule: File, Backup Schedule, daily, after a failure (#437)
+## backup-schedule: File, Backup Schedule, daily, encrypted, after a failure (#437, #442)
 
-The 586 by 413 Backup Schedule dialog. From the top: "Back up automatically:" over a full-width box reading "Every day". "Folder for the backups:" over a box holding the folder path, with Browse... beside it. "Backups to keep:" over a narrow spin box reading 5. Below is a read-only box filling the width and most of the remaining height. It holds the explanation (it runs while The Chat Place is open, one that came due while it was closed runs a couple of minutes after it starts, it isn't encrypted, older unencrypted backups made on this computer are removed only after a new one checks out), a blank line, then the last backup and the last failure, all wrapped inside the box, with about a third of it empty below. Save (the default) and Cancel are at the bottom right. Nothing is cut off or overlapping.
+The 606 by 493 Backup Schedule dialog. From the top: "Back up automatically:" over a full-width box reading "Every day". "Folder for the backups:" over the folder path, with Browse... beside it. "Backups to keep:" over a narrow spin box reading 5. Then a row with the checked box "Encrypt them with a passphrase kept on this computer" and, at the right, Change Passphrase.... Below is a read-only box filling the width and most of the remaining height, with three paragraphs: how scheduled backups run and are pruned; what the kept passphrase means; and the last backup and the last failure. All of it wraps inside the box, with about a third of it empty below. Save (the default) and Cancel are at the bottom right. Nothing is cut off or overlapping.
 
-Text is black on #F0F0F0 for the labels (18.4:1) and black on white in the boxes (21:1). In High Contrast Desert, text is #202020 on cream #FFFAEF (15.7:1), the folder path #3D3D3D on cream (10.4:1), and the default Save button cream on rust brown (#FFF5E3 on #903909, 7.0:1).
+Labels are black on #F0F0F0 (18.4:1), the box text black on white (21:1), and the buttons' text black on #FDFDFD (20.6:1). In High Contrast Desert, text is #202020 on cream #FFFAEF (15.7:1), and the default Save button is cream on rust brown (#FFF5E3 on #903909, 7.0:1).
 
 **What looks off:** Nothing.
 
