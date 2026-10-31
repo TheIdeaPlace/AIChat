@@ -502,3 +502,9 @@ def test_a_cloud_folder_isnt_called_the_same_disk(homes, monkeypatch):
     monkeypatch.setattr(backup, "_inside", lambda child, parent: Path(child) == Path(parent)
                         or Path(parent) in Path(child).parents)
     assert backup.same_drive_as_home(cloud) is False
+
+
+def test_nothing_to_back_up_saves_nothing(homes):
+    with pytest.raises(ValueError, match="nothing to back up"):
+        backup.create(homes["dest"], collectors=[backup.tcp_inventory, claude_backup.inventory])
+    assert list(homes["dest"].iterdir()) == []

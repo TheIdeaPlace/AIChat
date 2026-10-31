@@ -428,6 +428,11 @@ def create(dest_dir: Path, *, collectors: Optional[Sequence[Callable[[], Invento
     problem = destination_problem(dest_dir, inventories)
     if problem:
         raise ValueError(problem)
+    if not any(inv.items for inv in inventories):
+        # An empty zip would look like a backup and hold nothing.
+        reason = f" ({result.failures[0]})" if result.failures else ""
+        raise ValueError("There's nothing to back up: no Claude, Codex, Copilot CLI or "
+                         f"Chat Place files were found on this computer{reason}.")
 
     computer = computer_identity()
     now = now or datetime.now()
