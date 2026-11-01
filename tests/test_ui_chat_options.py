@@ -103,7 +103,7 @@ def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, 
             "Your setting (Default)", "Default", "Concise", "Explanatory"]
         dialog.agent.SetSelection(1)
         dialog.style.SetSelection(2)
-        dialog.instructions.SetValue("  Answer in French.\r\nShort.  ")
+        dialog.instructions.SetValue("  Answer in French.\nShort.  ")
         other = tmp_path / "Other"
         other.mkdir()
         assert dialog.add_folder(str(other))
@@ -160,6 +160,10 @@ def test_continue_here_carries_its_chat_options(frame, folder, tmp_path, monkeyp
     frame.on_continue_here()
     command = FakeRunner.instances[-1].command
     assert "--fork-session" in command and "--append-system-prompt=Keep going." in command
+    # The copy carries the source's recorded system prompt, so it's made afresh.
+    assert command[command.index("--system-prompt-snapshot") + 1] == "off"
+    new_id = command[command.index("--session-id") + 1]
+    assert frame.store.get(new_id).prompt_fresh
 
 
 # -- File, Chat Options ---------------------------------------------------------------------
@@ -273,8 +277,8 @@ def test_ask_aside_asks_a_read_only_copy_and_says_the_answer(frame, env, folder,
         assert env["feedback"][-1] == "Asking Claude."
         runner = FakeAside.instances[-1]
         runner.on_event(AsideEvent("text", "main"))
-        assert pump(lambda: dialog.history.GetString(0) == "Q: Which file did you change? "
-                                                           "A: main")
+        assert pump(lambda: dialog.answer.GetValue().endswith("Answer:\nmain"))
+        assert dialog.history.GetString(0) == "Q: Which file did you change? A: asking…"
         runner.on_event(AsideEvent("done", "main.py, line 4."))
         assert pump(lambda: not dialog.asking)
         assert dialog.answer.GetValue() == ("Question: Which file did you change?\n\n"
@@ -310,6 +314,35 @@ def test_escape_while_asking_stops_and_keeps_the_dialog(frame, env, monkeypatch)
         assert pump(lambda: not dialog.asking)
         assert env["feedback"][-1] == "Stopped asking."
         assert dialog.history.GetString(0) == "Q: long one A: not answered: Stopped."
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+
+
+def test_close_while_asking_stops_and_closes(frame, env, monkeypatch):
+    seen = {}
+
+    def steps(dialog):
+        dialog.question.SetValue("long one")
+        dialog.on_ask()
+        dialog.on_close(stop_first=False)  # the Close button, or Alt+F4
+        seen["cancelled"] = FakeAside.instances[-1].cancelled
+        seen["closed"] = dialog._closed
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+    assert seen == {"cancelled": True, "closed": True}
+
+
+def test_answers_stream_at_a_steady_pace(frame, env, monkeypatch):
+    def steps(dialog):
+        dialog.question.SetValue("q")
+        dialog.on_ask()
+        runner = FakeAside.instances[-1]
+        runner.on_event(AsideEvent("text", "One"))
+        assert pump(lambda: dialog.answer.GetValue().endswith("Answer:\nOne"))
+        runner.on_event(AsideEvent("text", "One two"))  # too soon to show
+        pump(lambda: False, timeout=0.2)
+        assert dialog.answer.GetValue().endswith("Answer:\nOne")
+        assert dialog.items[0].answer == "One two"
     select(frame, "Mine")
     _drive_aside(frame, monkeypatch, steps)
 

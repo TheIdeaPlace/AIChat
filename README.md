@@ -371,7 +371,7 @@ too).
   **Copy Answer** (Alt+C) copies the selected answer. While Claude is answering, Ask becomes
   **Stop**, and Escape stops it; otherwise Escape closes. Claude answers in a copy of the
   conversation that is never saved, with the same model as the chat, and can read files in its
-  folder (Read, Grep and Glob only; no commands, edits or connected tools), so nothing in the
+  folder (Read, Grep and Glob only; no commands, edits, hooks or connected tools), so nothing in the
   chat or its folder changes. Each question uses your Claude plan, as a message does.
 - **Reply box:** for The Chat Place's own sessions, type and press Ctrl+Enter (or Send). You stay in
   the reply box. While a turn is running, Ctrl+Alt+Enter steers instead (see

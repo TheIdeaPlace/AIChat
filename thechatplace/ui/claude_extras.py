@@ -184,10 +184,11 @@ class ClaudeExtras:
             runner.start()
             return runner
 
-        def say(answer):
+        def say(answer, failed=False):
             # The answer to a key press: it may cut in (#468), as the reply
             # to what you just did; the level decides how much is said.
-            text = announce.aside_text(answer, self.speech.announce)
+            text = (f"Not answered. {answer}" if failed
+                    else announce.aside_text(answer, self.speech.announce))
             if text:
                 self._say(text)
         returning_to = wx.Window.FindFocus()

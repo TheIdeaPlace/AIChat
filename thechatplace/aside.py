@@ -21,6 +21,9 @@ Checked with Claude Code 2.1.296 and real Haiku runs:
   a file in the folder to answer.
 * It worked while the source chat had a turn running: it answers from what
   the transcript holds so far.
+* ``--settings {"disableAllHooks": true}`` keeps your and the project's hooks
+  from running: without it a project's Stop and UserPromptSubmit hooks ran
+  (and wrote their file) on every aside.
 * ``--tools Read,Grep,Glob`` leaves only those tools; ``--strict-mcp-config``
   with no ``--mcp-config`` leaves out MCP servers and claude.ai connectors,
   which would otherwise load (and some of which can change things). Nothing
@@ -52,6 +55,9 @@ from .claude_cli import (INIT_ANSWER_WAIT, ResumeRefused, StreamParser, api_key_
 #: The tools an aside may use: it can look at files, never change anything.
 ASIDE_TOOLS = "Read,Grep,Glob"
 
+#: Settings for the aside's process only: hooks off (see build_aside_command).
+ASIDE_SETTINGS = '{"disableAllHooks": true}'
+
 #: Said when an aside is refused for a Cowork session.
 COWORK_REFUSED = ("Ask Aside isn't available for Cowork sessions: their conversation is in "
                   "the desktop app's own files. Open the session in Claude to ask there.")
@@ -68,7 +74,11 @@ def build_aside_command(executable: str, source_id: str, model: str = "",
     command = [executable, "-p", "--input-format", "stream-json", "--output-format",
                "stream-json", "--verbose", "--include-partial-messages",
                "--permission-mode", "manual", "--permission-prompts", "none",
-               "--tools", ASIDE_TOOLS, "--strict-mcp-config"]
+               "--tools", ASIDE_TOOLS, "--strict-mcp-config",
+               # No hooks: a project's Stop or UserPromptSubmit hook ran on
+               # every aside (checked: it wrote its file), and could change
+               # things in a folder that's read-only here.
+               "--settings", ASIDE_SETTINGS]
     if model:
         if not is_safe_model(model):
             raise ValueError(f"Not a valid model name: {model!r}")

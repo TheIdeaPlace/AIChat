@@ -1017,7 +1017,7 @@ holds so far. It isn't available for Cowork chats, kept copies, or Codex and Cop
 
 Nothing is added to the chat, and nothing in its folder changes: Claude answers in a copy of the
 conversation that's never saved, with the chat's model, and can only read files (no commands,
-edits or connected tools). Each question uses your Claude plan, as a message does.
+edits, hooks or connected tools). Each question uses your Claude plan, as a message does.
 
 ### Replying
 

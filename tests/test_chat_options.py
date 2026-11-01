@@ -218,6 +218,8 @@ def test_aside_is_a_fork_that_is_never_saved_and_can_only_read():
                             "--no-session-persistence"]
     assert command[command.index("--tools") + 1] == ASIDE_TOOLS == "Read,Grep,Glob"
     assert "--strict-mcp-config" in command and "--mcp-config" not in command
+    # No hooks: a project's Stop hook ran on every aside before.
+    assert json.loads(command[command.index("--settings") + 1]) == {"disableAllHooks": True}
     assert command[command.index("--permission-prompts") + 1] == "none"
     assert command[command.index("--model") + 1] == "haiku"
     assert "--include-partial-messages" in command
@@ -298,6 +300,20 @@ def test_stopping_an_aside_ends_its_process_tree(tmp_path):
     while platform_paths.pid_alive(grandchild) and time.time() < deadline:
         time.sleep(0.1)
     assert not platform_paths.pid_alive(grandchild)
+
+
+def test_aside_stops_if_claude_code_would_use_an_api_key(tmp_path):
+    from test_claude_cli import FakeProcess, ev
+    answer = ev(type="control_response", response={
+        "subtype": "success", "request_id": cli.INIT_REQUEST_ID, "response": {}})
+    init = ev(type="system", subtype="init", session_id="s", apiKeySource="ANTHROPIC_API_KEY")
+    process = FakeProcess([answer, init, ev(type="result", subtype="success", result="no")])
+    events = []
+    runner = AsideRunner([EXE], str(tmp_path), "q", events.append, popen=lambda c, **k: process)
+    runner.start()
+    runner.join(10)
+    assert events[-1].kind == "failed" and "API key" in events[-1].text
+    assert process.killed
 
 
 def test_aside_in_a_missing_folder_fails_without_starting(tmp_path):

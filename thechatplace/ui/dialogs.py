@@ -5,6 +5,7 @@ import dataclasses
 import os
 import sys
 import threading
+import time
 from types import SimpleNamespace
 from pathlib import Path
 from typing import Optional
@@ -4822,6 +4823,8 @@ class ChatOptionsDialog(wx.Dialog):
         self.instructions = wx.TextCtrl(self, value=self._options.instructions,
                                         style=wx.TE_MULTILINE | wx.TE_RICH2)
         set_accessible_name(self.instructions, "Instructions for this chat")
+        from ..chat_options import MAX_INSTRUCTIONS
+        self.instructions.SetMaxLength(MAX_INSTRUCTIONS)  # as kept: no silent cut
         self.instructions.SetMinSize(dip(self, -1, 110))
         sizer.Add(self.instructions, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -4860,7 +4863,11 @@ class ChatOptionsDialog(wx.Dialog):
         self.folders.Bind(wx.EVT_KEY_DOWN, self._on_folders_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         if choices is None and load_choices is not None:
-            wx.CallAfter(load_choices, folder, self._choices_loaded)
+            if folder and os.path.isdir(folder):
+                wx.CallAfter(load_choices, folder, self._choices_loaded)
+            else:
+                wx.CallAfter(self._feedback, "Choose an existing folder first to see its "
+                                             "agents and output styles.")
         wx.CallAfter(lambda: self and self.agent.SetFocus())
 
     # -- the agent and style choices
@@ -4987,6 +4994,9 @@ class ChatOptionsDialog(wx.Dialog):
         return list(self.folders.GetStrings())
 
 
+#: How often, in seconds, an answer being written is shown as it grows.
+STREAM_EVERY = 0.75
+
 #: What the Answer box says before anything is asked.
 ASIDE_INTRO = (
     "Ask a question about this chat, such as which file Claude changed or what a reply meant. "
@@ -5008,13 +5018,14 @@ class AskAsideDialog(wx.Dialog):
                          size=dialog_size(parent, 680, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._ask = ask
-        self._say = say or (lambda text: None)
+        self._say = say or (lambda text, failed=False: None)
         self._copy = copy or (lambda text: True)
         self._feedback = feedback or (lambda text: None)
         self.items = []
         self._runner = None
         self._asking = None  # the AsideItem being answered
         self._closed = False
+        self._streamed_at = 0.0
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="Your &question:"), 0, wx.LEFT | wx.TOP, 10)
         # Enter starts a new line, as in the reply box; Ctrl+Enter asks.
@@ -5048,8 +5059,8 @@ class AskAsideDialog(wx.Dialog):
         self.SetEscapeId(wx.ID_NONE)
         self.ask_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_ask())
         self.copy_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_copy())
-        close.Bind(wx.EVT_BUTTON, lambda e: self.on_close())
-        self.Bind(wx.EVT_CLOSE, lambda e: self.on_close(window_closed=True))
+        close.Bind(wx.EVT_BUTTON, lambda e: self.on_close(stop_first=False))
+        self.Bind(wx.EVT_CLOSE, lambda e: self.on_close(stop_first=False))
         self.history.Bind(wx.EVT_LISTBOX, lambda e: self._show_selected())
         self.history.Bind(wx.EVT_KEY_DOWN, self._on_history_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
@@ -5063,6 +5074,11 @@ class AskAsideDialog(wx.Dialog):
         code = event.GetKeyCode()
         if code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and event.ControlDown() \
                 and not event.AltDown():
+            if self.asking:
+                # Not Stop: a next question typed while the answer comes
+                # would otherwise cancel it, and be lost.
+                self._feedback("Claude is still answering. Escape stops it.")
+                return
             self.on_ask()
             return
         if code == wx.WXK_ESCAPE and not event.HasAnyModifiers():
@@ -5092,14 +5108,23 @@ class AskAsideDialog(wx.Dialog):
             self.answer.SetInsertionPoint(0)
 
     def _focus_answer(self):
+        """To the Answer box, on its answer's first line (after the question)."""
         self.answer.SetFocus()
-        self.answer.SetInsertionPoint(0)
-        self.answer.ShowPosition(0)
+        text = self.answer.GetValue()
+        start = text.find("\nAnswer:\n")
+        position = start + len("\nAnswer:\n") if start >= 0 else 0
+        # Windows counts a line break as two places in a rich text box.
+        position = self.answer.XYToPosition(0, text[:position].count("\n")) \
+            if start >= 0 else 0
+        self.answer.SetInsertionPoint(max(position, 0))
+        self.answer.ShowPosition(max(position, 0))
 
-    def _refresh_row(self, item):
+    def _refresh_row(self, item, streaming: bool = False):
         index = self.items.index(item)
-        self.history.SetString(index, item.row())
-        if self.history.GetSelection() == index:
+        focus = wx.Window.FindFocus()
+        if not streaming:  # the row says "asking…" until the answer is whole
+            self.history.SetString(index, item.row())
+        if self.history.GetSelection() == index and not (streaming and focus is self.answer):
             self.answer.ChangeValue(item.full())
 
     def on_ask(self):
@@ -5135,7 +5160,13 @@ class AskAsideDialog(wx.Dialog):
         if event.kind == "text":
             if item.asking:
                 item.answer = event.text
-                self._refresh_row(item)
+                # Not on every word: rewriting the row and the box moves a
+                # screen reader's place in them. Never the one with focus;
+                # the whole answer replaces it when it comes.
+                now = time.monotonic()
+                if now - self._streamed_at >= STREAM_EVERY:
+                    self._streamed_at = now
+                    self._refresh_row(item, streaming=True)
             return
         item.asking = False
         item.failed = event.kind != "done"
@@ -5153,12 +5184,11 @@ class AskAsideDialog(wx.Dialog):
         if item.failed and item.answer == "Stopped.":
             self._feedback("Stopped asking.")
             return
-        # The answer to a key press: in the Answer box, read by line, and said.
-        self._focus_answer()
-        if item.failed:
-            self._say(f"Not answered. {item.answer}")
-        else:
-            self._say(item.answer)
+        # The answer to a key press: said, and in the Answer box to read by
+        # line, where focus goes, unless you've started the next question.
+        if not self.question.GetValue().strip():
+            self._focus_answer()
+        self._say(item.answer, failed=item.failed)
 
     def stop(self):
         """Stop the question being answered, if one is."""
@@ -5176,12 +5206,13 @@ class AskAsideDialog(wx.Dialog):
         else:
             self._feedback("Couldn't open the clipboard.")
 
-    def on_close(self, window_closed: bool = False):
-        """Close; Escape while asking stops asking first. Closing the window
-        (Alt+F4) stops it and closes."""
+    def on_close(self, stop_first: bool = True):
+        """Escape: while asking, stop asking and stay; otherwise close. Close
+        and closing the window (Alt+F4) stop it and close (``stop_first``
+        False)."""
         if self.asking:
             self.stop()
-            if not window_closed:
+            if stop_first:
                 return
         self._closed = True
         _end_modal(self, wx.ID_CANCEL)

@@ -1360,6 +1360,7 @@ def d_ask_aside(frame, env):
                                   "signals that the upload is done.\n\nNothing else changed."))
     dialog.question.SetValue("Did the tests pass afterwards?")
     dialog.on_ask()
+    dialog._streamed_at = 0.0
     runners[1](AsideEvent("text", "Yes: all 12"))
     dialog.history.SetSelection(0)
     dialog._show_selected()

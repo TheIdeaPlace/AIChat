@@ -4577,7 +4577,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, ClaudeExtr
                 taken_ids={s.cli_session_id for s in self.store.all()}
                 | set(self._snapshot.desktop_cli_ids),
                 cowork_ids=self._snapshot.cowork_cli_ids, effort=effort,
-                allowed_dirs=more_folders, options=chat_options)
+                allowed_dirs=more_folders,
+                options=dataclasses.replace(chat_options, fresh=bool(chat_options)))
         except (ResumeRefused, ValueError) as exc:
             wx.MessageBox(str(exc), APP_NAME, wx.OK | wx.ICON_WARNING, self)
             return
@@ -4585,6 +4586,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, ClaudeExtr
                          permission_mode=mode, started=False, model=model, effort=effort,
                          fork_source=info.cli_session_id, forked_from=info.title,
                          remote_control=remote_control,
+                         # The copy carries the source's recorded system
+                         # prompt (checked: instructions given to a fork were
+                         # ignored), so its own options need it made afresh.
+                         prompt_fresh=bool(chat_options),
                          **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
