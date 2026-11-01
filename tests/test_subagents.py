@@ -406,3 +406,47 @@ def test_count_is_zero_without_a_folder(tmp_path):
     assert subagents.count(None) == 0
     assert os.fspath(platform_paths.subagents_dir(tmp_path / "s.jsonl")) == \
         os.fspath(tmp_path / "s" / "subagents")
+
+
+# -- copies of a chat (#468) ------------------------------------------------------------------
+
+
+def test_a_copy_reads_the_subagents_of_the_chat_it_was_copied_from(tmp_path):
+    """A branch's or Continue Here copy's history has its source's Agent
+    calls; their transcripts stay beside the source, and are found there."""
+    source = tmp_path / "source.jsonl"
+    copy = tmp_path / "copy.jsonl"
+    _write(source, [user_text("Go.")])
+    _write(copy, [user_text("Go.")])
+    _subagent(source, "a1", _review("a1"))
+    _subagent(copy, "a2", _review("a2"))
+    tracker = SubagentTracker(copy, [source])
+    tracker.refresh()
+    assert sorted(tracker.files) == ["a1", "a2"]
+    assert subagents.count(copy, [source]) == 2
+    assert subagents.count(copy) == 1
+
+
+def test_source_transcripts_follow_copies_of_copies(tmp_path, monkeypatch):
+    class Own:
+        def __init__(self, cid, fork_source=""):
+            self.cli_session_id, self.fork_source, self.cwd = cid, fork_source, str(tmp_path)
+
+    class Store:
+        def __init__(self, *owns):
+            self.owns = {o.cli_session_id: o for o in owns}
+
+        def get(self, cid):
+            return self.owns.get(cid)
+
+    paths = {"orig": tmp_path / "orig.jsonl", "mid": tmp_path / "mid.jsonl"}
+    monkeypatch.setattr(platform_paths, "transcript_path", lambda cwd, cid: paths.get(cid))
+    store = Store(Own("mid", "orig"), Own("last", "mid"))
+    info = SessionInfo(source="own", key="own:last", title="t", cwd=str(tmp_path),
+                       cli_session_id="last")
+    assert subagents.source_transcripts(store, info) == [paths["orig"], paths["mid"]]
+    # A loop in hand-edited records can't run forever.
+    looped = Store(Own("a", "b"), Own("b", "a"))
+    info_a = SessionInfo(source="own", key="own:a", title="t", cwd=str(tmp_path),
+                         cli_session_id="a")
+    assert len(subagents.source_transcripts(looped, info_a)) <= 2

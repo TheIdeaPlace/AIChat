@@ -126,9 +126,11 @@ class ClaudeExtras:
         if change.options_changed:
             changes.update(agent=after.agent, instructions=after.instructions,
                            output_style=after.output_style)
-            if self._session_exists(own):
+            if self._session_exists(own) or own.fork_source:
                 # Claude Code keeps the system prompt it recorded on the
-                # chat's first turn, which would hide the change (#468).
+                # chat's first turn, which would hide the change (#468). A
+                # copy not yet started (a branch) inherits its source's
+                # recorded prompt the same way.
                 changes["prompt_fresh"] = True
         if not self._store_write(self.store.update, own.cli_session_id, **changes):
             return

@@ -1677,8 +1677,10 @@ class TurnRunner:
             # line break would cut JSON lines that contain U+2028.
             command = list(self.command)
             if self.disabled_mcp:
-                from .claude_mcp import settings_args
-                command += settings_args(self.disabled_mcp)
+                # Merged into Chat Options' --settings if there is one: a
+                # second --settings would replace the first (#468).
+                from .claude_mcp import with_settings
+                command = with_settings(command, self.disabled_mcp)
             if self.mcp_config:
                 # Last: --mcp-config takes several values, so nothing that
                 # isn't one may follow it.

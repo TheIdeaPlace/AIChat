@@ -65,7 +65,8 @@ class SubagentsHost:
             return
         tracker = self._subagent_tracker
         if tracker is None:
-            tracker = self._subagent_tracker = subagents.SubagentTracker(reader.path)
+            tracker = self._subagent_tracker = subagents.SubagentTracker(
+                reader.path, subagents.source_transcripts(self.store, info))
         # A copy taken here, while no read of the transcript is running.
         parent = Transcript(agents=[dataclasses.replace(c) for c in reader.transcript.agents],
                             agent_notes=dict(reader.transcript.agent_notes))

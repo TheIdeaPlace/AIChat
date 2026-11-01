@@ -2704,6 +2704,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._properties_busy:
             return  # Alt+Enter twice: the first is still reading
         self._properties_busy = True
+        # Read here, on the window's thread, where the store is kept.
+        copied_from = (subagents.source_transcripts(self.store, info)
+                       if info.provider == "claude" else [])
 
         def work():
             transcript, path, size, error = None, "", 0, ""
@@ -2714,7 +2717,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     reader.refresh()
                     transcript = reader.transcript
                 if info.provider == "claude" and path:
-                    subagent_count = subagents.count(path)  # #468
+                    subagent_count = subagents.count(path, copied_from)  # #468
             except Exception as exc:  # noqa: BLE001 - say what can be said without it
                 transcript, error = None, str(exc) or type(exc).__name__
             wx.CallAfter(self._session_properties_read, info, transcript, path, size, error,

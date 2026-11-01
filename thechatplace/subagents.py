@@ -244,22 +244,28 @@ class SubagentTracker:
     """A session's subagents, kept up as they work. For one caller at a
     time (the window's background reader); ``subagents`` returns copies."""
 
-    def __init__(self, transcript_path: Path) -> None:
+    def __init__(self, transcript_path: Path, sources: Iterable[Path] = ()) -> None:
         self.folder = platform_paths.subagents_dir(transcript_path)
+        #: The subagents folders of the chats this one was copied from
+        #: (Continue Here, Rewind to Here, Branch from Here, #468): the
+        #: copy's history has their Agent calls, but their transcripts stay
+        #: beside the source's. Read first, so the copy's own win.
+        self.folders = [platform_paths.subagents_dir(p) for p in sources] + [self.folder]
         self.files: Dict[str, SubagentFile] = {}
 
     def refresh(self) -> bool:
         """Find new subagents and read what the running ones added. True if
         anything changed."""
         found: Dict[str, Path] = {}
-        try:
-            with os.scandir(self.folder) as entries:
-                for entry in entries:
-                    match = _FILE.match(entry.name)
-                    if match and entry.is_file():
-                        found[match.group(1)] = Path(entry.path)
-        except OSError:
-            found = {}
+        for folder in self.folders:
+            try:
+                with os.scandir(folder) as entries:
+                    for entry in entries:
+                        match = _FILE.match(entry.name)
+                        if match and entry.is_file():
+                            found[match.group(1)] = Path(entry.path)
+            except OSError:
+                continue
         changed = False
         for agent_id in [a for a in self.files if a not in found]:
             del self.files[agent_id]
@@ -385,15 +391,37 @@ def _settle(sub: Subagent, call: Optional[AgentCall], note: Optional[AgentNote],
                   or (last_reply if status != RUNNING else ""))
 
 
-def count(transcript_path) -> int:
-    """How many subagents' transcripts a session has (Properties, #468)."""
+def count(transcript_path, sources: Iterable = ()) -> int:
+    """How many subagents' transcripts a session has (Properties, #468),
+    counting those of the chats it was copied from (``sources``), as Lists
+    does."""
     if transcript_path is None:
         return 0
-    try:
-        with os.scandir(platform_paths.subagents_dir(transcript_path)) as entries:
-            return sum(1 for entry in entries if _FILE.match(entry.name))
-    except OSError:
-        return 0
+    ids = set()
+    for path in [*sources, transcript_path]:
+        try:
+            with os.scandir(platform_paths.subagents_dir(path)) as entries:
+                ids.update(m.group(1) for m in map(_FILE.match, (e.name for e in entries)) if m)
+        except OSError:
+            continue
+    return len(ids)
+
+
+def source_transcripts(store, info, limit: int = 8) -> List[Path]:
+    """The transcripts of the chats ``info`` was copied from, nearest last
+    (#468), followed through The Chat Place's own copies of copies. ``store``
+    is the OwnSessionStore; anything not found is left out."""
+    paths: List[Path] = []
+    own = store.get(info.cli_session_id) if getattr(info, "is_own", False) else None
+    seen = set()
+    while own is not None and own.fork_source and own.fork_source not in seen and limit > 0:
+        seen.add(own.fork_source)
+        limit -= 1
+        path = platform_paths.transcript_path(own.cwd, own.fork_source)
+        if path is not None:
+            paths.insert(0, Path(path))
+        own = store.get(own.fork_source)
+    return paths
 
 
 def edits_of(subagents: Iterable[Subagent]) -> List[FileEdit]:

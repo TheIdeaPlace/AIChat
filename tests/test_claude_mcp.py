@@ -528,3 +528,25 @@ def test_a_numeric_choice_is_sent_as_a_number():
         "sizes": {"type": "array", "items": {"enum": [1, 2]}}}})
     assert fields[0].choices == [(1, "1"), (2, "2"), (3, "3")]
     assert form_content(fields, {"size": 2, "sizes": [2]}) == ({"size": 2, "sizes": [2]}, "")
+
+
+def test_turned_off_tools_join_chat_options_settings_rather_than_replace_them():
+    """Claude Code keeps only the last --settings (checked with 2.1.296: a
+    second one dropped the first's output style), so a chat with an output
+    style and a tool turned off gets one --settings holding both (#468)."""
+    from thechatplace.chat_options import ChatOptions
+    from thechatplace.claude_mcp import with_settings
+    command = ["claude", "-p", *ChatOptions("", "", "Concise").flags(), "--resume", "x"]
+    merged = with_settings(command, ["claude.ai Travel"])
+    assert merged.count("--settings") == 1
+    settings = json.loads(merged[merged.index("--settings") + 1])
+    assert settings == {"outputStyle": "Concise",
+                        "deniedMcpServers": [{"serverName": "claude.ai Travel"}]}
+    # No style: a --settings of its own, as before.
+    plain = with_settings(["claude", "-p"], ["claude.ai Travel"])
+    assert plain[-2:] == settings_args(["claude.ai Travel"])
+    # Nothing turned off: the command as it was.
+    assert with_settings(command, []) == command
+    # A chat titled "--settings" isn't taken for the flag.
+    titled = ["claude", "--name", "--settings", "--resume", "x"]
+    assert with_settings(titled, ["claude.ai Travel"])[:5] == titled

@@ -1172,7 +1172,8 @@ went back from is always kept as it was, in the list.
   same folder. Its conversation is the original's up to just before your message, and your
   message is in its reply box to change and send. Until you send it, the messages list says
   the chat is a branch waiting for its first message. It starts on the original's model,
-  effort and permission mode, with nothing allowed for the chat yet. This works for any Claude
+  effort and permission mode, Chat Options (agent, instructions, output style and more folders)
+  and connected tools turned off, with no commands allowed for the chat yet. This works for any Claude
   chat on this computer, including desktop app and terminal sessions, since the original isn't
   changed.
 

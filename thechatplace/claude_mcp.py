@@ -229,6 +229,37 @@ def settings_args(disabled: Collection[str]) -> List[str]:
                                      ensure_ascii=False)]
 
 
+def with_settings(command: List[str], disabled: Collection[str]) -> List[str]:
+    """``command`` with the chat's turned-off servers added to its
+    ``--settings``. Claude Code keeps only the last ``--settings`` on a
+    command line (checked with 2.1.296: a second one dropped the first's
+    output style), so when Chat Options already passes one (#468), its JSON
+    gets ``deniedMcpServers`` too rather than a second flag.
+
+    A ``--settings`` that is another flag's value (a chat titled
+    "--settings", say) is never taken for the flag itself."""
+    extra = settings_args(disabled)
+    if not extra:
+        return list(command)
+    command = list(command)
+    takes_value = {"--name", "--model", "--effort", "--permission-mode", "--agent",
+                   "--session-id", "--resume", "--resume-session-at", "--settings",
+                   "--system-prompt-snapshot", "--input-format", "--output-format",
+                   "--permission-prompts", "--permission-prompt-tool"}
+    for i, part in enumerate(command[:-1]):
+        if part != "--settings" or (i and command[i - 1] in takes_value):
+            continue
+        try:
+            current = json.loads(command[i + 1])
+        except ValueError:
+            continue
+        if isinstance(current, dict):
+            current.update(json.loads(extra[1]))
+            command[i + 1] = json.dumps(current, ensure_ascii=False)
+            return command
+    return command + extra
+
+
 def init_servers(event_servers) -> List[Tuple[str, str]]:
     """(name, status) for each server a turn's ``system/init`` lists."""
     return [(item["name"], str(item.get("status") or ""))

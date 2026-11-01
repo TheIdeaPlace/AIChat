@@ -66,7 +66,8 @@ class RewindChats:
         """The source's model, effort and permission mode when it's one of
         ours, so a branch carries on as it did; Claude Code's own defaults
         otherwise, as Continue Here starts. Rules allowed for the chat
-        aren't carried: a copy starts with nothing allowed beyond its mode."""
+        aren't carried: a copy starts with nothing allowed beyond its mode
+        (its Chat Options, More folders included, are, in _make_branch)."""
         own = self.store.get(info.cli_session_id) if info.is_own else None
         if own is None:
             return DEFAULT_PERMISSION_MODE, "", ""
@@ -110,6 +111,9 @@ class RewindChats:
             own.agent, own.instructions = source.agent, source.instructions
             own.output_style, own.prompt_fresh = source.output_style, source.prompt_fresh
             own.disabled_mcp = list(source.disabled_mcp)
+            # Chat Options' More folders are the chat's kept folders.
+            own.allowed_dirs = list(source.allowed_dirs)
+            own.allowed_dirs_at = dict(source.allowed_dirs_at)
         if not self._store_write(self.store.add, own):
             return None
         if info.key in self.tool_activity:
