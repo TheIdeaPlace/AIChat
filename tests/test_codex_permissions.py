@@ -22,19 +22,63 @@ def request(folder, command='git commit -m first', prefix=('git', 'commit'), **e
 @windows_paths
 def test_store_powershell_can_be_remembered_but_only_at_its_own_path(tmp_path, monkeypatch):
     # As real Codex sends it on a PC whose PowerShell came from the Microsoft Store.
+    from thechatplace import platform_paths
     monkeypatch.setenv('LOCALAPPDATA', r'C:\Users\someone\AppData\Local')
+    monkeypatch.setenv('ProgramFiles', r'C:\Program Files')
+    monkeypatch.setattr(platform_paths, '_is_store_alias', lambda path: True)
     def wrapped(executable, script):
         return '"' + executable.replace('\\', '\\\\') + f'" -NoProfile -Command \'{script}\''
     store = r'C:\Users\someone\AppData\Local\Microsoft\WindowsApps\pwsh.exe'
     rule = candidate(request(tmp_path, wrapped(store, 'git commit -m first')), str(tmp_path))
     assert rule is not None and rule.shell[0] == 'powershell'
     assert matches(rule, request(tmp_path, wrapped(store, 'git commit -m second')), str(tmp_path))
+    assert matches(rule, request(tmp_path, wrapped(store.upper(), 'git commit -m second')), str(tmp_path))
+    # The shell is part of the rule: the same command under another PowerShell asks.
+    program_files = r'C:\Program Files\PowerShell\7\pwsh.exe'
+    assert not matches(rule, request(tmp_path, wrapped(program_files, 'git commit -m second')), str(tmp_path))
     assert candidate(request(tmp_path, wrapped(store, 'git commit -m x; calc')), str(tmp_path)) is None
     for other in (r'C:\Users\someone\AppData\Local\Temp\pwsh.exe',
-                  r'C:\Users\other\AppData\Local\Microsoft\WindowsApps\pwsh.exe', 'pwsh.exe'):
+                  r'C:\Users\other\AppData\Local\Microsoft\WindowsApps\pwsh.exe',
+                  r'C:\Users\someone\AppData\Local\Microsoft\WindowsApps\..\pwsh.exe', 'pwsh.exe'):
         assert candidate(request(tmp_path, wrapped(other, 'git commit -m first')), str(tmp_path)) is None
+    monkeypatch.setenv('LOCALAPPDATA', '.')
+    assert platform_paths.codex_approval_shell(r'.\Microsoft\WindowsApps\pwsh.exe') == ''
     monkeypatch.delenv('LOCALAPPDATA')
     assert candidate(request(tmp_path, wrapped(store, 'git commit -m first')), str(tmp_path)) is None
+
+
+@windows_paths
+def test_a_file_dropped_in_the_store_folder_is_not_the_store_alias(tmp_path, monkeypatch):
+    # That folder is the user's own, so a chat started under it could write there.
+    from thechatplace import platform_paths
+    folder = tmp_path / 'Microsoft' / 'WindowsApps'
+    folder.mkdir(parents=True)
+    planted = folder / 'pwsh.exe'
+    planted.write_bytes(b'not PowerShell')
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
+    assert platform_paths.codex_approval_shell(str(planted)) == ''
+
+
+@windows_paths
+def test_installed_powershells_are_recognised(monkeypatch):
+    from thechatplace import platform_paths
+    monkeypatch.setenv('SystemRoot', r'C:\Windows')
+    monkeypatch.setenv('ProgramFiles', r'C:\Program Files')
+    for shell in (r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
+                  r'C:\Program Files\PowerShell\7\pwsh.exe',
+                  r'C:\Program Files\PowerShell\7-preview\pwsh.exe'):
+        assert platform_paths.codex_approval_shell(shell) == 'powershell'
+    monkeypatch.setenv('ProgramFiles', 'relative')
+    assert platform_paths.codex_approval_shell(r'relative\PowerShell\7\pwsh.exe') == ''
+
+
+def test_system_shells_are_recognised_and_user_installed_ones_ask(monkeypatch):
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths.sys, 'platform', 'linux')
+    for shell in ('/bin/bash', '/bin/zsh', '/bin/sh', '/usr/bin/bash', '/usr/bin/zsh', '/usr/bin/sh'):
+        assert platform_paths.codex_approval_shell(shell) == 'posix'
+    for shell in ('/opt/homebrew/bin/zsh', '/usr/local/bin/bash', '/tmp/bash', 'bash'):
+        assert platform_paths.codex_approval_shell(shell) == ''
 
 
 def test_native_wrappers_match_and_unsupported_shell_shapes_ask(tmp_path, monkeypatch):
