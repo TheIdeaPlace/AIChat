@@ -54,9 +54,9 @@ Try it for summarizing a supplied document, extracting information, rewriting a 
 
 ### The GPT-5.6 models — an earlier family
 
-Codex's model page no longer lists the GPT-5.6 models; OpenAI still offers them in the API, where they're the published replacements for the retired GPT-5.x-Codex models. If one appears in your picker or an existing workflow, the notes below say what each was for.
+Codex's model page no longer lists the GPT-5.6 models; OpenAI still offers them in the API, where they're the published replacements for the GPT-5.x-Codex models removed in July 2026. If one appears in your picker or an existing workflow, the notes below say what each was for.
 
-### GPT-5.6 Sol — an earlier flagship option
+#### GPT-5.6 Sol — an earlier flagship option
 
 Model ID: `gpt-5.6-sol`.
 
@@ -64,7 +64,7 @@ GPT-5.6 Sol is the flagship of the GPT-5.6 family, designed for complex professi
 
 Consider it when newer models are unavailable or when you have an established workflow whose results you already trust. Assess it on the same task before replacing it; generation names alone do not establish which result meets your needs.
 
-### GPT-5.6 Terra — a balance within the earlier family
+#### GPT-5.6 Terra — a balance within the earlier family
 
 Model ID: `gpt-5.6-terra`.
 
@@ -72,7 +72,7 @@ Terra balances capability and cost within the GPT-5.6 family and roughly corresp
 
 It is an option for routine work when offered, particularly if you are choosing among GPT-5.6 models. Compare it with current Luna and Sol on your actual task rather than assuming an older middle tier has the best current value.
 
-### GPT-5.6 Luna — the earlier efficient option
+#### GPT-5.6 Luna — the earlier efficient option
 
 Model ID: `gpt-5.6-luna`.
 
@@ -140,7 +140,7 @@ Older tutorials may recommend models with “Codex” in their names. That suffi
 | GPT-5.4 and GPT-5.4-mini | Retired from Codex with ChatGPT sign-in on 31 August 2026; replaced by GPT-6 Sol and GPT-6 Luna. |
 | GPT-5.3-Codex-Spark | Retired on 14 September 2026. |
 | GPT-5.3-Codex | Deprecated in Codex with ChatGPT sign-in, and in the API; scheduled removal on 1 April 2027. The published replacement is GPT-6 Sol. |
-| GPT-5-Codex, GPT-5.1-Codex, GPT-5.1-Codex-Max, GPT-5.1-Codex-Mini and GPT-5.2-Codex | Listed as removed from the API on 23 July 2026. |
+| GPT-5-Codex, GPT-5.1-Codex, GPT-5.1-Codex-Max, GPT-5.1-Codex-Mini and GPT-5.2-Codex | Removed from the API on 23 July 2026. The published replacement is GPT-5.6 Sol, or GPT-5.6 Terra for GPT-5.1-Codex-Mini. |
 
 The GPT-5.5 status comes from [Codex models](https://learn.chatgpt.com/docs/models#gpt-55-retirement). API statuses come from [OpenAI's deprecation schedule](https://developers.openai.com/api/docs/deprecations). Product retirement and API retirement are separate events; check the one that matches how you sign in.
 

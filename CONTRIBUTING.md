@@ -14,7 +14,7 @@ For anything bigger than a small fix, **open an issue first** and say what you'd
 
 ## Running from source and testing
 
-| | Set up | Run | Test |
+| Platform | Set up | Run | Test |
 |---|---|---|---|
 | Windows | `winsetup.bat` | `.venv\Scripts\pythonw TheChatPlace.pyw` | `.venv\Scripts\python -m pytest tests` |
 | Mac | `./macsetup.sh` | `.venv/bin/python -m thechatplace` | `.venv/bin/python -m pytest tests` |
@@ -26,11 +26,12 @@ The test suite runs on Windows, macOS and Linux for every pull request; Windows 
 
 - Tests use **made-up** records built by `tests/records.py`. Never copy real conversation content into a test.
 - `tests/fake_claude.py` stands in for `claude -p`, so no test runs the real Claude Code.
+- A new dialog or main-window state needs a surface in `tools/ui_probe.py`; `tests/test_ui_probe.py` fails without one, and `tests/test_layout.py` then checks it for cut-off text and overlaps.
 - UI tests build the window hidden. Use the `env` fixture from `tests/fake_env.py` so nothing touches your real settings, runs the real `claude`, or speaks aloud.
 
 ## Accessibility
 
-- Everything works from the keyboard, with a shortcut listed in the README.
+- Everything works from the keyboard, with a shortcut listed in the README. A new or changed key also updates `SHORTCUTS` in `thechatplace/ui_text.py` (then `python tools/make_docs.py`).
 - Controls have short, clear names. Instructions are spoken when they're useful, not built into a control's name.
 - Announcements are short and aren't repeated.
 - Focus lands somewhere sensible after every action.
@@ -40,12 +41,13 @@ If your change needs a screen reader check, list the exact steps in the pull req
 ## Rules that protect people's data
 
 - Never write to the Claude desktop app's files or to any transcript. The Chat Place only reads them; its own data lives in its own folder.
-- The app runs each AI on the person's own subscription or sign-in (`claude -p` for Claude, ChatGPT sign-in for Codex). Never add an API key path.
+- The app runs each AI on the person's own subscription or sign-in (`claude -p` for Claude, ChatGPT sign-in for Codex, and the Copilot CLI's own sign-in for Copilot). Never add an API key path.
 - Chats The Chat Place didn't start are read-only. Don't add a way to send to them.
 
 ## Commits and pull requests
 
 - A commit message is one plain-English sentence about the change as a user would see it, ending with the issue number, for example `Code blocks: list, read and copy each one (#17)`.
+- Every pull request is reviewed by a code owner (`.github/CODEOWNERS`) before it merges.
 - Keep a pull request to one feature or fix, and link the issue it closes (`Closes #N`).
 - A user-visible change adds an entry to the open release notes file in `release-notes/` (the highest version without a tag). `CLAUDE.md` explains the format. Tests, CI and refactors need no entry.
 - Research and design notes go in `dev-notes/`, not `docs/`: GitHub Pages publishes everything in `docs/`.
