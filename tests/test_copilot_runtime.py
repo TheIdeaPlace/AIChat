@@ -2693,8 +2693,8 @@ def test_a_list_too_small_for_a_job_is_tried_larger(launcher):
     assert launcher.process.pid in platform_paths._job_process_ids(job, rooms=(1, 1024))
 
 
-LAUNCHER_PATH = os.path.join("C:" + os.sep, "Code", "bin", "copilot-shim", "copilot.exe")
-REAL_PATH = os.path.join("C:" + os.sep, "tools", "copilot.exe")
+LAUNCHER_PATH = os.path.join(os.sep, "Code", "bin", "copilot-shim", "copilot.exe")
+REAL_PATH = os.path.join(os.sep, "tools", "copilot.exe")
 
 
 def test_a_real_copilot_is_preferred_to_vs_codes_launcher(monkeypatch):
