@@ -93,11 +93,15 @@ STEPS = [
          expect_dbus=["Loaded Visual probe"]),
     Step("previous message", ["Up"], expect=["Make the uploader flush before it signals"]),
     # Rewind to Here (#468) on that message of yours: it opens on the chosen
-    # option of What to Rewind, Tab reads What Happens, Escape comes back.
+    # option of What to Rewind, Tab reads What Happens, Shift+Tab goes back to
+    # the option, Escape comes back. The option is checked after Shift+Tab:
+    # as it opens, Orca's echo of the key can cut its reading short.
     Step("rewind to here", ["ctrl+shift+z"],
-         expect=["Rewind Visual probe to before your message", "Conversation and files"],
+         expect=["Rewind Visual probe to before your message"],
          refuse=["unlabeled", "unlabelled"]),
     Step("rewind, what happens", ["Tab"], expect=["What happens"]),
+    Step("rewind, back to the chosen option", ["shift+Tab"],
+         expect=["Conversation and files"]),
     Step("rewind closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     Step("settings", ["ctrl+comma"], expect=["Settings", "Announcements", "Full"],

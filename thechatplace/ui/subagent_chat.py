@@ -217,6 +217,12 @@ class SubagentChatDialog(wx.Dialog):
                 and not event.AltDown() and not event.ShiftDown()):
             self.set_activity(not self.show_activity)
             return
+        if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+                and not event.HasAnyModifiers() and wx.Window.FindFocus() is self.list):
+            # Here, not only in the list's own key handler: Windows gives a
+            # list box's Enter to the dialog first, so it did nothing (#468).
+            self.read_selected()
+            return
         event.Skip()
 
     def _on_destroy(self, event):

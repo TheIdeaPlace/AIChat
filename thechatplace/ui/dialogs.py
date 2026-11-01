@@ -3338,6 +3338,12 @@ class PromptEditDialog(wx.Dialog):
         return self.name.GetValue(), self.text.GetValue()
 
 
+def plain_enter(event) -> bool:
+    """Enter (or the keypad's), with no modifier held."""
+    return (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+            and not event.HasAnyModifiers())
+
+
 def press_focused_button_on_a_mac(event) -> bool:
     """A Mac presses a focused button only with Space, so Return did
     nothing on one; press it, as Windows does itself. True if pressed."""
@@ -4399,6 +4405,17 @@ class ListsDialog(wx.Dialog):
             kind, value = step
             self.select_category(value if kind == "to" else self._index + value)
             return
+        if plain_enter(event):
+            # Windows gives Enter in a list box to the dialog (its default
+            # button, or a beep) before the list's own key handler sees it,
+            # so Enter on a kind or a row did nothing there (#468).
+            focus = wx.Window.FindFocus()
+            if focus is self.kinds:
+                self.current().list.SetFocus()
+                return
+            if focus is self.current().list:
+                self.current().activate()
+                return
         event.Skip()
 
     @staticmethod
@@ -4896,6 +4913,12 @@ class RewindDialog(wx.Dialog):
         self.happens.SetInsertionPoint(0)
 
     def _on_key(self, event):
+        if (event.AltDown() and not (event.ControlDown() or event.ShiftDown())
+                and event.GetKeyCode() == ord("W")):
+            # Windows doesn't take a radio box's label's access key, so
+            # Alt+W, shown on "What to rewind", did nothing (#468).
+            self.what.SetFocus()
+            return
         if press_focused_button_on_a_mac(event):
             return
         event.Skip()
@@ -5657,18 +5680,26 @@ class AskAsideDialog(wx.Dialog):
         if code == wx.WXK_ESCAPE and not event.HasAnyModifiers():
             self.on_close()
             return
+        if plain_enter(event) and wx.Window.FindFocus() is self.history:
+            # Here, not only in the list's own key handler: Windows gives a
+            # list box's Enter to the dialog first (#468).
+            self._read_history_item()
+            return
         if press_focused_button_on_a_mac(event):
             return
         event.Skip()
 
     def _on_history_key(self, event):
-        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) \
-                and not event.HasAnyModifiers():
-            if self.history.GetSelection() != wx.NOT_FOUND:
-                self._show_selected()
-                self._focus_answer()
+        if plain_enter(event):
+            self._read_history_item()
             return
         event.Skip()
+
+    def _read_history_item(self):
+        """Enter on a question: its answer, in the Answer box."""
+        if self.history.GetSelection() != wx.NOT_FOUND:
+            self._show_selected()
+            self._focus_answer()
 
     def _selected(self):
         index = self.history.GetSelection()

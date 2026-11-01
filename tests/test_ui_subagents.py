@@ -222,6 +222,19 @@ def test_enter_reads_a_message_over_the_dialog(frame, env, tmp_path):
         event.SetKeyCode(wx.WXK_RETURN)
         dialog._on_list_key(event)
         assert read == [("Two problems found.\n\nDetails follow.", dialog)]
+        # And from the dialog's char hook: on Windows a list box's Enter
+        # goes to the dialog before the list's own handler (#468).
+        read.clear()
+        focus = dialog.list
+        original = wx.Window.FindFocus
+        wx.Window.FindFocus = staticmethod(lambda: focus)
+        try:
+            event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+            event.SetKeyCode(wx.WXK_RETURN)
+            dialog._on_char_hook(event)
+        finally:
+            wx.Window.FindFocus = original
+        assert read == [("Two problems found.\n\nDetails follow.", dialog)]
     finally:
         dialog.Destroy()
 
@@ -255,3 +268,31 @@ def test_a_background_subagent_still_running_reads_as_running(frame, env, monkey
     frame.on_open_session()
     assert pump(lambda: frame._chat_loaded and frame._chat_subagents)
     assert frame._chat_subagents[0].status == subagents.RUNNING
+
+
+def test_enter_in_lists_opens_a_subagent_and_goes_from_kinds_to_the_list(frame, env,
+                                                                         monkeypatch):
+    # On Windows a list box's Enter goes to the dialog before the list's own
+    # handler, so the dialog's char hook takes it (#468).
+    _session_with_subagent(frame, env)
+    opened, steps = [], {}
+    monkeypatch.setattr(frame, "_show_subagent_chat", lambda d: opened.append(d.GetTitle())
+                        or wx.ID_CANCEL)
+
+    def act(page):
+        dialog = page.owner
+        focus = [dialog.kinds]
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: focus[0]))
+        monkeypatch.setattr(page.list, "SetFocus", lambda: steps.setdefault("list", True))
+
+        def enter():
+            event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+            event.SetKeyCode(wx.WXK_RETURN)
+            dialog._on_char_hook(event)
+        enter()
+        focus[0] = page.list
+        enter()
+    _lists_dialog(frame, monkeypatch, act)
+    frame.on_subagents()
+    assert steps == {"list": True}
+    assert opened == ["Subagent code-reviewer, in Quiet one"]

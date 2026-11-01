@@ -346,3 +346,27 @@ def test_rewind_dialog_names_its_controls_and_says_what_happens(frame, env):
         assert dialog.choice == rewind.CONVERSATION
     finally:
         dialog.Destroy()
+
+
+def test_alt_w_goes_to_what_to_rewind(frame, env, monkeypatch):
+    # Windows doesn't take a radio box's label's access key itself (#468).
+    from thechatplace.transcript import parse_lines
+    from thechatplace.ui.dialogs import RewindDialog
+    records, _parts = two_turns(checkpointed=False)
+    tr = parse_lines(lines(*records))
+    message = [m for m in tr.messages if m.kind == USER][1]
+    dialog = RewindDialog(frame, rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True))
+    try:
+        focused = []
+        monkeypatch.setattr(dialog.what, "SetFocus", lambda: focused.append("what"))
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(ord("W"))
+        event.SetAltDown(True)
+        dialog._on_key(event)
+        assert focused == ["what"]
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(ord("W"))
+        dialog._on_key(event)  # W alone is left alone
+        assert focused == ["what"]
+    finally:
+        dialog.Destroy()

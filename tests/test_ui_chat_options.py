@@ -297,6 +297,29 @@ def test_ask_aside_asks_a_read_only_copy_and_says_the_answer(frame, env, folder,
     assert FakeRunner.instances == []  # no turn of the chat's own
 
 
+def test_enter_on_a_question_reads_its_answer_from_the_dialogs_key_hook(frame, env,
+                                                                        monkeypatch):
+    # Windows gives a list box's Enter to the dialog before the list's own
+    # handler sees it, so the dialog's char hook takes it (#468).
+    seen = {}
+
+    def steps(dialog):
+        dialog.question.SetValue("Which file did you change?")
+        dialog.on_ask()
+        FakeAside.instances[-1].on_event(AsideEvent("done", "main.py, line 4."))
+        assert pump(lambda: not dialog.asking)
+        dialog.answer.ChangeValue("")
+        dialog.history.SetSelection(0)
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.history))
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_RETURN)
+        dialog._on_key(event)
+        seen["answer"] = dialog.answer.GetValue()
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+    assert seen["answer"].endswith("Answer:\nmain.py, line 4.")
+
+
 def test_ask_aside_reads_a_desktop_session_without_resuming_it(frame, env, monkeypatch):
     select(frame, "Desktop one")
     _drive_aside(frame, monkeypatch, lambda d: (d.question.SetValue("q"), d.on_ask()))
