@@ -593,6 +593,52 @@ def test_usage_lines_explain_when_account_usage_is_unavailable(tmp_path, monkeyp
         "Check Copilot CLI sign-in and connection, and update the CLI if needed.")
 
 
+def test_a_failed_account_read_is_not_kept_as_long_as_a_report(tmp_path, monkeypatch):
+    """Someone told to check their sign-in, who does, is believed at once."""
+    from thechatplace.providers import copilot, copilot_usage
+    write_session(tmp_path, events=answered_turn())
+    monkeypatch.setattr(platform_paths, "copilot_sessions_dir", lambda: tmp_path)
+    clock = [100.0]
+    monkeypatch.setattr(copilot.time, "monotonic", lambda: clock[0])
+    calls = []
+
+    def read():
+        calls.append(1)
+        if len(calls) == 1:
+            raise copilot_usage.CopilotUsageError("signed out")
+        return ["Copilot account usage is shared across your chats."]
+
+    monkeypatch.setattr(copilot_usage, "read_usage_lines", read)
+    provider = CopilotProvider()
+    provider.usage_lines(info_for())
+    provider.usage_lines(info_for())
+    assert len(calls) == 1
+    clock[0] += copilot.ACCOUNT_USAGE_FAILURE_CACHE_SECONDS
+    provider.usage_lines(info_for())
+    assert len(calls) == 2
+    clock[0] += copilot.ACCOUNT_USAGE_CACHE_SECONDS - 1
+    provider.usage_lines(info_for())
+    assert len(calls) == 2
+    clock[0] += 1
+    provider.usage_lines(info_for())
+    assert len(calls) == 3
+
+
+def test_an_unexpected_failure_reading_the_account_keeps_the_chats_lines(tmp_path, monkeypatch):
+    from thechatplace.providers import copilot_usage
+    write_session(tmp_path, events=answered_turn())
+    monkeypatch.setattr(platform_paths, "copilot_sessions_dir", lambda: tmp_path)
+
+    def broken():
+        raise OverflowError("private detail")
+
+    monkeypatch.setattr(copilot_usage, "read_usage_lines", broken)
+    lines = CopilotProvider().usage_lines(info_for())
+    assert any(line.startswith("Premium requests used in this chat") for line in lines)
+    assert "isn't available" in lines[-1]
+    assert not any("private" in line for line in lines)
+
+
 def test_usage_lines_say_how_full_the_context_is_from_the_runtime(tmp_path, monkeypatch):
     from types import SimpleNamespace
     write_session(tmp_path, events=answered_turn())

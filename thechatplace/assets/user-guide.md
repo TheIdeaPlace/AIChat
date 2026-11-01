@@ -1594,8 +1594,10 @@ status bar's context button opens it too.
 - **In a Copilot chat:** how full its context is, once Copilot has answered in it since The
   Chat Place started ("Context: not known until Copilot answers here" before that), how many
   premium requests the chat has used, from its log, and the account's chat-message,
-  premium-interaction and completion allowances. The account report is shared across Copilot
-  chats and comes from Copilot CLI's read-only quota API; it starts no chat and uses no request.
+  premium-request and completion allowances, and when each resets if Copilot says. The account
+  report is shared across Copilot chats.
+  To get it, The Chat Place runs Copilot CLI briefly in the background; that starts no chat and
+  uses no request.
   If the CLI can't provide it, Usage and Context says so.
 - **In an agent conversation:** each agent's context and each provider's limits.
 

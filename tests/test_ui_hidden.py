@@ -10688,6 +10688,23 @@ def test_codex_usage_reads_on_worker_and_uses_existing_dialog(frame, monkeypatch
     assert '75% remaining' in shown[0][1]
 
 
+def test_reading_a_providers_usage_is_said_and_a_second_press_is_answered(frame, monkeypatch):
+    """Copilot's report starts Copilot CLI, so there's a wait to say something about."""
+    frame._open = dataclasses.replace(frame._snapshot.sessions[0], provider='copilot')
+    monkeypatch.setattr(frame, '_require_capability', lambda *args: True)
+    callbacks, said, status = [], [], []
+    monkeypatch.setattr(frame, '_codex_work', lambda action, done: callbacks.append(done))
+    monkeypatch.setattr(frame, '_feedback', said.append)
+    monkeypatch.setattr(frame, '_status', status.append)
+    frame.on_usage()
+    assert status == ['Reading Copilot usage.'] and not said
+    frame.on_usage()
+    assert said == ['Still reading Copilot usage.'] and len(callbacks) == 1
+    frame._open = frame._snapshot.sessions[1]
+    callbacks[0](['Stale usage'], False)
+    assert not frame._codex_usage_busy
+
+
 def test_codex_usage_does_not_open_over_a_different_chat(frame, monkeypatch):
     frame._open = dataclasses.replace(frame._snapshot.sessions[0], provider='codex')
     monkeypatch.setattr(frame, '_require_capability', lambda *args: True)

@@ -626,9 +626,9 @@ and Permission mode offer the same choices as in New Session. The original chat 
 Chat Permissions isn't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it. Usage and Context (Ctrl+Shift+U) says how full a Copilot chat's
 context is (once Copilot has answered in it here), how many premium requests the chat has
-used, and your account's chat-message, premium-interaction and completion allowances. The
-account report is shared across your Copilot chats and comes from Copilot CLI's read-only
-account quota API; it starts no chat and uses no request. If your CLI can't provide the report,
+used, and your account's chat-message, premium-request and completion allowances. The
+account report is shared across your Copilot chats. To get it, The Chat Place runs Copilot CLI
+briefly in the background; that starts no chat and uses no request. If your CLI can't provide the report,
 Usage and Context says so. A chat started here is kept in The Chat
 Place's own list in `provider-sessions-copilot.json`, beside `sessions.json`. A chat that's answering says working, even while Copilot runs a command, and is
 announced once when its answer is finished. After 10 minutes with no activity it adds "no

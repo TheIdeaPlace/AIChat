@@ -36,7 +36,7 @@ COPILOT_ACCOUNT_LINE = "Copilot account usage is shared"
 #: the account, not the chat (listed once in a conversation's usage, not
 #: under each member), and how they're labelled there.
 ACCOUNT_LINES = {"codex": (CODEX_ACCOUNT_LINE, "Codex account: "),
-                 "copilot": (COPILOT_ACCOUNT_LINE, "")}
+                 "copilot": (COPILOT_ACCOUNT_LINE, "Copilot account: ")}
 
 
 class AgentChats:

@@ -1657,8 +1657,8 @@ def test_conversation_usage_lists_copilots_account_limits_once(tmp_path, monkeyp
     assert lines[1:5] == [
         'Copilot (Pilot chat): Context 10% full.',
         'Copilot (Pilot chat): Premium requests used in this chat: 3.',
-        "Copilot account usage is shared across your chats.",
-        "Chat messages: 2% used (3 of 200); 98% remaining."]
+        "Copilot account: Copilot account usage is shared across your chats.",
+        "Copilot account: Chat messages: 2% used (3 of 200); 98% remaining."]
     assert all(line.startswith('Claude plan: ') for line in lines[5:])
 
 

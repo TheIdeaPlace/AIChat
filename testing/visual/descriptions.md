@@ -459,6 +459,12 @@ A 700 by 414 dialog titled "Codex asks: Codex preview". The Question box (#415) 
 
 **What looks off:** The secret question shows its box under a lone "Other (type below)" choice, which looks like a choice question with one option. Nothing is cut off.
 
+## usage-copilot: View, Usage and Context for a Copilot chat
+
+A 640 by 360 dialog. "Usage and context:" heads a list that fills it, with six rows: "Context 50% full: 64,000 of 128,000 tokens." (selected), "Premium requests used in this chat: 3.", "Copilot account usage is shared across your chats.", "Chat messages: 2% used (3 of 200); 98% remaining; reset time not reported." (rounded from 98.5), "Premium requests: 100% used (350 of 300); 0% remaining; 50 past the allowance; reset time not reported." and "Completions: unlimited.". "Copy", "Copy All" and "Close" are at the bottom right.
+
+**What looks off:** Nothing.
+
 ## usage-codex: View, Usage and Context for a Codex chat
 
 A 640 by 360 dialog. "Usage and context:" heads a list that fills it, with seven rows: "Latest reported model request: 75,000 tokens (70,000 input, 5,000 output)." (selected), "Latest request uses 75% of the reported 100,000-token context window.", "Cumulative token usage: 250,000. This is not the current context size.", "Codex account usage is shared across your chats.", "Codex:", "5-hour limit: 25% used, 75% remaining; reset time not reported." and "168-hour limit: 40% used, 60% remaining; reset time not reported.". "Copy", "Copy All" and "Close" are at the bottom right.
