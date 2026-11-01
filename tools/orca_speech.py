@@ -157,8 +157,10 @@ STEPS = [
     # that finished and an Explore at work. View, Subagents opens Lists on
     # them, newest first; Enter reads one's conversation, and Escape goes
     # back a step at a time.
+    # By now Visual probe needs you too (its question), so it's first and
+    # the session with subagents is next.
     Step("back to the session list", ["ctrl+1"], expect=["Visual probe"]),
-    Step("the first session", ["Home"], expect=["Fix the flaky upload test"]),
+    Step("the session with subagents", ["Down"], expect=["Fix the flaky upload test"]),
     Step("open the session with subagents", ["Return"],
          expect=["Messages in Fix the flaky upload test"]),
     Step("View, Subagents", ["alt+v", "g"], expect=["Subagents (2)", "Explore", "Running"]),
