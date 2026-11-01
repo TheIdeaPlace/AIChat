@@ -138,11 +138,14 @@ too).
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
   yet", and its output), **Decisions** (each question Claude asked, with your answer) and
   **Tasks** (the task list: each step, "to do", "in progress" or "done", in the provider's
-  order). Codex chats also list tasks captured while run here, alongside Code Blocks and Links.
-  **Show items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions and
-  tasks, "this message" is the selected message's turn, from your message to Claude's reply (for
+  order) and **Subagents** (Claude chats: the work Claude handed to a subagent, "code-reviewer:
+  Review the branch. Done, 34 messages, 12 tool calls, 4 minutes", or "Running" with how long so
+  far; its details are the prompt it was given and its final report, and Enter or Read
+  Conversation, Alt+R, opens its conversation, below). Codex chats also list tasks captured while run here, alongside Code Blocks and Links.
+  **Show items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions,
+  tasks and subagents, "this message" is the selected message's turn, from your message to Claude's reply (for
   tasks, the ones added or changed in it). Links,
-  commands and decisions list the newest first; code blocks and files are in the order they appear.
+  commands, decisions and subagents list the newest first; code blocks and files are in the order they appear.
   The kinds are a list of their own, **Kinds**
   (Alt+K), each with its count ("Commands (12)"), which Tab and Shift+Tab reach on Windows and on a
   Mac; arrowing it changes the items shown, and Enter goes to them. From anywhere in Lists,
@@ -150,9 +153,11 @@ too).
   **Cmd+Shift+]** and **Cmd+Shift+[** or **Cmd+Page Down** and **Page Up** on a Mac, change the
   kind and stay on its list (Control+Tab is left to macOS, which uses it to move between groups of
   controls; where ] and [ need Option, use Cmd+Page Down and Up); on Windows, **Ctrl+1** to
-  **Ctrl+6** go straight to one. It opens on the kind you used last.
+  **Ctrl+7** go straight to one. It opens on the kind you used last.
   **Ctrl+Shift+B** opens it on Code Blocks for the selected message, **Ctrl+L** on Links for the
-  whole chat, **Ctrl+Shift+J** (View, Tasks) on Tasks for the whole chat, and **Ctrl+Shift+D** on
+  whole chat, **Ctrl+Shift+J** (View, Tasks) on Tasks for the whole chat, View, Subagents (Alt+V,
+  G) on Subagents for the whole chat, the messages' Subagent Conversations (on the reply or Agent
+  tool call of a turn that used subagents) on Subagents for that turn, and **Ctrl+Shift+D** on
   Changed Files, for the selected message's turn (or your
   latest) if it changed any files, else for the whole chat. Enter reads an item in full in the Details box
   (on Links, Enter or Open opens the link in your browser and closes Lists); Ctrl+C (or Copy)
@@ -180,6 +185,15 @@ too).
   together, counted when there are many ("Using Read 4 times, then Bash."), and never cuts off your
   screen reader. At the summary level tools are always counted; at silent only the status bar shows
   them. Tool results aren't spoken. New messages arrive at the end without moving you.
+- **Subagent conversations** (Claude chats): Enter on a subagent in Lists opens its conversation,
+  titled "Subagent code-reviewer, in" and the chat's name, read like the messages list: "Claude:"
+  for what Claude asked it, the subagent's name for its replies, the whole message read on arriving
+  where Settings says so, Enter to read one in full, Ctrl+C to copy it, the Applications key for
+  both, and Ctrl+T for its tool activity (there only). A subagent still working adds its messages
+  at the end without moving you, and "Subagent code-reviewer finished." is said when it ends;
+  Escape goes back to Lists. Read-only, for desktop app, terminal and Chat Place chats alike. With
+  a Claude chat loaded, a subagent ending is also announced at the full level ("finished",
+  "failed" or "stopped").
 - **Escape** in the messages or the reply box (or Backspace in the messages) goes back to the
   session list, on the same session. Enter there on the session that's already loaded takes you
   back to its messages where you left them, without reloading.
@@ -201,8 +215,9 @@ too).
   symbols with changed lines, where a line and the line that replaced it read "!- old", then
   "!+ new". Symbols are spoken only at a screen reader punctuation level that reads them. Copied
   text is marked the same way. It's built from the
-  transcript, so it works for desktop app sessions too, with no git needed. Changes made by a
-  subagent Claude hands work to, and notebook edits, aren't counted yet. For Copilot chats it's
+  transcript, so it works for desktop app sessions too, with no git needed. Changes a subagent
+  made are counted, for the whole chat and the turn that started it, with which subagent made them
+  ("main.py, 4 lines added, by code-reviewer"); notebook edits aren't counted yet. For Copilot chats it's
   built from Copilot's own log, whichever tool made the change, so chats started in Copilot CLI
   have it too, and reading it never starts Copilot; a deleted file says "deleted". For Codex,
   it uses completed file changes from Codex's own history, including chats started outside The Chat Place.
@@ -834,7 +849,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   the loaded session. A session's lines are its title, provider, kind, folder, status, when it started and
   was last active, the model of its latest reply (for supported chats started here, the model, effort
   and permission mode chosen), how many messages, your messages, the provider's replies, tool calls,
-  links, code blocks and changed files it has, how far along the task list is, how full its
+  links, code blocks and changed files it has, how many subagents (Claude chats), how far along
+  the task list is, how full its
   context is, how many times it was
   compacted, its groups, Remote Control, whether it's archived or hidden, its session and desktop
   app IDs where available. Claude chats also show the transcript file and size; Codex history
@@ -1246,7 +1262,7 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+M | Other machines: list your sessions on other computers and message one |
 | Anywhere | Ctrl+Shift+E | Send Reply to Another Chat: pass the selected (or latest) reply to another Chat Place chat, Claude, Codex or Copilot, or a new one; in an agent conversation, hand the waiting reply on |
 | Anywhere | Ctrl+Shift+G | New Agent Conversation: two chats that pass replies to each other |
-| Anywhere | Ctrl+Shift+I | Lists: code blocks, links, changed files, commands, decisions and tasks, for this message or the whole chat |
+| Anywhere | Ctrl+Shift+I | Lists: code blocks, links, changed files, commands, decisions, tasks and subagents, for this message or the whole chat |
 | Anywhere | Ctrl+Shift+D | Lists, on Changed Files: each change to read by line |
 | Anywhere | Ctrl+Shift+U | Usage and context: a list of how full the context is, and each plan limit |
 | Anywhere | Alt+V, H | Show Sessions: choose which sessions are listed |
@@ -1526,7 +1542,6 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 - Cowork sessions can't be continued here. Their conversation is in the session's own Claude Code
   folder inside the desktop app's files, where `claude -p` on your PC can't resume it, and its
   tools were run by the desktop app. Open in Claude carries on there.
-- Subagent conversations are left out of the chat.
 - Claude chats started here have the desktop app's session tools that `/wrap` and similar
   commands use (see Session tools for Claude turns), but not its other tools: reading another
   session's events or stopping it, Remote Control and window tools, the browser pane and computer

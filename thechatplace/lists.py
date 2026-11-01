@@ -1,6 +1,7 @@
 """What View, Lists shows (#279): one dialog listing each kind of thing in a
 chat (code blocks, links, changed files, commands, decisions, and Claude's
-task list, #231), for the selected message or the whole chat.
+task list, #231, and the subagents Claude handed work to, #468), for the
+selected message or the whole chat.
 
 Each kind is a list of ``ListItem``: the line the list reads, the text to read
 in full below it, and what Copy copies. Building them needs no window, so it's
@@ -8,8 +9,8 @@ all tested without one; ``ui.dialogs.ListsDialog`` shows them.
 
 "This message" means the selected message itself for code blocks and links,
 which live in a message's text, and the selected message's turn (your message
-and everything up to your next one) for files, commands, decisions and tasks,
-which happen around it. A task belongs to the turns it was added or last
+and everything up to your next one) for files, commands, decisions, tasks and
+subagents, which happen around it. A task belongs to the turns it was added or last
 changed in.
 """
 from __future__ import annotations
@@ -24,6 +25,7 @@ from .tasklist import TaskStep
 from .changes import FileEdit, by_file, file_text
 from .codeblocks import find_code_blocks
 from .message_links import FoundLink, find_links
+from .subagents import Subagent
 from .transcript import ANSWER, QUESTION, ChatMessage, ToolCommand
 
 CODE = "code"
@@ -32,6 +34,7 @@ FILES = "files"
 COMMANDS = "commands"
 DECISIONS = "decisions"
 TASKS = "tasks"
+SUBAGENTS = "subagents"
 
 #: The kinds, in order: (id, tab title, the noun a count uses).
 CATEGORIES = (
@@ -41,7 +44,10 @@ CATEGORIES = (
     (COMMANDS, "Commands", "commands"),
     (DECISIONS, "Decisions", "decisions"),
     (TASKS, "Tasks", "tasks"),
+    (SUBAGENTS, "Subagents", "subagents"),
 )
+#: The kinds whose "this message" is the selected message's turn.
+TURN_KINDS = frozenset({FILES, COMMANDS, DECISIONS, TASKS, SUBAGENTS})
 CATEGORY_IDS = tuple(c[0] for c in CATEGORIES)
 TITLES = {c[0]: c[1] for c in CATEGORIES}
 NOUNS = {c[0]: c[2] for c in CATEGORIES}
@@ -65,6 +71,8 @@ class ListItem:
     detail_name: str = ""
     #: Links only: the link Open opens.
     link: Optional[FoundLink] = None
+    #: Subagents only (#468): the one Read Conversation opens.
+    subagent: Optional[Subagent] = None
 
     def matches(self, typed: str) -> bool:
         """Every typed word appears in the row or the full text."""
@@ -218,6 +226,23 @@ def task_items(tasks: Sequence[TaskStep], turn: Optional[int]) -> List[ListItem]
     return items
 
 
+# -- subagents (#468) -------------------------------------------------------------
+
+
+def subagent_items(subagents: Sequence[Subagent], turn: Optional[int],
+                   now_ms: Optional[int] = None) -> List[ListItem]:
+    """Newest first, as Commands are: the work going on now, or just done,
+    is what's usually wanted, and a long chat can have dozens."""
+    items: List[ListItem] = []
+    for sub in reversed([s for s in subagents if turn is None or s.turn == turn]):
+        copy_text = sub.report or sub.prompt
+        items.append(ListItem(row=sub.row(now_ms), detail=sub.detail(now_ms),
+                              copy_text=copy_text,
+                              copy_what="the final report" if sub.report else "the prompt",
+                              detail_name=f"Subagent {sub.name}", subagent=sub))
+    return items
+
+
 # -- all together --------------------------------------------------------------
 
 
@@ -226,7 +251,8 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
           commands: Iterable[ToolCommand], describe_file: Callable,
           turn: Optional[int] = None,
           tasks: Sequence[TaskStep] = (),
-          marks: str = DEFAULT_MARKS) -> List[ListItem]:
+          marks: str = DEFAULT_MARKS,
+          subagents: Sequence[Subagent] = ()) -> List[ListItem]:
     """One kind's items. ``messages`` are the messages as the list shows them;
     ``selected`` is the message "This message" means (None: there's none),
     and ``turn`` its turn when that isn't its own (a queued message, not yet
@@ -250,13 +276,15 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
         return decision_items(messages, turn)
     if category == TASKS:
         return task_items(tasks, turn)
+    if category == SUBAGENTS:
+        return subagent_items(subagents, turn)
     return []
 
 
 def empty_text(category: str, scope: str) -> str:
     """The list's one line when a kind has nothing."""
     where = "this message" if scope == SCOPE_MESSAGE else "this chat"
-    if scope == SCOPE_MESSAGE and category in (FILES, COMMANDS, DECISIONS, TASKS):
+    if scope == SCOPE_MESSAGE and category in TURN_KINDS:
         where = "this message's turn"
     return f"No {NOUNS.get(category, 'items')} in {where}."
 

@@ -145,6 +145,21 @@ STEPS = [
     Step("Space chooses the chat", ["space"], expect=["Export", "1 of"]),
     Step("Export Chats closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Subagents (#468): "Fix the flaky upload test" has two, a code-reviewer
+    # that finished and an Explore at work. View, Subagents opens Lists on
+    # them, newest first; Enter reads one's conversation, and Escape goes
+    # back a step at a time.
+    Step("back to the session list", ["ctrl+1"], expect=["Visual probe"]),
+    Step("the first session", ["Home"], expect=["Fix the flaky upload test"]),
+    Step("open the session with subagents", ["Return"],
+         expect=["Messages in Fix the flaky upload test"]),
+    Step("View, Subagents", ["alt+v", "g"], expect=["Subagents (2)", "Explore", "Running"]),
+    Step("a subagent's conversation", ["Down", "Return"],
+         expect=["Subagent code-reviewer", "The retry waits too little"]),
+    Step("conversation closed, back in Lists", ["Escape"],
+         expect=["code-reviewer: Review the retry change"]),
+    Step("Lists closed, back in the messages", ["Escape"],
+         expect=["Messages in Fix the flaky upload test"]),
 ]
 
 #: The question "question" asks (STEPS above).

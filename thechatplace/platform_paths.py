@@ -495,6 +495,13 @@ def transcript_path(cwd: str, cli_session_id: str,
     return None
 
 
+def subagents_dir(transcript: Path) -> Path:
+    """Where Claude Code keeps a session's subagents' transcripts (#468):
+    ``<session id>/subagents/`` beside ``<session id>.jsonl``, each one
+    ``agent-<id>.jsonl`` with an ``agent-<id>.meta.json``. The same in a
+    Cowork session's own Claude home, which ``transcript`` is already in."""
+    transcript = Path(transcript)
+    return transcript.with_suffix("") / "subagents"
 
 
 def is_safe_id(value: str) -> bool:

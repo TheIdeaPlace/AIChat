@@ -66,7 +66,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           normalize_permission_mode)
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
                    forget_last_messages)
-from .. import lists, tasklist
+from .. import lists, subagents, tasklist
 from ..session_controller import SessionController
 from ..providers.base import ConversationReader
 from ..providers.claude import ClaudeConversations
@@ -103,6 +103,7 @@ from .codex_chats import CodexChats
 from .relay_chats import RelayChats
 from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
+from .subagent_host import SubagentsHost
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions
@@ -206,7 +207,7 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
-class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
+class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, SubagentsHost, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -653,6 +654,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         # Claude's task list (#231), on its own tab in Lists. Every letter of
         # "Tasks" is another item's access key, so its shortcut is the way in.
         self._item(view, "Tasks...\tCtrl+Shift+J", lambda e: self.on_tasks())
+        # The work Claude handed to subagents (#468), on its own kind in Lists.
+        self._item(view, "Suba&gents...", lambda e: self.on_subagents())
         self._item(view, "Find in &All Sessions...\tCtrl+Shift+S", lambda e: self.on_find_all())
         # Every letter of "Properties" is another item's access key already,
         # so, as with Links, its shortcut is the way in (#214). Alt+Enter as
@@ -1712,6 +1715,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._chat_edits, self._chat_turns, self._edits_said = [], 0, 0
         self._chat_commands = []
         self._chat_tasks, self._task_statuses = [], None
+        self._reset_subagents()
         self._changes_due = False
         self._spoken.clear()
         self._chat_loaded = False
@@ -1783,6 +1787,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._reader = None
         self._chat_messages = []
         self._chat_keys = []
+        self._reset_subagents()
         self._history_known = False
         self.SetTitle(APP_NAME)
         self._show_no_session()
@@ -1992,6 +1997,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if not self._gone() and generation == self._open_generation:
             self._reader = reader
         self._apply_chat(generation, *result)
+        if not self._gone() and len(result) > 3 and result[3] is None:
+            self._refresh_subagents(generation, reader)  # #468
         if (not self._gone() and generation == self._open_generation and self._open is not None
                 and self._open.provider in RUNTIME_PROVIDERS and self._can_edit(self._open)):
             self._prepare_codex_owned(generation)
@@ -2352,17 +2359,21 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if message is None:
             self._feedback("No message selected.")
             return
-        if self.speech.formatted_messages and self._show_formatted(message):
-            self.chat_list.SetFocus()
+        self._read_whole_message(message)
+        self.chat_list.SetFocus()
+
+    def _read_whole_message(self, message: ChatMessage, parent=None):
+        """One message in full, formatted or as text, over ``parent`` (a
+        subagent's conversation, #468) or the window."""
+        if self.speech.formatted_messages and self._show_formatted(message, parent):
             return
-        dialog = MessageDialog(self, message.label, message.whole)
+        dialog = MessageDialog(parent or self, message.label, message.whole)
         try:
             dialog.ShowModal()
         finally:
             dialog.Destroy()
-        self.chat_list.SetFocus()
 
-    def _show_formatted(self, message: ChatMessage) -> bool:
+    def _show_formatted(self, message: ChatMessage, parent=None) -> bool:
         """The message as a formatted page (#190). False when that can't be
         shown, or Kelly chose Read as Plain Text: the caller opens the text
         box instead."""
@@ -2373,7 +2384,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             # as soft breaks.
             text = "\n".join(line + "  " if line.strip() else line
                                for line in text.split("\n"))
-        return self._show_page(title, message_page(title, text, heading=message.label))
+        return self._show_page(title, message_page(title, text, heading=message.label), parent)
 
     def on_user_guide(self, _event=None):
         """Help, User Guide (#104): the guide as a page, read by heading like
@@ -2400,13 +2411,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             return
         self._modal(ShortcutsDialog(self))
 
-    def _show_page(self, title: str, page: str) -> bool:
+    def _show_page(self, title: str, page: str, parent=None) -> bool:
         """Show ``page`` in the formatted view. False when it can't be shown,
         or Kelly chose Read as Plain Text."""
         if not formatted_view_available():
             return False
         try:
-            dialog = FormattedMessageDialog(self, title, page)
+            dialog = FormattedMessageDialog(parent or self, title, page)
         except RuntimeError as exc:
             self._status(str(exc))
             return False
@@ -2446,6 +2457,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         has_code = message is not None and bool(find_code_blocks(message.text))
         blocks = menu.Append(wx.ID_ANY, "Code &Blocks...\tCtrl+Shift+B")
         copy_code = menu.Append(wx.ID_ANY, "Copy &Last Code Block\tCtrl+Shift+C")
+        if (message is not None and message.kind not in TAIL_KINDS
+                and self._subagents_in_turn(message.turn)):
+            # On the Agent call and the reply of a turn that used subagents (#468).
+            subs = menu.Append(wx.ID_ANY, "Subagent Con&versations...")
+            menu.Bind(wx.EVT_MENU, lambda e: self.on_message_subagents(), subs)
         relay_item = menu.Append(wx.ID_ANY, "&Send Reply to Another Chat...\tCtrl+Shift+E")
         relay_item.Enable(message is not None and message.kind in relay.RELAYABLE)
         menu.Bind(wx.EVT_MENU, lambda e: self.on_send_reply_to(), relay_item)
@@ -2523,6 +2539,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         except ValueError:
             files_supported = False
         edits = list(self._chat_edits) if files_supported else []
+        subagent_list = list(self._chat_subagents) if info.provider == "claude" else []
+        # Edits a subagent made count too, marked with who made them (#468).
+        edits += self._subagent_edits() if files_supported and subagent_list else []
         commands = list(self._chat_commands)
         tasks = list(self._chat_tasks)
         cwd = info.cwd
@@ -2541,15 +2560,17 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                                                 "run in The Chat Place.")
             else:
                 unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
+            unavailable[lists.SUBAGENTS] = f"Subagents aren't listed for {provider} chats yet."
 
         def build(tab, tab_scope):
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
                                lambda f: self._describe_changed_file(f, cwd), turn, tasks,
-                               marks=self.speech.change_marks)
+                               marks=self.speech.change_marks, subagents=subagent_list)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
-                             category=category, scope=scope, unavailable=unavailable)
+                             category=category, scope=scope, unavailable=unavailable,
+                             open_subagent=self._open_subagent)
         try:
             self._show_lists(dialog)
             chosen = dialog.chosen_link
@@ -2612,22 +2633,26 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
 
         def work():
             transcript, path, size, error = None, "", 0, ""
+            subagent_count = None
             try:
                 reader, path, size = self.sessions.open_reader_with_facts(info)
                 if reader is not None:
                     reader.refresh()
                     transcript = reader.transcript
+                if info.provider == "claude" and path:
+                    subagent_count = subagents.count(path)  # #468
             except Exception as exc:  # noqa: BLE001 - say what can be said without it
                 transcript, error = None, str(exc) or type(exc).__name__
             wx.CallAfter(self._session_properties_read, info, transcript, path, size, error,
-                         returning_to)
+                         returning_to, subagent_count)
 
         try:
             self._pool.submit(work)
         except RuntimeError:  # the pool is shut down: the window is closing
             self._properties_busy = False
 
-    def _session_properties_read(self, info, transcript, path, size, error, returning_to):
+    def _session_properties_read(self, info, transcript, path, size, error, returning_to,
+                                 subagent_count=None):
         self._properties_busy = False
         if self._gone() or self._closing:
             return
@@ -2649,7 +2674,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         try:
             lines = properties.session_properties(
                 info, transcript, path, size, own, self._reported_window(info, model),
-                read_error=error)
+                read_error=error, subagent_count=subagent_count)
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
         self._show_properties(f"Properties of {info.title or 'Untitled session'}", lines,
@@ -3331,7 +3356,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         except ValueError:
             pass  # another drive: the full folder
         where = "" if folder in ("", ".") else f", in {folder}"
-        return f"{name}, {changed.counts()}{where}"
+        by = f", by {changed.by}" if getattr(changed, "by", "") else ""  # a subagent (#468)
+        return f"{name}, {changed.counts()}{by}{where}"
 
     def _say_changes(self, generation: int):
         """After a turn ends: the changes not yet said, at the full

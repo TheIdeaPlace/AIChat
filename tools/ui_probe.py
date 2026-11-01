@@ -468,6 +468,7 @@ def build_world(root: Path, patch=setattr, empty: bool = False, formatted_view: 
     # (#155).
     written = time.time() - 60
     os.utime(transcript, (written, written))
+    _write_probe_subagents(transcript, repo)
     own_cwd = env["folders"]["Scratch"]
     edit_path = os.path.join(own_cwd, "uploader.py")
     fake_env.add_transcript(env, own_cwd, "own-1", [
@@ -1526,6 +1527,72 @@ def d_lists_tasks(frame, env):
 
 
 
+def _write_probe_subagents(parent, repo):
+    """Two subagents in "Fix the flaky upload test" (#468): a code-reviewer
+    that finished, having changed a file, and an Explore still at work (the
+    session needs you, so it counts as working). The Explore began just now,
+    so its row says "under a minute so far" in every picture."""
+    import json
+    from datetime import datetime, timedelta, timezone
+    from records import (assistant_block, lines, sidechain, text_block, tool_result,
+                         tool_use_block, user_text)
+    from thechatplace import platform_paths
+    folder = platform_paths.subagents_dir(parent)
+    folder.mkdir(parents=True, exist_ok=True)
+    target = os.path.join(repo, "tests", "test_upload.py")
+    reviewer = [
+        user_text("Review the retry change in the uploader against main. Report anything that "
+                  "could make the upload test fail.", timestamp="2026-10-06T12:00:00.000Z"),
+        assistant_block(tool_use_block("Bash", {"command": "git diff main -- uploader.py"}, "pb1"),
+                        "ps1", timestamp="2026-10-06T12:00:20.000Z"),
+        tool_result("pb1", "diff output", timestamp="2026-10-06T12:00:21.000Z"),
+        assistant_block(tool_use_block("Edit", {"file_path": target, "old_string": "retries=1",
+                                                "new_string": "retries=3\ntimeout=10"}, "pe1"),
+                        "ps2", timestamp="2026-10-06T12:02:00.000Z"),
+        tool_result("pe1", "Updated.", toolUseResult={"filePath": target},
+                    timestamp="2026-10-06T12:02:01.000Z"),
+        assistant_block(text_block("The retry waits too little: the server can take ten seconds "
+                                   "to be ready. I raised the test's retries to three."),
+                        "ps3", timestamp="2026-10-06T12:04:00.000Z")]
+    reviewer[-1]["message"]["stop_reason"] = "end_turn"  # its reply ended its work
+    now = datetime.now(timezone.utc)
+    stamp = lambda moment: moment.strftime("%Y-%m-%dT%H:%M:%S.000Z")  # noqa: E731
+    explorer = [
+        user_text("Find every place the uploader signals it's done.", timestamp=stamp(now)),
+        assistant_block(tool_use_block("Grep", {"pattern": "done.set"}, "pg1"), "px1",
+                        timestamp=stamp(now + timedelta(seconds=5)))]
+    for agent_id, records, agent_type, description in (
+            ("a1probe", reviewer, "code-reviewer", "Review the retry change"),
+            ("a2probe", explorer, "Explore", "Find where uploads signal done")):
+        (folder / f"agent-{agent_id}.jsonl").write_text(
+            "\n".join(lines(*[sidechain(r, agent_id) for r in records])) + "\n", encoding="utf-8")
+        (folder / f"agent-{agent_id}.meta.json").write_text(json.dumps(
+            {"agentType": agent_type, "description": description, "spawnDepth": 1}),
+            encoding="utf-8")
+
+
+def _probe_subagents(frame, env):
+    """"Fix the flaky upload test" loaded, with its subagents read."""
+    _open(frame, "Fix the flaky upload test")
+    import fake_env
+    if not fake_env.pump(lambda: len(frame._chat_subagents) == 2, timeout=10):
+        raise RuntimeError("the made-up subagents didn't load")
+
+
+def d_lists_subagents(frame, env):
+    """View, Subagents (#468): one finished, one at work."""
+    from thechatplace import lists
+    _probe_subagents(frame, env)
+    return lambda: frame.on_lists(lists.SUBAGENTS, lists.SCOPE_CHAT)
+
+
+def d_subagent_chat(frame, env):
+    """A subagent's conversation (#468), read like a chat."""
+    _probe_subagents(frame, env)
+    sub = next(s for s in frame._chat_subagents if s.agent_type == "code-reviewer")
+    return lambda: frame._open_subagent(sub)
+
+
 def _codex_plan_preview(frame, env):
     from dataclasses import replace
     from thechatplace.tasklist import TaskStep
@@ -1821,6 +1888,9 @@ SURFACES = {
     "lists-commands": ("dialog", d_lists_commands, "View, Lists: Commands"),
     "lists-decisions": ("dialog", d_lists_decisions, "View, Lists: Decisions"),
     "lists-tasks": ("dialog", d_lists_tasks, "View, Tasks: Claude's task list"),
+    "lists-subagents": ("dialog", d_lists_subagents,
+                        "View, Subagents: one finished subagent and one at work"),
+    "subagent-chat": ("dialog", d_subagent_chat, "A subagent's conversation, read like a chat"),
     "lists-codex-tasks": ("dialog", d_lists_codex_tasks, "View, Tasks: Codex's live plan"),
     "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "View, Tasks: no task list from an external Codex chat"),
     "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "View, Tasks: owned Codex chat with no tasks"),
@@ -1916,6 +1986,8 @@ DIALOG_CLASSES = {
     "lists-commands": "ListsDialog",
     "lists-decisions": "ListsDialog",
     "lists-tasks": "ListsDialog",
+    "lists-subagents": "ListsDialog",
+    "subagent-chat": "SubagentChatDialog",
     "lists-codex-tasks": "ListsDialog",
     "lists-codex-no-tasks": "ListsDialog",
     "lists-codex-owned-no-tasks": "ListsDialog",
