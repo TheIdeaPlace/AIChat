@@ -17,6 +17,8 @@ def _running(frame, live=True, ok=True, error=""):
     """Hub probe loaded, with a turn running that takes control requests."""
     select(frame, "Hub probe")
     frame.on_open_session()
+    # Loaded first, so its own announcement can't land after what's tested.
+    pump(lambda: frame._chat_loaded and not frame._reader_busy)
     runner = FakeRunner([], "C:\\G\\Scratch", "", None)
     runner.live, runner.live_ok, runner.live_error = live, ok, error
     frame._runners["own-1"] = runner
@@ -188,10 +190,10 @@ def test_a_turn_ending_before_the_answer_is_said_as_it_is(frame, env, monkeypatc
                                   "since": 0.0}]
     monkeypatch.setattr(frame, "_choose", lambda *a, **k: 0)
     frame.on_stop_background_task()
-    assert pump(lambda: env["feedback"][-1] == "Stopped Windows build.")  # with the turn
+    assert pump(lambda: "Stopped Windows build." in env["feedback"])  # with the turn
     _chooser(monkeypatch, frame, "Opus")
     frame.on_change_model()
-    assert pump(lambda: env["feedback"][-1] == "Hub probe now uses Opus, from its next turn.")
+    assert pump(lambda: "Hub probe now uses Opus, from its next turn." in env["feedback"])
 
 
 def test_choosing_a_mode_yourself_forgets_the_one_before_claudes_plan(frame, env, monkeypatch):
