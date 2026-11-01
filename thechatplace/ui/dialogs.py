@@ -23,7 +23,7 @@ from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import shortcuts_text, codex_effort_label, key_name
 from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
-from .a11y import set_accessible_name, set_list_items_accessible
+from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
 
 
@@ -4717,9 +4717,9 @@ class ConnectedToolsDialog(wx.Dialog):
 
     The window does the work through ``host`` (``mcp_host.ClaudeConnectedTools``:
     ``load(done)``, ``sign_in(server, done)``, ``reconnect(server, done)``,
-    ``set_off(server, off, done)``, ``note()``, ``can_turn_off`` and
-    ``close()``), whose ``done`` comes back on the UI thread once the work is
-    finished. Delete turns the row's server off for this chat (or on again).
+    ``set_off(server, off, done)``, ``note()`` and ``can_turn_off``), whose
+    ``done`` comes back on the UI thread once the work is finished; whoever
+    opens it closes the host afterwards. Delete turns the row's server off for this chat (or on again).
     """
 
     LOADING = "Reading this chat's connected tools..."
@@ -4762,7 +4762,6 @@ class ConnectedToolsDialog(wx.Dialog):
         self.list.Bind(wx.EVT_LISTBOX, lambda e: self._show_selected())
         self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
-        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         set_list_items_accessible(self.list, self._list_name, lambda index: None)
         self.reload()
         wx.CallAfter(self.list.SetFocus)
@@ -4818,6 +4817,7 @@ class ConnectedToolsDialog(wx.Dialog):
             self.list.Set(["Claude has no connected tools in this chat's folder."])
             self.list.SetSelection(0)
         self._name_list()
+        refresh_list_item(self.list)  # Orca: the row changed under it
         self._show_selected()
 
     def _failed(self, error: str):
@@ -4827,6 +4827,7 @@ class ConnectedToolsDialog(wx.Dialog):
         self.list.Set([self.load_error])
         self.list.SetSelection(0)
         self._name_list()
+        refresh_list_item(self.list)
         self._show_selected()
 
     def reload(self, select: int = 0):
@@ -4863,11 +4864,6 @@ class ConnectedToolsDialog(wx.Dialog):
     def _on_key(self, event):
         if press_focused_button_on_a_mac(event):
             return
-        event.Skip()
-
-    def _on_destroy(self, event):
-        if event.GetEventObject() is self:
-            self.host.close()
         event.Skip()
 
     # -- actions ----------------------------------------------------------------
@@ -5040,28 +5036,32 @@ class ElicitationDialog(wx.Dialog):
 
     def _add_field(self, panel, sizer, f):
         name = f.name() + (f": {f.description}" if f.description else "")
-        label = f.label + (" (required)" if f.required else "")
+        # A server's own words: an "&" is shown, not taken as an access key.
+        label = (f.label + (" (required)" if f.required else "")).replace("&", "&&")
+        description = f.description.replace("&", "&&")
         if f.kind == "boolean":
             control = wx.CheckBox(panel, label=label)
             control.SetValue(f.default is True)
             set_accessible_name(control, name)
             sizer.Add(control, 0, wx.ALL, 6)
             if f.description:
-                sizer.Add(wx.StaticText(panel, label=f.description), 0, wx.LEFT | wx.RIGHT, 24)
+                sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 24)
             self._controls[f.key] = control
             return
+        # The label just before its control, the description after it:
+        # Windows names a list from the text just before it.
         sizer.Add(wx.StaticText(panel, label=label + ":"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
-        if f.description:
-            sizer.Add(wx.StaticText(panel, label=f.description), 0, wx.LEFT | wx.RIGHT, 6)
         if f.kind == "multi":
             boxes = []
             chosen = f.default if isinstance(f.default, list) else []
             for value, text in f.choices:
-                box = wx.CheckBox(panel, label=text)
+                box = wx.CheckBox(panel, label=text.replace("&", "&&"))
                 box.SetValue(value in chosen)
                 set_accessible_name(box, f"{f.label}: {text}")
                 sizer.Add(box, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
                 boxes.append((value, box))
+            if f.description:
+                sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 6)
             self._controls[f.key] = boxes
             return
         if f.kind == "choice":
@@ -5080,6 +5080,8 @@ class ElicitationDialog(wx.Dialog):
                 control.ChangeValue(str(f.default))
         set_accessible_name(control, name)
         sizer.Add(control, 0, wx.EXPAND | wx.ALL, 6)
+        if f.description:
+            sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 6)
         self._controls[f.key] = control
 
     def values(self) -> dict:

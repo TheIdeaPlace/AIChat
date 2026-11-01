@@ -165,6 +165,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
                "https://claude.ai/api/organizations/org/mcp/start-auth/srv")}
 
     class FakeMcpSession:
+        closed = False
+
         def __init__(self, exe, cwd):
             mcp["calls"].append(("open", cwd))
 

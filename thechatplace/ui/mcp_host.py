@@ -60,7 +60,8 @@ class ClaudeConnectedTools:
         with self._lock:
             if self._closed:
                 raise McpError("The dialog has closed.")
-            if self._session is None:
+            if self._session is None or self._session.closed:
+                # First use, or the last one ended (MAX_LIFETIME).
                 lookup = platform_paths.find_claude()
                 if not lookup.path:
                     raise McpError(lookup.problem or "Claude Code isn't installed.")
@@ -81,7 +82,10 @@ class ClaudeConnectedTools:
         def finish(result, error):
             if not self.frame._gone():
                 done(result, error)
-        self.frame._pool.submit(work)
+        # A thread of its own, not the window's small pool: a load can wait
+        # 15 seconds for connectors and a reconnect a minute, and the pool
+        # reads the session list.
+        threading.Thread(target=work, name="connected-tools", daemon=True).start()
 
     def _rows(self):
         return with_chat_settings([McpServer(**{**s.__dict__}) for s in self._servers],
@@ -106,7 +110,11 @@ class ClaudeConnectedTools:
             if not answer.url:
                 done(f"{server.label} is signed in already. Refresh shows how it's doing.", "")
                 return
-            platform_paths.open_url(answer.url)
+            try:
+                platform_paths.open_url(answer.url)
+            except OSError as exc:
+                done(None, f"Couldn't open your browser ({exc}). The page is {answer.url}")
+                return
             if answer.callback_expected:
                 done(f"Your browser opened the sign-in page for {server.label}. Sign in there, "
                      "then come back and press Refresh. Keep this dialog open until you've "
@@ -151,7 +159,4 @@ class ClaudeConnectedTools:
             self._closed = True
             session, self._session = self._session, None
         if session is not None:
-            try:
-                self.frame._pool.submit(session.close)
-            except RuntimeError:  # the window is closing and its pool with it
-                threading.Thread(target=session.close, daemon=True).start()
+            threading.Thread(target=session.close, daemon=True).start()

@@ -261,7 +261,7 @@ def _and(names: List[str]) -> str:
 def is_web_url(url) -> bool:
     """Only a web page is opened from Sign In or a server's request: never a
     file, a program or another app's link."""
-    return isinstance(url, str) and bool(re.match(r"https?://[^\s]+$", url, re.IGNORECASE))
+    return isinstance(url, str) and bool(re.fullmatch(r"https?://\S+", url, re.IGNORECASE))
 
 
 @dataclass
@@ -341,6 +341,11 @@ class McpSession:
             with self._lock:
                 for waiting in self._waiting.values():
                     waiting.set()
+
+    @property
+    def closed(self) -> bool:
+        """Closed, or ended by ``MAX_LIFETIME``: a new one is needed."""
+        return self._closed
 
     def request(self, subtype: str, timeout: float = REQUEST_WAIT, **fields) -> dict:
         """Send one control request; its answer's body, or McpError with
@@ -448,8 +453,9 @@ class FormField:
     description: str = ""
     required: bool = False
     default: object = None
-    #: (value, label) for a choice or several choices.
-    choices: List[Tuple[str, str]] = field(default_factory=list)
+    #: (value, label) for a choice or several choices; the value as the
+    #: schema gives it (a number stays a number in the answer).
+    choices: List[Tuple[object, str]] = field(default_factory=list)
     minimum: Optional[float] = None
     maximum: Optional[float] = None
     min_length: Optional[int] = None
@@ -461,17 +467,17 @@ class FormField:
         return self.label + (", required" if self.required else "")
 
 
-def _choices(prop: dict) -> List[Tuple[str, str]]:
+def _choices(prop: dict) -> List[Tuple[object, str]]:
     """A schema's enum, with its titles: ``enum`` with ``enumNames``, or
     ``oneOf``/``anyOf`` of ``{const, title}`` (both forms MCP allows)."""
     values = prop.get("enum")
     if isinstance(values, list):
         names = prop.get("enumNames")
         names = names if isinstance(names, list) and len(names) == len(values) else values
-        return [(str(v), str(n)) for v, n in zip(values, names)]
+        return [(v, str(n)) for v, n in zip(values, names)]
     options = prop.get("oneOf") or prop.get("anyOf")
     if isinstance(options, list):
-        return [(str(o["const"]), str(o.get("title") or o["const"])) for o in options
+        return [(o["const"], str(o.get("title") or o["const"])) for o in options
                 if isinstance(o, dict) and "const" in o]
     return []
 
@@ -550,14 +556,14 @@ def _check_one(f: FormField, value, content: dict) -> str:
         content[f.key] = bool(value)
         return ""
     if f.kind == "multi":
-        chosen = [v for v in value or [] if v in {c[0] for c in f.choices}]
+        chosen = [v for v in value or [] if v in [c[0] for c in f.choices]]
         if f.required and not chosen:
             return f"Choose at least one for {f.label}."
         if chosen:
             content[f.key] = chosen
         return ""
     if f.kind == "choice":
-        if value in {c[0] for c in f.choices}:
+        if value is not None and value in [c[0] for c in f.choices]:
             content[f.key] = value
         elif f.required:
             return f"Choose one for {f.label}."

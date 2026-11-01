@@ -108,7 +108,7 @@ from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions
 from .mcp_host import ClaudeConnectedTools
 from ..claude_mcp import (ElicitationRequest, elicitation_response, init_servers,
-                          problems_text)
+                          is_web_url, problems_text)
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
@@ -3969,7 +3969,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self._feedback(lookup.problem or "Claude Code isn't installed.")
             return
         returning_to = wx.Window.FindFocus()
-        self._modal(ConnectedToolsDialog(self, info.title, ClaudeConnectedTools(self, info)))
+        host = ClaudeConnectedTools(self, info)
+        try:
+            self._modal(ConnectedToolsDialog(self, info.title, host))
+        finally:
+            host.close()  # the idle Claude Code ends with the dialog
         if returning_to:
             returning_to.SetFocus()
 
@@ -4266,7 +4270,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if action != "accept":
             return elicitation_response(action), f"Declined. {name} has your answer.", {}
         if request.is_url:
-            platform_paths.open_url(request.url)
+            # Opened by _apply_answer, once the answer has gone.
             return (elicitation_response(action),
                     f"Opened the page in your browser. Finish there; {name} carries on "
                     "when it's done.", {})
@@ -4282,6 +4286,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self._feedback("That isn't waiting any more: the turn has ended.")
             self._update_send_state()
             return
+        if (isinstance(request, ElicitationRequest) and request.is_url
+                and response.get("action") == "accept" and is_web_url(request.url)):
+            try:
+                platform_paths.open_url(request.url)
+            except OSError as exc:
+                said = (f"Couldn't open your browser ({exc}). The page is {request.url}")
         if response.get("behavior") == "allow" or response.get("action") == "accept":
             # An approval with more still waiting doesn't count until
             # they're answered too. A connected tool's question answered

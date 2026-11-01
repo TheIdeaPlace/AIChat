@@ -311,7 +311,9 @@ def test_an_older_claude_code_is_told_to_update(idle):
 
 
 def test_after_close_nothing_more_is_asked(idle):
+    assert not idle.closed
     idle.close()
+    assert idle.closed
     with pytest.raises(McpError):
         idle.request("mcp_status")
 
@@ -342,7 +344,7 @@ def test_a_claude_that_exits_at_once_ends_the_wait(tmp_path):
 @pytest.mark.parametrize("url,ok", [
     ("https://claude.ai/x", True), ("http://localhost:3000/cb", True),
     ("file:///C:/x.exe", False), ("javascript:alert(1)", False), ("claude://x", False),
-    ("https://a b", False), ("", False), (None, False)])
+    ("https://a b", False), ("https://x\n", False), ("", False), (None, False)])
 def test_is_web_url(url, ok):
     assert claude_mcp.is_web_url(url) is ok
 
@@ -518,3 +520,11 @@ def test_real_child_process_elicitation_answered(tmp_path, mode, answer):
     assert json.loads(events[-1].text) == answer
     # The chat's turned-off tool reached the command line.
     assert seen["args"][-2:] == settings_args(["claude.ai Travel"])
+
+
+def test_a_numeric_choice_is_sent_as_a_number():
+    fields = form_fields({"type": "object", "properties": {
+        "size": {"type": "integer", "enum": [1, 2, 3]},
+        "sizes": {"type": "array", "items": {"enum": [1, 2]}}}})
+    assert fields[0].choices == [(1, "1"), (2, "2"), (3, "3")]
+    assert form_content(fields, {"size": 2, "sizes": [2]}) == ({"size": 2, "sizes": [2]}, "")

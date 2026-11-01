@@ -1344,22 +1344,7 @@ def d_connected_tools(frame, env):
     connectors (made up), one turned off for the chat, the list read."""
     _open(frame, "Visual probe")
     frame.store.update("own-1", disabled_mcp=["plugin:probe-tools:notes"])
-
-    def opener():
-        from thechatplace.ui import dialogs
-        real = dialogs.ConnectedToolsDialog.ShowModal
-
-        def shown_once_read(dialog):
-            # The list is read on a worker; the picture is of it read.
-            import fake_env
-            fake_env.pump(lambda: dialog.loaded, timeout=10)
-            return real(dialog)
-        dialogs.ConnectedToolsDialog.ShowModal = shown_once_read
-        try:
-            frame.on_connected_tools()
-        finally:
-            dialogs.ConnectedToolsDialog.ShowModal = real
-    return opener
+    return frame.on_connected_tools
 
 
 def _elicitation(request):
