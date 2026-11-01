@@ -4889,6 +4889,21 @@ class RewindDialog(wx.Dialog):
         self.happens.ChangeValue(self._plan.describe(self.selected()))
         self.happens.SetInsertionPoint(0)
 
+    def _on_key(self, event):
+        if press_focused_button_on_a_mac(event):
+            return
+        event.Skip()
+
+    def _go(self):
+        choice = self.selected()
+        if not self._plan.allowed(choice):
+            wx.MessageBox(self._plan.describe(choice), self.GetTitle(),
+                          wx.OK | wx.ICON_INFORMATION, self)
+            self.what.SetFocus()
+            return
+        self.choice = choice
+        _end_modal(self, wx.ID_OK)
+
 
 class ConnectedToolsDialog(wx.Dialog):
     """View, Connected Tools (#468): a Claude chat's MCP servers and claude.ai
@@ -5047,17 +5062,6 @@ class ConnectedToolsDialog(wx.Dialog):
         if press_focused_button_on_a_mac(event):
             return
         event.Skip()
-
-    def _go(self):
-        choice = self.selected()
-        if not self._plan.allowed(choice):
-            wx.MessageBox(self._plan.describe(choice), self.GetTitle(),
-                          wx.OK | wx.ICON_INFORMATION, self)
-            self.what.SetFocus()
-            return
-        self.choice = choice
-        _end_modal(self, wx.ID_OK)
-
 
     # -- actions ----------------------------------------------------------------
 
@@ -5327,13 +5331,6 @@ class ElicitationDialog(wx.Dialog):
         from ..claude_mcp import DECLINE
         self.action, self.content = DECLINE, None
         self.EndModal(wx.ID_OK)
-
-
-# ---------------------------------------------------------------------------
-# Chat Options and Ask Aside (#468)
-# ---------------------------------------------------------------------------
-
-#: What Chat Options says about its choices.
 CHAT_OPTIONS_NOTE = (
     "Agent runs the chat as one of the agents Claude Code knows for its folder, with that "
     "agent's instructions and tools. Instructions are added to Claude's own for every message "
