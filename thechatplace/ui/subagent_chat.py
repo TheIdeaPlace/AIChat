@@ -184,6 +184,8 @@ class SubagentChatDialog(wx.Dialog):
             if was_running and latest.status != RUNNING:
                 self.timer.Stop()
                 self.feedback(latest.ended_text())
+            elif latest.status == RUNNING and not self.timer.IsRunning():
+                self.timer.Start(REFRESH_MS)  # sent on again: keep reading
         return changed
 
     def _show_menu(self):

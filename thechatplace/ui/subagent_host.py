@@ -7,6 +7,7 @@ one's conversation. What the files say is worked out in
 from __future__ import annotations
 
 import dataclasses
+import os
 from typing import List, Optional
 
 import wx
@@ -16,6 +17,10 @@ from ..sessions import NEEDS_YOU, WORKING, SessionInfo
 from ..speech import ANNOUNCE_FULL
 from ..transcript import Transcript
 from .subagent_chat import SubagentChatDialog
+
+
+#: A conversation this big takes a moment to read, so that's said first.
+LARGE_CONVERSATION = 1024 * 1024
 
 
 class SubagentsHost:
@@ -85,9 +90,17 @@ class SubagentsHost:
         if self._gone() or self._closing:
             return
         pending, self._subagents_pending = self._subagents_pending, False
-        if (found is None or generation != self._open_generation
-                or tracker is not self._subagent_tracker):
-            return
+        if (found is not None and generation == self._open_generation
+                and tracker is self._subagent_tracker):
+            self._take_subagents(found)
+        # A read asked for while this one ran (perhaps for a chat loaded since)
+        # runs now, unless the transcript is being read: copying its Agent
+        # calls then could catch one half updated, and that read's end asks
+        # again anyway.
+        if pending and self._reader is not None and not self._reader_busy:
+            self._refresh_subagents(self._open_generation, self._reader)
+
+    def _take_subagents(self, found) -> None:
         before = self._subagent_statuses
         self._chat_subagents = found
         self._subagent_statuses = subagents.statuses(found)
@@ -99,8 +112,6 @@ class SubagentsHost:
                     # Nothing else says a subagent ended: the tool activity
                     # speech says only that Claude used Agent.
                     self._say(sub.ended_text(), interrupt=False)
-        if pending and self._reader is not None:
-            self._refresh_subagents(generation, self._reader)
 
     def _subagent_edits(self) -> list:
         """The files the loaded chat's subagents changed (#468)."""
@@ -119,6 +130,8 @@ class SubagentsHost:
         if info is None or sub.path is None:
             return
         try:
+            if os.path.getsize(sub.path) > LARGE_CONVERSATION:
+                self._feedback(f"Reading {sub.name}'s conversation…")
             with wx.BusyCursor():
                 reader = subagents.open_conversation(sub.path, sub.agent_type)
                 reader.refresh()

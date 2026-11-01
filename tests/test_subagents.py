@@ -188,8 +188,11 @@ def test_subagents_are_found_beside_the_transcript_and_paired_with_their_calls(t
     assert "Prompt:\nReview the branch against main." in detail
     assert detail.endswith("Final report:\nTwo problems found.")
     assert subagents.count(parent) == 1
-    # Nothing new: nothing changed, and the finished one's reader was let go.
+    # Still being written as it was read: its reader is kept for now.
+    assert tracker.files["a1"]._reader is not None
+    # Nothing new: nothing changed, and the finished one's reader is let go.
     assert not tracker.refresh()
+    tracker.subagents(parse_lines(parent.read_text("utf-8").splitlines()), live=False)
     assert tracker.files["a1"]._reader is None
 
 
@@ -209,7 +212,12 @@ def test_status_without_a_result_depends_on_the_session_working(tmp_path):
     assert running.row(now_ms=subagents._ms(_at(2))).endswith("Running, 1 message, 1 tool call, "
                                                               "2 minutes so far")
     assert "No report yet." in running.detail()
-    [stopped] = tracker.subagents(transcript, live=False)
+    # A background one goes on after the parent's turn: written lately, it's
+    # still at work though the session looks idle.
+    assert tracker.subagents(transcript, live=False)[0].status == RUNNING
+    # Long quiet, with nothing saying it ended: it didn't finish.
+    later = tracker.files["a1"].modified_ms + subagents.RECENT_MS + 1000
+    [stopped] = tracker.subagents(transcript, live=False, now_ms=later)
     assert stopped.status == STOPPED and "didn't finish" in stopped.note
 
 
@@ -273,7 +281,10 @@ def test_a_running_subagent_is_read_as_it_grows(tmp_path):
     [sub] = tracker.subagents(transcript, live=True)
     # Its last reply ended its turn: done, though the parent hasn't heard yet.
     assert (sub.messages, sub.tool_calls, sub.report) == (2, 1, "Two problems found.")
-    assert sub.status == DONE and tracker.files["a1"]._reader is None
+    assert sub.status == DONE
+    tracker.refresh()
+    tracker.subagents(transcript, live=True)
+    assert tracker.files["a1"]._reader is None  # let go once it stopped growing
 
 
 def test_bad_lines_are_counted_never_raised(tmp_path):
@@ -308,6 +319,19 @@ def test_a_call_without_a_file_and_a_file_without_a_call(tmp_path):
     assert plan.path is None and plan.status == DONE and plan.report == "The plan."
     assert plan.row() == "Plan: Plan it. Done, its conversation isn't on disk"
     assert orphan.turn == 0 and orphan.prompt == "Review the branch against main."
+
+
+def test_a_subagent_two_levels_down_belongs_to_the_starting_turn(tmp_path):
+    parent = tmp_path / "sess.jsonl"
+    calls = [user_text("go"), agent_call("toolu_1", "general-purpose", "Plan", "Plan.")]
+    _write(parent, calls)
+    _subagent(parent, "a1", _review(), agentType="general-purpose", toolUseId="toolu_1")
+    _subagent(parent, "a2", _review(), agentType="Plan", parentAgentId="a1")
+    _subagent(parent, "a3", _review(), agentType="Explore", parentAgentId="a2")
+    tracker = SubagentTracker(parent)
+    tracker.refresh()
+    found = {s.agent_id: s.turn for s in tracker.subagents(parse_lines(lines(*calls)), live=False)}
+    assert found == {"a1": 1, "a2": 1, "a3": 1}
 
 
 def test_subagent_edits_are_marked_and_belong_to_the_starting_turn(tmp_path):

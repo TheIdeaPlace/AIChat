@@ -4104,9 +4104,17 @@ class ListsPage(wx.Panel):
             return
         if self.owner.open_subagent is None:
             return
+        chosen = item.subagent.agent_id
         self.owner.open_subagent(item.subagent, self.owner)
-        if self:
-            self.list.SetFocus()
+        if not self:
+            return
+        # It may have finished meanwhile: its row says how it stands now.
+        self.owner.rebuild(self.category)
+        rows = [i.subagent.agent_id if i.subagent else None for i in self.shown]
+        if chosen in rows:
+            self.list.SetSelection(rows.index(chosen))
+            self.show_selected()
+        self.list.SetFocus()
 
     def open_selected(self):
         item = self.selected()
@@ -4267,6 +4275,14 @@ class ListsDialog(wx.Dialog):
             if key not in self._built:
                 self._built[key] = self._build(page.category, self.scope)
             page.fill(self._built[key])
+        self._label_kinds()
+
+    def rebuild(self, category: str):
+        """Build one kind again, for the current scope, keeping its filter."""
+        for page in self.pages:
+            if page.category == category:
+                self._built[(category, self.scope)] = self._build(category, self.scope)
+                page.fill(self._built[(category, self.scope)])
         self._label_kinds()
 
     def _label_kinds(self):

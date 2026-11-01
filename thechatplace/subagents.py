@@ -50,6 +50,11 @@ ENDED_WORDS = {DONE: "finished", FAILED: "failed", STOPPED: "stopped"}
 #: Who gives a subagent its work, in its conversation.
 GIVER = "Claude"
 
+#: A subagent nothing says has ended, whose transcript was written this
+#: recently, is taken to be at work even when its session looks idle: one
+#: run in the background goes on after the parent's turn has ended.
+RECENT_MS = 10 * 60_000
+
 _FILE = re.compile(r"^agent-([A-Za-z0-9_-]+)\.jsonl$")
 _NOTE_TO_STATUS = {AGENT_COMPLETED: DONE, AGENT_FAILED: FAILED, AGENT_STOPPED: STOPPED}
 
@@ -171,6 +176,9 @@ class SubagentFile:
         self.meta: dict = {}
         self._reader: Optional[TranscriptReader] = None
         self._stamp = None
+        #: The file changed at the last refresh: still being written.
+        self.grew = False
+        self.modified_ms = 0
         # The summary, kept when the reader is let go.
         self.first_time = self.last_time = ""
         self.messages = self.tool_calls = self.unreadable = 0
@@ -198,7 +206,9 @@ class SubagentFile:
         except OSError:
             meta_stamp = None
         stamp = (stat.st_size, stat.st_mtime_ns, meta_stamp)
-        if stamp == self._stamp:
+        self.modified_ms = stat.st_mtime_ns // 1_000_000
+        self.grew = stamp != self._stamp
+        if not self.grew:
             return False
         self._stamp = stamp
         self.meta = read_meta(self.path)
@@ -265,18 +275,22 @@ class SubagentTracker:
                   now_ms: Optional[int] = None) -> List[Subagent]:
         """Each subagent, oldest first, paired with the parent's Agent call.
         ``live``: the session is working now, so one that hasn't said it
-        ended is still running. Finished ones' conversations are let go."""
+        ended is still running. A finished one's conversation is let go once
+        its file has stopped growing (one sent on with SendMessage grows
+        again, and is read on rather than from the start each time)."""
         calls = list(transcript.agents) if transcript is not None else []
         notes = dict(transcript.agent_notes) if transcript is not None else {}
-        found = pair(self.files.values(), calls, notes, live)
+        found = pair(self.files.values(), calls, notes, live, now_ms)
         for sub in found:
-            if sub.finished_status and sub.agent_id in self.files:
-                self.files[sub.agent_id].release()
+            sub_file = self.files.get(sub.agent_id)
+            if sub.finished_status and sub_file is not None and not sub_file.grew:
+                sub_file.release()
         return found
 
 
 def pair(files: Iterable[SubagentFile], calls: List[AgentCall],
-         notes: Dict[str, AgentNote], live: bool) -> List[Subagent]:
+         notes: Dict[str, AgentNote], live: bool,
+         now_ms: Optional[int] = None) -> List[Subagent]:
     """The subagents, from their files and the parent's calls, oldest first.
     A call whose subagent left no file (an older Claude Code, or one
     removed) is listed too, from what the call says."""
@@ -285,6 +299,7 @@ def pair(files: Iterable[SubagentFile], calls: List[AgentCall],
     files = list(files)
     types = {f.agent_id: f.agent_type for f in files}
     used = set()
+    now = now_ms or _now_ms()
     found: List[Subagent] = []
     for sub_file in files:
         meta = sub_file.meta
@@ -307,17 +322,21 @@ def pair(files: Iterable[SubagentFile], calls: List[AgentCall],
         if parent:
             sub.started_by = types.get(parent) or "another subagent"
         note = notes.get(sub_file.agent_id)
-        _settle(sub, call, note, live, stopped_by_you=meta.get("stoppedByUser") is True,
+        recent = bool(sub_file.modified_ms) and now - sub_file.modified_ms < RECENT_MS
+        _settle(sub, call, note, live or recent, stopped_by_you=meta.get("stoppedByUser") is True,
                 handback=sub_file.handback, ended=sub_file.ended,
                 last_time=sub_file.last_time, last_reply=sub_file.last_reply)
         found.append(sub)
     # One started by a subagent belongs to the turn its starter did. Its
     # edits count in that turn, marked with who made them.
     turns = {sub.agent_id: sub.turn for sub in found}
+    parents = {f.agent_id: _text(f.meta.get("parentAgentId")) for f in files}
     for sub, sub_file in zip(found, files):
-        parent = _text(sub_file.meta.get("parentAgentId"))
-        if not sub.turn and parent and turns.get(parent):
-            sub.turn = turns[parent]
+        parent, seen = parents.get(sub.agent_id), {sub.agent_id}
+        while not sub.turn and parent and parent not in seen:  # up to the top
+            seen.add(parent)
+            sub.turn = turns.get(parent, 0)
+            parent = parents.get(parent)
         sub.edits = [replace(edit, by=sub.name, turn=sub.turn) for edit in sub_file.edits]
     for call in calls:
         if call.tool_id in used or (call.agent_id and call.agent_id in types):
@@ -338,8 +357,9 @@ def _settle(sub: Subagent, call: Optional[AgentCall], note: Optional[AgentNote],
     """Its status, report and finishing time, from the best evidence: what
     the parent was told (its Agent result, or a notification), then you
     stopping it, then its own hand-back or a last reply that ended its turn.
-    Failing all of those it's running while the session works, and
-    otherwise counted as stopped."""
+    Failing all of those it's running while the session works or its
+    transcript was written lately (``live``), and otherwise counted as
+    stopped."""
     status, finished, report = "", "", ""
     if call is not None and call.status in _NOTE_TO_STATUS:
         status, finished, report = _NOTE_TO_STATUS[call.status], call.finished_at, call.report

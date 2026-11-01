@@ -2541,7 +2541,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, SubagentsH
         edits = list(self._chat_edits) if files_supported else []
         subagent_list = list(self._chat_subagents) if info.provider == "claude" else []
         # Edits a subagent made count too, marked with who made them (#468).
-        edits += self._subagent_edits() if files_supported and subagent_list else []
+        # Sorted by turn (stably), so files read in the order first changed.
+        if files_supported and subagent_list:
+            edits = sorted(edits + self._subagent_edits(), key=lambda e: e.turn)
         commands = list(self._chat_commands)
         tasks = list(self._chat_tasks)
         cwd = info.cwd
@@ -2563,9 +2565,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, SubagentsH
             unavailable[lists.SUBAGENTS] = f"Subagents aren't listed for {provider} chats yet."
 
         def build(tab, tab_scope):
+            # Subagents as read now: after a conversation closes, its row
+            # is built again with how it stands then (#468).
+            current = (list(self._chat_subagents) if tab == lists.SUBAGENTS and subagent_list
+                       else subagent_list)
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
                                lambda f: self._describe_changed_file(f, cwd), turn, tasks,
-                               marks=self.speech.change_marks, subagents=subagent_list)
+                               marks=self.speech.change_marks, subagents=current)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
@@ -3340,7 +3346,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, SubagentsH
             return
         selected = self._selected_message()
         turn = selected.turn if selected is not None and selected.kind not in TAIL_KINDS else self._chat_turns
-        scope = (lists.SCOPE_MESSAGE if any(e.turn == turn for e in self._chat_edits)
+        scope = (lists.SCOPE_MESSAGE if any(e.turn == turn for e in
+                                            self._chat_edits + self._subagent_edits())
                  else lists.SCOPE_CHAT)
         self.on_lists(lists.FILES, scope)
 
