@@ -77,6 +77,10 @@ class SessionCapabilities:
     #: before one of your messages.
     branch: bool = False
     rewind_files: bool = False
+    #: Ask Aside: a question about the chat that isn't added to it (#468).
+    aside: bool = False
+    #: Chat Options: agent, instructions and output style for later turns (#468).
+    chat_options: bool = False
 
 
 class ConversationReader(Protocol):

@@ -211,6 +211,22 @@ elif mode in ('compact', 'compact-no-boundary'):
     if mode == 'compact':
         out(**boundary)
     result = ''  # Slash commands can finish without any assistant message.
+elif mode == 'aside':
+    # Ask Aside (#468): partial messages (--include-partial-messages), as
+    # Claude Code 2.1.296 sends them, then the whole reply and the result.
+    out(type='stream_event', parent_tool_use_id=None, event={'type': 'message_start'})
+    for piece in ('The code word ', 'is ZEPHYR.'):
+        out(type='stream_event', parent_tool_use_id=None,
+            event={'type': 'content_block_delta', 'index': 0,
+                   'delta': {'type': 'text_delta', 'text': piece}})
+    out(type="assistant", parent_tool_use_id=None,
+        message={"content": [{"type": "text", "text": "The code word is ZEPHYR."}]})
+    result = "The code word is ZEPHYR."
+elif mode == 'missing':
+    out(type="result", subtype="error_during_execution", is_error=True,
+        errors=["No conversation found with session ID: abc-1"], session_id="abc-1")
+    sys.stdin.buffer.read()
+    sys.exit(1)
 else:
     out(type="assistant", parent_tool_use_id=None,
         message={"content": [{"type": "text", "text": "reply with a line separator"}]})

@@ -107,7 +107,11 @@ class ClaudeConversations:
             share_link=True, options=own, approvals=True, steer=own,
             # A branch is a copy, so any chat Claude Code can resume from
             # (#468); putting files back opens the session itself.
-            branch=not session.cowork and bool(session.cli_session_id), rewind_files=own)
+            branch=not session.cowork and bool(session.cli_session_id), rewind_files=own,
+            # A read-only copy that isn't saved (aside.py): any session whose
+            # transcript Claude Code can read, so not Cowork's (#91).
+            aside=not session.cowork and bool(session.cli_session_id),
+            chat_options=own)
 
     def has_history(self, session) -> bool:
         if session.provider != self.provider_id:

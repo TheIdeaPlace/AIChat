@@ -364,6 +364,38 @@ too).
   folder, so it has none of these. git and gh are run with no shell and never prompt; branch and
   repository names are checked before either sees them. On a Mac without Apple's Command Line
   Tools, `/usr/bin/git` isn't used, since running it asks to install them.
+- **Chat Options** (Alt+H in New Session and Continue Here, for Claude; File, Chat Options for
+  a Claude chat started here) chooses what every message in the chat also gets: an **Agent** to
+  run the chat as (None, or one of the agents Claude Code knows for the folder, such as your
+  code-reviewer, listed with the start of its description), **Instructions for this chat**
+  (added to Claude's own; Enter starts a new line), an **Output style** (your setting, or one of
+  the styles Claude Code offers, yours included), and **More folders** Claude may work in
+  (Add Folder, Remove, or Delete in the list). The agents and styles are Claude Code's own for
+  the folder, asked for in the background (no turn, no cost). They're kept with the chat and
+  passed to every turn (`--agent`, `--append-system-prompt`, an output style through
+  `--settings`, and `--add-dir`). More folders show in Chat Permissions, as "Work in the folder
+  …", where you can take one back. In New Session the button is followed by what's chosen;
+  after OK you hear it ("Chat options: agent code-reviewer, instructions."). File, Chat Options
+  changes them from the chat's next message, and you hear what changed ("Build: agent
+  code-reviewer, from its next message."). Claude Code keeps the system prompt it made for a
+  chat's first message, so once a chat's options change, The Chat Place has every later turn
+  make it afresh (`--system-prompt-snapshot off`); a turn that's running carries on as it
+  started. The heading says the agent when its name is short ("as code-reviewer"), and
+  Properties lists all three.
+- **Ask Aside** (Ctrl+Shift+Y, File, Ask Aside, or Ask Aside on a session's menu) asks Claude a
+  quick question about the selected (or loaded) Claude chat, like Claude Code's `/btw`, without
+  the question or its answer joining the chat. It works for chats started here, desktop app
+  chats and terminal chats, even while a turn is running (it answers from what the chat holds so
+  far), but not Cowork chats or kept copies. Type in **Your question** (Enter starts a new line)
+  and press Ctrl+Enter or **Ask**; you hear "Asking Claude." The answer appears in the
+  **Answer** box (Alt+W), read by line, focus moves there, and it's read out as a reply is, by
+  your announcement level. Ask again as often as you like: **Questions and answers** (Alt+N)
+  lists each one, newest last; arrowing shows each in the Answer box and Enter goes there.
+  **Copy Answer** (Alt+C) copies the selected answer. While Claude is answering, Ask becomes
+  **Stop**, and Escape stops it; otherwise Escape closes. Claude answers in a copy of the
+  conversation that is never saved, with the same model as the chat, and can read files in its
+  folder (Read, Grep and Glob only; no commands, edits, hooks or connected tools), so nothing in the
+  chat or its folder changes. Each question uses your Claude plan, as a message does.
 - **Reply box:** for The Chat Place's own sessions, type and press Ctrl+Enter (or Send). You stay in
   the reply box. While a turn is running, Ctrl+Alt+Enter steers instead (see
   [Steering a running turn](#steering-a-running-turn)). For a desktop app or terminal session the same place holds a read-only note
@@ -1340,6 +1372,7 @@ shows it as plain text instead.
 | Session list | F2 | Rename the selected session |
 | Session list | Applications key, Shift+F10 | The session's menu |
 | Anywhere | Ctrl+Shift+K | What AI knows about you: choose Claude or Codex; local instructions, memories, skills and more |
+| Anywhere | Ctrl+Shift+Y | Ask Aside (Claude chats): a quick question about the chat, not added to it |
 | Session list | Ctrl+F | Show only sessions matching some text (Escape shows all) |
 | Messages | Ctrl+F, F3, Shift+F3 | Find a message by its text; next; previous |
 | Anywhere | Ctrl+E | Export the session to a file |

@@ -102,6 +102,14 @@ class RewindChats:
                          # new session in the same folder, not a copy.
                          fork_source=info.cli_session_id if cut else "", fork_at=cut,
                          forked_from=info.title, created_ms=now, last_activity_ms=now)
+        source = self.store.get(info.cli_session_id) if info.is_own else None
+        if source is not None:
+            # Chat Options (#468) carry over too: the copy inherits the
+            # system prompt Claude Code recorded for the source, options and
+            # all, so the same options keep later turns saying the same.
+            own.agent, own.instructions = source.agent, source.instructions
+            own.output_style, own.prompt_fresh = source.output_style, source.prompt_fresh
+            own.disabled_mcp = list(source.disabled_mcp)
         if not self._store_write(self.store.add, own):
             return None
         if info.key in self.tool_activity:

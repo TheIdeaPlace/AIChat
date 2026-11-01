@@ -21,6 +21,8 @@ from typing import Dict, List, Optional
 
 from . import platform_paths
 from .provider_storage import PartitionedFile, CodexPlanStore, atomic_write_json
+from .chat_options import (ChatOptions, clean_instructions, is_safe_agent,
+                           is_safe_style)
 from .claude_cli import EFFORT_LABELS, MODEL_LABELS, is_safe_dir, is_safe_rule
 from .claude_mcp import is_safe_server_name
 from .sessions import IDLE, OWN, SessionInfo
@@ -79,10 +81,25 @@ class OwnSession:
     disabled_mcp: List[str] = field(default_factory=list)
     provider: str = "claude"
     provider_options: dict = field(default_factory=dict)
+    #: Chat options (#468), given to every turn: ``--agent``, instructions
+    #: (``--append-system-prompt``) and an output style. "" passes nothing.
+    #: Older releases ignore these fields (they read only the fields they
+    #: know), so their turns simply run without them.
+    agent: str = ""
+    instructions: str = ""
+    output_style: str = ""
+    #: True once those changed after the chat's first turn: Claude Code would
+    #: otherwise keep the system prompt it recorded then (chat_options.py).
+    prompt_fresh: bool = False
 
     @property
     def identity(self) -> tuple[str, str]:
         return self.provider, self.cli_session_id
+
+    def chat_options(self) -> ChatOptions:
+        """What this chat passes every turn besides model, effort and mode."""
+        return ChatOptions(self.agent, self.instructions, self.output_style,
+                           fresh=self.prompt_fresh)
 
     def to_info(self) -> SessionInfo:
         return SessionInfo(
@@ -196,12 +213,22 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
     if values.get("fork_at") and not (values.get("fork_source")
                                       and platform_paths.is_safe_id(values["fork_at"])):
         values["fork_at"] = ""
+    # Chat options (#468): only what could be passed back safely; a hand
+    # edit that couldn't is dropped rather than refused every turn.
+    if not is_safe_agent(values.get("agent", "")):
+        values["agent"] = ""
+    if not is_safe_style(values.get("output_style", "")):
+        values["output_style"] = ""
+    if "instructions" in values:
+        values["instructions"] = clean_instructions(values["instructions"])
     if provider != "claude":
         # These values drive only Claude runners. A foreign record must never
         # carry permissions or Remote Control into that legacy path.
         for name in ("model", "effort", "fork_source", "fork_at", "remote_control",
-                     "bridge_session_id", "remote_url", "desktop_session_id"):
+                     "bridge_session_id", "remote_url", "desktop_session_id",
+                     "agent", "instructions", "output_style"):
             values[name] = ""
+        values["prompt_fresh"] = False
         values["allowed_tools"] = []
         values["allowed_tools_at"] = {}
         values["allowed_dirs"] = []
