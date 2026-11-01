@@ -71,6 +71,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Collection, Dict, List, Optional
 
 from . import platform_paths
+from .chat_options import ChatChoices, ChatOptions, choices_from_init
 from .transcript import compaction_text
 
 #: (value passed to --permission-mode, label shown in the New Session dialog)
@@ -252,7 +253,8 @@ def is_safe_dir(folder: str) -> bool:
 
 def _common_flags(permission_mode: str, model: str = "",
                   allowed_tools: Collection[str] = (), effort: str = "",
-                  allowed_dirs: Collection[str] = ()) -> List[str]:
+                  allowed_dirs: Collection[str] = (),
+                  options: Optional[ChatOptions] = None) -> List[str]:
     permission_mode = normalize_permission_mode(permission_mode)
     if permission_mode not in PERMISSION_MODE_VALUES:
         raise ValueError(f"Unknown permission mode: {permission_mode!r}")
@@ -274,6 +276,10 @@ def _common_flags(permission_mode: str, model: str = "",
             raise ValueError(f"Not a valid effort level: {effort!r}")
         # Every turn, as with the model: each turn is a new process (#189).
         flags += ["--effort", effort]
+    if options is not None:
+        # Agent, instructions and output style (#468), every turn, as the
+        # model is. Before the lists below, whose values run to the next flag.
+        flags += options.flags()
     rules = [rule for rule in allowed_tools if is_safe_rule(rule)]
     if rules:
         # "Allow for This Chat" (#187, #329). Claude Code keeps a session-scoped
@@ -304,12 +310,13 @@ def new_session_id() -> str:
 def build_new_command(executable: str, session_id: str, title: str,
                       permission_mode: str, model: str = "",
                       allowed_tools: Collection[str] = (), effort: str = "",
-                      allowed_dirs: Collection[str] = ()) -> List[str]:
+                      allowed_dirs: Collection[str] = (),
+                      options: Optional[ChatOptions] = None) -> List[str]:
     """Command for the first turn of a new session. The prompt goes on stdin."""
     if not platform_paths.is_safe_id(session_id):
         raise ValueError("Not a valid session id.")
     command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
-                                          allowed_dirs),
+                                          allowed_dirs, options),
                "--session-id", session_id]
     title = " ".join((title or "").split())
     if title:
@@ -337,7 +344,9 @@ def check_resume_allowed(session_id: str, own_ids: Collection[str],
 def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
                        permission_mode: str, model: str = "",
                        taken_ids: Collection[str] = (),
-                       cowork_ids: Collection[str] = (), effort: str = "") -> List[str]:
+                       cowork_ids: Collection[str] = (), effort: str = "",
+                       allowed_dirs: Collection[str] = (),
+                       options: Optional[ChatOptions] = None) -> List[str]:
     """Command for the first turn of a copy of another session (#189), such
     as a desktop app session, to carry on in The Chat Place.
 
@@ -356,7 +365,8 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
         raise ResumeRefused("A Cowork session can't be continued here; open it in Claude.")
     if not platform_paths.is_safe_id(new_id) or new_id == source_id or new_id in taken_ids:
         raise ValueError("The new session needs an id of its own.")
-    command = [executable, *_common_flags(permission_mode, model, effort=effort),
+    command = [executable, *_common_flags(permission_mode, model, effort=effort,
+                                          allowed_dirs=allowed_dirs, options=options),
                "--resume", source_id, "--fork-session", "--session-id", new_id]
     title = " ".join((title or "").split())
     if title:
@@ -368,7 +378,8 @@ def build_resume_command(executable: str, session_id: str, permission_mode: str,
                          own_ids: Collection[str],
                          desktop_ids: Collection[str], model: str = "",
                          allowed_tools: Collection[str] = (), title: str = "",
-                         effort: str = "", allowed_dirs: Collection[str] = ()) -> List[str]:
+                         effort: str = "", allowed_dirs: Collection[str] = (),
+                         options: Optional[ChatOptions] = None) -> List[str]:
     """Command for a later turn. Refuses anything but The Chat Place's own sessions.
 
     ``--name`` goes on every turn, not just the first (#123). Other sessions
@@ -379,7 +390,7 @@ def build_resume_command(executable: str, session_id: str, permission_mode: str,
     """
     check_resume_allowed(session_id, own_ids, desktop_ids)
     command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
-                                          allowed_dirs)]
+                                          allowed_dirs, options)]
     title = " ".join((title or "").split())
     if title:
         command += ["--name", title]
@@ -698,6 +709,9 @@ class StreamParser:
         #: Slash commands and skills, from the answer to ``initialize``:
         #: dicts with ``name``, ``description`` and ``argumentHint``.
         self.commands: List[dict] = []
+        #: The whole answer to ``initialize`` (agents and output styles
+        #: too, #468), or None until it comes.
+        self.init_body: Optional[dict] = None
         #: Control requests The Chat Place can't answer (not ``can_use_tool``);
         #: the runner refuses them so the CLI doesn't wait.
         self.unsupported_requests: List[str] = []
@@ -760,6 +774,7 @@ class StreamParser:
             if response.get("request_id") == INIT_REQUEST_ID:
                 body = response.get("response") if isinstance(response.get("response"), dict) \
                     else {}
+                self.init_body = body
                 commands = body.get("commands")
                 if isinstance(commands, list):
                     self.commands = [c for c in commands
@@ -1702,12 +1717,30 @@ def usable_commands(commands) -> List[dict]:
 def fetch_commands(executable: str, cwd: str, timeout: float = 20.0,
                    popen: Callable[..., subprocess.Popen] = subprocess.Popen) -> List[dict]:
     """The slash commands and skills Claude Code offers in ``cwd``, without
+    running a turn (see fetch_initialize). [] if they can't be had."""
+    return usable_commands((fetch_initialize(executable, cwd, timeout, popen) or {})
+                           .get("commands"))
+
+
+def fetch_chat_choices(executable: str, cwd: str, timeout: float = 20.0,
+                       popen: Callable[..., subprocess.Popen] = subprocess.Popen
+                       ) -> Optional[ChatChoices]:
+    """The agents and output styles Claude Code offers in ``cwd`` (#468),
+    asked for as the commands are, or None."""
+    return choices_from_init(fetch_initialize(executable, cwd, timeout, popen))
+
+
+def fetch_initialize(executable: str, cwd: str, timeout: float = 20.0,
+                     popen: Callable[..., subprocess.Popen] = subprocess.Popen
+                     ) -> Optional[dict]:
+    """Claude Code's answer to ``initialize`` in ``cwd``: its slash commands
+    and skills (#23), and its agents and output styles (#468). Without
     running a turn: ``claude -p`` is sent only the ``initialize`` request,
     and stdin is closed once it answers, so no session is made and nothing
     is billed (checked with Claude Code 2.1.286: 1.4 seconds, no transcript).
-    [] if it can't be had."""
+    None if it can't be had."""
     if not os.path.isdir(cwd):
-        return []
+        return None
     command = [executable, "-p", "--input-format", "stream-json", "--output-format",
                "stream-json", "--verbose", "--permission-prompts", "none"]
     try:
@@ -1715,7 +1748,7 @@ def fetch_commands(executable: str, cwd: str, timeout: float = 20.0,
                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                         creationflags=platform_paths.hidden_window_flags())
     except OSError:
-        return []
+        return None
     timer = threading.Timer(timeout, lambda: _quietly(process.kill))
     timer.start()
     try:
@@ -1726,11 +1759,11 @@ def fetch_commands(executable: str, cwd: str, timeout: float = 20.0,
         parser = StreamParser()
         for raw in iter(process.stdout.readline, b""):
             parser.feed(_decode(raw))
-            if parser.commands:
+            if parser.init_body is not None:
                 break
-        return usable_commands(parser.commands)
+        return parser.init_body
     except (OSError, ValueError):
-        return []
+        return None
     finally:
         timer.cancel()
         _quietly(process.stdin.close)

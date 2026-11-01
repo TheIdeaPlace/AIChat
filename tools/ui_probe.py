@@ -1328,6 +1328,44 @@ def d_codex_permission(frame, env):
     return lambda: frame._modal(CodexPermissionDialog(frame, "Codex preview", request))
 
 
+def d_chat_options(frame, env):
+    """File, Chat Options on a Claude chat with an agent, instructions, an
+    output style and a more folder (#468), the folder's choices known."""
+    _open(frame, "Visual probe")
+    other = str(env["folders"]["Website"])
+    frame.store.update("own-1", agent="code-reviewer", output_style="Concise",
+                       instructions="Answer in British English.\nNever change the tests.",
+                       allowed_dirs=[other], allowed_dirs_at={other: 1_792_400_000_000})
+    return frame.on_chat_options
+
+
+def d_ask_aside(frame, env):
+    """Ask Aside (#468) after two questions: one answered, one still being
+    answered, the answered one selected in the Answer box."""
+    from thechatplace.aside import AsideEvent
+    from thechatplace.ui.dialogs import AskAsideDialog
+    runners = []
+
+    class Asked:
+        def cancel(self):
+            pass
+
+    def ask(question, on_event):
+        runners.append(on_event)
+        return Asked()
+    dialog = AskAsideDialog(frame, "Visual probe", ask)
+    dialog.question.SetValue("Which file did you change for the upload bug?")
+    dialog.on_ask()
+    runners[0](AsideEvent("done", "uploader.py: it now flushes and closes the file before it "
+                                  "signals that the upload is done.\n\nNothing else changed."))
+    dialog.question.SetValue("Did the tests pass afterwards?")
+    dialog.on_ask()
+    runners[1](AsideEvent("text", "Yes: all 12"))
+    dialog.history.SetSelection(0)
+    dialog._show_selected()
+    return lambda: frame._modal(dialog)
+
+
 def d_chat_permissions(frame, env):
     """File, Chat Permissions on a Claude chat with two kept rules (one from
     before times were kept, one with its time, #329) and a kept folder (#334)."""
@@ -1799,6 +1837,9 @@ SURFACES = {
     "codex-permission-kept": ("dialog", d_codex_permission_kept, "Remember a Codex command for this TCP chat"),
     "chat-permissions-codex-kept": ("dialog", d_chat_permissions_codex_kept, "Review and remove TCP-kept Codex approvals"),
     "chat-permissions": ("dialog", d_chat_permissions, "File, Chat Permissions: a Claude chat's kept rules"),
+    "chat-options": ("dialog", d_chat_options,
+                     "File, Chat Options: a Claude chat's agent, instructions, style and folders"),
+    "ask-aside": ("dialog", d_ask_aside, "Ask Aside: questions about a chat, one answered"),
     "chat-permissions-empty": ("dialog", d_chat_permissions_empty,
                                "File, Chat Permissions with nothing kept"),
     "chat-permissions-codex": ("dialog", d_chat_permissions_codex,
@@ -1897,6 +1938,8 @@ DIALOG_CLASSES = {
     "codex-permission-kept": "CodexPermissionDialog",
     "chat-permissions-codex-kept": "ChatPermissionsDialog",
     "chat-permissions": "ChatPermissionsDialog",
+    "chat-options": "ChatOptionsDialog",
+    "ask-aside": "AskAsideDialog",
     "chat-permissions-empty": "ChatPermissionsDialog",
     "chat-permissions-codex": "ChatPermissionsDialog",
     "codex-files": "CodexPermissionDialog",

@@ -685,6 +685,8 @@ whether the chat was started here:
 | Answer requests (Ctrl+Shift+A) | permissions, questions and plans | permissions and questions | permissions |
 | Change Model or Change Effort later | yes | no: choose in New Session | Change Model only |
 | Change Permission Mode | yes | yes | agent or plan mode |
+| Chat Options: agent, instructions, output style, more folders | yes | no | no |
+| Ask Aside (Ctrl+Shift+Y) | yes, but not Cowork chats | no | no |
 | Chat Permissions | yes | yes | no |
 | Continue Here | desktop app and terminal chats | yes | yes, with the conversation as text |
 | Commands and skills (Ctrl+/) | yes | no | no |
@@ -920,6 +922,8 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
       with you reviewing requests or with **automatic approval review** (see "Permissions and
       questions").
     - Copilot: always asks before running commands or changing files.
+- **Chat Options** (Alt+H), for Claude: an agent to run the chat as, instructions for this chat,
+  an output style, and more folders Claude may work in. See "Chat options" below.
 - **About permissions:** a note on what the choices mean for the chosen provider.
 - **First message:** what you'd like the AI to do.
 
@@ -962,6 +966,58 @@ aren't available for Codex chats yet.
 
 Desktop app, terminal and Copilot chats are set elsewhere, so for them these items say so and
 change nothing.
+
+### Chat options: agent, instructions, output style and more folders
+
+A Claude chat can run as one of your agents, with instructions of its own, in an output style,
+and with more folders to work in. Choose them with **Chat Options** (Alt+H) in New Session or
+Continue Here, or for a Claude chat started here, with **File, Chat Options**. The dialog has:
+
+- **Agent** (Alt+A): None (Claude Code's default), or one of the agents Claude Code knows for the
+  chat's folder, such as your code-reviewer, each with the start of its description. The chat
+  then runs as that agent, with its instructions and tools.
+- **Output style** (Alt+S): your setting (named, such as "Your setting (Proactive)"), or one of
+  the styles Claude Code offers, yours included. It changes how Claude writes its replies.
+- **Instructions for this chat** (Alt+I): anything Claude should always do in this chat, such as
+  "Answer in British English" or "Never change the tests". Enter starts a new line. They're added
+  to Claude's own instructions for every message.
+- **More folders** (Alt+F): folders Claude may also work in. **Add Folder** (Alt+D) chooses one;
+  **Remove** (Alt+R), or Delete in the list, takes one off. They show in Chat Permissions as
+  "Work in the folder …", where you can also take one back.
+- **About these options** (Alt+B): what each one does.
+
+The agents and styles are the folder's own, asked of Claude Code in the background, which costs
+nothing; you hear when they're ready. Press **OK** (or Ctrl+Enter) to keep your choices. In New
+Session, what you chose follows the button and you hear it, such as "Chat options: agent
+code-reviewer, instructions."
+
+For a chat that already exists, changes apply from its next message, and you hear what changed,
+such as "Fix the build: agent code-reviewer, from its next message." A turn that's running
+carries on as it started. The chat's heading says the agent when its name is short ("as
+code-reviewer"), and Properties (Alt+Enter) lists the agent, the output style and the
+instructions.
+
+### Ask Aside: a question about a chat
+
+To ask Claude something about a chat without adding to it, such as "which file did you change
+for the login bug?", press **Ctrl+Shift+Y** (File, Ask Aside, or Ask Aside on a chat's menu in
+the list). It's like Claude Code's /btw. It works for Claude chats started here, desktop app
+chats and terminal chats, even while a turn is running, when Claude answers from what the chat
+holds so far. It isn't available for Cowork chats, kept copies, or Codex and Copilot chats.
+
+- Type in **Your question** (Alt+Q). Enter starts a new line; **Ctrl+Enter** asks, as does
+  **Ask** (Alt+A). You hear "Asking Claude."
+- The answer appears in the **Answer** box (Alt+W), focus moves there to read it by line, and it's
+  read out as a reply is, by your announcement level.
+- Ask as many questions as you like. **Questions and answers** (Alt+N) lists them, newest last;
+  arrowing shows each one in the Answer box, and Enter takes you there.
+- **Copy Answer** (Alt+C) copies the selected answer.
+- While Claude is answering, Ask becomes **Stop** (Alt+S), and Escape stops it too. Otherwise
+  Escape, or Close, closes the dialog.
+
+Nothing is added to the chat, and nothing in its folder changes: Claude answers in a copy of the
+conversation that's never saved, with the chat's model, and can only read files (no commands,
+edits or connected tools). Each question uses your Claude plan, as a message does.
 
 ### Replying
 
@@ -1315,6 +1371,7 @@ made from, doesn't count. Until then, Chat Permissions lists those rules as wait
   rule itself and when it was allowed, such as "Run git push (any arguments). Bash(git push:*).
   Allowed 19 October 2026 at 14:05." A rule kept before this release says "Allowed: time not
   recorded". With nothing kept, the list says "Nothing is allowed beyond the permission mode."
+- Folders chosen in Chat Options are kept the same way, and listed here too.
 - **Remove** (or Delete in the list; on a Mac, Delete or Fn+Delete) takes the selected row back,
   and **Remove All** takes them all. Each asks once, naming what goes; No is the default.
   Removing a rule leaves a folder kept with it; remove the folder's row too. A removal counts

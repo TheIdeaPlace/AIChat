@@ -121,6 +121,18 @@ STEPS = [
     Step("Tab to the choices", ["Tab"], expect=["Keep it as is"],
          refuse=["your own answer"]),
     Step("answer later, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),
+    # Ask Aside (#468): it opens on the question box; Escape closes it.
+    Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
+    Step("Ask Aside closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # Chat Options (#468) from New Session: it opens on Agent, and Escape
+    # goes back to New Session, then to the messages.
+    Step("New Session", ["ctrl+n"], expect=["New Chat Place Session"]),
+    Step("Chat Options", ["alt+h"], expect=["Chat Options", "Agent"]),
+    Step("Chat Options closed, back in New Session", ["Escape"], expect=["Chat Options"],
+         refuse=["Messages in Visual probe"]),
+    Step("New Session closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     # Back Up Now (#433, #435): the folder question, and Escape back out.
     Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
     Step("folder question closed, back in the messages", ["Escape"],

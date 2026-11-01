@@ -59,6 +59,17 @@ def reply_text(title: str, reply: str, level: str) -> Optional[str]:
     return f"{title} replied. {reply.strip()}"
 
 
+def aside_text(answer: str, level: str) -> Optional[str]:
+    """Ask Aside's answer (#468), said as it arrives: the answer to a key
+    press. None means say nothing."""
+    if level == ANNOUNCE_SILENT or not (answer or "").strip():
+        return None
+    if level == ANNOUNCE_SUMMARY:
+        words = len(answer.split())
+        return f"Answer: {first_sentence(answer)} {words} words."
+    return f"Answer. {answer.strip()}"
+
+
 def peer_text(title: str, sender: str, message: str, level: str) -> Optional[str]:
     """Another Claude session sent the open session a message (#123): a reply
     from a session on another computer, say. None means say nothing."""

@@ -107,6 +107,11 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     if own is not None and info.provider == "claude":
         lines.append(f"Model chosen: {model_label(own.model)}")
         lines.append(f"Effort: {EFFORT_LABELS.get(own.effort, own.effort)}")
+        # Chat Options (#468); instructions in full, a line to read or copy.
+        lines.append(f"Agent: {own.agent or 'none'}")
+        lines.append(f"Output style: {own.output_style or 'your setting'}")
+        instructions = " ".join(own.instructions.split())
+        lines.append(f"Instructions for this chat: {instructions or 'none'}")
     if own is not None and info.provider == 'codex':
         options = own.provider_options
         lines.append(f"Model chosen: {options.get('model') or 'configured Codex model'}")

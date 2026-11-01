@@ -26,6 +26,17 @@ FAKE_COMMANDS = [
 ]
 
 
+def fake_chat_choices():
+    """A folder's agents and output styles, as Claude Code lists them (#468)."""
+    from thechatplace.chat_options import choices_from_init
+    return choices_from_init({
+        "agents": [{"name": "code-reviewer", "description": "Independent review of a change.",
+                    "model": "opus"},
+                   {"name": "Explore", "description": "Read-only search agent."}],
+        "available_output_styles": ["default", "Concise", "Explanatory"],
+        "output_style": "default"})
+
+
 def now_ms():
     return int(time.time() * 1000)
 
@@ -77,6 +88,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         True, signed_in=True, login="synthetic-user", host="https://github.com"))
     # Nor the real claude for a folder's slash commands (#23).
     patch(main_frame, "fetch_commands", lambda exe, cwd: list(FAKE_COMMANDS))
+    # Nor for its agents and output styles (#468).
+    patch(main_frame, "fetch_chat_choices", lambda exe, cwd: fake_chat_choices())
     spoken = []
     feedback = []
 

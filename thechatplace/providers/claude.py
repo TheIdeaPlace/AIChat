@@ -104,7 +104,11 @@ class ClaudeConversations:
             send=own, fork=not own and not session.cowork and bool(session.cli_session_id),
             delete=own, attachments=own, usage=True, changes=True,
             instructions=True, remote_control=True, desktop_link=session.can_open_in_claude,
-            share_link=True, options=own, approvals=True, steer=own)
+            share_link=True, options=own, approvals=True, steer=own,
+            # A read-only copy that isn't saved (aside.py): any session whose
+            # transcript Claude Code can read, so not Cowork's (#91).
+            aside=not session.cowork and bool(session.cli_session_id),
+            chat_options=own)
 
     def has_history(self, session) -> bool:
         if session.provider != self.provider_id:

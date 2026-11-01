@@ -189,6 +189,10 @@ SHORTCUTS = [
         ("Ctrl+Shift+A", "Answer: approve or deny a tool, answer the provider's questions, or "
                          "approve its plan (the loaded session first, then another chat "
                          "waiting for an answer). Escape in the dialog answers later"),
+        ("Ctrl+Shift+Y", "Ask Aside (Claude chats): a quick question about the selected (or "
+                         "loaded) chat, answered without the question or answer being added "
+                         "to it; Ctrl+Enter asks, and the answer is read and goes in the "
+                         "Answer box"),
         ("Ctrl+Shift+K", "What AI knows about you: choose Claude or Codex, then read "
                          "local instructions, memories, skills and settings, or open "
                          "them in your editor"),

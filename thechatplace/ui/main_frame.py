@@ -60,7 +60,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           TurnRunner, allow_response, answer_questions_response,
                           build_fork_command, build_new_command, build_resume_command,
                           SESSION_INJECTED_PREFIXES, STRIPPED_VARS, child_environment,
-                          deny_response, fetch_commands, usable_commands,
+                          deny_response, fetch_chat_choices, fetch_commands, usable_commands,
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, new_session_id,
                           normalize_permission_mode)
@@ -103,6 +103,8 @@ from .codex_chats import CodexChats
 from .relay_chats import RelayChats
 from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
+from .claude_extras import ClaudeExtras
+from ..aside import AsideRunner  # noqa: F401 - tests stand in for it here
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions
@@ -183,6 +185,22 @@ _TERMINAL_NOTE = (
     "session isn't changed.")
 
 
+def _no_options():
+    """Chat Options of a dialog that has none (#468): nothing chosen."""
+    from ..chat_options import ChatOptions
+    return ChatOptions(), []
+
+
+def _options_fields(options, folders) -> dict:
+    """OwnSession fields for a new chat's Chat Options (#468): its agent,
+    instructions and style, and its more folders kept as Allow for This Chat
+    keeps folders, so Chat Permissions lists them."""
+    now = int(time.time() * 1000)
+    return dict(agent=options.agent, instructions=options.instructions,
+                output_style=options.output_style, allowed_dirs=list(folders),
+                allowed_dirs_at={folder: now for folder in folders})
+
+
 def kind_name(info: SessionInfo) -> str:
     """What a session is, for "<title> is a terminal session: ...". """
     kind = info.kind_label
@@ -206,7 +224,7 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
-class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
+class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, ClaudeExtras, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -539,6 +557,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._item(session, "Cop&y Session Link...\tCtrl+Shift+L",
                    lambda e: self.on_copy_session_link())
         self._item(session, "&Answer...\tCtrl+Shift+A", lambda e: self.on_answer())
+        # A question about the chat that isn't added to it (#468). Every
+        # letter is another item's access key, so its shortcut is the way in.
+        self._item(session, "Ask Aside...\tCtrl+Shift+Y", lambda e: self.on_ask_aside())
         self._item(session, "Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here)
         self._item(session, "&New Session...\tCtrl+N", self.on_new_session)
         self._item(session, "Change Mo&del...", lambda e: self.on_change_model())
@@ -551,6 +572,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._item(session, "Chat Permissions...\tCtrl+Shift+H",
                    lambda e: self.on_chat_permissions())
         self._item(session, "Change E&ffort...", lambda e: self.on_change_effort())
+        # Agent, instructions, output style and more folders (#468). Every
+        # letter is another item's access key, so it's reached by arrowing.
+        self._item(session, "Chat Options...", lambda e: self.on_chat_options())
         self._item(session, "Rem&ote Control...", lambda e: self.on_remote_control())
         # As with Rename Session, every letter is taken, so the key is its shortcut.
         self._item(session, "Other Machines...\tCtrl+Shift+M",
@@ -1860,6 +1884,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 kind += f" on {model_label(own.model)}"
                 if own.effort:
                     kind += f" at {effort_label(own.effort)}"
+                # The agent, only if its name is short (#468).
+                agent = own.chat_options().heading_part()
+                if agent:
+                    kind += f", {agent}"
                 # Only when it isn't auto, the default: the heading must
                 # still fit a narrow window.
                 if normalize_permission_mode(own.permission_mode) != DEFAULT_PERMISSION_MODE:
@@ -2822,6 +2850,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if not info.is_own and not conversation and not imported:
             # Heard as unavailable for a Cowork session (#91), whose button is hidden.
             add("Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here, not info.cowork)
+        if info.provider == "claude" and info.source != "kept":
+            add("Ask &Aside...\tCtrl+Shift+Y", self.on_ask_aside, not info.cowork)
         add("Re&name Session...\tF2", self.on_rename)
         add("&Remote Control...", self.on_remote_control, not conversation and not imported)
         menu.AppendSeparator()
@@ -4291,6 +4321,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                                   feedback=self._feedback,
                                   clone_root=str(platform_paths.clone_root()),
                                   remove_recent=self._remove_recent_folder,
+                                  load_chat_choices=self._load_chat_choices,
                                   **{**provider_options, **prefill})
         try:
             if dialog.ShowModal() != wx.ID_OK:
@@ -4303,6 +4334,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             provider = getattr(dialog, "provider", lambda: "claude")()
             policy = getattr(dialog, 'codex_policy', lambda: {})() if provider == 'codex' else {}
             copilot_mode = getattr(dialog, "copilot_mode", lambda: "")()
+            chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
         finally:
             dialog.Destroy()
         if forward is None:
@@ -4326,9 +4358,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
             return
         session_id = new_session_id()
-        command = build_new_command(exe, session_id, title, mode, model, effort=effort)
+        command = build_new_command(exe, session_id, title, mode, model, effort=effort,
+                                    allowed_dirs=more_folders, options=chat_options)
         own = OwnSession(cli_session_id=session_id, title=title, cwd=folder,
-                         permission_mode=mode, started=False, model=model, effort=effort)
+                         permission_mode=mode, started=False, model=model, effort=effort,
+                         **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
         if joint:
@@ -4525,12 +4559,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
             return
-        dialog = NewSessionDialog(self, info.cwd, continue_from=info.title)
+        dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
+                                  load_chat_choices=self._load_chat_choices,
+                                  feedback=self._feedback)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
             _folder, title, mode, message, model = dialog.values()
             effort = dialog.effort()
+            chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
         finally:
             dialog.Destroy()
         new_id = new_session_id()
@@ -4539,14 +4576,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 lookup.path, info.cli_session_id, new_id, title, mode, model,
                 taken_ids={s.cli_session_id for s in self.store.all()}
                 | set(self._snapshot.desktop_cli_ids),
-                cowork_ids=self._snapshot.cowork_cli_ids, effort=effort)
+                cowork_ids=self._snapshot.cowork_cli_ids, effort=effort,
+                allowed_dirs=more_folders, options=chat_options)
         except (ResumeRefused, ValueError) as exc:
             wx.MessageBox(str(exc), APP_NAME, wx.OK | wx.ICON_WARNING, self)
             return
         own = OwnSession(cli_session_id=new_id, title=title, cwd=info.cwd,
                          permission_mode=mode, started=False, model=model, effort=effort,
                          fork_source=info.cli_session_id, forked_from=info.title,
-                         remote_control=remote_control)
+                         remote_control=remote_control,
+                         **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
         if info.key in self.tool_activity:
@@ -4695,7 +4734,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                     own_ids={s.cli_session_id for s in self.store.all()},
                     desktop_ids=self._snapshot.desktop_cli_ids, model=own.model,
                     allowed_tools=own.allowed_tools, title=own.title, effort=own.effort,
-                    allowed_dirs=own.allowed_dirs)
+                    allowed_dirs=own.allowed_dirs, options=own.chat_options())
             else:
                 # The first turn never got as far as creating the session:
                 # start it again rather than resume something that isn't there.
@@ -4708,13 +4747,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                                                  own.title, own.permission_mode, own.model,
                                                  taken_ids=self._snapshot.desktop_cli_ids,
                                                  cowork_ids=self._snapshot.cowork_cli_ids,
-                                                 effort=own.effort)
+                                                 effort=own.effort,
+                                                 allowed_dirs=own.allowed_dirs,
+                                                 options=own.chat_options())
                 else:
                     command = build_new_command(exe, own.cli_session_id, own.title,
                                                 own.permission_mode, own.model,
                                                 allowed_tools=own.allowed_tools,
                                                 effort=own.effort,
-                                                allowed_dirs=own.allowed_dirs)
+                                                allowed_dirs=own.allowed_dirs,
+                                                options=own.chat_options())
         except (ResumeRefused, ValueError) as exc:
             return str(exc)
         self._start_turn(own.cli_session_id, command, own.cwd, message, own.title,
@@ -4944,6 +4986,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if parser is not None and parser.commands:
                 self._commands[_folder_key(self._runners[session_id].cwd)] = \
                     usable_commands(parser.commands)
+            if parser is not None and getattr(parser, "init_body", None):
+                # Its agents and output styles too, for Chat Options (#468).
+                self._remember_chat_choices(self._runners[session_id].cwd, parser.init_body)
             if is_open_now:
                 # The reply is announced next; activity not yet spoken is
                 # older news, and its last text is that same reply.
