@@ -630,11 +630,11 @@ def _whole_lines_end(path: Path) -> int:
 _LOCK = re.compile(r"inuse\.(\d{1,10})\.lock")
 
 
-def locked_elsewhere(folder: Path, own_pid: Optional[int]) -> bool:
+def locked_elsewhere(folder: Path, is_own=None) -> bool:
     """Whether a running Copilot other than this app's has the chat open.
     Copilot (1.0.103) holds ``inuse.<pid>.lock`` in the session folder while
-    it has a chat open, named for the process (checked: the one this app
-    starts), and leaves it behind when it exits. So a lock counts only if that
+    it has a chat open, named for the process, which needn't be the one this
+    app starts (#463), and leaves it behind when it exits. So a lock counts only if that
     process is running now and was already running when the lock was written:
     process ids are handed out again, and a later process with a stale lock's
     id has nothing to do with the chat."""
@@ -647,7 +647,7 @@ def locked_elsewhere(folder: Path, own_pid: Optional[int]) -> bool:
     locks = {}
     for name in names:
         match = _LOCK.fullmatch(name)
-        if not match or int(match.group(1)) == own_pid:
+        if not match or (is_own is not None and is_own(int(match.group(1)))):
             continue
         # Only lock files are looked at, each on its own: others come and go
         # (.hold, temporary files) and must not switch the check off (Kelly).
@@ -870,11 +870,14 @@ class CopilotChatRuntime:
                     "Copilot now.")
 
     @staticmethod
-    def _own_pid(connection) -> Optional[int]:
-        """The process id of this app's Copilot on ``connection``, if known."""
-        process = getattr(getattr(connection, "_process", None), "process", None)
-        pid = getattr(process, "pid", None)
-        return pid if isinstance(pid, int) else None
+    def _is_own(connection):
+        """Whether a process is this app's Copilot on ``connection``: the one
+        it started, or anything that started, since that can be a launcher
+        with the real Copilot as its child (#463)."""
+        server = getattr(connection, "_process", None)
+        started = getattr(getattr(server, "process", None), "pid", None)
+        holds = getattr(getattr(server, "tree", None), "holds", None)
+        return lambda pid: pid == started or (holds is not None and holds(pid))
 
     def _events(self, native_id: str) -> Path:
         return (self._sessions_dir or platform_paths.copilot_sessions_dir()) / native_id / EVENTS_FILE
@@ -1103,7 +1106,7 @@ class CopilotChatRuntime:
         if refusal:
             raise CopilotChatError(refusal)
         connection = self._connect()
-        if locked_elsewhere(self._events(native_id).parent, self._own_pid(connection)):
+        if locked_elsewhere(self._events(native_id).parent, self._is_own(connection)):
             raise CopilotChatError(IN_USE)
         before = _whole_lines_end(self._events(native_id))
         with self._lock:
@@ -1269,7 +1272,7 @@ class CopilotChatRuntime:
         current = chat is not None and chat.connection is not None \
             and chat.connection is self._connection
         open_elsewhere = bool(current and not busy and locked_elsewhere(
-            self._events(native_id).parent, self._own_pid(chat.connection)))
+            self._events(native_id).parent, self._is_own(chat.connection)))
         with self._lock:
             # Only if no turn of this app's began meanwhile (its own message
             # would be in the log too).
@@ -1416,7 +1419,7 @@ class CopilotChatRuntime:
             # Before a queued message goes: is another Copilot holding the chat
             # now? And a log shorter than the last check means it was replaced.
             elsewhere = (elsewhere or log_end < chat.log_end
-                         or locked_elsewhere(events_path.parent, self._own_pid(connection)))
+                         or locked_elsewhere(events_path.parent, self._is_own(connection)))
         except Exception:  # noqa: BLE001 - a check that fails must not leave the chat busy
             elsewhere = True
         chat.delivering.acquire()  # released once the finished turn is handed over

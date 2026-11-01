@@ -1454,7 +1454,7 @@ def test_locks_left_by_copilots_that_exited_or_by_this_apps_own_dont_count(make,
     dead = subprocess.Popen([sys.executable, "-c", "pass"])
     dead.wait(10)
     (folder / f"inuse.{dead.pid}.lock").write_text("", encoding="utf-8")
-    own = runtime._own_pid(runtime._connection)
+    own = runtime._connection._process.process.pid
     (folder / f"inuse.{own}.lock").write_text("", encoding="utf-8")
     runtime.send(chat, "Hello")
     assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
@@ -1539,9 +1539,9 @@ def test_the_fakes_own_lock_is_really_checked(make, tmp_path, monkeypatch):
     couldn't tell its own Copilot, every send would be refused."""
     runtime, _ = make()
     chat = runtime.create(str(tmp_path))
-    own = runtime._own_pid(runtime._connection)
+    own = runtime._connection._process.process.pid
     assert (tmp_path / "sessions" / chat / f"inuse.{own}.lock").exists()
-    monkeypatch.setattr(runtime, "_own_pid", lambda connection: None)
+    monkeypatch.setattr(runtime, "_is_own", lambda connection: lambda pid: False)
     with pytest.raises(CopilotChatError, match="open in another Copilot"):
         runtime.send(chat, "Hello")
 
@@ -2608,3 +2608,53 @@ def test_a_failed_save_of_a_mode_is_the_chats_notice(provider, tmp_path, monkeyp
     monkeypatch.setattr("thechatplace.provider_storage.atomic_write_json", full)
     record = copilot.create_owned(str(tmp_path), "Unsaved", copilot_mode=PLAN_MODE)
     assert runtime.snapshot(record.cli_session_id).notice == MODE_NOT_SAVED
+
+
+LAUNCHER = """
+import subprocess, sys, time
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+print(child.pid, flush=True)
+time.sleep(60)
+"""
+
+
+def test_a_chat_held_by_the_copilot_a_launcher_started_is_not_held_elsewhere(tmp_path):
+    """#463: VS Code's copilot command keeps running with the real Copilot as
+    its child, and the chat's lock is named for the child. Real processes,
+    because it's the process tree that has to know."""
+    from types import SimpleNamespace
+    from thechatplace.providers import copilot_runtime
+    tree = platform_paths.ProcessTree()
+    process = subprocess.Popen([sys.executable, "-c", LAUNCHER], stdout=subprocess.PIPE,
+                               text=True, **tree.popen_kwargs())
+    try:
+        tree.attach(process)
+        child = int(process.stdout.readline())
+        connection = SimpleNamespace(_process=SimpleNamespace(process=process, tree=tree))
+        is_own = CopilotChatRuntime._is_own(connection)
+        assert is_own(process.pid) and is_own(child)
+        assert tree.holds(child)
+
+        (tmp_path / f"inuse.{child}.lock").write_text("")
+        assert not copilot_runtime.locked_elsewhere(tmp_path, is_own)
+        # The same lock, seen from a Copilot that didn't start it, still counts.
+        assert copilot_runtime.locked_elsewhere(tmp_path, lambda pid: False)
+    finally:
+        tree.kill()
+        process.wait(timeout=10)
+        process.stdout.close()
+        tree.close()
+
+
+def test_this_process_isnt_in_a_copilots_tree():
+    tree = platform_paths.ProcessTree()
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                               **tree.popen_kwargs())
+    try:
+        tree.attach(process)
+        assert tree.holds(process.pid)
+        assert not tree.holds(os.getpid())
+    finally:
+        tree.kill()
+        process.wait(timeout=10)
+        tree.close()

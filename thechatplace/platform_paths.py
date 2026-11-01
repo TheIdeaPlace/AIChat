@@ -1354,6 +1354,19 @@ class ProcessTree:
         except OSError:
             pass
 
+    def holds(self, pid: int) -> bool:
+        """Whether a process is this one or anything it started. VS Code's
+        ``copilot`` command is a launcher that keeps running with the real
+        Copilot as its child (#463). If it can't be told, the answer is no."""
+        if pid == self._pid:
+            return True
+        if sys.platform == "win32":
+            return self._job is not None and pid in _job_process_ids(self._job)
+        try:
+            return self._pid is not None and os.getpgid(pid) == self._pid
+        except OSError:
+            return False
+
     def close(self) -> None:
         """Close the job. KILL_ON_JOB_CLOSE ends anything still in it."""
         if self._job is not None:
@@ -1438,6 +1451,26 @@ def _create_kill_on_close_job():
         _close_handle(job)
         return None
     return job
+
+
+def _job_process_ids(job, room: int = 1024) -> frozenset:
+    """The process ids in a job (none if Windows won't say)."""
+    import ctypes
+    from ctypes import wintypes
+
+    class PROCESS_ID_LIST(ctypes.Structure):
+        _fields_ = [("NumberOfAssignedProcesses", wintypes.DWORD),
+                    ("NumberOfProcessIdsInList", wintypes.DWORD),
+                    ("ProcessIdList", ctypes.c_size_t * room)]
+
+    found = PROCESS_ID_LIST()
+    query = _kernel32().QueryInformationJobObject
+    query.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
+                      wintypes.LPVOID]
+    query.restype = wintypes.BOOL
+    if not query(job, 3, ctypes.byref(found), ctypes.sizeof(found), None):  # BasicProcessIdList
+        return frozenset()
+    return frozenset(found.ProcessIdList[:found.NumberOfProcessIdsInList])
 
 
 def _assign_to_job(job, process_handle: int) -> bool:
