@@ -365,7 +365,9 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
     the last transcript record the copy keeps: ``--resume-session-at`` copies
     the history only up to and including it. Checked with Claude Code
     2.1.296: asked to list every request so far, the copy listed the turns
-    before the cut and none after, and the source was unchanged. The cut is
+    before the cut and none after, and the source was unchanged. Cuts at a
+    system record (``stop_hook_summary``, Rewind's usual cut), at an
+    assistant reply and at a user message were all accepted. The cut is
     always a copy, never ``--resume-drops-turn`` in place: the source keeps
     its whole history, and nothing is ever written into a desktop session.
     """

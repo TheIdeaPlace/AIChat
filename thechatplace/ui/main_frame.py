@@ -2462,11 +2462,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Going back to this message (#468): Claude chats only; elsewhere
         # they aren't offered rather than refused.
         if self._open is not None and self._open.provider == "claude":
+            try:
+                can_branch = self.sessions.capabilities(self._open).branch
+            except ValueError:
+                can_branch = False
             rewind_item = menu.Append(wx.ID_ANY, "Re&wind to Here...\tCtrl+Shift+Z")
-            rewind_item.Enable(rewind.rewindable(message))
+            rewind_item.Enable(can_branch and rewind.rewindable(message))
             menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
             branch_item = menu.Append(wx.ID_ANY, "Branc&h from Here")
-            branch_item.Enable(message is not None and message.kind in rewind_chats.BRANCHABLE
+            branch_item.Enable(can_branch and message is not None
+                               and message.kind in rewind_chats.BRANCHABLE
                                and bool(message.uuid))
             menu.Bind(wx.EVT_MENU, lambda e: self.on_branch_from_here(), branch_item)
         # Properties stays last, as on the session list's menu.
@@ -4700,6 +4705,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Start a turn with ``message``. Returns why it can't, or None once
         sent; the caller decides how to say it (a dialog when Kelly pressed
         Send, speech for a queued message going out on its own)."""
+        if session_id in self._rewinding_files:
+            # Every way a turn starts (Other Machines, a queued message) waits
+            # for Rewind to Here's files (#468).
+            return ("Rewind to Here is still putting this chat's files back. Send again in "
+                    "a moment.")
         # Read fresh, not from the list's snapshot: up to 5 seconds old, it
         # still shows The Chat Place's own just-finished turn as busy.
         live = hub.load_live_status().get(session_id)

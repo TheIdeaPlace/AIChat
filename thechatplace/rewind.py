@@ -124,6 +124,10 @@ class RewindPlan:
                              + self.changed_files_text())
                 if choice == FILES:
                     parts.append(f"The conversation in {self.chat_title} isn't changed.")
+        elif self.files_problem:
+            # Conversation only, perhaps because the files can't go back:
+            # say why here too, as it's what the dialog opens on.
+            parts.append("The files stay as they are. " + self.files_problem)
         return "\n\n".join(parts)
 
 
@@ -148,6 +152,19 @@ def unstarted_line(own) -> str:
         return (f"No messages yet. This chat goes back to before your first message in "
                 f"{own.forked_from}, so it starts with no history. Send a message to start it.")
     return ""
+
+
+#: What the transcript reader writes for a picture in your message.
+_PICTURE = "(image attached)"
+
+
+def draft_text(message: ChatMessage):
+    """Your message as it goes back in the reply box, and how many pictures
+    it had: those aren't carried over, so the placeholder lines are left out
+    and the caller says to attach them again."""
+    lines = message.text.split("\n")
+    kept = [line for line in lines if line.strip() != _PICTURE]
+    return "\n".join(kept).strip(), len(lines) - len(kept)
 
 
 def rewindable(message: Optional[ChatMessage]) -> bool:

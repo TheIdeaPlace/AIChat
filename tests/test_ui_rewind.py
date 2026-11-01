@@ -158,6 +158,38 @@ def test_rewind_files_only_keeps_the_conversation(frame, env, fake_runner, monke
     assert frame._open.cli_session_id == "own-rw"
 
 
+def test_files_stay_when_the_new_chat_cant_be_made(frame, env, fake_runner, monkeypatch):
+    own_chat(frame, env)
+    choose(frame, USER, 1)
+    answer_dialog(monkeypatch, rewind.BOTH)
+    calls = stub_files(monkeypatch)
+    monkeypatch.setattr(frame, "_make_branch", lambda *a, **k: None)
+    frame.on_rewind_to_here()
+    pump(lambda: False, timeout=0.5)
+    assert calls == [] and "own-rw" not in frame._rewinding_files
+
+
+def test_files_wait_for_a_turn_that_started_while_the_dialog_was_open(frame, env, fake_runner,
+                                                                      monkeypatch):
+    own_chat(frame, env)
+    choose(frame, USER, 1)
+    from thechatplace.ui import dialogs
+
+    class HandOffMeanwhile(dialogs.RewindDialog):
+        def ShowModal(self):
+            frame._runners["own-rw"] = object()  # a hand-off started a turn
+            self.what.SetSelection(2)
+            self._go()
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.rewind_chats.RewindDialog", HandOffMeanwhile)
+    calls = stub_files(monkeypatch)
+    frame.on_rewind_to_here()
+    frame._runners.pop("own-rw", None)
+    assert calls == []
+    assert env["feedback"][-1] == ("Fixes is busy, so its files weren't put back. Try again "
+                                   "once it has finished.")
+
+
 def test_a_failed_files_rewind_is_said_and_shown(frame, env, fake_runner, monkeypatch):
     own_chat(frame, env)
     choose(frame, USER, 1)
@@ -227,6 +259,9 @@ def test_rewind_the_first_message_starts_a_chat_with_no_history(frame, env, fake
     own = frame.store.get(frame._open.cli_session_id)
     assert (own.fork_source, own.fork_at, own.forked_from) == ("", "", "Fixes")
     assert pump(lambda: "no history" in frame.chat_list.GetString(0))
+    frame.on_rewind_to_here()
+    assert env["feedback"][-1] == "Fixes (rewound) has no messages yet."
+    frame.reply_text.SetValue("Create a.txt")
     frame.on_send()
     command = fake_runner.instances[-1].command
     assert "--resume" not in command and "--fork-session" not in command

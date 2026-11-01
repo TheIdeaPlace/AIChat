@@ -285,3 +285,20 @@ def test_unstarted_branch_line():
                       fork_source="s-1", forked_from="Fixes")
     assert unstarted_line(copy) == ""  # Continue Here's own wording stays
     assert unstarted_line(None) == ""
+
+
+def test_a_steered_message_is_not_a_place_to_go_back_to():
+    # Taken in mid-turn (a queued_command attachment): no checkpoint of its own.
+    steer = other("attachment", uuid="att-1", parentUuid="a-1", attachment={
+        "type": "queued_command", "commandMode": "prompt", "prompt": "Also do the docs"})
+    tr = parse_lines(lines(user_text("Fix it"), steer))
+    steered = tr.messages[-1]
+    assert steered.kind == USER and steered.text == "Also do the docs"
+    assert not rewind.rewindable(steered) and steered.uuid == ""
+
+
+def test_pictures_are_left_out_of_the_draft_and_counted():
+    msg = parse_lines(lines(user_text("Look at this\n(image attached)\n(image attached)"))
+                      ).messages[0]
+    assert rewind.draft_text(msg) == ("Look at this", 2)
+    assert rewind.draft_text(message("Plain")) == ("Plain", 0)

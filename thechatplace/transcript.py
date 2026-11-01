@@ -450,7 +450,12 @@ class TranscriptParser:
             # Part of the turn it joined, not a turn of its own: Changes and
             # the task list for that turn still cover all its work. First in
             # what's readable (after compaction, say), it starts turn 1.
-            return self._user_text(prompt, record, new_turn=self.transcript.turns == 0)
+            added = self._user_text(prompt, record, new_turn=self.transcript.turns == 0)
+            for item in added:
+                # Mid-turn, with no file checkpoint of its own: not a place
+                # Rewind to Here or Branch from Here goes back to (#468).
+                item.uuid = item.parent_uuid = ""
+            return added
         if not isinstance(origin, dict) or origin.get("kind") != "peer":
             return []
         # A subagent's report coming back to its session has the same shape

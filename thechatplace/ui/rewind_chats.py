@@ -44,11 +44,18 @@ class RewindChats:
         if info is None:
             self._feedback(f"Load a chat first, then choose a message to {verb} from.")
             return None
+        if info.provider == "claude" and info.cowork and info.source != "kept":
+            # Said instead of the general "isn't available for Claude chats".
+            self._feedback(f"{info.title} is a Cowork session: its history is in the "
+                           "desktop app's own files, so it can't be rewound or branched "
+                           "here. Open it in Claude.")
+            return None
         if not self._require_capability("branch", info):
-            if info.provider == "claude" and info.cowork and info.source != "kept":
-                self._feedback(f"{info.title} is a Cowork session: its history is in the "
-                               "desktop app's own files, so it can't be rewound or branched "
-                               "here. Open it in Claude.")
+            return None
+        own = self.store.get(info.cli_session_id) if info.is_own else None
+        if own is not None and not own.started and self._reader is None:
+            # A branch not sent to yet, say: nothing of its own to go back to.
+            self._feedback(f"{info.title} has no messages yet.")
             return None
         if not self._chat_loaded or self._reader is None:
             self._feedback(f"{info.title} is still loading.")
@@ -127,6 +134,7 @@ class RewindChats:
         plan = rewind.plan_rewind(info.title, self._reader.transcript, message,
                                   can_rewind_files=self._can_rewind_files(info),
                                   files_reason=self._files_reason(info))
+        focus = wx.Window.FindFocus()
         dialog = RewindDialog(self, plan)
         try:
             chosen = dialog.ShowModal() == wx.ID_OK and dialog.choice
@@ -134,20 +142,26 @@ class RewindChats:
         finally:
             dialog.Destroy()
         if not chosen:
-            self.chat_list.SetFocus()  # back on the message, as Escape does elsewhere
+            # Back where Ctrl+Shift+Z was pressed: the message, or the reply box.
+            (focus if focus else self.chat_list).SetFocus()
             return
-        if choice in (rewind.BOTH, rewind.FILES):
-            # With the conversation too, the new chat's line says it.
-            self._start_rewind_files(info, message, len({os.path.normcase(e.path)
-                                                         for e in plan.edits}),
-                                     quiet=choice == rewind.BOTH)
-        if choice in (rewind.BOTH, rewind.CONVERSATION):
-            own = self._make_branch(info, plan.cut, rewind.rewound_title(info.title),
-                                    message.text)
-            if own is not None:
-                self._feedback(f"Rewound to before your message in {own.title}. Your message "
-                               "is in the reply box to change and send."
-                               + (" Putting the files back." if choice == rewind.BOTH else ""))
+        file_count = len({os.path.normcase(e.path) for e in plan.edits})
+        if choice == rewind.FILES:
+            self._start_rewind_files(info, message, file_count)
+            return
+        # The new chat first: if it can't be made, the files stay as they are.
+        text, pictures = rewind.draft_text(message)
+        own = self._make_branch(info, plan.cut, rewind.rewound_title(info.title), text)
+        if own is None:
+            return
+        said = (f"Rewound to before your message in {own.title}. Your message is in the "
+                "reply box to change and send.")
+        if pictures:
+            said += " Attach its pictures again before sending."
+        if choice == rewind.BOTH and self._start_rewind_files(info, message, file_count,
+                                                              quiet=True):
+            said += " Putting the files back."
+        self._feedback(said)
 
     def _can_rewind_files(self, info: SessionInfo) -> bool:
         try:
@@ -180,17 +194,24 @@ class RewindChats:
         return self._rewinding_files_set
 
     def _start_rewind_files(self, info: SessionInfo, message: ChatMessage, file_count: int,
-                            quiet: bool = False):
+                            quiet: bool = False) -> bool:
+        """Start putting the files back. True once started; False once it's
+        said why not."""
         session_id = info.cli_session_id
+        if session_id in self._runners or session_id in self._rewinding_files:
+            # A turn may have started while the dialog was open (a hand-off).
+            self._feedback(f"{info.title} is busy, so its files weren't put back. Try again "
+                           "once it has finished.")
+            return False
         live = hub.load_live_status().get(session_id)
         if live is not None and live.status == "busy":
             self._feedback("This chat is running somewhere else right now, so its files "
                            "weren't put back.")
-            return
+            return False
         lookup = platform_paths.find_claude()
         if not lookup.path:
             wx.MessageBox(lookup.problem, "The Chat Place", wx.OK | wx.ICON_ERROR, self)
-            return
+            return False
         own_ids = {s.cli_session_id for s in self.store.all()}
         desktop_ids = set(self._snapshot.desktop_cli_ids)
         self._rewinding_files.add(session_id)
@@ -211,6 +232,7 @@ class RewindChats:
             wx.CallAfter(self._rewind_files_done, session_id, result)
 
         self._pool.submit(work).add_done_callback(done)
+        return True
 
     def _rewind_files_done(self, session_id: str, result):
         if self._gone():

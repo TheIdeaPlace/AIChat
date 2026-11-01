@@ -76,7 +76,11 @@ def _known(cls, data: dict) -> dict:
 
 
 def transcript_to_json(transcript: Transcript) -> dict:
-    return dataclasses.asdict(transcript)
+    data = dataclasses.asdict(transcript)
+    # File checkpoints (#468) belong to the original's Claude Code session;
+    # a restored chat is read-only and can't put files back.
+    data.pop("checkpoints", None)
+    return data
 
 
 def transcript_from_json(data: dict) -> Transcript:
