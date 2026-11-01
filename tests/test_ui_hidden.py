@@ -10488,7 +10488,7 @@ def test_message_dialogs_use_equal_provider_labels(frame, monkeypatch, provider)
     finally:
         dialog.Destroy()
     shown = []
-    monkeypatch.setattr(frame, '_show_page', lambda title, page: shown.append((title, page)) or True)
+    monkeypatch.setattr(frame, '_show_page', lambda title, page, parent=None: shown.append((title, page)) or True)
     frame._show_formatted(ChatMessage(ASSISTANT, 'Synthetic text', assistant_name=provider))
     assert [title for title, _page in shown] == [f'Message: {provider}']
     # The page starts with who wrote it as heading 1 (#341).

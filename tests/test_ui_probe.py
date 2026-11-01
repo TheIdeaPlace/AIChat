@@ -21,9 +21,11 @@ WX_DIALOGS = {"TextEntryDialog", "SingleChoiceDialog"}
 
 
 def test_every_dialog_is_photographed_or_says_why_not():
-    from thechatplace.ui import dialogs
-    classes = {name for name, cls in inspect.getmembers(dialogs, inspect.isclass)
-               if issubclass(cls, wx.Dialog) and cls.__module__ == dialogs.__name__}
+    from thechatplace.ui import dialogs, subagent_chat
+    # Dialogs live in dialogs.py, and a few in modules of their own (#468).
+    classes = {name for module in (dialogs, subagent_chat)
+               for name, cls in inspect.getmembers(module, inspect.isclass)
+               if issubclass(cls, wx.Dialog) and cls.__module__ == module.__name__}
     covered = set(ui_probe.DIALOG_CLASSES.values()) | set(ui_probe.NOT_PHOTOGRAPHED)
     assert classes - covered == set(), "add a surface to tools/ui_probe.py for these dialogs"
     assert covered - classes == WX_DIALOGS, "the probe names dialogs that no longer exist"
