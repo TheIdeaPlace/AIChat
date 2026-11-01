@@ -33,6 +33,9 @@ def _copilot_error(error):
 
 
 def safe_reason(error):
+    from .providers.codex_features import CodexFeatureError
+    if type(error) is CodexFeatureError:
+        return CodexFeatureError.REASONS.get(error.code, '')
     if _copilot_error(error):
         # Copilot's runtime words every reason it gives to be shown (#370).
         text = str(error)

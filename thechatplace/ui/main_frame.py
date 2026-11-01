@@ -1931,6 +1931,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     kind += f", continued from {own.forked_from}"
                 if self._remote_control_on(own):
                     kind += ", Remote Control on"
+        elif info.is_own and info.provider == 'codex':
+            own = self.store.get(info.cli_session_id, provider='codex')
+            if own is not None:
+                if own.provider_options.get('model'):
+                    kind += ' on ' + own.provider_options['model']
+                if own.provider_options.get('effort'):
+                    kind += ' at ' + own.provider_options['effort']
+                if own.provider_options.get('collaboration') == 'plan':
+                    kind += ', plan mode'
         elif info.remote and info.provider == "claude":
             kind += ", on Remote Control in the desktop app"
         elif info.is_own and info.provider == "copilot" and self._can_edit(info):
@@ -2526,18 +2535,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         menu.Bind(wx.EVT_MENU, lambda e: self.on_send_reply_to(), relay_item)
         # Going back to this message (#468): Claude chats only; elsewhere
         # they aren't offered rather than refused.
-        if self._open is not None and self._open.provider == "claude":
+        if self._open is not None and self._open.provider in ('claude', 'codex'):
             try:
                 can_branch = self.sessions.capabilities(self._open).branch
             except ValueError:
                 can_branch = False
             rewind_item = menu.Append(wx.ID_ANY, "Re&wind to Here..." + REWIND_ACCEL)
-            rewind_item.Enable(can_branch and rewind.rewindable(message))
+            anchored = message is not None and bool(message.key if self._open.provider == 'codex' else message.uuid)
+            rewind_item.Enable(can_branch and anchored and message.kind == USER)
             menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
             branch_item = menu.Append(wx.ID_ANY, "Branc&h from Here")
             branch_item.Enable(can_branch and message is not None
                                and message.kind in rewind_chats.BRANCHABLE
-                               and bool(message.uuid))
+                               and anchored)
             menu.Bind(wx.EVT_MENU, lambda e: self.on_branch_from_here(), branch_item)
         # Properties stays last, as on the session list's menu.
         props = menu.Append(wx.ID_ANY, "&Properties...\tAlt+Enter")
@@ -3974,6 +3984,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         the running turn's if Claude Code takes it (#468). A session's model
         goes with every turn, so it can change at any time."""
         selected = self._selected_session()
+        if selected is not None and selected.provider == 'codex':
+            self._change_codex_settings(selected, 'model')
+            return
         if selected is not None and selected.provider == "copilot":
             self._change_copilot_model(selected)
             return
@@ -4079,6 +4092,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info is None:
             self._feedback("No session selected.")
             return
+        if info.provider == 'codex':
+            from .codex_tools_host import CodexConnectedTools
+            host = CodexConnectedTools(self, info)
+            focus = wx.Window.FindFocus()
+            try:
+                self._modal(ConnectedToolsDialog(self, info.title, host))
+            finally:
+                host.close()
+            if focus and wx.Window.FindFocus() is not focus:
+                focus.SetFocus()
+            return
         if info.provider != "claude":
             self._feedback(f"Connected Tools is for Claude chats for now. {info.title} is a "
                            f"{provider_name(info.provider)} chat.")
@@ -4125,6 +4149,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def on_change_effort(self):
         """File, Change Effort (#189): how hard Claude thinks in this
         session's next turns, given as ``--effort`` on every turn."""
+        selected = self._selected_session()
+        if selected is not None and selected.provider == 'codex':
+            self._change_codex_settings(selected, 'effort')
+            return
         found = self._own_for_setting("effort")
         if found is None:
             return
@@ -4585,7 +4613,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             paths = list(dialog.GetPaths())
         finally:
             dialog.Destroy()
-        self._add_attachments(info.cli_session_id, paths)
+        self._add_attachments(self._attachment_key(info), paths)
+
+    @staticmethod
+    def _attachment_key(info):
+        return info.cli_session_id if info.provider == 'claude' else info.key
 
     def _add_attachments(self, session_id: str, paths: List[str]):
         current = self._attachments.setdefault(session_id, [])
@@ -4604,8 +4636,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _show_attachments(self):
         """The loaded session's attachments, under the reply box."""
         info = self._open
-        paths = (self._attachments.get(info.cli_session_id, [])
-                 if info and info.is_own and info.provider == "claude" else [])
+        paths = (self._attachments.get(self._attachment_key(info), [])
+                 if info and info.is_own and info.provider in ('claude', 'codex') else [])
         if paths:
             self.attach_list.Set([os.path.basename(p) for p in paths])
             self.attach_list.SetSelection(0)
@@ -4622,7 +4654,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         if self._open.provider != "claude" and not self._require_capability("attachments", self._open):
             return
-        paths = self._attachments.get(self._open.cli_session_id, [])
+        paths = self._attachments.get(self._attachment_key(self._open), [])
         index = self.attach_list.GetSelection()
         if not (0 <= index < len(paths)):
             return
@@ -4640,7 +4672,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         Win+Shift+S, say) attaches it; text pastes as usual."""
         info = self._open
         bitmap = (self._clipboard_image()
-                  if info is not None and info.is_own and info.provider == "claude" else None)
+                  if info is not None and info.is_own and info.provider in ('claude', 'codex') else None)
         if bitmap is None:
             event.Skip()
             return
@@ -4652,7 +4684,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         except OSError as exc:
             self._feedback(f"Couldn't attach the pasted picture: {exc}")
             return
-        self._add_attachments(info.cli_session_id, [str(path)])
+        self._add_attachments(self._attachment_key(info), [str(path)])
 
     def _clipboard_image(self):
         """The clipboard's picture, when it holds a picture and no text."""
@@ -4808,14 +4840,27 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._feedback(f"This {provider_name(info.provider)} chat is still getting ready.")
                 return
             message = self.reply_text.GetValue().strip()
-            if not message:
+            if info.provider == 'codex' and self._handle_codex_command(info, message):
+                if self.reply_text.GetValue().strip() == message:
+                    self.reply_text.SetValue('')
+                return
+            if not message and not (info.provider == 'codex' and self._attachments.get(self._attachment_key(info))):
                 self._feedback("Type a message first.")
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is not None:
+                if info.provider == 'codex':
+                    try:
+                        message = self._codex_message(info, message)
+                    except (ValueError, OSError):
+                        self._feedback('An attachment is missing or cannot be sent. Check the attached files and try again.')
+                        return
                 self.reply_text.SetValue("")
                 self._codex_drafts.pop(info.key, None)
                 self._send_codex_owned(record, message)
+                if info.provider == 'codex':
+                    self._clear_attachments(self._attachment_key(info))
+                    getattr(self, '_codex_skills', {}).pop(info.key, None)
             return
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):
             return
@@ -5609,7 +5654,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                f"{key_name('Ctrl+Enter')} queues it for after.")
                 return
             message = self.reply_text.GetValue().strip()
-            if not message:
+            if not message and not (info.provider == 'codex' and self._attachments.get(self._attachment_key(info))):
                 self._feedback("Type a message first.")
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
@@ -5618,9 +5663,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 return
             if self._history_unknown():
                 return
+            if info.provider == 'codex':
+                try:
+                    message = self._codex_message(info, message)
+                except (ValueError, OSError) as error:
+                    self._feedback(str(error))
+                    return
             self.reply_text.SetValue("")
             self._codex_drafts.pop(info.key, None)
             self._steer_codex_owned(record, message)
+            if info.provider == 'codex':
+                self._clear_attachments(self._attachment_key(info))
+                getattr(self, '_codex_skills', {}).pop(info.key, None)
             return
         if info.provider != "claude":
             self.on_send()
@@ -7192,6 +7246,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         Code's slash commands or your skills; it goes at the start of the
         reply box, ready to finish and send."""
         info = self._open
+        if info is not None and info.provider == 'codex':
+            if self._require_capability('send', info):
+                self._codex_commands(info)
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS:
             self._feedback("The command and skill picker isn't available for "
                            f"{provider_name(info.provider)} chats yet.")

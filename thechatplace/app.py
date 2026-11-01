@@ -77,6 +77,9 @@ def smoke_test(out_path: str) -> int:
         report["codex_reader"] = True
         from .providers.codex_runtime import CodexChatRuntime  # noqa: F401
         report["codex_execution"] = True
+        from .providers.codex_aside import CodexAsideRunner  # noqa: F401
+        from .ui.codex_tools_host import CodexConnectedTools  # noqa: F401
+        report['codex_features'] = True
         from .providers.codex_permissions import CodexPermissionStore  # noqa: F401
         report["codex_permissions"] = True
         from .providers.copilot import CopilotProvider  # noqa: F401 - reads files only

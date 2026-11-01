@@ -1,0 +1,120 @@
+{
+ "title": "Codex Collaboration Mode",
+ "class": "SingleChoiceDialog",
+ "size": [
+  374,
+  189
+ ],
+ "client": [
+  358,
+  150
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Mode for Codex review, from its next turn:",
+   "rect": [
+    15,
+    15,
+    223,
+    16
+   ],
+   "best": [
+    223,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "listBox",
+   "label": "",
+   "rect": [
+    17,
+    48,
+    328,
+    49
+   ],
+   "best": [
+    328,
+    49
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Default: carry out the task with this chat's permissions.",
+    "Plan: discuss and produce a plan first."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    186,
+    117,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    269,
+    117,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticLine",
+   "name": "staticLine",
+   "label": "",
+   "rect": [
+    11,
+    106,
+    338,
+    2
+   ],
+   "best": [
+    -1,
+    2
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

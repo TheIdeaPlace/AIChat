@@ -2657,12 +2657,12 @@ class CommandPickerDialog(wx.Dialog):
 
     @staticmethod
     def row(command) -> str:
-        name = f"/{command['name']}"
+        name = f"{command.get('prefix', '/')}{command['name']}"
         hint = str(command.get("argumentHint") or "").strip()
         text = " ".join(str(command.get("description") or "").split())
         if len(text) > 200:
             text = text[:199] + "…"
-        owner = ", Claude Code" if command.get("builtin") else ""
+        owner = ", " + command.get('provider', 'Claude Code') if command.get("builtin") else ""
         return f"{name}{' ' + hint if hint else ''}{owner}: {text}" if text else f"{name}{owner}"
 
     def _filter(self):
@@ -4968,6 +4968,8 @@ class ConnectedToolsDialog(wx.Dialog):
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.sign_in_btn = wx.Button(self, label="&Sign In")
         self.reconnect_btn = wx.Button(self, label="&Reconnect")
+        if getattr(host, 'reconnect_label', None):
+            self.reconnect_btn.SetLabel(host.reconnect_label)
         self.toggle_btn = wx.Button(self, label="Turn &Off for This Chat")
         self.refresh_btn = wx.Button(self, label="Re&fresh")
         for button in (self.sign_in_btn, self.reconnect_btn, self.toggle_btn, self.refresh_btn):
@@ -5012,8 +5014,9 @@ class ConnectedToolsDialog(wx.Dialog):
 
     def _show_selected(self):
         server = self._selected()
-        self.toggle_btn.SetLabel("Turn &On for This Chat" if server is not None
-                                 and server.off_for_chat else "Turn &Off for This Chat")
+        label = getattr(self.host, 'toggle_label', None)
+        self.toggle_btn.SetLabel(label(server) if label else
+            ("Turn &On for This Chat" if server is not None and server.off_for_chat else "Turn &Off for This Chat"))
         if server is None:
             self.details.ChangeValue(self.load_error or self.host.note())
             self.details.SetInsertionPoint(0)
@@ -5022,7 +5025,8 @@ class ConnectedToolsDialog(wx.Dialog):
         if server.status == "failed" and server.error and not server.off_for_chat:
             lines.append(f"Why: {server.error}")
         if server.status == "needs-auth" and not server.off_for_chat:
-            lines.append("Claude can't use it until it's signed in: Sign In opens the page.")
+            lines.append(getattr(self.host, 'provider_name', 'Claude') +
+                         " can't use it until it's signed in. Sign In explains the next step.")
         if server.is_session_tools:
             lines.append("The Chat Place gives its own chats these tools, so commands such as "
                          "/wrap work. They can't be turned off here.")
@@ -5040,7 +5044,8 @@ class ConnectedToolsDialog(wx.Dialog):
             self.list.Set([r.text() for r in self.rows])
             self.list.SetSelection(max(0, min(select, len(self.rows) - 1)))
         else:
-            self.list.Set(["Claude has no connected tools in this chat's folder."])
+            self.list.Set([getattr(self.host, 'provider_name', 'Claude') +
+                           " has no connected tools in this chat's folder."])
             self.list.SetSelection(0)
         self._name_list()
         refresh_list_item(self.list)  # Orca: the row changed under it
@@ -5122,7 +5127,7 @@ class ConnectedToolsDialog(wx.Dialog):
         if server.status == "connected":
             self._tell(f"{server.label} is connected already.", back_to=self.sign_in_btn)
             return
-        self.busy = "Still asking Claude Code for the sign-in page. Try again in a moment."
+        self.busy = "Still asking for sign-in information. Try again in a moment."
 
         def done(text, error):
             if not self._alive():
@@ -5618,11 +5623,12 @@ class AskAsideDialog(wx.Dialog):
     (an ``aside.AsideEvent``) is then called on the UI thread. ``say(text)``
     speaks an answer (the answer to a key press), ``copy(text)`` copies."""
 
-    def __init__(self, parent, chat_title: str, ask, say=None, copy=None, feedback=None):
+    def __init__(self, parent, chat_title: str, ask, say=None, copy=None, feedback=None, provider='Claude'):
         super().__init__(parent, title=f"Ask Aside about {chat_title}",
                          size=dialog_size(parent, 680, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._ask = ask
+        self.provider = provider
         self._say = say or (lambda text, failed=False: None)
         self._copy = copy or (lambda text: True)
         self._feedback = feedback or (lambda text: None)
@@ -5653,7 +5659,7 @@ class AskAsideDialog(wx.Dialog):
         sizer.Add(self.history, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         sizer.Add(wx.StaticText(self, label="Ans&wer:"), 0, wx.LEFT | wx.TOP, 10)
-        self.answer = _read_only_text(self, ASIDE_INTRO, "Answer", min_height=150)
+        self.answer = _read_only_text(self, ASIDE_INTRO.replace('Claude', provider), "Answer", min_height=150)
         sizer.Add(self.answer, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         buttons = wx.BoxSizer(wx.HORIZONTAL)
@@ -5757,7 +5763,7 @@ class AskAsideDialog(wx.Dialog):
         item = AsideItem(question)
         started = self._ask(question, lambda event: self._event(item, event))
         if isinstance(started, str) or started is None:
-            self._feedback(started or "Couldn't ask Claude.")
+            self._feedback(started or f"Couldn't ask {self.provider}.")
             return
         self._runner, self._asking = started, item
         if not self.items:
@@ -5769,7 +5775,7 @@ class AskAsideDialog(wx.Dialog):
         self.question.ChangeValue("")
         self.ask_btn.SetLabel("&Stop")
         set_accessible_name(self.ask_btn, "Stop")
-        self._feedback("Asking Claude.")
+        self._feedback(f"Asking {self.provider}.")
 
     def _event(self, item, event):
         """An ``aside.AsideEvent`` for ``item``, on the UI thread."""

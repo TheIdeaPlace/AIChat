@@ -149,6 +149,9 @@ class LiveTurns:
         """File, Stop Background Task: end one shell command or agent Claude
         left running in the background, keeping the turn and the rest."""
         info = self._open
+        if info is not None and info.provider == 'codex' and info.is_own:
+            self._codex_control(info, '/background')
+            return
         if info is None or info.provider != "claude" or not info.is_own:
             self._feedback("Load one of your Claude chats with background work running first.")
             return

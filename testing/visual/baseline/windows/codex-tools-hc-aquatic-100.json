@@ -1,0 +1,198 @@
+{
+ "title": "Connected Tools: Codex review",
+ "class": "ConnectedToolsDialog",
+ "size": [
+  700,
+  540
+ ],
+ "client": [
+  684,
+  501
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Connected tools:",
+   "rect": [
+    8,
+    8,
+    91,
+    16
+   ],
+   "best": [
+    91,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Connected tools, 3",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    668,
+    211
+   ],
+   "best": [
+    421,
+    170
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "project-notes: connected, configured Codex MCP server, 1 tools",
+    "build-reports: needs-auth, configured Codex MCP server, 0 tools",
+    "reference-search: off for this chat, configured Codex MCP server, 0 tools"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Sign In",
+   "rect": [
+    8,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Read St&atus",
+   "rect": [
+    89,
+    243,
+    82,
+    23
+   ],
+   "best": [
+    82,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy with Tool &Off",
+   "rect": [
+    177,
+    243,
+    122,
+    23
+   ],
+   "best": [
+    122,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Re&fresh",
+   "rect": [
+    305,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    601,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Details:",
+   "rect": [
+    8,
+    274,
+    39,
+    16
+   ],
+   "best": [
+    39,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Details",
+   "label": "",
+   "rect": [
+    10,
+    300,
+    668,
+    195
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "project-notes: connected, configured Codex MCP server, 1 tools\n\nTools:\n  find_notes\n\nCodex MCP servers configured for this folder. Apps and plugins remain unavailable. Changing a tool creates a new read-only copy of this chat with that selection; the original chat is kept. Enabled tools may read or change external services, outside the folder sandbox. Add servers and sign in using Codex CLI. Serve"
+  }
+ ],
+ "capture": "PrintWindow"
+}

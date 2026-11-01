@@ -200,6 +200,13 @@ STEPS = [
     # Orca says the window and the message you were on, not the list's name.
     Step("Lists closed, back in the messages", ["Escape"],
          expect=["Fix the flaky upload test", "Which branch name should the release use"]),
+    Step('Codex command and skill picker', [], trigger='codex-commands',
+         expect=['Insert Command or Skill'], refuse=['unlabeled', 'unlabelled']),
+    Step('Codex commands, into the list', ['Tab'], expect=['Codex']),
+    Step('Codex commands closed', ['Escape'], expect=['Fix the flaky upload test']),
+    Step('Codex temporary side question', [], trigger='codex-aside',
+         expect=['Ask Aside about Visual probe', 'Your question']),
+    Step('Codex side question closed', ['Escape'], expect=['Fix the flaky upload test']),
 ]
 
 #: The question "question" asks (STEPS above).
@@ -238,7 +245,9 @@ def serve(root: Path) -> int:
     def watch(_event):
         # A step's trigger: check writes ROOT/<name>.trigger before its keys.
         for name, action in (("question", ask_question), ("elicitation", ask_elicitation),
-                             ("background", stop_background_task)):
+                             ("background", stop_background_task),
+                             ('codex-commands', lambda f: ui_probe.d_codex_commands(f, env)()),
+                             ('codex-aside', lambda f: ui_probe.d_codex_aside(f, env)())):
             trigger = root / f"{name}.trigger"
             if trigger.exists():
                 trigger.unlink()

@@ -1,0 +1,199 @@
+{
+ "title": "Connected Tools: Visual probe",
+ "class": "ConnectedToolsDialog",
+ "size": [
+  700,
+  540
+ ],
+ "client": [
+  684,
+  501
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Connected tools:",
+   "rect": [
+    8,
+    8,
+    91,
+    16
+   ],
+   "best": [
+    91,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Connected tools, 4",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    668,
+    211
+   ],
+   "best": [
+    388,
+    170
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "claude.ai Microsoft Learn: connected, claude.ai connector, 3 tools",
+    "claude.ai Morningstar: needs sign-in, claude.ai connector",
+    "github: failed: Connection closed, your settings",
+    "notes (from the probe-tools plugin): off for this chat, a plugin"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Sign In",
+   "rect": [
+    8,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Reconnect",
+   "rect": [
+    89,
+    243,
+    77,
+    23
+   ],
+   "best": [
+    77,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Turn &Off for This Chat",
+   "rect": [
+    172,
+    243,
+    137,
+    23
+   ],
+   "best": [
+    137,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Re&fresh",
+   "rect": [
+    315,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    601,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Details:",
+   "rect": [
+    8,
+    274,
+    39,
+    16
+   ],
+   "best": [
+    39,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Details",
+   "label": "",
+   "rect": [
+    10,
+    300,
+    668,
+    195
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "claude.ai Microsoft Learn: connected, claude.ai connector, 3 tools\n\nTools:\n  microsoft_docs_search\n  microsoft_docs_fetch\n  microsoft_code_sample_search\n\nConnected tools are the MCP servers and claude.ai connectors Claude can use in this chat's folder: from your Claude Code settings, the project, plugins and claude.ai. Add or remove them in Claude Code or on claude.ai. Turning one off for this cha"
+  }
+ ],
+ "capture": "PrintWindow"
+}

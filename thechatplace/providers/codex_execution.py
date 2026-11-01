@@ -8,6 +8,7 @@ from .codex_owned import CodexLifecycleConnection
 from .codex_rpc import (check_startable, CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
                         CodexSteerRefused)
 from .codex_requests import CodexRequest, CodexRequestResolved, CodexRequestDeclined, QUESTIONS
+from .codex_input import input_items, validate_input
 
 
 @dataclass(frozen=True)
@@ -29,7 +30,27 @@ class CodexTurnState:
 
 
 class CodexExecutionConnection(CodexLifecycleConnection):
-    METHODS = CodexLifecycleConnection.METHODS | {'turn/start', 'turn/steer', 'turn/interrupt'}
+    from .codex_features import ACTION_METHODS, READ_METHODS
+    METHODS = CodexLifecycleConnection.METHODS | {'turn/start', 'turn/steer', 'turn/interrupt'} | ACTION_METHODS | READ_METHODS
+
+    def request(self, method, params):
+        from .codex_features import ACTION_METHODS, READ_METHODS, validate_action, CodexFeatureError
+        if method in ACTION_METHODS | READ_METHODS:
+            validate_action(method, params)
+            with self._runtime_lock:
+                proof = self._runtime_threads.get(params['threadId'])
+            if proof is None or not self.owns_runtime(proof):
+                raise CodexFeatureError('unavailable')
+            proof.policy.verify_workspace(proof.cwd)
+            from .codex_rpc import is_chatgpt_account, ReadOnlyCodexConnection
+            if not is_chatgpt_account(self.request('account/read', {'refreshToken': True})):
+                raise CodexTurnRejected('chatgpt_required')
+            ReadOnlyCodexConnection._verify_turn_route(self, {'threadId': proof.native_id, 'cwd': proof.cwd})
+            if method in ACTION_METHODS and not (method.startswith('thread/goal/')
+                    or method == 'thread/backgroundTerminals/terminate'):
+                thread = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False}).get('thread')
+                check_startable(self, proof.native_id, thread, check_turns=False)
+        return super().request(method, params)
 
     def __init__(self, *args, **kwargs):
         self._runtime_lock = threading.Lock()
@@ -48,6 +69,11 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         with self._runtime_lock:
             return (not self.closed and proof.connection is self
                     and self._runtime_threads.get(proof.native_id) is proof)
+
+    def _allowed_codex_tools(self, thread_id):
+        with self._runtime_lock:
+            proof = self._runtime_threads.get(thread_id)
+            return proof.mcp_servers if proof is not None else ()
 
     def _accept_server_request(self, request):
         with self._runtime_lock:
@@ -69,6 +95,8 @@ class CodexExecutionConnection(CodexLifecycleConnection):
                     'sandboxPolicy': proof.policy.turn_policy()}
         if proof.effort is not None:
             expected['effort'] = proof.effort
+        if proof.collaboration is not None:
+            expected['collaborationMode'] = collaboration_options(proof)
         if set(params) != set(expected) | {'input'} or any(params[k] != v for k, v in expected.items()):
             raise CodexRpcError('Codex turn options do not match the owned chat')
         self._verify_text_input(params['input'])
@@ -84,11 +112,10 @@ class CodexExecutionConnection(CodexLifecycleConnection):
 
     @staticmethod
     def _verify_text_input(inputs):
-        if (not isinstance(inputs, list) or len(inputs) != 1 or not isinstance(inputs[0], dict)
-                or set(inputs[0]) != {'type', 'text'} or inputs[0]['type'] != 'text'
-                or not isinstance(inputs[0]['text'], str) or not inputs[0]['text'].strip()
-                or len(inputs[0]['text']) > 32000):
-            raise CodexRpcError('Codex text input is invalid')
+        try:
+            validate_input(inputs)
+        except (ValueError, OSError):
+            raise CodexRpcError('Codex text input is invalid') from None
 
     def _verify_steer_route(self, proof, params):
         """turn/steer (#239): only text into the chat's own active turn. It
@@ -114,6 +141,21 @@ class CodexExecutionConnection(CodexLifecycleConnection):
 INVALID_REQUEST = -32600
 
 
+def collaboration_options(proof):
+    return {'mode': proof.collaboration, 'settings': {'model': proof.model,
+        'reasoning_effort': proof.effort, 'developer_instructions': None}}
+
+
+def verify_frame_size(method, params):
+    import json
+    from .codex_rpc import ReadOnlyCodexConnection
+    # Leave room for the monotonic RPC ID while measuring the full UTF-8
+    # payload, including paths duplicated in text and native input parts.
+    frame = {'id': 10 ** 30, 'method': method, 'params': params}
+    if len((json.dumps(frame, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')) > ReadOnlyCodexConnection.MAX_REQUEST:
+        raise CodexTurnRejected('input_size')
+
+
 class CodexTurnExecutor:
     """One event consumer for a connection; never reconnect or replay a prompt.
 
@@ -135,12 +177,27 @@ class CodexTurnExecutor:
         self._context_epochs = {}
         self._compactions = {}
         self._reconciled_turns = {}
+        self._native_starts = {}
+
+    def expect_native_turns(self, proof, *, recurring=False):
+        if not self.connection.owns_runtime(proof):
+            raise CodexRpcError('Codex execution requires a verified owned chat')
+        with self._lock:
+            self._native_starts[proof.native_id] = recurring
+
+    def cancel_native_turns(self, proof):
+        with self._lock:
+            self._native_starts.pop(proof.native_id, None)
 
     def start(self, proof, text):
         if not self.connection.owns_runtime(proof):
             raise CodexRpcError('Codex execution requires a verified owned chat')
         if not isinstance(text, str) or not text.strip() or len(text) > 32000:
             raise ValueError('Enter a message of at most 32000 characters')
+        try:
+            inputs = input_items(text)
+        except (ValueError, OSError):
+            raise CodexTurnRejected('input_unavailable') from None
         with self._lock:
             if self._broken:
                 raise CodexRpcError('Codex connection needs to be reopened')
@@ -155,9 +212,12 @@ class CodexTurnExecutor:
                 'threadId': proof.native_id, 'cwd': proof.cwd, 'model': proof.model,
                 'approvalPolicy': proof.policy.approval, 'approvalsReviewer': proof.policy.reviewer,
                 'sandboxPolicy': proof.policy.turn_policy(),
-                'input': [{'type': 'text', 'text': text}]}
+                'input': inputs}
             if proof.effort is not None:
                 params['effort'] = proof.effort
+            if proof.collaboration is not None:
+                params['collaborationMode'] = collaboration_options(proof)
+            verify_frame_size('turn/start', params)
             result = self.connection.request('turn/start', params)
             turn = result.get('turn')
             if not isinstance(turn, dict) or turn.get('status') != 'inProgress':
@@ -167,6 +227,7 @@ class CodexTurnExecutor:
                 if self._broken:
                     raise CodexRpcError('Codex connection interrupted during startup')
                 self._turns[proof.native_id] = buffer
+                self._native_starts.pop(proof.native_id, None)
                 for event in self._pending_events.pop(proof.native_id):
                     self._apply_event(buffer, event)
                 if buffer.status != 'inProgress':
@@ -206,9 +267,11 @@ class CodexTurnExecutor:
                 raise CodexSteerRefused('not_running')
             turn_id = buffer.turn_id
         try:
-            result = self.connection.request('turn/steer', {
+            params = {
                 'threadId': proof.native_id, 'expectedTurnId': turn_id,
-                'input': [{'type': 'text', 'text': text}]})
+                'input': input_items(text)}
+            verify_frame_size('turn/steer', params)
+            result = self.connection.request('turn/steer', params)
         except (CodexTurnRejected, CodexSteerRefused, CodexConnectionFailure):
             raise
         except CodexRpcError as error:
@@ -415,6 +478,15 @@ class CodexTurnExecutor:
                             pending.append(event)
                         continue
                     buffer = self._turns.get(event.thread_id)
+                    if (isinstance(event, CodexEvent) and event.kind == 'turn_started'
+                            and event.thread_id in self._native_starts
+                            and (buffer is None or buffer.status != 'inProgress')):
+                        buffer = CodexTurnBuffer(event.thread_id, event.turn_id)
+                        self._turns[event.thread_id] = buffer
+                        self._busy.add(event.thread_id)
+                        if not self._native_starts[event.thread_id]:
+                            del self._native_starts[event.thread_id]
+                        changed.add(event.thread_id)
                     if buffer is None and isinstance(event, CodexRequest):
                         raise CodexRpcError('Codex request has no active turn')
                     if buffer is not None and self._apply_event(buffer, event):

@@ -103,7 +103,9 @@ class CodexTurnRejected(CodexRpcError):
         'provider': 'Codex turns require the built-in OpenAI provider',
         'command_rules': 'The Chat Place could not check Codex saved command rules. No new turn was sent.',
         'project_rules': 'This folder supplies Codex saved command rules. Choose a folder without project rules, or move those rules out of the project before trying again. No new turn was sent.',
-        'mcp_tools': 'Codex external tools could not be disabled for this chat. No new turn was sent.',
+        'mcp_tools': 'Codex external tools could not be verified against this chat\'s selection. No new turn was sent.',
+        'input_unavailable': 'An attached image or skill is no longer available. No message was sent. Check the attachments and try again.',
+        'input_size': 'This message and its attachments exceed Codex\'s request size limit. Shorten the message or remove attachments. No message was sent.',
         # Likely, not certain: Codex also falls back to read-only when managed
         # requirements allow only read-only, or a profile can't be met (#257).
         'sandbox_unavailable': "Codex reported this chat as read-only, so it can't edit its folder. This usually means Codex's Windows sandbox isn't set up: set it up with Set up Agent sandbox in the Codex app, or with the windows sandbox setting in Codex's config.toml. Otherwise your Codex settings may allow only read-only. Try again, or choose read-only. No new turn was sent.",
@@ -178,19 +180,23 @@ def verify_codex_rule_layers(result):
     return count
 
 
-def codex_tool_overrides(config):
+def codex_tool_overrides(config, allowed=()):
+    from .codex_tools import server_names
+    allowed = server_names(allowed)
     servers = config.get('mcp_servers')
     if servers is None:
         servers = {}
     if not isinstance(servers, dict) or any(not isinstance(v, dict) for v in servers.values()):
         raise CodexTurnRejected('mcp_tools')
+    if set(allowed) - set(servers):
+        raise CodexTurnRejected('mcp_tools')
     # External services are outside the selected folder's sandbox. Disable them
     # in this thread only, including app/plugin-provided servers (#255).
-    return {'mcp_servers': {name: {'enabled': False} for name in servers},
+    return {'mcp_servers': {name: {'enabled': name in allowed} for name in servers},
             'features': {'plugins': False, 'apps': False}}
 
 
-def verify_codex_tools(connection, thread_id):
+def verify_codex_tools(connection, thread_id, allowed=()):
     result = connection.request('mcpServerStatus/list', {
         'threadId': thread_id, 'limit': 100, 'detail': 'toolsAndAuthOnly'})
     rows = result.get('data')
@@ -199,8 +205,13 @@ def verify_codex_tools(connection, thread_id):
     if (not isinstance(rows, list) or len(rows) > 100
             or result.get('nextCursor') not in (None, '')
             or (result.get('nextCursor') is not None and type(result.get('nextCursor')) is not str)
-            or any(not isinstance(row, dict) or row.get('runtimeStatus') != 'disabled'
-                   or row.get('tools') != {} for row in rows)):
+            or any(not isinstance(row, dict) or not isinstance(row.get('tools'), dict)
+                   or (row.get('name') not in allowed and
+                       (row.get('runtimeStatus') != 'disabled' or row.get('tools') != {}))
+                   or (row.get('name') in allowed and (row.get('pluginId') is not None
+                       or row.get('runtimeStatus') not in ('notStarted', 'starting', 'connected',
+                           'authenticationRequired', 'failed', 'cancelled', 'disabled')))
+                   for row in rows)):
         raise CodexTurnRejected('mcp_tools')
 
 
@@ -213,7 +224,7 @@ class _Pending:
 
 class ReadOnlyCodexConnection:
     METHODS = frozenset({"account/read", "account/rateLimits/read", "thread/list", "thread/read", "config/read",
-                         "thread/turns/list", "thread/items/list", "model/list", "mcpServerStatus/list"})
+                         "thread/turns/list", "thread/items/list", "model/list", "mcpServerStatus/list", "skills/list", "collaborationMode/list"})
     MAX_FRAME = 32 * 1024 * 1024
     MAX_REQUEST = 64 * 1024
     MAX_PENDING = 32
@@ -395,7 +406,12 @@ class ReadOnlyCodexConnection:
                 raise CodexRpcError("Too many pending Codex requests")
             self._next_id += 1
             request_id = self._next_id
-            payload = self._encode({"id": request_id, "method": method, "params": params})
+            try:
+                payload = self._encode({"id": request_id, "method": method, "params": params})
+            except ValueError:
+                if method in ('turn/start', 'turn/steer'):
+                    raise CodexTurnRejected('input_size') from None
+                raise
             self._pending[request_id] = pending
             self._outgoing.put(payload)
         if not pending.ready.wait(self._timeout):
@@ -416,6 +432,9 @@ class ReadOnlyCodexConnection:
         if pending.error:
             raise pending.error
         return pending.result
+
+    def _allowed_codex_tools(self, thread_id):
+        return ()
 
     def _verify_turn_route(self, params):
         """Reject alternate billing routes before any future turn is queued.
@@ -440,7 +459,9 @@ class ReadOnlyCodexConnection:
         config = result.get("config")
         if not isinstance(config, dict):
             raise CodexRpcError("Codex turn configuration is unavailable")
-        verify_codex_tools(self, thread_id)
+        allowed = self._allowed_codex_tools(thread_id)
+        codex_tool_overrides(config, allowed)  # selected servers must still be configured
+        verify_codex_tools(self, thread_id, allowed)
         providers = config.get("model_providers", {})
         if (config.get("model_provider") not in (None, "openai")
                 or config.get("forced_login_method") not in (None, "chatgpt")

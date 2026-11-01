@@ -1364,6 +1364,118 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Kept Claude history after its original transcript is removed: read-only"
+  },
+  "codex-aside": {
+   "kind": "dialog",
+   "png": "codex-aside-hc-aquatic-100.png",
+   "json": "codex-aside-hc-aquatic-100.json",
+   "title": "Ask Aside about Visual probe",
+   "class": "AskAsideDialog",
+   "size": [
+    680,
+    600
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Ask Aside using the shared question history"
+  },
+  "codex-tools": {
+   "kind": "dialog",
+   "png": "codex-tools-hc-aquatic-100.png",
+   "json": "codex-tools-hc-aquatic-100.json",
+   "title": "Connected Tools: Codex review",
+   "class": "ConnectedToolsDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex MCP selection through explicitly authorised copies"
+  },
+  "codex-commands": {
+   "kind": "dialog",
+   "png": "codex-commands-hc-aquatic-100.png",
+   "json": "codex-commands-hc-aquatic-100.json",
+   "title": "Insert Command or Skill",
+   "class": "CommandPickerDialog",
+   "size": [
+    720,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex commands and explicit skills"
+  },
+  "codex-collaboration": {
+   "kind": "dialog",
+   "png": "codex-collaboration-hc-aquatic-100.png",
+   "json": "codex-collaboration-hc-aquatic-100.json",
+   "title": "Codex Collaboration Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    374,
+    189
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Choose native Codex Plan or Default mode"
+  },
+  "codex-rewind": {
+   "kind": "dialog",
+   "png": "codex-rewind-hc-aquatic-100.png",
+   "json": "codex-rewind-hc-aquatic-100.json",
+   "title": "Rewind Codex review to before your message: Review the parser before editing it.",
+   "class": "RewindDialog",
+   "size": [
+    640,
+    460
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex conversation rewind with files left unchanged"
+  },
+  "codex-attachments": {
+   "kind": "window",
+   "png": "codex-attachments-hc-aquatic-100.png",
+   "json": "codex-attachments-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex reply with image and document attachments"
+  },
+  "connected-tools": {
+   "kind": "dialog",
+   "png": "connected-tools-hc-aquatic-100.png",
+   "json": "connected-tools-hc-aquatic-100.json",
+   "title": "Connected Tools: Visual probe",
+   "class": "ConnectedToolsDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Connected Tools: a Claude chat's MCP servers and connectors"
+  },
+  "ask-aside": {
+   "kind": "dialog",
+   "png": "ask-aside-hc-aquatic-100.png",
+   "json": "ask-aside-hc-aquatic-100.json",
+   "title": "Ask Aside about Visual probe",
+   "class": "AskAsideDialog",
+   "size": [
+    680,
+    600
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Ask Aside: questions about a chat, one answered"
   }
  },
  "seconds": 91.6

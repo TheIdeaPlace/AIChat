@@ -1,0 +1,198 @@
+{
+ "title": "Ask Aside about Visual probe",
+ "class": "AskAsideDialog",
+ "size": [
+  680,
+  600
+ ],
+ "client": [
+  664,
+  561
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Your &question:",
+   "rect": [
+    10,
+    10,
+    78,
+    16
+   ],
+   "best": [
+    78,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Your question",
+   "label": "",
+   "rect": [
+    12,
+    28,
+    644,
+    70
+   ],
+   "best": [
+    127,
+    70
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "Stop",
+   "label": "&Stop",
+   "rect": [
+    10,
+    106,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Questions and a&nswers:",
+   "rect": [
+    10,
+    139,
+    125,
+    16
+   ],
+   "best": [
+    125,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Questions and answers, Enter reads one",
+   "label": "",
+   "rect": [
+    12,
+    157,
+    644,
+    90
+   ],
+   "best": [
+    873,
+    90
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Q: Which file did you change for the upload bug? A: uploader.py: it now flushes and closes the file before it signals that the upload is done. Nothing else cha…",
+    "Q: Did the tests pass afterwards? A: asking…"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Ans&wer:",
+   "rect": [
+    10,
+    255,
+    43,
+    16
+   ],
+   "best": [
+    43,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Answer",
+   "label": "Ask a question about this chat, such as which file Claude changed or what a reply meant. The question and its answer aren't added to the chat, and Claude can read files to answer but can't change anything. Each question uses your Claude plan, as a message does.",
+   "rect": [
+    12,
+    273,
+    644,
+    247
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Question: Which file did you change for the upload bug?\n\nAnswer:\nuploader.py: it now flushes and closes the file before it signals that the upload is done.\n\nNothing else changed."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy Answer",
+   "rect": [
+    482,
+    528,
+    91,
+    23
+   ],
+   "best": [
+    91,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Close",
+   "rect": [
+    579,
+    528,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

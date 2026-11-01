@@ -56,8 +56,8 @@ Reply box:
   Ctrl+Alt+Enter: Steer: during a turn, send the message into it without stopping it; the AI takes it in at its next step and carries on. With no turn running, it sends as Ctrl+Enter does
   Ctrl+Period: Stop the running turn; a queued message goes back in the reply box
   Ctrl+/: Insert a Claude slash command or one of your skills (type to search); it goes at the start of the reply box
-  Ctrl+Shift+F: Attach files or images to your next Claude message (Attach Files button, Alt+T); Delete in the attachments list removes one
-  Ctrl+V with a picture copied: Attach the picture to a Claude message (a screenshot from Win+Shift+S, say)
+  Ctrl+Shift+F: Attach files or images to your next Claude or Codex message (Attach Files button, Alt+T); Delete in the attachments list removes one
+  Ctrl+V with a picture copied: Attach the picture to a Claude or Codex message (a screenshot from Win+Shift+S, say)
   Ctrl+Shift+M: Other machines: list your sessions on other computers and send one a message, through Claude in the loaded Chat Place session (it needs Remote Control on)
   Ctrl+Shift+E: Send Reply to Another Chat: the selected reply (or the latest one) goes to another Chat Place chat, Claude, Codex or Copilot, or a new one, labelled with who wrote it; read and change it first, then Enter sends and you go to that chat. In an agent conversation, hands the waiting reply to the other agent
   Ctrl+Shift+G: New Agent Conversation: two chats, Claude, Codex or Copilot, new or your own, that pass replies to each other; you approve each hand-off, or, once Settings allows it, let them go automatically up to a turn limit
@@ -69,7 +69,7 @@ Anywhere:
   Ctrl+Shift+S: Find in All Sessions: search the messages of every session in the list; Enter on a result loads that session on that message. Pressed again while it searches, it stops
   Ctrl+N: New Session: start a chat here, from anywhere in the window
   Ctrl+Shift+A: Answer: approve or deny a tool, answer the provider's questions, or approve its plan (the loaded session first, then another chat waiting for an answer). Escape in the dialog answers later
-  Ctrl+Shift+Y: Ask Aside (Claude chats): a quick question about the selected (or loaded) chat, answered without the question or answer being added to it; Ctrl+Enter asks, and the answer is read and goes in the Answer box
+  Ctrl+Shift+Y: Ask Aside (Claude and Codex chats): a quick question about the selected (or loaded) chat, answered without the question or answer being added to it; Ctrl+Enter asks, and the answer is read and goes in the Answer box
   Ctrl+Shift+K: What AI knows about you: choose Claude or Codex, then read local instructions, memories, skills and settings, or open them in your editor
   Ctrl+Shift+P: Prompts: your saved prompts, to use (Enter puts one in the reply box), add, edit, reorder or delete
   Alt+Enter: Properties: what can be known about the selected session (or, in the messages, the selected message), one line each; Ctrl+C copies a line. Option+Return on a Mac

@@ -204,10 +204,24 @@ class SessionController:
             raise ValueError("This provider cannot continue this chat")
         return self._provider(source).fork_owned(source, title, **options)
 
+    def branch(self, source, title, turn_id, before=False):
+        if not self.capabilities(source).branch:
+            raise ValueError('This provider cannot branch this chat')
+        return self._provider(source).branch(source, title, turn_id, before)
+
+    def skills(self, session):
+        return self._provider(session).skills(session)
+
+    def connected_tools(self, session):
+        return self._provider(session).connected_tools(session)
+
+    def copy_with_tools(self, source, title, names):
+        return self._provider(source).copy_with_tools(source, title, names)
+
     def owned_action(self, action, record, *args):
         if action not in ("prepare", "reopen", "send", "steer", "steer_queued", "stop", "answer", "ready", "prepare_policy", "finish_policy",
                           "chat_rule_candidate", "allow_for_chat", "chat_rules", "remove_chat_rule", "review_history",
-                          "recover", "set_model", "set_mode"):
+                          "recover", "set_model", "set_mode", "prepare_settings", "prepare_mode", "feature"):
             raise ValueError("Unsupported owned chat action")
         if not isinstance(record, OwnSession) or record.provider == "claude":
             raise ValueError("Foreign owned chat required")

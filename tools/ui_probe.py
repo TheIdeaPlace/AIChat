@@ -1344,7 +1344,7 @@ def d_chat_options(frame, env):
     return frame.on_chat_options
 
 
-def d_ask_aside(frame, env):
+def d_ask_aside(frame, env, provider='Claude'):
     """Ask Aside (#468) after two questions: one answered, one still being
     answered, the answered one selected in the Answer box."""
     from thechatplace.aside import AsideEvent
@@ -1358,7 +1358,7 @@ def d_ask_aside(frame, env):
     def ask(question, on_event):
         runners.append(on_event)
         return Asked()
-    dialog = AskAsideDialog(frame, "Visual probe", ask)
+    dialog = AskAsideDialog(frame, "Visual probe", ask, provider=provider)
     dialog.question.SetValue("Which file did you change for the upload bug?")
     dialog.on_ask()
     runners[0](AsideEvent("done", "uploader.py: it now flushes and closes the file before it "
@@ -1389,6 +1389,53 @@ def d_connected_tools(frame, env):
     _open(frame, "Visual probe")
     frame.store.update("own-1", disabled_mcp=["plugin:probe-tools:notes"])
     return frame.on_connected_tools
+
+
+def s_codex_attachments(frame, env):
+    s_main_codex_owned(frame, env)
+    info = frame._open
+    frame._add_attachments(info.key, [str(env['tmp'] / 'reference-diagram.png'),
+                                     str(env['tmp'] / 'requirements.txt')])
+
+
+def d_codex_aside(frame, env):
+    return d_ask_aside(frame, env, provider='Codex')
+
+
+def d_codex_tools(frame, env):
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    s_main_codex_owned(frame, env)
+    host = CodexConnectedTools(frame, frame._open)
+    host.load = lambda done: done([CodexTool('project-notes', 'connected', ('find_notes',), False),
+                                  CodexTool('build-reports', 'needs-auth', (), False),
+                                  CodexTool('reference-search', 'off', (), True)], '')
+    return lambda: frame._modal(ConnectedToolsDialog(frame, 'Codex review', host))
+
+
+def d_codex_commands(frame, env):
+    from thechatplace.ui.codex_extras import COMMANDS
+    from thechatplace.ui.dialogs import CommandPickerDialog
+    rows = [dict(name=n, description=d, builtin=True, provider='Codex') for n, d in COMMANDS]
+    rows.append(dict(name='code-reviewer', description='Review the current changes.', prefix='$'))
+    return lambda: frame._modal(CommandPickerDialog(frame, rows))
+
+
+def d_codex_collaboration(frame, env):
+    return lambda: frame._choose('Codex Collaboration Mode',
+        'Mode for Codex review, from its next turn:',
+        ['Default: carry out the task with this chat\'s permissions.', 'Plan: discuss and produce a plan first.'])
+
+
+def d_codex_rewind(frame, env):
+    from thechatplace.rewind import RewindPlan
+    from thechatplace.transcript import ChatMessage, USER
+    from thechatplace.ui.dialogs import RewindDialog
+    message = ChatMessage(USER, 'Review the parser before editing it.', key='native-turn:user-message')
+    plan = RewindPlan('Codex review', message, 'native-turn',
+        files_problem='Codex conversation branching leaves files as they are. File checkpoints are not available here.')
+    return lambda: frame._modal(RewindDialog(frame, plan))
 
 
 def _elicitation(request):
@@ -1992,6 +2039,12 @@ SURFACES = {
     "chat-options": ("dialog", d_chat_options,
                      "File, Chat Options: a Claude chat's agent, instructions, style and folders"),
     "ask-aside": ("dialog", d_ask_aside, "Ask Aside: questions about a chat, one answered"),
+    "codex-aside": ("dialog", d_codex_aside, "Codex Ask Aside using the shared question history"),
+    "codex-tools": ("dialog", d_codex_tools, "Codex MCP selection through explicitly authorised copies"),
+    "codex-commands": ("dialog", d_codex_commands, "Codex commands and explicit skills"),
+    "codex-collaboration": ("dialog", d_codex_collaboration, "Choose native Codex Plan or Default mode"),
+    "codex-rewind": ("dialog", d_codex_rewind, "Codex conversation rewind with files left unchanged"),
+    "codex-attachments": ("window", s_codex_attachments, "Codex reply with image and document attachments"),
     "chat-permissions-empty": ("dialog", d_chat_permissions_empty,
                                "File, Chat Permissions with nothing kept"),
     "chat-permissions-codex": ("dialog", d_chat_permissions_codex,
@@ -2105,6 +2158,11 @@ DIALOG_CLASSES = {
     "chat-permissions": "ChatPermissionsDialog",
     "chat-options": "ChatOptionsDialog",
     "ask-aside": "AskAsideDialog",
+    "codex-aside": "AskAsideDialog",
+    "codex-tools": "ConnectedToolsDialog",
+    "codex-commands": "CommandPickerDialog",
+    "codex-collaboration": "SingleChoiceDialog",
+    "codex-rewind": "RewindDialog",
     "chat-permissions-empty": "ChatPermissionsDialog",
     "chat-permissions-codex": "ChatPermissionsDialog",
     "codex-files": "CodexPermissionDialog",

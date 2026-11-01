@@ -508,7 +508,8 @@ class CodexProvider:
         enabled = self.runtime is not None
         return SessionCapabilities(usage=True, changes=True, send=enabled and session.is_own, fork=enabled,
                                    approvals=enabled and session.is_own,
-                                   steer=enabled and session.is_own)
+                                   steer=enabled and session.is_own, attachments=enabled and session.is_own,
+                                   options=enabled and session.is_own, branch=enabled, aside=enabled)
 
     def usage_lines(self, session):
         self._check(session)
@@ -543,6 +544,56 @@ class CodexProvider:
 
     def prepare_policy_owned(self, record, sandbox, approval_policy, approvals_reviewer='user'):
         return self.runtime.prepare_policy(record, sandbox, approval_policy, approvals_reviewer)
+
+    def prepare_settings_owned(self, record, model, effort):
+        return self.runtime.prepare_settings(record, model, effort)
+
+    def prepare_mode_owned(self, record, mode):
+        return self.runtime.prepare_mode(record, mode)
+
+    def feature_owned(self, record, method, arguments=None):
+        return self.runtime.feature(record, method, arguments)
+
+    def branch(self, source, title, turn_id, before=False):
+        self._check(source)
+        if self.runtime is None:
+            raise ValueError('Codex execution is unavailable')
+        return self.runtime.fork_at(source, title, turn_id, before)
+
+    def skills(self, session):
+        self._check(session)
+        result = self.connection.request('skills/list', {'cwds': [session.cwd], 'forceReload': True})
+        if not isinstance(result.get('data'), list):
+            raise ValueError('Codex did not return a skill inventory')
+        skills = []
+        from pathlib import Path
+        for group in result['data']:
+            if not isinstance(group, dict) or group.get('cwd') != session.cwd:
+                continue
+            if not isinstance(group.get('skills'), list):
+                raise ValueError('Codex did not return a skill inventory')
+            for skill in group['skills'][:1000]:
+                if (isinstance(skill, dict) and skill.get('enabled') is True
+                        and isinstance(skill.get('name'), str) and skill['name'].strip()
+                        and isinstance(skill.get('path'), str) and Path(skill['path']).is_absolute()
+                        and Path(skill['path']).is_file()):
+                    skills.append({'name': skill['name'], 'path': skill['path'],
+                                   'description': str(skill.get('description') or '')[:2000]})
+        return skills
+
+    def connected_tools(self, session):
+        self._check(session)
+        from .codex_tools import inventory
+        connection, allowed = self.connection, ()
+        if session.is_own and self.runtime is not None:
+            connection, allowed = self.runtime.tools_context(session.cli_session_id)
+        return inventory(connection, session, allowed)
+
+    def copy_with_tools(self, source, title, names):
+        self._check(source)
+        if self.runtime is None or not source.is_own:
+            raise ValueError('Open a Codex chat started here first')
+        return self.runtime.copy_with_tools(source, title, names)
 
     def finish_policy_owned(self, record, change, saved):
         if record.cli_session_id != change.proof.native_id:

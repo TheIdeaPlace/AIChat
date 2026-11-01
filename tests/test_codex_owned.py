@@ -45,7 +45,7 @@ def test_new_owned_thread_pins_runtime_options_and_returns_fresh_store_records()
     assert params['config'] == {'model_provider': 'openai', 'model_providers': {},
         'forced_login_method': 'chatgpt', 'openai_base_url': None,
         'chatgpt_base_url': CHATGPT_BASE_URL, 'approvals_reviewer': 'user',
-        'mcp_servers': {}, 'features': {'plugins': False, 'apps': False}}
+        'mcp_servers': {}, 'features': {'plugins': False, 'apps': False, 'goals': False}}
     record = lease.record()
     assert record.provider == 'codex' and record.started and record.created_ms == 100_000
     record.provider_options['model'] = 'changed'
@@ -332,7 +332,7 @@ def test_configured_external_tools_are_disabled_in_thread_without_global_edits()
     CodexOwnedThreads(connection).start('/workspace', 'Title')
     overrides = connection.calls[-3][1]['config']
     assert overrides['mcp_servers'] == {'remote': {'enabled': False}}
-    assert overrides['features'] == {'plugins': False, 'apps': False}
+    assert overrides['features'] == {'plugins': False, 'apps': False, 'goals': False}
     assert config['mcp_servers']['remote']['enabled'] is True
 
 

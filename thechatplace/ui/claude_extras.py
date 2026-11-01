@@ -149,6 +149,9 @@ class ClaudeExtras:
         if info is None:
             self._feedback("No session selected.")
             return
+        if info.provider == 'codex':
+            self._codex_ask_aside(info)
+            return
         if info.provider == "claude" and info.cowork:
             self._feedback(COWORK_REFUSED)
             return

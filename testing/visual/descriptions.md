@@ -743,6 +743,55 @@ Text is black on white (21:1), the label black on #F0F0F0 (18.4:1), and the sele
 
 **What looks off:** Nothing.
 
+## Codex conversation workflows (#467)
+
+Reviewed from all 16 final Light and Aquatic High Contrast PNGs on 2026-11-01.
+The probe reported no cut-off controls, overlaps or controls outside the window.
+An independent reviewer also opened all 16 captures. Pixel samples give white
+on blue (#FFFFFF on #0078D4) 4.5285:1 for Light selection; dark text on aqua
+(#202020 on #8EE3F0) 11.1694:1 in High Contrast. Body text is black on white
+(21:1), or white on #202020 (16.2933:1). Focus outlines follow those system colors.
+
+**codex-attachments:** The main window has sessions on the left and messages on
+the right. Below the reply box and Send/Stop/Commands/Attach Files buttons, a
+short list shows reference-diagram.png and requirements.txt. The attachment list
+takes space from the conversation area without overlapping the tool-activity
+checkbox or bottom buttons. Long session and history rows scroll horizontally.
+
+**codex-tools:** The 700 by 540 Connected Tools dialog has three server rows
+above Sign In, Read Status, Copy with Tool Off, Refresh and Close. A large
+read-only Details box fills its lower half, showing the chosen tool, its tools,
+and the copy/external-service scope. All buttons and wrapped scope text fit.
+
+**codex-commands:** Search at the top, a large command/skill list below, and
+Insert/Cancel at the lower right. The twelve synthetic rows include /plan,
+Goal/memory/background controls and an explicit $code-reviewer skill. All rows
+fit without vertical scrolling at the captured size. Search has a visible focus
+border; the selected first row uses the system selection color.
+
+**codex-collaboration:** A compact single-choice dialog, 374 by 189 pixels in
+Light, with the prompt, two rows (Default and Plan), then OK and Cancel. The
+first row is selected. Neither choice nor button is clipped in either variant.
+
+**codex-rewind:** Conversation Only is selected in a three-choice group. The
+other two choices say unavailable. The large What Happens box explains the
+preserved-source copy and that files stay as they are. Rewind and Cancel are
+aligned at the bottom right, with generous space above them.
+
+**codex-aside:** The shared 680 by 600 Ask Aside dialog has a question box, Stop,
+two history rows, a large Answer box, then Copy Answer and Close. The selected
+history row is long and scrolls horizontally; its complete answer is readable
+below. The question has the insertion caret. The Claude **ask-aside** regression
+capture has the same layout. Claude **connected-tools** retains Reconnect and
+Turn Off for This Chat in its unchanged layout.
+
+All six Codex surfaces and the two Claude regression surfaces render in the
+selected system theme. No new visual defect was found.
+The main attachment surface retains the existing native-list focus ambiguity
+tracked in [#181](https://github.com/TheIdeaPlace/AIChat/issues/181): inactive
+selected rows stay blue. That existing focus-indicator defect is not resolved
+by the passing text-contrast measurements above.
+
 ## export-chats: Export Chats, choosing chats and a format (#461)
 
 The 666 by 513 Export Chats dialog, made from the same chooser as Restore from Backup. At the top, a read-only box: "5 chats in the session list's current view, newest first. Choose the ones to export and the format; the folder comes next. Each chat becomes its own file, and no file is ever replaced.", wrapped to two lines. Below it, "Chat list (Space switches Export and Skip):" over a list filling most of the dialog: five rows, the first selected, the first and third starting "Export:" and the rest "Skip:" (the fourth is "Skip: Try plan mode, GitHub Copilot CLI, AIChat, last active 28 October 2026"). Under the list, "Format:" and a Markdown choice box. Select All and Select None at the bottom left; "Export 2 Chats" (the default) and Cancel at the bottom right. Nothing is cut off or overlapping.

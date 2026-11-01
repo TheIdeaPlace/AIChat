@@ -22,9 +22,10 @@ from ..ui_text import key_name
 from .dialogs import (COPILOT_SESSION_MODES, CodexPermissionDialog, QuestionDialog,
                       codex_permission_prompt, copilot_mode_name)
 from .permission_hosts import CODEX_MODES
+from .codex_extras import CodexExtras
 
 
-class CodexChats:
+class CodexChats(CodexExtras):
     def _codex_task_steps(self, state, turn, messages=None):
         # Live events can arrive before the new turn is readable in history.
         # Match its native ID rather than attaching it to the previous turn.

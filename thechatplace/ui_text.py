@@ -162,9 +162,9 @@ SHORTCUTS = [
         ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box"),
         ("Ctrl+/", "Insert a Claude slash command or one of your skills (type to search); it goes at "
                    "the start of the reply box"),
-        ("Ctrl+Shift+F", "Attach files or images to your next Claude message (Attach Files button, Alt+T); "
+        ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+T); "
                          "Delete in the attachments list removes one"),
-        ("Ctrl+V with a picture copied", "Attach the picture to a Claude message (a screenshot from Win+Shift+S, "
+        ("Ctrl+V with a picture copied", "Attach the picture to a Claude or Codex message (a screenshot from Win+Shift+S, "
                                          "say)"),
         ("Ctrl+Shift+M", "Other machines: list your sessions on other computers and send one "
                          "a message, through Claude in the loaded Chat Place session (it needs "
@@ -195,7 +195,7 @@ SHORTCUTS = [
         ("Ctrl+Shift+A", "Answer: approve or deny a tool, answer the provider's questions, or "
                          "approve its plan (the loaded session first, then another chat "
                          "waiting for an answer). Escape in the dialog answers later"),
-        ("Ctrl+Shift+Y", "Ask Aside (Claude chats): a quick question about the selected (or "
+        ("Ctrl+Shift+Y", "Ask Aside (Claude and Codex chats): a quick question about the selected (or "
                          "loaded) chat, answered without the question or answer being added "
                          "to it; Ctrl+Enter asks, and the answer is read and goes in the "
                          "Answer box"),
