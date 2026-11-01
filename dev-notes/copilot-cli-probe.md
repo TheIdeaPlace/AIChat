@@ -314,5 +314,8 @@ Ideas from the first listening test, kept here so they aren't lost:
    `copilot --acp`, with `session/request_permission` shown as the app's permission dialog and
    a billing guard (`isByok` false, premium requests reported). First check the items under
    "Still to check" above.
-3. **Upstream:** an issue proposing Copilot support, then this reading slice as its first PR,
+3. **Account usage:** Usage and Context reads the quota with `copilot --headless --stdio`,
+   `connect` then `account.getQuota`. CLI 1.0.105's `schemas/api.schema.json` marks both
+   experimental, and `connect` internal, so check them when the CLI moves on.
+4. **Upstream:** an issue proposing Copilot support, then this reading slice as its first PR,
    following the slice-by-slice pattern used for Codex (#184).

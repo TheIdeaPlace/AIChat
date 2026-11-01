@@ -757,6 +757,37 @@ def test_start_copilot_acp_uses_no_shell_the_job_and_a_clean_environment(monkeyp
     assert calls["attached"] is not None
 
 
+def test_start_copilot_sdk_uses_read_only_server_and_clean_environment(monkeypatch):
+    calls = {}
+
+    class FakePopen:
+        def __init__(self, args, **kwargs):
+            calls["args"], calls["kwargs"] = args, kwargs
+            self.stdin = self.stdout = None
+            self.pid = 1
+
+    class FakeTree:
+        def popen_kwargs(self):
+            return {"start_new_session": True}
+
+        def attach(self, process):
+            calls["attached"] = process
+
+    monkeypatch.setattr(platform_paths, "_native_codex", lambda path: True)
+    monkeypatch.setattr(platform_paths, "ProcessTree", FakeTree)
+    monkeypatch.setattr("subprocess.Popen", FakePopen)
+    monkeypatch.setenv("COPILOT_ALLOW_ALL", "true")
+    monkeypatch.setenv("GH_TOKEN", "t")
+    platform_paths.start_copilot_sdk("C:/x/copilot.exe")
+    assert calls["args"] == [
+        "C:/x/copilot.exe", "--headless", "--no-auto-update", "--stdio",
+        "--log-level", "error", "--disable-client-telemetry"]
+    assert "shell" not in calls["kwargs"] or calls["kwargs"]["shell"] is False
+    env = calls["kwargs"]["env"]
+    assert "COPILOT_ALLOW_ALL" not in env and "GH_TOKEN" not in env
+    assert calls["attached"] is not None
+
+
 def test_a_message_too_long_is_refused_up_front(make, tmp_path):
     from thechatplace.providers.copilot_runtime import MAX_MESSAGE_CHARS
     runtime, _ = make()

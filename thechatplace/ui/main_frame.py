@@ -3280,16 +3280,19 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if not self._require_capability("usage", self._open):
             return
         if self._open is not None and self._open.provider in RUNTIME_PROVIDERS:
+            name = provider_name(self._open.provider)
             if getattr(self, '_codex_usage_busy', False):
+                self._feedback(f'Still reading {name} usage.')
                 return
             info = self._open
             self._codex_usage_busy = True
+            # It can take a few seconds: Copilot's starts Copilot CLI.
+            self._status(f'Reading {name} usage.')
             def done(lines, error):
                 self._codex_usage_busy = False
                 if self._open is None or self._open.key != info.key:
                     return
                 if error:
-                    name = provider_name(info.provider)
                     self._feedback(f'Could not read {name} usage. Check {name} sign-in and try again.')
                 else:
                     self._modal(UsageDialog(self, lines, self._copy_usage))

@@ -1657,6 +1657,18 @@ def d_usage_codex(frame, env):
     return lambda: frame._modal(UsageDialog(frame, lines, frame._copy_usage))
 
 
+def d_usage_copilot(frame, env):
+    from thechatplace.ui.dialogs import UsageDialog
+    from thechatplace.providers.copilot_usage import usage_lines
+    lines = ["Context 50% full: 64,000 of 128,000 tokens.",
+             "Premium requests used in this chat: 3."] + usage_lines({
+        'chat': {'usedRequests': 3, 'entitlementRequests': 200, 'remainingPercentage': 98.5},
+        'premium_interactions': {'usedRequests': 350, 'entitlementRequests': 300,
+                                 'remainingPercentage': 0, 'overage': 50},
+        'completions': {'entitlementRequests': -1, 'isUnlimitedEntitlement': True}})
+    return lambda: frame._modal(UsageDialog(frame, lines, frame._copy_usage))
+
+
 def d_properties(frame, env):
     """Highlighted in the session list, not loaded: then the session's
     properties are shown wherever focus is, never a message's."""
@@ -1905,6 +1917,7 @@ SURFACES = {
     "properties-codex-tasks": ("dialog", d_properties_codex_tasks, "Codex Properties with live task progress"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
     "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
+    "usage-copilot": ("dialog", d_usage_copilot, "Copilot account allowances and reset reports"),
     "properties": ("dialog", d_properties, "View, Properties of a session"),
     "properties-codex": ("dialog", d_properties_codex,
                          "Properties of a synthetic Codex chat with provider-specific history labels"),
@@ -2002,6 +2015,7 @@ DIALOG_CLASSES = {
     "properties-codex-tasks": "PropertiesDialog",
     "usage": "UsageDialog",
     "usage-codex": "UsageDialog",
+    "usage-copilot": "UsageDialog",
     "properties": "PropertiesDialog",
     "properties-codex": "PropertiesDialog",
     "about-you": "AboutYouDialog",

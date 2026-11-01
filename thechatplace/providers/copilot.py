@@ -9,8 +9,10 @@ is the one place that knows them, and it is written the way transcript.py is:
 unknown event types are skipped, a line that won't parse is counted, never
 raised, and a log is read incrementally as it grows.
 
-This adapter only reads files. It never starts ``copilot``, so it can't
-resume a session, send a prompt or spend a premium request.
+This adapter reads files, so it can't resume a session or send a prompt. The
+one exception is account usage: Usage and Context starts ``copilot`` briefly to
+ask for the quota report (copilot_usage), which opens no chat and sends no
+prompt.
 """
 from __future__ import annotations
 
@@ -32,6 +34,7 @@ from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, TERMINAL, WORKING, S
 from ..transcript import (ASSISTANT, CARRIED, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT,
                           USER, ChatMessage, Transcript, split_jsonl)
 from ..ui_text import last_message_line
+from . import copilot_usage
 from .base import SessionCapabilities, Snapshot
 
 PROVIDER_ID = "copilot"
@@ -44,6 +47,12 @@ EVENTS_FILE = "events.jsonl"
 #: nothing while it runs. It stays working, so a real finish is still
 #: announced; only the detail changes.
 STALE_TURN_SECONDS = 10 * 60
+#: Account quota is shared across chats and doesn't need a separate process
+#: for every Copilot member in an agent conversation.
+ACCOUNT_USAGE_CACHE_SECONDS = 60
+#: A failure is kept only long enough to save those members each waiting for
+#: it: someone who has just signed in, as it tells them to, should be believed.
+ACCOUNT_USAGE_FAILURE_CACHE_SECONDS = 5
 #: After this long with nothing written, a reply is taken to have been left
 #: behind (Copilot closed mid-reply never writes its end): its status is
 #: unknown rather than working for ever.
@@ -562,8 +571,8 @@ class CopilotProvider:
                  on_update=lambda state: None, runtime=None):
         self._sessions_dir = sessions_dir
         #: Runs the chats The Chat Place owns (copilot_runtime), if execution
-        #: is on; without it, Copilot chats are read only. Built lazily: it
-        #: starts no process until a chat is created or opened.
+        #: is on; without it, Copilot chats are read only. Built lazily: no
+        #: process starts until a chat is created or usage is requested.
         self.runtime = runtime
         #: Chats once listed from their own log: if that goes, they aren't
         #: listed again from the runtime alone.
@@ -581,6 +590,9 @@ class CopilotProvider:
         self._entries: dict = {}
         self._last_messages: "OrderedDict[tuple, tuple]" = OrderedDict()
         self._lock = threading.Lock()
+        self._account_usage: Optional[Tuple[str, ...]] = None
+        self._account_usage_until = 0.0
+        self._account_usage_lock = threading.Lock()
 
     @property
     def sessions_dir(self) -> Path:
@@ -763,8 +775,8 @@ class CopilotProvider:
         owned = self.runtime is not None and session.is_own
         # Changed Files is read from the log, so every Copilot chat has it,
         # read-only ones too; reading it never starts Copilot.
-        # Usage (#369) is read from the log and the runtime's state, so it
-        # never starts Copilot either.
+        # Usage (#369) is read from the log and the runtime's state; only its
+        # account lines start Copilot, briefly, and open no chat.
         # Continue Here copies a chat started elsewhere into a new one of
         # this app's own (#352); one started here is simply replied to.
         fork = self.runtime is not None and not session.is_own
@@ -1004,8 +1016,7 @@ class CopilotProvider:
     def usage_lines(self, session: SessionInfo) -> List[str]:
         """Usage and Context (Ctrl+Shift+U, #369): how full the context is,
         as Copilot last said in a turn run here, and the premium requests
-        the chat has used, from its log. Copilot doesn't say what's left of
-        the plan's allowance, so nothing here can warn about a limit."""
+        the chat has used, from its log, plus the account's quota report."""
         self._check(session)
         state = self.runtime.snapshot(session.cli_session_id) if self.runtime is not None else None
         if state is not None and state.context_size > 0:
@@ -1026,9 +1037,23 @@ class CopilotProvider:
             lines.append("Premium requests used in this chat: none recorded yet.")
         else:
             lines.append(f"Premium requests used in this chat: {used:,g}.")
-        lines.append("Copilot doesn't say how many premium requests your plan has left; "
-                     "GitHub's Copilot settings show that.")
+        lines.extend(self._account_usage_lines())
         return lines
+
+    def _account_usage_lines(self) -> List[str]:
+        with self._account_usage_lock:
+            if self._account_usage is None or time.monotonic() >= self._account_usage_until:
+                keep = ACCOUNT_USAGE_CACHE_SECONDS
+                try:
+                    found = copilot_usage.read_usage_lines()
+                except Exception:  # noqa: BLE001 - the chat's own lines still show
+                    keep = ACCOUNT_USAGE_FAILURE_CACHE_SECONDS
+                    found = ["Copilot account usage is shared across your chats, but isn't "
+                             "available. Check Copilot CLI sign-in and connection, and update "
+                             "the CLI if needed."]
+                self._account_usage = tuple(found)
+                self._account_usage_until = time.monotonic() + keep
+            return list(self._account_usage)
 
     def last_reply(self, session: SessionInfo) -> str:
         self._check(session)

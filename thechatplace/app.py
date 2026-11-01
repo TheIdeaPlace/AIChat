@@ -79,7 +79,7 @@ def smoke_test(out_path: str) -> int:
         report["codex_execution"] = True
         from .providers.codex_permissions import CodexPermissionStore  # noqa: F401
         report["codex_permissions"] = True
-        from .providers.copilot import CopilotProvider  # noqa: F401 - reads files only
+        from .providers.copilot import CopilotProvider  # noqa: F401 - no process on import
         report["copilot_reader"] = True
         from .providers.copilot_runtime import CopilotChatRuntime  # noqa: F401 - no process on import
         report["copilot_execution"] = True

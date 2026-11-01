@@ -1364,6 +1364,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Kept Claude history after its original transcript is removed: read-only"
+  },
+  "usage-copilot": {
+   "kind": "dialog",
+   "png": "usage-copilot-hc-aquatic-100.png",
+   "json": "usage-copilot-hc-aquatic-100.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot account allowances and reset reports"
   }
  },
  "seconds": 91.6
