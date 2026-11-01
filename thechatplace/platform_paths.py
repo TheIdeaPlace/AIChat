@@ -1504,6 +1504,28 @@ def bring_last_popup_forward(hwnd: int) -> bool:
     return bool(found) and bool(user32.SetForegroundWindow(found[0]))
 
 
+def high_contrast() -> Optional[bool]:
+    """Whether Windows' High Contrast is on, for bug reports (#464); None
+    where there's no such setting or it can't be read."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class HIGHCONTRASTW(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.UINT), ("dwFlags", wintypes.DWORD),
+                    ("lpszDefaultScheme", wintypes.LPWSTR)]
+    value = HIGHCONTRASTW(ctypes.sizeof(HIGHCONTRASTW), 0, None)
+    try:
+        # SPI_GETHIGHCONTRAST; HCF_HIGHCONTRASTON is bit 0.
+        if not ctypes.windll.user32.SystemParametersInfoW(0x0042, ctypes.sizeof(value),
+                                                          ctypes.byref(value), 0):
+            return None
+    except (OSError, AttributeError):
+        return None
+    return bool(value.dwFlags & 1)
+
+
 def hidden_window_flags() -> int:
     """creationflags that keep a console window from flashing up on Windows."""
     if sys.platform == "win32":

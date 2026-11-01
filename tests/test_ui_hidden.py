@@ -2551,9 +2551,9 @@ def test_cowork_missing_transcript_and_bug_report_count(frame, env, monkeypatch)
     assert pump(lambda: frame._chat_loaded)
     assert frame.chat_list.GetString(0).startswith("No transcript: this Cowork session's")
     fills = _fake_bug_dialog(monkeypatch, "open", ("T", "W", "E", ""))
-    frame.on_report_bug()
-    assert any(line.startswith("Sessions listed: 2 desktop app Code, 1 desktop app Cowork, "
-                               "1 Chat Place") for line in fills.seen)
+    _report_bug(frame)
+    assert any(line.startswith("Sessions listed: Claude: 2 desktop app Code, 1 desktop app "
+                               "Cowork, 1 Chat Place") for line in fills.seen)
 
 
 def test_cowork_view_shows_only_cowork_sessions(frame, env):
@@ -2660,8 +2660,8 @@ def test_terminal_view_menu_filter_and_bug_report(frame, env, monkeypatch):
     menu, _actions = frame._session_menu()
     assert _enabled(menu, "Con&tinue Here") and not _enabled(menu, "Open in &Claude")
     fills = _fake_bug_dialog(monkeypatch, "open", ("T", "W", "E", ""))
-    frame.on_report_bug()
-    assert any(line.startswith("Sessions listed: 2 desktop app, 1 Chat Place, 1 terminal")
+    _report_bug(frame)
+    assert any(line.startswith("Sessions listed: Claude: 2 desktop app, 1 Chat Place, 1 terminal")
                for line in fills.seen)
 
 
@@ -3463,6 +3463,13 @@ def test_renaming_the_group_in_view_follows_it(frame, monkeypatch):
 # -- reporting a bug (#28) -------------------------------------------------------------------
 
 
+def _report_bug(frame):
+    """Report a Bug asks each provider's sign-in in the background first
+    (#464); wait for the dialog."""
+    frame.on_report_bug()
+    assert pump(lambda: not frame._bug_report_busy)
+
+
 def _fake_bug_dialog(monkeypatch, action, values):
     class Fills:
         seen = None
@@ -3486,17 +3493,62 @@ def _fake_bug_dialog(monkeypatch, action, values):
 def test_report_a_bug_opens_github_with_the_report(frame, env, monkeypatch):
     fills = _fake_bug_dialog(monkeypatch, "open",
                              ("Sort resets", "It went back to status.", "Stay sorted", ""))
-    frame.on_report_bug()
-    assert any(line.startswith("Sessions listed: 2 desktop app, 1 Chat Place")
+    _report_bug(frame)
+    assert any(line.startswith("Sessions listed: Claude: 2 desktop app, 1 Chat Place")
                for line in fills.seen)
+    # Each provider's version and sign-in, in the app's words, never the account (#464).
+    assert "Claude Code: 2.1.286 (Claude Code); signed in (Max plan)" in fills.seen
+    assert any(line.startswith("Copilot CLI: 1.0.105; preview off; signed in")
+               for line in fills.seen)
+    everything = "\n".join(fills.seen)
+    assert "synthetic-user" not in everything and "k@example.com" not in everything
     assert env["opened"][-1].startswith("https://github.com/TheIdeaPlace/AIChat/issues/new?")
     assert "title=Sort+resets" in env["opened"][-1]
     assert env["feedback"][-1].startswith("Opened GitHub's new issue page")
 
 
+def test_a_second_press_while_gathering_opens_no_second_report(frame, env, monkeypatch):
+    fills = _fake_bug_dialog(monkeypatch, "copy", ("x", "y", "", ""))
+    opened = []
+    real = fills.__init__
+
+    def counting(self, parent, lines):
+        opened.append(lines)
+        real(self, parent, lines)
+    monkeypatch.setattr(fills, "__init__", counting)
+    frame.on_report_bug()
+    frame.on_report_bug()
+    assert env["feedback"][-1] == "Still gathering the details for your report."
+    assert pump(lambda: not frame._bug_report_busy)
+    assert len(opened) == 1
+
+
+def test_a_report_gathered_behind_another_dialog_waits(frame, env, monkeypatch):
+    """Gathering takes seconds: the report never opens on top of a dialog
+    opened meanwhile (#464), and choosing it again uses what was gathered."""
+    fills = _fake_bug_dialog(monkeypatch, "copy", ("x", "y", "", ""))
+    other = wx.Dialog(frame, title="Settings")
+    monkeypatch.setattr(other, "IsModal", lambda: True)
+    other.Show()
+    try:
+        frame.on_report_bug()
+        assert pump(lambda: not frame._bug_report_busy)
+        assert fills.seen is None
+        assert env["feedback"][-1].startswith("The details for your report are ready.")
+    finally:
+        # Hidden first, as a closed dialog is: Destroy alone takes effect at
+        # idle time on Windows and Linux.
+        other.Hide()
+        other.Destroy()
+    monkeypatch.setattr("thechatplace.bugreport.gather_sign_ins",
+                        lambda *a, **k: pytest.fail("gathered twice"))
+    frame.on_report_bug()  # no gathering this time: it opens at once
+    assert fills.seen is not None and frame._bug_report_ready is None
+
+
 def test_copy_report_only_copies(frame, env, monkeypatch):
     _fake_bug_dialog(monkeypatch, "copy", ("Sort resets", "It went back.", "", ""))
-    frame.on_report_bug()
+    _report_bug(frame)
     assert env["opened"] == []
     assert env["feedback"][-1] == "Report copied. Email it to support@theideaplace.net."
     assert env["copied"][-1].startswith("Sort resets\n\n### What happened\nIt went back.")
@@ -3524,7 +3576,7 @@ def test_bug_report_never_names_a_group(frame, env, monkeypatch):
     frame._build_show_menu()
     frame.on_view("group:Acme client work")
     fills = _fake_bug_dialog(monkeypatch, "copy", ("x", "y", "", ""))
-    frame.on_report_bug()
+    _report_bug(frame)
     assert "Acme" not in "\n".join(fills.seen) and "Acme" not in env["copied"][-1]
     assert "Session list: showing a group, sorted status" in fills.seen
 
@@ -12946,7 +12998,9 @@ def test_a_copilot_refusal_is_said_in_its_own_words(frame, env, monkeypatch):
             frame._open.key, "/allow-all on")
         assert _received_prompts(env) == []
         from thechatplace import codex_diagnostics
-        assert codex_diagnostics.last_failure().startswith("Copilot worker failed")
+        # The reason the app wrote goes into the log for bug reports (#464).
+        assert codex_diagnostics.last_failure().startswith(
+            "Copilot CopilotChatError: Copilot commands starting with /")
     finally:
         runtime.close()
 
