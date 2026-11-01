@@ -478,7 +478,7 @@ The Chat Place's own data, for this chat and its exact working folder. It surviv
 the app; a Continue Here copy starts empty. Supported operations are `git status`, `switch`,
 `add`, `commit`, `push`, `fetch`, `diff` and `log`, with ordinary supported arguments.
 Unknown options, explicit force or delete options in the command, compound commands, shell expansion, a changed
-working folder, and requests for separately listed extra access still ask.
+working folder, requests for separately listed extra access, and commands run through a shell The Chat Place doesn't recognise still ask.
 Remembering has the same authority as **Allow Once**: the command may run outside the sandbox,
 including Git hooks and configured programs, and may access files elsewhere and the network.
 The working folder is where it starts, not a confinement boundary. A plain push follows the

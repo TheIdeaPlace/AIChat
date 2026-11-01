@@ -1,7 +1,12 @@
 name: Probe TCP remembered Codex approvals
 on:
-  push:
-    branches: [codex/native-command-approvals]
+  pull_request:
+    paths:
+      - thechatplace/providers/codex_permissions.py
+      - thechatplace/providers/codex_requests.py
+      - thechatplace/platform_paths.py
+      - tools/probe_codex_remembered_approvals.py
+      - .github/workflows/probe-codex-remembered-approvals.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -11,15 +16,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
-        codex: ['0.162.1', '0.163.0']
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        codex: ['0.163.0', '0.166.0']
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - run: npm install -g @openai/codex@${{ matrix.codex }}
@@ -29,7 +34,7 @@ jobs:
           root="$(npm root -g)/@openai/codex"
           binary=$(find "$root" -type f \( -name codex -o -name codex.exe \) -path '*vendor*' | head -1)
           python tools/probe_codex_remembered_approvals.py --codex "$binary" --out "$RUNNER_TEMP/native-approvals.json"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: native-approvals-${{ runner.os }}-${{ matrix.codex }}
