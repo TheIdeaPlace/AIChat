@@ -7761,8 +7761,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 and focus is self.chat_list):
             # Rewind to Here (#468) only from the messages list, never as a
             # menu accelerator: Cmd+Shift+Z is Redo on a Mac, and
-            # Ctrl+Shift+Z is Redo in GTK's text boxes.
-            self.on_rewind_to_here()
+            # Ctrl+Shift+Z is Redo in GTK's text boxes. After the key, so the
+            # dialog doesn't open inside its handler (Orca then read the "Z"
+            # rather than the chosen option).
+            wx.CallAfter(self.on_rewind_to_here)
             return
         if (key == wx.WXK_INSERT and event.ShiftDown() and not ctrl
                 and focus is self.reply_text):

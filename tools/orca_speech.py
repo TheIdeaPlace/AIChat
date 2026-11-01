@@ -180,12 +180,12 @@ STEPS = [
     # that finished and an Explore at work. View, Subagents opens Lists on
     # them, newest first; Enter reads one's conversation, and Escape goes
     # back a step at a time.
-    # Found by name (Ctrl+F in the session list), since the steps before
-    # change which sessions need you and so the list's order.
+    # Sorted by title, so where it is doesn't depend on which sessions the
+    # steps before left needing you. (Ctrl+F in a GTK list is the list's own
+    # type-ahead search, not Find.) "A session whose title goes on…" is first.
     Step("back to the session list", ["ctrl+1"], expect=["Session list"]),
-    Step("find a session", ["ctrl+f"], expect=["Find"]),
-    Step("the session with subagents", ["f", "l", "a", "k", "y", "Return"],
-         expect=["Fix the flaky upload test"]),
+    Step("sort by title", ["alt+v", "o", "t"], expect=["Sessions sorted by title"]),
+    Step("the session with subagents", ["Home", "Down"], expect=["Fix the flaky upload test"]),
     Step("open the session with subagents", ["Return"],
          expect=["Messages in Fix the flaky upload test"]),
     Step("View, Subagents", ["alt+v", "g"], expect=["Subagents (2)", "Explore", "Running"]),
