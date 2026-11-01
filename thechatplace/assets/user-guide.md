@@ -1159,8 +1159,9 @@ reply is set aside, and you hear so.
   Settings, then choose Automatic in New Agent Conversation, or for a conversation with
   **File, Agent Conversation Hand-offs**, which can also make it say only when it stops or needs
   you. If Claude or Codex is near a usage limit, you're asked first: every exchange uses both
-  subscriptions. Copilot doesn't say how much of your plan is left, so it can't be checked:
-  each of a Copilot agent's turns uses premium requests. Replies go across by themselves until the turn limit (6 exchanges unless you
+  subscriptions. Copilot's account allowance is shown in Usage and Context, but automatic
+  hand-offs don't check it: check it before enabling them, since each Copilot turn uses premium
+  requests. Replies go across by themselves until the turn limit (6 exchanges unless you
   choose another). Approving what an agent asks, such as running its tests, doesn't stop it.
   It pauses when you refused something during a turn, or a request went unanswered: you hear
   why, and the last reply waits for Ctrl+Shift+E. It stops when a turn fails, and you hear
@@ -1182,8 +1183,8 @@ when it answers, not when the work finishes.
 handed on isn't passed on, a message that hadn't gone yet comes back to the reply box, and your
 next message goes to the agent you stopped.
 **Ctrl+Shift+T** says what each agent is doing, how far the count has got, and who your next
-message goes to. **Ctrl+Shift+U** lists each agent's context and each provider's limits, and,
-for a Copilot agent, the premium requests its chat has used.
+message goes to. **Ctrl+Shift+U** lists each agent's context and each provider's limits,
+including Copilot account allowances and each Copilot chat's premium requests used.
 
 **Safety:** questions and requests needing human approval come to you through **Ctrl+Shift+A**.
 Codex uses the approval reviewer selected for its chat; Copilot always asks you. A message from one agent goes to the
@@ -1591,9 +1592,11 @@ status bar's context button opens it too.
   reports them, that line says "not reported on this connection yet". The Chat Place never fills
   them in with Claude's figures.
 - **In a Copilot chat:** how full its context is, once Copilot has answered in it since The
-  Chat Place started ("Context: not known until Copilot answers here" before that), and how
-  many premium requests the chat has used, from Copilot's own log. Copilot doesn't say how many
-  your plan has left: GitHub's Copilot settings show that. Reading it never starts Copilot.
+  Chat Place started ("Context: not known until Copilot answers here" before that), how many
+  premium requests the chat has used, from its log, and the account's chat-message,
+  premium-interaction and completion allowances. The account report is shared across Copilot
+  chats and comes from Copilot CLI's read-only quota API; it starts no chat and uses no request.
+  If the CLI can't provide it, Usage and Context says so.
 - **In an agent conversation:** each agent's context and each provider's limits.
 
 In Codex chats started here, The Chat Place also warns you, without cutting off what's being

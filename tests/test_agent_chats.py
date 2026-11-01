@@ -1633,7 +1633,7 @@ def test_a_copilot_member_that_cant_be_made_says_so(tmp_path):
                               "wasn't started. Check Copilot sign-in.")
 
 
-def test_conversation_usage_lists_copilots_plan_line_once(tmp_path, monkeypatch):
+def test_conversation_usage_lists_copilots_account_limits_once(tmp_path, monkeypatch):
     from thechatplace.ui import dialogs
     w = Window(tmp_path)
     _with_copilot(w)
@@ -1641,8 +1641,8 @@ def test_conversation_usage_lists_copilots_plan_line_once(tmp_path, monkeypatch)
     w._copy_usage = lambda text, one: None
     w.sessions.usage_lines = lambda info: [
         "Context 10% full.", "Premium requests used in this chat: 3.",
-        "Copilot doesn't say how many premium requests your plan has left; GitHub's Copilot "
-        "settings show that."]
+        "Copilot account usage is shared across your chats.",
+        "Chat messages: 2% used (3 of 200); 98% remaining."]
     w._agent_member_info = lambda m: SimpleNamespace(title=w.records[m.identity].title,
                                                      cli_session_id=m.native_id)
     w.sessions.open_reader = lambda info: None
@@ -1654,12 +1654,12 @@ def test_conversation_usage_lists_copilots_plan_line_once(tmp_path, monkeypatch)
     done(action(), False)
     lines = shown[-1]
     assert lines[0].startswith('Claude (Builder chat): Context')
-    assert lines[1:4] == [
+    assert lines[1:5] == [
         'Copilot (Pilot chat): Context 10% full.',
         'Copilot (Pilot chat): Premium requests used in this chat: 3.',
-        "Copilot doesn't say how many premium requests your plan has left; GitHub's Copilot "
-        "settings show that."]
-    assert all(line.startswith('Claude plan: ') for line in lines[4:])
+        "Copilot account usage is shared across your chats.",
+        "Chat messages: 2% used (3 of 200); 98% remaining."]
+    assert all(line.startswith('Claude plan: ') for line in lines[5:])
 
 
 def test_stop_leaves_what_you_queued_in_the_copilot_chat_yourself(tmp_path):

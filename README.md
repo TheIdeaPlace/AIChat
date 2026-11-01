@@ -625,9 +625,11 @@ and Permission mode offer the same choices as in New Session. The original chat 
 
 Chat Permissions isn't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it. Usage and Context (Ctrl+Shift+U) says how full a Copilot chat's
-context is (once Copilot has answered in it here) and how many premium requests the chat has
-used, from its log; Copilot doesn't say how many your plan has left, so check that in GitHub's
-Copilot settings. A chat started here is kept in The Chat
+context is (once Copilot has answered in it here), how many premium requests the chat has
+used, and your account's chat-message, premium-interaction and completion allowances. The
+account report is shared across your Copilot chats and comes from Copilot CLI's read-only
+account quota API; it starts no chat and uses no request. If your CLI can't provide the report,
+Usage and Context says so. A chat started here is kept in The Chat
 Place's own list in `provider-sessions-copilot.json`, beside `sessions.json`. A chat that's answering says working, even while Copilot runs a command, and is
 announced once when its answer is finished. After 10 minutes with no activity it adds "no
 activity from Copilot for 10 minutes", and after 2 hours it's shown as status unavailable (Copilot
@@ -720,12 +722,12 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
     the agent you stopped. **Turn Status**
     (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
     to. **Usage and Context** (Ctrl+Shift+U) lists each agent's context and each provider's
-    limits (for a Copilot agent, the premium requests its chat has used).
+    limits, including Copilot account allowances and each Copilot chat's premium requests used.
   - The relay also stops when the agents are only thanking each other. File, Agent
     Conversation Hand-offs can make automatic mode say only when it stops or needs you, and
-    asks first if Claude or Codex is near a usage limit. Copilot doesn't say how much of its
-    allowance is left, so automatic hand-offs with a Copilot agent can't be checked: each of
-    its turns uses premium requests from your plan.
+    asks first if Claude or Codex is near a usage limit. Copilot's account allowance is shown
+    in Usage and Context, but automatic hand-offs don't check it: check it before enabling
+    them, since each Copilot turn uses premium requests from your plan.
   - The relay's own lines are one line each in the list; Enter reads exactly what was sent
     (the setup each agent got, or the reply as it went).
   - A reply passed on ends with the files its agent changed in that turn, so a reviewer

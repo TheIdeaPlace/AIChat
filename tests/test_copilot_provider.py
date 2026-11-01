@@ -548,23 +548,49 @@ def test_premium_requests_are_the_highest_count_in_the_log(tmp_path):
     assert premium_requests(tmp_path / TWO / "events.jsonl") is None
 
 
-def test_usage_lines_without_starting_copilot(tmp_path, monkeypatch):
+def test_usage_lines_read_chat_and_shared_account_usage(tmp_path, monkeypatch):
     events = answered_turn() + [event("session.usage_checkpoint", 20, totalPremiumRequests=2.5)]
     write_session(tmp_path, events=events)
     monkeypatch.setattr(platform_paths, "copilot_sessions_dir", lambda: tmp_path)
+    from thechatplace.providers import copilot_usage
+    calls = []
+
+    def account_usage():
+        calls.append(True)
+        return ["Copilot account usage is shared across your chats.",
+                "Chat messages: 2% used (3 of 200); 98% remaining."]
+
+    monkeypatch.setattr(copilot_usage, "read_usage_lines", account_usage)
     provider = CopilotProvider()
     lines = provider.usage_lines(info_for())
     # Started in Copilot CLI: no turn of it can run here to say.
     assert lines == ["Context: known only for chats started in The Chat Place.",
                      "Premium requests used in this chat: 2.5.",
-                     "Copilot doesn't say how many premium requests your plan has left; "
-                     "GitHub's Copilot settings show that."]
+                     "Copilot account usage is shared across your chats.",
+                     "Chat messages: 2% used (3 of 200); 98% remaining."]
     write_session(tmp_path, TWO, events=None)  # no log yet
     assert provider.usage_lines(info_for(TWO))[1] == \
         "Premium requests used in this chat: none recorded yet."
+    assert len(calls) == 1
     from thechatplace.sessions import OWN
     own = SessionInfo(OWN, f"copilot:{ONE}", "t", "", ONE, provider="copilot")
     assert provider.usage_lines(own)[0] == "Context: not known until Copilot answers here."
+    assert len(calls) == 1
+
+
+def test_usage_lines_explain_when_account_usage_is_unavailable(tmp_path, monkeypatch):
+    write_session(tmp_path, events=answered_turn())
+    monkeypatch.setattr(platform_paths, "copilot_sessions_dir", lambda: tmp_path)
+    from thechatplace.providers import copilot_usage
+
+    def unavailable():
+        raise copilot_usage.CopilotUsageError("private server detail")
+
+    monkeypatch.setattr(copilot_usage, "read_usage_lines", unavailable)
+    lines = CopilotProvider().usage_lines(info_for())
+    assert lines[-1] == (
+        "Copilot account usage is shared across your chats, but isn't available. "
+        "Check Copilot CLI sign-in and connection, and update the CLI if needed.")
 
 
 def test_usage_lines_say_how_full_the_context_is_from_the_runtime(tmp_path, monkeypatch):
