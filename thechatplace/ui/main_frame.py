@@ -547,7 +547,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # is another item's access key, so Rewind's shortcut is its way in,
         # and Branch from Here is reached by arrowing, or on the message's
         # own menu.
-        self._item(session, "Rewind to Here...\tCtrl+Shift+Z", lambda e: self.on_rewind_to_here())
+        self._item(session, "Rewind to Here...", lambda e: self.on_rewind_to_here())
         self._item(session, "Branch from Here", lambda e: self.on_branch_from_here())
         self._item(session, "&New Session...\tCtrl+N", self.on_new_session)
         self._item(session, "Change Mo&del...", lambda e: self.on_change_model())
@@ -2466,7 +2466,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 can_branch = self.sessions.capabilities(self._open).branch
             except ValueError:
                 can_branch = False
-            rewind_item = menu.Append(wx.ID_ANY, "Re&wind to Here...\tCtrl+Shift+Z")
+            rewind_item = menu.Append(wx.ID_ANY, "Re&wind to Here...")
             rewind_item.Enable(can_branch and rewind.rewindable(message))
             menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
             branch_item = menu.Append(wx.ID_ANY, "Branc&h from Here")
@@ -7548,6 +7548,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if press_focused_button_on_a_mac(event):
                 # Return did nothing on Send and the rest on a Mac.
                 return
+        if (key == ord("Z") and ctrl and event.ShiftDown() and not event.AltDown()
+                and focus is self.chat_list):
+            # Rewind to Here (#468) only from the messages list, never as a
+            # menu accelerator: Cmd+Shift+Z is Redo on a Mac, and
+            # Ctrl+Shift+Z is Redo in GTK's text boxes.
+            self.on_rewind_to_here()
+            return
         if (key == wx.WXK_INSERT and event.ShiftDown() and not ctrl
                 and focus is self.reply_text):
             # Shift+Insert pastes like Ctrl+V, so a picture is attached
