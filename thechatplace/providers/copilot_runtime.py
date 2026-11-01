@@ -633,8 +633,8 @@ _LOCK = re.compile(r"inuse\.(\d{1,10})\.lock")
 def locked_elsewhere(folder: Path, is_own=None) -> bool:
     """Whether a running Copilot other than this app's has the chat open.
     Copilot (1.0.103) holds ``inuse.<pid>.lock`` in the session folder while
-    it has a chat open, named for the process, which needn't be the one this
-    app starts (#463), and leaves it behind when it exits. So a lock counts only if that
+    it has a chat open, named for the process, and leaves it behind when it
+    exits. So a lock counts only if that
     process is running now and was already running when the lock was written:
     process ids are handed out again, and a later process with a stale lock's
     id has nothing to do with the chat."""
@@ -825,6 +825,10 @@ class CopilotChatRuntime:
                 lambda rid, method, params: self._on_request(holder[0], rid, method, params),
                 lambda: self._on_closed(holder[0]) if holder else None)
             holder.append(connection)
+            # Copilot has answered, so any launcher has started it, and no
+            # tool of a turn has run yet: this is who's ours (#463).
+            members = getattr(getattr(connection, "_process", None), "tree", None)
+            connection.own_pids = members.members() if members is not None else frozenset()
             with self._lock:
                 if self._closed:
                     connection.close()
@@ -872,12 +876,15 @@ class CopilotChatRuntime:
     @staticmethod
     def _is_own(connection):
         """Whether a process is this app's Copilot on ``connection``: the one
-        it started, or anything that started, since that can be a launcher
-        with the real Copilot as its child (#463)."""
+        it started, or one running with it when Copilot first answered, since
+        a launcher keeps the real Copilot as its child (#463). A Copilot that
+        a tool started later, in the same tree, can hold a chat like any other."""
         server = getattr(connection, "_process", None)
         started = getattr(getattr(server, "process", None), "pid", None)
-        holds = getattr(getattr(server, "tree", None), "holds", None)
-        return lambda pid: pid == started or (holds is not None and holds(pid))
+        members = getattr(getattr(server, "tree", None), "members", None)
+        recorded = getattr(connection, "own_pids", frozenset())
+        return lambda pid: pid == started or (
+            pid in recorded and members is not None and pid in members())
 
     def _events(self, native_id: str) -> Path:
         return (self._sessions_dir or platform_paths.copilot_sessions_dir()) / native_id / EVENTS_FILE

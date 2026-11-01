@@ -1354,18 +1354,12 @@ class ProcessTree:
         except OSError:
             pass
 
-    def holds(self, pid: int) -> bool:
-        """Whether a process is this one or anything it started. VS Code's
-        ``copilot`` command is a launcher that keeps running with the real
-        Copilot as its child (#463). If it can't be told, the answer is no."""
-        if pid == self._pid:
-            return True
-        if sys.platform == "win32":
-            return self._job is not None and pid in _job_process_ids(self._job)
-        try:
-            return self._pid is not None and os.getpgid(pid) == self._pid
-        except OSError:
-            return False
+    def members(self) -> frozenset:
+        """The processes running in this tree now, as far as can be told: the
+        job's on Windows, otherwise only the one started."""
+        own = frozenset() if self._pid is None else frozenset((self._pid,))
+        job = self._job
+        return own | _job_process_ids(job) if job is not None else own
 
     def close(self) -> None:
         """Close the job. KILL_ON_JOB_CLOSE ends anything still in it."""
@@ -1396,6 +1390,9 @@ def _kernel32():
     k.AssignProcessToJobObject.restype = wintypes.BOOL
     k.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
     k.TerminateJobObject.restype = wintypes.BOOL
+    k.QueryInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                            wintypes.DWORD, wintypes.LPVOID]
+    k.QueryInformationJobObject.restype = wintypes.BOOL
     k.CloseHandle.argtypes = [wintypes.HANDLE]
     k.CloseHandle.restype = wintypes.BOOL
     _K32 = k
@@ -1453,24 +1450,23 @@ def _create_kill_on_close_job():
     return job
 
 
-def _job_process_ids(job, room: int = 1024) -> frozenset:
-    """The process ids in a job (none if Windows won't say)."""
+def _job_process_ids(job, rooms=(1024, 65536)) -> frozenset:
+    """The process ids in a job (none if Windows won't say). A big build's
+    processes count too, so a list too small for them is tried once larger."""
     import ctypes
     from ctypes import wintypes
 
-    class PROCESS_ID_LIST(ctypes.Structure):
-        _fields_ = [("NumberOfAssignedProcesses", wintypes.DWORD),
-                    ("NumberOfProcessIdsInList", wintypes.DWORD),
-                    ("ProcessIdList", ctypes.c_size_t * room)]
+    for room in rooms:
+        class PROCESS_ID_LIST(ctypes.Structure):
+            _fields_ = [("NumberOfAssignedProcesses", wintypes.DWORD),
+                        ("NumberOfProcessIdsInList", wintypes.DWORD),
+                        ("ProcessIdList", ctypes.c_size_t * room)]
 
-    found = PROCESS_ID_LIST()
-    query = _kernel32().QueryInformationJobObject
-    query.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
-                      wintypes.LPVOID]
-    query.restype = wintypes.BOOL
-    if not query(job, 3, ctypes.byref(found), ctypes.sizeof(found), None):  # BasicProcessIdList
-        return frozenset()
-    return frozenset(found.ProcessIdList[:found.NumberOfProcessIdsInList])
+        found = PROCESS_ID_LIST()
+        if _kernel32().QueryInformationJobObject(job, 3, ctypes.byref(found),  # BasicProcessIdList
+                                                 ctypes.sizeof(found), None):
+            return frozenset(found.ProcessIdList[:found.NumberOfProcessIdsInList])
+    return frozenset()
 
 
 def _assign_to_job(job, process_handle: int) -> bool:
@@ -2156,17 +2152,30 @@ def copilot_native_candidates() -> List[Path]:
             Path("/home/linuxbrew/.linuxbrew/bin/copilot"), Path("/usr/bin/copilot")]
 
 
+def is_copilot_launcher(path) -> bool:
+    """VS Code's ``copilot`` command, which isn't Copilot: it finds Copilot
+    (or offers to install it) and keeps running with it as a child (#463)."""
+    return "copilot-shim" in (part.lower() for part in Path(path).parts)
+
+
 def find_copilot(which=None, native_candidates=None) -> Optional[str]:
     """The native Copilot CLI, or None. The same check as Codex's: a real
-    executable, never a script (#352)."""
+    executable, never a script (#352). VS Code's launcher passes that check,
+    so it's used only if there's nothing else (#463)."""
     import shutil
 
-    found = (which or shutil.which)("copilot")
+    found = [(which or shutil.which)("copilot")]
+    if found[0] and is_copilot_launcher(found[0]) and which is None:
+        # It hides any real Copilot later on the PATH.
+        folders = os.environ.get("PATH", "").split(os.pathsep)
+        found.append(shutil.which("copilot", path=os.pathsep.join(
+            folder for folder in folders if not is_copilot_launcher(folder))))
     if native_candidates is None:
         native_candidates = copilot_native_candidates()
-    for candidate in ([found] if found else []) + list(native_candidates):
-        if _native_codex(str(candidate)):
-            return str(candidate)
+    candidates = [str(candidate) for candidate in [*found, *native_candidates] if candidate]
+    for candidate in sorted(candidates, key=is_copilot_launcher):  # stable: only the launcher moves
+        if _native_codex(candidate):
+            return candidate
     return None
 
 

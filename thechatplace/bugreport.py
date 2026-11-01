@@ -93,7 +93,11 @@ def cli_version(provider: str) -> str:
     match = _VERSIONS[provider].match(first)
     if not match:
         return "unknown"
-    return first if provider == "claude" else match.group(1)
+    if provider == "claude":
+        return first
+    # #463: the launcher behaves differently, and a report can't name the path.
+    launcher = provider == "copilot" and platform_paths.is_copilot_launcher(path)
+    return f"{match.group(1)} (through VS Code's launcher)" if launcher else match.group(1)
 
 
 def claude_code_version() -> str:
