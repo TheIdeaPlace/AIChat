@@ -145,6 +145,13 @@ STEPS = [
     Step("Space chooses the chat", ["space"], expect=["Export", "1 of"]),
     Step("Export Chats closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # File, Stop Background Task (#468), opened by the trigger once the open
+    # chat's turn has background work: the item has no access key.
+    Step("Stop Background Task", [], trigger="background",
+         expect=["Stop Background Task", "Windows build, running"]),
+    Step("the next task", ["Down"], expect=["Watch CI"]),
+    Step("Stop Background Task closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
 ]
 
 #: The question "question" asks (STEPS above).
@@ -186,6 +193,10 @@ def serve(root: Path) -> int:
         if trigger.exists():
             trigger.unlink()
             ask_question(frame)
+        trigger = root / "background.trigger"
+        if trigger.exists():
+            trigger.unlink()
+            stop_background_task(frame)
     timer = wx.Timer(frame)
     frame.Bind(wx.EVT_TIMER, watch, timer)
     timer.Start(200)
@@ -206,6 +217,21 @@ def ask_question(frame) -> None:
     request = PermissionRequest("q1", "AskUserQuestion", QUESTION, suggestions=[])
     frame._on_turn_event({"id": "own-1"}, "Visual probe",
                          TurnEvent("permission", text=request.summary(), request=request))
+
+
+def stop_background_task(frame) -> None:
+    """The probe's own session's turn, with two background tasks running,
+    and File, Stop Background Task opened on it (#468)."""
+    import wx
+    import fake_env
+    frame._pending.clear()
+    runner = fake_env.FakeRunner([], "", "", None)
+    runner.background_entries = [{"task_id": "b1", "description": "Windows build", "since": 0.0},
+                                 {"task_id": "b2", "description": "Watch CI", "since": 60.0}]
+    runner.background_tasks = ["Windows build", "Watch CI"]
+    frame._runners["own-1"] = runner
+    frame._update_send_state()
+    wx.CallAfter(frame.on_stop_background_task)
 
 
 # -- Orca -----------------------------------------------------------------------------------

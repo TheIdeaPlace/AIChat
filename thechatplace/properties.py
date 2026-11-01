@@ -19,8 +19,8 @@ from .codeblocks import find_code_blocks
 from .export import message_moment
 from .message_links import find_links
 from .sessions import STATUS_UNAVAILABLE, WORKING, NEEDS_YOU, SessionInfo, how_long_ago, state_with_detail
-from .transcript import (ASSISTANT, PERMISSION_NOTICE, QUEUED, STEERING, TAIL_KINDS, TOOL, USER,
-                         ChatMessage, Transcript)
+from .transcript import (ASSISTANT, PERMISSION_NOTICE, QUEUED, STEERING, TAIL_KINDS, THINKING,
+                         TOOL, USER, ChatMessage, Transcript)
 from . import tasklist, usage
 from .ui_text import codex_effort_label
 
@@ -130,6 +130,10 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"{name}'s replies: "
                      f"{sum(1 for m in conversation if m.kind == ASSISTANT):,}")
         lines.append(f"Tool calls: {sum(1 for m in transcript.messages if m.kind == TOOL):,}")
+        thoughts = sum(1 for m in transcript.messages if m.kind == THINKING)
+        if thoughts:
+            # Only when there's any (#468): most chats' thinking has no text.
+            lines.append(f"Thinking you can read: {thoughts:,}")
         lines.append(f"Links: {len(find_links(conversation)):,}")
         blocks = sum(len(find_code_blocks(m.text)) for m in conversation)
         lines.append(f"Code blocks: {blocks:,}")

@@ -185,9 +185,18 @@ class FakeRunner:
     instances = []
 
     def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
-                 task_list=False, mcp_config=None):
+                 task_list=False, mcp_config=None, context_usage=False):
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
         self.mcp_config = mcp_config
+        self.context_usage = context_usage
+        # Live control (#468). ``live``: whether a control request can go in
+        # at all (off: as a Claude Code that can't, so a change waits for
+        # the next turn, said at once); ``live_ok``/``live_error``: its answer.
+        self.live, self.live_ok, self.live_error = False, True, ""
+        self.controls = []
+        self.background_entries = []
+        self.retry = None
+        self.started_at = 0.0
         self.images = images or []
         self.remote_control = remote_control
         self.task_list = task_list
@@ -231,6 +240,27 @@ class FakeRunner:
         self.follow_ups = getattr(self, "follow_ups", []) + [(prompt, images)]
         self.waiting_on_background = False
         return True
+
+    def _control(self, subtype, value, on_done):
+        if not self.live or getattr(self, "ended", False):
+            return False
+        self.controls.append((subtype, value))
+        on_done(self.live_ok, {}, self.live_error)  # from "the worker"; the UI defers
+        return True
+
+    def set_model(self, model, on_done):
+        return self._control("set_model", model, on_done)
+
+    def set_permission_mode(self, mode, on_done):
+        return self._control("set_permission_mode", mode, on_done)
+
+    def stop_task(self, task_id, on_done):
+        if self.live and self.live_ok:
+            # As Claude Code does: the list drops it before the answer.
+            self.background_entries = [e for e in self.background_entries
+                                       if e.get("task_id") != task_id]
+            self.background_tasks = [e["description"] for e in self.background_entries]
+        return self._control("stop_task", task_id, on_done)
 
 
 def status_field(bar, index: int = 0) -> str:

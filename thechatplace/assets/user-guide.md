@@ -260,6 +260,12 @@ in Fix the build." Continue Here keeps it on in the copy if it was on in the cha
 With no chat loaded, Ctrl+T says so and changes nothing. A chat's tool calls also count in
 Links, Export and Find in All Sessions only when it's on for that chat.
 
+With Show Tool Activity on, a Claude chat also shows Claude's **thinking**, where Claude Code
+kept its text: "Claude, thinking: …" before the reply it led to. Most thinking is kept without
+text, so many chats have none to show. Thinking is never spoken as it happens; Enter reads it in
+full, and Copy, Find and Export treat it like the other tool activity. It never counts as Claude's
+reply, so the Last message column and the reply announced at the end of a turn leave it out.
+
 ### Command results and compaction
 
 A chat's **context** is the part of the conversation the AI has in front of it as it works. It
@@ -939,11 +945,15 @@ Escape to leave it as it is.
 - **Change Permission Mode** (Ctrl+Shift+O): auto, accept edits, manual or plan.
 
 You hear the change and when it counts, such as "Permission mode for Fix the build: plan, from its
-next turn." In a Claude chat, a turn that's already running carries on as it started, and you hear
-that too. The chat's heading, at the top of its messages, says its model, and its effort and mode
+next turn." In a Claude chat with a turn running, Change Model and Change Permission Mode change
+that turn too, and you hear "Permission mode for Fix the build: accept edits, now and for later
+turns." If Claude Code can't change the running turn, it carries on as it started, the change
+counts from the next turn, and you hear that instead. Change Effort always counts from the next
+turn. The chat's heading, at the top of its messages, says its model, and its effort and mode
 when they aren't the defaults: "on Opus at high effort, plan mode". Approving a plan, or allowing something
 "for this chat" that switches mode, changes the mode as well; approving a plan starts on the
-mode you chose here, unless that was plan.
+mode you chose here, unless that was plan. If Claude switches to plan mode by itself, the chat
+stays in plan mode for later turns too, and approving the plan starts on the mode it had before.
 
 In a Copilot chat started here, **Change Model** lists the models Copilot offers that chat, with
 the premium requests a message costs, and you hear the change, such as "Fix the build now uses GPT
@@ -1009,9 +1019,24 @@ finishes, Claude carries on by itself, and its next answer is announced as usual
 waiting, what you send goes to it at once instead of being queued. Stop ends the turn and the
 background work with it.
 
+To end just one piece of background work and keep the turn, choose **File, Stop Background
+Task**. It's available while the loaded Claude chat has background work running. It lists each
+one with how long it has run ("Windows build, running 3 minutes"); choose one, press Enter, and
+answer Yes to stop it. You hear "Stopped Windows build." The rest keeps running. If that was the
+last of it and Claude had already answered, the turn ends as it would when the work finished.
+
+If Claude Code can't reach Claude's service, or the service is busy, it tries again by itself.
+You hear the first retry of a turn, such as "Claude is retrying: the service is overloaded.
+Attempt 2 of 10, next in 8 seconds", and after that at most every 30 seconds; the status bar
+shows each one. If Claude Code moves a turn to another model because the first one failed, you
+hear that too: "Claude switched to Sonnet 5.5 because Opus 5.5 was overloaded." It goes back to
+the chat's model on the next turn. A turn that would move to Fable is still stopped. When Claude
+saves a memory, you hear "Claude saved a memory: build steps" if announcements are set to Full;
+otherwise it's on the status bar.
+
 **Ctrl+Shift+T** (Turn Status) says how long the AI has been working on this turn and what it last
-did, or what is still running in the background, and how far along the task list is. There's
-no time limit on a turn.
+did, or what is still running in the background, whether Claude is retrying, and how far along
+the task list is. There's no time limit on a turn.
 
 ### Commands, skills and attachments
 
@@ -1582,7 +1607,11 @@ status bar's context button opens it too.
 
 - **In a Claude chat:** how full the chat's context is ("Context 62% full: 124,000 of 200,000
   tokens"), then each of your plan's usage limits on its own line. It's also said once, unasked,
-  when the context passes 80%, or a limit passes 90%.
+  when the context passes 80%, or a limit passes 90%. In a Claude chat started here, once a turn
+  has run since The Chat Place started, lines after the context say what fills it, as Claude Code
+  reported at the end of that turn: "System prompt: 2,362 tokens", "Memory files: 1,279 tokens",
+  "Skills: 9,056 tokens", "Messages: …", "Free space: …". Tools Claude loads only when it needs
+  them say "(loaded when needed)".
 - **In a Codex chat:** your Codex account's limits: how much of each is used and left, and when
   it resets. They're shared by all your Codex chats, and anything Codex doesn't report says "not
   reported". A Codex chat started here also shows how many tokens its latest request used, and

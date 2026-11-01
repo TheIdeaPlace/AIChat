@@ -83,6 +83,10 @@ RELAY = "relay"
 #: short row ahead of your first message, the history itself as its
 #: ``detail`` (Enter reads it). Copilot records it in your message's text.
 CARRIED = "carried"
+#: Claude's thinking before it answers (#468): only the blocks that carry
+#: text (most are signed and empty). Activity: hidden unless Show Tool
+#: Activity is on, never spoken live, never a reply.
+THINKING = "thinking"
 MAX_COMMAND_OUTPUT = 16_384
 
 LABELS = {
@@ -107,10 +111,11 @@ LABELS = {
     COMMAND_ERROR: "Claude Code error",
     RELAY: "Relay",
     CARRIED: "Earlier conversation",
+    THINKING: "Claude, thinking",
 }
 
 #: Kinds hidden unless "show tool activity" is on.
-ACTIVITY_KINDS = frozenset({TOOL, TOOL_RESULT, CONTEXT, EVENT})
+ACTIVITY_KINDS = frozenset({TOOL, TOOL_RESULT, CONTEXT, EVENT, THINKING})
 
 
 @dataclass
@@ -150,6 +155,8 @@ class ChatMessage:
             return f"You, to {self.sender}"
         if self.kind == ASSISTANT:
             return self.assistant_name
+        if self.kind == THINKING:
+            return f"{self.assistant_name}, thinking"
         return LABELS.get(self.kind, self.kind.capitalize())
 
     @property
@@ -550,7 +557,13 @@ class TranscriptParser:
                 text = str(block.get("text") or "")
                 if not text.strip():
                     continue
-                last = self.transcript.messages[-1] if self.transcript.messages else None
+                # Past any thinking of the same reply (#468): with it hidden,
+                # the reply reads as one message, as it did before.
+                messages = self.transcript.messages
+                back = len(messages) - 1
+                while back >= 0 and messages[back].kind == THINKING:
+                    back -= 1
+                last = messages[back] if back >= 0 else None
                 if (last is not None and last.kind == ASSISTANT
                         and self._last_assistant_id == msg_id and msg_id):
                     last.text = f"{last.text}\n\n{text.strip()}"
@@ -562,7 +575,14 @@ class TranscriptParser:
                 touched.append(self._tool_use(block, record))
                 # A tool call ends the text run: text after it is a new message.
                 self._last_assistant_id = None
-            # thinking, redacted_thinking and unknown blocks: not shown
+            elif btype == "thinking":
+                # Shown as activity when it has text (#468). Most blocks
+                # are only a signature: nothing to read, so nothing shown.
+                thought = str(block.get("thinking") or "")
+                if thought.strip():
+                    touched.append(self._add(THINKING, thought, record,
+                                             key=f"{record.get('uuid') or msg_id}:thinking"))
+            # redacted_thinking and unknown blocks: not shown
         return touched
 
     def _tool_use(self, block: dict, record: dict) -> ChatMessage:

@@ -419,6 +419,66 @@ def remote_control_line(name: str, reattach: str = "") -> bytes:
                         "request": request}, ensure_ascii=False) + "\n").encode("utf-8")
 
 
+#: Request ids of the live control requests a turn sends (#468): set_model,
+#: set_permission_mode, stop_task, get_context_usage. Their answers come back
+#: as ``control_answer`` events, matched by id.
+CONTROL_REQUEST_PREFIX = "thechatplace-ctl-"
+
+
+def control_line(request_id: str, subtype: str, **fields) -> bytes:
+    """A control request into the running turn (#468)."""
+    return (json.dumps({"type": "control_request", "request_id": request_id,
+                        "request": {"subtype": subtype, **fields}}, ensure_ascii=False)
+            + "\n").encode("utf-8")
+
+
+def _int(value) -> int:
+    return value if type(value) is int else 0
+
+
+def _live_system_event(etype: str, subtype: str, event: dict,
+                       session_id: str) -> Optional["TurnEvent"]:
+    """System messages about a turn in progress that The Chat Place says or
+    keeps (#468), or None. Fields checked against Claude Code 2.1.296's own
+    schema and, for ``status``, a real capture.
+
+    * ``status`` with ``permissionMode``: the mode changed, by a live Change
+      Permission Mode or by Claude itself (approving a plan, EnterPlanMode).
+    * ``api_retry``: a request failed and will be tried again.
+    * ``model_fallback``: the turn moved to the fallback model.
+    * ``memory_saved``: Claude wrote to its memory files.
+    """
+    if etype != "system":
+        return None
+    if subtype == "status":
+        mode = event.get("permissionMode")
+        if isinstance(mode, str) and mode:
+            # "default" is what The Chat Place calls manual.
+            return TurnEvent("mode", text=normalize_permission_mode(mode),
+                             session_id=session_id)
+        return None
+    if subtype == "api_retry":
+        error = event.get("error")
+        status = event.get("error_status")
+        return TurnEvent("retry", session_id=session_id, data={
+            "attempt": _int(event.get("attempt")), "max_retries": _int(event.get("max_retries")),
+            "retry_delay_ms": _int(event.get("retry_delay_ms")),
+            "error_status": status if type(status) is int else None,
+            "error": error if isinstance(error, str) else ""})
+    if subtype == "model_fallback":
+        return TurnEvent("fallback", session_id=session_id, data={
+            key: str(event.get(key) or "") for key in
+            ("trigger", "original_model", "fallback_model", "content")})
+    if subtype == "memory_saved":
+        paths = event.get("written_paths")
+        verb = event.get("verb")
+        return TurnEvent("memory", session_id=session_id, data={
+            "paths": [p for p in paths if isinstance(p, str) and p]
+            if isinstance(paths, list) else [],
+            "verb": verb if isinstance(verb, str) and verb.strip() else "Saved"})
+    return None
+
+
 def message_line(prompt: str, images: Optional[List[dict]] = None,
                  message_id: str = "") -> bytes:
     """The user's message, with any image blocks after its text (#22).
@@ -671,7 +731,8 @@ class TurnEvent:
     """One thing that happened during a turn, already made readable."""
 
     kind: str               # started | text | tool | denied | permission | background |
-    #                         waiting | finished | failed | …
+    #                         waiting | finished | failed | mode | retry | fallback |
+    #                         memory | context (#468) | …
     text: str = ""
     session_id: str = ""
     is_error: bool = False
@@ -705,6 +766,8 @@ class StreamParser:
         self.context_window = 0
         #: Edit tool uses waiting for their results: tool_use id -> file.
         self._edits: Dict[str, str] = {}
+        #: The model of the latest top-level assistant message (#468).
+        self.reply_model = ""
 
     def feed(self, line: str) -> List[TurnEvent]:
         line = line.strip()
@@ -770,6 +833,16 @@ class StreamParser:
                         str(m.get("value")): str(m.get("resolvedModel") or "")
                         for m in models if isinstance(m, dict) and m.get("value")}
                 return [TurnEvent("initialized", session_id=self.session_id)]
+            request_id = str(response.get("request_id") or "")
+            if request_id.startswith(CONTROL_REQUEST_PREFIX):
+                # The answer to a live control request The Chat Place sent
+                # into the running turn (#468): set_model, stop_task, …
+                ok = response.get("subtype") == "success"
+                body = response.get("response")
+                return [TurnEvent("control_answer", session_id=self.session_id, data={
+                    "request_id": request_id, "ok": ok,
+                    "response": body if isinstance(body, dict) else {},
+                    "error": "" if ok else str(response.get("error") or "it was refused")})]
             if response.get("request_id") == RC_REQUEST_ID:
                 body = response.get("response") if isinstance(response.get("response"), dict) \
                     else {}
@@ -794,11 +867,19 @@ class StreamParser:
             # tasks kept out of the transcript) aren't work, Claude Code says,
             # and are left out: one would keep the turn open for good.
             tasks = event.get("tasks")
-            names = ([str(t.get("description") or "a background task")
-                      for t in tasks if isinstance(t, dict) and not t.get("ambient")]
-                     if isinstance(tasks, list) else [])
+            work = ([t for t in tasks if isinstance(t, dict) and not t.get("ambient")]
+                    if isinstance(tasks, list) else [])
+            names = [str(t.get("description") or "a background task") for t in work]
+            # Each one's task_id too, which stop_task takes (#468): checked
+            # with Claude Code 2.1.296 ("b375k20qt" for a background Bash).
+            entries = [{"task_id": str(t.get("task_id") or ""),
+                        "description": str(t.get("description") or "a background task"),
+                        "task_type": str(t.get("task_type") or "")} for t in work]
             return [TurnEvent("background", session_id=self.session_id,
-                              data={"tasks": names})]
+                              data={"tasks": names, "entries": entries})]
+        live = _live_system_event(etype, subtype, event, self.session_id)
+        if live is not None:
+            return [live]
         if etype == "system" and subtype == "compact_boundary":
             meta = event.get("compactMetadata")
             post = meta.get('postTokens') if isinstance(meta, dict) else None
@@ -823,6 +904,12 @@ class StreamParser:
             message = event.get("message")
             content = message.get("content") if isinstance(message, dict) else None
             events: List[TurnEvent] = []
+            reply_model = message.get("model") if isinstance(message, dict) else None
+            if isinstance(reply_model, str) and reply_model:
+                # The model that actually wrote this, which can differ from
+                # system/init's mid-turn: a fallback, a live Change Model, or
+                # plan mode's own model (#468). The Fable check reads it.
+                self.reply_model = reply_model
             if isinstance(content, str) and content.strip():
                 events.append(TurnEvent("text", text=content.strip()))
             elif isinstance(content, list):
@@ -925,6 +1012,15 @@ BACKGROUND_DONE_WAIT = 60.0
 #: How long a turn's message waits for Claude Code to answer initialize.
 INIT_ANSWER_WAIT = 10.0
 
+#: How long a live control request (Change Model, Stop Background Task, …)
+#: waits for its answer before it counts as refused (#468). They're
+#: answered at once (Claude Code 2.1.296).
+CONTROL_WAIT = 10.0
+#: How long a finished turn waits for get_context_usage's answer before
+#: ending anyway (#468): long enough for the 735 ms seen, short enough that
+#: the end isn't held up.
+CONTEXT_WAIT = 1.5
+
 
 def resolved_model(models: Dict[str, str], chosen: str) -> str:
     """The model a turn will use, from the ``initialize`` answer: what the
@@ -996,8 +1092,26 @@ class TurnRunner:
                  images: Optional[List[dict]] = None,
                  remote_control: Optional[Dict[str, str]] = None,
                  timer: Callable[..., threading.Timer] = threading.Timer,
-                 task_list: bool = False, mcp_config: Optional[str] = None) -> None:
+                 task_list: bool = False, mcp_config: Optional[str] = None,
+                 context_usage: bool = False) -> None:
         self.command = command
+        #: The model this turn is meant to run on: its ``--model``, then
+        #: whatever a live Change Model set (#468). The Fable checks read it.
+        self.chosen = chosen_model(command)
+        #: Ask Claude Code what fills the context (get_context_usage) as the
+        #: turn ends, for Usage and Context (#468). Off, nothing is asked.
+        self._want_context = context_usage
+        #: The latest get_context_usage answer (categories, totalTokens, …).
+        self.context_usage: Optional[dict] = None
+        #: Live control requests waiting for their answer (#468):
+        #: request id -> (callback, timeout timer or None).
+        self._controls: Dict[str, tuple] = {}
+        #: The background work as {task_id, description, task_type, since},
+        #: ``since`` on the turn's clock when it was first seen (#468).
+        self.background_entries: List[dict] = []
+        #: The latest api_retry while Claude Code is retrying (#468), with
+        #: ``at`` on the turn's clock; None once the turn moves on.
+        self.retry: Optional[dict] = None
         #: ``--mcp-config`` for this turn's process only (the session tools,
         #: #165), or None. Kept apart from ``command``, which is the turn's
         #: own: it ends with ``--resume <id>``, and tests read it.
@@ -1183,8 +1297,122 @@ class TurnRunner:
                 started = not self.waiting_on_background
                 self.waiting_on_background = True
                 return "started waiting" if started else "waiting"
-            self._close_stdin_locked()
+            self._close_after_context_locked()
             return "closed"
+
+    # -- Live control of the running turn (#468) --------------------------------
+
+    def control(self, subtype: str, on_done: Callable[[bool, dict, str], None],
+                timeout: float = None, **fields) -> bool:
+        """Send a control request into the running turn. ``on_done(ok,
+        response, error)`` is called once, from the worker thread (or a
+        timer's), with Claude Code's answer, or ``ok=False`` if it doesn't
+        answer within ``timeout`` or the turn ends first. False, and no
+        call, if the turn is over or being stopped."""
+        request_id = f"{CONTROL_REQUEST_PREFIX}{subtype}-{uuid.uuid4().hex[:8]}"
+        with self._lock:
+            if not self._stdin_open or self._cancelled or self.stopped_before_answer:
+                return False
+            if not self._write_raw(control_line(request_id, subtype, **fields)):
+                return False
+            timer = self._timer(CONTROL_WAIT if timeout is None else timeout,
+                                lambda: self._control_done(request_id, False, {},
+                                                           "Claude Code didn't answer"))
+            timer.daemon = True
+            self._controls[request_id] = (on_done, timer)
+        timer.start()
+        return True
+
+    def _control_done(self, request_id: str, ok: bool, response: dict, error: str) -> None:
+        with self._lock:
+            entry = self._controls.pop(request_id, None)
+        if entry is None:
+            return  # answered already, or timed out
+        on_done, timer = entry
+        if timer is not None:
+            timer.cancel()
+        try:
+            on_done(ok, response, error)
+        except Exception:  # noqa: BLE001 - a UI bug must not wedge the worker
+            pass
+
+    def _fail_controls(self) -> None:
+        """The turn is over: nothing still waiting will be answered."""
+        with self._lock:
+            waiting = list(self._controls)
+        for request_id in waiting:
+            self._control_done(request_id, False, {}, "the turn ended")
+
+    def set_model(self, model: str, on_done: Callable[[bool, dict, str], None]) -> bool:
+        """Change the running turn's model (Change Model, #468). Checked with
+        Claude Code 2.1.296: ``set_model`` is answered at once, a model it
+        doesn't know with an error ("Model 'x' not found"). "" is Claude
+        Code's default. Never to a model that resolves to Fable unchosen
+        (#58): False, and the change waits for the next turn, whose check
+        stops it before anything is sent."""
+        resolved = resolved_model(self.parser.resolved_models, model)
+        if fable_problem(resolved, model):
+            return False
+
+        def done(ok, response, error):
+            if ok:
+                self.chosen = model
+            on_done(ok, response, error)
+        return self.control("set_model", done, model=model or "default")
+
+    def set_permission_mode(self, mode: str,
+                            on_done: Callable[[bool, dict, str], None]) -> bool:
+        """Change the running turn's permission mode (#468). Checked with
+        Claude Code 2.1.296: answered with ``{"mode": …}`` and followed by a
+        system/status message; "manual" is taken as Claude Code's
+        "default"."""
+        mode = normalize_permission_mode(mode)
+        if mode not in PERMISSION_MODE_VALUES:
+            return False
+        return self.control("set_permission_mode", on_done, mode=mode)
+
+    def stop_task(self, task_id: str, on_done: Callable[[bool, dict, str], None]) -> bool:
+        """Stop one background task, keeping the turn (#468). Checked with
+        Claude Code 2.1.296: the task is killed, task_notification says
+        "stopped" and the background list drops it, all before the
+        (empty) success. An id it doesn't know is answered with success too,
+        so the caller checks the background list, not the answer."""
+        if not task_id:
+            return False
+        return self.control("stop_task", on_done, task_id=task_id)
+
+    def _close_after_context_locked(self) -> None:
+        """Close stdin, ending the turn; first, if asked, ask what fills the
+        context (#468), waiting at most CONTEXT_WAIT for the answer. Measured
+        with Claude Code 2.1.296: 16 to 735 ms. Call with ``_lock`` held.
+        Until it closes, anything sent now still goes in and is answered."""
+        if not self._want_context or not self._stdin_open:
+            self._close_stdin_locked()
+            return
+        request_id = f"{CONTROL_REQUEST_PREFIX}context-{uuid.uuid4().hex[:8]}"
+        if not self._write_raw(control_line(request_id, "get_context_usage")):
+            self._close_stdin_locked()
+            return
+
+        def answered(ok, response, _error):
+            if ok and isinstance(response.get("categories"), list):
+                self.context_usage = response
+                self._emit(TurnEvent("context", session_id=self.parser.session_id,
+                                     data=response))
+            self._close_if_done()
+        timer = self._timer(CONTEXT_WAIT, lambda: self._control_done(
+            request_id, False, {}, "no answer in time"))
+        timer.daemon = True
+        self._controls[request_id] = (answered, timer)
+        timer.start()
+
+    def _close_if_done(self) -> None:
+        """End the turn, unless something sent since is still to be answered
+        or background work started meanwhile."""
+        with self._lock:
+            if self._unanswered or self.background_tasks:
+                return
+            self._close_stdin_locked()
 
     def _write_send_now(self, prompt: str) -> bool:
         """Interrupt, then the message. Call with ``_lock`` held."""
@@ -1387,7 +1615,6 @@ class TurnRunner:
                     self._stdin_open = True
                 except (OSError, ValueError):
                     pass  # the process died early; its exit code tells us why
-            chosen = chosen_model(self.command)
             message_sent = False
             states_seen = False
             last_state = ""
@@ -1462,7 +1689,8 @@ class TurnRunner:
                 for event in self.parser.feed(_decode(raw)):
                     if event.kind == "initialized" and not message_sent:
                         problem = fable_problem(
-                            resolved_model(self.parser.resolved_models, chosen), chosen)
+                            resolved_model(self.parser.resolved_models, self.chosen),
+                            self.chosen)
                         if problem:
                             with sent_lock:
                                 stopping = not message_sent
@@ -1477,6 +1705,46 @@ class TurnRunner:
                     if event.kind == "remote_control":
                         self._emit(event)  # never a reason to send the message
                         continue
+                    if event.kind == "control_answer":
+                        # A live control request's answer (#468): to its
+                        # caller only, and never a reason to send the message.
+                        data = event.data or {}
+                        self._control_done(data.get("request_id", ""), bool(data.get("ok")),
+                                           data.get("response") or {}, data.get("error", ""))
+                        continue
+                    if event.kind == "mode":
+                        self._emit(event)  # the mode changed (#468); not the conversation
+                        continue
+                    if event.kind == "retry":
+                        # Claude Code is retrying (#468), for turn status too.
+                        self.retry = {**(event.data or {}), "at": self._clock()}
+                        self.last_activity = "retrying"
+                        self._emit(event)
+                        continue
+                    if event.kind == "fallback":
+                        # A fallback mid-turn gets no new system/init, so the
+                        # Fable check (#58) is made here too (#468).
+                        problem = fable_problem((event.data or {}).get("fallback_model", ""),
+                                                self.chosen, sent=True)
+                        if problem:
+                            self.stopped_before_answer = True
+                            self._kill()
+                            final = TurnEvent("failed", text=problem, is_error=True,
+                                              session_id=self.parser.session_id)
+                            break
+                        self._emit(event)
+                        continue
+                    if event.kind in ("text", "tool"):
+                        self.retry = None  # it got through
+                        # Whatever wrote this, Fable unchosen is stopped
+                        # (#58), however it came to be the model (#468).
+                        problem = fable_problem(self.parser.reply_model, self.chosen, sent=True)
+                        if problem:
+                            self.stopped_before_answer = True
+                            self._kill()
+                            final = TurnEvent("failed", text=problem, is_error=True,
+                                              session_id=self.parser.session_id)
+                            break
                     if event.kind == "taken":
                         taken = self._taken(event.text)
                         if taken is not None and taken[0] == "steer":
@@ -1504,7 +1772,7 @@ class TurnRunner:
                     if event.kind == "started":
                         self.session_started = True
                         problem = (api_key_problem(self.parser.api_key_source)
-                                   or fable_problem(self.parser.model, chosen, sent=True))
+                                   or fable_problem(self.parser.model, self.chosen, sent=True))
                         if problem:
                             self._stopped_for_key = True
                             self.stopped_before_answer = True
@@ -1526,8 +1794,15 @@ class TurnRunner:
                         self.last_activity = f"waiting for you: {event.request.summary()}"
                     if event.kind == "background":
                         tasks = list((event.data or {}).get("tasks") or [])
+                        since = {e["task_id"]: e.get("since", 0.0)
+                                 for e in self.background_entries}
+                        now = self._clock()
+                        entries = [{**e, "since": since.get(e.get("task_id"), now)}
+                                   for e in (event.data or {}).get("entries") or []
+                                   if isinstance(e, dict)]
                         with self._lock:
                             self.background_tasks = tasks
+                            self.background_entries = entries
                             if not tasks:
                                 self.waiting_on_background = False
                         if tasks and self.waiting_on_background:
@@ -1570,6 +1845,7 @@ class TurnRunner:
                                 arm_ceiling()
                         continue
                     if event.kind == "finished":
+                        self.retry = None
                         follows_waiting = said_while_waiting
                         said_while_waiting = False
                         # The latest result is the turn's, carrying every
@@ -1659,6 +1935,7 @@ class TurnRunner:
             self._tree.close()
             with self._lock:
                 self.pending.clear()
+            self._fail_controls()  # before the final event: their callers hear first
         if not final.session_id:
             final.session_id = self.parser.session_id
         self._emit(final)
