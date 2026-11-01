@@ -43,6 +43,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -231,6 +232,11 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 #: Keys of the rows after the conversation: queued and steered messages, and
 #: notices. New messages go in before them (#50, #238).
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
+
+
+#: Rewind to Here's key (#468) as a menu accelerator, except on a Mac,
+#: where Cmd+Shift+Z is Redo: there the messages list takes it itself.
+REWIND_ACCEL = "" if sys.platform == "darwin" else "\tCtrl+Shift+Z"
 
 
 class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost,
@@ -575,7 +581,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # is another item's access key, so Rewind's shortcut is its way in,
         # and Branch from Here is reached by arrowing, or on the message's
         # own menu.
-        self._item(session, "Rewind to Here...", lambda e: self.on_rewind_to_here())
+        self._item(session, "Rewind to Here..." + REWIND_ACCEL, lambda e: self.on_rewind_to_here())
         self._item(session, "Branch from Here", lambda e: self.on_branch_from_here())
         self._item(session, "&New Session...\tCtrl+N", self.on_new_session)
         self._item(session, "Change Mo&del...", lambda e: self.on_change_model())
@@ -2525,7 +2531,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 can_branch = self.sessions.capabilities(self._open).branch
             except ValueError:
                 can_branch = False
-            rewind_item = menu.Append(wx.ID_ANY, "Re&wind to Here...")
+            rewind_item = menu.Append(wx.ID_ANY, "Re&wind to Here..." + REWIND_ACCEL)
             rewind_item.Enable(can_branch and rewind.rewindable(message))
             menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
             branch_item = menu.Append(wx.ID_ANY, "Branc&h from Here")
@@ -7757,13 +7763,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if press_focused_button_on_a_mac(event):
                 # Return did nothing on Send and the rest on a Mac.
                 return
-        if (key == ord("Z") and ctrl and event.ShiftDown() and not event.AltDown()
-                and focus is self.chat_list):
-            # Rewind to Here (#468) only from the messages list, never as a
-            # menu accelerator: Cmd+Shift+Z is Redo on a Mac, and
-            # Ctrl+Shift+Z is Redo in GTK's text boxes. After the key, so the
-            # dialog doesn't open inside its handler (Orca then read the "Z"
-            # rather than the chosen option).
+        if (not REWIND_ACCEL and key == ord("Z") and ctrl and event.ShiftDown()
+                and not event.AltDown() and focus is self.chat_list):
+            # Rewind to Here (#468) on a Mac, only from the messages list:
+            # Cmd+Shift+Z is Redo there, so it can't be a menu accelerator.
             wx.CallAfter(self.on_rewind_to_here)
             return
         if (key == wx.WXK_INSERT and event.ShiftDown() and not ctrl
