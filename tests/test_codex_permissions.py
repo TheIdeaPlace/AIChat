@@ -10,11 +10,31 @@ from thechatplace.providers.codex_permissions import candidate, matches, CodexPe
 from thechatplace.providers.codex_requests import COMMAND, decode_request
 from thechatplace.providers.codex_rpc import CodexApprovalNotSent, CodexRememberedApprovalError
 
+from markers import windows_paths  # noqa: E402
+
 
 def request(folder, command='git commit -m first', prefix=('git', 'commit'), **extra):
     return decode_request(1, COMMAND, dict(threadId='owned-1', turnId='turn', itemId='item',
         command=command, cwd=str(folder), environmentId='local',
         proposedExecpolicyAmendment=list(prefix), availableDecisions=['accept', 'decline', 'cancel'], **extra))
+
+
+@windows_paths
+def test_store_powershell_can_be_remembered_but_only_at_its_own_path(tmp_path, monkeypatch):
+    # As real Codex sends it on a PC whose PowerShell came from the Microsoft Store.
+    monkeypatch.setenv('LOCALAPPDATA', r'C:\Users\someone\AppData\Local')
+    def wrapped(executable, script):
+        return '"' + executable.replace('\\', '\\\\') + f'" -NoProfile -Command \'{script}\''
+    store = r'C:\Users\someone\AppData\Local\Microsoft\WindowsApps\pwsh.exe'
+    rule = candidate(request(tmp_path, wrapped(store, 'git commit -m first')), str(tmp_path))
+    assert rule is not None and rule.shell[0] == 'powershell'
+    assert matches(rule, request(tmp_path, wrapped(store, 'git commit -m second')), str(tmp_path))
+    assert candidate(request(tmp_path, wrapped(store, 'git commit -m x; calc')), str(tmp_path)) is None
+    for other in (r'C:\Users\someone\AppData\Local\Temp\pwsh.exe',
+                  r'C:\Users\other\AppData\Local\Microsoft\WindowsApps\pwsh.exe', 'pwsh.exe'):
+        assert candidate(request(tmp_path, wrapped(other, 'git commit -m first')), str(tmp_path)) is None
+    monkeypatch.delenv('LOCALAPPDATA')
+    assert candidate(request(tmp_path, wrapped(store, 'git commit -m first')), str(tmp_path)) is None
 
 
 def test_native_wrappers_match_and_unsupported_shell_shapes_ask(tmp_path, monkeypatch):

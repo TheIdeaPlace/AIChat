@@ -1,7 +1,11 @@
 name: Probe TCP remembered Codex approvals
 on:
-  push:
-    branches: [codex/native-command-approvals]
+  pull_request:
+    paths:
+      - thechatplace/providers/codex_permissions.py
+      - thechatplace/providers/codex_requests.py
+      - tools/probe_codex_remembered_approvals.py
+      - .github/workflows/probe-codex-remembered-approvals.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
-        codex: ['0.162.1', '0.163.0']
+        codex: ['0.163.0', '0.166.0']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7

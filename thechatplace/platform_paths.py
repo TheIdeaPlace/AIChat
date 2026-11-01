@@ -406,6 +406,10 @@ def codex_approval_shell(executable: str) -> str:
         trusted = [_windows_program('System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')]
         if os.environ.get('ProgramFiles'):
             trusted.append(ntpath.join(os.environ['ProgramFiles'], 'PowerShell', '7', 'pwsh.exe'))
+        # PowerShell from the Microsoft Store: Codex reports its app alias, so
+        # without this nothing could be remembered on such a PC.
+        if os.environ.get('LOCALAPPDATA'):
+            trusted.append(ntpath.join(os.environ['LOCALAPPDATA'], 'Microsoft', 'WindowsApps', 'pwsh.exe'))
         if ntpath.normcase(executable) in {ntpath.normcase(p) for p in trusted}:
             return 'powershell'
     elif executable in ('/bin/bash', '/bin/zsh', '/bin/sh'):
