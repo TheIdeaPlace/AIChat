@@ -290,7 +290,9 @@ class NewSessionDialog(wx.Dialog):
         options_row = wx.BoxSizer(wx.HORIZONTAL)
         options_row.Add(self.chat_options_btn, 0, wx.RIGHT, 8)
         options_row.Add(self.chat_options_summary, 1, wx.ALIGN_CENTER_VERTICAL)
-        grid.Add((0, 0))
+        # The spacer is hidden with the row too: a row with anything shown
+        # keeps the grid's gap, 8 pixels too many for Codex and Copilot.
+        self._chat_options_spacer = grid.Add((0, 0))
         grid.Add(options_row, 1, wx.EXPAND)
         self._update_chat_options_summary()
         outer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
@@ -736,6 +738,7 @@ class NewSessionDialog(wx.Dialog):
         if self.chat_options_btn.IsShown() != claude:
             self.chat_options_btn.Show(claude)
             self.chat_options_summary.Show(claude)
+            self._chat_options_spacer.Show(claude)
             self.Layout()
         self._fit_note()
 
@@ -4061,7 +4064,10 @@ class ListsPage(wx.Panel):
         sizer.Add(self.list_label, 0, wx.LEFT | wx.TOP, 8)
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.list, self.title)  # with its count once filled
-        self.list.SetMinSize(dip(self, -1, 140))
+        # 96, not more: at 175% the dialog is as tall as the screen, and a
+        # taller list squeezed Details to two lines once Kinds had seven
+        # rows (#468). Both grow with the window.
+        self.list.SetMinSize(dip(self, -1, 96))
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         sizer.Add(wx.StaticText(self, label="&Details:"), 0, wx.LEFT | wx.TOP, 8)
         self.detail = _read_only_text(self, "", "Details", min_height=170)
@@ -5173,8 +5179,9 @@ class ElicitationDialog(wx.Dialog):
 
     def __init__(self, parent, session_title: str, request):
         from ..claude_mcp import is_web_url
+        # A page to open is two lines and a button: no room kept for a form.
         super().__init__(parent, title=f"{request.server_label} asks: {session_title}",
-                         size=dialog_size(parent, 680, 540),
+                         size=dialog_size(parent, 680, 320 if request.is_url else 540),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.request = request
         self.action = ""
@@ -5243,6 +5250,8 @@ class ElicitationDialog(wx.Dialog):
             sizer.Add(control, 0, wx.ALL, 6)
             if f.description:
                 sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 24)
+                # A gap after it, so it reads with its own control (#468).
+                sizer.AddSpacer(6)
             self._controls[f.key] = control
             return
         # The label just before its control, the description after it:
@@ -5278,7 +5287,7 @@ class ElicitationDialog(wx.Dialog):
         set_accessible_name(control, name)
         sizer.Add(control, 0, wx.EXPAND | wx.ALL, 6)
         if f.description:
-            sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 6)
+            sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         self._controls[f.key] = control
 
     def values(self) -> dict:
