@@ -10,12 +10,13 @@ Closes #
 
 ## Screen reader check
 
-<!-- If this changes anything someone hears or uses by keyboard, list the exact steps to check it with JAWS, NVDA or VoiceOver. Otherwise write "None needed". -->
+<!-- If this changes anything someone hears or uses by keyboard, list the exact steps to check it with JAWS, NVDA, VoiceOver or Orca. Otherwise write "None needed". -->
 
 ## Platforms affected
 
 - [ ] Windows
 - [ ] Mac
+- [ ] Linux
 - [ ] CI or tooling only
 
 ## Release notes

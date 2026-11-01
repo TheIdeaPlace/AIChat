@@ -905,6 +905,7 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
       The Chat Place stops it before anything is sent, and says why.
     - Codex: Configured Codex model (your Codex settings), or one of the models Codex offers. The
       list loads in the background; if it can't be loaded, the configured model is still there.
+      For which model suits which task, see [Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md).
     - Copilot: Copilot's configured model, which can't be changed here.
 - **Effort:** how hard the AI thinks.
     - Claude: Default (your Claude Code setting), Low, Medium, High, Extra high or Max. Models that

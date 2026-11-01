@@ -490,7 +490,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      # Every job's files, from this run (download-artifact v4.3.0): Windows' and the Mac's
+      # Every job's files, from this run (download-artifact v8.0.2): Windows' and the Mac's
       # signed builds, and Linux's, which aren't signed.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
