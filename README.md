@@ -396,6 +396,8 @@ too).
   conversation that is never saved, with the same model as the chat, and can read files in its
   folder (Read, Grep and Glob only; no commands, edits, hooks or connected tools), so nothing in the
   chat or its folder changes. Each question uses your Claude plan, as a message does.
+  Ask Aside also works for local Codex chats, including chats started elsewhere; see
+  **Codex chats** below for its temporary copy and restrictions.
 - **Reply box:** for The Chat Place's own sessions, type and press Ctrl+Enter (or Send). You stay in
   the reply box. While a turn is running, Ctrl+Alt+Enter steers instead (see
   [Steering a running turn](#steering-a-running-turn)). For a desktop app or terminal session the same place holds a read-only note
@@ -423,12 +425,12 @@ too).
   Prompts are kept in `%APPDATA%\TheChatPlace\prompts.json` (on a Mac,
   `~/Library/Application Support/TheChatPlace/prompts.json`). The Chat Place doesn't read Claude
   Code's own history of what you've typed.
-- **Attachments**, in The Chat Place's own Claude sessions: **Attach Files** (Alt+T, after Commands;
+- **Attachments**, in The Chat Place's own Claude and Codex sessions: **Attach Files** (Alt+T, after Commands;
   Ctrl+Shift+F) adds files and images to your next message, and **Ctrl+V** in the reply box
   attaches a picture on the clipboard, such as a screenshot from Win+Shift+S. They're listed
   under the reply box ("2 attachments: screenshot.png, log.txt"); Delete there removes one.
-  Images go to Claude as images, so it can describe what's on screen; other files are named
-  in the message as `@"path"`, which Claude Code reads in for Claude. A message can be
+  Images go to the provider as images, so it can describe what's on screen; other files are named
+  in the message for it to read. For Claude, this uses `@"path"`. A message can be
   just attachments. Each session keeps its own until they're sent. Pasted pictures are saved
   in `%APPDATA%\TheChatPlace\pasted images` (on a Mac,
   `~/Library/Application Support/TheChatPlace/pasted images`).
@@ -698,7 +700,7 @@ a thread. Enabled MCP tools can read or change external services outside the fol
 only enable servers you trust. TCP verifies the selected servers before each turn, persists
 the selection with the copy, and disables unselected servers. Apps and plugins remain off.
 Global Codex configuration stays unchanged. Add servers and sign in through Codex CLI;
-Sign In explains this, and Refresh/Reconnect rereads status. Codex MCP questions that TCP
+Sign In explains this, and Refresh and Read Status reread status. Codex MCP questions that TCP
 cannot display are declined with a notice. Claude's connected-tool forms remain available
 for Claude chats.
 
@@ -1417,7 +1419,7 @@ shows it as plain text instead.
 | Session list | F2 | Rename the selected session |
 | Session list | Applications key, Shift+F10 | The session's menu |
 | Anywhere | Ctrl+Shift+K | What AI knows about you: choose Claude or Codex; local instructions, memories, skills and more |
-| Anywhere | Ctrl+Shift+Y | Ask Aside (Claude chats): a quick question about the chat, not added to it |
+| Anywhere | Ctrl+Shift+Y | Ask Aside (Claude and Codex chats): a quick question about the chat, not added to it |
 | Session list | Ctrl+F | Show only sessions matching some text (Escape shows all) |
 | Messages | Ctrl+F, F3, Shift+F3 | Find a message by its text; next; previous |
 | Anywhere | Ctrl+E | Export the session to a file |

@@ -123,12 +123,14 @@ SHORTCUTS = [
                                            "answers it"),
         ("Ctrl+Alt+Enter on a queued message", "Steer it: into the running turn now, without "
                                                "stopping it"),
-        ("Ctrl+Shift+Z on one of your messages", "Rewind to Here (Claude chats): go back to just "
-                                                 "before it. Choose the conversation (a new chat with "
-                                                 "your message in its reply box to change and send), "
-                                                 "the files Claude changed since (your own chats), or "
-                                                 "both; the original chat is kept. Branch from Here, on "
-                                                 "the message's menu, starts a new chat from any message"),
+        ("Ctrl+Shift+Z on one of your messages", "Rewind to Here (Claude and Codex chats): start a new "
+                                                 "chat just before it, with your message ready to change "
+                                                 "and send. Claude can also restore files changed with "
+                                                 "its edit tools in chats started here. Codex copies "
+                                                 "start read-only and leave files unchanged. The original "
+                                                 "chat is kept. Branch from Here, on a message's menu, "
+                                                 "starts a new chat from that point; in Codex it includes "
+                                                 "the whole turn containing that message"),
         ("Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks",
          "Lists, on Code Blocks for this message: read and copy each code block"),
         ("Ctrl+F, then F3 and Shift+F3", "Find a message containing some text (its whole "
@@ -160,8 +162,9 @@ SHORTCUTS = [
                            "it; the AI takes it in at its next step and carries on. With no "
                            "turn running, it sends as Ctrl+Enter does"),
         ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box"),
-        ("Ctrl+/", "Insert a Claude slash command or one of your skills (type to search); it goes at "
-                   "the start of the reply box"),
+        ("Ctrl+/", "Insert a command or skill (Claude and Codex chats; type to search); it goes at "
+                   "the start of the reply box. Codex offers enabled skills and chat controls "
+                   "such as /plan and /compact"),
         ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+T); "
                          "Delete in the attachments list removes one"),
         ("Ctrl+V with a picture copied", "Attach the picture to a Claude or Codex message (a screenshot from Win+Shift+S, "

@@ -720,7 +720,7 @@ whether the chat was started here:</p>
 <tr>
 <td>Change Model or Change Effort later</td>
 <td>yes</td>
-<td>no: choose in New Session</td>
+<td>yes, when idle</td>
 <td>Change Model only</td>
 </tr>
 <tr>
@@ -738,7 +738,7 @@ whether the chat was started here:</p>
 <tr>
 <td>Ask Aside (Ctrl+Shift+Y)</td>
 <td>yes, but not Cowork chats</td>
-<td>no</td>
+<td>yes, including chats started elsewhere</td>
 <td>no</td>
 </tr>
 <tr>
@@ -756,19 +756,31 @@ whether the chat was started here:</p>
 <tr>
 <td>Rewind to Here and Branch from Here</td>
 <td>yes; files only in chats started here</td>
-<td>no</td>
+<td>conversation only, in a copy</td>
 <td>no</td>
 </tr>
 <tr>
 <td>Commands and skills (Ctrl+/)</td>
 <td>yes</td>
-<td>no</td>
+<td>enabled skills and chat controls</td>
 <td>no</td>
 </tr>
 <tr>
 <td>Attachments</td>
 <td>yes</td>
+<td>yes</td>
 <td>no</td>
+</tr>
+<tr>
+<td>Connected Tools (MCP)</td>
+<td>manage servers and connectors</td>
+<td>choose configured servers in a copy</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Stop one background task</td>
+<td>yes</td>
+<td>yes</td>
 <td>no</td>
 </tr>
 <tr>
@@ -845,7 +857,8 @@ queue and stop as in any chat started here, and answer its permissions and quest
 Ctrl+Shift+A. <strong>Continue Here</strong> copies a Codex chat started elsewhere into a new chat here.</p>
 <ul>
 <li>Choose the model and effort when you start the chat; Continue Here offers the same choices as
-  New Session. Change Model and Change Effort can't change them later yet.</li>
+  New Session. File, <strong>Change Model</strong> and <strong>Change Effort</strong> also change an idle chat started here,
+  from its next message. The choice must be checked with Codex and saved before you can send.</li>
 <li><strong>Turn Status</strong> (Ctrl+Shift+T) says how long Codex has been working and what it did last.</li>
 <li>Your messages are read back as in Claude chats, following the same setting.</li>
 <li>Loading another chat and coming back doesn't stop a turn that's running.</li>
@@ -858,6 +871,34 @@ Ctrl+Shift+A. <strong>Continue Here</strong> copies a Codex chat started elsewhe
 <p>A Continue Here copy of a Codex chat starts read-only. You can choose folder editing instead, for
 a project folder: your home folder, the folders above it and the top of a drive can't be made
 editable.</p>
+<h3>More controls for Codex chats started here</h3>
+<ul>
+<li><strong>Attach Files</strong> (Ctrl+Shift+F) adds files and pictures to your next message. <strong>Ctrl+V</strong> in the
+  reply box attaches a picture on the clipboard, such as a screenshot. Pictures reach Codex as
+  images; other files are named for it to read. You can send attachments with an empty reply box,
+  and queued messages keep their image and skill inputs. If a send fails, the recovered draft
+  names its files; attach images again to resend them as images.</li>
+<li><strong>Insert Command or Skill</strong> (Ctrl+/) lists enabled skills for the folder and Codex chat
+  controls. Type to filter, Down to the list, Enter to choose. A skill inserts <code>$name</code> in the
+  reply box and sends the skill with your next message. Controls include <code>/model</code>, <code>/reasoning</code>,
+  <code>/plan</code>, <code>/compact</code>, <code>/goal</code>, <code>/goal pause</code>, <code>/goal clear</code>, <code>/memories on</code>, <code>/memories off</code> and
+  <code>/background</code>. Send a control on its own first line; any draft below it stays in the reply
+  box. These controls are handled here rather than sent as prompts.</li>
+<li><strong>Plan mode.</strong> <code>/plan</code> chooses Codex's native <strong>Plan</strong> or <strong>Default</strong> mode for later turns.
+  The chat's heading says when Plan is selected. Planning mode keeps the chat's permission
+  settings; choose Default when you're ready for it to carry out the plan.</li>
+<li><strong>Compaction.</strong> <code>/compact</code> asks Codex to shorten an idle chat's context. After changing the
+  chat's settings, send a normal message before compacting so Codex has applied those settings
+  to the loaded conversation.</li>
+<li><strong>Memory controls.</strong> <code>/memories on</code> and <code>/memories off</code> choose whether this chat uses and
+  contributes to Codex memories.</li>
+<li><strong>Goal controls.</strong> <code>/goal</code> reads the native Goal and usage; <code>/goal pause</code> pauses it and
+  <code>/goal clear</code> removes it. Starting and resuming autonomous Goals aren't available here.</li>
+<li><strong>Background work.</strong> File, <strong>Stop Background Task</strong> lists running terminals and stops just
+  the selected one. <code>/background</code> opens the same list; the turn and other terminals keep going.</li>
+</ul>
+<p>Rewind to Here, Branch from Here and Ask Aside also work for Codex; see their sections below.
+Configured connected tools can be chosen in a new copy, as described under "Connected tools".</p>
 <h3>If the connection is lost</h3>
 <p>If a Codex chat started here loses its connection, or you can't tell whether a message was sent:</p>
 <ol>
@@ -872,9 +913,13 @@ whose last turn didn't finish, or that Codex can't say finished, until Codex sho
 <p>How a Codex chat asks before it acts, and automatic approval review, are in "Permissions and
 questions". These limits apply to every Codex chat started here:</p>
 <ul>
-<li><strong>No external tools.</strong> MCP servers, apps and plugins are turned off for these chats, because
-  they can reach beyond the chat's folder. The Chat Place checks that they're off before it
-  sends. Your Codex settings aren't changed, and other Codex chats can still be read.</li>
+<li><strong>Connected tools start off.</strong> View, Connected Tools (MCP) lets you enable configured MCP
+  servers in a new read-only copy after a confirmation. They can reach external services beyond
+  the chat's folder, so enable only servers you trust. The Chat Place checks the selection before
+  each turn and keeps unselected servers, apps and plugins off. Your Codex settings aren't changed.</li>
+<li><strong>No autonomous Goals.</strong> You can read, pause or clear a saved Goal, but can't start or resume
+  one here. Native Goal tools are disabled so further turns can't bypass the chat's sign-in and
+  permission checks.</li>
 <li><strong>Your saved command rules still apply.</strong> These are the commands you've told Codex to always
   allow, ask about or never allow, in files such as <code>~/.codex/rules/default.rules</code> and in rules
   installed for your whole computer. A command you've told Codex to always allow runs without
@@ -1066,10 +1111,12 @@ files in its folder, with you or automatic approval review checking requests. Fi
 turn first. The chat keeps its history, and the new mode applies from its next message, even
 before its first. Until the new mode has been checked with Codex and saved, the old one stays in
 effect. If that fails, sending stays off: press <strong>Stop</strong> to check the saved permissions again, or
-try Change Permission Mode again. Nothing is sent while it checks. Change Model and Change Effort
-aren't available for Codex chats yet.</p>
-<p>Desktop app, terminal and Copilot chats are set elsewhere, so for them these items say so and
-change nothing.</p>
+try Change Permission Mode again. Nothing is sent while it checks. <strong>Change Model</strong> and
+<strong>Change Effort</strong> also work when the chat is idle, with choices from Codex; their verified,
+saved settings apply from the next message. Codex's native Plan mode is separate: use <code>/plan</code>
+in Insert Command or Skill (Ctrl+/) to choose Plan or Default without changing permissions.</p>
+<p>Chats started elsewhere are set in the app or terminal where they run; these items change nothing
+for them here.</p>
 <h3>Chat options: agent, instructions, output style and more folders</h3>
 <p>A Claude chat can run as one of your agents, with instructions of its own, in an output style,
 and with more folders to work in. Choose them with <strong>Chat Options</strong> (Alt+H) in New Session or
@@ -1102,21 +1149,25 @@ instructions.</p>
 for the login bug?", press <strong>Ctrl+Shift+Y</strong> (File, Ask Aside, or Ask Aside on a chat's menu in
 the list). It's like Claude Code's /btw. It works for Claude chats started here, desktop app
 chats and terminal chats, even while a turn is running, when Claude answers from what the chat
-holds so far. It isn't available for Cowork chats, kept copies, or Codex and Copilot chats.</p>
+holds so far. It also works for local Codex chats, including chats started elsewhere. It isn't
+available for Cowork chats, kept copies or Copilot chats.</p>
 <ul>
 <li>Type in <strong>Your question</strong> (Alt+Q). Enter starts a new line; <strong>Ctrl+Enter</strong> asks, as does
-  <strong>Ask</strong> (Alt+A). You hear "Asking Claude."</li>
+  <strong>Ask</strong> (Alt+A). You hear which provider is answering, such as "Asking Codex."</li>
 <li>The answer appears in the <strong>Answer</strong> box (Alt+W), focus moves there to read it by line, and it's
   read out as a reply is, by your announcement level.</li>
 <li>Ask as many questions as you like. <strong>Questions and answers</strong> (Alt+N) lists them, newest last;
   arrowing shows each one in the Answer box, and Enter takes you there.</li>
 <li><strong>Copy Answer</strong> (Alt+C) copies the selected answer.</li>
-<li>While Claude is answering, Ask becomes <strong>Stop</strong> (Alt+S), and Escape stops it too. Otherwise
+<li>While the provider is answering, Ask becomes <strong>Stop</strong> (Alt+S), and Escape stops it too. Otherwise
   Escape, or Close, closes the dialog.</li>
 </ul>
 <p>Nothing is added to the chat, and nothing in its folder changes: Claude answers in a copy of the
 conversation that's never saved, with the chat's model, and can only read files (no commands,
 edits, hooks or connected tools). Each question uses your Claude plan, as a message does.</p>
+<p>For Codex, each question uses a temporary read-only copy in a separate Codex process and your
+ChatGPT plan. Commands, connected tools, hooks, memories, Goals and delegation are disabled in
+that copy. Closing the dialog cancels it. Its questions and answers aren't saved to the source.</p>
 <h3>Replying</h3>
 <p>In a chat started here, type in the reply box and press <strong>Ctrl+Enter</strong> (or Send). You stay in
 the reply box, and you hear what was sent and where, such as "Sent to Fix the build: Run the
@@ -1177,16 +1228,19 @@ otherwise it's on the status bar.</p>
 did, or what is still running in the background, whether Claude is retrying, and how far along
 the task list is. There's no time limit on a turn.</p>
 <h3>Commands, skills and attachments</h3>
-<p>These are for Claude chats started here:</p>
+<p>These are for Claude and Codex chats started here:</p>
 <ul>
-<li><strong>Ctrl+/</strong> (or the Commands button) lists your skills and slash commands, then Claude Code's
+<li>In a Claude chat, <strong>Ctrl+/</strong> (or the Commands button) lists your skills and slash commands, then Claude Code's
   own, such as /compact and /context, each with its description. Type to filter, Down to the list,
-  Enter to choose: it goes at the start of the reply box, ready to finish and send. In a Codex or
-  Copilot chat it says the picker isn't available yet.</li>
+  Enter to choose: it goes at the start of the reply box, ready to finish and send. In a Codex
+  chat, the same picker offers enabled skills and chat controls, such as <code>/plan</code> and <code>/compact</code>;
+  see "More controls for Codex chats started here". Copilot doesn't have this picker yet.</li>
 <li><strong>Ctrl+Shift+F</strong> (or Attach Files) adds files and pictures to your next message, and <strong>Ctrl+V</strong>
   in the reply box attaches a picture on the clipboard, such as a screenshot. The attachments are
   listed under the reply box, and Delete there removes one (on a Mac, Delete or Fn+Delete).
-  Claude sees pictures as pictures, and reads other files from where they are.</li>
+  The provider sees pictures as pictures, and reads other files from where they are. Queued
+  Codex messages keep their image and skill inputs. If a failed send returns a Codex message
+  as a draft, its files are named there; attach images again to resend them as images.</li>
 </ul>
 <h3>Saved prompts</h3>
 <p>Keep messages you send often as prompts, each with a name, and put one in the reply box when you
@@ -1236,7 +1290,14 @@ went back from is always kept as it was, in the list.</p>
   messages or Claude's replies: a new chat, "&lt;title&gt; (branch)", whose conversation ends with
   that message, opened with an empty reply box, to try another way from there. It changes no
   files.</p>
-<p>Codex and Copilot chats don't have these yet.</p>
+<p>In a <strong>Codex chat</strong>, Rewind to Here makes a new read-only copy ending before the selected user
+message, with that message ready to edit and send. Conversation only is the available choice;
+files stay as they are. Branch from Here includes the whole native turn containing the selected
+user message or reply, including any later messages in that turn. The source must have a saved
+turn, and branching after a turn waits for it to finish. Both actions keep the original chat.
+Copies start with Codex's configured model and effort and connected tools off. Use Change
+Permission Mode if you want to allow folder editing in the copy.</p>
+<p>Copilot chats don't have these yet.</p>
 <h3>Sending a reply to another chat</h3>
 <p>Two agents can work on the same thing, with you passing their words between them: Claude builds
 and Codex reviews, say, or you ask both and let each answer the other. <strong>Ctrl+Shift+E</strong> (File,
@@ -1561,6 +1622,9 @@ ask, Codex refuses a command that a rule says to ask about. The Chat Place only 
 change them in Codex or edit the file. Removing The Chat Place's own approval does not remove a
 Codex rule.</p>
 <h2 id="connected-tools">Connected tools</h2>
+<p>View, <strong>Connected Tools (MCP)</strong> works for Claude and Codex chats. Claude's controls manage a
+chat's servers and connectors; Codex's controls choose configured servers in a new copy.</p>
+<h3>Claude's connected tools</h3>
 <p>Claude can use tools from outside Claude Code: MCP servers from your Claude Code settings, the
 project or plugins, and the connectors you've added on claude.ai. A connector that needs signing
 in again is quietly left out until it is, so The Chat Place shows them.</p>
@@ -1592,14 +1656,29 @@ failed. Asking costs nothing: no message is sent.</p>
   <strong>Turn On for This Chat</strong>. Other chats, the desktop app and Claude Code's own settings are left alone.
   Only chats started here can do this; The Chat Place's session tools can't be turned off.</li>
 </ul>
-<p>Add or remove tools in Claude Code (<code>claude mcp</code>) or on claude.ai. Connected Tools is for Claude
-chats for now.</p>
-<h3>When a turn starts</h3>
+<p>Add or remove tools in Claude Code (<code>claude mcp</code>) or on claude.ai.</p>
+<h3>When a Claude turn starts</h3>
 <p>If a tool in the chat needs sign-in or failed to connect, The Chat Place says so when a turn
 starts, for example "Claude can't use claude.ai Morningstar: it needs sign-in. View, Connected
 Tools." It's on the status bar, and spoken at the Full announcement level without cutting
 anything off. Each tool is mentioned once each time The Chat Place runs, and a tool turned off
 for the chat isn't mentioned.</p>
+<h3>Codex's connected tools</h3>
+<p>Select or load a Codex chat started here, then choose <strong>View, Connected Tools (MCP)</strong>. It lists
+MCP servers configured for the chat's folder, with their status. <strong>Details</strong> (Alt+D) says more
+about the selected server.</p>
+<ul>
+<li><strong>Copy with Tool On/Off</strong> (Alt+O), or Delete in the list, asks before making a new read-only
+  copy with that server enabled or disabled. The original chat keeps its tool selection:
+  Codex loads this configuration when it opens a conversation. The selection is saved with
+  the copy and checked before every turn; unselected servers, apps and plugins stay off.</li>
+<li>Enabled MCP tools can read or change external services beyond the chat's folder. Enable
+  only servers you trust; the confirmation explains this access before creating a copy.</li>
+<li>Add servers and sign in through Codex CLI. <strong>Sign In</strong> explains where to do this;
+  <strong>Refresh</strong> and <strong>Read Status</strong> reread status. The Chat Place leaves your global Codex settings alone.</li>
+<li>A connected tool's question that The Chat Place can't display is declined with a notice.
+  Claude's connected-tool forms aren't available for Codex yet.</li>
+</ul>
 <h2 id="organizing-your-chats">Organizing your chats</h2>
 <p>With many chats, these keep the list manageable.</p>
 <h3>Choosing which chats are listed</h3>
