@@ -4097,7 +4097,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._modal(ConnectedToolsDialog(self, info.title, host))
         finally:
             host.close()  # the idle Claude Code ends with the dialog
-        if returning_to:
+        # Only if Windows hasn't put it back already: setting it again had a
+        # screen reader say the message twice (#468).
+        if returning_to and wx.Window.FindFocus() is not returning_to:
             returning_to.SetFocus()
 
     def _say_mcp_problems(self, session_id: str, title: str, servers) -> None:

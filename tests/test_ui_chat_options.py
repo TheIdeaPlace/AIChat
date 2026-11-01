@@ -113,9 +113,14 @@ def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, 
         assert dialog.options() == ChatOptions("code-reviewer", "Answer in French.\nShort.",
                                                "Concise")
         assert dialog.chosen_folders() == [str(other)]
+        assert list(dialog.folders.GetStrings()) == [str(other)]
         dialog.remove_folder()
         assert dialog.chosen_folders() == [] and not dialog.remove_folder_btn.IsEnabled()
         assert said[-1].startswith("Removed ") and said[-1].endswith("None left.")
+        # A row saying so, not an empty list read as "unknown" (#468).
+        assert list(dialog.folders.GetStrings()) == ["No more folders."]
+        dialog.remove_folder()
+        assert said[-1] == "No more folders." and dialog.chosen_folders() == []
     finally:
         dialog.Destroy()
 
@@ -394,3 +399,25 @@ def test_ask_aside_is_refused_where_it_cant_work(frame, env, monkeypatch):
     select(frame, "Not yet")
     frame.on_ask_aside()
     assert env["feedback"][-1] == "Not yet has no conversation yet to ask about."
+
+
+def test_ask_asides_list_says_none_yet_until_a_question_is_asked(frame, env, monkeypatch):
+    # An empty list was read as "unknown" (#468).
+    from thechatplace.ui.dialogs import ASIDE_NONE_YET
+    seen = {}
+
+    def steps(dialog):
+        seen["before"] = list(dialog.history.GetStrings())
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.history))
+        monkeypatch.setattr(dialog.answer, "SetFocus", lambda: seen.setdefault("answer", True))
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_RETURN)
+        dialog._on_key(event)  # Enter on "none yet": nothing to read
+        dialog.question.SetValue("Which file?")
+        dialog.on_ask()
+        seen["after"] = list(dialog.history.GetStrings())
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+    assert seen["before"] == [ASIDE_NONE_YET]
+    assert "answer" not in seen
+    assert seen["after"] == ["Q: Which file? A: asking…"]

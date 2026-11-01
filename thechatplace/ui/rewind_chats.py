@@ -155,8 +155,12 @@ class RewindChats:
         finally:
             dialog.Destroy()
         if not chosen:
-            # Back where Ctrl+Shift+Z was pressed: the message, or the reply box.
-            (focus if focus else self.chat_list).SetFocus()
+            # Back where Ctrl+Shift+Z was pressed: the message, or the reply
+            # box. Only if Windows hasn't put it back already: setting it
+            # again had a screen reader say the message twice (#468).
+            target = focus if focus else self.chat_list
+            if wx.Window.FindFocus() is not target:
+                target.SetFocus()
             return
         file_count = len({os.path.normcase(e.path) for e in plan.edits})
         if choice == rewind.FILES:

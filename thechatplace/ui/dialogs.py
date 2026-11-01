@@ -5369,6 +5369,8 @@ CHAT_OPTIONS_NOTE = (
     "in this chat. Output style changes how Claude writes its replies. More folders lets "
     "Claude work in other folders too; they show in Chat Permissions, where you can take one "
     "back.")
+#: More Folders' one row when there are none.
+NO_MORE_FOLDERS = "No more folders."
 #: Added for a chat that already exists.
 CHAT_OPTIONS_LATER_NOTE = "Changes apply from the chat's next message."
 
@@ -5422,11 +5424,14 @@ class ChatOptionsDialog(wx.Dialog):
         sizer.Add(self.instructions, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         sizer.Add(wx.StaticText(self, label="More &folders:"), 0, wx.LEFT, 10)
-        self.folders = wx.ListBox(self, choices=list(folders), style=wx.LB_SINGLE)
+        # The folders chosen; the list shows a row saying there are none
+        # rather than nothing, which a screen reader read as "unknown" (#468).
+        self._folders = list(folders)
+        self.folders = wx.ListBox(self, choices=self._folders or [NO_MORE_FOLDERS],
+                                  style=wx.LB_SINGLE)
         set_accessible_name(self.folders, "More folders, Delete removes one")
         self.folders.SetMinSize(dip(self, -1, 70))
-        if self.folders.GetCount():
-            self.folders.SetSelection(0)
+        self.folders.SetSelection(0)
         sizer.Add(self.folders, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.add_folder_btn = wx.Button(self, label="A&dd Folder...")
@@ -5519,7 +5524,13 @@ class ChatOptionsDialog(wx.Dialog):
         event.Skip()
 
     def _update_remove(self):
-        self.remove_folder_btn.Enable(self.folders.GetCount() > 0)
+        self.remove_folder_btn.Enable(bool(self._folders))
+
+    def _show_folders(self, index: int):
+        """The list, as ``self._folders`` has it, on row ``index``."""
+        self.folders.Set(self._folders or [NO_MORE_FOLDERS])
+        self.folders.SetSelection(max(0, min(index, len(self._folders) - 1)))
+        self._update_remove()
 
     def add_folder(self, folder: str) -> bool:
         """Add ``folder`` to More Folders; False (and said why) if it can't be."""
@@ -5532,12 +5543,11 @@ class ChatOptionsDialog(wx.Dialog):
         if self._folder and same(folder) == same(self._folder):
             self._feedback("That's the chat's own folder; Claude works there already.")
             return False
-        if any(same(folder) == same(f) for f in self.folders.GetStrings()):
+        if any(same(folder) == same(f) for f in self._folders):
             self._feedback(f"{folder} is in the list already.")
             return False
-        index = self.folders.Append(folder)
-        self.folders.SetSelection(index)
-        self._update_remove()
+        self._folders.append(folder)
+        self._show_folders(len(self._folders) - 1)
         self._feedback(f"Added {folder}.")
         return True
 
@@ -5547,22 +5557,18 @@ class ChatOptionsDialog(wx.Dialog):
                           style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
                 self.add_folder(dlg.GetPath())
-        (self.folders if self.folders.GetCount() else self.add_folder_btn).SetFocus()
+        (self.folders if self._folders else self.add_folder_btn).SetFocus()
 
     def remove_folder(self):
         index = self.folders.GetSelection()
-        if index == wx.NOT_FOUND:
-            self._feedback("No folder selected." if self.folders.GetCount()
-                           else "No more folders.")
+        if not self._folders or index == wx.NOT_FOUND:
+            self._feedback("No folder selected." if self._folders else "No more folders.")
             return
-        folder = self.folders.GetString(index)
-        self.folders.Delete(index)
-        count = self.folders.GetCount()
-        if count:
-            self.folders.SetSelection(min(index, count - 1))
-        else:
+        folder = self._folders.pop(index)
+        count = len(self._folders)
+        if not count:
             self.add_folder_btn.SetFocus()  # Remove is about to be disabled
-        self._update_remove()
+        self._show_folders(index)
         self._feedback(f"Removed {folder}." + ("" if count else " None left."))
 
     # -- OK
@@ -5587,11 +5593,14 @@ class ChatOptionsDialog(wx.Dialog):
         return ChatOptions(agent, clean_instructions(self.instructions.GetValue()), style)
 
     def chosen_folders(self):
-        return list(self.folders.GetStrings())
+        return list(self._folders)
 
 
 #: How often, in seconds, an answer being written is shown as it grows.
 STREAM_EVERY = 0.75
+
+#: The questions list's one row before anything is asked.
+ASIDE_NONE_YET = "No questions yet."
 
 #: What the Answer box says before anything is asked.
 ASIDE_INTRO = (
@@ -5635,7 +5644,10 @@ class AskAsideDialog(wx.Dialog):
         sizer.Add(row, 0, wx.ALL, 10)
 
         sizer.Add(wx.StaticText(self, label="Questions and a&nswers:"), 0, wx.LEFT, 10)
-        self.history = wx.ListBox(self, style=wx.LB_SINGLE)
+        # A row saying so while nothing's been asked: a screen reader read
+        # the empty list as "unknown" (#468).
+        self.history = wx.ListBox(self, choices=[ASIDE_NONE_YET], style=wx.LB_SINGLE)
+        self.history.SetSelection(0)
         set_accessible_name(self.history, "Questions and answers, Enter reads one")
         self.history.SetMinSize(dip(self, -1, 90))
         sizer.Add(self.history, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -5697,7 +5709,7 @@ class AskAsideDialog(wx.Dialog):
 
     def _read_history_item(self):
         """Enter on a question: its answer, in the Answer box."""
-        if self.history.GetSelection() != wx.NOT_FOUND:
+        if self._selected() is not None:
             self._show_selected()
             self._focus_answer()
 
@@ -5748,6 +5760,8 @@ class AskAsideDialog(wx.Dialog):
             self._feedback(started or "Couldn't ask Claude.")
             return
         self._runner, self._asking = started, item
+        if not self.items:
+            self.history.Clear()  # the "none yet" row
         self.items.append(item)
         self.history.Append(item.row())
         self.history.SetSelection(len(self.items) - 1)

@@ -370,3 +370,30 @@ def test_alt_w_goes_to_what_to_rewind(frame, env, monkeypatch):
         assert focused == ["what"]
     finally:
         dialog.Destroy()
+
+
+def test_cancelling_puts_focus_back_only_if_it_isnt_there(frame, env, fake_runner, monkeypatch):
+    # Setting focus where Windows had already put it back had a screen
+    # reader say the message twice (#468).
+    from thechatplace.ui import dialogs
+    own_chat(frame, env)
+    choose(frame, USER, 1)
+
+    after = [None]  # where focus is once it closes (None: left where it was)
+
+    class Cancelled(dialogs.RewindDialog):
+        def ShowModal(self):
+            if after[0] is not None:
+                where[0] = after[0]
+            return wx.ID_CANCEL
+    monkeypatch.setattr("thechatplace.ui.rewind_chats.RewindDialog", Cancelled)
+    focused = []
+    monkeypatch.setattr(frame.chat_list, "SetFocus", lambda: focused.append("messages"))
+    where = [frame.chat_list]
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: where[0]))
+    frame.on_rewind_to_here()
+    assert focused == []
+    # Focus somewhere else once it closed: back to the message.
+    after[0] = frame.reply_text
+    frame.on_rewind_to_here()
+    assert focused == ["messages"]
