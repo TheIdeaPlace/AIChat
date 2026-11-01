@@ -1048,7 +1048,7 @@ need it:
 In a Claude chat, you can go back to an earlier message and try again from there. The chat you
 went back from is always kept as it was, in the list.
 
-- **Rewind to Here** (Ctrl+Shift+Z, File, Rewind to Here, or Rewind to Here on a message's menu)
+- **Rewind to Here** (Ctrl+Shift+Z on the message in the messages list, File, Rewind to Here, or Rewind to Here on a message's menu)
   works on one of your own messages: select it in the messages list first. It asks what to take
   back to how it was just before that message:
   - **Conversation and files** (chosen to begin with when the files can go back),
