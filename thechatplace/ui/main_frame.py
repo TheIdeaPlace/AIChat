@@ -3889,7 +3889,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, LiveTurns,
         self._live_change(info, own, lambda runner, done: runner.set_model(model, done),
                           f"{info.title} now uses {model_label(model)}, now and for later turns.",
                           f"{info.title} now uses {model_label(model)}, "
-                          f"{self._from_next_turn(own)}.")
+                          f"{self._from_next_turn(own)}.",
+                          f"{info.title} now uses {model_label(model)}, from its next turn.")
 
     def on_change_permission_mode(self, info: Optional[SessionInfo] = None):
         """File, Change Permission Mode (Ctrl+Shift+O, #189): the mode this
@@ -3917,6 +3918,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, LiveTurns,
             return
         if not self._store_write(self.store.update, own.cli_session_id, permission_mode=mode):
             return
+        self._forget_mode_before_plan(own.cli_session_id)  # your choice now (#468)
         self._update_heading()
         # A running turn switches too, if Claude Code takes it (#468).
         self._live_change(info, own,
@@ -3924,7 +3926,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, LiveTurns,
                           f"Permission mode for {info.title}: {mode_label(mode)}, now and for "
                           "later turns.",
                           f"Permission mode for {info.title}: {mode_label(mode)}, "
-                          f"{self._from_next_turn(own)}.")
+                          f"{self._from_next_turn(own)}.",
+                          f"Permission mode for {info.title}: {mode_label(mode)}, from its "
+                          "next turn.")
 
     def on_chat_permissions(self):
         """File, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission

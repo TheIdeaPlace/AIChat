@@ -181,6 +181,28 @@ def test_usage_and_context_lists_what_fills_the_context(frame, env, monkeypatch)
     assert seen["rows"][5].startswith("Usage limits")
 
 
+def test_a_turn_ending_before_the_answer_is_said_as_it_is(frame, env, monkeypatch):
+    from thechatplace.claude_cli import TURN_ENDED
+    runner = _running(frame, ok=False, error=TURN_ENDED)
+    runner.background_entries = [{"task_id": "b1", "description": "Windows build",
+                                  "since": 0.0}]
+    monkeypatch.setattr(frame, "_choose", lambda *a, **k: 0)
+    frame.on_stop_background_task()
+    assert pump(lambda: env["feedback"][-1] == "Stopped Windows build.")  # with the turn
+    _chooser(monkeypatch, frame, "Opus")
+    frame.on_change_model()
+    assert pump(lambda: env["feedback"][-1] == "Hub probe now uses Opus, from its next turn.")
+
+
+def test_choosing_a_mode_yourself_forgets_the_one_before_claudes_plan(frame, env, monkeypatch):
+    _running(frame, live=False)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="plan"))
+    assert frame._mode_to_offer_after_plan("own-1", "plan") == "auto"
+    _chooser(monkeypatch, frame, dict(PERMISSION_MODES)["manual"])
+    frame.on_change_permission_mode()
+    assert frame._mode_to_offer_after_plan("own-1", "plan") == ""
+
+
 def test_turns_ask_for_the_context_breakdown(frame, env, fake_runner):
     select(frame, "Hub probe")
     frame.on_open_session()

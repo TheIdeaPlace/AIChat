@@ -1019,8 +1019,8 @@ finishes, Claude carries on by itself, and its next answer is announced as usual
 waiting, what you send goes to it at once instead of being queued. Stop ends the turn and the
 background work with it.
 
-To end just one piece of background work and keep the turn, choose **File, Stop Background
-Task**. It's available while the loaded Claude chat has background work running. It lists each
+To end just one piece of background work and keep the turn, choose
+**File, Stop Background Task**. It's available while the loaded Claude chat has background work running. It lists each
 one with how long it has run ("Windows build, running 3 minutes"); choose one, press Enter, and
 answer Yes to stop it. You hear "Stopped Windows build." The rest keeps running. If that was the
 last of it and Claude had already answered, the turn ends as it would when the work finished.

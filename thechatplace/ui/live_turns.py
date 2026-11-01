@@ -17,7 +17,8 @@ from typing import Callable, Dict, List, Optional
 import wx
 
 from .. import live_turn
-from ..claude_cli import PERMISSION_MODE_VALUES, mode_label, normalize_permission_mode
+from ..claude_cli import (PERMISSION_MODE_VALUES, TURN_ENDED, mode_label,
+                          normalize_permission_mode)
 from ..speech import ANNOUNCE_FULL
 
 
@@ -33,19 +34,21 @@ class LiveTurns:
 
     # -- Change Model and Change Permission Mode, now -----------------------
 
-    def _live_change(self, info, own, send: Callable, done_text: str, later_text: str) -> None:
+    def _live_change(self, info, own, send: Callable, done_text: str, later_text: str,
+                     ended_text: str = "") -> None:
         """A setting changed for a Claude chat of ours. While a turn runs,
         it's sent to that turn too (``send(runner, on_done)``): said as
         ``done_text`` once Claude Code takes it, else ``later_text`` (from
-        its next turn, as before). With no turn running, ``later_text``
-        at once."""
+        its next turn, as before), or ``ended_text`` if the turn ended
+        first. With no turn running, ``later_text`` at once."""
         runner = self._runners.get(own.cli_session_id) if info.provider == "claude" else None
         if runner is None:
             self._feedback(later_text)
             return
 
-        def answered(ok, _response, _error):
-            wx.CallAfter(self._live_changed, ok, done_text, later_text)
+        def answered(ok, _response, error):
+            wx.CallAfter(self._live_changed, ok, done_text,
+                         (ended_text or later_text) if error == TURN_ENDED else later_text)
         if not send(runner, answered):
             self._feedback(later_text)
 
@@ -108,17 +111,22 @@ class LiveTurns:
         if own is None or mode not in PERMISSION_MODE_VALUES:
             return
         now = normalize_permission_mode(own.permission_mode)
+        if mode != "plan":
+            self._forget_mode_before_plan(session_id)  # out of plan mode
         if now == mode:
             return
         if mode == "plan":
             self._mode_before_plan = {**self._mode_before_plan, session_id: now}
-        else:
-            self._mode_before_plan = {k: v for k, v in self._mode_before_plan.items()
-                                      if k != session_id}
         if not self._store_write(self.store.update, session_id, permission_mode=mode):
             return
         self._update_heading()
         self._status(f"{title}: Claude Code switched to {mode_label(mode)} mode.")
+
+    def _forget_mode_before_plan(self, session_id: str) -> None:
+        """The chat left plan mode, or you chose its mode yourself."""
+        if session_id in self._mode_before_plan:
+            self._mode_before_plan = {k: v for k, v in self._mode_before_plan.items()
+                                      if k != session_id}
 
     def _mode_to_offer_after_plan(self, session_id: str, stored: str) -> str:
         """The mode Approve Plan starts on: the chat's, or, when Claude
@@ -178,7 +186,7 @@ class LiveTurns:
         runner = self._runners.get(session_id)
         live = getattr(runner, "background_entries", None) or []
         still = any(e.get("task_id") == entry.get("task_id") for e in live)
-        if not ok and runner is None:
+        if not ok and (runner is None or error == TURN_ENDED):
             ok, still = True, False  # the turn ended, and the work with it
         self._feedback(live_turn.stop_result_text(description, ok, still, error))
         self._update_send_state()

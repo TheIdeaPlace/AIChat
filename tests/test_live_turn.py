@@ -197,8 +197,68 @@ def test_default_is_sent_as_default_and_never_to_a_fable_default(tmp_path):
     assert last_request(process, "set_model")[1]["model"] == "default"
     runner.parser.resolved_models = {"default": "claude-fable-5"}
     assert runner.set_model("", lambda *a: None) is False  # waits for the next turn's check
+    runner.parser.resolved_models = {}
+    # Before initialize is answered, what the default is isn't known.
+    assert runner.set_model("", lambda *a: None) is False
+    assert runner.set_model("sonnet", lambda *a: None)
     go.set()
     assert done.wait(5)
+
+
+def test_a_status_repeating_the_turns_mode_isnt_a_change(tmp_path):
+    same = ('{"type":"system","subtype":"status","status":"compacting",'
+            '"permissionMode":"acceptEdits"}')
+    _r, _p, _t, events, done = live_turn_run(
+        tmp_path, [RUNNING, ev(type="system", subtype="init", session_id="s1",
+                               apiKeySource="none", permissionMode="acceptEdits"),
+                   same, STATUS_PLAN, STATUS_PLAN, REPLY, RESULT, IDLE],
+        command=["claude", "-p", "--permission-mode", "acceptEdits"])
+    assert done.wait(5)
+    assert [e.text for e in events if e.kind == "mode"] == ["plan"]
+
+
+def test_a_steer_while_the_end_waits_for_the_context_keeps_the_turn_going(tmp_path):
+    """Sent inside the short wait for get_context_usage: answered, then the
+    next idle asks again and the turn ends on that answer."""
+    go = threading.Event()
+    usage = {"categories": [{"name": "Messages", "tokens": 5, "kind": "used"}]}
+    lines_ = [RUNNING, INIT, REPLY, RESULT, IDLE, go,
+              lambda p: answer(last_request(p, "get_context_usage")[0], response=usage),
+              lambda p: _echo_last(p), RUNNING, REPLY, RESULT, IDLE,
+              lambda p: answer(last_request(p, "get_context_usage")[0], response=usage)]
+    runner, process, _t, events, done = live_turn_run(tmp_path, lines_, context_usage=True)
+    assert wait(lambda: sum(1 for l in process.sent()
+                            if l.get("request", {}).get("subtype") == "get_context_usage"))
+    assert runner.steer("Also the README")
+    go.set()
+    assert done.wait(5)
+    asked = [l for l in process.sent() if l.get("request", {}).get("subtype")
+             == "get_context_usage"]
+    assert len(asked) == 2
+    assert events[-1].kind == "finished"
+
+
+def _echo_last(process):
+    """Claude Code echoing the latest user message we wrote."""
+    sent = [l for l in process.sent() if l.get("type") == "user"]
+    message = sent[-1]
+    return json.dumps({"type": "user", "isReplay": True, "uuid": message["uuid"],
+                       "message": message["message"]})
+
+
+def test_background_work_started_while_the_end_waits_waits_for_it(tmp_path):
+    go = threading.Event()
+    lines_ = [RUNNING, INIT, REPLY, RESULT, IDLE, go, BACKGROUND, NO_BACKGROUND, RUNNING,
+              REPLY, RESULT, IDLE,
+              lambda p: answer(last_request(p, "get_context_usage")[0], response={})]
+    runner, process, timers, events, done = live_turn_run(tmp_path, lines_,
+                                                          context_usage=True)
+    assert wait(lambda: any(t.interval == cli.CONTEXT_WAIT for t in timers.made))
+    go.set()
+    assert done.wait(5)
+    kinds = [e.kind for e in events]
+    assert "waiting" in kinds  # the reply said with the work, as without the wait
+    assert kinds[-1] == "finished"
 
 
 def test_set_permission_mode_sends_the_mode_and_status_reaches_the_window(tmp_path):
@@ -343,7 +403,25 @@ def test_a_turn_that_moves_to_fable_mid_turn_is_stopped(tmp_path, line):
                                                  command=["claude", "-p", "--model", "opus"])
     assert done.wait(5)
     assert events[-1].kind == "failed" and "Fable" in events[-1].text
-    assert runner.stopped_before_answer
+    assert runner.stopped_mid_turn and not runner.stopped_before_answer
+    assert "when it moved to Fable" in events[-1].text
+
+
+def test_a_move_to_fable_after_the_reply_was_said_keeps_its_explanation(tmp_path):
+    """Claude answered with background work running; the turn it starts when
+    the work finishes falls back to Fable. The Fable explanation is the end,
+    not a generic exit error, and the long-answered message isn't given back."""
+    background = ev(type="system", subtype="background_tasks_changed", tasks=[
+        {"task_id": "b1", "task_type": "local_bash", "description": "Build"}])
+    fallback = ev(type="system", subtype="model_fallback", trigger="overloaded",
+                  original_model="claude-opus-5-5", fallback_model="claude-fable-5")
+    runner, _p, _t, events, done = live_turn_run(
+        tmp_path, [RUNNING, INIT, background, REPLY, RESULT, IDLE, NO_BACKGROUND, RUNNING,
+                   fallback, RESULT, IDLE], command=["claude", "-p", "--model", "opus"])
+    assert done.wait(5)
+    assert "waiting" in [e.kind for e in events]
+    assert events[-1].kind == "failed" and "Fable" in events[-1].text
+    assert runner.stopped_mid_turn and not runner.stopped_before_answer
 
 
 def test_a_fallback_to_another_model_is_passed_on(tmp_path):

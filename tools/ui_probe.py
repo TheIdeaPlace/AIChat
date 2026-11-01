@@ -1957,6 +1957,8 @@ DIALOG_CLASSES = {
     "lists-codex-owned-no-tasks": "ListsDialog",
     "properties-codex-tasks": "PropertiesDialog",
     "usage": "UsageDialog",
+    "usage-breakdown": "UsageDialog",
+    "stop-background-task": "SingleChoiceDialog",
     "usage-codex": "UsageDialog",
     "properties": "PropertiesDialog",
     "properties-codex": "PropertiesDialog",

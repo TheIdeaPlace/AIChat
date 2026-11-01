@@ -985,16 +985,19 @@ def api_key_problem(source: Optional[str]) -> Optional[str]:
             "that key from the environment or settings that set it, then try again.")
 
 
-def fable_problem(actual: str, chosen: str, sent: bool = False) -> Optional[str]:
+def fable_problem(actual: str, chosen: str, sent: bool = False,
+                  midway: bool = False) -> Optional[str]:
     """A message if the turn would run on Fable without it having been chosen
     (#58): Claude Code's default, or its fallback from the chosen model. Some
     plans bill Fable to usage credits, and in ``-p`` turns without asking.
-    ``sent``: the message had already gone when this was found."""
+    ``sent``: the message had already gone when this was found; ``midway``:
+    the turn was under way, moved to Fable by a fallback or the like (#468)."""
     if "fable" not in (actual or "").lower() or "fable" in (chosen or "").lower():
         return None
     which = (f"instead of {model_label(chosen)}, the model this session chose" if chosen
              else "Claude Code's default model")
-    done = ("stopped the turn as soon as it started" if sent
+    done = ("stopped the turn when it moved to Fable" if midway
+            else "stopped the turn as soon as it started" if sent
             else "didn't send your message")
     return (f"Claude Code would have used Fable, {which}. Some plans bill Fable to usage "
             f"credits, so The Chat Place {done}. Choose another model with File, "
@@ -1020,6 +1023,9 @@ CONTROL_WAIT = 10.0
 #: ending anyway (#468): long enough for the 735 ms seen, short enough that
 #: the end isn't held up.
 CONTEXT_WAIT = 1.5
+#: The error a live control request's caller hears when the turn ended
+#: before Claude Code answered (#468).
+TURN_ENDED = "the turn ended"
 
 
 def resolved_model(models: Dict[str, str], chosen: str) -> str:
@@ -1112,6 +1118,18 @@ class TurnRunner:
         #: The latest api_retry while Claude Code is retrying (#468), with
         #: ``at`` on the turn's clock; None once the turn moves on.
         self.retry: Optional[dict] = None
+        #: Stopped by The Chat Place mid-turn, when it moved to Fable (#468):
+        #: unlike ``stopped_before_answer``, Claude may have answered already,
+        #: so the message isn't given back.
+        self.stopped_mid_turn = False
+        #: The permission mode Claude Code last said the turn is in (#468).
+        try:
+            self._mode = normalize_permission_mode(
+                command[command.index("--permission-mode") + 1])
+        except (ValueError, IndexError):
+            self._mode = ""
+        #: A close waiting on the context breakdown (#468).
+        self._closing = False
         #: ``--mcp-config`` for this turn's process only (the session tools,
         #: #165), or None. Kept apart from ``command``, which is the turn's
         #: own: it ends with ``--resume <id>``, and tests read it.
@@ -1341,7 +1359,7 @@ class TurnRunner:
         with self._lock:
             waiting = list(self._controls)
         for request_id in waiting:
-            self._control_done(request_id, False, {}, "the turn ended")
+            self._control_done(request_id, False, {}, TURN_ENDED)
 
     def set_model(self, model: str, on_done: Callable[[bool, dict, str], None]) -> bool:
         """Change the running turn's model (Change Model, #468). Checked with
@@ -1350,6 +1368,9 @@ class TurnRunner:
         Code's default. Never to a model that resolves to Fable unchosen
         (#58): False, and the change waits for the next turn, whose check
         stops it before anything is sent."""
+        if not model and not self.parser.resolved_models:
+            # What the default is isn't known until initialize is answered.
+            return False
         resolved = resolved_model(self.parser.resolved_models, model)
         if fable_problem(resolved, model):
             return False
@@ -1404,12 +1425,15 @@ class TurnRunner:
             request_id, False, {}, "no answer in time"))
         timer.daemon = True
         self._controls[request_id] = (answered, timer)
+        self._closing = True
         timer.start()
 
     def _close_if_done(self) -> None:
         """End the turn, unless something sent since is still to be answered
-        or background work started meanwhile."""
+        or background work started meanwhile (the worker then waits for it,
+        as ``_end_or_wait`` does)."""
         with self._lock:
+            self._closing = False
             if self._unanswered or self.background_tasks:
                 return
             self._close_stdin_locked()
@@ -1713,7 +1737,12 @@ class TurnRunner:
                                            data.get("response") or {}, data.get("error", ""))
                         continue
                     if event.kind == "mode":
-                        self._emit(event)  # the mode changed (#468); not the conversation
+                        # The mode changed (#468); not the conversation. Only
+                        # a real change: a status repeating the mode the turn
+                        # is in must not undo a change kept for later turns.
+                        if event.text != self._mode:
+                            self._mode = event.text
+                            self._emit(event)
                         continue
                     if event.kind == "retry":
                         # Claude Code is retrying (#468), for turn status too.
@@ -1725,9 +1754,9 @@ class TurnRunner:
                         # A fallback mid-turn gets no new system/init, so the
                         # Fable check (#58) is made here too (#468).
                         problem = fable_problem((event.data or {}).get("fallback_model", ""),
-                                                self.chosen, sent=True)
+                                                self.chosen, midway=True)
                         if problem:
-                            self.stopped_before_answer = True
+                            self.stopped_mid_turn = True
                             self._kill()
                             final = TurnEvent("failed", text=problem, is_error=True,
                                               session_id=self.parser.session_id)
@@ -1738,9 +1767,10 @@ class TurnRunner:
                         self.retry = None  # it got through
                         # Whatever wrote this, Fable unchosen is stopped
                         # (#58), however it came to be the model (#468).
-                        problem = fable_problem(self.parser.reply_model, self.chosen, sent=True)
+                        problem = fable_problem(self.parser.reply_model, self.chosen,
+                                                midway=True)
                         if problem:
-                            self.stopped_before_answer = True
+                            self.stopped_mid_turn = True
                             self._kill()
                             final = TurnEvent("failed", text=problem, is_error=True,
                                               session_id=self.parser.session_id)
@@ -1771,6 +1801,8 @@ class TurnRunner:
                         continue
                     if event.kind == "started":
                         self.session_started = True
+                        if event.text:
+                            self._mode = normalize_permission_mode(event.text)
                         problem = (api_key_problem(self.parser.api_key_source)
                                    or fable_problem(self.parser.model, self.chosen, sent=True))
                         if problem:
@@ -1814,6 +1846,14 @@ class TurnRunner:
                             # follow at once. If it never does, end the turn.
                             arm_ceiling(wait=BACKGROUND_DONE_WAIT)
                         self._emit(event)
+                        if tasks and self._closing and final is not None:
+                            # Work started while the end waited for the
+                            # context breakdown (#468): wait for it instead,
+                            # saying the reply, as ``_end_or_wait`` would.
+                            self._closing = False
+                            outcome = self._end_or_wait()
+                            if outcome != "unanswered":
+                                settle(outcome, final)
                         continue
                     if event.kind == "state":
                         states_seen = True
@@ -1893,13 +1933,13 @@ class TurnRunner:
                     else:
                         self._emit(event)
                 self._refuse_unsupported()
-                if self.stopped_before_answer:
+                if self.stopped_before_answer or self.stopped_mid_turn:
                     break
             disarm_ceiling()
             self._close_stdin()
             process.wait()
             err_thread.join(timeout=2)
-            if said_while_waiting and final is not None:
+            if said_while_waiting and final is not None and not self.stopped_mid_turn:
                 # Over with no result since the reply was said, with the
                 # background work running (#161): don't say it again.
                 if self._cancelled:
