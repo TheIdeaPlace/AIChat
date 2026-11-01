@@ -1113,11 +1113,13 @@ def test_git_star_allows_no_git_command_and_some_never_by_any_rule(repo):
 def test_a_git_config_file_inside_the_folder_asks(repo, monkeypatch):
     # Your config including a file Auto could write (Kelly's review of 8345ddd).
     included = os.path.join(repo, "extra.cfg")
+    # A full path elsewhere on every platform ("C:/x" isn't one on a Mac).
+    elsewhere = os.path.join(os.path.abspath(os.sep), "elsewhere", "gitconfig")
     monkeypatch.setattr(copilot_folder.platform_paths, "git_config_files",
-                        lambda where: ["C:/elsewhere/gitconfig", included])
+                        lambda where: [elsewhere, included])
     assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
     monkeypatch.setattr(copilot_folder.platform_paths, "git_config_files",
-                        lambda where: ["C:/elsewhere/gitconfig", ".git/config"])
+                        lambda where: [elsewhere, ".git/config"])
     assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
     monkeypatch.setattr(copilot_folder.platform_paths, "git_config_files", lambda where: None)
     assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
