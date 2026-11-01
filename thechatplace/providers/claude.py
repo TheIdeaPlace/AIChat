@@ -104,7 +104,10 @@ class ClaudeConversations:
             send=own, fork=not own and not session.cowork and bool(session.cli_session_id),
             delete=own, attachments=own, usage=True, changes=True,
             instructions=True, remote_control=True, desktop_link=session.can_open_in_claude,
-            share_link=True, options=own, approvals=True, steer=own)
+            share_link=True, options=own, approvals=True, steer=own,
+            # A branch is a copy, so any chat Claude Code can resume from
+            # (#468); putting files back opens the session itself.
+            branch=not session.cowork and bool(session.cli_session_id), rewind_files=own)
 
     def has_history(self, session) -> bool:
         if session.provider != self.provider_id:

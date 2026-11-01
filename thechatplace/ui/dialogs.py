@@ -4706,3 +4706,92 @@ class ExportChatsDialog(ChatChooserDialog):
     def chosen_format(self) -> str:
         from .. import export
         return export.FORMATS[max(0, self.format.GetSelection())][0]
+
+
+class RewindDialog(wx.Dialog):
+    """Rewind to Here (#468): what to take back to how it was just before
+    one of your messages, the conversation, the files or both, with what
+    that will do in words. ``plan`` is a ``rewind.RewindPlan``; ``choice``
+    holds what was chosen once Rewind is pressed.
+
+    A choice that can't be done for this chat stays in the group, saying
+    "(unavailable)", and What Happens says why; Rewind on it says so and
+    the dialog stays open. One is always chosen, so Tab stops on the group
+    (#428)."""
+
+    def __init__(self, parent, plan):
+        from .. import rewind
+        self._plan = plan
+        self._choices = [value for value, _label in rewind.CHOICES]
+        said = plan.message.first_line(60)
+        super().__init__(parent, title=f"Rewind {plan.chat_title} to before your message: {said}",
+                         size=dialog_size(parent, 640, 460),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.choice = ""
+        labels = []
+        for value, label in rewind.CHOICES:
+            if not plan.allowed(value):
+                label += " (unavailable)"
+            labels.append(label)
+        # The access key on the group's label (wx.RadioBox), so Alt+W goes
+        # to the chosen option and a screen reader names the group.
+        self.what = wx.RadioBox(self, label="&What to rewind", choices=labels,
+                                majorDimension=1, style=wx.RA_SPECIFY_COLS)
+        self.what.SetSelection(self._choices.index(plan.default_choice()))
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.what, 0, wx.EXPAND | wx.ALL, 8)
+        happens_label = wx.StaticText(self, label="What &happens:")
+        sizer.Add(happens_label, 0, wx.LEFT | wx.RIGHT, 8)
+        # Read-only text, not a label, so it's in the Tab order and read by
+        # line like the other notes.
+        self.happens = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.happens, "What happens")
+        self.happens.SetMinSize(dip(self, -1, 180))
+        sizer.Add(self.happens, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        go = wx.Button(self, wx.ID_OK, "&Rewind")
+        go.SetDefault()
+        row.Add(go, 0, wx.RIGHT, 6)
+        row.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
+        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self.what.Bind(wx.EVT_RADIOBOX, lambda e: self._describe())
+        go.Bind(wx.EVT_BUTTON, lambda e: self._go())
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        if gtk_a11y.IS_LINUX:
+            # As in Settings: wxGTK links a radio box's label to the control
+            # after it at idle time, so Orca would read What Happens as
+            # "What to rewind". A few idle events at most.
+            tries = [0]
+
+            def unlink(event):
+                event.Skip()
+                tries[0] += 1
+                if gtk_a11y.forget_labels(happens_label) or tries[0] >= 20:
+                    self.Unbind(wx.EVT_IDLE, handler=unlink)
+            self.Bind(wx.EVT_IDLE, unlink)
+        self._describe()
+        wx.CallAfter(lambda: self and self.what.SetFocus())
+
+    def selected(self) -> str:
+        return self._choices[max(0, self.what.GetSelection())]
+
+    def _describe(self):
+        self.happens.ChangeValue(self._plan.describe(self.selected()))
+        self.happens.SetInsertionPoint(0)
+
+    def _on_key(self, event):
+        if press_focused_button_on_a_mac(event):
+            return
+        event.Skip()
+
+    def _go(self):
+        choice = self.selected()
+        if not self._plan.allowed(choice):
+            wx.MessageBox(self._plan.describe(choice), self.GetTitle(),
+                          wx.OK | wx.ICON_INFORMATION, self)
+            self.what.SetFocus()
+            return
+        self.choice = choice
+        _end_modal(self, wx.ID_OK)

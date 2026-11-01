@@ -92,6 +92,14 @@ STEPS = [
     Step("open it", ["Return"], expect=["Messages in Visual probe", "What changed"],
          expect_dbus=["Loaded Visual probe"]),
     Step("previous message", ["Up"], expect=["Make the uploader flush before it signals"]),
+    # Rewind to Here (#468) on that message of yours: it opens on the chosen
+    # option of What to Rewind, Tab reads What Happens, Escape comes back.
+    Step("rewind to here", ["ctrl+shift+z"],
+         expect=["Rewind Visual probe to before your message", "Conversation and files"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("rewind, what happens", ["Tab"], expect=["What happens"]),
+    Step("rewind closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     Step("settings", ["ctrl+comma"], expect=["Settings", "Announcements", "Full"],
          refuse=["unlabeled", "unlabelled"]),
     Step("settings, tab", ["Tab"], expect=["Announce when any listed session", "check box"]),

@@ -101,6 +101,9 @@ from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
 from .relay_chats import RelayChats
+from .rewind_chats import RewindChats
+from . import rewind_chats
+from .. import rewind
 from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
 from ..agents import AGENTS, AgentConversationStore, provider_name
@@ -206,7 +209,7 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
-class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
+class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -540,6 +543,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                    lambda e: self.on_copy_session_link())
         self._item(session, "&Answer...\tCtrl+Shift+A", lambda e: self.on_answer())
         self._item(session, "Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here)
+        # Back to a message of the loaded chat (#468). Every letter of both
+        # is another item's access key, so Rewind's shortcut is its way in,
+        # and Branch from Here is reached by arrowing, or on the message's
+        # own menu.
+        self._item(session, "Rewind to Here...\tCtrl+Shift+Z", lambda e: self.on_rewind_to_here())
+        self._item(session, "Branch from Here", lambda e: self.on_branch_from_here())
         self._item(session, "&New Session...\tCtrl+N", self.on_new_session)
         self._item(session, "Change Mo&del...", lambda e: self.on_change_model())
         # Every letter of "Change Permission Mode" is another item's access
@@ -2015,6 +2024,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                             or (own is not None and not own.started)):
             line = ("No messages yet. Claude is starting this session."
                     if info.cli_session_id in self._runners else
+                    rewind_chats.unstarted_line(own) or
                     "No messages yet. The first message didn't reach Claude; send it again "
                     "from the reply box.")
             self._chat_loaded = False  # keep looking until it appears
@@ -2449,6 +2459,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         relay_item = menu.Append(wx.ID_ANY, "&Send Reply to Another Chat...\tCtrl+Shift+E")
         relay_item.Enable(message is not None and message.kind in relay.RELAYABLE)
         menu.Bind(wx.EVT_MENU, lambda e: self.on_send_reply_to(), relay_item)
+        # Going back to this message (#468): Claude chats only; elsewhere
+        # they aren't offered rather than refused.
+        if self._open is not None and self._open.provider == "claude":
+            rewind_item = menu.Append(wx.ID_ANY, "Re&wind to Here...\tCtrl+Shift+Z")
+            rewind_item.Enable(rewind.rewindable(message))
+            menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
+            branch_item = menu.Append(wx.ID_ANY, "Branc&h from Here")
+            branch_item.Enable(message is not None and message.kind in rewind_chats.BRANCHABLE
+                               and bool(message.uuid))
+            menu.Bind(wx.EVT_MENU, lambda e: self.on_branch_from_here(), branch_item)
         # Properties stays last, as on the session list's menu.
         props = menu.Append(wx.ID_ANY, "&Properties...\tAlt+Enter")
         read.Enable(message is not None)
@@ -4618,6 +4638,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             return False
 
         session_id = info.cli_session_id
+        if session_id in self._rewinding_files:
+            # Rewind to Here is putting files back (#468): a turn now would
+            # change them under it.
+            self._feedback("Still putting the files back. Send again in a moment.")
+            return False
         runner = self._runners.get(session_id)
         if runner is not None and runner.cancelled:
             # Queuing behind a stopped turn would only bounce back when the
@@ -4704,11 +4729,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 if own.fork_source:
                     # A copy of another session whose first turn didn't get
                     # going: copy it again.
+                    # A branch (#468) is made this way on its first Send,
+                    # cut where Rewind to Here or Branch from Here chose.
                     command = build_fork_command(exe, own.fork_source, own.cli_session_id,
                                                  own.title, own.permission_mode, own.model,
                                                  taken_ids=self._snapshot.desktop_cli_ids,
                                                  cowork_ids=self._snapshot.cowork_cli_ids,
-                                                 effort=own.effort)
+                                                 effort=own.effort, resume_at=own.fork_at)
                 else:
                     command = build_new_command(exe, own.cli_session_id, own.title,
                                                 own.permission_mode, own.model,

@@ -470,8 +470,12 @@ def build_world(root: Path, patch=setattr, empty: bool = False, formatted_view: 
     os.utime(transcript, (written, written))
     own_cwd = env["folders"]["Scratch"]
     edit_path = os.path.join(own_cwd, "uploader.py")
+    asked = user_text("Make the uploader flush before it signals.")
     fake_env.add_transcript(env, own_cwd, "own-1", [
-        user_text("Make the uploader flush before it signals."),
+        asked,
+        # A file checkpoint for it (#468), so Rewind to Here offers the files.
+        {"type": "file-history-snapshot", "messageId": asked["uuid"],
+         "snapshot": {"messageId": asked["uuid"], "trackedFileBackups": {}}},
         assistant_block(tool_use_block("Edit", {"file_path": edit_path,
                                                 "old_string": "self.done.set()",
                                                 "new_string": "self._file.flush()\n"
@@ -1708,6 +1712,15 @@ def d_relay(frame, env):
     return frame.on_send_reply_to
 
 
+def d_rewind(frame, env):
+    """Rewind to Here (#468) on the probe's own first message, with a file
+    checkpoint: the conversation and the uploader.py change can go back."""
+    _open(frame, "Visual probe")
+    _select_message(frame, "Make the uploader flush")
+    frame.chat_list.SetFocus()
+    return frame.on_rewind_to_here
+
+
 def d_rename(frame, env):
     _select(frame, "Visual probe")
     return frame.on_rename
@@ -1839,6 +1852,7 @@ SURFACES = {
     "export-chats": ("dialog", d_export_chats, "Export Chats, choosing chats and a format"),
     "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
+    "rewind": ("dialog", d_rewind, "Rewind to Here on your first message: conversation and files"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
                                          "new Codex chat"),
     "agent-new-three": ("dialog", d_agent_new_three, "New Agent Conversation with the Builder "
@@ -1933,6 +1947,7 @@ DIALOG_CLASSES = {
     "export-chats": "ExportChatsDialog",
     "backup-schedule": "BackupScheduleDialog",
     "relay": "RelayDialog",
+    "rewind": "RewindDialog",
     "agent-new": "AgentConversationDialog",
     "agent-new-three": "AgentConversationDialog",
     "agent-new-copilot": "AgentConversationDialog",

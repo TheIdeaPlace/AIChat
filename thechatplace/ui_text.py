@@ -123,6 +123,12 @@ SHORTCUTS = [
                                            "answers it"),
         ("Ctrl+Alt+Enter on a queued message", "Steer it: into the running turn now, without "
                                                "stopping it"),
+        ("Ctrl+Shift+Z on one of your messages", "Rewind to Here (Claude chats): go back to just "
+                                                 "before it. Choose the conversation (a new chat with "
+                                                 "your message in its reply box to change and send), "
+                                                 "the files Claude changed since (your own chats), or "
+                                                 "both; the original chat is kept. Branch from Here, on "
+                                                 "the message's menu, starts a new chat from any message"),
         ("Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks",
          "Lists, on Code Blocks for this message: read and copy each code block"),
         ("Ctrl+F, then F3 and Shift+F3", "Find a message containing some text (its whole "

@@ -712,6 +712,12 @@ whether the chat was started here:</p>
 <td>yes, with the conversation as text</td>
 </tr>
 <tr>
+<td>Rewind to Here and Branch from Here</td>
+<td>yes; files only in chats started here</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
 <td>Commands and skills (Ctrl+/)</td>
 <td>yes</td>
 <td>no</td>
@@ -1089,6 +1095,38 @@ need it:</p>
   for the prompt's name first, starting with the message's first few words. Press Escape there
   and nothing is saved or sent: your message stays in the reply box.</li>
 </ul>
+<h3>Going back: Rewind to Here and Branch from Here</h3>
+<p>In a Claude chat, you can go back to an earlier message and try again from there. The chat you
+went back from is always kept as it was, in the list.</p>
+<ul>
+<li><strong>Rewind to Here</strong> (Ctrl+Shift+Z, File, Rewind to Here, or Rewind to Here on a message's menu)
+  works on one of your own messages: select it in the messages list first. It asks what to take
+  back to how it was just before that message:</li>
+<li><strong>Conversation and files</strong> (chosen to begin with when the files can go back),</li>
+<li><strong>Conversation only</strong>,</li>
+<li><strong>Files only</strong>.</li>
+</ul>
+<p><strong>What happens</strong> (Alt+H) says what the choice will do, naming the files Claude changed since
+  that message. Press Rewind (Enter) to go ahead, or Escape to change nothing.</p>
+<p>Going back in the conversation makes a new chat of your own, "&lt;title&gt; (rewound)", in the
+  same folder. Its conversation is the original's up to just before your message, and your
+  message is in its reply box to change and send. Until you send it, the messages list says
+  the chat is a branch waiting for its first message. It starts on the original's model,
+  effort and permission mode, with nothing allowed for the chat yet. This works for any Claude
+  chat on this computer, including desktop app and terminal sessions, since the original isn't
+  changed.</p>
+<p>Going back in the files puts back the files Claude changed with its edit tools since your
+  message; you hear "Files in Fixes restored to how they were before your message …: 2 files",
+  or why they couldn't be. Changes made by commands Claude ran (a build, a script) aren't put
+  back. It works only in Claude chats started here, and only for messages sent with this
+  version or later, which keep the copies it needs; for other chats and older messages the
+  choice says "(unavailable)", and What Happens says why. It isn't available while Claude is
+  working in the chat, and the chat waits for it to finish before it sends anything.
+- <strong>Branch from Here</strong> (File, Branch from Here, or on a message's menu) works on any of your
+  messages or Claude's replies: a new chat, "&lt;title&gt; (branch)", whose conversation ends with
+  that message, opened with an empty reply box, to try another way from there. It changes no
+  files.</p>
+<p>Codex and Copilot chats don't have these yet.</p>
 <h3>Sending a reply to another chat</h3>
 <p>Two agents can work on the same thing, with you passing their words between them: Claude builds
 and Codex reviews, say, or you ask both and let each answer the other. <strong>Ctrl+Shift+E</strong> (File,

@@ -378,6 +378,43 @@ too).
   in `%APPDATA%\TheChatPlace\pasted images` (on a Mac,
   `~/Library/Application Support/TheChatPlace/pasted images`).
 
+### Going back: Rewind to Here and Branch from Here
+
+In a Claude chat, you can go back to an earlier message and try again from there. The chat you
+went back from is always kept as it was, in the list.
+
+- **Rewind to Here** (Ctrl+Shift+Z, File, Rewind to Here, or Rewind to Here on a message's menu)
+  works on one of your own messages: select it in the messages list first. It asks what to take
+  back to how it was just before that message:
+  - **Conversation and files** (chosen to begin with when the files can go back),
+  - **Conversation only**,
+  - **Files only**.
+
+  **What happens** (Alt+H) says what the choice will do, naming the files Claude changed since
+  that message. Press Rewind (Enter) to go ahead, or Escape to change nothing.
+
+  Going back in the conversation makes a new chat of your own, "<title> (rewound)", in the
+  same folder. Its conversation is the original's up to just before your message, and your
+  message is in its reply box to change and send. Until you send it, the messages list says
+  the chat is a branch waiting for its first message. It starts on the original's model,
+  effort and permission mode, with nothing allowed for the chat yet. This works for any Claude
+  chat on this computer, including desktop app and terminal sessions, since the original isn't
+  changed.
+
+  Going back in the files puts back the files Claude changed with its edit tools since your
+  message; you hear "Files in Fixes restored to how they were before your message …: 2 files",
+  or why they couldn't be. Changes made by commands Claude ran (a build, a script) aren't put
+  back. It works only in Claude chats started here, and only for messages sent with this
+  version or later, which keep the copies it needs; for other chats and older messages the
+  choice says "(unavailable)", and What Happens says why. It isn't available while Claude is
+  working in the chat, and the chat waits for it to finish before it sends anything.
+- **Branch from Here** (File, Branch from Here, or on a message's menu) works on any of your
+  messages or Claude's replies: a new chat, "<title> (branch)", whose conversation ends with
+  that message, opened with an empty reply box, to try another way from there. It changes no
+  files.
+
+Codex and Copilot chats don't have these yet.
+
 ### Permissions and questions
 
 - **Claude asks, you answer.** In The Chat Place's own sessions, when Claude needs permission
@@ -1367,7 +1404,14 @@ into one of its own sessions while that session is running somewhere else. Conti
 one exception that reads a desktop session through `claude`, and it doesn't write to it:
 `--resume <desktop id> --fork-session --session-id <new id>` copies the history into a new
 session. Checked with Claude Code 2.1.286: the desktop session's transcript was byte for byte the
-same afterwards, and Claude knew the earlier conversation. One turn runs at a time
+same afterwards, and Claude knew the earlier conversation. Rewind to Here and Branch from Here
+make the same copy with `--resume-session-at <record id>` added, so the copy's history ends at
+that record; it's made by the new chat's first turn, when you press Send. Every turn The Chat
+Place runs sets `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=1`, so Claude Code keeps copies of
+the files Claude changes (in `~/.claude/file-history`) and notes each in the transcript;
+putting files back runs `claude -p --resume <id> --rewind-files <message id>`, which needs no
+turn but opens the session, so it's refused for any session The Chat Place didn't start.
+Checked with Claude Code 2.1.296. One turn runs at a time
 per session. Send during a turn queues the message: The Chat Place says "Queued", and once the
 turn's reply has been announced, it sends the message. More messages sent while one is waiting
 join it, and they go together as one message. Each queued message is at the end of the

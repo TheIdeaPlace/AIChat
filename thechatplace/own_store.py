@@ -62,6 +62,10 @@ class OwnSession:
     #: for the heading.
     fork_source: str = ""
     forked_from: str = ""
+    #: Rewind to Here and Branch from Here (#468): the uuid of the last
+    #: record of ``fork_source`` the copy keeps (``--resume-session-at``).
+    #: "" copies the whole history, as Continue Here does.
+    fork_at: str = ""
     #: Remote Control (#72): "on" or "off" for this session, "" for the
     #: Settings default. The Remote Control session it was given, joined again
     #: every turn, and its claude.ai address.
@@ -180,10 +184,13 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                                  if d in folders}
     if values.get("fork_source") and not platform_paths.is_safe_id(values["fork_source"]):
         values["fork_source"] = ""
+    if values.get("fork_at") and not (values.get("fork_source")
+                                      and platform_paths.is_safe_id(values["fork_at"])):
+        values["fork_at"] = ""
     if provider != "claude":
         # These values drive only Claude runners. A foreign record must never
         # carry permissions or Remote Control into that legacy path.
-        for name in ("model", "effort", "fork_source", "remote_control",
+        for name in ("model", "effort", "fork_source", "fork_at", "remote_control",
                      "bridge_session_id", "remote_url", "desktop_session_id"):
             values[name] = ""
         values["allowed_tools"] = []

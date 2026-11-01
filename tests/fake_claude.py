@@ -7,13 +7,37 @@ U+2028 inside one string, as JSON writers leave it). FAKE_CLAUDE_MODE=hang
 starts a grandchild process and waits, so a test can check that cancelling
 kills the whole tree. FAKE_CLAUDE_MODE=ask sends a permission request and
 waits for the answer, which goes in the result. After the result it waits for
-stdin to close, as the real CLI does.
+stdin to close, as the real CLI does. With ``--rewind-files`` it answers
+as Claude Code does (#468) and writes rewound.txt in its folder;
+FAKE_CLAUDE_MODE=rewind-unknown refuses the message.
 """
 import json
 import os
 import subprocess
 import sys
 import time
+
+if "--rewind-files" in sys.argv:
+    # Rewind to Here's files (#468), as Claude Code 2.1.296 answers: no turn
+    # and no stdin; a settings warning first on stderr, then the outcome.
+    target = sys.argv[sys.argv.index("--rewind-files") + 1]
+    path = os.environ.get("FAKE_CLAUDE_LOG")
+    if path:
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"args": sys.argv[1:], "checkpoints": os.environ.get(
+                "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", "")}, handle)
+    sys.stderr.write("Permission allow rule (settings.json): Bash(x *) has a wildcard.\n")
+    if os.environ.get("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING") != "1":
+        sys.stderr.write("Error: File rewinding is not enabled.\n")
+        sys.exit(1)
+    if os.environ.get("FAKE_CLAUDE_MODE") == "rewind-unknown":
+        sys.stderr.write(f"Error: --rewind-files requires a user message UUID, but {target} "
+                         "is not a user message in this session\n")
+        sys.exit(1)
+    with open(os.path.join(os.getcwd(), "rewound.txt"), "w", encoding="utf-8") as handle:
+        handle.write(target)
+    sys.stdout.write(f"Files rewound to state at message {target}\n")
+    sys.exit(0)
 
 received = []
 prompt = None
@@ -44,6 +68,7 @@ def log(**extra):
                        "received": [m.get("type") for m in received],
                        "claude_env": sorted(k for k in os.environ
                                             if k.upper() in ("CLAUDECODE", "ANTHROPIC_API_KEY")),
+                       "checkpoints": os.environ.get("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", ""),
                        **extra}, handle)
 
 

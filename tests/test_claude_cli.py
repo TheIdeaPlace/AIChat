@@ -496,7 +496,8 @@ def test_runner_sends_prompt_on_stdin_and_reports_events(tmp_path):
     assert sent[1]["type"] == "user"
     assert sent[1]["message"] == {"role": "user", "content": "Hello -p --bare"}
     assert captured["cwd"] == str(tmp_path)
-    assert captured["env"] == {"PATH": "x", "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1"}
+    assert captured["env"] == {"PATH": "x", "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1",
+                               cli.CHECKPOINT_VAR: "1"}
     assert "encoding" not in captured and "text" not in captured  # byte pipes
     assert [e.kind for e in events] == ["started", "text", "finished"]
     assert events[-1].session_id == "s1"
@@ -890,6 +891,54 @@ def test_fork_command_refuses_a_cowork_session():
     with pytest.raises(cli.ResumeRefused):
         cli.build_fork_command(EXE, "cccc-4444", "nnnn-3333", "t", "auto",
                                taken_ids=OWN, cowork_ids={"cccc-4444"})
+
+
+def test_fork_command_cuts_the_history_at_a_record():
+    # Rewind to Here and Branch from Here (#468): a copy, never a cut in place.
+    command = cli.build_fork_command(EXE, "dddd-2222", "nnnn-3333", "t", "auto",
+                                     taken_ids=OWN | DESKTOP,
+                                     resume_at="3a6ba3b1-5eda-48f6-a740-2466a932e3e8")
+    assert command[command.index("--resume-session-at") + 1] == \
+        "3a6ba3b1-5eda-48f6-a740-2466a932e3e8"
+    assert "--fork-session" in command
+    assert "--resume-drops-turn" not in command
+    assert "--resume-session-at" not in cli.build_fork_command(EXE, "dddd-2222", "nnnn-3333",
+                                                               "t", "auto")
+
+
+@pytest.mark.parametrize("cut", ["-p", "--bare", "a b", "x" * 101, "../up"])
+def test_fork_command_refuses_a_cut_that_is_not_a_record_id(cut):
+    with pytest.raises(ValueError):
+        cli.build_fork_command(EXE, "dddd-2222", "nnnn-3333", "t", "auto", resume_at=cut)
+
+
+def test_fork_command_with_a_cut_still_refuses_cowork_and_desktop_app_ids():
+    with pytest.raises(cli.ResumeRefused):
+        cli.build_fork_command(EXE, "cccc-4444", "nnnn-3333", "t", "auto",
+                               cowork_ids={"cccc-4444"}, resume_at="abc-1")
+    with pytest.raises(cli.ResumeRefused):
+        cli.build_fork_command(EXE, "local_abc", "nnnn-3333", "t", "auto", resume_at="abc-1")
+
+
+def test_rewind_files_command_only_for_our_own_sessions():
+    command = cli.build_rewind_files_command(EXE, "aaaa-1111", "uuuu-1", OWN, DESKTOP)
+    assert command == [EXE, "-p", "--resume", "aaaa-1111", "--rewind-files", "uuuu-1"]
+    assert "--bare" not in command
+    for session in ("dddd-2222", "local_abc", "zzzz-9999", "-p"):
+        with pytest.raises(cli.ResumeRefused):
+            cli.build_rewind_files_command(EXE, session, "uuuu-1", OWN, DESKTOP)
+    for message in ("", "-p", "a b"):
+        with pytest.raises(ValueError):
+            cli.build_rewind_files_command(EXE, "aaaa-1111", message, OWN, DESKTOP)
+
+
+def test_checkpoints_are_on_for_every_turn_even_when_a_host_set_them_off():
+    # Stripped as a host session's variable, then set again (#468).
+    assert cli.CHECKPOINT_VAR in cli.SESSION_INJECTED_VARS
+    env = child_environment({"PATH": "x", cli.CHECKPOINT_VAR: "0"})
+    assert cli.CHECKPOINT_VAR not in env
+    runner = TurnRunner([EXE], ".", "hi", lambda e: None, env=env)
+    assert runner._env[cli.CHECKPOINT_VAR] == "1"
 
 
 def test_tool_events_say_what_the_tool_acts_on():

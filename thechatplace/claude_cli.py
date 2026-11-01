@@ -129,6 +129,16 @@ SESSION_INJECTED_PREFIXES = ("CLAUDE_CODE_SDK_", "CLAUDE_CODE_HOST_",
 #: Turns Claude's task-list tools on for every model (#231).
 TASK_LIST_VAR = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
 
+#: Turns on Claude Code's file checkpoints for a ``-p`` turn (#468): before
+#: each of your messages it saves the files Claude is about to change
+#: (``~/.claude/file-history/<session>``) and writes a
+#: ``file-history-snapshot`` record, which is what ``--rewind-files`` puts
+#: back. Checked with Claude Code 2.1.296: without it no snapshots are kept,
+#: and ``--rewind-files`` itself refuses ("File rewinding is not enabled").
+#: It's among the host-session variables stripped by name, so it's set again
+#: after ``child_environment``, never inherited.
+CHECKPOINT_VAR = "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"
+
 
 class ResumeRefused(ValueError):
     """--resume was asked for a session The Chat Place does not own."""
@@ -337,7 +347,8 @@ def check_resume_allowed(session_id: str, own_ids: Collection[str],
 def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
                        permission_mode: str, model: str = "",
                        taken_ids: Collection[str] = (),
-                       cowork_ids: Collection[str] = (), effort: str = "") -> List[str]:
+                       cowork_ids: Collection[str] = (), effort: str = "",
+                       resume_at: str = "") -> List[str]:
     """Command for the first turn of a copy of another session (#189), such
     as a desktop app session, to carry on in The Chat Place.
 
@@ -349,7 +360,17 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
     ``--resume`` is not; the new id must be one nobody has. Never for a
     Cowork session (``cowork_ids``, #91): its history is in the desktop app's
     own files, and its tools ran there.
+
+    ``resume_at`` (Rewind to Here and Branch from Here, #468) is the uuid of
+    the last transcript record the copy keeps: ``--resume-session-at`` copies
+    the history only up to and including it. Checked with Claude Code
+    2.1.296: asked to list every request so far, the copy listed the turns
+    before the cut and none after, and the source was unchanged. The cut is
+    always a copy, never ``--resume-drops-turn`` in place: the source keeps
+    its whole history, and nothing is ever written into a desktop session.
     """
+    if resume_at and not platform_paths.is_safe_id(resume_at):
+        raise ValueError("That isn't a message Claude Code can go back to.")
     if not platform_paths.is_safe_id(source_id) or source_id.startswith("local_"):
         raise ResumeRefused("That is not a session id Claude Code can continue from.")
     if source_id in cowork_ids:
@@ -358,10 +379,31 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
         raise ValueError("The new session needs an id of its own.")
     command = [executable, *_common_flags(permission_mode, model, effort=effort),
                "--resume", source_id, "--fork-session", "--session-id", new_id]
+    if resume_at:
+        command += ["--resume-session-at", resume_at]
     title = " ".join((title or "").split())
     if title:
         command += ["--name", title]
     return command
+
+
+def build_rewind_files_command(executable: str, session_id: str, message_uuid: str,
+                               own_ids: Collection[str],
+                               desktop_ids: Collection[str]) -> List[str]:
+    """Command that puts the files Claude changed back to how they were just
+    before one of your messages (Rewind to Here, #468). No turn runs: Claude
+    Code restores the files from its checkpoints, says "Files rewound to
+    state at message <uuid>" and exits (checked with Claude Code 2.1.296).
+
+    Only for The Chat Place's own sessions (``check_resume_allowed``): Claude
+    Code opens the session to do it and may write to its transcript. Needs
+    ``CHECKPOINT_VAR`` in the environment, as the turns that made the
+    checkpoints did (``run_rewind_files`` sets it).
+    """
+    check_resume_allowed(session_id, own_ids, desktop_ids)
+    if not platform_paths.is_safe_id(message_uuid):
+        raise ValueError("That isn't a message Claude Code can go back to.")
+    return [executable, "-p", "--resume", session_id, "--rewind-files", message_uuid]
 
 
 def build_resume_command(executable: str, session_id: str, permission_mode: str,
@@ -1016,6 +1058,10 @@ class TurnRunner:
         # Ask for session_state_changed, so the turn ends when Claude Code says
         # it's idle, not at the first result (#76).
         self._env["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"] = "1"
+        # File checkpoints (#468), so Rewind to Here can put files back.
+        # Always on for The Chat Place's own turns: Claude Code keeps them
+        # beside its other per-session data and cleans them up with it.
+        self._env[CHECKPOINT_VAR] = "1"
         if task_list:
             # Claude's task list (TaskCreate and TaskUpdate, #231). Claude
             # Code leaves those tools out on newer models unless asked; the

@@ -43,7 +43,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from .tasklist import TaskStep, TASK_PENDING, TASK_IN_PROGRESS, TASK_COMPLETED, TASK_STATUSES
 
@@ -133,6 +133,14 @@ class ChatMessage:
     #: the messages list's row: an agent conversation's exact setup, or the
     #: exact text a reply was passed on with (#248).
     detail: str = ""
+    #: Where it is in Claude Code's record chain (#468): the uuid of the
+    #: last transcript record it came from (a reply merged from several
+    #: records has the latest), and the ``parentUuid`` of the first, which
+    #: for your message is the last record before it. Branch from Here cuts
+    #: the history at ``uuid``; Rewind to Here at ``parent_uuid``, and puts
+    #: files back to the checkpoint taken at ``uuid``. "" when not known.
+    uuid: str = ""
+    parent_uuid: str = ""
 
     @property
     def whole(self) -> str:
@@ -216,6 +224,10 @@ class Transcript:
     commands: List[ToolCommand] = field(default_factory=list)
     #: The task list, in provider order (#231, #318).
     tasks: List[TaskStep] = field(default_factory=list)
+    #: Your messages Claude Code kept a file checkpoint for (#468), by
+    #: uuid: the ``messageId`` of each ``file-history-snapshot`` record.
+    #: Only those can have their files put back (Rewind to Here).
+    checkpoints: Set[str] = field(default_factory=set)
 
     def latest_turn_edits(self) -> List[FileEdit]:
         """The changes made since your latest message."""
@@ -341,6 +353,13 @@ class TranscriptParser:
             return [self._add(COMPACTION, compaction_text(meta), record)]
         if kind == "attachment":
             return self._attachment(record)
+        if kind == "file-history-snapshot":
+            # Checked with Claude Code 2.1.296: one per message of yours
+            # while checkpoints are on, ``messageId`` being its uuid.
+            message_id = record.get("messageId")
+            if isinstance(message_id, str) and message_id:
+                self.transcript.checkpoints.add(message_id)
+            return []
         if kind not in ("user", "assistant"):
             return []  # custom-title, pr-link, ...: not conversation
         message = record.get("message")
@@ -369,7 +388,9 @@ class TranscriptParser:
         item = ChatMessage(kind=kind, text=text.strip(),
                            timestamp=str(record.get("timestamp") or ""),
                            key=key or str(record.get("uuid") or ""),
-                           turn=self.transcript.turns)
+                           turn=self.transcript.turns,
+                           uuid=_chain_id(record.get("uuid")),
+                           parent_uuid=_chain_id(record.get("parentUuid")))
         self.transcript.messages.append(item)
         return item
 
@@ -554,6 +575,7 @@ class TranscriptParser:
                 if (last is not None and last.kind == ASSISTANT
                         and self._last_assistant_id == msg_id and msg_id):
                     last.text = f"{last.text}\n\n{text.strip()}"
+                    last.uuid = _chain_id(record.get("uuid")) or last.uuid
                     touched.append(last)
                 else:
                     touched.append(self._add(ASSISTANT, text, record, key=msg_id))
@@ -681,6 +703,14 @@ class TranscriptParser:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _chain_id(value) -> str:
+    """A record uuid fit to hand back to Claude Code as an argument, or ""."""
+    return value if isinstance(value, str) and _CHAIN_ID.fullmatch(value) else ""
+
+
+_CHAIN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")
 
 
 def _cross_session(text: str) -> Optional[Tuple[str, str]]:
