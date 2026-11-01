@@ -963,16 +963,22 @@ folder a git repository) or a git program of its own (<code>git.cmd</code>).</p>
   file, the next command your rules or Allow for This Chat would allow asks you first, and the
   chat says why. Allowing such a command yourself, once Copilot asks after that change, lets them
   be answered again until Auto changes another file (allowing some other command doesn't); a chat
-  opened again asks once too, since what Auto changed before isn't kept. Every chat in the same
-  folder, or in a folder inside it or holding it, shares this. While a program your rules, a kept
-  command or you allowed may still be running, Auto's file changes in its folder ask, and the
-  chat says why: until Copilot reports, in its own record of the program's end, that it ended,
-  or until Copilot is next started (if Copilot never reports the end, as when it's stopped, that's
-  when). A command Copilot
-  runs in the background (it says so just before asking), or doesn't describe before asking,
-  always asks; so does one Copilot moves to the background because it's still running after its
-  wait (30 seconds), and once you allow either, commands ask until Copilot is next started, since
-  it may still be changing the folder. The chat's heading ends "Auto", and Auto is kept
+  opened again asks once too, saying so, since what Auto changed before isn't kept. Every chat in
+  the same folder, or in a folder inside it or holding it, shares this, and a chat opened later in
+  such a folder starts out asking once too. While a program your rules, a kept command or you
+  allowed may still be running, Auto's file changes in its folder ask, and the chat says why:
+  until Copilot reports, in its own record of the program's end, that it ended. Stopping it with
+  Stop, or Copilot stopping it, doesn't end the program (it runs on to its own end), so then it's
+  until you close The Chat Place and open it again, which on Windows ends what Copilot started
+  (on a Mac or Linux a program that left Copilot's group may run on). A command
+  Copilot will run in the background (it says so just before asking), or doesn't describe before
+  asking, always asks. One a rule allowed that Copilot moves to the background, because it's still
+  running after its wait (30 seconds), was already answered; while it or any background program
+  allowed here runs, later commands ask too. A command you allow that Copilot didn't describe
+  first makes commands ask until Copilot is next started. Your own git settings (your global and
+  system config) are yours: The Chat Place checks only that none of their files is inside the
+  folder, not what they set, so a program you've named there, such as core.fsmonitor, runs as it
+  always does. The chat's heading ends "Auto", and Auto is kept
   for the chat, so it's on again when the chat is opened again, until you choose Agent or Plan.
   If Copilot switches to plan mode, Auto ends and the chat says so.</li>
 <li><strong>Your rules</strong>, in <code>%APPDATA%\TheChatPlace\copilot-rules.json</code> (on a Mac,
@@ -1002,7 +1008,10 @@ can't follow asks: other folders and drives (a full path elsewhere, <code>..</co
 <code>HKLM:</code>), recursion (-Recurse, -r) and following links, wildcards (<code>*</code>, <code>?</code>), making links,
 variables such as <code>$env:USERPROFILE</code>, brackets, redirection, characters other than plain ASCII
 (such as smart quotes), and anything that runs code (<code>&amp;</code>, <code>iex</code>, scripts). After a pipe, a command
-may only sort, select or format what comes in. A rule's or a kept command's own program may take
+may only sort, select or format what comes in. A word with a colon is taken as a drive
+(<code>HKLM:</code>, <code>env:PATH</code>, <code>C:x</code>) except in a command your rule or Allow for This Chat allows for a
+program other than PowerShell's own cmdlets, where an ordinary colon is fine (<code>npm run
+test:unit</code>, <code>git commit -m "fix: typo"</code>). A rule's or a kept command's own program may take
 options (<code>--watch</code>), but none with a value joined on (<code>--file=x</code>). This is a strict reading of
 what the command says, not a lock. A command you allow can run what's in the folder: <code>npm test</code>
 runs the folder's own scripts, which Copilot may have changed first, so allow only programs you'd

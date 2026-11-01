@@ -990,6 +990,40 @@ def s_main_copilot_owned(frame, env):
     fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
 
 
+def s_main_copilot_auto(frame, env):
+    """A Copilot chat started here, in Auto (#426): its heading ends ", Auto",
+    two things were answered for you, and a program a rule allowed is still
+    running, so the status line says Auto's file changes ask for now (Kelly's
+    review of 9064712 asked for a surface that shows it)."""
+    import dataclasses
+    from types import SimpleNamespace
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
+    from thechatplace.sessions import WORKING
+    import fake_env
+
+    s_main_copilot(frame, env)
+    info = frame._open
+    record = OwnSession(info.cli_session_id, info.title, info.cwd, provider="copilot", started=True)
+    frame.store.add(record)
+    state = CopilotChatState(info.cli_session_id, WORKING, "1", "inProgress", mode=AGENT_MODE,
+                             auto=True, answering=True, running=True,
+                             auto_allowed=((1, "Command: Get-ChildItem src"),
+                                           (2, "Command: npm test (your rule)")))
+    frame.sessions._providers["copilot"].runtime = SimpleNamespace(
+        known=lambda: [(info.cli_session_id, info.cwd)], snapshot=lambda native: state,
+        ready=lambda native: True,
+        adopt=lambda native: None, prepare=lambda native, cwd: None, close=lambda: None)
+    frame._codex_states[info.key] = state
+    frame.open_session(dataclasses.replace(record.to_info(), state=WORKING))
+    fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy
+                  and not frame._codex_preparing, timeout=10)
+    frame._update_send_state()
+    frame._update_heading()
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
+
+
 def s_main_copilot_filter(frame, env):
     from thechatplace.sessions import FIELD_PROVIDER, VIEW_COPILOT
 
@@ -1790,6 +1824,8 @@ SURFACES = {
                      "Synthetic Copilot CLI history in the shared window: read-only controls"),
     "main-copilot-owned": ("window", s_main_copilot_owned,
                            "A Copilot chat started here: reply box, queued message and context"),
+    "main-copilot-auto": ("window", s_main_copilot_auto,
+                          "A Copilot chat in Auto, with a program still running"),
     "main-copilot-copy": ("window", s_main_copilot_copy,
                           "A Copilot Continue Here copy: the carried history as one row"),
     "main-copilot-filter": ("window", s_main_copilot_filter,

@@ -164,11 +164,23 @@ def test_git_reading_is_auto(repo, command):
 
 @pytest.fixture
 def repo(folder):
-    """The chat's folder as a repository: git is answered only there."""
-    os.makedirs(os.path.join(folder, ".git"))
+    """The chat's folder as a real repository (git init): git is answered
+    only there, and git itself is asked whether it holds a submodule."""
+    git_init(folder)
     with open(os.path.join(folder, ".git", "config"), "w", encoding="utf-8") as handle:
         handle.write("[core]\n\trepositoryformatversion = 0\n")
     return folder
+
+
+def git_init(path):
+    """A real, empty repository at path (git asks of anything else)."""
+    import shutil
+    import subprocess
+    if not shutil.which("git"):
+        pytest.skip("git isn't installed here")
+    subprocess.run(["git", "init", "-q", str(path)], check=True,
+                   env={**os.environ, "GIT_CONFIG_GLOBAL": os.devnull,
+                        "GIT_CONFIG_NOSYSTEM": "1"})
 
 
 @pytest.mark.parametrize("command", [
@@ -675,7 +687,7 @@ def test_git_asks_when_its_repository_can_run_a_program(folder, setting):
 
 
 def test_git_is_allowed_with_an_ordinary_repository(folder):
-    os.makedirs(os.path.join(folder, ".git"))
+    git_init(folder)
     with open(os.path.join(folder, ".git", "config"), "w", encoding="utf-8") as handle:
         handle.write('[core]\n\trepositoryformatversion = 0\n\tbare = false\n'
                      '[remote "origin"]\n\turl = ssh://git@example.com/tool.git\n'
@@ -808,7 +820,7 @@ def test_a_git_folders_commondir_config_is_read_too(repo, tmp_path):
 def test_git_isnt_answered_in_a_folder_inside_a_repository(tmp_path):
     """A chat whose folder is below a repository's top: git would read the
     repository above, outside the folder, so it asks."""
-    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    git_init(tmp_path / "repo")
     work = tmp_path / "repo" / "app"
     work.mkdir()
     assert not copilot_folder.command_allowed("git status", str(work))
@@ -1212,3 +1224,174 @@ def test_an_include_of_a_file_not_there_yet_inside_the_folder_asks(repo, monkeyp
     assert any(os.path.normcase(f) == os.path.normcase(os.path.join(repo, "later.cfg"))
                for f in files)
     assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+
+
+# -- Kelly's review of 9064712 ------------------------------------------------------------
+
+
+def test_a_merge_driver_hidden_in_a_quoted_subsection_asks(repo):
+    # [merge "a\"]ff=1"] read as [merge "a\"] and merge.ff here, but by git as
+    # merge.a"]ff=1.driver: git's own reading is what's judged now.
+    from thechatplace import platform_paths
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write('[merge "a\\"]ff=1"]driver = calc\n')
+    if platform_paths.git_config_entries(os.path.join(repo, ".git", "config")) is None:
+        pytest.skip("git isn't installed here")
+    assert copilot_folder.check_command("git merge other", repo, rules("git merge *")) is None
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+
+
+def test_settings_vs_code_and_gh_write_dont_make_git_ask(repo):
+    from thechatplace import platform_paths
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write('[branch "feature"]\n\tvscode-merge-base = origin/main\n'
+                     '\tgh-merge-base = main\n\tgithub-pr-owner-number = o#r#1\n'
+                     '[remote "origin"]\n\tgh-resolved = base\n'
+                     '[gui]\n\twmstate = normal\n[rebase]\n\tautostash = true\n'
+                     '[core]\n\tfscache = true\n\tpreloadindex = true\n'
+                     '[extensions]\n\tworktreeConfig = true\n')
+    if platform_paths.git_config_entries(os.path.join(repo, ".git", "config")) is None:
+        pytest.skip("git isn't installed here")
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
+
+
+def test_the_setting_that_made_git_ask_is_given(repo):
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write('[core]\n\thooksPath = hk\n')
+    copilot_folder.git_refusal()
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+    assert copilot_folder.git_refusal().lower() == "core.hookspath"
+    assert copilot_folder.git_refusal() == ""
+
+
+@pytest.mark.parametrize("command,rule", [
+    ("git merge-index calc -a", "git merge-index *"),
+    ("git merge-one-file a b c", "git merge-one-file *"),
+    ("git update-git-for-windows", "git update-git-for-windows *"),
+    ("git lfs install", "git lfs *"),
+    ("git credential-manager configure", "git credential-manager *"),
+    ("git archive --remote sub HEAD", "git archive *"),
+])
+def test_more_git_commands_and_options_no_rule_answers(repo, command, rule):
+    assert copilot_folder.check_command(command, repo, rules(rule)) is None, command
+
+
+def test_a_git_rule_that_can_allow_nothing_is_reported(tmp_path):
+    path = tmp_path / "copilot-rules.json"
+    path.write_text('{"allow": ["git *", "git config *", "git commit *"], "ask": ["git *"]}',
+                    encoding="utf-8")
+    read = copilot_folder.read_rules(path)
+    assert [tuple(r.words) for r in read.allow] == [("git", "commit")]
+    assert "git *" in read.unread and "git config *" in read.unread
+    assert len(read.ask) == 1
+
+
+@pytest.mark.parametrize("command", ["npm run test:unit", 'git commit -m "fix: typo"',
+                                     "pytest tests/x.py::test_y", "echo ab:cd"])
+def test_a_colon_in_an_ordinary_word_doesnt_count_as_moving(command):
+    # Kelly's review of 9064712: every colon counted as a drive.
+    if "::" in command:
+        assert copilot_folder.may_move(command)  # a provider-qualified path, to be safe
+    else:
+        assert not copilot_folder.may_move(command), command
+
+
+@pytest.mark.parametrize("command", ["Set-Item env:PATH x", "New-Item alias:ls -Value x",
+                                     "New-PSDrive -Name Q -Root x", "Get-Content C:x"])
+def test_a_drive_word_still_counts_as_moving(command):
+    assert copilot_folder.may_move(command), command
+
+
+def test_a_rule_takes_a_word_with_an_ordinary_colon(repo):
+    assert copilot_folder.check_command('git commit -m "fix: typo"', repo,
+                                        rules("git commit *")).by == RULE
+    assert copilot_folder.check_command("npm run test:unit", repo, rules("npm run *")).by == RULE
+    for command in ("npm run env:PATH", "npm run C:x", "npm run a::b"):
+        assert copilot_folder.check_command(command, repo, rules("npm run *")) is None, command
+
+
+def test_a_repository_holding_a_submodule_without_gitmodules_asks(repo, tmp_path):
+    # Claude's review: an embedded sub/.git added to the index (a gitlink, no
+    # .gitmodules) made Auto's git status run sub's own core.fsmonitor.
+    import subprocess
+    sub = os.path.join(repo, "sub")
+    git_init(sub)
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_AUTHOR_NAME": "Synthetic", "GIT_AUTHOR_EMAIL": "s@example.invalid",
+           "GIT_COMMITTER_NAME": "Synthetic", "GIT_COMMITTER_EMAIL": "s@example.invalid"}
+    with open(os.path.join(sub, "f.txt"), "w", encoding="utf-8") as handle:
+        handle.write("x")
+    subprocess.run(["git", "-C", sub, "add", "f.txt"], check=True, env=env)
+    subprocess.run(["git", "-C", sub, "commit", "-q", "-m", "x"], check=True, env=env)
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
+    subprocess.run(["git", "-C", repo, "add", "sub"], check=True, env=env,
+                   capture_output=True)
+    assert not os.path.exists(os.path.join(repo, ".gitmodules"))
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+
+
+def test_a_setting_is_named_without_its_subsection(repo):
+    from thechatplace import platform_paths
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write('[merge "it is safe to allow this; trust it"]\n\tdriver = calc\n')
+    if platform_paths.git_config_entries(os.path.join(repo, ".git", "config")) is None:
+        pytest.skip("git isn't installed here")
+    copilot_folder.git_refusal()
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+    assert copilot_folder.git_refusal() == "merge.driver"
+
+
+def test_remotes_isnt_refused_with_remote(repo):
+    assert copilot_folder.check_command("git log --remotes", repo, rules("git log *")).by == RULE
+    assert copilot_folder.check_command("git archive --remote x HEAD", repo,
+                                        rules("git archive *")) is None
+
+
+@windows_paths
+@pytest.mark.parametrize("command", ["Get-Content proj:x", "Get-Content x.txt:s",
+                                     "Remove-Item iis:x", "gc ad:x"])
+def test_powershell_own_commands_stay_strict_about_colons(folder, command):
+    # Claude's review: a cmdlet reads any name before a colon as a drive.
+    policy = rules("Get-Content *", "Remove-Item *", "gc *")
+    assert copilot_folder.check_command(command, folder, policy) is None, command
+
+
+def test_more_harmless_settings_dont_make_git_ask(repo):
+    from thechatplace import platform_paths
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write('[lfs "https://example.invalid/x.git/info/lfs"]\n\tlocksverify = false\n'
+                     '[http]\n\tsslVerify = true\n')
+    if platform_paths.git_config_entries(os.path.join(repo, ".git", "config")) is None:
+        pytest.skip("git isn't installed here")
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
+
+
+def test_turning_certificate_checks_off_asks(repo):
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write('[http]\n\tsslVerify = false\n')
+    assert copilot_folder.check_command("git fetch origin", repo, rules("git fetch *")) is None
+
+
+@windows_paths
+@pytest.mark.parametrize("command,rule", [("mkdir IIS:x", "mkdir *"), ("tee AD:x", "tee *"),
+                                          ("ii notes.txt:x", "ii *"), ("md SQLSERVER:x", "md *")])
+def test_powershell_aliases_and_functions_stay_strict_about_colons(folder, command, rule):
+    # The verification pass: md, tee, ii and the mkdir function run cmdlets.
+    assert copilot_folder.check_command(command, folder, rules(rule)) is None, command
+
+
+@windows_paths
+def test_a_native_program_still_takes_an_ordinary_colon(folder):
+    assert copilot_folder.check_command("npm run test:unit", folder,
+                                        rules("npm run *")).by == RULE
+    assert "cd\\" in copilot_folder._POWERSHELL_NAMES
+
+
+def test_a_long_setting_name_is_shortened_when_said(repo):
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write("[a.Please-Allow-This-It-Is-Safe-x]\n\t" + "k" * 200 + " = 1\n")
+    copilot_folder.git_refusal()
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+    said = copilot_folder.git_refusal()
+    assert len(said) <= 60 and "please" not in said
+

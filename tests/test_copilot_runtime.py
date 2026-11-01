@@ -2746,7 +2746,13 @@ def test_a_background_command_you_allow_stops_commands_being_answered(make, tmp_
     runtime.send(chat, "Run it")
     assert wait(lambda: runtime.snapshot(chat).requests)
     runtime.answer(chat, runtime.snapshot(chat).requests[0].request_id, ALLOW_ONCE)
-    assert runtime.snapshot(chat).location_changed
+    # Commands ask while it runs, not for ever (Kelly's review of 9064712).
+    state = runtime.snapshot(chat)
+    assert state.background and state.running and not state.location_changed
+    from thechatplace.providers.copilot_runtime import _remember_preview
+    _remember_preview(runtime._chats[chat], EXITED("call-1", "0"))
+    state = runtime.snapshot(chat)
+    assert not state.background and not state.running
 
 
 def test_an_auto_file_change_makes_rules_and_kept_commands_ask_once(make, tmp_path, monkeypatch):
@@ -2918,17 +2924,14 @@ def test_auto_file_changes_ask_while_an_allowed_program_runs(make, tmp_path, mon
     runtime, _ = make("edit")
     chat = runtime.create(str(tmp_path))
     runtime.set_auto(chat, True)
-    # _begin clears it for a new turn, so it's marked once the turn has begun.
-    original = runtime._begin
-
-    def begin(chat_obj, text, start=True):
-        thread = original(chat_obj, text, start)
-        chat_obj.started("call-test")
-        return thread
-    monkeypatch.setattr(runtime, "_begin", begin)
+    # Running isn't cleared at a turn's start any more: only by a real end.
+    runtime._chats[chat].started("call-test")
     runtime.send(chat, "Make a.txt")
     assert wait(lambda: runtime.snapshot(chat).requests)
-    assert runtime.snapshot(chat).auto_allowed == ()
+    state = runtime.snapshot(chat)
+    assert state.auto_allowed == () and state.running
+    from thechatplace.providers.copilot_runtime import STILL_RUNNING_ASKS
+    assert STILL_RUNNING_ASKS in state.notice
 
 
 def test_a_command_your_rule_allows_counts_as_running_until_it_finishes(make, tmp_path,
@@ -2982,12 +2985,13 @@ def test_a_command_moved_to_the_background_runs_until_its_shell_ends(make, tmp_p
     state.started("call-7")
     _answered(state, "call-7")
     _remember_preview(state, STILL_RUNNING("call-7", "1"))
-    assert state.running == {"call-7"} and state.location_changed
+    assert state.running == {"call-7"} and state.folder.live_background()
+    assert not state.location_changed  # commands ask only until it ends
     # A later call, a UUID, reads the shell and carries its exit.
     _remember_preview(state, {"toolCallId": "47182691-uuid", "title": "read_powershell",
                               "rawInput": {"shellId": "1", "delay": 0}})
     _remember_preview(state, EXITED("47182691-uuid", "1"))
-    assert state.running == set()
+    assert state.running == set() and not state.folder.live_background()
 
 
 def test_a_command_waiting_before_auto_edits_doesnt_end_the_ask_once(make, tmp_path):
@@ -3011,9 +3015,9 @@ def test_a_command_answered_that_turns_into_a_background_one_stops_commands(make
     state = runtime._chats[chat]
     _answered(state, "call-9")
     _remember_preview(state, {"toolCallId": "call-9", "rawInput": {"command": "npm test"}})
-    assert not state.location_changed
+    assert not state.folder.live_background()
     _remember_preview(state, {"toolCallId": "call-9", "rawInput": {"mode": "async"}})
-    assert state.location_changed
+    assert state.folder.live_background()
 
 
 def test_two_chats_in_one_folder_share_the_ask_once(make, tmp_path, monkeypatch):
@@ -3130,6 +3134,35 @@ def test_folders_inside_one_another_share_edits_and_running(make, tmp_path):
     assert runtime._chats[outer].folder in related
     runtime._chats[outer].started("call-dev")
     assert any(folder.live() for folder in runtime._related(runtime._chats[inner]))
+    assert runtime.snapshot(inner).running
+
+
+def test_an_auto_edit_in_a_folder_inside_marks_the_one_holding_it(make, tmp_path,
+                                                                    monkeypatch):
+    """Kelly's review of 9064712: the edit itself, through Auto, marks every
+    related folder (not set by hand)."""
+    (tmp_path / "sub").mkdir()
+    monkeypatch.setenv("FAKE_COPILOT_EDIT_PATH", str(tmp_path / "sub" / "a.txt"))
+    runtime, _ = make("edit")
+    outer = runtime.create(str(tmp_path))
+    inner = runtime.create(str(tmp_path / "sub"))
+    runtime.set_auto(inner, True)
+    runtime.send(inner, "Make a.txt")
+    assert wait(lambda: runtime.snapshot(inner).outcome == "completed")
+    assert runtime.snapshot(inner).auto_allowed
+    assert runtime._chats[outer].edited and runtime._chats[inner].edited
+
+
+def test_what_asks_now_is_said_one_way_everywhere():
+    from types import SimpleNamespace
+    from thechatplace.providers.copilot_runtime import asks_now
+    assert asks_now(SimpleNamespace()) == ""
+    running = asks_now(SimpleNamespace(running=True, auto=True))
+    assert "file changes ask" in running and "still answered" not in running
+    background = asks_now(SimpleNamespace(background=True, running=True, auto=True))
+    assert "commands ask while" in background and "file changes ask" in background
+    moved = asks_now(SimpleNamespace(location_changed=True, auto=True))
+    assert "until Copilot is next started" in moved and "still answered" in moved
 
 
 def test_a_call_naming_its_own_shell_clears_on_its_own_exit(make, tmp_path):
@@ -3142,3 +3175,83 @@ def test_a_call_naming_its_own_shell_clears_on_its_own_exit(make, tmp_path):
                               "rawInput": {"command": "npm test", "shellId": "3"}})
     _remember_preview(state, EXITED("call-s", "3"))
     assert state.running == set()
+
+
+def test_a_new_chat_inside_an_edited_folder_starts_edited(make, tmp_path):
+    """Kelly's review of 9064712: after an Auto edit in proj, a chat opened
+    in proj/sub asks once too."""
+    (tmp_path / "sub").mkdir()
+    runtime, _ = make()
+    outer = runtime.create(str(tmp_path))
+    runtime._chats[outer].edited = True
+    inner = runtime.create(str(tmp_path / "sub"))
+    assert runtime._chats[inner].edited
+
+
+def test_a_reopened_chat_says_its_true_reason_and_doesnt_rearm_others(make, tmp_path,
+                                                                       monkeypatch):
+    from thechatplace.providers.copilot_runtime import ASKS_ONCE, REOPENED_ASKS
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "npm test")
+    allow = copilot_folder.Rules(allow=(copilot_folder.parse_rule("npm test"),))
+    runtime, _ = make("ask", rules=lambda: allow)
+    chat = runtime.create(str(tmp_path))
+    runtime._chats[chat].reopened = True  # as prepare does for a chat opened again
+    runtime.send(chat, "Test it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    notice = runtime.snapshot(chat).notice
+    assert REOPENED_ASKS in notice and ASKS_ONCE not in notice
+    # Answered, the reason goes.
+    runtime.answer(chat, runtime.snapshot(chat).requests[0].request_id, ALLOW_ONCE)
+    assert REOPENED_ASKS not in runtime.snapshot(chat).notice
+    assert not runtime._chats[chat].reopened
+
+
+def test_stopping_a_program_in_copilot_doesnt_end_it(make, tmp_path):
+    """Probed against 1.0.105: stop_powershell says "<command with id: N
+    stopped>" with no shell_exit, and the program ran on to its own end; a
+    cancel sends nothing at all. It still counts as running."""
+    from thechatplace.providers.copilot_runtime import _remember_preview
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    state = runtime._chats[chat]
+    state.started("call-p")
+    _remember_preview(state, STILL_RUNNING("call-p", "1"))
+    _remember_preview(state, {"toolCallId": "call-stop", "title": "stop_powershell",
+                              "kind": "execute", "rawInput": {"shellId": "1"}})
+    text = "<command with id: 1 stopped>"
+    _remember_preview(state, {"toolCallId": "call-stop", "status": "completed",
+                              "content": [{"type": "content",
+                                           "content": {"type": "text", "text": text}}],
+                              "rawOutput": {"content": text, "detailedContent": text}})
+    assert state.running == {"call-p"}
+
+
+def test_the_running_sentence_is_for_auto_only():
+    from types import SimpleNamespace
+    from thechatplace.providers.copilot_runtime import asks_now
+    assert asks_now(SimpleNamespace(running=True, auto=False)) == ""
+    assert "file changes ask" in asks_now(SimpleNamespace(running=True, auto=True))
+
+
+def test_a_still_running_marker_beats_another_shells_exit(make, tmp_path):
+    """Claude's review: an update that says shell 1 is still running isn't
+    an end because it also carries shell 2's exit."""
+    from thechatplace.providers.copilot_runtime import _remember_preview
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    state = runtime._chats[chat]
+    state.started("call-m")
+    update = STILL_RUNNING("call-m", "1")
+    update["rawOutput"]["contents"] = [{"type": "shell_exit", "shellId": "2", "exitCode": 0}]
+    _remember_preview(state, update)
+    assert state.running == {"call-m"} and state.folder.live_background()
+
+
+def test_reopened_is_the_chats_own(make, tmp_path):
+    """Claude's review: a folder-wide flag made a new chat there say it was
+    opened again."""
+    runtime, _ = make()
+    old = runtime.create(str(tmp_path))
+    runtime._chats[old].reopened = True
+    new = runtime.create(str(tmp_path))
+    assert not runtime._chats[new].reopened

@@ -61,10 +61,11 @@ class CodexChats:
         if getattr(state, 'auto', False):
             text += (' It is in Auto: reading, and changing files, inside its folder are '
                      'allowed without asking.')
-        if getattr(state, 'answering', False) and getattr(state, 'location_changed', False):
-            text += (' Its commands ask again, since a command you allowed may still be running '
-                     "or may have moved Copilot's shell" + ("; file changes are still allowed."
-                                          if getattr(state, 'auto', False) else "."))
+        if getattr(state, 'answering', False):
+            from ..providers.copilot_runtime import asks_now
+            asks = asks_now(state)
+            if asks:
+                text += ' ' + asks
         steering = len(getattr(state, 'steering', ()))
         if steering:
             text += (f' 1 steered message waiting for {name} to accept it.' if steering == 1
@@ -316,12 +317,11 @@ class CodexChats:
                     self._feedback((result if isinstance(result, str) and result
                                     else "Copilot couldn't switch modes.") + ended)
                 elif chosen == COPILOT_AUTO and result == AGENT_MODE and not refused:
-                    moved = getattr(self._codex_states.get(info.key), 'location_changed', False)
+                    from ..providers.copilot_runtime import asks_now
+                    asks = asks_now(self._codex_states.get(info.key))
                     self._feedback(f'{info.title}: Auto. It reads, and changes files, in {folder} '
                                    'without asking, and asks before anything else.'
-                                   + (" Its commands ask for now, since a command you allowed "
-                                      "earlier may still be running or may have moved Copilot's "
-                                      "shell; file changes are allowed for you." if moved else ''))
+                                   + (' For now: ' + asks if asks else ''))
                 elif chosen == COPILOT_AUTO and result == AGENT_MODE:
                     self._feedback(f'{info.title}: agent mode. {refused}')
                 elif result == mode:
@@ -741,13 +741,17 @@ class CodexChats:
         # Once a command you allowed may have moved the shell, commands ask
         # again: said once, when it happens, in a chat where anything is
         # answered for you (Auto, a rule or a kept command).
-        if (getattr(state, 'answering', False) and getattr(state, 'location_changed', False)
-                and not getattr(previous, 'location_changed', False)):
-            self._say(f"{record.title}: commands ask again, since the one you allowed may still "
-                      "be running or may have moved Copilot's shell."
-                      + (" File changes in its folder are still allowed."
-                         if getattr(state, 'auto', False) else ""),
-                      interrupt=False)
+        # Said when commands start asking (a background program, or the
+        # shell moved), not at every allowed command's start (Claude's review:
+        # a five-second npm test said it each time).
+        def commands_ask(s):
+            return bool(getattr(s, 'location_changed', False) or getattr(s, 'background', False))
+        if (provider == 'copilot' and getattr(state, 'answering', False)
+                and commands_ask(state) and not commands_ask(previous)):
+            from ..providers.copilot_runtime import asks_now
+            asks = asks_now(state)
+            if asks:
+                self._say(f"{record.title}: {asks}", interrupt=False)
         loaded = self._open is not None and self._open.key == key
         seen = getattr(self, '_codex_permission_notices_seen', None)
         if seen is None:

@@ -1679,6 +1679,55 @@ def high_contrast() -> Optional[bool]:
     return bool(value.dwFlags & 1)
 
 
+def git_has_submodules(folder: str) -> Optional[bool]:
+    """Whether the index of the repository at ``folder`` holds a submodule
+    (a gitlink, mode 160000), however it got there: git status and diff go
+    into one and run its own config. None if git can't say. Asked with
+    fsmonitor off, so asking runs nothing of the repository's."""
+    import subprocess
+
+    git = find_tool("git")
+    if not git:
+        return None
+    try:
+        done = subprocess.run([git, "-c", "core.fsmonitor=", "ls-files", "--stage", "-z"],
+                              cwd=folder, capture_output=True, timeout=20,
+                              creationflags=hidden_window_flags())
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if done.returncode != 0:
+        return None
+    return any(entry.startswith(b"160000 ") for entry in done.stdout.split(b"\0"))
+
+
+def git_config_entries(path: str) -> Optional[List[tuple]]:
+    """(name, value) of each setting in one git config file, as git itself
+    reads it (``git config --file <path> --list -z``: includes aren't
+    followed, so an include is a setting like any other). None if git can't
+    say. copilot_folder judges a repository's own config this way, so
+    nothing written to be read one way there and another way by git gets
+    through (Kelly's review of 9064712)."""
+    import subprocess
+
+    git = find_tool("git")
+    if not git:
+        return None
+    try:
+        done = subprocess.run([git, "config", "--file", path, "--list", "-z"],
+                              capture_output=True, timeout=10,
+                              creationflags=hidden_window_flags())
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if done.returncode != 0:
+        return None
+    entries = []
+    for item in done.stdout.decode("utf-8", "replace").split("\0"):
+        if item:
+            key, _, value = item.partition("\n")
+            entries.append((key, value))
+    return entries
+
+
 def hidden_window_flags() -> int:
     """creationflags that keep a console window from flashing up on Windows."""
     if sys.platform == "win32":

@@ -56,6 +56,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -102,7 +103,60 @@ _MOVERS = frozenset({
     "set-item", "si", "set-variable", "sv", "new-variable", "nv",
     "export", "alias", "unalias", "set", "unset",
     "hash", "declare", "typeset", "local", "readonly", "enable", "shopt", "setopt",
+    # A drive of a new name, which a later path could then use.
+    "new-psdrive", "ndr", "mount",
 })
+#: PowerShell's own drives other than disks, as the start of a word
+#: ("env:PATH", "alias:ls"): writing to one changes what later commands mean.
+#: Anything else before a colon ("test:unit", "fix: typo", "https:") is an
+#: ordinary word (Kelly's review of 9064712: every colon counted, so a
+#: conventional commit message or an npm script name made commands ask).
+_PS_DRIVES = frozenset({"env", "alias", "function", "variable", "hklm", "hkcu", "cert",
+                        "wsman", "temp", "registry", "filesystem"})
+
+
+#: Every alias and function name without a hyphen that PowerShell 5.1 and 7
+#: define with no profile loaded (Get-Alias, Get-Command -CommandType
+#: Function), listed from both on Windows 11 for the verification pass of
+#: Kelly's review of 9064712: md, tee, ii, mkdir and more run cmdlets, which
+#: read a word before a colon as a drive.
+_POWERSHELL_NAMES = frozenset({
+    'ac', 'afterall', 'aftereach', 'asnp', 'beforeall', 'beforeeach', 'cat', 'cd', 'cd..',
+    'cd\\', 'cd~', 'cfs', 'chdir', 'clc', 'clear', 'clhy', 'cli', 'clp', 'cls', 'clv', 'cnsn',
+    'compare', 'configuration', 'context', 'copy', 'cp', 'cpi', 'cpp', 'curl', 'cvpa', 'dbp',
+    'del', 'describe', 'diff', 'dir', 'dnsn', 'ebp', 'echo', 'epal', 'epcsv', 'epsn', 'erase',
+    'etsn', 'exsn', 'fc', 'fhx', 'fl', 'foreach', 'ft', 'fw', 'gal', 'gbp', 'gc', 'gci', 'gcm',
+    'gcs', 'gdr', 'gerr', 'ghy', 'gi', 'gjb', 'gl', 'gm', 'gmo', 'gp', 'gps', 'gpv', 'group',
+    'gsn', 'gsnp', 'gsv', 'gu', 'gv', 'gwmi', 'h', 'help', 'history', 'icm', 'iex', 'ihy',
+    'ii', 'importsystemmodules', 'in', 'inmodulescope', 'ipal', 'ipcsv', 'ipmo', 'ipsn', 'irm',
+    'ise', 'it', 'iwmi', 'iwr', 'kill', 'lp', 'ls', 'man', 'md', 'measure', 'mi', 'mkdir',
+    'mock', 'more', 'mount', 'move', 'mp', 'mv', 'nal', 'ndr', 'ni', 'nmo', 'npssc', 'nsn',
+    'nv', 'ogv', 'oh', 'oss', 'pause', 'popd', 'prompt', 'ps', 'psconsolehostreadline',
+    'pushd', 'pwd', 'r', 'rbp', 'rcjb', 'rcsn', 'rd', 'rdr', 'ren', 'ri', 'rjb', 'rm', 'rmdir',
+    'rmo', 'rni', 'rnp', 'rp', 'rsn', 'rsnp', 'rujb', 'rv', 'rvpa', 'rwmi', 'safegetcommand',
+    'sajb', 'sal', 'saps', 'sasv', 'sbp', 'sc', 'select', 'set', 'setup', 'shcm', 'should',
+    'si', 'sl', 'sleep', 'sls', 'sort', 'sp', 'spjb', 'spps', 'spsv', 'start', 'sujb', 'sv',
+    'swmi', 'tabexpansion2', 'tee', 'trcm', 'type', 'wget', 'where', 'wjb', 'write'})
+
+
+def _powershell_own(name: str) -> bool:
+    """Whether a command name is PowerShell's own (a cmdlet, Verb-Noun, or
+    one of its aliases or functions), on Windows, where its paths may be any
+    drive."""
+    if not _windows():
+        return False
+    return (bool(re.fullmatch(r"[a-z]+-[a-z0-9]+", name)) or name in _ALIAS_OF
+            or name in READ_ALIASES or name in _POWERSHELL_NAMES)
+
+
+def _drive_word(text: str) -> bool:
+    """Whether a word names a drive or provider: a disk's letter ("C:",
+    "D:x"), one of PowerShell's own drives, or a provider-qualified path."""
+    if ":" not in text:
+        return False
+    head = text.split(":", 1)[0].lower()
+    return (len(head) == 1 or head in _PS_DRIVES or "::" in text or "\\" in head
+            or "/" in head)
 #: git's commands Auto answers: ones that only read the repository.
 GIT_READ = frozenset({"status", "log", "diff", "show", "rev-parse", "ls-files", "blame",
                       "branch"})
@@ -252,7 +306,10 @@ def read_rules(path) -> Rules:
         kept = []
         for entry in entries:
             rule = parse_rule(entry)
-            if rule is None:
+            if rule is None or (key == "allow" and _git_rule_unusable(rule)):
+                # A git rule that names no git command ("git *") or one no
+                # rule answers allows nothing: said, not kept silently
+                # (Kelly's review of 9064712).
                 unread.append(str(entry)[:200])
             else:
                 kept.append(rule)
@@ -582,7 +639,15 @@ def _paths_ok(name: str, words, folder: str, locations, *, letters: bool,
             return False  # CON, NUL, COM1: devices, not files
         if ":" in text and not (_windows() and _WINDOWS_DRIVE.match(text)
                                 and text.count(":") == 1):
-            return False  # another drive or provider, or a file's stream
+            # Another drive or provider, or a file's stream. A word for a
+            # program you chose (a rule's or a kept command's) may hold an
+            # ordinary colon: "fix: typo", test:unit (Kelly's review of
+            # 9064712). Auto's own commands stay strict.
+            # A cmdlet or its alias reads one as a drive of any name (AD:,
+            # IIS:) or a file's stream: only another program's word is
+            # relaxed (Claude's review).
+            if not long_options or _drive_word(text) or _powershell_own(name):
+                return False
         if text.startswith(("\\", "/")):
             return False  # a root, or a \\server path
         if not _inside_from(text, folder, locations):
@@ -613,11 +678,8 @@ def _paths_ok(name: str, words, folder: str, locations, *, letters: bool,
 #: core.pager, filter.<name>.clean, include.path, ...). A folder can arrive
 #: with any of them already set (a downloaded copy with its .git): then git
 #: asks (Copilot's review).
-_GIT_RUNS = re.compile(r"fsmonitor|pager|external|textconv|command|filter|include|program"
-                       r"|editor|askpass|hook|helper|ssh|exec|alias|tool|cmd"
-                       # Settings that read files from elsewhere: core.worktree,
-                       # core.attributesFile, core.excludesFile (the verification pass).
-                       r"|worktree|attributes|excludes", re.IGNORECASE)
+# (_GIT_RUNS, a list of the settings known to run a program, gave way to
+# _GIT_SAFE_SETTINGS, a list of the ones known not to.)
 
 
 def _git_dirs(start: str) -> list:
@@ -702,6 +764,64 @@ def _git_config_safe(locations) -> bool:
                     return False
                 if len(text) > 512 * 1024 or not _git_names_safe(text.decode("utf-8", "replace")):
                     return False
+                # And as git itself reads it, so a setting written to read
+                # one way here and another to git (a subsection with a quote
+                # and a bracket in it) is judged as git sees it (Kelly's
+                # review of 9064712: [merge "a\"]ff=1"] hid a merge driver).
+                entries = platform_paths.git_config_entries(path)
+                if entries is None:
+                    return False
+                for key, value in entries:
+                    if not _setting_safe(key, value):
+                        # Named by section and name only: the subsection is
+                        # the repository's own text, said aloud otherwise.
+                        parts = key.split(".")
+                        _WHY.setting = f"{parts[0]}.{parts[-1]}"[:60]
+                        return False
+    return True
+
+
+#: Why git last asked, for the chat to say (git_refusal): the setting that
+#: isn't known to be safe. Set and read on the thread that checks a request.
+_WHY = threading.local()
+
+
+def git_refusal() -> str:
+    """The repository setting that last made git ask, once, or ""."""
+    setting = getattr(_WHY, "setting", "")
+    _WHY.setting = ""
+    return setting
+
+
+#: Settings other tools write that git itself never acts on (Kelly's review
+#: of 9064712: VS Code and gh made 13 of 19 real clones ask for everything).
+_TOOL_SETTINGS = re.compile(
+    r"branch\.(vscode-merge-base|gh-merge-base|github-pr-[a-z0-9-]+)"
+    r"|remote\.gh-resolved|gui\.[a-z0-9-]+")
+
+
+#: Safe only when on: http.sslVerify off lets a fetch skip checking the
+#: server's certificate (Copilot's verification pass).
+_GIT_TRUE_ONLY = frozenset({"http.sslverify"})
+
+
+def _setting_safe(key: str, value: str) -> bool:
+    """One setting as git names it (section, any subsection, name): known to
+    be safe by section and name, its value too where that matters."""
+    parts = key.split(".")
+    if len(parts) < 2:
+        return False
+    name = f"{parts[0]}.{parts[-1]}".lower()
+    if not (name in _GIT_SAFE_SETTINGS or _TOOL_SETTINGS.fullmatch(name)):
+        return False
+    plain = value.replace('"', "").strip()
+    if name in ("remote.url", "remote.pushurl") and "::" in plain:
+        return False
+    if name in _GIT_TRUE_ONLY and plain.lower() not in ("true", "yes", "on", "1"):
+        return False  # off, it lets a fetch your rule allows skip checking certificates
+    if name in ("branch.remote", "branch.pushremote") and not re.fullmatch(
+            r"[A-Za-z0-9._-]+", plain):
+        return False
     return True
 
 
@@ -727,7 +847,9 @@ _GIT_SAFE_SETTINGS = frozenset({
     "extensions.worktreeconfig", "extensions.objectformat", "extensions.refstorage",
     "gc.auto", "index.version", "feature.manyfiles", "color.ui", "merge.ff",
     "merge.conflictstyle", "rerere.enabled", "lfs.repositoryformatversion",
-    "diff.renames", "diff.algorithm", "diff.colormoved"})
+    "diff.renames", "diff.algorithm", "diff.colormoved", "rebase.autostash", "core.fscache",
+    "core.preloadindex", "submodule.active", "lfs.locksverify", "http.sslverify",
+    "safe.directory"})
 
 
 def _git_names_safe(text: str) -> bool:
@@ -761,7 +883,10 @@ def _git_names_safe(text: str) -> bool:
             # end) reads as no setting: taken as one that might.
             return False
         name = f"{section}.{key.group(1)}".lower()
-        if name not in _GIT_SAFE_SETTINGS or _GIT_RUNS.search(name):
+        if not (name in _GIT_SAFE_SETTINGS or _TOOL_SETTINGS.fullmatch(name)):
+            # Named as section.name, shortened: the rest is the repository's
+            # own text (the verification pass).
+            _WHY.setting = f"{section.split('.')[0]}.{key.group(1)}".lower()[:60]
             return False
         # A value as git reads it: quotes joined away ("ext:"":sh" is
         # ext::sh) and escapes undone (Claude's verification pass).
@@ -769,6 +894,8 @@ def _git_names_safe(text: str) -> bool:
         value = value.replace('"', "").replace("\\", "").strip()
         if name in ("remote.url", "remote.pushurl") and "::" in value:
             return False  # ext::sh -c ... runs a program
+        if name in _GIT_TRUE_ONLY and value.lower() not in ("true", "yes", "on", "1"):
+            return False
         if name in ("branch.remote", "branch.pushremote") and not re.fullmatch(
                 r"[A-Za-z0-9._-]+", value):
             return False  # a branch's remote may be a URL too: only a remote's name
@@ -847,6 +974,10 @@ def _git_rule_option_refused(text: str) -> bool:
     if not text.startswith("--"):
         return bool(set(text[1:]) & _GIT_RULE_LETTERS)
     name = text[2:].split("=")[0].lower()
+    # --remote (git archive's, which reaches a transport) or a start of it,
+    # but not --remotes, which only lists (Claude's review).
+    if name != "remotes" and len(name) >= 3 and "remote".startswith(name):
+        return True
     return any(name.startswith(refused) or (len(name) >= 1 and refused.startswith(name))
                for refused in _GIT_RULE_REFUSED)
 #: git commands no rule ever answers, whatever it names: they change git's own
@@ -864,7 +995,8 @@ _GIT_RULE_NEVER = frozenset({
     "update-index", "update-ref", "symbolic-ref", "init", "clone", "maintenance",
     "fsmonitor--daemon", "upload-pack", "receive-pack", "upload-archive", "shell",
     "http-backend", "help", "gui", "citool", "bugreport", "remote-ext", "var", "replace",
-    "notes", "sparse-checkout", "scalar"})
+    "notes", "sparse-checkout", "scalar", "merge-index", "merge-one-file",
+    "update-git-for-windows", "lfs", "credential-manager"})
 #: git commands that may show differences, so run a diff driver or textconv.
 _GIT_DIFFS = _GIT_SHOWS_CHANGES | {"format-patch", "range-diff", "whatchanged", "stash", "grep",
                                    "add", "cherry", "difftool", "mergetool"}
@@ -873,6 +1005,15 @@ _GIT_DIFFS = _GIT_SHOWS_CHANGES | {"format-patch", "range-diff", "whatchanged", 
 #: How git may be named: each gets git's checks (Kelly's review of 8345ddd:
 #: a rule naming git.cmd skipped them).
 _GIT_NAMES = frozenset({"git", "git.exe", "git.cmd", "git.bat", "git.com"})
+
+
+def _git_rule_unusable(rule) -> bool:
+    """Whether an allow rule for git can never allow anything: it names no
+    git command, or names one no rule answers (_GIT_RULE_NEVER)."""
+    if not rule.words or rule.words[0].lower() not in _GIT_NAMES:
+        return False
+    named = [w.lower() for w in rule.words[1:] if not w.startswith("-")]
+    return not named or named[0] in _GIT_RULE_NEVER
 
 
 def _git_rule_ok(words, folder: str, locations, rule=None) -> bool:
@@ -926,6 +1067,12 @@ def _git_repository_here(folder: str, locations) -> bool:
     # submodules asks.
     if (os.path.lexists(os.path.join(folder, ".gitmodules"))
             or os.path.lexists(os.path.join(dot, "modules"))):
+        return False
+    # Nor one whose index holds a submodule however it got there: git status
+    # and diff go into it and run its own config, .gitmodules or not
+    # (Claude's review of the round answering Kelly's review of 9064712:
+    # an embedded sub/.git's core.fsmonitor ran on Auto's git status).
+    if platform_paths.git_has_submodules(folder) is not False:
         return False
     try:
         return os.path.isdir(dot) and not os.path.islink(dot) and \
@@ -1170,8 +1317,9 @@ def may_move(command: str) -> bool:
         for word in words:
             text = _unquote(word)
             # A PowerShell drive other than a disk's (alias:\ls, env:PATH),
-            # or a bash assignment (PATH=sub ls).
-            if ":" in text and not (_windows() and _WINDOWS_DRIVE.match(text)):
+            # or a bash assignment (PATH=sub ls). A colon in an ordinary word
+            # (test:unit, "fix: typo") isn't one.
+            if _drive_word(text) and not (_windows() and _WINDOWS_DRIVE.match(text)):
                 return True
             if re.match(r"[A-Za-z_][A-Za-z0-9_]*\+?=", text):
                 return True
