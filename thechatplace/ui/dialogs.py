@@ -4824,7 +4824,10 @@ class ChatOptionsDialog(wx.Dialog):
                                         style=wx.TE_MULTILINE | wx.TE_RICH2)
         set_accessible_name(self.instructions, "Instructions for this chat")
         from ..chat_options import MAX_INSTRUCTIONS
-        self.instructions.SetMaxLength(MAX_INSTRUCTIONS)  # as kept: no silent cut
+        if not gtk_a11y.IS_LINUX:
+            # As kept, so nothing is cut silently. GTK's multi-line box has
+            # no limit (wx asserts); there, OK says if they were shortened.
+            self.instructions.SetMaxLength(MAX_INSTRUCTIONS)
         self.instructions.SetMinSize(dip(self, -1, 110))
         sizer.Add(self.instructions, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -4985,7 +4988,10 @@ class ChatOptionsDialog(wx.Dialog):
 
     def options(self):
         """The ``chat_options.ChatOptions`` chosen (without ``fresh``)."""
-        from ..chat_options import ChatOptions, clean_instructions
+        from ..chat_options import MAX_INSTRUCTIONS, ChatOptions, clean_instructions
+        if len(self.instructions.GetValue().strip()) > MAX_INSTRUCTIONS:
+            self._feedback(f"Instructions are kept to their first {MAX_INSTRUCTIONS:,} "
+                           "characters.")
         agent = self._agent_values[max(0, self.agent.GetSelection())]
         style = self._style_values[max(0, self.style.GetSelection())]
         return ChatOptions(agent, clean_instructions(self.instructions.GetValue()), style)
