@@ -11,7 +11,7 @@ import pytest
 from thechatplace import claude_cli as cli
 from thechatplace import rewind
 from thechatplace.own_store import OwnSession, OwnSessionStore
-from thechatplace.transcript import ASSISTANT, USER, parse_lines
+from thechatplace.transcript import ASSISTANT, USER, ChatMessage, parse_lines
 
 from records import (assistant_block, lines, other, text_block, tool_result, tool_use_block,
                      user_text)
@@ -302,3 +302,17 @@ def test_pictures_are_left_out_of_the_draft_and_counted():
                       ).messages[0]
     assert rewind.draft_text(msg) == ("Look at this", 2)
     assert rewind.draft_text(message("Plain")) == ("Plain", 0)
+
+
+def test_files_a_subagent_changed_are_said_to_stay():
+    """Claude Code doesn't put back what a subagent wrote (checked with
+    2.1.296), so What Happens names those files as staying (#468)."""
+    from thechatplace.changes import FileEdit
+    plan = rewind.RewindPlan(chat_title="Fixes", message=ChatMessage(kind=USER, text="Go", turn=2),
+                             cut="c1",
+                             subagent_edits=[FileEdit(path="src/b.txt", tool="Write", turn=2,
+                                                      by="code-reviewer")])
+    said = plan.describe(rewind.FILES)
+    assert "1 file changed by subagents stay as they are" in said and "b.txt" in said
+    assert rewind.RewindPlan(chat_title="Fixes", message=ChatMessage(kind=USER, text="Go"),
+                             cut="c1").subagent_files_text() == ""

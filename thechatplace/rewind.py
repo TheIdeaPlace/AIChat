@@ -27,7 +27,7 @@ import os
 import subprocess
 import threading
 from dataclasses import dataclass, field
-from typing import Callable, Collection, List, Optional
+from typing import Callable, Collection, Iterable, List, Optional
 
 from . import platform_paths
 from .changes import FileEdit, by_file
@@ -65,6 +65,10 @@ class RewindPlan:
     cut: str
     #: Files Claude changed with its edit tools from this message on.
     edits: List[FileEdit] = field(default_factory=list)
+    #: Files its subagents changed from this message on (#468). Claude Code
+    #: doesn't put these back: checked with 2.1.296, a file a subagent
+    #: wrote stayed as it left it after --rewind-files.
+    subagent_edits: List[FileEdit] = field(default_factory=list)
     #: Why the files can't be put back, or "" when they can.
     files_problem: str = ""
     #: Why the conversation can't be branched, or "" when it can.
@@ -102,6 +106,17 @@ class RewindPlan:
                 f"{', '.join(names)}{more}. Changes made by commands it ran (a build, a "
                 "script) are never put back.")
 
+    def subagent_files_text(self) -> str:
+        """The files subagents changed, which stay as they are, or ""."""
+        files = by_file(self.subagent_edits)
+        if not files:
+            return ""
+        names = [os.path.basename(f.path.rstrip("\\/")) or f.path for f in files[:NAMED_FILES]]
+        more = f", and {len(files) - NAMED_FILES} more" if len(files) > NAMED_FILES else ""
+        count = len(files)
+        return (f"{count} file{'s' if count != 1 else ''} changed by subagents stay as they are, "
+                f"since Claude Code doesn't put those back: {', '.join(names)}{more}.")
+
     def describe(self, choice: str) -> str:
         """What ``choice`` will do, in words, for the dialog's read-only box."""
         said = first_line(self.message)
@@ -122,6 +137,8 @@ class RewindPlan:
             else:
                 parts.append("The files go back to how they were just before your message. "
                              + self.changed_files_text())
+                if self.subagent_files_text():
+                    parts.append(self.subagent_files_text())
                 if choice == FILES:
                     parts.append(f"The conversation in {self.chat_title} isn't changed.")
         elif self.files_problem:
@@ -174,7 +191,8 @@ def rewindable(message: Optional[ChatMessage]) -> bool:
 
 def plan_rewind(chat_title: str, transcript: Transcript, message: ChatMessage, *,
                 can_rewind_files: bool, files_reason: str = "",
-                conversation_reason: str = "") -> RewindPlan:
+                conversation_reason: str = "",
+                subagent_edits: Iterable[FileEdit] = ()) -> RewindPlan:
     """What Rewind to Here can do for ``message``. ``can_rewind_files``:
     the chat is one of The Chat Place's own and no turn is running in it
     (``files_reason`` says why not); ``conversation_reason`` says why the
@@ -191,6 +209,7 @@ def plan_rewind(chat_title: str, transcript: Transcript, message: ChatMessage, *
         files_problem = ""
     return RewindPlan(chat_title=chat_title, message=message, cut=message.parent_uuid,
                       edits=edits, files_problem=files_problem,
+                      subagent_edits=[e for e in subagent_edits if e.turn >= message.turn > 0],
                       conversation_problem=conversation_reason)
 
 

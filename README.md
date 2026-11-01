@@ -460,7 +460,8 @@ went back from is always kept as it was, in the list.
   Going back in the files puts back the files Claude changed with its edit tools since your
   message; you hear "Files in Fixes restored to how they were before your message …: 2 files",
   or why they couldn't be. Changes made by commands Claude ran (a build, a script) aren't put
-  back. It works only in Claude chats started here, and only for messages sent with this
+  back, and nor are files a subagent changed: Claude Code doesn't restore those, and What Happens
+  names them. It works only in Claude chats started here, and only for messages sent with this
   version or later, which keep the copies it needs; for other chats and older messages the
   choice says "(unavailable)", and What Happens says why. It isn't available while Claude is
   working in the chat, and the chat waits for it to finish before it sends anything.

@@ -145,7 +145,8 @@ class RewindChats:
             return
         plan = rewind.plan_rewind(info.title, self._reader.transcript, message,
                                   can_rewind_files=self._can_rewind_files(info),
-                                  files_reason=self._files_reason(info))
+                                  files_reason=self._files_reason(info),
+                                  subagent_edits=self._subagent_edits())
         focus = wx.Window.FindFocus()
         dialog = RewindDialog(self, plan)
         try:
