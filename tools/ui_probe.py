@@ -1685,6 +1685,38 @@ def d_usage(frame, env):
     return frame.on_usage
 
 
+def d_usage_breakdown(frame, env):
+    """Usage and Context with what fills the context (#468), as Claude Code
+    answered get_context_usage at the end of the latest turn."""
+    _open(frame, "Visual probe")
+    session_id = frame._open.cli_session_id
+    frame._context_usage = {**frame._context_usage, session_id: {"categories": [
+        {"name": "System prompt", "tokens": 3183, "kind": "used"},
+        {"name": "System tools", "tokens": 8019, "kind": "used"},
+        {"name": "MCP tools (deferred)", "tokens": 30577, "isDeferred": True, "kind": "deferred"},
+        {"name": "Memory files", "tokens": 1279, "kind": "used"},
+        {"name": "Skills", "tokens": 9056, "kind": "used"},
+        {"name": "Messages", "tokens": 14431, "kind": "used"},
+        {"name": "Autocompact buffer", "tokens": 33000, "kind": "buffer"},
+        {"name": "Free space", "tokens": 927833, "kind": "free"}]}}
+    return frame.on_usage
+
+
+def d_stop_background_task(frame, env):
+    """File, Stop Background Task (#468): the running background work of a
+    turn, as main_frame builds the list, the longer description first."""
+    from thechatplace import live_turn
+    from thechatplace.ui.dialogs import single_choice_dialog
+    entries = [{"description": "Run the synthetic probe project's full Windows build and tests",
+                "since": 0.0},
+               {"description": "Watch CI", "since": 125.0}]
+    dialog = single_choice_dialog(frame, "Background work in Visual probe. Stop which?",
+                                  "Stop Background Task",
+                                  [live_turn.background_choice(e, 190.0) for e in entries])
+    dialog.SetSelection(0)
+    return lambda: frame._modal(dialog)
+
+
 def d_usage_codex(frame, env):
     from thechatplace.ui.dialogs import UsageDialog
     from thechatplace.providers.codex_usage import usage_lines
@@ -1953,6 +1985,10 @@ SURFACES = {
     "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "View, Tasks: owned Codex chat with no tasks"),
     "properties-codex-tasks": ("dialog", d_properties_codex_tasks, "Codex Properties with live task progress"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
+    "usage-breakdown": ("dialog", d_usage_breakdown,
+                        "Usage and Context with what fills a Claude chat's context"),
+    "stop-background-task": ("dialog", d_stop_background_task,
+                             "File, Stop Background Task: two tasks running"),
     "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
     "properties": ("dialog", d_properties, "View, Properties of a session"),
     "properties-codex": ("dialog", d_properties_codex,
@@ -2054,6 +2090,8 @@ DIALOG_CLASSES = {
     "lists-codex-owned-no-tasks": "ListsDialog",
     "properties-codex-tasks": "PropertiesDialog",
     "usage": "UsageDialog",
+    "usage-breakdown": "UsageDialog",
+    "stop-background-task": "SingleChoiceDialog",
     "usage-codex": "UsageDialog",
     "properties": "PropertiesDialog",
     "properties-codex": "PropertiesDialog",

@@ -54,8 +54,9 @@ def text_block(text) -> dict:
     return {"type": "text", "text": text}
 
 
-def thinking_block() -> dict:
-    return {"type": "thinking", "thinking": "", "signature": "abc"}
+def thinking_block(text="") -> dict:
+    """Most real thinking blocks are empty with a signature; some carry text."""
+    return {"type": "thinking", "thinking": text, "signature": "abc"}
 
 
 def tool_use_block(name, tool_input, tool_id="toolu_1") -> dict:

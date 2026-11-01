@@ -165,6 +165,13 @@ STEPS = [
     Step("Space chooses the chat", ["space"], expect=["Export", "1 of"]),
     Step("Export Chats closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # File, Stop Background Task (#468), opened by the trigger once the open
+    # chat's turn has background work: the item has no access key.
+    Step("Stop Background Task", [], trigger="background",
+         expect=["Stop Background Task", "Windows build, running"]),
+    Step("the next task", ["Down"], expect=["Watch CI"]),
+    Step("Stop Background Task closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     # Subagents (#468): "Fix the flaky upload test" has two, a code-reviewer
     # that finished and an Explore at work. View, Subagents opens Lists on
     # them, newest first; Enter reads one's conversation, and Escape goes
@@ -220,7 +227,8 @@ def serve(root: Path) -> int:
 
     def watch(_event):
         # A step's trigger: check writes ROOT/<name>.trigger before its keys.
-        for name, action in (("question", ask_question), ("elicitation", ask_elicitation)):
+        for name, action in (("question", ask_question), ("elicitation", ask_elicitation),
+                             ("background", stop_background_task)):
             trigger = root / f"{name}.trigger"
             if trigger.exists():
                 trigger.unlink()
@@ -268,6 +276,21 @@ def ask_elicitation(frame) -> None:
     request = elicitation_from("e1", ELICITATION)
     frame._on_turn_event({"id": "own-1"}, "Visual probe",
                          TurnEvent("permission", text=request.summary(), request=request))
+
+
+def stop_background_task(frame) -> None:
+    """The probe's own session's turn, with two background tasks running,
+    and File, Stop Background Task opened on it (#468)."""
+    import wx
+    import fake_env
+    frame._pending.clear()
+    runner = fake_env.FakeRunner([], "", "", None)
+    runner.background_entries = [{"task_id": "b1", "description": "Windows build", "since": 0.0},
+                                 {"task_id": "b2", "description": "Watch CI", "since": 60.0}]
+    runner.background_tasks = ["Windows build", "Watch CI"]
+    frame._runners["own-1"] = runner
+    frame._update_send_state()
+    wx.CallAfter(frame.on_stop_background_task)
 
 
 # -- Orca -----------------------------------------------------------------------------------

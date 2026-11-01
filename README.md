@@ -177,7 +177,9 @@ too).
   saved list. Question cards read as
   "Claude asked: Which version?" with the options in the full text,
   then "You answered: ...". Refused tools read "Permission denied: ...". Tool calls and tool
-  results are hidden unless you turn on Show Tool Activity (Ctrl+T). It's set for each session and
+  results are hidden unless you turn on Show Tool Activity (Ctrl+T); so is Claude's thinking,
+  where Claude Code kept its text ("Claude, thinking: …"; most thinking is kept without text). Thinking
+  is never spoken as it happens and never counts as Claude's reply or the Last message. It's set for each session and
   remembered, so turning it on for one session leaves the others as they were. With it on, the open session's
   tool calls are also **spoken as they happen**, so a long turn isn't silent: "Using Bash: git
   status; Read: main.py." In The Chat Place's own sessions, what Claude writes between tool calls
@@ -315,12 +317,18 @@ too).
   mode The Chat Place uses, Claude Code does that without asking. So if a turn would run on
   Fable anyway (Claude Code's own default, or a fallback), The Chat Place stops it before
   anything is sent and says why. **File, Change Model** changes a session's model from its
-  next turn. **Effort** is Default (your Claude Code setting), Low, Medium, High, Extra high or
+  next turn, and a running turn's too (below). **Effort** is Default (your Claude Code setting), Low, Medium, High, Extra high or
   Max, passed to every turn as Claude Code's `--effort`; models that don't support effort levels
   ignore it. **File, Change Effort** (Alt+F, F) and **File, Change Permission Mode**
   (Ctrl+Shift+O) change them from the next turn: the list starts on the current choice, marked
-  "(now)", and you hear, for example, "Permission mode for Build: plan, from its next turn." A
-  turn that's running carries on as it started. The session's heading says its model, and its
+  "(now)", and you hear, for example, "Permission mode for Build: plan, from its next turn." While
+  a turn runs, Change Model and Change Permission Mode change it too (Claude Code's `set_model` and
+  `set_permission_mode` control requests), and you hear "…, now and for later turns."; if Claude
+  Code refuses, or doesn't answer within 10 seconds, the turn carries on as it started and you hear
+  "from its next turn" as before. A live model change never goes to a model that resolves to
+  Fable. Change Effort always waits for the next turn. When Claude itself changes the mode (it
+  enters plan mode, or a plan is approved), the chat keeps that mode for later turns, and
+  approving a plan Claude entered by itself starts on the mode the chat had before. The session's heading says its model, and its
   effort and mode when they aren't the defaults ("on Opus at high effort, plan mode"). For desktop app and terminal sessions these are set
   in Claude or the terminal, and the items say so. If that first message never reaches Claude (Claude Code not signed in, say), it goes
   back into the reply box and Send starts the session again.
@@ -899,7 +907,12 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   It's said once, unasked, when the loaded session's context passes 80%, when a limit passes
   90% or is reached, and when Claude Code compacts a conversation (the messages list shows
   "Conversation compacted" too). A turn that fails on a usage limit says so in plain words,
-  with when it resets.
+  with when it resets. For a Claude chat started here, lines after the context line say what
+  fills it, as Claude Code reported when the chat's latest turn in this run of The Chat Place
+  ended ("System prompt: 2,362 tokens", "MCP tools: 608 tokens (loaded when needed)", "Skills:
+  9,056 tokens", "Messages: …", "Free space: …"). The turn asks Claude Code for them
+  (`get_context_usage`) as it ends, waiting at most a second and a half; if Claude Code doesn't
+  answer, the lines are left out.
   For a Codex chat, the same command reads current ChatGPT account limits in the
   background, including used and remaining percentages and reported reset times.
   Limits are shared across your Codex chats. Missing values are shown as not reported.
@@ -913,7 +926,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   stay not reported; The Chat Place never substitutes Claude's counts or model defaults.
 - **Turn Status** (Ctrl+Shift+T) says how long the provider has been working on the current turn and
   what it last did, and how far along the loaded chat's task list is when available. For Claude
-  chats, it also reports background work still running. There's no
+  chats, it also reports background work still running, and whether Claude Code is retrying a
+  request ("Claude is retrying: the service is overloaded, attempt 2 of 10."). There's no
   time limit on a turn; Stop (Ctrl+Period) ends it, along with anything it started, such as a
   build.
 - **Properties** (Alt+Enter, View menu, or the session's and the message's context menus; Option+Return
@@ -1564,6 +1578,22 @@ still running. (A background agent is different: Claude Code keeps working until
 so the turn simply runs until then and its answer is said at the end, as with any turn.)
 Something meant to run indefinitely, such as a development server, would keep the turn open until
 you press Stop, so ask Claude to start long-running servers in a terminal of your own.
+**File, Stop Background Task** ends one of them and keeps the turn: it's available while the
+loaded Claude chat has background work, lists each piece with how long it has run ("Windows
+build, running 3 minutes"), asks Yes or No (No first) naming the one chosen, and says "Stopped
+Windows build." It sends Claude Code's `stop_task` with the task's id from
+`background_tasks_changed`; checked with Claude Code 2.1.296, the task ends at once and the rest
+keep running. If it was the last and Claude had already answered, the turn ends as it would when
+the work finished.
+
+While a turn runs, Claude Code's own reports are said too. A request it retries (`api_retry`)
+goes on the status bar each time and is said, without cutting off the screen reader, on the
+first retry of a turn and then at most every 30 seconds: "Claude is retrying: the service is
+overloaded. Attempt 2 of 10, next in 8 seconds." A move to the fallback model
+(`model_fallback`) is said: "Claude switched to Sonnet 5.5 because Opus 5.5 was overloaded." A
+fallback, or any reply, on Fable that wasn't chosen stops the turn as at its start. A saved
+memory (`memory_saved`) is said at the Full announcement level ("Claude saved a memory: build
+steps") and is on the status bar otherwise.
 `claude` is started suspended and only let run once it's in the job, so nothing it starts can
 slip out first.
 

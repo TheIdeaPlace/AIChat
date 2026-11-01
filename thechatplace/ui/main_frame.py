@@ -107,6 +107,7 @@ from .. import rewind
 from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
 from .subagent_host import SubagentsHost
+from .live_turns import LiveTurns
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions
@@ -214,7 +215,8 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
-class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost, wx.Frame):
+class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost,
+                LiveTurns, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -610,6 +612,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Steer (#238, #239): a reply-box key too, so in the label only.
         self._item(session, f"Steer: Send into the Running Turn ({key_name('Ctrl+Alt+Enter')})",
                    lambda e: self.on_steer())
+        # One background task ended, the turn kept (#468). Every letter is
+        # another item's access key; enabled while there's work to stop.
+        self.stop_background_item = self._item(session, "Stop Background Task...",
+                                               lambda e: self.on_stop_background_task())
+        self.stop_background_item.Enable(False)
         session.AppendSeparator()
         self._item(session, "Add to &Group...\tCtrl+G", lambda e: self.on_add_to_group())
         self._item(session, "Remove from Gro&up...", lambda e: self.on_remove_from_group())
@@ -3234,6 +3241,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _update_send_state(self):
         info = self._open
+        item = getattr(self, "stop_background_item", None)
+        if item is not None:
+            item.Enable(bool(self._background_entries(info)))  # (#468)
         if info is not None and info.provider == AGENTS:
             self.send_btn.Enable(True)
             self.stop_btn.Enable(True)
@@ -3360,6 +3370,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._open is not None:
             context = (self._open.title, *self._context(self._open))
         lines = usage.usage_lines(context, self._limits)
+        # What fills it, after the context line (#468).
+        lines[1:1] = self._context_breakdown(self._open)
         self._modal(UsageDialog(self, lines, self._copy_usage))
 
     def _copy_usage(self, text: str, one_line: bool):
@@ -3919,8 +3931,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return ()
 
     def on_change_model(self):
-        """File, Change Model: the model for this session's next turns. A
-        session's model goes with every turn, so it can change at any time."""
+        """File, Change Model: the model for this session's next turns, and
+        the running turn's if Claude Code takes it (#468). A session's model
+        goes with every turn, so it can change at any time."""
         selected = self._selected_session()
         if selected is not None and selected.provider == "copilot":
             self._change_copilot_model(selected)
@@ -3939,7 +3952,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not self._store_write(self.store.update, own.cli_session_id, model=model):
             return
         self._update_heading()
-        self._feedback(f"{info.title} now uses {model_label(model)}, from its next turn.")
+        # A running turn changes model too, if Claude Code takes it (#468).
+        self._live_change(info, own, lambda runner, done: runner.set_model(model, done),
+                          f"{info.title} now uses {model_label(model)}, now and for later turns.",
+                          f"{info.title} now uses {model_label(model)}, "
+                          f"{self._from_next_turn(own)}.",
+                          f"{info.title} now uses {model_label(model)}, from its next turn.")
 
     def on_change_permission_mode(self, info: Optional[SessionInfo] = None):
         """File, Change Permission Mode (Ctrl+Shift+O, #189): the mode this
@@ -3967,9 +3985,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         if not self._store_write(self.store.update, own.cli_session_id, permission_mode=mode):
             return
+        self._forget_mode_before_plan(own.cli_session_id)  # your choice now (#468)
         self._update_heading()
-        self._feedback(f"Permission mode for {info.title}: {mode_label(mode)}, "
-                       f"{self._from_next_turn(own)}.")
+        # A running turn switches too, if Claude Code takes it (#468).
+        self._live_change(info, own,
+                          lambda runner, done: runner.set_permission_mode(mode, done),
+                          f"Permission mode for {info.title}: {mode_label(mode)}, now and for "
+                          "later turns.",
+                          f"Permission mode for {info.title}: {mode_label(mode)}, "
+                          f"{self._from_next_turn(own)}.",
+                          f"Permission mode for {info.title}: {mode_label(mode)}, from its "
+                          "next turn.")
 
     def on_chat_permissions(self):
         """File, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission
@@ -4157,7 +4183,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             waiting = f"{self._queued_words(count)} " if count else ""
             waiting += self._steering_words(len(getattr(runner, "steering", ())))
             self._feedback(f"{info.title}: {waiting}Claude has been working for "
-                           f"{describe_elapsed(runner.elapsed())}, last {runner.last_activity}.{tasks}")
+                           f"{describe_elapsed(runner.elapsed())}, last {runner.last_activity}."
+                           f"{self._retry_words(runner)}{tasks}")
             return
         # Not running here: a desktop app session at work says where it is;
         # an idle one only if its list is unfinished and from its latest
@@ -4257,6 +4284,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # It starts on the mode chosen for the session (Change
             # Permission Mode, #189), unless that's plan itself.
             stored = normalize_permission_mode(own.permission_mode) if own is not None else ""
+            if own is not None:
+                # Claude entered plan mode itself: the mode before it (#468).
+                stored = self._mode_to_offer_after_plan(own.cli_session_id, stored)
             dialog = PlanDialog(self, title, request, modes,
                                 stored if stored in dict(modes) else "acceptEdits")
             try:
@@ -4909,7 +4939,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                             remote_control=remote, task_list=self.speech.task_list,
                             mcp_config=self._session_tools_config(session_id),
                             # Tools turned off for this chat (#468).
-                            disabled_mcp=list(own.disabled_mcp) if own is not None else [])
+                            disabled_mcp=list(own.disabled_mcp) if own is not None else [],
+                            context_usage=True)  # for Usage and Context (#468)
         # What you typed and attached, to give back if the turn never starts.
         runner.typed = spoken if spoken is not None else prompt
         runner.attached = list(attached or [])
@@ -4992,6 +5023,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         is_open_now = (self._open is not None and self._open.provider == "claude"
                        and self._open.cli_session_id == session_id)
+        if self._live_turn_event(session_id, title, event, is_open_now):
+            return  # retries, fallbacks, memories, mode and context (#468)
         if event.kind == "edited":
             # An agent conversation passes the files it edited on (phase 3).
             self._agent_tool_used("claude", session_id, (event.data or {}).get("file_path", ""))

@@ -1575,12 +1575,16 @@ def test_the_parser_reads_the_background_task_list():
     parser = StreamParser()
     [event] = parser.feed(_tasks("Windows build", "Watch CI"))
     assert event.kind == "background"
-    assert event.data == {"tasks": ["Windows build", "Watch CI"]}
-    assert parser.feed(_tasks())[0].data == {"tasks": []}
+    assert event.data["tasks"] == ["Windows build", "Watch CI"]
+    # With each one's id, for Stop Background Task (#468).
+    assert event.data["entries"] == [
+        {"task_id": "b0", "description": "Windows build", "task_type": "local_bash"},
+        {"task_id": "b1", "description": "Watch CI", "task_type": "local_bash"}]
+    assert parser.feed(_tasks())[0].data == {"tasks": [], "entries": []}
     odd = ev(type="system", subtype="background_tasks_changed", tasks=[{}, "x"])
-    assert parser.feed(odd)[0].data == {"tasks": ["a background task"]}
+    assert parser.feed(odd)[0].data["tasks"] == ["a background task"]
     assert parser.feed(ev(type="system", subtype="background_tasks_changed"))[0].data == \
-        {"tasks": []}
+        {"tasks": [], "entries": []}
 
 
 def test_ambient_background_tasks_arent_work():
@@ -1590,10 +1594,10 @@ def test_ambient_background_tasks_arent_work():
     event = ev(type="system", subtype="background_tasks_changed", tasks=[
         {"task_id": "w", "task_type": "monitor", "description": "Watch PR", "ambient": True},
         {"task_id": "b", "task_type": "local_bash", "description": "Build"}])
-    assert parser.feed(event)[0].data == {"tasks": ["Build"]}
+    assert parser.feed(event)[0].data["tasks"] == ["Build"]
     only_ambient = ev(type="system", subtype="background_tasks_changed", tasks=[
         {"task_id": "w", "description": "Watch PR", "ambient": True}])
-    assert parser.feed(only_ambient)[0].data == {"tasks": []}
+    assert parser.feed(only_ambient)[0].data["tasks"] == []
 
 
 def test_background_work_keeps_the_turn_open_until_claude_carries_on(tmp_path):
