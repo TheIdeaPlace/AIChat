@@ -2192,6 +2192,28 @@ def start_copilot_acp(executable: Optional[str] = None,
     return owned
 
 
+def start_copilot_sdk(executable: Optional[str] = None) -> CodexServerProcess:
+    """Start Copilot CLI's SDK server for read-only account usage queries."""
+    import subprocess
+
+    executable = executable or find_copilot()
+    if not executable or not _native_codex(executable):
+        raise OSError(COPILOT_MISSING)
+    tree = ProcessTree()
+    process = subprocess.Popen(
+        [executable, "--headless", "--no-auto-update", "--stdio", "--log-level", "error",
+         "--disable-client-telemetry"],
+        env=copilot_child_environment(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+    owned = CodexServerProcess(process, tree)
+    try:
+        tree.attach(process)
+    except Exception:
+        owned.close()
+        raise
+    return owned
+
+
 # -- Linux desktop entry -------------------------------------------------------------------
 #
 # An AppImage is a single file that the desktop knows nothing about. Its

@@ -1406,6 +1406,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Export Chats, choosing chats and a format"
+  },
+  "usage-copilot": {
+   "kind": "dialog",
+   "png": "usage-copilot-light-100.png",
+   "json": "usage-copilot-light-100.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot account allowances and reset reports"
   }
  },
  "seconds": 94.1

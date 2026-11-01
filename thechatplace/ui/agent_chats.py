@@ -30,13 +30,13 @@ from .dialogs import AgentConversationDialog, RelayDialog
 
 #: The first of Codex's account usage lines (codex_usage.usage_lines).
 CODEX_ACCOUNT_LINE = "Codex account usage is shared"
-#: Copilot's line about the plan's allowance (copilot.usage_lines).
-COPILOT_PLAN_LINE = "Copilot doesn't say how many premium requests"
+#: Copilot's first account-wide usage line (copilot.usage_lines).
+COPILOT_ACCOUNT_LINE = "Copilot account usage is shared"
 #: For each runtime provider, the first of its usage lines that are about
 #: the account, not the chat (listed once in a conversation's usage, not
 #: under each member), and how they're labelled there.
 ACCOUNT_LINES = {"codex": (CODEX_ACCOUNT_LINE, "Codex account: "),
-                 "copilot": (COPILOT_PLAN_LINE, "")}
+                 "copilot": (COPILOT_ACCOUNT_LINE, "Copilot account: ")}
 
 
 class AgentChats:
