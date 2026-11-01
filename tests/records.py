@@ -107,3 +107,63 @@ def task_update(task_id, tool_id, **changes):
     return [assistant_block(tool_use_block("TaskUpdate", tool_input, tool_id),
                             message_id=f"msg_{tool_id}"),
             tool_result(tool_id, f"Updated task #{task_id} status", toolUseResult=result)]
+
+
+# -- subagents (#468) --------------------------------------------------------------------------
+
+
+def agent_call(tool_id, agent_type, description, prompt, background=False, **extra):
+    """Claude handing work to a subagent: an Agent tool call."""
+    tool_input = {"description": description, "prompt": prompt, "subagent_type": agent_type}
+    if background:
+        tool_input["run_in_background"] = True
+    return assistant_block(tool_use_block("Agent", tool_input, tool_id),
+                           message_id=f"msg_{tool_id}", **extra)
+
+
+def agent_completed(tool_id, agent_id, report, agent_type="general-purpose", **extra):
+    """The result of an Agent call Claude waited for, as Claude Code 2.1.296
+    writes it: the report as content blocks, then the id and usage lines."""
+    text = f"{report}\nagentId: {agent_id} (use SendMessage to continue)\n<usage>total_tokens: 10</usage>"
+    return tool_result(tool_id, [text_block(text)], toolUseResult={
+        "status": "completed", "agentId": agent_id, "agentType": agent_type,
+        "content": [text_block(report)], "totalDurationMs": 1000, "totalToolUseCount": 2},
+        **extra)
+
+
+def agent_launched(tool_id, agent_id):
+    """The result of an Agent call sent to the background."""
+    return tool_result(tool_id, [text_block(
+        f"Async agent launched successfully.\nagentId: {agent_id} (internal ID)")],
+        toolUseResult={"status": "async_launched", "agentId": agent_id, "isAsync": True})
+
+
+def task_notification(task_id, status, result="", tool_id="", summary="Agent finished", **extra):
+    """A background task ending, as the parent's transcript records it."""
+    parts = [f"<task-id>{task_id}</task-id>"]
+    if tool_id:
+        parts.append(f"<tool-use-id>{tool_id}</tool-use-id>")
+    parts += [f"<status>{status}</status>", f"<summary>{summary}</summary>"]
+    if result:
+        parts.append(f"<result>{result}</result>")
+    return user_text("<task-notification>\n" + "\n".join(parts) + "\n</task-notification>", **extra)
+
+
+def handback_attachment(agent_id, name="code-reviewer"):
+    """A subagent's report reaching its session while Claude is working."""
+    return _base("attachment", attachment={
+        "type": "queued_command", "commandMode": "prompt",
+        "prompt": f'<agent-message from="{agent_id}">\n[Subagent hand-back] Report.',
+        "origin": {"kind": "peer", "from": agent_id, "senderTaskId": agent_id,
+                   "name": name, "body": "[Subagent hand-back] Report.", "handback": True}})
+
+
+def sidechain(record, agent_id):
+    """``record`` as a subagent's own transcript has it."""
+    return {**record, "isSidechain": True, "agentId": agent_id}
+
+
+def handback(message, tool_id="toolu_hb", **extra):
+    """A background subagent's last call: its final report."""
+    return assistant_block(tool_use_block("SubagentHandback", {"message": message}, tool_id),
+                           message_id=f"msg_{tool_id}", **extra)

@@ -4014,6 +4014,11 @@ class ListsPage(wx.Panel):
         if category == lists.LINKS:
             self.open_btn = wx.Button(self, label="&Open")
             self.open_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected())
+        if category == lists.SUBAGENTS:
+            # A subagent's conversation, to read like a chat (#468). It sits
+            # where Links has Open: what Enter does comes first.
+            self.open_btn = wx.Button(self, label="&Read Conversation")
+            self.open_btn.Bind(wx.EVT_BUTTON, lambda e: self.read_conversation())
         self.copy_btn = wx.Button(self, label="&Copy")
         self.copy_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected())
         if category == lists.LINKS:
@@ -4069,16 +4074,47 @@ class ListsPage(wx.Panel):
         for button in (self.copy_btn, self.open_btn, self.markdown_btn):
             if button is not None:
                 button.Enable(item is not None)
+        if self.category == lists.SUBAGENTS and self.open_btn is not None:
+            self.open_btn.Enable(item is not None and item.subagent is not None
+                                 and item.subagent.path is not None)
 
     def activate(self):
-        """Enter: a link opens; anything else is read in full."""
+        """Enter: a link opens, a subagent's conversation opens (#468), as
+        Open and Read Conversation do; anything else is read in full."""
         item = self.selected()
         if item is None:
             return
         if self.category == lists.LINKS:
             self.open_selected()
+        elif self.category == lists.SUBAGENTS:
+            self.read_conversation()
         else:
             self.detail.SetFocus()
+
+    def read_conversation(self):
+        """The selected subagent's conversation, over Lists (#468); closing
+        it comes back here, on the same subagent."""
+        item = self.selected()
+        if item is None or item.subagent is None:
+            self.owner.feedback(f"No {lists.NOUNS[self.category]} match." if self.items
+                                else lists.empty_text(self.category, self.owner.scope))
+            return
+        if item.subagent.path is None:
+            self.owner.feedback(f"{item.subagent.name}'s conversation isn't on disk.")
+            return
+        if self.owner.open_subagent is None:
+            return
+        chosen = item.subagent.agent_id
+        self.owner.open_subagent(item.subagent, self.owner)
+        if not self:
+            return
+        # It may have finished meanwhile: its row says how it stands now.
+        self.owner.rebuild(self.category)
+        rows = [i.subagent.agent_id if i.subagent else None for i in self.shown]
+        if chosen in rows:
+            self.list.SetSelection(rows.index(chosen))
+            self.show_selected()
+        self.list.SetFocus()
 
     def open_selected(self):
         item = self.selected()
@@ -4136,7 +4172,8 @@ class ListsPage(wx.Panel):
 
 class ListsDialog(wx.Dialog):
     """View, Lists (Ctrl+Shift+I, #279): everything of one kind in a chat:
-    Code Blocks, Links, Changed Files, Commands and Decisions.
+    Code Blocks, Links, Changed Files, Commands, Decisions, Tasks and
+    Subagents (#468).
 
     The kinds are a list of their own at the top, each with its count, so
     Tab and Shift+Tab always reach it on Windows and on a Mac (a native tab
@@ -4144,17 +4181,19 @@ class ListsDialog(wx.Dialog):
     below; Enter goes to its list. From anywhere in the dialog, the next or
     previous kind is Ctrl+Tab / Ctrl+Shift+Tab or Ctrl+Page Down / Page Up
     on Windows, and Cmd+Shift+] / Cmd+Shift+[ or Cmd+Page Down / Page Up on a
-    Mac; on Windows, Ctrl+1 to Ctrl+6 go straight to one. Each leaves you on
+    Mac; on Windows, Ctrl+1 to Ctrl+7 go straight to one. Each leaves you on
     that kind's list.
 
     "Show items from" chooses this message or the whole chat.
     ``build(category, scope)`` gives a kind's ``lists.ListItem`` list. A link
     chosen with Open is in ``chosen_link`` once the dialog has closed.
+    ``open_subagent(subagent, parent)`` shows a subagent's conversation over
+    the dialog (#468).
     """
 
     def __init__(self, parent, title: str, build, copy, feedback,
                  category: str = lists.CODE, scope: str = lists.SCOPE_CHAT,
-                 unavailable=None):
+                 unavailable=None, open_subagent=None):
         super().__init__(parent, title=f"Lists: {title}", size=dialog_size(parent, 820, 660),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._build = build
@@ -4163,6 +4202,7 @@ class ListsDialog(wx.Dialog):
         self.unavailable = dict(unavailable or {})
         self.copy = copy  # (text) -> bool
         self.feedback = feedback
+        self.open_subagent = open_subagent
         self.chosen_link = None
         self._built = {}  # (kind, scope) -> its items
         #: Which platform's keys switch kinds (tests choose either).
@@ -4237,6 +4277,14 @@ class ListsDialog(wx.Dialog):
             page.fill(self._built[key])
         self._label_kinds()
 
+    def rebuild(self, category: str):
+        """Build one kind again, for the current scope, keeping its filter."""
+        for page in self.pages:
+            if page.category == category:
+                self._built[(category, self.scope)] = self._build(category, self.scope)
+                page.fill(self._built[(category, self.scope)])
+        self._label_kinds()
+
     def _label_kinds(self):
         for index, page in enumerate(self.pages):
             if page.category in self.unavailable and not page.items:
@@ -4307,7 +4355,7 @@ class ListsDialog(wx.Dialog):
             return ("by", 1)
         if command and event.ShiftDown() and key in (ord("["), ord("{")):
             return ("by", -1)
-        # Ctrl+1 to Ctrl+6 jump to a kind on Windows. On a Mac, Cmd+1 to
+        # Ctrl+1 to Ctrl+7 jump to a kind on Windows. On a Mac, Cmd+1 to
         # Cmd+3 are the main window's Go To keys, and the menu bar takes
         # them before the dialog (real keys, #282), so none are used there.
         if ((platform or sys.platform) != "darwin" and command and not event.ShiftDown()

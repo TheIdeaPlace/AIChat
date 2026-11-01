@@ -78,11 +78,14 @@ def saved_rule_lines(count=None, error='', *, pending=False):
 def session_properties(info: SessionInfo, transcript: Optional[Transcript] = None,
                        transcript_path: Optional[str] = None, transcript_size: int = 0,
                        own=None, reported_window: int = 0,
-                       now_ms: Optional[int] = None, read_error: str = "", saved_rule_count=None) -> List[str]:
+                       now_ms: Optional[int] = None, read_error: str = "", saved_rule_count=None,
+                       subagent_count: Optional[int] = None) -> List[str]:
     """The session's properties. ``transcript`` is None when it isn't on
     disk, or couldn't be read (``read_error`` says why); ``own`` is its
     ``OwnSession`` for one of The Chat Place's own; ``reported_window`` the
-    context window Claude Code reported for its model, 0 if none."""
+    context window Claude Code reported for its model, 0 if none;
+    ``subagent_count`` how many subagents' transcripts it has (#468), None
+    when that isn't known."""
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     # A restored chat (#436) or an agent conversation names its AI here.
     name = info.provider_label or info.provider.capitalize()
@@ -130,6 +133,8 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"{name}'s replies: "
                      f"{sum(1 for m in conversation if m.kind == ASSISTANT):,}")
         lines.append(f"Tool calls: {sum(1 for m in transcript.messages if m.kind == TOOL):,}")
+        if subagent_count is not None:
+            lines.append(f"Subagents: {subagent_count:,}")
         lines.append(f"Links: {len(find_links(conversation)):,}")
         blocks = sum(len(find_code_blocks(m.text)) for m in conversation)
         lines.append(f"Code blocks: {blocks:,}")

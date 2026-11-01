@@ -235,8 +235,8 @@ Other things you can do with a message:
 - **Ctrl+C** copies the whole message.
 - **Ctrl+Shift+B** lists the message's code blocks, by language and size, with each one's code to
   read and copy. **Ctrl+Shift+C** copies the last code block at once.
-- **Ctrl+Shift+I** lists code blocks, links, changed files, commands, decisions and tasks, for this
-  message or the whole chat, and **Ctrl+L** goes straight to its links: see "Lists" below.
+- **Ctrl+Shift+I** lists code blocks, links, changed files, commands, decisions, tasks and
+  subagents, for this message or the whole chat, and **Ctrl+L** goes straight to its links: see "Lists" below.
   **Ctrl+F** and **Ctrl+Shift+S** find text in this chat or in all of them: see "Finding
   things" below.
 - The Applications key (or Shift+F10) opens the message's menu.
@@ -362,15 +362,20 @@ session list, the messages or the reply box:
 - **Decisions** (Claude chats): each question Claude asked you, with your answer.
 - **Tasks** (Claude chats, and Codex chats started here): the task list, each step with "to do",
   "in progress" or "done" (see "The task list" above).
+- **Subagents** (Claude chats): the work Claude handed to a subagent (code-reviewer, Explore or one
+  of your own), newest first: "code-reviewer: Review the branch. Done, 34 messages, 12 tool calls,
+  4 minutes". One still working says "Running" and how long so far; one that ended early says
+  "Failed" or "Stopped". Its details are the prompt Claude gave it and its final report. **Enter**
+  (or **Read Conversation**, Alt+R) opens its conversation (see "Subagent conversations" below).
 
 Code Blocks and Links work in every chat. A kind that isn't available for a chat's provider says
 so, such as "Commands aren't listed for Codex chats yet."
 
 **Show items from** (Alt+S) chooses **This message** or **The whole chat**. For code blocks and
-links, "this message" is the selected message. For files, commands, decisions and tasks, it's the
-selected message's turn: from your message to the AI's reply (for tasks, the steps added or
-changed in it). Links, commands and decisions list the newest first; code blocks and files are
-in the order they appear.
+links, "this message" is the selected message. For files, commands, decisions, tasks and
+subagents, it's the selected message's turn: from your message to the AI's reply (for tasks, the
+steps added or changed in it). Links, commands, decisions and subagents list the newest first;
+code blocks and files are in the order they appear.
 
 The kinds are a list of their own, **Kinds** (Alt+K), above the items, each with how many it
 has: "Commands (12)". Tab and Shift+Tab reach it like any other list. Arrow through it and the
@@ -382,23 +387,27 @@ these change the kind and leave you on its list:
   **Cmd+Page Down** and **Cmd+Page Up** (with fn on a laptop). Control+Tab is left to macOS, which
   uses it to move between groups of controls. On keyboard layouts where ] and [ need Option, use
   Cmd+Page Down and Page Up.
-- **On Windows, Ctrl+1** to **Ctrl+6** go straight to Code Blocks, Links, Changed Files, Commands,
-  Decisions or Tasks. (On a Mac, Cmd+1 to Cmd+3 stay the main window's Go To keys.)
+- **On Windows, Ctrl+1** to **Ctrl+7** go straight to Code Blocks, Links, Changed Files, Commands,
+  Decisions, Tasks or Subagents. (On a Mac, Cmd+1 to Cmd+3 stay the main window's Go To keys.)
 
 Lists opens on the kind you used last. Some keys open it on their own kind:
 
 - **Ctrl+Shift+B** in the messages: Code Blocks, for the selected message.
 - **Ctrl+L** (View, Links): Links, for the whole chat.
 - **Ctrl+Shift+J** (View, Tasks): Tasks, for the whole chat.
+- **View, Subagents** (Alt+V, G): Subagents, for the whole chat. In the messages, the context menu
+  (Applications key) of a turn that used subagents, on Claude's reply or its Agent tool call, has
+  **Subagent Conversations**: Subagents, for that turn.
 - **Ctrl+Shift+D** (View, Changed Files): Changed Files, for the selected message's turn (your
   latest message's, if none is selected) if it changed any files, otherwise for the whole chat.
 
 For every kind:
 
 - **Enter** reads the item in full in the Details box below the list. For links, Enter (or
-  Open) opens the link in your browser and closes Lists.
+  Open) opens the link in your browser and closes Lists. For subagents, Enter (or Read
+  Conversation) opens the subagent's conversation over Lists.
 - **Ctrl+C** (or Copy) copies the item: the code, the link's address, the file's path, the
-  command, or your answer. You hear what was copied. For links, **Ctrl+Shift+C** (or Copy as
+  command, your answer, or a subagent's final report. You hear what was copied. For links, **Ctrl+Shift+C** (or Copy as
   Markdown) copies a Markdown link.
 - **Type** to narrow the list: the letters go into the Filter box (Alt+F), and the list's label
   says how many match, such as "Links (2 of 12)". Down Arrow goes back to the list.
@@ -410,6 +419,23 @@ address is always what's opened or copied. A link in a code block or in inline c
 code". Only web, email and session links open; anything else, such as a file path, is marked
 "copy only" and says why if you try to open it. Links in tool calls and results are listed only
 with Show Tool Activity on.
+
+### Subagent conversations
+
+Claude can hand part of its work to a subagent, which works in a conversation of its own. Enter on
+a subagent in Lists opens that conversation, titled "Subagent code-reviewer, in" and the chat's
+name. It reads like the messages list: each row is who spoke and the first line, where Claude is
+the one who asked and the subagent answers ("Claude: Review the branch…", "code-reviewer: Found two
+problems…"), and your screen reader reads the whole message as you arrive on it if Settings says
+so for the messages list. **Enter** reads a message in full, **Ctrl+C** copies it, the
+Applications key offers both, and **Ctrl+T** shows or hides its tool activity (here only, not in
+the main window). While the subagent is still working, its new messages arrive at the end without
+moving you, and you hear "Subagent code-reviewer finished." when it ends. **Escape** goes back to
+Lists. It's read-only, for desktop app, terminal and Chat Place chats alike.
+
+With a Claude chat loaded, a subagent finishing is also announced at the full announcement level
+("Subagent code-reviewer finished.", or "failed" or "stopped"). Properties (Alt+Enter) on a Claude
+chat says how many subagents it has.
 
 ## Reviewing changed files
 
@@ -543,7 +569,10 @@ in the file list copies the file's path instead.
 
 - Files the AI changed by running a command (a script, `sed`, or `cat > file`) rather than with
   its own editing tools. For Copilot chats every change is listed, whichever tool made it.
-- Changes made by a subagent Claude hands work to, and edits to notebooks.
+- Edits to notebooks.
+
+Changes a subagent made are listed, with which subagent made them: "main.py, 4 lines added, by
+code-reviewer". They count in the whole chat and in the turn that started the subagent.
 
 ## Kinds of chat
 
@@ -2198,7 +2227,6 @@ support@theideaplace.net.
 - Copilot CLI keeps its chats in `%USERPROFILE%\.copilot\session-state` (on a Mac,
   `~/.copilot/session-state`), or under `COPILOT_HOME` if you've set it. The Chat Place only
   reads them.
-- Conversations Claude hands to a subagent aren't shown.
 - The desktop app's file formats aren't documented, so a desktop app update could change what The
   Chat Place can read.
 
