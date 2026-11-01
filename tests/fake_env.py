@@ -26,6 +26,21 @@ FAKE_COMMANDS = [
 ]
 
 
+#: A folder's connected tools as mcp_status answers (#468), made up.
+FAKE_MCP_SERVERS = [
+    {"name": "claude.ai Microsoft Learn", "status": "connected", "scope": "claudeai",
+     "source": "claudeai", "tools": [{"name": "microsoft_docs_search"},
+                                     {"name": "microsoft_docs_fetch"},
+                                     {"name": "microsoft_code_sample_search"}]},
+    {"name": "claude.ai Morningstar", "status": "needs-auth", "scope": "claudeai",
+     "source": "claudeai"},
+    {"name": "github", "status": "failed", "scope": "user", "source": "user",
+     "error": "Connection closed"},
+    {"name": "plugin:probe-tools:notes", "status": "connected", "scope": "dynamic",
+     "source": "plugin", "tools": [{"name": "add_note"}]},
+]
+
+
 def now_ms():
     return int(time.time() * 1000)
 
@@ -143,13 +158,47 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         def close(self):
             self.closed = True
     patch(session_tools, "Host", FakeSessionToolsHost)
+    # Nor the real claude for a folder's connected tools (#468).
+    from thechatplace import claude_mcp
+    mcp = {"servers": [dict(s) for s in FAKE_MCP_SERVERS], "calls": [], "closed": 0,
+           "error": "", "sign_in": claude_mcp.SignIn(
+               "https://claude.ai/api/organizations/org/mcp/start-auth/srv")}
+
+    class FakeMcpSession:
+        def __init__(self, exe, cwd):
+            mcp["calls"].append(("open", cwd))
+
+        def _check(self):
+            if mcp["error"]:
+                raise claude_mcp.McpError(mcp["error"])
+
+        def status(self):
+            mcp["calls"].append(("status",))
+            self._check()
+            return claude_mcp.parse_servers({"mcpServers": mcp["servers"]})
+
+        def sign_in(self, name):
+            mcp["calls"].append(("sign_in", name))
+            self._check()
+            return mcp["sign_in"]
+
+        def reconnect(self, name):
+            mcp["calls"].append(("reconnect", name))
+            self._check()
+            for server in mcp["servers"]:
+                if server["name"] == name:
+                    server.update(status="connected", error=None)
+
+        def close(self):
+            mcp["closed"] += 1
+    patch(claude_mcp, "open_session", FakeMcpSession)
     # Nor take the Mac's menu bar from the app you're using.
     activated = []
     from thechatplace.ui import mac_a11y
     patch(mac_a11y, "activate_app", lambda: activated.append(True) or True)
     return {"desktop": desktop, "cowork": cowork, "projects": projects, "spoken": spoken,
             "copied": copied, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
-            "live": live, "notified": notified, "activated": activated}
+            "live": live, "notified": notified, "activated": activated, "mcp": mcp}
 
 
 def add_desktop(env, local, cli, title, cwd="C:\\G\\Repo", ago=60_000, **extra):
@@ -185,9 +234,10 @@ class FakeRunner:
     instances = []
 
     def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
-                 task_list=False, mcp_config=None):
+                 task_list=False, mcp_config=None, disabled_mcp=()):
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
         self.mcp_config = mcp_config
+        self.disabled_mcp = list(disabled_mcp or ())
         self.images = images or []
         self.remote_control = remote_control
         self.task_list = task_list

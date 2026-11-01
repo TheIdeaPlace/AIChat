@@ -1245,6 +1245,16 @@ What each provider offers:
   asking, as for Claude. Copilot's questions work the same way.
 - **Copilot:** the whole command or change, with **Allow Once** and **Deny**, the default.
   Nothing is allowed for later.
+- **A connected tool asks (Claude):** one of Claude's connected tools (see "Connected tools")
+  can ask you for something while it works, such as details for a booking. You hear, for
+  example, "Plan trip needs you. Trip planner asks: Where would you like to go?". Answer opens on
+  the tool's message, to read by line. A form follows, one labelled box per thing it asks for:
+  a text box for words and numbers, a check box for yes or no, a list to choose one from, and
+  check boxes to choose several; "(required)" marks the ones it needs. **Send** checks what you
+  entered and says what's missing or wrong, then sends it; **Decline** refuses. When the tool
+  asks you to open a web page instead, the message shows the page's address, and
+  **Open in Browser** opens it; finish there and the tool carries on. Decline is the default there, so
+  Enter never opens a page by itself, and The Chat Place opens only web addresses.
 
 ### Review or change permissions
 
@@ -1375,6 +1385,53 @@ command there runs without asking even with nothing kept in this chat. In a chat
 ask, Codex refuses a command that a rule says to ask about. The Chat Place only reads them;
 change them in Codex or edit the file. Removing The Chat Place's own approval does not remove a
 Codex rule.
+
+## Connected tools
+
+Claude can use tools from outside Claude Code: MCP servers from your Claude Code settings, the
+project or plugins, and the connectors you've added on claude.ai. A connector that needs signing
+in again is quietly left out until it is, so The Chat Place shows them.
+
+### See a chat's connected tools
+
+Select or load a Claude chat and choose **View, Connected Tools (MCP)** (it's the View menu's
+last item: Alt+V, then Up). While Claude Code is asked, the list says "Reading this chat's
+connected tools...". Then each tool is one row, read in full:
+
+- "claude.ai Microsoft Learn: connected, claude.ai connector, 3 tools"
+- "claude.ai Morningstar: needs sign-in, claude.ai connector"
+- "github: failed: Connection closed, your settings"
+- "notes (from the probe-tools plugin): off for this chat, a plugin"
+
+Where it comes from is one of: your settings, your settings for this folder, this project (its
+`.mcp.json`), a plugin, a claude.ai connector, or your organization.
+**The Chat Place's session tools** are listed too: they're The Chat Place's own (see "Session
+commands in Claude chats").
+**Details** (Alt+D) says more about the row you're on, such as the names of its tools or why it
+failed. Asking costs nothing: no message is sent.
+
+### Sign in, reconnect or turn one off
+
+- **Sign In** (Alt+S) opens the sign-in page in your browser. For a claude.ai connector that's
+  claude.ai, and once you've signed in, every chat's next turn can use it. A server with its own
+  sign-in waits for your browser to come back to it, so keep Connected Tools open until you've
+  finished. Then press **Refresh** (Alt+F).
+- **Reconnect** (Alt+R) tries a tool that failed again, and says how it's doing now.
+- **Turn Off for This Chat** (Alt+O), or Delete in the list, keeps the tool out of this chat's
+  turns from the next one; the row then says "off for this chat", and the button becomes
+  **Turn On for This Chat**. Other chats, the desktop app and Claude Code's own settings are left alone.
+  Only chats started here can do this; The Chat Place's session tools can't be turned off.
+
+Add or remove tools in Claude Code (`claude mcp`) or on claude.ai. Connected Tools is for Claude
+chats for now.
+
+### When a turn starts
+
+If a tool in the chat needs sign-in or failed to connect, The Chat Place says so when a turn
+starts, for example "Claude can't use claude.ai Morningstar: it needs sign-in. View, Connected
+Tools." It's on the status bar, and spoken at the Full announcement level without cutting
+anything off. Each tool is mentioned once each time The Chat Place runs, and a tool turned off
+for the chat isn't mentioned.
 
 ## Organizing your chats
 
@@ -2063,6 +2120,11 @@ with Fable, which the chat didn't choose: its default model, or a fallback from 
 chose. Some plans bill Fable to usage credits, so The Chat Place stops the turn, usually before
 your message is sent, and puts your message back in the message box. Choose another model with
 File, Change Model, then send again.
+
+**Claude doesn't use one of my connectors or MCP servers.** Choose View, Connected Tools (MCP)
+with the chat selected. A tool that needs sign-in has Sign In; one that failed has Reconnect and
+says why in Details; one turned off for the chat has Turn On for This Chat. A tool that isn't
+listed isn't set up for that folder: add it in Claude Code or on claude.ai.
 
 **A turn stopped because Claude would have used an API key.** Claude Code was set up to use an
 API key instead of your subscription sign-in, so The Chat Place stopped the turn before anything

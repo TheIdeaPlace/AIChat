@@ -106,9 +106,13 @@ from .agent_chats import AgentChats
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions
+from .mcp_host import ClaudeConnectedTools
+from ..claude_mcp import (ElicitationRequest, elicitation_response, init_servers,
+                          problems_text)
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
+                      ConnectedToolsDialog, ElicitationDialog,
                       ExportChatsDialog, RestoreChooserDialog,
                       ChatPermissionsDialog,
                       FindResultsDialog,
@@ -669,6 +673,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         view.AppendSeparator()
         self._item(view, "What AI &Knows About You...\tCtrl+Shift+K",
                    lambda e: self.on_about_you())
+        # A Claude chat's MCP servers and claude.ai connectors (#468). Every
+        # letter is another item's access key already; it's last, so Alt+V
+        # then Up reaches it.
+        self._item(view, "Connected Tools (MCP)...", lambda e: self.on_connected_tools())
         bar.Append(view, "&View")
 
         help_menu = wx.Menu()
@@ -3940,6 +3948,51 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if returning_to:
             returning_to.SetFocus()
 
+    def on_connected_tools(self):
+        """View, Connected Tools (#468): the MCP servers and claude.ai
+        connectors Claude can use in the chat's folder, how each is doing,
+        with Sign In, Reconnect and Turn Off for This Chat."""
+        info = self._selected_session()
+        if info is None:
+            self._feedback("No session selected.")
+            return
+        if info.provider != "claude":
+            self._feedback(f"Connected Tools is for Claude chats for now. {info.title} is a "
+                           f"{provider_name(info.provider)} chat.")
+            return
+        if not info.cwd or not os.path.isdir(info.cwd):
+            self._feedback(f"{info.title}'s folder isn't there, so Claude Code can't say which "
+                           "tools it has.")
+            return
+        lookup = platform_paths.find_claude()
+        if not lookup.path:
+            self._feedback(lookup.problem or "Claude Code isn't installed.")
+            return
+        returning_to = wx.Window.FindFocus()
+        self._modal(ConnectedToolsDialog(self, info.title, ClaudeConnectedTools(self, info)))
+        if returning_to:
+            returning_to.SetFocus()
+
+    def _say_mcp_problems(self, session_id: str, title: str, servers) -> None:
+        """At a turn's start: the connected tools Claude can't use (they need
+        sign-in or failed), said once per tool each time The Chat Place runs,
+        on the status bar, and spoken at the full level without cutting
+        anything off (#468). A tool the chat turned off isn't mentioned."""
+        own = self.store.get(session_id)
+        listed = init_servers(servers)
+        skip = {name for name, status in listed if ("mcp", name, status) in self._warned}
+        skip |= set(own.disabled_mcp if own is not None else ())
+        text = problems_text(listed, skip)
+        if not text:
+            return
+        for name, status in listed:
+            self._warned.add(("mcp", name, status))
+        text = f"{title}: {text}"
+        if self.speech.announce == ANNOUNCE_FULL:
+            self._feedback(text)
+        else:
+            self._status(text)
+
     def on_change_effort(self):
         """File, Change Effort (#189): how hard Claude thinks in this
         session's next turns, given as ``--effort`` on every turn."""
@@ -4123,6 +4176,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         """Show the dialog for ``request``. Returns (response for Claude Code,
         what to say, changes to keep with the session), or None to answer
         later."""
+        if isinstance(request, ElicitationRequest):
+            return self._ask_elicitation(title, request)
         if request.is_question:
             dialog = QuestionDialog(self, title, request)
             try:
@@ -4196,6 +4251,27 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         finally:
             dialog.Destroy()
 
+    def _ask_elicitation(self, title: str, request: ElicitationRequest):
+        """A connected tool asking for input (#468): a form to fill in, or a
+        web page to open. Opening the page is the answer it asks for; the
+        tool carries on once it's done there."""
+        dialog = ElicitationDialog(self, title, request)
+        try:
+            if dialog.ShowModal() != wx.ID_OK or not dialog.action:
+                return None
+            action, content = dialog.action, dialog.content
+        finally:
+            dialog.Destroy()
+        name = request.server_label
+        if action != "accept":
+            return elicitation_response(action), f"Declined. {name} has your answer.", {}
+        if request.is_url:
+            platform_paths.open_url(request.url)
+            return (elicitation_response(action),
+                    f"Opened the page in your browser. Finish there; {name} carries on "
+                    "when it's done.", {})
+        return elicitation_response(action, content), f"Sent to {name}.", {}
+
     def _apply_answer(self, session_id: str, request: PermissionRequest, response: dict,
                       said: str, changes: dict):
         queue = self._pending.get(session_id) or []
@@ -4206,9 +4282,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self._feedback("That isn't waiting any more: the turn has ended.")
             self._update_send_state()
             return
-        if response.get("behavior") == "allow":
+        if response.get("behavior") == "allow" or response.get("action") == "accept":
             # An approval with more still waiting doesn't count until
-            # they're answered too.
+            # they're answered too. A connected tool's question answered
+            # (#468) lets the turn go on, as an approval does.
             if not queue:
                 self._agent_member_answered("claude", session_id, True)
         else:
@@ -4750,7 +4827,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         # The session tools (#165): /wrap and the like work here too.
         runner = TurnRunner(command, cwd, prompt, on_event, images=images,
                             remote_control=remote, task_list=self.speech.task_list,
-                            mcp_config=self._session_tools_config(session_id))
+                            mcp_config=self._session_tools_config(session_id),
+                            # Tools turned off for this chat (#468).
+                            disabled_mcp=list(own.disabled_mcp) if own is not None else [])
         # What you typed and attached, to give back if the turn never starts.
         runner.typed = spoken if spoken is not None else prompt
         runner.attached = list(attached or [])
@@ -4829,6 +4908,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if own is not None and not own.started:
                 self._store_write(self.store.update, session_id, started=True)
             self._status(f"{title}: Claude is working.")
+            self._say_mcp_problems(session_id, title, (event.data or {}).get("mcp_servers"))
             return
         is_open_now = (self._open is not None and self._open.provider == "claude"
                        and self._open.cli_session_id == session_id)

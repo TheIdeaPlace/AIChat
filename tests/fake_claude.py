@@ -6,8 +6,10 @@ records what it got, and writes stream-json to stdout as raw UTF-8 (with a raw
 U+2028 inside one string, as JSON writers leave it). FAKE_CLAUDE_MODE=hang
 starts a grandchild process and waits, so a test can check that cancelling
 kills the whole tree. FAKE_CLAUDE_MODE=ask sends a permission request and
-waits for the answer, which goes in the result. After the result it waits for
-stdin to close, as the real CLI does.
+waits for the answer, which goes in the result. FAKE_CLAUDE_MODE=elicit
+(a form) and elicit-url (a page to open) send an MCP server's elicitation
+request the same way (#468). After the result it waits for stdin to close,
+as the real CLI does.
 """
 import json
 import os
@@ -68,6 +70,30 @@ if mode == "ask":
     answer = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
     log(answer=answer)
     result = answer["response"]["response"]["behavior"]
+if mode in ("elicit", "elicit-url"):
+    # An MCP server asking for input (#468), shaped as Claude Code 2.1.296
+    # sent it from a real stdio server's tool call.
+    if mode == "elicit":
+        request = {"subtype": "elicitation", "mcp_server_name": "elicit-test",
+                   "message": "Where would you like to go, and for how long?", "mode": "form",
+                   "requested_schema": {"type": "object", "properties": {
+                       "city": {"type": "string", "title": "City",
+                                "description": "Which city to plan for"},
+                       "nights": {"type": "integer", "title": "Nights", "minimum": 1,
+                                  "maximum": 14},
+                       "pets": {"type": "boolean", "title": "Bringing pets", "default": False},
+                       "budget": {"type": "string", "title": "Budget",
+                                  "enum": ["low", "medium", "high"],
+                                  "enumNames": ["Low", "Medium", "High"]}},
+                       "required": ["city", "nights"]}}
+    else:
+        request = {"subtype": "elicitation", "mcp_server_name": "elicit-test",
+                   "message": "Open this page to finish signing in.", "mode": "url",
+                   "url": "https://example.com/sign-in", "elicitation_id": "elic-123"}
+    out(type="control_request", request_id="elicit-1", request=request)
+    answer = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
+    log(answer=answer)
+    result = json.dumps(answer["response"].get("response"), sort_keys=True)
 if mode == 'command-result':
     result = '\x1b[1mCost report is ready.\x1b[0m ' + 'x' * 100000
     record = {'type': 'user', 'uuid': 'synthetic-command-result',

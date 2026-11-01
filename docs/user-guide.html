@@ -34,7 +34,7 @@ Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guid
 <p>The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
 Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products.</p>
-<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#reviewing-changed-files">Reviewing changed files</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#backing-up-your-chats">Backing up your chats</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstalling">Uninstalling</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
+<nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#reviewing-changed-files">Reviewing changed files</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#connected-tools">Connected tools</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#backing-up-your-chats">Backing up your chats</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstalling">Uninstalling</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
 <p>You need:</p>
 <ul>
 <li>Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
@@ -1275,6 +1275,16 @@ Ctrl+Shift+A brings the same request back.</p>
   asking, as for Claude. Copilot's questions work the same way.</li>
 <li><strong>Copilot:</strong> the whole command or change, with <strong>Allow Once</strong> and <strong>Deny</strong>, the default.
   Nothing is allowed for later.</li>
+<li><strong>A connected tool asks (Claude):</strong> one of Claude's connected tools (see "Connected tools")
+  can ask you for something while it works, such as details for a booking. You hear, for
+  example, "Plan trip needs you. Trip planner asks: Where would you like to go?". Answer opens on
+  the tool's message, to read by line. A form follows, one labelled box per thing it asks for:
+  a text box for words and numbers, a check box for yes or no, a list to choose one from, and
+  check boxes to choose several; "(required)" marks the ones it needs. <strong>Send</strong> checks what you
+  entered and says what's missing or wrong, then sends it; <strong>Decline</strong> refuses. When the tool
+  asks you to open a web page instead, the message shows the page's address, and
+  <strong>Open in Browser</strong> opens it; finish there and the tool carries on. Decline is the default there, so
+  Enter never opens a page by itself, and The Chat Place opens only web addresses.</li>
 </ul>
 <h3>Review or change permissions</h3>
 <ul>
@@ -1401,6 +1411,46 @@ command there runs without asking even with nothing kept in this chat. In a chat
 ask, Codex refuses a command that a rule says to ask about. The Chat Place only reads them;
 change them in Codex or edit the file. Removing The Chat Place's own approval does not remove a
 Codex rule.</p>
+<h2 id="connected-tools">Connected tools</h2>
+<p>Claude can use tools from outside Claude Code: MCP servers from your Claude Code settings, the
+project or plugins, and the connectors you've added on claude.ai. A connector that needs signing
+in again is quietly left out until it is, so The Chat Place shows them.</p>
+<h3>See a chat's connected tools</h3>
+<p>Select or load a Claude chat and choose <strong>View, Connected Tools (MCP)</strong> (it's the View menu's
+last item: Alt+V, then Up). While Claude Code is asked, the list says "Reading this chat's
+connected tools...". Then each tool is one row, read in full:</p>
+<ul>
+<li>"claude.ai Microsoft Learn: connected, claude.ai connector, 3 tools"</li>
+<li>"claude.ai Morningstar: needs sign-in, claude.ai connector"</li>
+<li>"github: failed: Connection closed, your settings"</li>
+<li>"notes (from the probe-tools plugin): off for this chat, a plugin"</li>
+</ul>
+<p>Where it comes from is one of: your settings, your settings for this folder, this project (its
+<code>.mcp.json</code>), a plugin, a claude.ai connector, or your organization.
+<strong>The Chat Place's session tools</strong> are listed too: they're The Chat Place's own (see "Session
+commands in Claude chats").
+<strong>Details</strong> (Alt+D) says more about the row you're on, such as the names of its tools or why it
+failed. Asking costs nothing: no message is sent.</p>
+<h3>Sign in, reconnect or turn one off</h3>
+<ul>
+<li><strong>Sign In</strong> (Alt+S) opens the sign-in page in your browser. For a claude.ai connector that's
+  claude.ai, and once you've signed in, every chat's next turn can use it. A server with its own
+  sign-in waits for your browser to come back to it, so keep Connected Tools open until you've
+  finished. Then press <strong>Refresh</strong> (Alt+F).</li>
+<li><strong>Reconnect</strong> (Alt+R) tries a tool that failed again, and says how it's doing now.</li>
+<li><strong>Turn Off for This Chat</strong> (Alt+O), or Delete in the list, keeps the tool out of this chat's
+  turns from the next one; the row then says "off for this chat", and the button becomes
+  <strong>Turn On for This Chat</strong>. Other chats, the desktop app and Claude Code's own settings are left alone.
+  Only chats started here can do this; The Chat Place's session tools can't be turned off.</li>
+</ul>
+<p>Add or remove tools in Claude Code (<code>claude mcp</code>) or on claude.ai. Connected Tools is for Claude
+chats for now.</p>
+<h3>When a turn starts</h3>
+<p>If a tool in the chat needs sign-in or failed to connect, The Chat Place says so when a turn
+starts, for example "Claude can't use claude.ai Morningstar: it needs sign-in. View, Connected
+Tools." It's on the status bar, and spoken at the Full announcement level without cutting
+anything off. Each tool is mentioned once each time The Chat Place runs, and a tool turned off
+for the chat isn't mentioned.</p>
 <h2 id="organizing-your-chats">Organizing your chats</h2>
 <p>With many chats, these keep the list manageable.</p>
 <h3>Choosing which chats are listed</h3>
@@ -2002,6 +2052,10 @@ with Fable, which the chat didn't choose: its default model, or a fallback from 
 chose. Some plans bill Fable to usage credits, so The Chat Place stops the turn, usually before
 your message is sent, and puts your message back in the message box. Choose another model with
 File, Change Model, then send again.</p>
+<p><strong>Claude doesn't use one of my connectors or MCP servers.</strong> Choose View, Connected Tools (MCP)
+with the chat selected. A tool that needs sign-in has Sign In; one that failed has Reconnect and
+says why in Details; one turned off for the chat has Turn On for This Chat. A tool that isn't
+listed isn't set up for that folder: add it in Claude Code or on claude.ai.</p>
 <p><strong>A turn stopped because Claude would have used an API key.</strong> Claude Code was set up to use an
 API key instead of your subscription sign-in, so The Chat Place stopped the turn before anything
 was sent. Remove that key from the environment or settings that set it, then try again.</p>

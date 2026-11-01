@@ -1339,6 +1339,60 @@ def d_chat_permissions(frame, env):
     return frame.on_chat_permissions
 
 
+def d_connected_tools(frame, env):
+    """View, Connected Tools (#468): a Claude chat's MCP servers and claude.ai
+    connectors (made up), one turned off for the chat, the list read."""
+    _open(frame, "Visual probe")
+    frame.store.update("own-1", disabled_mcp=["plugin:probe-tools:notes"])
+
+    def opener():
+        from thechatplace.ui import dialogs
+        real = dialogs.ConnectedToolsDialog.ShowModal
+
+        def shown_once_read(dialog):
+            # The list is read on a worker; the picture is of it read.
+            import fake_env
+            fake_env.pump(lambda: dialog.loaded, timeout=10)
+            return real(dialog)
+        dialogs.ConnectedToolsDialog.ShowModal = shown_once_read
+        try:
+            frame.on_connected_tools()
+        finally:
+            dialogs.ConnectedToolsDialog.ShowModal = real
+    return opener
+
+
+def _elicitation(request):
+    from thechatplace.claude_mcp import elicitation_from
+    return elicitation_from("e1", request)
+
+
+def d_elicitation_form(frame, env):
+    """A connected tool asks for input with a form (#468), shaped as Claude
+    Code 2.1.296 sent it."""
+    _waiting(frame, _elicitation({
+        "subtype": "elicitation", "mcp_server_name": "trip-planner",
+        "message": "Where would you like to go, and for how long?", "mode": "form",
+        "requested_schema": {"type": "object", "required": ["city", "nights"], "properties": {
+            "city": {"type": "string", "title": "City", "description": "Which city to plan for"},
+            "nights": {"type": "integer", "title": "Nights", "minimum": 1, "maximum": 14},
+            "pets": {"type": "boolean", "title": "Bringing pets", "default": False},
+            "budget": {"type": "string", "title": "Budget", "enum": ["low", "medium", "high"],
+                       "enumNames": ["Low", "Medium", "High"]},
+            "extras": {"type": "array", "title": "Extras",
+                       "items": {"enum": ["breakfast", "parking"]}}}}}))
+    return frame.on_answer
+
+
+def d_elicitation_url(frame, env):
+    """A connected tool asks you to open a web page (#468)."""
+    _waiting(frame, _elicitation({
+        "subtype": "elicitation", "mcp_server_name": "plugin:probe-tools:notes",
+        "message": "Open this page to finish signing in.", "mode": "url",
+        "url": "https://example.com/sign-in?session=probe", "elicitation_id": "elic-1"}))
+    return frame.on_answer
+
+
 def d_chat_permissions_empty(frame, env):
     _open(frame, "Visual probe")
     frame.store.update("own-1", allowed_tools=[], allowed_tools_at={})
@@ -1806,6 +1860,11 @@ SURFACES = {
     "codex-files": ("dialog", d_codex_files, "Codex file changes to review before allowing"),
     "codex-question": ("dialog", d_codex_question, "Codex choices and a masked secret answer"),
     "question": ("dialog", d_question, "Claude asks questions (one choice and several choices)"),
+    "connected-tools": ("dialog", d_connected_tools,
+                        "View, Connected Tools: a Claude chat's MCP servers and connectors"),
+    "elicitation-form": ("dialog", d_elicitation_form, "A connected tool asks for input: a form"),
+    "elicitation-url": ("dialog", d_elicitation_url,
+                        "A connected tool asks you to open a web page"),
     "question-preview": ("dialog", d_question_preview,
                          "Claude asks about text it wrote just before, with an option's preview"),
     "plan": ("dialog", d_plan, "Claude's plan to approve"),
@@ -1902,6 +1961,9 @@ DIALOG_CLASSES = {
     "codex-files": "CodexPermissionDialog",
     "codex-question": "QuestionDialog",
     "question": "QuestionDialog",
+    "connected-tools": "ConnectedToolsDialog",
+    "elicitation-form": "ElicitationDialog",
+    "elicitation-url": "ElicitationDialog",
     "question-preview": "QuestionDialog",
     "plan": "PlanDialog",
     "manage-groups": "ManageGroupsDialog",

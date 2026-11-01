@@ -404,6 +404,14 @@ too).
     first while none is chosen.
   - **Plan:** the plan to read (Read Formatted shows it as a page, by heading), then **Approve**, choosing the mode to carry on in (accept
     edits, auto or manual), or **Keep Planning** with what to change, which is the default.
+  - **A connected tool asks** (#468): an MCP server or claude.ai connector can ask for input while
+    it works ("Plan trip needs you. Trip planner asks: Where would you like to go?"). Answer
+    opens on its message, read-only, then a form with one labelled control per thing it asks for
+    (a text box for text and numbers, a check box for yes or no, a list to choose one from, check
+    boxes to choose several; "(required)" marks the ones it needs), with **Send**, which checks
+    what you entered and says what's missing or wrong first, and **Decline**. When it asks you to
+    open a web page instead, the message shows the address and **Open in Browser** opens it;
+    Decline is the default there, and only web addresses are opened.
 
   Escape in any of them answers later; nothing is approved or refused by waiting. "Allow for
   This Chat" lasts for the chat, not just the turn: The Chat Place keeps the rule with the
@@ -436,6 +444,34 @@ too).
   asks about or never allows, with the file each comes from. Desktop app and terminal
   sessions are read-only here, so they have none, and a Continue Here copy starts with nothing
   kept.
+
+### Connected tools (MCP servers and claude.ai connectors)
+
+- **View, Connected Tools (MCP)** (#468; the View menu's last item, Alt+V then Up) lists the
+  tools a Claude chat can use in its folder: MCP servers from your Claude Code settings, the
+  project's `.mcp.json` and plugins, the connectors you've added on claude.ai, and The Chat
+  Place's own session tools. One row each, read in full: "claude.ai Microsoft Learn: connected,
+  claude.ai connector, 3 tools", "claude.ai Morningstar: needs sign-in, claude.ai connector",
+  "github: failed: Connection closed, your settings", or "… : off for this chat". It says
+  "Reading this chat's connected tools..." while Claude Code is asked; a tool still connecting
+  is asked about again for a few seconds. **Details** (Alt+D) says more about the row you're on:
+  its tools' names, or why it failed. Asking runs `claude -p` in the chat's folder with no
+  message, so nothing is billed, and that process ends when the dialog closes.
+- **Sign In** (Alt+S) opens the sign-in page in your browser: claude.ai for a connector, after
+  which every chat's next turn can use it, or the server's own page for one with its own
+  sign-in, which waits for the browser to come back, so keep the dialog open until you've
+  finished. **Refresh** (Alt+F) reads the list again. **Reconnect** (Alt+R) tries a failed tool
+  again.
+- **Turn Off for This Chat** (Alt+O, or Delete in the list) keeps a tool out of this chat's turns
+  from the next one, and **Turn On for This Chat** brings it back. It's kept with the chat and
+  given to each turn as `--settings` with `deniedMcpServers`, which Claude Code applies to that
+  turn's process only: other chats, the desktop app and Claude Code's own settings are left
+  alone. Only chats started here can do this; the session tools can't be turned off.
+- When a turn starts with a tool that needs sign-in or failed, it's said once each time The Chat
+  Place runs ("Claude can't use claude.ai Morningstar: it needs sign-in. View, Connected Tools."),
+  on the status bar and spoken at the Full level without cutting anything off. A tool turned off
+  for the chat isn't mentioned.
+- Connected Tools is for Claude chats for now.
 
 ### Codex chats
 
@@ -1488,6 +1524,11 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   the session's folder, say, or auto mode's safety check). The Chat Place adds those to the
   announcement ("1 tool was refused: ..."), marks the session "needs you", and the chat shows a
   "Permission denied" line.
+- **A connected tool's questions come too** (#468). When an MCP server asks the user for input
+  (MCP elicitation), Claude Code sends an `elicitation` control request with the server's name,
+  its message, and either a form's schema or a page to open; The Chat Place answers with
+  `accept` (and the form's content), or `decline`. Checked with Claude Code 2.1.296 against a
+  small stdio server whose tools asked for a form and for a page: both answers were accepted.
 - Question cards in desktop app sessions are shown as text in the chat ("Claude asked: ...,
   Options: ...", then "You answered: ...") and answered in Claude.
 

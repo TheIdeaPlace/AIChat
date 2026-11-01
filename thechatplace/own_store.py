@@ -22,6 +22,7 @@ from typing import Dict, List, Optional
 from . import platform_paths
 from .provider_storage import PartitionedFile, CodexPlanStore, atomic_write_json
 from .claude_cli import EFFORT_LABELS, MODEL_LABELS, is_safe_dir, is_safe_rule
+from .claude_mcp import is_safe_server_name
 from .sessions import IDLE, OWN, SessionInfo
 
 
@@ -68,6 +69,10 @@ class OwnSession:
     remote_control: str = ""
     bridge_session_id: str = ""
     remote_url: str = ""
+    #: MCP servers and claude.ai connectors turned off for this chat (#468),
+    #: by the names Claude Code gives them; kept out of every turn with
+    #: ``--settings`` (claude_mcp.settings_args). Older releases ignore it.
+    disabled_mcp: List[str] = field(default_factory=list)
     provider: str = "claude"
     provider_options: dict = field(default_factory=dict)
 
@@ -149,6 +154,10 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             dirs = item[name] if isinstance(item[name], list) else []
             values[name] = [d for d in dirs if is_safe_dir(d)]
             continue
+        if name == "disabled_mcp":
+            names = item[name] if isinstance(item[name], list) else []
+            values[name] = list(dict.fromkeys(n for n in names if is_safe_server_name(n)))
+            continue
         if name == "allowed_dirs_at":
             times = item[name] if isinstance(item[name], dict) else {}
             values[name] = {d: t for d, t in times.items()
@@ -190,6 +199,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
         values["allowed_tools_at"] = {}
         values["allowed_dirs"] = []
         values["allowed_dirs_at"] = {}
+        values["disabled_mcp"] = []
         values["permission_mode"] = "auto"
     return OwnSession(**values)
 
