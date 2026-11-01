@@ -457,13 +457,31 @@ def codex_approval_shell(executable: str) -> str:
     """Only known native shell wrappers can be remembered (#307)."""
     if sys.platform == 'win32':
         trusted = [_windows_program('System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')]
-        if os.environ.get('ProgramFiles'):
-            trusted.append(ntpath.join(os.environ['ProgramFiles'], 'PowerShell', '7', 'pwsh.exe'))
+        program_files = os.environ.get('ProgramFiles') or ''
+        if ntpath.isabs(program_files):
+            trusted += [ntpath.join(program_files, 'PowerShell', '7', 'pwsh.exe'),
+                        ntpath.join(program_files, 'PowerShell', '7-preview', 'pwsh.exe')]
         if ntpath.normcase(executable) in {ntpath.normcase(p) for p in trusted}:
             return 'powershell'
-    elif executable in ('/bin/bash', '/bin/zsh', '/bin/sh'):
+        # PowerShell from the Microsoft Store: Codex reports its app alias, so
+        # without this nothing could be remembered on such a PC. The folder is
+        # the user's own, unlike those above, so the file must be the real alias.
+        local = os.environ.get('LOCALAPPDATA') or ''
+        if ntpath.isabs(local):
+            store = ntpath.join(local, 'Microsoft', 'WindowsApps', 'pwsh.exe')
+            if ntpath.normcase(executable) == ntpath.normcase(store) and _is_store_alias(store):
+                return 'powershell'
+    elif executable in ('/bin/bash', '/bin/zsh', '/bin/sh', '/usr/bin/bash', '/usr/bin/zsh', '/usr/bin/sh'):
         return 'posix'
     return ''
+
+
+def _is_store_alias(path: str) -> bool:
+    """A Microsoft Store app alias, not a program dropped in its place."""
+    try:
+        return os.lstat(path).st_reparse_tag == stat.IO_REPARSE_TAG_APPEXECLINK
+    except (OSError, AttributeError):
+        return False
 
 
 def codex_approval_folder(cwd: str, chat_folder: str) -> str:
@@ -1637,6 +1655,28 @@ def git_config_files(folder: str) -> Optional[List[str]]:
             target = os.path.join(os.path.dirname(origin[len("file:"):]), target)
         files.append(target)
     return list(dict.fromkeys(files))
+
+
+def high_contrast() -> Optional[bool]:
+    """Whether Windows' High Contrast is on, for bug reports (#464); None
+    where there's no such setting or it can't be read."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class HIGHCONTRASTW(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.UINT), ("dwFlags", wintypes.DWORD),
+                    ("lpszDefaultScheme", wintypes.LPWSTR)]
+    value = HIGHCONTRASTW(ctypes.sizeof(HIGHCONTRASTW), 0, None)
+    try:
+        # SPI_GETHIGHCONTRAST; HCF_HIGHCONTRASTON is bit 0.
+        if not ctypes.windll.user32.SystemParametersInfoW(0x0042, ctypes.sizeof(value),
+                                                          ctypes.byref(value), 0):
+            return None
+    except (OSError, AttributeError):
+        return None
+    return bool(value.dwFlags & 1)
 
 
 def hidden_window_flags() -> int:

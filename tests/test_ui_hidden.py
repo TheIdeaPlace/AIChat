@@ -2551,9 +2551,9 @@ def test_cowork_missing_transcript_and_bug_report_count(frame, env, monkeypatch)
     assert pump(lambda: frame._chat_loaded)
     assert frame.chat_list.GetString(0).startswith("No transcript: this Cowork session's")
     fills = _fake_bug_dialog(monkeypatch, "open", ("T", "W", "E", ""))
-    frame.on_report_bug()
-    assert any(line.startswith("Sessions listed: 2 desktop app Code, 1 desktop app Cowork, "
-                               "1 Chat Place") for line in fills.seen)
+    _report_bug(frame)
+    assert any(line.startswith("Sessions listed: Claude: 2 desktop app Code, 1 desktop app "
+                               "Cowork, 1 Chat Place") for line in fills.seen)
 
 
 def test_cowork_view_shows_only_cowork_sessions(frame, env):
@@ -2660,8 +2660,8 @@ def test_terminal_view_menu_filter_and_bug_report(frame, env, monkeypatch):
     menu, _actions = frame._session_menu()
     assert _enabled(menu, "Con&tinue Here") and not _enabled(menu, "Open in &Claude")
     fills = _fake_bug_dialog(monkeypatch, "open", ("T", "W", "E", ""))
-    frame.on_report_bug()
-    assert any(line.startswith("Sessions listed: 2 desktop app, 1 Chat Place, 1 terminal")
+    _report_bug(frame)
+    assert any(line.startswith("Sessions listed: Claude: 2 desktop app, 1 Chat Place, 1 terminal")
                for line in fills.seen)
 
 
@@ -3463,6 +3463,13 @@ def test_renaming_the_group_in_view_follows_it(frame, monkeypatch):
 # -- reporting a bug (#28) -------------------------------------------------------------------
 
 
+def _report_bug(frame):
+    """Report a Bug asks each provider's sign-in in the background first
+    (#464); wait for the dialog."""
+    frame.on_report_bug()
+    assert pump(lambda: not frame._bug_report_busy)
+
+
 def _fake_bug_dialog(monkeypatch, action, values):
     class Fills:
         seen = None
@@ -3486,17 +3493,62 @@ def _fake_bug_dialog(monkeypatch, action, values):
 def test_report_a_bug_opens_github_with_the_report(frame, env, monkeypatch):
     fills = _fake_bug_dialog(monkeypatch, "open",
                              ("Sort resets", "It went back to status.", "Stay sorted", ""))
-    frame.on_report_bug()
-    assert any(line.startswith("Sessions listed: 2 desktop app, 1 Chat Place")
+    _report_bug(frame)
+    assert any(line.startswith("Sessions listed: Claude: 2 desktop app, 1 Chat Place")
                for line in fills.seen)
+    # Each provider's version and sign-in, in the app's words, never the account (#464).
+    assert "Claude Code: 2.1.286 (Claude Code); signed in (Max plan)" in fills.seen
+    assert any(line.startswith("Copilot CLI: 1.0.105; preview off; signed in")
+               for line in fills.seen)
+    everything = "\n".join(fills.seen)
+    assert "synthetic-user" not in everything and "k@example.com" not in everything
     assert env["opened"][-1].startswith("https://github.com/TheIdeaPlace/AIChat/issues/new?")
     assert "title=Sort+resets" in env["opened"][-1]
     assert env["feedback"][-1].startswith("Opened GitHub's new issue page")
 
 
+def test_a_second_press_while_gathering_opens_no_second_report(frame, env, monkeypatch):
+    fills = _fake_bug_dialog(monkeypatch, "copy", ("x", "y", "", ""))
+    opened = []
+    real = fills.__init__
+
+    def counting(self, parent, lines):
+        opened.append(lines)
+        real(self, parent, lines)
+    monkeypatch.setattr(fills, "__init__", counting)
+    frame.on_report_bug()
+    frame.on_report_bug()
+    assert env["feedback"][-1] == "Still gathering the details for your report."
+    assert pump(lambda: not frame._bug_report_busy)
+    assert len(opened) == 1
+
+
+def test_a_report_gathered_behind_another_dialog_waits(frame, env, monkeypatch):
+    """Gathering takes seconds: the report never opens on top of a dialog
+    opened meanwhile (#464), and choosing it again uses what was gathered."""
+    fills = _fake_bug_dialog(monkeypatch, "copy", ("x", "y", "", ""))
+    other = wx.Dialog(frame, title="Settings")
+    monkeypatch.setattr(other, "IsModal", lambda: True)
+    other.Show()
+    try:
+        frame.on_report_bug()
+        assert pump(lambda: not frame._bug_report_busy)
+        assert fills.seen is None
+        assert env["feedback"][-1].startswith("The details for your report are ready.")
+    finally:
+        # Hidden first, as a closed dialog is: Destroy alone takes effect at
+        # idle time on Windows and Linux.
+        other.Hide()
+        other.Destroy()
+    monkeypatch.setattr("thechatplace.bugreport.gather_sign_ins",
+                        lambda *a, **k: pytest.fail("gathered twice"))
+    frame.on_report_bug()  # no gathering this time: it opens at once
+    assert fills.seen is not None and frame._bug_report_ready is None
+
+
 def test_copy_report_only_copies(frame, env, monkeypatch):
     _fake_bug_dialog(monkeypatch, "copy", ("Sort resets", "It went back.", "", ""))
-    frame.on_report_bug()
+    _report_bug(frame)
     assert env["opened"] == []
     assert env["feedback"][-1] == "Report copied. Email it to support@theideaplace.net."
     assert env["copied"][-1].startswith("Sort resets\n\n### What happened\nIt went back.")
@@ -3524,7 +3576,7 @@ def test_bug_report_never_names_a_group(frame, env, monkeypatch):
     frame._build_show_menu()
     frame.on_view("group:Acme client work")
     fills = _fake_bug_dialog(monkeypatch, "copy", ("x", "y", "", ""))
-    frame.on_report_bug()
+    _report_bug(frame)
     assert "Acme" not in "\n".join(fills.seen) and "Acme" not in env["copied"][-1]
     assert "Session list: showing a group, sorted status" in fills.seen
 
@@ -12950,7 +13002,9 @@ def test_a_copilot_refusal_is_said_in_its_own_words(frame, env, monkeypatch):
             frame._open.key, "/allow-all on")
         assert _received_prompts(env) == []
         from thechatplace import codex_diagnostics
-        assert codex_diagnostics.last_failure().startswith("Copilot worker failed")
+        # The reason the app wrote goes into the log for bug reports (#464).
+        assert codex_diagnostics.last_failure().startswith(
+            "Copilot CopilotChatError: Copilot commands starting with /")
     finally:
         runtime.close()
 
@@ -15117,10 +15171,10 @@ def test_restore_chooser_switches_rows_by_space_and_names_its_state(frame, env, 
         event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
         skipped = []
         event.Skip = lambda skip=True: skipped.append(skip)
-        dialog._on_restore(event)
+        dialog._on_go(event)
         assert shown and not skipped
         dialog._set_all(True)
-        dialog._on_restore(event)
+        dialog._on_go(event)
         assert skipped
         # Space on the list switches the selected row.
         dialog.list.SetSelection(2)
@@ -15427,3 +15481,167 @@ def test_a_broken_rules_file_is_said_once(frame, env, monkeypatch):
         assert len([s for s in env["feedback"] if said in s]) == before + 1
     finally:
         frame._codex_states.clear()
+
+
+# Export Chats (#461) ----------------------------------------------------------------------
+
+def _fake_export_dialogs(monkeypatch, folder, pick=lambda rows: [0], fmt="md", ok=True):
+    """Export Chats' chooser answers with ``pick(rows)``; the folder dialog
+    with ``folder``."""
+    from thechatplace.ui import main_frame
+
+    class Chooser:
+        made = []
+
+        def __init__(self, parent, heading, rows, say=None, fmt=""):
+            self.heading, self.rows, self.start_format = heading, list(rows), fmt
+            Chooser.made.append(self)
+
+        def ShowModal(self):
+            return wx.ID_OK if ok else wx.ID_CANCEL
+
+        def chosen_indexes(self):
+            return pick(self.rows)
+
+        def chosen_format(self):
+            return fmt
+
+        def Destroy(self):
+            pass
+
+    class Folders:
+        asked = []
+
+        def __init__(self, parent, message, defaultPath="", style=0):
+            Folders.asked.append(message)
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def GetPath(self):
+            return str(folder)
+
+        def Destroy(self):
+            pass
+
+    monkeypatch.setattr(main_frame, "ExportChatsDialog", Chooser)
+    monkeypatch.setattr(wx, "DirDialog", Folders)
+    return Chooser, Folders
+
+
+def test_export_chats_writes_only_the_chosen_ones(frame, env, monkeypatch):
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Check the build"),
+                                                 assistant_block(text_block("It passes."), "m1")])
+    add_transcript(env, "C:\\G\\Repo", "cli-b", [user_text("Pick a name")])
+    out = env["tmp"] / "exported"
+    out.mkdir()
+    chooser, folders = _fake_export_dialogs(
+        monkeypatch, out, pick=lambda rows: [i for i, r in enumerate(rows) if r.startswith("Quiet one")],
+        fmt="html")
+    frame.on_export_chats()
+    assert pump(lambda: chooser.made, timeout=20)   # found off the window's thread
+    made = chooser.made[-1]
+    # Only chats with a history are listed (Hub probe has none).
+    assert sorted(r.split(",")[0] for r in made.rows) == ["Blocked one", "Quiet one"]
+    assert any(r.startswith("Quiet one, Claude, Repo, last active ") for r in made.rows)
+    assert made.heading.startswith("2 chats in the session list's current view")
+    assert folders.asked[-1] == "Export 1 chat to which folder?"
+    assert env["feedback"][-1] == "Exporting 1 chat. Progress is in the status bar."
+    assert pump(lambda: any(b.startswith("Exported 1 chat to ") for b in env["boxes"]), timeout=20)
+    files = sorted(p.name for p in out.iterdir())
+    assert len(files) == 1 and files[0].startswith("Quiet one ") and files[0].endswith(".html")
+    assert "It passes." in (out / files[0]).read_text(encoding="utf-8")
+    assert frame._status_latest.startswith("Exported 1 chat to ")
+    assert frame._export_many_job is None
+    # The format and folder are offered again next time.
+    frame.on_export_chats()
+    assert pump(lambda: len(chooser.made) == 2, timeout=20)
+    assert chooser.made[-1].start_format == "html"
+
+
+def test_export_chats_leaves_out_hidden_chats(frame, env, monkeypatch):
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Hello")])
+    add_transcript(env, "C:\\G\\Repo", "cli-b", [user_text("Hello")])
+    select(frame, "Blocked one")
+    key = frame._list_keys[frame.session_list.GetSelection()]
+    frame.hidden.hide(key)
+    chooser, _folders = _fake_export_dialogs(monkeypatch, env["tmp"], ok=False)
+    frame.on_export_chats()
+    assert pump(lambda: chooser.made, timeout=20)
+    assert [r.split(",")[0] for r in chooser.made[-1].rows] == ["Quiet one"]
+
+
+def test_export_chats_with_nothing_to_export_says_so(frame, env, monkeypatch):
+    chooser, _folders = _fake_export_dialogs(monkeypatch, env["tmp"])
+    frame.on_export_chats()
+    assert pump(lambda: env["boxes"], timeout=20)
+    assert chooser.made == []
+    assert env["boxes"][-1] == "There are no chats in the session list to export."
+    assert frame._export_many_job is None
+
+
+def test_export_chats_again_while_running_offers_to_stop(frame, env, monkeypatch):
+    job = {"cancel": False}
+    frame._export_many_job = job
+    frame.on_export_chats()   # env's MessageBox answers Yes
+    assert env["boxes"][-1] == "Chats are being exported. Stop?"
+    assert job["cancel"] and env["feedback"][-1] == "Stopping the export."
+    # It finished while the question was open: nothing to stop, nothing said.
+    finished = {"cancel": False}
+    frame._export_many_job = finished
+    def answer(*a, **k):
+        frame._export_many_job = None
+        return wx.YES
+    monkeypatch.setattr(wx, "MessageBox", answer)
+    env["feedback"].clear()
+    frame.on_export_chats()
+    assert not finished["cancel"] and env["feedback"] == []
+
+
+def test_export_chats_follows_each_chats_tool_activity_and_the_loaded_view(frame, env,
+                                                                         monkeypatch):
+    for cli in ("cli-a", "cli-b"):
+        add_transcript(env, "C:\\G\\Repo", cli, [
+            user_text("q"), assistant_block(tool_use_block("Bash", {"command": "ls"}, "t1"), "m1"),
+            assistant_block(text_block(f"done {cli}"), "m2")])
+    select(frame, "Blocked one")
+    frame.tool_activity.add(frame._list_keys[frame.session_list.GetSelection()])
+    # Quiet one is loaded, showing no tool activity: its export is the list as shown.
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded)
+    out = env["tmp"] / "activity"
+    out.mkdir()
+    _fake_export_dialogs(monkeypatch, out, pick=lambda rows: list(range(len(rows))))
+    frame.on_export_chats()
+    assert pump(lambda: any(b.startswith("Exported 2 chats") for b in env["boxes"]), timeout=20)
+    texts = {p.name.split(" ")[0]: p.read_text(encoding="utf-8") for p in out.iterdir()}
+    assert "done cli-a" in texts["Quiet"] and "ls" not in texts["Quiet"]
+    assert "done cli-b" in texts["Blocked"] and "ls" in texts["Blocked"]
+
+
+def test_export_chats_dialog_starts_with_none_chosen(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import ExportChatsDialog
+    said = []
+    dialog = ExportChatsDialog(frame, "2 chats.", ["A, Claude", "B, Codex"], say=said.append,
+                               fmt="txt")
+    try:
+        assert dialog.GetTitle() == "Export Chats"
+        assert dialog.list.GetString(0) == "Skip: A, Claude"
+        assert dialog.go.GetLabel().replace("&", "") == "Export 0 Chats"
+        assert dialog.chosen_format() == "txt"
+        dialog.format.SetSelection(1)
+        assert dialog.chosen_format() == "html"
+        dialog.toggle(1)
+        assert dialog.list.GetString(1) == "Export: B, Codex"
+        assert said[-1] == "Export, 1 of 2 chosen." and dialog.chosen_indexes() == [1]
+        assert dialog.go.GetLabel().replace("&", "") == "Export 1 Chat"
+        dialog._set_all(False)
+        event = wx.CommandEvent(wx.wxEVT_BUTTON, wx.ID_OK)
+        skipped = []
+        event.Skip = lambda skip=True: skipped.append(skip)
+        dialog._on_go(event)
+        assert env["boxes"][-1] == "Choose at least one chat to export, or Cancel." and not skipped
+        assert dialog.format.GetName() == "Format"
+    finally:
+        dialog.Destroy()

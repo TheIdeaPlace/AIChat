@@ -193,7 +193,7 @@
   {
    "class": "TextCtrl",
    "name": "What the report includes",
-   "label": "The Chat Place: 0.2.0 (run from source)\r\nWindows: Windows-11-10.0.26300-SP0\r\nPython: 3.12.10\r\nwxPython: 4.3.2 msw (phoenix) wxWidgets 3.3.4\r\nClaude Code: 2.1.286 (Claude Code)\r\nAnnouncements: full, speech engine auto\r\nSession list: showing all, sorted status\r\nReading: formatted full messages\r\nSessions listed: 3 desktop app, 1 Chat Place, 0 terminal",
+   "label": "The Chat Place: 0.3.3 (run from source)\r\nWindows: Windows-11-10.0.26300-SP0\r\nPython: 3.12.10\r\nwxPython: 4.3.2 msw (phoenix) wxWidgets 3.3.4\r\nClaude Code: 2.1.286 (Claude Code); signed in (Max plan)\r\nCodex: 0.163.0; turned on (automatic)\r\nCopilot CLI: 1.0.105; preview off; signed in\r\nAnnouncements: full, speech engine auto\r\nSession list: showing all, sorted status\r\nReading: formatted full messages\r\nDisplay: scale 100%, High Contrast on\r\nSessions listed: Claude: 3 desktop app, 1 Chat Place, 0 terminal",
    "rect": [
     10,
     430,
@@ -208,7 +208,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "The Chat Place: 0.2.0 (run from source)\nWindows: Windows-11-10.0.26300-SP0\nPython: 3.12.10\nwxPython: 4.3.2 msw (phoenix) wxWidgets 3.3.4\nClaude Code: 2.1.286 (Claude Code)\nAnnouncements: full, speech engine auto\nSession list: showing all, sorted status\nReading: formatted full messages\nSessions listed: 3 desktop app, 1 Chat Place, 0 terminal"
+   "value": "The Chat Place: 0.3.3 (run from source)\nWindows: Windows-11-10.0.26300-SP0\nPython: 3.12.10\nwxPython: 4.3.2 msw (phoenix) wxWidgets 3.3.4\nClaude Code: 2.1.286 (Claude Code); signed in (Max plan)\nCodex: 0.163.0; turned on (automatic)\nCopilot CLI: 1.0.105; preview off; signed in\nAnnouncements: full, speech engine auto\nSession list: showing all, sorted status\nReading: formatted full messages\nDisplay: "
   },
   {
    "class": "StaticText",

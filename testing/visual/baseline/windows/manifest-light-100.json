@@ -1392,6 +1392,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Restore from Backup, choosing chats"
+  },
+  "export-chats": {
+   "kind": "dialog",
+   "png": "export-chats-light-100.png",
+   "json": "export-chats-light-100.json",
+   "title": "Export Chats",
+   "class": "ExportChatsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Export Chats, choosing chats and a format"
   }
  },
  "seconds": 94.1

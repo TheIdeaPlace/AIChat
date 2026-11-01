@@ -62,6 +62,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     from thechatplace.ui import dialogs, main_frame
     patch(main_frame.mac_a11y, "queue_announcement", lambda *args: False)
     patch(bugreport, "claude_code_version", lambda: "2.1.286 (Claude Code)")
+    patch(bugreport, "cli_version", lambda provider: {
+        "claude": "2.1.286 (Claude Code)", "codex": "0.163.0", "copilot": "1.0.105"}[provider])
     copied = []
     patch(main_frame.MainFrame, "_copy_text",
             lambda self, text: copied.append(text) or True)

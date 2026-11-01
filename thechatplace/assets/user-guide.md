@@ -1010,6 +1010,7 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
       The Chat Place stops it before anything is sent, and says why.
     - Codex: Configured Codex model (your Codex settings), or one of the models Codex offers. The
       list loads in the background; if it can't be loaded, the configured model is still there.
+      For which model suits which task, see [Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md).
     - Copilot: Copilot's configured model, which can't be changed here.
 - **Effort:** how hard the AI thinks.
     - Claude: Default (your Claude Code setting), Low, Medium, High, Extra high or Max. Models that
@@ -1453,7 +1454,7 @@ approval.
 
 **Allow for This Chat** remembers a Git command for this chat and its exact working folder:
 ordinary uses of `git status`, `switch`, `add`, `commit`, `push`, `fetch`, `diff` and `log`. It
-isn't offered for a command with force or delete options, unknown options, several commands
+isn't offered for a command run through a shell The Chat Place doesn't recognise, or one with force or delete options, unknown options, several commands
 joined together, shell expansions, another working folder, or extra access listed separately:
 those still ask. The button appears only when the request can be remembered.
 
@@ -1721,6 +1722,28 @@ You hear "Exporting", then where it was saved, such as "Exported Fix the build, 
 Fix the build 2026-10-26.md in C:\Users\you\Documents". Each message is a heading with who wrote
 it and when, then its text. Tool activity is included only when Show Tool Activity is on for
 that chat.
+
+### Exporting many chats
+
+**File, Export Chats** (on Windows and Linux, the last item before Exit: **Alt+F**, then **Up**
+twice) exports as many chats as you choose, each to its own file.
+
+1. A list of the chats in the session list's current view opens (choose a group or view first to
+   narrow it), newest first, with hidden chats left out.
+   None are chosen to begin with. Each chat starts with **Skip** or **Export**; **Space**
+   switches the one you're on, and you hear how many are chosen. **Select All** (Alt+A) and
+   **Select None** (Alt+N) do every chat.
+2. Choose the **Format** (Alt+F): Markdown, Web page or Plain text.
+3. Press **Enter** (Export). A folder dialog asks where to save them.
+
+Each chat is saved as Export Session would save it, named after its title and the date. If a
+name is already taken, the new file gets a number, such as "Fix the build 2026-10-31 (2).md":
+nothing is ever replaced. Export Chats works in the background, and the status bar shows how far
+it has got. To stop it, choose **Export Chats** again. When it's done, a message says how many
+chats were exported and where, and lists any that couldn't be.
+
+A backup (below) is the complete copy, for restoring on this or another computer. Exported chats
+are for reading, sharing or keeping as ordinary files.
 
 ## Backing up your chats
 
@@ -2217,8 +2240,10 @@ in Copilot CLI since you opened it, a message starting with `/`) are in Starting
 ### Reporting a problem
 
 **Something else.** Help, Report a Bug asks what happened and shows exactly what the report
-includes before it goes anywhere: version numbers and settings, never your chats' titles,
-folders or messages. Open on GitHub files it; Copy Report copies it, to email to
+includes before it goes anywhere: version numbers and settings, whether Claude, Codex and Copilot
+are turned on and signed in, their recent errors and how long ago they happened, and how many
+chats of each it lists. Never your chats' titles, folders or messages, or your account. It checks
+each sign-in first, which takes a moment. Open on GitHub files it; Copy Report copies it, to email to
 support@theideaplace.net.
 
 ## Good to know

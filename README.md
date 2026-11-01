@@ -449,7 +449,8 @@ formatted reading, Find and export use Codex. New Session offers a Provider choi
 Model and Effort offer the model and effort choices available in Codex in New Session and Continue Here. Leave
 Configured Codex model/effort selected to use its settings. Effort choices follow the selected
 model; choices load in the background and are rechecked before the chat starts. If loading fails,
-configured defaults remain available. New Codex chats default to editing files in their selected folder with on-request approvals.
+configured defaults remain available. For which model suits which task, see
+[Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md). New Codex chats default to editing files in their selected folder with on-request approvals.
 Choose read-only in New Session, or change an idle chat started here with File, Change
 Permission Mode (Ctrl+Shift+O). Existing chats retain their saved permissions.
 Continue Here copies a local Codex chat into a new chat started here. These chats
@@ -477,7 +478,7 @@ The Chat Place's own data, for this chat and its exact working folder. It surviv
 the app; a Continue Here copy starts empty. Supported operations are `git status`, `switch`,
 `add`, `commit`, `push`, `fetch`, `diff` and `log`, with ordinary supported arguments.
 Unknown options, explicit force or delete options in the command, compound commands, shell expansion, a changed
-working folder, and requests for separately listed extra access still ask.
+working folder, requests for separately listed extra access, and commands run through a shell The Chat Place doesn't recognise still ask.
 Remembering has the same authority as **Allow Once**: the command may run outside the sandbox,
 including Git hooks and configured programs, and may access files elsewhere and the network.
 The working folder is where it starts, not a confinement boundary. A plain push follows the
@@ -986,6 +987,20 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   starts in Documents, named after the session and the date, works in the background (a long
   session never freezes the window), and says where it saved; the status bar keeps that to read
   back. Headings carry the time, and the date whenever the day changes.
+- **Export Chats** (File menu, the last item before Exit, #461) exports many chats at once. It
+  lists the chats in the session list's current view that have a history (found off the
+  window's thread), newest first, hidden ones left out, each
+  row "Export:" or "Skip:" in its own text (title, AI, folder, last active), none chosen to begin
+  with: Space switches a row, Select All and Select None do every one, and the button says how
+  many ("Export 3 Chats"). A **Format** choice (Markdown, Web page, Plain text) is in the same
+  dialog; a folder dialog follows. Each chat becomes its own file, made and named as Export
+  Session makes it, following its own Show Tool Activity setting; a name already taken, by a
+  file or another chat in the export, gets a number, and nothing is replaced (files are created
+  exclusively). It runs in the background with "Exporting chats: N of M" in the status bar;
+  choosing it again offers to stop it. It ends with a message box: how many were exported, to
+  where, and any that couldn't be (one failing doesn't stop the rest; a failed write leaves no
+  partial file). Quitting during one asks first, and stops it before the next chat. The format and
+  folder are offered again until the app closes.
 - **Back up** (File, Back Up Now) saves your AI chats, memory and settings in one zip in a
   folder you choose, preferably on another drive or a cloud folder: Claude Code's
   conversations, memory, instructions, settings, skills and plans, the desktop app's Code and
@@ -1152,11 +1167,26 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   edited in `thechatplace/assets/user-guide.md`; `python tools/make_docs.py` makes the copies in
   `docs/`.
 - **Report a Bug** (Help menu) asks for a summary, what happened, what you expected and the
-  steps, and shows exactly what else the report includes before it goes anywhere: versions
-  (The Chat Place, Windows, Python, wxPython, Claude Code), the announcement level and speech
-  engine, what happened to the last announcement (which screen reader spoke it, or why none
-  did), the list's view and sort, and how many sessions it lists. Never a session's title,
-  folder or messages. **Open on GitHub** copies the whole report and opens GitHub's new-issue
+  steps, and shows exactly what else the report includes before it goes anywhere:
+  - versions of The Chat Place (and whether it's installed, portable or run from source, with
+    its update channel), the system, Python and wxPython;
+  - for Claude Code, Codex and GitHub Copilot CLI: the version (or "not found"), whether Codex
+    and the Copilot preview are turned on, and whether each is signed in (with the Claude plan
+    or ChatGPT, never the account name or email). It asks each one when you choose Report a
+    Bug, which takes a moment; Codex is asked only when it's turned on. If you open another
+    dialog meanwhile, the report doesn't open over it: it says the details are ready, and
+    choosing Report a Bug again within two minutes opens it straight away;
+  - Codex's and Copilot's recent errors, up to three each from the last day (or the newest, if
+    none is that recent), each saying which provider failed, why in The Chat Place's own words,
+    and how long ago;
+  - the announcement level and speech engine, what happened to the last announcement (which
+    screen reader spoke it, or why none did), the list's view and sort, the display scale and
+    whether High Contrast is on;
+  - how many sessions it lists of each provider and kind, such as "Claude: 2 desktop app, 20
+    Chat Place, 0 terminal; Copilot: 6 Chat Place, 3 Copilot CLI".
+
+  Never a session's title, folder or messages, a group's name, an account, a path, or an
+  error's raw text. **Open on GitHub** copies the whole report and opens GitHub's new-issue
   page with it filled in; **Copy Report** only copies it. Filing on GitHub needs access to the
   repository; anyone else can Copy Report and email it to support@theideaplace.net.
 

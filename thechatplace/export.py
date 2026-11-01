@@ -145,3 +145,104 @@ def render(fmt: str, title: str, messages: Iterable, folder: str = "",
     if fmt == TEXT:
         return to_text(title, messages, folder, when)
     return to_markdown(title, messages, folder, when)
+
+
+# -- Many chats at once (#461) -----------------------------------------------------------
+
+def chat_row(title: str, ai: str, cwd: str, last_activity_ms: int) -> str:
+    """One chat in a chooser list: "Fix the build, Claude, AIChat, last
+    active 30 October 2026". Restore from Backup's list uses it too."""
+    folder = (cwd or "").replace("\\", "/").rstrip("/").split("/")[-1] or "no folder"
+    when = ""
+    try:
+        if last_activity_ms and last_activity_ms > 0:
+            moment = datetime.fromtimestamp(last_activity_ms / 1000).astimezone()
+            when = f", last active {moment.day} {moment:%B %Y}"
+    except (OSError, OverflowError, ValueError, TypeError):
+        when = ""
+    return f"{title}, {ai}, {folder}{when}"
+
+
+def _numbered(name: str, number: int) -> str:
+    stem, dot, extension = name.rpartition(".")
+    return f"{stem} ({number}).{extension}" if dot else f"{name} ({number})"
+
+
+class ManyResult:
+    """What an export of many chats did: (title, path, message count) for
+    each one written, (title, reason) for each that couldn't be, and
+    whether it was stopped before the end."""
+
+    def __init__(self):
+        self.written: List[tuple] = []
+        self.failed: List[tuple] = []
+        self.stopped = False
+
+
+def export_many(chats, folder: str, fmt: str, read, *, cancelled=lambda: False,
+                progress=lambda done, total: None, when: Optional[datetime] = None) -> ManyResult:
+    """Write each of ``chats`` ((title, cwd, source) tuples) to its own file
+    in ``folder``: ``read(source)`` gives its messages, and a chat that
+    can't be read or written is noted without stopping the rest. Names are
+    Export Session's; one already taken, by a file or by another chat here,
+    gets a number, and no file is ever replaced (exclusive creation)."""
+    import os
+    result = ManyResult()
+    when = when or datetime.now()
+    total = len(chats)
+    for done, (title, cwd, source) in enumerate(chats):
+        if cancelled():
+            result.stopped = True
+            break
+        progress(done, total)
+        try:
+            messages = list(read(source) or [])
+            if not messages:
+                raise OSError("it has no messages")
+            text = render(fmt, title, messages, folder=cwd, when=when)
+            name = default_filename(title, when, fmt)
+            for number in range(1, 1000):
+                path = os.path.join(folder, name if number == 1 else _numbered(name, number))
+                try:
+                    handle = open(path, "x", encoding="utf-8", newline="\n")
+                except FileExistsError:
+                    continue
+                try:
+                    with handle:
+                        handle.write(text)
+                except BaseException:
+                    # Nothing half written stays to take the name (#462 review).
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                    raise
+                break
+            else:
+                raise OSError("too many files with its name")
+            result.written.append((title, path, len(messages)))
+        except Exception as error:  # noqa: BLE001 - one chat doesn't stop the rest
+            result.failed.append((title, str(error) or type(error).__name__))
+    else:
+        progress(total, total)
+    return result
+
+
+def many_summary(result: ManyResult, folder: str) -> str:
+    """The message an export of many chats ends with."""
+    count = len(result.written)
+    parts = []
+    if result.stopped:
+        parts.append(f"Export stopped. {count} chat{'s' if count != 1 else ''} "
+                     f"{'was' if count == 1 else 'were'} exported to {folder} before it stopped.")
+    elif count:
+        parts.append(f"Exported {count} chat{'s' if count != 1 else ''} to {folder}.")
+    else:
+        parts.append("No chats were exported.")
+    if result.failed:
+        shown = result.failed[:10]
+        parts.append(f"{len(result.failed)} couldn't be exported:")
+        parts.extend(f"- {title}: {reason}" for title, reason in shown)
+        if len(result.failed) > len(shown):
+            parts.append(f"and {len(result.failed) - len(shown)} more.")
+    return "\n".join(parts)

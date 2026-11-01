@@ -81,7 +81,7 @@ from ..hidden import HiddenStore, ToolActivityStore
 from ..links import claude_link
 from ..titles import MAX_TITLE, TitleStore, clean_title
 from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP_VIEW_PREFIX, IDLE,
-                        DESKTOP, NEEDS_YOU, OWN, SORT_ORDERS,
+                        NEEDS_YOU, OWN, SORT_ORDERS,
                         SORT_SPOKEN, VIEW_ALL, VIEW_ARCHIVED, VIEW_HIDDEN, VIEW_NEEDS_YOU, VIEWS,
                         WORKING, STATUS_UNAVAILABLE,
                         SessionInfo, field_short_name, group_view, in_view, end_sentence, LISTED_PROVIDERS, RUNTIME_PROVIDERS, home_app,
@@ -109,7 +109,7 @@ from .permission_hosts import ClaudePermissions, CodexPermissions, CopilotPermis
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
-                      RestoreChooserDialog,
+                      ExportChatsDialog, RestoreChooserDialog,
                       ChatPermissionsDialog,
                       FindResultsDialog,
                       FormattedMessageDialog, ListsDialog, WrappingText,
@@ -128,6 +128,9 @@ LIST_REFRESH_MS = 5000
 #: How often the window looks for a link another copy handed it (#144).
 LINK_CHECK_MS = 1000
 UPDATE_CHECK_DELAY_MS = 4000
+#: How long a bug report's gathered sign-ins stay usable when they arrived
+#: while another dialog was open (#464).
+BUG_REPORT_FRESH_SECONDS = 120
 #: The update-installed notice (#141) waits this long after the window is
 #: made, then until the window is active with no dialog in front of it,
 #: trying every UPDATE_NOTICE_RETRY_MS for up to UPDATE_NOTICE_TRIES times.
@@ -275,6 +278,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._agent_last_reply: Dict[tuple, str] = {}
         self._agent_last_heard: Dict[str, str] = {}
         self._agent_codex_waiting: Dict[str, list] = {}
+        # Export Chats (#461): the running export, and this run's last format and folder.
+        self._export_many_job: Optional[dict] = None
+        self._export_many_format, self._export_many_folder = export.MARKDOWN, ""
         # The last refusal noted for each (conversation, member), until a
         # hand-off to it goes (#448).
         self._agent_send_refusals: Dict[tuple, str] = {}
@@ -334,7 +340,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         # would otherwise still open, on a hidden window that has stopped.
         self._closing = False
         self._properties_busy = False  # View, Properties reading a transcript (#214)
-        self._claude_version = ""  # for bug reports; found in the background
+        # Each provider's command-line version for bug reports (#464), found
+        # in the background; "checking" until then.
+        self._cli_versions: Dict[str, str] = {}
+        self._bug_report_busy = False  # gathering a report's sign-ins (#464)
+        # (when, sign-ins, install) gathered while another dialog was open.
+        self._bug_report_ready = None
         # Slash commands and skills per folder (#23), fetched in the background.
         self._commands: Dict[str, List[dict]] = {}  # by _folder_key
         self._commands_fetching: set = set()
@@ -501,7 +512,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             wx.CallAfter(wx.MessageBox, self.prompts.load_error, APP_NAME,
                          wx.OK | wx.ICON_WARNING, self)
         self.refresh_sessions()
-        self._check_claude_version()
+        self._check_cli_versions()
         # After the session list has been read, like the update check.
         self._startup_sign_in = wx.CallLater(UPDATE_CHECK_DELAY_MS, self._check_sign_in,
                                              manual=False)
@@ -599,6 +610,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._item(session, "Backup Schedule...", lambda e: self.on_backup_schedule())
         # Every letter of "Restore from Backup" is another item's access key.
         self._item(session, "Restore from Backup...", lambda e: self.on_restore_backup())
+        # Many chats as files (#461), with the other ways to get your chats
+        # out. Every letter of "Export Chats" is another item's access key,
+        # so it's here, last before Exit: Alt+F, Up, Up.
+        self._item(session, "Export Chats...", lambda e: self.on_export_chats())
         session.AppendSeparator()
         self._item(session, "E&xit", lambda e: self.Close(), wx.ID_EXIT)
         bar.Append(session, "&File")
@@ -2985,6 +3000,134 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 wx.CallAfter(self._export_done, title, path, 0, exc)
 
         self._pool.submit(work)
+
+    def on_export_chats(self):
+        """File, Export Chats (#461): choose any of the chats in the session
+        list, then a format and a folder, and each becomes its own file, as
+        Export Session makes it. It runs in the background with its progress
+        in the status bar; choosing it again offers to stop it."""
+        job = self._export_many_job
+        if job is not None:
+            if job.get("listing"):
+                self._feedback("Still finding the chats to export.")
+                return
+            answer = wx.MessageBox("Chats are being exported. Stop?", "Export Chats",
+                                   wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
+            # It may have finished while the question was open.
+            if answer == wx.YES and self._export_many_job is job:
+                job["cancel"] = True
+                self._feedback("Stopping the export.")
+            return
+        by_key = {info.key: info for info in self._snapshot.sessions}
+        candidates = [by_key[key] for key in self._list_keys
+                      if key in by_key and key not in self.hidden]
+        # Whether each has a history can mean searching Claude's project
+        # folders, so it's checked off the window's thread (#462 review).
+        listing = {"listing": True}
+        self._export_many_job = listing
+
+        def find():
+            found = []
+            for info in candidates:
+                try:   # a local check, as Export Session makes
+                    if self.sessions.has_history(info):
+                        found.append(info)
+                except Exception:  # noqa: BLE001 - not exportable, so not listed
+                    continue
+            wx.CallAfter(self._export_chats_choose, listing, found)
+
+        self._pool.submit(find)
+
+    def _export_chats_choose(self, listing, infos):
+        if self._gone() or self._export_many_job is not listing:
+            return
+        self._export_many_job = None
+        infos = sorted(infos, key=lambda info: info.last_activity_ms or 0, reverse=True)
+        if not infos:
+            wx.MessageBox("There are no chats in the session list to export.", "Export Chats",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            return
+        rows = [export.chat_row(info.title, info.provider_label or info.provider.capitalize(),
+                                info.cwd, info.last_activity_ms) for info in infos]
+        heading = (f"{len(infos)} chat{'s' if len(infos) != 1 else ''} in the session list's "
+                   "current view, newest first. Choose the ones to export and the format; the "
+                   "folder comes next. Each chat becomes its own file, and no file is ever "
+                   "replaced.")
+        dialog = ExportChatsDialog(self, heading, rows, say=lambda text: self._say(text, interrupt=True),
+                                   fmt=self._export_many_format)
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            chosen = [infos[i] for i in dialog.chosen_indexes()]
+            fmt = dialog.chosen_format()
+        finally:
+            dialog.Destroy()
+        documents = os.path.join(os.path.expanduser("~"), "Documents")
+        start = self._export_many_folder if os.path.isdir(self._export_many_folder) else (
+            documents if os.path.isdir(documents) else "")
+        folders = wx.DirDialog(self, f"Export {len(chosen)} chat{'s' if len(chosen) != 1 else ''} "
+                               "to which folder?", defaultPath=start,
+                               style=wx.DD_DEFAULT_STYLE)
+        try:
+            if folders.ShowModal() != wx.ID_OK:
+                return
+            folder = folders.GetPath()
+        finally:
+            folders.Destroy()
+        self._export_many_format, self._export_many_folder = fmt, folder
+        # Gathered here, on the window's thread: the loaded chat as the list
+        # shows it, and each chat's own Show Tool Activity choice.
+        chats = []
+        for info in chosen:
+            loaded = self._open is not None and info.key == self._open.key
+            messages = ([m for m in self._visible_messages() if m.kind not in TAIL_KINDS]
+                        if loaded and self._chat_loaded else None)
+            show_activity = self._show_activity if loaded else info.key in self.tool_activity
+            chats.append((info.title, info.cwd, (info, messages, show_activity)))
+        job = {"cancel": False}
+        self._export_many_job = job
+        self._feedback(f"Exporting {len(chats)} chat{'s' if len(chats) != 1 else ''}. "
+                       "Progress is in the status bar.")
+
+        def read(source):
+            info, messages, show_activity = source
+            if messages:
+                return messages
+            history = self.sessions.read(info)
+            return [m for m in history.messages if show_activity or not m.is_activity] if history else []
+
+        def progress(done, total):
+            wx.CallAfter(self._export_many_status, f"Exporting chats: {done} of {total}.")
+
+        def work():
+            try:
+                result = export.export_many(chats, folder, fmt, read,
+                                            cancelled=lambda: job["cancel"], progress=progress)
+                wx.CallAfter(self._export_many_done, result, folder, None)
+            except Exception as error:  # noqa: BLE001 - said, not raised
+                wx.CallAfter(self._export_many_done, None, folder, error)
+
+        self._pool.submit(work)
+
+    def _export_many_status(self, text: str):
+        if not self._gone() and self._export_many_job is not None:
+            self._status(text)
+
+    def _export_many_done(self, result, folder: str, error):
+        self._export_many_job = None
+        if self._gone():
+            return
+        if error is not None:
+            self._status("The export didn't finish.")
+            wx.MessageBox(f"Couldn't export the chats: {error}", "Export Chats",
+                          wx.OK | wx.ICON_ERROR, self)
+            return
+        summary = export.many_summary(result, folder)
+        # A message box, as the backup commands end (#458); the status bar
+        # keeps its first line to read back.
+        self._status(summary.splitlines()[0])
+        wx.MessageBox(summary, "Export Chats",
+                      wx.OK | (wx.ICON_WARNING if result.failed else wx.ICON_INFORMATION), self)
 
     def _export_done(self, title: str, path: str, count: int, error):
         if self._gone():
@@ -6958,18 +7101,67 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
 
     def on_report_bug(self):
         """Help, Report a Bug (#28): what happened, plus non-sensitive facts
-        about the app, to a GitHub issue (see bugreport.py)."""
-        listed = [s for s in self._snapshot.sessions if not s.archived]
-        code = sum(1 for s in listed if s.source == DESKTOP and not s.cowork)
-        cowork = sum(1 for s in listed if s.cowork)
-        # Cowork ones are desktop app sessions too: split only when there are some.
-        counts = {"desktop app Code": code, "desktop app Cowork": cowork} if cowork \
-            else {"desktop app": code}
-        counts["Chat Place"] = sum(1 for s in listed if s.is_own)
-        counts["terminal"] = sum(1 for s in listed if s.is_terminal)
-        facts = bugreport.environment(self.speech, counts,
-                                      claude_version=self._claude_version or "checking",
-                                      speech_route=speaker.last_route)
+        about the app, to a GitHub issue (see bugreport.py). Each provider's
+        sign-in is asked first, in the background (#464), so the report says
+        whether it was signed in when the bug happened."""
+        if self._bug_report_busy:
+            self._feedback("Still gathering the details for your report.")
+            return
+        ready = self._bug_report_ready
+        self._bug_report_ready = None
+        if ready is not None and time.monotonic() - ready[0] < BUG_REPORT_FRESH_SECONDS:
+            # Gathered while another dialog was open: it's still fresh.
+            self._show_bug_report(*ready[1:])
+            return
+        self._bug_report_busy = True
+        self._feedback("Gathering the details for your report.")
+        codex_on = self.speech.includes_codex()
+
+        def work():
+            try:
+                sign_ins = bugreport.gather_sign_ins(codex_on)
+            except Exception:  # noqa: BLE001 - the report still opens
+                sign_ins = {}
+            try:
+                install = bugreport.install_kind()
+            except Exception:  # noqa: BLE001
+                install = ""
+            wx.CallAfter(self._show_bug_report, sign_ins, install)
+        try:
+            self._pool.submit(work)
+        except RuntimeError:
+            self._bug_report_busy = False  # closing
+
+    def _display_fact(self) -> str:
+        """The display scale and High Contrast, which matter for layout bugs."""
+        try:
+            scale = f"scale {round(self.GetDPIScaleFactor() * 100)}%"
+        except Exception:  # noqa: BLE001 - older wx
+            scale = ""
+        contrast = platform_paths.high_contrast()
+        parts = [scale] + ([] if contrast is None
+                           else ["High Contrast " + ("on" if contrast else "off")])
+        return ", ".join(part for part in parts if part)
+
+    def _show_bug_report(self, sign_ins, install):
+        self._bug_report_busy = False
+        if self._gone():
+            return
+        if any(isinstance(w, wx.Dialog) and w.IsShown() and w.IsModal()
+               for w in wx.GetTopLevelWindows()):
+            # Gathering takes a few seconds, and you may have opened Settings
+            # or the like meanwhile: never stack the report on top of it.
+            self._bug_report_ready = (time.monotonic(), sign_ins, install)
+            self._feedback("The details for your report are ready. Choose Report a Bug "
+                           "again when you've finished here.")
+            return
+        versions = {provider: self._cli_versions.get(provider, "checking")
+                    for provider in bugreport.CLI_NAMES}
+        facts = bugreport.environment(self.speech,
+                                      bugreport.session_counts(self._snapshot.sessions),
+                                      speech_route=speaker.last_route, versions=versions,
+                                      sign_ins=sign_ins, install=install,
+                                      display=self._display_fact())
         dialog = BugReportDialog(self, [f"{label}: {value}" for label, value in facts])
         try:
             if dialog.ShowModal() != wx.ID_OK:
@@ -7002,12 +7194,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         finally:
             wx.TheClipboard.Close()
 
-    def _check_claude_version(self):
-        """Claude Code's version for bug reports, found once in the background:
-        asking takes a second or more, too long to wait for in a dialog."""
+    def _check_cli_versions(self):
+        """Each provider's command-line version for bug reports (#464), found
+        once in the background: asking takes a second or more each, too long
+        to wait for in a dialog."""
         def work():
-            version = bugreport.claude_code_version()
-            wx.CallAfter(setattr, self, "_claude_version", version)
+            # One after another in one task: they aren't needed until Report
+            # a Bug, and the shared pool has other work at start-up.
+            for provider in bugreport.CLI_NAMES:
+                version = bugreport.cli_version(provider)
+                wx.CallAfter(self._cli_versions.__setitem__, provider, version)
         self._pool.submit(work)
 
     def on_sign_in(self):
@@ -7476,6 +7672,15 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if answer != wx.YES:
                 event.Veto()
                 return
+        export_job = getattr(self, "_export_many_job", None)
+        if export_job is not None and not export_job.get("listing"):
+            if event.CanVeto() and wx.MessageBox(
+                    "Chats are being exported. Quit anyway? Files already written stay.",
+                    f"Quit {APP_NAME}", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                    self) != wx.YES:
+                event.Veto()
+                return
+            export_job["cancel"] = True   # stopped before the next chat (#462 review)
         job = getattr(self, "_backup_job", None)
         if job is not None:
             kind = ("A restore" if job.get("restore") else

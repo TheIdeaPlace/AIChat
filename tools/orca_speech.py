@@ -130,19 +130,25 @@ STEPS = [
     Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
     Step("folder question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # Backup Schedule (#437), then Restore from Backup (#436), the last items
-    # before Exit: Up from the top goes to Exit first.
+    # Backup Schedule (#437), Restore from Backup (#436) and Export Chats
+    # (#461), the last items before Exit: Up from the top goes to Exit first.
     # Lands on the schedule's choice box, which Orca reads with or without
     # its name depending on timing (#454): until that's fixed, only that the
     # menu reached Backup Schedule is checked.
-    Step("Backup Schedule", ["alt+f", "Up", "Up", "Up", "Return"],
+    Step("Backup Schedule", ["alt+f", "Up", "Up", "Up", "Up", "Return"],
          expect=["Backup Schedule"]),
     Step("Backup Schedule closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # GTK's file picker is announced by its file list, not its title.
-    Step("Restore from Backup", ["alt+f", "Up", "Up", "Return"],
+    Step("Restore from Backup", ["alt+f", "Up", "Up", "Up", "Return"],
          expect=["Restore from Backup", "Files"]),
     Step("restore's file question closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # Lands on the chat list, none chosen: its first row starts "Skip".
+    Step("Export Chats", ["alt+f", "Up", "Up", "Return"],
+         expect=["Export Chats", "Skip"]),
+    Step("Space chooses the chat", ["space"], expect=["Export", "1 of"]),
+    Step("Export Chats closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Copilot's Auto (#426), last, as the Copilot chat replaces the session
     # list's discovery (copilot_chat below): a chat of the app's own in agent
