@@ -871,9 +871,12 @@ Chat Place answer some of those for you, as Allow Once, in a chat started here t
 mode. Each one answered goes on the status bar, in full ("allowed for you: Command: Get-Item
 notes.txt", with "(your rule)" or "(allowed for this chat)" when one of those allowed it), and
 anything else still asks. Nothing is answered for you in a chat whose folder is a whole drive,
-your home folder or a folder holding it, or inside one of the places below; nor anything in your
-home folder's settings and secrets (`.ssh`, `.copilot`, `.claude`, AppData and the like) or your
-PowerShell profiles, even with Documents in OneDrive.
+your home folder or a folder holding it, the temp folder, a network path (`\\server\share`,
+`\\?\C:\...`; a mapped drive letter is fine), or inside one of the places below; nor anything in
+your home folder's settings and secrets (`.ssh`, `.copilot`, `.claude`, AppData and the Startup
+folder, wherever Windows keeps them, and the like) or your PowerShell profiles, even with
+Documents in OneDrive. No file change for you makes a file named `HEAD` (which would make a
+folder a git repository) or a git program of its own (`git.cmd`).
 
 - **Auto**, the third choice in Change Permission Mode (Ctrl+Shift+O), after a warning (No is the
   default). Copilot may read, list and search inside the chat's folder and its subfolders
@@ -883,10 +886,15 @@ PowerShell profiles, even with Documents in OneDrive.
   CDPATH elsewhere), read git (git status, log, diff, show, branch with no name, and a few more, with
   common options such as `--oneline` and `--stat`), and make its own file changes inside the
   folder. git is answered only when the chat's folder is the top of a repository (it has a `.git`
-  folder) and Copilot's shell is there, the repository has no submodules, and only if that
-  repository's settings name no program for git to run (the same goes for git commands your
-  rules allow, which also never take options that write a file, run a program or point git
-  elsewhere, such as `--output`, `--ext-diff` or `-c`); git diff, show, log and blame also ask if any of your git settings name a
+  folder) and Copilot's shell is there, the repository has no submodules, its own settings are
+  only the ordinary ones git itself writes (the remote's address, branches, line endings, your
+  name and the like: anything else, such as a program for git to run, asks), and none of your git
+  settings files is inside the folder (the same goes for git commands your rules allow, which must name the git
+  command, as `git commit *` does, since `git *` alone allows none; never cover config, bisect,
+  filter-branch, hook, submodule, worktree, difftool, mergetool and a few more that change git's
+  settings or run a program; and never take options that write a file, run a program or point git
+  elsewhere, such as `--output`, `--ext-diff`, `--unsafe-paths`, `-O` or `-x`, however
+  they're shortened); git diff, show, log and blame also ask if any of your git settings name a
   program for showing differences (a diff driver), which a repository can choose. It never deletes, moves, copies or writes through a command, never deletes a file
   through a file change, and never changes anything in `.git` or another git repository's own
   folder, `.githooks`, `.github`, `.copilot`, `.claude`, `.codex`, `.vscode`, `.idea`, `.husky`
@@ -896,12 +904,19 @@ PowerShell profiles, even with Documents in OneDrive.
   folder. **After Auto changes a file, your rules and kept commands ask once:** a program you've
   allowed, such as `npm test` or `python build.py`, runs what's in the folder (and settings such
   as `.npmrc` or `conftest.py` can make it run anything), so once Auto has let Copilot change a
-  file, the next command your rules or Allow for This Chat would allow asks you first. Allowing
-  a command yourself, once Copilot asks after that change, lets them be answered again until
-  Auto changes another file; a chat opened again asks once too, since what Auto changed before
-  isn't kept. A command Copilot runs in the background (it says so just before asking), or
-  doesn't describe before asking, always asks; once you allow one, commands ask until Copilot
-  is next started, since it may still be changing the folder. The chat's heading ends "Auto", and Auto is kept
+  file, the next command your rules or Allow for This Chat would allow asks you first, and the
+  chat says why. Allowing such a command yourself, once Copilot asks after that change, lets them
+  be answered again until Auto changes another file (allowing some other command doesn't); a chat
+  opened again asks once too, since what Auto changed before isn't kept. Every chat in the same
+  folder, or in a folder inside it or holding it, shares this. While a program your rules, a kept
+  command or you allowed may still be running, Auto's file changes in its folder ask, and the
+  chat says why: until Copilot reports, in its own record of the program's end, that it ended,
+  or until Copilot is next started (if Copilot never reports the end, as when it's stopped, that's
+  when). A command Copilot
+  runs in the background (it says so just before asking), or doesn't describe before asking,
+  always asks; so does one Copilot moves to the background because it's still running after its
+  wait (30 seconds), and once you allow either, commands ask until Copilot is next started, since
+  it may still be changing the folder. The chat's heading ends "Auto", and Auto is kept
   for the chat, so it's on again when the chat is opened again, until you choose Agent or Plan.
   If Copilot switches to plan mode, Auto ends and the chat says so.
 - **Your rules**, in `%APPDATA%\TheChatPlace\copilot-rules.json` (on a Mac,
@@ -917,8 +932,9 @@ PowerShell profiles, even with Documents in OneDrive.
   move Copilot's shell or run a script in it (pushd, `.\build.ps1`, source), and after a
   command a rule or Allow for This Chat allowed, only a pipe may follow (`npm test | Select-Object -Last 20`, not
   `npm test; Get-Content x`): the rest was checked before that command could change anything. It's read again for each request,
-  so a change counts at once. A file that can't be read is used as no rules at all, and a rule
-  that can't be read is left out; Chat Permissions says which.
+  so a change counts at once. A file that can't be read is used as no rules at all (the chat
+  says so, once each time The Chat Place runs), and a rule that can't be read is left out; Chat
+  Permissions says which.
 - **Allow for This Chat**, a button in Answer (Ctrl+Shift+A) when Copilot asks to run a command.
   It allows that command and keeps it for the chat: the next time Copilot asks to run exactly the
   same command, letter for letter, it isn't asked again. It's offered only for a command whose

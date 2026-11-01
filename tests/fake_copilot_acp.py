@@ -281,7 +281,7 @@ def prompt(message_id, session, text=""):
         # background, "none" sends no input, "other" previews another one).
         preview = os.environ.get("FAKE_COPILOT_PREVIEW", "")
         shown = {"command": ASK_COMMAND if preview != "other" else "echo other",
-                 "description": "Run it"}
+                 "description": "Run it", "mode": "sync", "initial_wait": 30}
         if preview == "async":
             shown.update(mode="async", initial_wait=10)
         elif preview == "detach":

@@ -1598,6 +1598,47 @@ def git_names_diff_program(folder: str) -> Optional[bool]:
     return answer
 
 
+def git_config_files(folder: str) -> Optional[List[str]]:
+    """Every file git reads its config from in ``folder``: the system's, yours
+    (and any file they include) and the repository's, as git itself lists
+    them (``git config --list --show-origin``). None if git can't say.
+    copilot_folder refuses git when one of them is inside the chat's folder
+    but not the repository's own config, which it reads itself: a file Auto
+    may write that your config includes (Kelly's review of 8345ddd)."""
+    import subprocess
+
+    git = find_tool("git")
+    if not git:
+        return None
+    try:
+        done = subprocess.run([git, "config", "--list", "--show-origin", "--includes", "-z"],
+                              cwd=folder, capture_output=True, timeout=10,
+                              creationflags=hidden_window_flags())
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if done.returncode != 0:
+        return None
+    # With -z each entry is its origin, NUL, then the setting, NUL, and a
+    # path isn't quoted (Claude's review: git quoted a non-ASCII one).
+    pieces = done.stdout.decode("utf-8", "replace").split("\0")
+    files = [origin[len("file:"):] for origin in pieces[0::2] if origin.startswith("file:")]
+    # And every file an include names, whether it's there yet or not: git
+    # lists only files that hold a setting, so an empty or missing one inside
+    # the folder, which Auto could then write, wasn't seen (Claude's
+    # verification pass).
+    for origin, setting in zip(pieces[0::2], pieces[1::2]):
+        key, _, value = setting.partition("\n")
+        key = key.lower()
+        if not origin.startswith("file:") or not value or not (
+                key == "include.path" or (key.startswith("includeif.") and key.endswith(".path"))):
+            continue
+        target = os.path.expanduser(value)
+        if not os.path.isabs(target):
+            target = os.path.join(os.path.dirname(origin[len("file:"):]), target)
+        files.append(target)
+    return list(dict.fromkeys(files))
+
+
 def hidden_window_flags() -> int:
     """creationflags that keep a console window from flashing up on Windows."""
     if sys.platform == "win32":

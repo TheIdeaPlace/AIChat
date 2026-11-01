@@ -130,6 +130,63 @@ def _listed_command(entry):
     return entry if isinstance(entry, str) else None
 
 
+#: How Copilot says a sync command outlived its wait and runs on in the
+#: background: the call is reported "completed" all the same (probed against
+#: 1.0.105 for Kelly's review of 8345ddd).
+_STILL_RUNNING = re.compile(r"<command (?:with shellId: (\S+) is still running|started in "
+                            r"background with shellId: (\S+?)>)")
+
+
+def _update_text(update: dict) -> str:
+    """The text of a tool_call_update's output (rawOutput's and content's)."""
+    pieces = []
+    out = update.get("rawOutput")
+    if isinstance(out, dict) and isinstance(out.get("content"), str):
+        pieces.append(out["content"])
+    for item in update.get("content") if isinstance(update.get("content"), list) else ():
+        inner = item.get("content") if isinstance(item, dict) else None
+        if isinstance(inner, dict) and isinstance(inner.get("text"), str):
+            pieces.append(inner["text"])
+    return "\n".join(pieces)[-20000:]
+
+
+def _note_exits(chat, call_id: str, update: dict) -> None:
+    """Follow the programs allowed here until they really end. "completed"
+    alone doesn't mean that: a sync command still running when its wait runs
+    out is reported completed too, and its real end comes later in another
+    tool call that names its shell (read_powershell). A real end carries a
+    shell_exit with its exit code, in Copilot's own structured output: never
+    text in a command's output, which a program can print (Copilot's and
+    Claude's reviews of the round answering Kelly's review of 8345ddd).
+    Another shell's end counts only from the call that reads that shell."""
+    raw = update.get("rawInput")
+    if isinstance(raw, dict) and raw.get("shellId") is not None:
+        chat.reads[call_id] = str(raw.get("shellId"))  # read_powershell and the like
+    out = update.get("rawOutput") if isinstance(update.get("rawOutput"), dict) else {}
+    contents = out.get("contents") if isinstance(out.get("contents"), list) else []
+    exits = {str(item.get("shellId")) for item in contents
+             if isinstance(item, dict) and item.get("type") == "shell_exit"}
+    reading = chat.reads.get(call_id)
+    if reading is not None and reading in exits:
+        chat.shell_ended(reading)
+    status = update.get("status")
+    # A call's own structured exit ends it, even one that named its shell
+    # (Claude's verification pass); another shell's, only as above.
+    if status == "failed" or (status == "completed" and exits):
+        chat.finished(call_id)
+    elif status == "completed":
+        found = _STILL_RUNNING.findall(_update_text(update))
+        if found:
+            # Copilot's own marker comes last; any earlier one is output.
+            shell = found[-1][0] or found[-1][1]
+            chat.backgrounded(call_id, shell)
+            if call_id in chat.answered_calls:
+                # It runs on, unwatched, while later requests are checked.
+                chat.location_changed = True
+        # Otherwise how it ended isn't known: still counted as running, so
+        # Auto's file changes ask, until Copilot is next started.
+
+
 def _answered(chat, call_id: str) -> None:
     """Note a command answered, by toolCallId (_remember_preview)."""
     chat.answered_calls[call_id] = True
@@ -147,8 +204,8 @@ def _remember_preview(chat, update: dict) -> None:
     failed one is no longer running."""
     raw = update.get("rawInput")
     call_id = update.get("toolCallId")
-    if isinstance(call_id, str) and update.get("status") in ("completed", "failed"):
-        chat.running.discard(call_id)
+    if isinstance(call_id, str):
+        _note_exits(chat, call_id, update)
     if not isinstance(raw, dict) or not isinstance(call_id, str):
         return
     background = (raw.get("mode") not in (None, "sync") or "detach" in raw
@@ -278,6 +335,16 @@ AUTO_ENDED = ("This chat is no longer in Auto, since Copilot isn't in agent mode
               "before it acts again.")
 
 
+#: Said when your rule or a kept command asks only because Auto changed a file.
+ASKS_ONCE = ("This asks although your rules or the chat's kept commands allow it, since Auto "
+             "changed a file in this folder that it may run. Once you allow it yourself, they "
+             "can be answered for you again.")
+#: Said when Auto's file change asks because an allowed program may be running.
+STILL_RUNNING_ASKS = ("This file change asks, since a program allowed in this folder may still "
+                      "be running and could use it. It's answered for you again once Copilot "
+                      "says the program ended, or Copilot is next started.")
+
+
 #: Said once a run when your rules file for Copilot can't be used.
 RULES_PROBLEM = ("Your rules file for Copilot, copilot-rules.json, {problem}, so none of its rules "
                  "are used until it's fixed. File, Chat Permissions says where it is.")
@@ -285,9 +352,9 @@ RULES_PROBLEM = ("Your rules file for Copilot, copilot-rules.json, {problem}, so
 
 #: Said when a chat's folder is a whole drive or the home folder.
 TOO_BROAD = ("Auto isn't offered for this chat's folder: it's a whole drive, your home folder or "
-             "a folder holding it, or it's inside a folder whose files can make a program run, "
-             "such as .git, .vscode or your home folder's settings. Start a Copilot chat in a "
-             "project's own folder to use it.")
+             "a folder holding it, the temp folder, a network path, or it's inside a folder "
+             "whose files can make a program run, such as .git, .vscode or your home folder's "
+             "settings. Start a Copilot chat in a project's own folder to use it.")
 
 
 #: Said when an organisation's Copilot policy is on this computer.
@@ -795,9 +862,37 @@ def locked_elsewhere(folder: Path, own_pid: Optional[int]) -> bool:
                for pid, written in locks.items())
 
 
+class _Folder:
+    """What every chat in one real folder shares (Kelly's review of 8345ddd:
+    chat A's Auto edit of .npmrc didn't make chat B's npm test rule ask):
+    whether Auto changed a file there since a command you allowed covered
+    by a rule or kept command, how many changes Auto made, and the programs
+    allowed there that may still be running, as (chat, toolCallId)."""
+
+    def __init__(self, key: str = ""):
+        self.key = key
+        self.edited = False
+        self.edit_seq = 0
+        #: (chat, toolCallId) -> the Copilot connection it runs under: one
+        #: from a Copilot that has since stopped no longer counts (Claude's
+        #: review of the round answering Kelly's review of 8345ddd).
+        self.running: dict = {}
+        #: (chat, shellId) -> toolCallId of an allowed command Copilot moved
+        #: to the background: its real end names the shell, not the call.
+        self.shells: dict = {}
+
+    def live(self) -> set:
+        """toolCallIds that may still be running, under a live Copilot."""
+        return {call for (_chat, call), connection in self.running.items()
+                if connection is None or not getattr(connection, "closed", False)}
+
+
 class _Chat:
     def __init__(self, native_id: str, cwd: str):
         self.native_id, self.cwd = native_id, cwd
+        #: Shared with every chat in the same real folder (_Folder); the
+        #: runtime gives it the folder's own when it's opened.
+        self.folder = _Folder()
         #: The connection this chat was opened (and safety-checked) on. A new
         #: Copilot process hasn't loaded it, so it must be opened again.
         self.connection = None
@@ -891,7 +986,6 @@ class _Chat:
         #: you allowed (npm test, pytest) runs files Auto lets Copilot change,
         #: and settings such as .npmrc or conftest.py can make it run anything
         #: (Kelly's review of 58c5f03; Tim chose to ask).
-        self.edited = False
         #: toolCallId -> (command, runs in the background), from the
         #: tool_call update Copilot sends just before each request. Only that
         #: update says a command runs in the background (mode async, detach,
@@ -899,18 +993,14 @@ class _Chat:
         #: Kelly's review of 58c5f03). Such a command keeps running while
         #: later requests are checked, so it always asks.
         self.previews: dict = {}
-        #: toolCallIds of programs allowed to run (by a rule, for this chat,
-        #: or by you) that Copilot hasn't said have finished: while one runs,
-        #: Auto's file changes ask, so it can't change what that program is
-        #: running (Copilot's review of the stricter Auto). Auto's own reads
-        #: aren't counted. Cleared at each turn's start.
-        self.running: set = set()
-        #: How many file changes Auto has answered, and the count when each
-        #: waiting request came: a command you allow clears ``edited`` only
-        #: if it was asked after Auto's last edit, not one already waiting
-        #: (Claude's review of the stricter Auto).
-        self.edit_seq = 0
+        #: The folder's count of Auto's changes when each waiting request
+        #: came: a command you allow clears ``edited`` only if it was asked
+        #: after Auto's last edit, not one already waiting (Claude's review of
+        #: the stricter Auto).
         self.asked_at: dict = {}
+        #: toolCallId -> the shell a call reads (read_powershell's shellId):
+        #: only its own shell's exit counts (_note_exits).
+        self.reads: dict = {}
         #: toolCallIds of commands that were answered (for you or by you),
         #: newest last: one that later turns out to run in the background
         #: stops commands being answered (Claude's review of the stricter Auto).
@@ -923,6 +1013,44 @@ class _Chat:
     @property
     def safe(self) -> bool:
         return self.mode in SAFE_MODES and self.allow_all == "off"
+
+    # The folder's shared state, as this chat sees it (_Folder).
+    @property
+    def edited(self) -> bool:
+        return self.folder.edited
+
+    @edited.setter
+    def edited(self, value: bool) -> None:
+        self.folder.edited = value
+
+    @property
+    def edit_seq(self) -> int:
+        return self.folder.edit_seq
+
+    @edit_seq.setter
+    def edit_seq(self, value: int) -> None:
+        self.folder.edit_seq = value
+
+    @property
+    def running(self) -> set:
+        """toolCallIds of programs allowed in this folder, by any of its
+        chats, that may still be running (_Folder.running)."""
+        return self.folder.live()
+
+    def started(self, call_id: str) -> None:
+        self.folder.running[(self.native_id, call_id)] = self.connection
+
+    def finished(self, call_id: str) -> None:
+        self.folder.running.pop((self.native_id, call_id), None)
+
+    def backgrounded(self, call_id: str, shell: str) -> None:
+        if (self.native_id, call_id) in self.folder.running:
+            self.folder.shells[(self.native_id, shell)] = call_id
+
+    def shell_ended(self, shell: str) -> None:
+        call_id = self.folder.shells.pop((self.native_id, shell), None)
+        if call_id is not None:
+            self.finished(call_id)
 
     def apply(self, settings: dict) -> None:
         self.mode, self.allow_all = settings["mode"], settings["allow_all"]
@@ -1089,6 +1217,7 @@ class CopilotChatRuntime:
         if not isinstance(native_id, str) or not platform_paths.is_safe_id(native_id):
             raise CopilotChatError("Copilot didn't start a chat.")
         chat = _Chat(native_id, cwd)
+        chat.folder = self._folder_of(cwd)
         chat.apply(_settings(result.get("configOptions")))
         chat.apply_models(result.get("configOptions"))
         self._seen_models(chat)
@@ -1121,6 +1250,30 @@ class CopilotChatRuntime:
                 pass
         self._notify(chat)
         return native_id
+
+    def _folder_of(self, cwd: str) -> _Folder:
+        """The state every chat in the same real folder shares (_Folder)."""
+        try:
+            key = os.path.normcase(os.path.realpath(cwd))
+        except (OSError, ValueError, TypeError):
+            key = cwd
+        folders = self.__dict__.setdefault("_folders", {})
+        return folders.setdefault(key, _Folder(key))
+
+    def _related(self, chat) -> list:
+        """The chat's folder and every folder of another chat inside it or
+        holding it: an Auto edit in proj/sub changes what a program allowed
+        in proj runs, and the other way round (Claude's review of
+        the round answering Kelly's review of 8345ddd)."""
+        mine = chat.folder.key
+        found = [chat.folder]
+        for key, folder in self.__dict__.get("_folders", {}).items():
+            if folder is chat.folder or not mine or not key:
+                continue
+            if (key.startswith(mine.rstrip(os.sep) + os.sep)
+                    or mine.startswith(key.rstrip(os.sep) + os.sep)):
+                found.append(folder)
+        return found
 
     def set_auto(self, native_id: str, on: bool) -> None:
         """Turn Auto on or off for one chat (copilot_folder). Only in agent
@@ -1371,7 +1524,10 @@ class CopilotChatRuntime:
             raise CopilotChatError(IN_USE)
         before = _whole_lines_end(self._events(native_id))
         with self._lock:
-            chat = self._chats.get(native_id) or _Chat(native_id, cwd)
+            chat = self._chats.get(native_id)
+            if chat is None:
+                chat = _Chat(native_id, cwd)
+                chat.folder = self._folder_of(cwd)
             if chat.busy:
                 raise CopilotChatError("This Copilot chat is still finishing a turn.")
             if chat.loading:
@@ -1385,6 +1541,10 @@ class CopilotChatRuntime:
                 # in the chat's folder: where an earlier command may have
                 # moved the old one no longer matters (copilot_folder).
                 chat.location_changed, chat.locations = False, ()
+                # Its programs ended with the Copilot it ran in.
+                chat.folder.running = {entry: conn for entry, conn
+                                       in chat.folder.running.items()
+                                       if entry[0] != chat.native_id}
                 # What Auto changed before isn't kept: your rules and kept
                 # commands ask once in a chat opened again (Claude's review of
                 # the stricter Auto).
@@ -1574,7 +1734,6 @@ class CopilotChatRuntime:
         said the previous turn ended."""
         chat.busy, chat.outcome, chat.notice = True, "inProgress", ""
         chat.answered = False
-        chat.running = set()
         chat.prompt_queued = False
         chat.sending = False
         chat.turns += 1
@@ -1908,9 +2067,14 @@ class CopilotChatRuntime:
             del chat.requests[request_id]
             asked_at = chat.asked_at.pop(request_id, None)
             if decision == ALLOW_ONCE and request.method == COMMAND:
-                if asked_at == chat.edit_seq:
-                    chat.edited = False  # asked after Auto's last edit, and seen
-                chat.running.add(request.item_id)
+                # Only a command your rule or a kept command covers, asked
+                # after Auto's last edit, ends the ask-once: allowing an
+                # unrelated one (Get-Date), which Copilot chooses, doesn't
+                # (Kelly's review of 8345ddd).
+                if (asked_at == chat.edit_seq and followed is not None
+                        and followed.by in (copilot_folder.RULE, copilot_folder.CHAT)):
+                    chat.edited = False
+                chat.started(request.item_id)
                 _answered(chat, request.item_id)
                 # One you allow to run in the background may change the
                 # folder while later requests are checked: commands ask from
@@ -1970,6 +2134,10 @@ class CopilotChatRuntime:
             # it may yet, before Copilot runs this one (the third review).
             command_waiting = any(r.method == COMMAND for r in chat.requests.values()) \
                 if chat is not None else False
+            # This folder and those inside or holding it (_related): a
+            # program allowed in any of them may run what Auto changes here.
+            related = self._related(chat) if chat is not None else []
+            running_here = any(folder.live() for folder in related)
             # Only in agent mode: plan mode promises not to edit your files,
             # and nothing is answered for it (Claude's review of #426).
             auto = (watched and covered is not None and request is not None and chat.safe
@@ -1986,7 +2154,7 @@ class CopilotChatRuntime:
                     and (request.method != COMMAND or _preview(chat, request)[1] is False)
                     # Auto's file changes ask while a program allowed in
                     # this chat may still be running.
-                    and not (request.method == FILES and chat.running)
+                    and not (request.method == FILES and running_here)
                     # After Auto changed a file, your rules and kept commands
                     # ask until you allow a command yourself.
                     and not (chat.edited and covered.by in (copilot_folder.RULE,
@@ -1997,12 +2165,13 @@ class CopilotChatRuntime:
                                   or not _follow(chat, covered.locations))))
             if auto:
                 if request.method == FILES:
-                    chat.edited = True
-                    chat.edit_seq += 1
+                    for folder in related:
+                        folder.edited = True
+                        folder.edit_seq += 1
                 else:
                     _answered(chat, request.item_id)
                     if covered.by != copilot_folder.AUTO:
-                        chat.running.add(request.item_id)
+                        chat.started(request.item_id)
                 chat.auto_count += 1
                 # The whole command, not its first line: all of it ran.
                 what = (f"Command: {' '.join(request.command.split())}"
@@ -2014,6 +2183,18 @@ class CopilotChatRuntime:
             elif watched and request is not None:
                 chat.requests[request_id] = request
                 chat.asked_at[request_id] = chat.edit_seq
+                # When the ask-once is why your rule's or a kept command asks,
+                # say so, or it sounds like the rule stopped working (Kelly's
+                # review of 8345ddd).
+                if (covered is not None and chat.edited
+                        and covered.by in (copilot_folder.RULE, copilot_folder.CHAT)
+                        and ASKS_ONCE not in chat.notice):
+                    chat.notice = f"{chat.notice} {ASKS_ONCE}" if chat.notice else ASKS_ONCE
+                # And when a running program is why a file change asks.
+                if (covered is not None and request.method == FILES and running_here
+                        and STILL_RUNNING_ASKS not in chat.notice):
+                    chat.notice = (f"{chat.notice} {STILL_RUNNING_ASKS}" if chat.notice
+                                   else STILL_RUNNING_ASKS)
             elif watched:
                 chat.notice = problem
         if auto:

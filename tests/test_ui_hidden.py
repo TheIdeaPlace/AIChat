@@ -15308,3 +15308,122 @@ def test_a_second_restore_doesnt_put_back_what_you_changed(frame, env, monkeypat
     frame.on_restore_backup()
     assert pump(lambda: any(f.startswith("Restore finished") for f in env["boxes"]), timeout=30)
     assert frame.groups.groups_of(key) == [] and key not in frame.hidden
+
+
+def _copilot_chat(frame, monkeypatch, native, title, **state):
+    """An owned Copilot chat in agent mode, selected, for the tests below."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
+    from thechatplace.sessions import OWN, SessionInfo
+    settle(frame)
+    frame.store.add(OwnSession(native, title, "C:/w", provider="copilot", started=True))
+    info = SessionInfo(OWN, f"copilot:{native}", title, "C:/w", native, provider="copilot")
+    monkeypatch.setattr(frame, "_selected_session", lambda: info)
+    monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
+    frame._codex_states[info.key] = CopilotChatState(native, "idle", mode=AGENT_MODE, **state)
+    return info
+
+
+def test_a_copilot_mode_change_calls_after_once_however_it_ends(frame, env, monkeypatch):
+    """Kelly's review of 8345ddd: Chat Permissions waits on after(), so it's
+    called exactly once when the list is cancelled, when Auto's warning is
+    answered No, and when Copilot confirms a switch."""
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, PLAN_MODE
+    from thechatplace.ui import codex_chats
+    from thechatplace.ui.dialogs import COPILOT_AUTO
+    info = _copilot_chat(frame, monkeypatch, "cp-af", "After Copilot")
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: PLAN_MODE if action == "set_mode" else None)
+    try:
+        for chosen, box in ((None, wx.NO), (COPILOT_AUTO, wx.NO), (PLAN_MODE, wx.NO)):
+            monkeypatch.setattr(frame, "_change_setting",
+                                lambda title, prompt, choices, now, chosen=chosen: chosen)
+            monkeypatch.setattr(codex_chats.wx, "MessageBox", lambda *a, box=box, **k: box)
+            called = []
+            frame._change_copilot_mode(info, after=lambda: called.append(1))
+            assert pump(lambda: called == [1]), chosen
+            pump(lambda: False, timeout=0.3)
+            assert called == [1], chosen
+    finally:
+        frame._codex_states.clear()
+
+
+def test_chat_permissions_shows_auto_once_the_switch_is_done(frame, env, monkeypatch):
+    """Kelly's review of 8345ddd: after choosing Auto from Chat Permissions,
+    its mode reads Auto, not the agent mode it was in."""
+    import dataclasses
+    from thechatplace.providers.copilot_runtime import AGENT_MODE
+    from thechatplace.ui import codex_chats
+    from thechatplace.ui.dialogs import COPILOT_AUTO
+    from thechatplace.ui.permission_hosts import CopilotPermissions
+    info = _copilot_chat(frame, monkeypatch, "cp-cp", "Switching Copilot")
+    record = frame.store.get("cp-cp", provider="copilot")
+
+    def owned_action(action, record, *args):
+        if action == "set_auto" and args == (True,):
+            frame._codex_states[info.key] = dataclasses.replace(
+                frame._codex_states[info.key], auto=True)
+        return AGENT_MODE if action == "set_mode" else None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    monkeypatch.setattr(frame, "_change_setting", lambda *args: COPILOT_AUTO)
+    monkeypatch.setattr(codex_chats.wx, "MessageBox", lambda *a, **k: wx.YES)
+    host = CopilotPermissions(frame, info, record)
+    seen = []
+    try:
+        host.change_mode(lambda: seen.append(host.mode_text()))
+        assert pump(lambda: seen)
+        assert seen[0].startswith("Auto")
+    finally:
+        frame._codex_states.clear()
+
+
+def test_answer_says_when_a_command_couldnt_be_kept_for_the_chat(frame, env, monkeypatch):
+    """Kelly's review of 58c5f03: a command the store couldn't save is allowed
+    once but not kept, and Answer says so rather than "kept"."""
+    from thechatplace.providers.copilot import NOT_KEPT, AllowedNotKept
+    from thechatplace.providers.copilot_auto_store import Kept
+    from thechatplace.providers.copilot_runtime import (AGENT_MODE, COMMAND, CopilotChatState,
+                                                         CopilotRequest)
+    from thechatplace.ui import codex_chats
+    info = _copilot_chat(frame, monkeypatch, "cp-nk", "Unsaved Copilot")
+    request = CopilotRequest("perm-1", COMMAND, "call-1", title="Run a command",
+                             command="npm test", choices=(("allow_once", "allow_once"),
+                                                          ("reject_once", "reject_once")))
+    state = CopilotChatState("cp-nk", "needs_you", "1", "inProgress", mode=AGENT_MODE,
+                             requests=(request,))
+    frame._codex_states[info.key] = state
+
+    def owned_action(action, record, *args):
+        if action == "chat_rule_candidate":
+            return Kept("npm test")
+        return AllowedNotKept(NOT_KEPT) if action == "allow_for_chat" else None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+
+    class Choosing(codex_chats.CodexPermissionDialog):
+        def ShowModal(self):
+            self.choice = "tcp_chat_rule"
+            return wx.ID_OK
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog", Choosing)
+    try:
+        frame._answer_codex_owned(info, state)
+        assert pump(lambda: env["feedback"] and env["feedback"][-1] == NOT_KEPT)
+    finally:
+        frame._codex_states.clear()
+
+
+def test_a_broken_rules_file_is_said_once(frame, env, monkeypatch):
+    """Kelly's review of 58c5f03: the runtime puts RULES_PROBLEM in the chat's
+    notice once a run; the window says a notice when it changes."""
+    import dataclasses
+    from thechatplace.providers.copilot_runtime import RULES_PROBLEM
+    info = _copilot_chat(frame, monkeypatch, "cp-rp", "Rules Copilot")
+    said = RULES_PROBLEM.format(problem="isn't JSON")
+    try:
+        state = dataclasses.replace(frame._codex_states[info.key], notice=said)
+        before = len([s for s in env["feedback"] if said in s])
+        frame._on_owned_update("copilot", state)
+        frame._on_owned_update("copilot", state)
+        assert pump(lambda: len([s for s in env["feedback"] if said in s]) == before + 1)
+        pump(lambda: False, timeout=0.3)
+        assert len([s for s in env["feedback"] if said in s]) == before + 1
+    finally:
+        frame._codex_states.clear()

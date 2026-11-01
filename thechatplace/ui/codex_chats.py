@@ -62,8 +62,8 @@ class CodexChats:
             text += (' It is in Auto: reading, and changing files, inside its folder are '
                      'allowed without asking.')
         if getattr(state, 'answering', False) and getattr(state, 'location_changed', False):
-            text += (' Its commands ask again, since a command you allowed may have moved '
-                     "Copilot's shell" + ("; file changes are still allowed."
+            text += (' Its commands ask again, since a command you allowed may still be running '
+                     "or may have moved Copilot's shell" + ("; file changes are still allowed."
                                           if getattr(state, 'auto', False) else "."))
         steering = len(getattr(state, 'steering', ()))
         if steering:
@@ -320,8 +320,8 @@ class CodexChats:
                     self._feedback(f'{info.title}: Auto. It reads, and changes files, in {folder} '
                                    'without asking, and asks before anything else.'
                                    + (" Its commands ask for now, since a command you allowed "
-                                      "earlier may have moved Copilot's shell; file changes are "
-                                      "allowed for you." if moved else ''))
+                                      "earlier may still be running or may have moved Copilot's "
+                                      "shell; file changes are allowed for you." if moved else ''))
                 elif chosen == COPILOT_AUTO and result == AGENT_MODE:
                     self._feedback(f'{info.title}: agent mode. {refused}')
                 elif result == mode:
@@ -743,8 +743,8 @@ class CodexChats:
         # answered for you (Auto, a rule or a kept command).
         if (getattr(state, 'answering', False) and getattr(state, 'location_changed', False)
                 and not getattr(previous, 'location_changed', False)):
-            self._say(f"{record.title}: commands ask again, since the one you allowed may have "
-                      "moved Copilot's shell."
+            self._say(f"{record.title}: commands ask again, since the one you allowed may still "
+                      "be running or may have moved Copilot's shell."
                       + (" File changes in its folder are still allowed."
                          if getattr(state, 'auto', False) else ""),
                       interrupt=False)

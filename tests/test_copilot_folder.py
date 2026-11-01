@@ -38,6 +38,9 @@ def rules(*allow, ask=()):
     return Policy(allow=tuple(parse_rule(r) for r in allow),
                   ask=tuple(parse_rule(r) for r in ask))
 
+#: Rules naming each git command a test uses ("git *" alone allows none).
+NAMED_GIT_RULES = rules("git log *", "git commit *", "git add *", "git status *", "git push *", "git grep *", "git rebase *", "git format-patch *", "git difftool *", "git diff *", "git stash *")
+
 
 #: Rules for every writing command #426 used to answer: what asks must ask
 #: even with them, since the strict reading is the same for rules.
@@ -1017,12 +1020,12 @@ def test_a_git_rule_isnt_answered_without_a_repository(folder):
     "git --git-dir=x log", "git log --exec-path", "git difftool --tool=x",
 ])
 def test_a_git_rule_never_takes_options_that_write_or_run(repo, command):
-    policy = rules("git *")
+    policy = NAMED_GIT_RULES
     assert copilot_folder.check_command(command, repo, policy) is None, command
 
 
 def test_a_git_rule_still_takes_ordinary_options(repo):
-    policy = rules("git *")
+    policy = NAMED_GIT_RULES
     for command in ("git log --oneline -5", "git commit -m 'x y'", "git add notes.txt",
                     "git status --short", "git push origin main"):
         assert copilot_folder.check_command(command, repo, policy).by == RULE, command
@@ -1031,7 +1034,7 @@ def test_a_git_rule_still_takes_ordinary_options(repo):
 def test_a_git_rule_that_shows_differences_asks_with_a_diff_program(repo, monkeypatch):
     from thechatplace import platform_paths
     monkeypatch.setattr(platform_paths, "git_names_diff_program", lambda folder: True)
-    policy = rules("git *")
+    policy = NAMED_GIT_RULES
     assert copilot_folder.check_command("git diff", repo, policy) is None
     assert copilot_folder.check_command("git stash show -p", repo, policy) is None
     assert copilot_folder.check_command("git commit -m x", repo, policy).by == RULE
@@ -1078,9 +1081,132 @@ def test_github_actions_are_guarded(tmp_path):
 def test_a_git_rule_refuses_short_and_shortened_options(repo, command):
     # Claude's review of the git rules: git reads -Ocalc as -O calc, and any
     # unambiguous start of a long option (--exe is --exec); real git ran each.
-    assert copilot_folder.check_command(command, repo, rules("git *")) is None, command
+    assert copilot_folder.check_command(command, repo, NAMED_GIT_RULES) is None, command
 
 
 def test_a_git_rule_still_takes_grep_and_log_options(repo):
     for command in ("git grep -e hello", "git grep -E hello", "git log -c", "git commit -am x"):
-        assert copilot_folder.check_command(command, repo, rules("git *")).by == RULE, command
+        assert copilot_folder.check_command(command, repo, NAMED_GIT_RULES).by == RULE, command
+
+
+def test_git_star_allows_no_git_command_and_some_never_by_any_rule(repo):
+    # Kelly's review of 8345ddd: a "git *" rule ran git bisect run, filter-branch
+    # and git config --global. A rule names the command it allows (Tim's choice),
+    # and some are never answered by any rule.
+    assert copilot_folder.check_command("git status", repo, rules("git *")) is None
+    assert copilot_folder.check_command("git commit -m x", repo, rules("git *")) is None
+    for command, rule in (("git bisect run calc", "git bisect *"),
+                          ("git filter-branch -f HEAD", "git filter-branch *"),
+                          ("git config core.fsmonitor calc", "git config *"),
+                          ("git config --global core.fsmonitor calc", "git config *"),
+                          ("git hook run pre-commit", "git hook *"),
+                          ("git submodule add x", "git submodule *"),
+                          ("git worktree add wt", "git worktree *"),
+                          ("git update-index --fsmonitor", "git update-index *"),
+                          ("git init --bare sub2", "git init *")):
+        assert copilot_folder.check_command(command, repo, rules(rule)) is None, command
+    # Under any of git's names.
+    assert copilot_folder.check_command("git.cmd bisect run calc", repo,
+                                        rules("git.cmd bisect *")) is None
+
+
+def test_a_git_config_file_inside_the_folder_asks(repo, monkeypatch):
+    # Your config including a file Auto could write (Kelly's review of 8345ddd).
+    included = os.path.join(repo, "extra.cfg")
+    monkeypatch.setattr(copilot_folder.platform_paths, "git_config_files",
+                        lambda where: ["C:/elsewhere/gitconfig", included])
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+    monkeypatch.setattr(copilot_folder.platform_paths, "git_config_files",
+                        lambda where: ["C:/elsewhere/gitconfig", ".git/config"])
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
+    monkeypatch.setattr(copilot_folder.platform_paths, "git_config_files", lambda where: None)
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+
+
+def test_no_file_change_makes_a_git_program(folder):
+    for name in ("git.cmd", "git.exe", "GIT.BAT", "git.ps1"):
+        assert not copilot_folder.file_change_allowed(os.path.join(folder, name), (), folder), name
+
+
+@windows_paths
+def test_network_and_long_path_spellings_of_a_chat_folder_are_too_broad():
+    # Kelly's review of 8345ddd: \\localhost\C$\Users\me is the home folder
+    # in a spelling the checks don't compare.
+    for folder in (r"\\localhost\C$\Users\me\proj", r"\\?\C:\Users\me\proj",
+                   "//server/share/proj"):
+        assert copilot_folder.folder_too_broad(folder), folder
+
+
+@pytest.mark.parametrize("setting", [
+    '[remote "origin"]\n\turl = https://example.invalid/x\n\tuploadpack = calc\n',
+    '[remote "origin"]\n\treceivepack = calc\n',
+    '[remote "origin"]\n\tvcs = calc\n',
+    '[merge "m"]\n\tdriver = calc %O %A %B\n',
+    '[core]\n\tgitProxy = calc\n',
+    '[protocol "ext"]\n\tallow = always\n',
+    '[url "ext::calc "]\n\tinsteadOf = https://\n',
+    '[remote "origin"]\n\turl = ext::calc\n',
+    '[unknown]\n\tsetting = 1\n',
+])
+def test_a_repository_setting_not_known_safe_asks(repo, setting):
+    # Claude's review of the round answering Kelly's review of 8345ddd: a
+    # downloaded repository's uploadpack ran on git fetch, a merge driver on
+    # git merge. Only settings known to be safe are allowed.
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write(setting)
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+    assert copilot_folder.check_command("git fetch origin", repo, rules("git fetch *")) is None
+
+
+def test_an_ordinary_cloned_repository_is_still_answered(repo):
+    with open(os.path.join(repo, ".git", "config"), "w", encoding="utf-8") as handle:
+        handle.write('[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n'
+                     '\tlogallrefupdates = true\n\tsymlinks = false\n\tignorecase = true\n'
+                     '[remote "origin"]\n\turl = https://github.com/example/x.git\n'
+                     '\tfetch = +refs/heads/*:refs/remotes/origin/*\n'
+                     '[branch "main"]\n\tremote = origin\n\tmerge = refs/heads/main\n'
+                     '[user]\n\tname = Synthetic\n\temail = synthetic@example.invalid\n')
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
+
+
+def test_git_apply_unsafe_paths_asks(repo):
+    # Claude's review: --unsafe-paths let a patch write ../outside.
+    for command in ("git apply --unsafe-paths p.patch", "git apply --unsafe p.patch",
+                    "git apply --directory sub p.patch"):
+        assert copilot_folder.check_command(command, repo, rules("git apply *")) is None, command
+    assert copilot_folder.check_command("git apply p.patch", repo, rules("git apply *")).by == RULE
+
+
+def test_an_ask_rule_for_git_catches_git_cmd(repo):
+    policy = Policy(auto=True, allow=(parse_rule("git push *"),), ask=(parse_rule("git push"),))
+    assert copilot_folder.check_command("git.cmd push", repo, policy) is None
+
+
+@pytest.mark.parametrize("setting", [
+    '[remote "o"]\n\turl = "ext:"":sh -c x"\n',
+    '[branch "main"]\n\tremote = ext::sh -c x\n',
+    '[branch "main"]\n\tpushremote = https://example.invalid/x\n',
+])
+def test_a_remote_written_to_hide_a_transport_helper_asks(repo, setting):
+    # Claude's verification pass: git joins "ext:"":sh" into ext::sh, and a
+    # branch's remote may be a URL.
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write(setting)
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
+
+
+def test_an_include_of_a_file_not_there_yet_inside_the_folder_asks(repo, monkeypatch, tmp_path):
+    # Claude's verification pass: git lists only files that hold a setting,
+    # so the include's target is read from the include itself.
+    from thechatplace import platform_paths
+    global_config = tmp_path / "global.cfg"
+    # git reads a backslash in a value as an escape: written with slashes.
+    target = os.path.join(repo, "later.cfg").replace(os.sep, "/")
+    global_config.write_text(f"[include]\n\tpath = {target}\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+    files = platform_paths.git_config_files(repo)
+    if files is None:
+        pytest.skip("git isn't installed here")
+    assert any(os.path.normcase(f) == os.path.normcase(os.path.join(repo, "later.cfg"))
+               for f in files)
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None

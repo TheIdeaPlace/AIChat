@@ -1241,21 +1241,20 @@ def d_codex_mode(frame, env):
 
 
 def d_copilot_change_mode(frame, env):
-    """File, Change Permission Mode for an owned Copilot chat in plan mode
-    (#424): agent, plan or Auto (#426), the current one marked "(now)" and
-    selected, as codex_chats._change_copilot_mode and
-    main_frame._change_setting build it where no organisation manages
-    Copilot. Auto's is the longest label."""
-    from thechatplace.providers.copilot_runtime import PLAN_MODE
+    """File, Change Permission Mode for an owned Copilot chat in Auto (#426):
+    agent, plan or Auto, the current one marked "(now)" and selected, as
+    codex_chats._change_copilot_mode and main_frame._change_setting build it
+    where no organisation manages Copilot. Auto's, with "(now)", is the
+    widest row, so it's the one measured (Kelly's review of 8345ddd)."""
     from thechatplace.ui.dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
-                                         copilot_mode_name, single_choice_dialog)
+                                         single_choice_dialog)
     title = "Plan the synthetic probe project's long refactor"
     offered = COPILOT_SESSION_MODES + ((COPILOT_AUTO, COPILOT_AUTO_LABEL),)
-    labels = [f"{label} (now)" if value == PLAN_MODE else label
+    labels = [f"{label} (now)" if value == COPILOT_AUTO else label
               for value, label in offered]
-    dialog = single_choice_dialog(frame, f"Mode for {title}, now {copilot_mode_name(PLAN_MODE)}:",
+    dialog = single_choice_dialog(frame, f"Mode for {title}, now Auto:",
                                   "Change Permission Mode", labels)
-    dialog.SetSelection(1)
+    dialog.SetSelection(len(labels) - 1)
     return lambda: frame._modal(dialog)
 
 

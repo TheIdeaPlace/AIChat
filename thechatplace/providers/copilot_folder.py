@@ -386,6 +386,11 @@ def folder_too_broad(folder: str) -> bool:
     """A chat folder where nothing is answered for you: a whole drive, the
     home folder, a folder holding the home folder, or a guarded place itself
     (Kelly's review of #426: everything there would be "inside")."""
+    # Written as a network path or a \\?\ path (\\localhost\C$\Users\me), a
+    # folder can be the home folder in a spelling the checks below don't
+    # compare (Kelly's review of 8345ddd). A mapped drive letter is fine.
+    if _windows() and str(folder).replace("/", "\\").startswith("\\\\"):
+        return True
     try:
         base = os.path.normcase(os.path.realpath(folder))
     except (OSError, ValueError, TypeError):
@@ -446,6 +451,10 @@ def _plain_file(path: str) -> bool:
     # 58c5f03: Auto's edits built one in sub, then a rule's git status ran
     # its core.fsmonitor). No file change makes one for you.
     if whole == "head":
+        return False
+    # Nor a git program of its own, which a PATH folder inside the chat's
+    # folder would run in place of git (Kelly's review of 8345ddd).
+    if whole in _GIT_NAMES or whole == "git.ps1":
         return False
     return whole.split(".")[0] not in _DEVICES
 
@@ -655,7 +664,28 @@ def _with_common(gitdir: str) -> list:
 
 def _git_config_safe(locations) -> bool:
     """Whether the repository config git would read, from every folder the
-    shell may be in, sets nothing that can run a program."""
+    shell may be in, sets nothing that can run a program; and whether every
+    other config file git reads (yours, the system's, ones they include) is
+    outside the folders it may be in, where Auto's edits could write one
+    (Kelly's review of 8345ddd). Your own config is yours: what it names
+    isn't judged here, only where it is."""
+    for where in locations:
+        files = platform_paths.git_config_files(where)
+        if files is None:
+            return False
+        for path in files:
+            try:
+                # git names the repository's own relative to where it ran.
+                full = path if os.path.isabs(path) else os.path.join(where, path)
+                real = os.path.normcase(os.path.realpath(full))
+            except (OSError, ValueError):
+                return False
+            if os.path.basename(os.path.dirname(real)) == ".git" and os.path.basename(real) in (
+                    "config", "config.worktree"):
+                continue  # the repository's own, read below
+            if any(_under(real, os.path.normcase(os.path.realpath(place)))
+                   for place in locations):
+                return False
     for where in locations:
         dirs = _git_dirs(where)
         if dirs is None:
@@ -675,10 +705,35 @@ def _git_config_safe(locations) -> bool:
     return True
 
 
+#: The only settings a repository's own config may hold for git to be
+#: answered for you: what git init, git clone and an ordinary checkout write,
+#: and a few more that change nothing but how git shows or stores things.
+#: Anything else asks. A list of the ones known to run a program kept missing
+#: some (Claude's review of the round answering Kelly's review of 8345ddd:
+#: remote.<name>.uploadpack ran on git fetch, merge.<name>.driver on git
+#: merge). A subsection's name is left out: [remote "origin"] url is
+#: remote.url.
+_GIT_SAFE_SETTINGS = frozenset({
+    "core.repositoryformatversion", "core.filemode", "core.bare", "core.logallrefupdates",
+    "core.symlinks", "core.ignorecase", "core.precomposeunicode", "core.autocrlf",
+    "core.safecrlf", "core.eol", "core.longpaths", "core.quotepath", "core.checkstat",
+    "core.trustctime", "core.untrackedcache", "core.splitindex", "core.commitgraph",
+    "core.multipackindex", "core.compression", "core.abbrev", "core.sharedrepository",
+    "remote.url", "remote.pushurl", "remote.fetch", "remote.push", "remote.prune",
+    "remote.tagopt", "remote.mirror", "remote.skipdefaultupdate",
+    "branch.remote", "branch.merge", "branch.rebase", "branch.pushremote",
+    "branch.description", "user.name", "user.email", "pull.rebase", "pull.ff",
+    "push.default", "push.autosetupremote", "fetch.prune", "init.defaultbranch",
+    "extensions.worktreeconfig", "extensions.objectformat", "extensions.refstorage",
+    "gc.auto", "index.version", "feature.manyfiles", "color.ui", "merge.ff",
+    "merge.conflictstyle", "rerere.enabled", "lfs.repositoryformatversion",
+    "diff.renames", "diff.algorithm", "diff.colormoved"})
+
+
 def _git_names_safe(text: str) -> bool:
-    """A git config file's settings, by name only (a remote's address may
-    well contain "tool" or "ssh"): none that can run a program. A line it
-    can't read as a setting counts as one that might."""
+    """A git config file's settings: only _GIT_SAFE_SETTINGS, and no remote
+    address that names a transport helper (ext::, fd::), which runs a
+    program. A line it can't read as a setting counts as one that might."""
     section = ""
     # git breaks lines only at \n. Python's splitlines also breaks at form
     # feed, \x0b, \x1c to \x1e, \x85 and \u2028, so a "#\x0c[x]" comment
@@ -705,8 +760,18 @@ def _git_names_safe(text: str) -> bool:
             # A value carried on from the line before (a backslash at its
             # end) reads as no setting: taken as one that might.
             return False
-        if _GIT_RUNS.search(f"{section}.{key.group(1)}"):
+        name = f"{section}.{key.group(1)}".lower()
+        if name not in _GIT_SAFE_SETTINGS or _GIT_RUNS.search(name):
             return False
+        # A value as git reads it: quotes joined away ("ext:"":sh" is
+        # ext::sh) and escapes undone (Claude's verification pass).
+        value = line[key.end():].split("#")[0].split(";")[0]
+        value = value.replace('"', "").replace("\\", "").strip()
+        if name in ("remote.url", "remote.pushurl") and "::" in value:
+            return False  # ext::sh -c ... runs a program
+        if name in ("branch.remote", "branch.pushremote") and not re.fullmatch(
+                r"[A-Za-z0-9._-]+", value):
+            return False  # a branch's remote may be a URL too: only a remote's name
     return True
 
 
@@ -765,7 +830,8 @@ _GIT_RULE_REFUSED = ("output", "output-directory", "ext-diff", "textconv", "exec
                      "git-dir", "work-tree", "open-files-in-pager", "tool", "extcmd",
                      "template", "command", "pager", "editor", "sequence-editor", "namespace",
                      "super-prefix", "strategy", "strategy-option", "run", "include", "hook",
-                     "gpg", "gpg-sign", "ssh", "filter", "attr-source")
+                     "gpg", "gpg-sign", "ssh", "filter", "attr-source", "unsafe-paths",
+                     "directory")
 #: Short options that write a file (-o), run a program (-x, grep's -O) or
 #: point git elsewhere (-C), with their value attached or not, alone or among
 #: other letters (-iOcalc): git reads -Ocalc as -O calc (Claude's review of
@@ -783,12 +849,33 @@ def _git_rule_option_refused(text: str) -> bool:
     name = text[2:].split("=")[0].lower()
     return any(name.startswith(refused) or (len(name) >= 1 and refused.startswith(name))
                for refused in _GIT_RULE_REFUSED)
+#: git commands no rule ever answers, whatever it names: they change git's own
+#: settings (config, yours as well as the repository's), run a program they're
+#: given (bisect run, filter-branch's filters, hook run, difftool), make or
+#: reach another repository or working tree (init, clone, worktree,
+#: submodule), or reach the network or a browser in ways a rule can't see
+#: (Kelly's review of 8345ddd: a "git *" rule ran git bisect run and wrote
+#: core.fsmonitor into the global config).
+_GIT_RULE_NEVER = frozenset({
+    "config", "bisect", "filter-branch", "filter-repo", "hook", "submodule", "worktree",
+    "difftool", "mergetool", "instaweb", "web--browse", "daemon", "credential",
+    "credential-store", "credential-cache", "send-email", "imap-send", "svn", "p4",
+    "archimport", "cvsimport", "cvsserver", "cvsexportcommit", "quiltimport", "fast-import",
+    "update-index", "update-ref", "symbolic-ref", "init", "clone", "maintenance",
+    "fsmonitor--daemon", "upload-pack", "receive-pack", "upload-archive", "shell",
+    "http-backend", "help", "gui", "citool", "bugreport", "remote-ext", "var", "replace",
+    "notes", "sparse-checkout", "scalar"})
 #: git commands that may show differences, so run a diff driver or textconv.
 _GIT_DIFFS = _GIT_SHOWS_CHANGES | {"format-patch", "range-diff", "whatchanged", "stash", "grep",
                                    "add", "cherry", "difftool", "mergetool"}
 
 
-def _git_rule_ok(words, folder: str, locations) -> bool:
+#: How git may be named: each gets git's checks (Kelly's review of 8345ddd:
+#: a rule naming git.cmd skipped them).
+_GIT_NAMES = frozenset({"git", "git.exe", "git.cmd", "git.bat", "git.com"})
+
+
+def _git_rule_ok(words, folder: str, locations, rule=None) -> bool:
     """A git command your rule allows gets the checks Auto's git does
     (Kelly's review of 58c5f03: a rule's git status ran a repository's
     core.fsmonitor): the shell in the chat's own repository, its settings
@@ -803,6 +890,14 @@ def _git_rule_ok(words, folder: str, locations) -> bool:
     if index >= len(plain) or plain[index].startswith("-"):
         return False
     sub = plain[index].lower()
+    if sub in _GIT_RULE_NEVER:
+        return False
+    # A rule names the git command it allows ("git commit *"): "git *" alone
+    # allows none, so it can't reach one nobody thought of (Tim's choice).
+    if rule is not None:
+        named = [w.lower() for w in rule.words[1:] if not w.startswith("-")]
+        if not named or named[0] != sub:
+            return False
     for text in plain[index + 1:]:
         if text == "--":
             break
@@ -946,7 +1041,7 @@ def _ask_forms(words):
     own leading options left out, and on Windows with an alias's cmdlet."""
     forms = [list(words)]
     plain = [_unquote(w) for w in words]
-    if plain and plain[0].lower() in ("git", "git.exe"):
+    if plain and plain[0].lower() in _GIT_NAMES:
         rest, index = ["git"], 1
         while index < len(plain) and plain[index].startswith("-"):
             index += 2 if plain[index] in _GIT_VALUE_OPTIONS else 1
@@ -981,7 +1076,7 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
               and _paths_ok(name, words[1:], folder, locations, letters=False, long_options=True)
               # A kept git command gets git's own checks each time (its
               # config, the repository, a diff program).
-              and (name not in ("git", "git.exe") or _git_ok(words, folder, locations)))
+              and (name not in _GIT_NAMES or _git_ok(words, folder, locations)))
         return (CHAT if ok else None), locations
     if policy.auto:
         reading = (name in READ_CMDLETS or name in READ_ALIASES) if _windows() \
@@ -995,7 +1090,8 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
         if rule.matches(words) and not may_move(" ".join(words)):
             extra = words[len(rule.words):]
             if (_paths_ok(name, extra, folder, locations, letters=False, long_options=True)
-                    and (name not in ("git", "git.exe") or _git_rule_ok(words, folder, locations))):
+                    and (name not in _GIT_NAMES
+                         or _git_rule_ok(words, folder, locations, rule))):
                 return RULE, locations
     return None, locations
 

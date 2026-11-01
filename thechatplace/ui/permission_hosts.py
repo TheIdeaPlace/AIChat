@@ -243,8 +243,9 @@ class CopilotPermissions:
             'in the folder, which Copilot may have changed.',
         ]
         if getattr(state, 'location_changed', False):
-            lines.append("Commands ask for now, since a command you allowed may have moved "
-                         "Copilot's shell. File changes Auto allows still go ahead.")
+            lines.append("Commands ask for now, since a command you allowed may still be running "
+                         "or may have moved Copilot's shell. File changes Auto allows still go "
+                         "ahead. Close The Chat Place and open it again to start Copilot afresh.")
         answered = getattr(state, 'auto_allowed', ())
         if answered:
             lines.append('Answered for you since Copilot started, newest first:\n'
