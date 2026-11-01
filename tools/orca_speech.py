@@ -129,6 +129,18 @@ STEPS = [
     Step("Tab to the choices", ["Tab"], expect=["Keep it as is"],
          refuse=["your own answer"]),
     Step("answer later, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),
+    # A connected tool asks for input (#468): Answer opens on its message,
+    # and Tab goes to the form's first box.
+    Step("a connected tool asks", [], trigger="elicitation", expect=["needs you"]),
+    Step("answer the tool", ["ctrl+shift+a"], expect=["Message", "Where would you like to go"]),
+    Step("Tab to the form", ["Tab"], expect=["City", "required"]),
+    Step("tool answered later, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # View, Connected Tools (#468), the View menu's last item: Up from the top.
+    Step("Connected Tools", ["alt+v", "Up", "Return"], expect=["Connected tools"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Connected Tools closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     # Back Up Now (#433, #435): the folder question, and Escape back out.
     Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
     Step("folder question closed, back in the messages", ["Escape"],
@@ -207,10 +219,11 @@ def serve(root: Path) -> int:
 
     def watch(_event):
         # A step's trigger: check writes ROOT/<name>.trigger before its keys.
-        trigger = root / "question.trigger"
-        if trigger.exists():
-            trigger.unlink()
-            ask_question(frame)
+        for name, action in (("question", ask_question), ("elicitation", ask_elicitation)):
+            trigger = root / f"{name}.trigger"
+            if trigger.exists():
+                trigger.unlink()
+                action(frame)
     timer = wx.Timer(frame)
     frame.Bind(wx.EVT_TIMER, watch, timer)
     timer.Start(200)
@@ -229,6 +242,29 @@ def ask_question(frame) -> None:
                        ("tool", "AskUserQuestion")]:
         frame._on_turn_event({"id": "own-1"}, "Visual probe", TurnEvent(kind, text=text))
     request = PermissionRequest("q1", "AskUserQuestion", QUESTION, suggestions=[])
+    frame._on_turn_event({"id": "own-1"}, "Visual probe",
+                         TurnEvent("permission", text=request.summary(), request=request))
+
+
+#: What the "elicitation" trigger's connected tool asks (#468), shaped as
+#: Claude Code 2.1.296 sends it.
+ELICITATION = {
+    "subtype": "elicitation", "mcp_server_name": "trip-planner",
+    "message": "Where would you like to go, and for how long?", "mode": "form",
+    "requested_schema": {"type": "object", "required": ["city"], "properties": {
+        "city": {"type": "string", "title": "City"},
+        "pets": {"type": "boolean", "title": "Bringing pets"}}}}
+
+
+def ask_elicitation(frame) -> None:
+    """A connected tool asks for input in the probe's own session, as a turn
+    reports it."""
+    import fake_env
+    from thechatplace.claude_cli import TurnEvent
+    from thechatplace.claude_mcp import elicitation_from
+    frame._pending.clear()
+    frame._runners["own-1"] = fake_env.FakeRunner([], "", "", None)
+    request = elicitation_from("e1", ELICITATION)
     frame._on_turn_event({"id": "own-1"}, "Visual probe",
                          TurnEvent("permission", text=request.summary(), request=request))
 

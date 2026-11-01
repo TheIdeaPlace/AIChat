@@ -23,7 +23,7 @@ from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import shortcuts_text, codex_effort_label, key_name
 from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
-from .a11y import set_accessible_name, set_list_items_accessible
+from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
 
 
@@ -4829,6 +4829,160 @@ class RewindDialog(wx.Dialog):
         self.happens.ChangeValue(self._plan.describe(self.selected()))
         self.happens.SetInsertionPoint(0)
 
+
+class ConnectedToolsDialog(wx.Dialog):
+    """View, Connected Tools (#468): a Claude chat's MCP servers and claude.ai
+    connectors, one per row, read in full ("claude.ai Microsoft Learn:
+    connected, claude.ai connector, 3 tools"), with Sign In, Reconnect, Turn
+    Off (or On) for This Chat and Refresh. The Details box below says more
+    about the row you're on: its tools, or why it failed.
+
+    The window does the work through ``host`` (``mcp_host.ClaudeConnectedTools``:
+    ``load(done)``, ``sign_in(server, done)``, ``reconnect(server, done)``,
+    ``set_off(server, off, done)``, ``note()`` and ``can_turn_off``), whose
+    ``done`` comes back on the UI thread once the work is finished; whoever
+    opens it closes the host afterwards. Delete turns the row's server off for this chat (or on again).
+    """
+
+    LOADING = "Reading this chat's connected tools..."
+
+    def __init__(self, parent, title: str, host):
+        super().__init__(parent, title=f"Connected Tools: {title}",
+                         size=dialog_size(parent, 700, 540),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.host = host
+        self.rows = []
+        self.loaded = False
+        self.load_error = ""
+        #: Why an action must wait ("" when none must).
+        self.busy = ""
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(self, label="&Connected tools:"), 0, wx.LEFT | wx.TOP, 8)
+        self.list = wx.ListBox(self, style=wx.LB_SINGLE | wx.LB_HSCROLL)
+        self.list.SetMinSize(dip(self, -1, 170))
+        sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.sign_in_btn = wx.Button(self, label="&Sign In")
+        self.reconnect_btn = wx.Button(self, label="&Reconnect")
+        self.toggle_btn = wx.Button(self, label="Turn &Off for This Chat")
+        self.refresh_btn = wx.Button(self, label="Re&fresh")
+        for button in (self.sign_in_btn, self.reconnect_btn, self.toggle_btn, self.refresh_btn):
+            row.Add(button, 0, wx.RIGHT, 6)
+        row.AddStretchSpacer()
+        self.close_btn = wx.Button(self, wx.ID_CANCEL, "C&lose")
+        row.Add(self.close_btn, 0)
+        sizer.Add(row, 0, wx.EXPAND | wx.ALL, 8)
+        sizer.Add(wx.StaticText(self, label="&Details:"), 0, wx.LEFT, 8)
+        self.details = _read_only_text(self, "", "Details", min_height=130)
+        sizer.Add(self.details, 1, wx.EXPAND | wx.ALL, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self.sign_in_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_sign_in())
+        self.reconnect_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_reconnect())
+        self.toggle_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_toggle())
+        self.refresh_btn.Bind(wx.EVT_BUTTON, lambda e: self.reload())
+        self.list.Bind(wx.EVT_LISTBOX, lambda e: self._show_selected())
+        self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        set_list_items_accessible(self.list, self._list_name, lambda index: None)
+        self.reload()
+        wx.CallAfter(self.list.SetFocus)
+
+    # -- what it shows ----------------------------------------------------------
+
+    def _alive(self) -> bool:
+        return bool(self) and not self.IsBeingDeleted()
+
+    def _list_name(self) -> str:
+        if not self.loaded or self.load_error:
+            return "Connected tools"
+        return f"Connected tools, {len(self.rows)}"
+
+    def _name_list(self):
+        self.list.SetName(self._list_name())
+        mac_a11y.set_label(self.list, self._list_name())
+
+    def _selected(self):
+        index = self.list.GetSelection()
+        return self.rows[index] if self.loaded and 0 <= index < len(self.rows) else None
+
+    def _show_selected(self):
+        server = self._selected()
+        self.toggle_btn.SetLabel("Turn &On for This Chat" if server is not None
+                                 and server.off_for_chat else "Turn &Off for This Chat")
+        if server is None:
+            self.details.ChangeValue(self.load_error or self.host.note())
+            self.details.SetInsertionPoint(0)
+            return
+        lines = [server.text()]
+        if server.status == "failed" and server.error and not server.off_for_chat:
+            lines.append(f"Why: {server.error}")
+        if server.status == "needs-auth" and not server.off_for_chat:
+            lines.append("Claude can't use it until it's signed in: Sign In opens the page.")
+        if server.is_session_tools:
+            lines.append("The Chat Place gives its own chats these tools, so commands such as "
+                         "/wrap work. They can't be turned off here.")
+        if server.tools and not server.off_for_chat:
+            lines += ["", "Tools:"] + [f"  {name}" for name in server.tools]
+        lines += ["", self.host.note()]
+        self.details.ChangeValue("\n".join(lines))
+        self.details.SetInsertionPoint(0)
+
+    def _fill(self, rows, select: int = 0):
+        self.rows = list(rows)
+        self.loaded = True
+        self.load_error = ""
+        if self.rows:
+            self.list.Set([r.text() for r in self.rows])
+            self.list.SetSelection(max(0, min(select, len(self.rows) - 1)))
+        else:
+            self.list.Set(["Claude has no connected tools in this chat's folder."])
+            self.list.SetSelection(0)
+        self._name_list()
+        refresh_list_item(self.list)  # Orca: the row changed under it
+        self._show_selected()
+
+    def _failed(self, error: str):
+        self.loaded = True
+        self.rows = []
+        self.load_error = f"Couldn't read the connected tools. {error}"
+        self.list.Set([self.load_error])
+        self.list.SetSelection(0)
+        self._name_list()
+        refresh_list_item(self.list)
+        self._show_selected()
+
+    def reload(self, select: int = 0):
+        if self.busy:
+            self._tell(self.busy, back_to=self.refresh_btn)
+            return
+        self.busy = "Still reading the connected tools. Try again in a moment."
+        self.loaded = False
+        self.list.Set([self.LOADING])
+        self.list.SetSelection(0)
+        self._name_list()
+        self.details.ChangeValue(self.host.note())
+
+        def done(rows, error):
+            if not self._alive():
+                return
+            self.busy = ""
+            if error:
+                self._failed(error)
+            else:
+                self._fill(rows, select)
+        self.host.load(done)
+
+    # -- keys -------------------------------------------------------------------
+
+    def _on_list_key(self, event):
+        # A Mac's Delete key is Backspace.
+        if (event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE, wx.WXK_BACK)
+                and not event.HasAnyModifiers()):
+            self.on_toggle()
+            return
+        event.Skip()
+
     def _on_key(self, event):
         if press_focused_button_on_a_mac(event):
             return
@@ -4843,3 +4997,273 @@ class RewindDialog(wx.Dialog):
             return
         self.choice = choice
         _end_modal(self, wx.ID_OK)
+
+
+    # -- actions ----------------------------------------------------------------
+
+    def _tell(self, text: str, icon=wx.ICON_INFORMATION, back_to=None):
+        wx.MessageBox(text, self.GetTitle(), wx.OK | icon, self)
+        if self._alive():
+            (back_to or self.list).SetFocus()
+
+    def _server_for(self, action: str, back_to):
+        """The selected server, or None after saying why there isn't one."""
+        if self.busy:
+            self._tell(self.busy, back_to=back_to)
+            return None
+        if self.load_error:
+            self._tell(self.load_error + " Press Refresh to try again.", back_to=back_to)
+            return None
+        server = self._selected()
+        if server is None:
+            self._tell(f"Select a connected tool to {action} first.", back_to=back_to)
+        return server
+
+    def on_sign_in(self):
+        server = self._server_for("sign in to", self.sign_in_btn)
+        if server is None:
+            return
+        if server.missing or server.is_session_tools:
+            self._tell(f"{server.label} has nothing to sign in to.", back_to=self.sign_in_btn)
+            return
+        if server.status == "connected":
+            self._tell(f"{server.label} is connected already.", back_to=self.sign_in_btn)
+            return
+        self.busy = "Still asking Claude Code for the sign-in page. Try again in a moment."
+
+        def done(text, error):
+            if not self._alive():
+                return
+            self.busy = ""
+            if error:
+                self._tell(f"Couldn't start signing in to {server.label}. {error}",
+                           wx.ICON_WARNING, back_to=self.sign_in_btn)
+            else:
+                self._tell(text, back_to=self.refresh_btn)
+        self.host.sign_in(server, done)
+
+    def on_reconnect(self):
+        server = self._server_for("reconnect", self.reconnect_btn)
+        if server is None:
+            return
+        if server.off_for_chat or server.missing:
+            self._tell(f"{server.label} is off for this chat. Turn it on first.",
+                       back_to=self.reconnect_btn)
+            return
+        index = self.list.GetSelection()
+        self.busy = f"Still reconnecting {server.label}. Try again in a moment."
+        self.list.SetString(index, f"{server.label}: reconnecting...")
+
+        def done(rows, error):
+            if not self._alive():
+                return
+            self.busy = ""
+            if error:
+                self.list.SetString(index, server.text())
+                self._tell(f"Couldn't reconnect {server.label}. {error}", wx.ICON_WARNING,
+                           back_to=self.reconnect_btn)
+                return
+            self._fill(rows, index)
+            now = next((r for r in self.rows if r.name == server.name), None)
+            self._tell(now.text() if now is not None else f"{server.label} reconnected.",
+                       back_to=self.list)
+        self.host.reconnect(server, done)
+
+    def on_toggle(self):
+        server = self._server_for("turn off", self.toggle_btn)
+        if server is None:
+            return
+        if not self.host.can_turn_off:
+            self._tell("Tools can be turned off only for chats The Chat Place started.",
+                       back_to=self.toggle_btn)
+            return
+        if server.is_session_tools:
+            self._tell(f"{server.label} can't be turned off here.", back_to=self.toggle_btn)
+            return
+        index = self.list.GetSelection()
+        focus = wx.Window.FindFocus()
+
+        def done(rows, error):
+            if not self._alive():
+                return
+            if error:
+                self._tell(error, wx.ICON_WARNING, back_to=self.toggle_btn)
+                return
+            self._fill(rows, index)
+            if focus is not None and focus.GetTopLevelParent() is self:
+                focus.SetFocus()
+        self.host.set_off(server, not server.off_for_chat, done)
+
+
+class ElicitationDialog(wx.Dialog):
+    """A connected tool (an MCP server) asking for input mid-turn (#468),
+    opened with Answer (Ctrl+Shift+A) like Claude's own requests.
+
+    It opens on the server's message, read-only, to read by line. A form
+    has one labelled control per thing it asks for, in the server's order:
+    a text box for text and numbers, a check box for yes or no, a list to
+    choose one from, and check boxes to choose several. Send checks what's
+    needed and sends it; Decline refuses. A page to open has Open in Browser
+    instead of the form. Answer Later (Escape) leaves it waiting.
+    """
+
+    def __init__(self, parent, session_title: str, request):
+        from ..claude_mcp import is_web_url
+        super().__init__(parent, title=f"{request.server_label} asks: {session_title}",
+                         size=dialog_size(parent, 680, 540),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.request = request
+        self.action = ""
+        self.content = None
+        self.fields = request.fields()
+        self._controls = {}  # key -> control, or [(value, check box)] for several
+        outer = wx.BoxSizer(wx.VERTICAL)
+        outer.Add(wx.StaticText(self, label="&Message:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        detail = request.detail()
+        self.can_open = request.is_url and is_web_url(request.url)
+        if request.is_url and not self.can_open:
+            detail += "\n\nThis isn't a web page's address, so The Chat Place won't open it."
+        self.message_text = _read_only_text(self, detail, "Message", min_height=110)
+        outer.Add(self.message_text, 0 if self.fields else 1, wx.EXPAND | wx.ALL, 8)
+        self.form_panel = None
+        sizer = None
+        if self.fields:
+            panel = self.form_panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
+            panel.SetScrollRate(0, 20)
+            sizer = wx.BoxSizer(wx.VERTICAL)
+            for f in self.fields:
+                self._add_field(panel, sizer, f)
+            panel.SetSizer(sizer)
+            outer.Add(panel, 1, wx.EXPAND | wx.ALL, 4)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        if request.is_url:
+            self.send_btn = wx.Button(self, label="&Open in Browser")
+            self.send_btn.Enable(self.can_open)
+        else:
+            self.send_btn = wx.Button(self, label="&Send")
+        self.decline_btn = wx.Button(self, label="&Decline")
+        later = wx.Button(self, wx.ID_CANCEL, "Answer &Later")
+        for button in (self.send_btn, self.decline_btn):
+            row.Add(button, 0, wx.RIGHT, 6)
+        row.Add(later, 0)
+        # A form's Enter sends (what's needed is checked first); a page to
+        # open needs its button pressed, so a stray Enter never opens a
+        # server's link.
+        (self.decline_btn if request.is_url else self.send_btn).SetDefault()
+        outer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        self.SetSizer(outer)
+        if self.form_panel is not None:
+            # The form's own height, up to the size given; past that it
+            # scrolls (as Claude's questions do, #176).
+            self.form_panel.SetMinSize((-1, sizer.GetMinSize().height))
+            _fit_height(self, max_height=self.GetSize().height)
+            self.form_panel.SetMinSize((-1, -1))
+            self.Layout()
+            self.form_panel.FitInside()
+        self.SetEscapeId(wx.ID_CANCEL)
+        self.send_btn.Bind(wx.EVT_BUTTON, self._on_send)
+        self.decline_btn.Bind(wx.EVT_BUTTON, self._on_decline)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        # Set as it starts, before it's shown, as the question dialog does.
+        self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
+
+    def _add_field(self, panel, sizer, f):
+        name = f.name() + (f": {f.description}" if f.description else "")
+        # A server's own words: an "&" is shown, not taken as an access key.
+        label = (f.label + (" (required)" if f.required else "")).replace("&", "&&")
+        description = f.description.replace("&", "&&")
+        if f.kind == "boolean":
+            control = wx.CheckBox(panel, label=label)
+            control.SetValue(f.default is True)
+            set_accessible_name(control, name)
+            sizer.Add(control, 0, wx.ALL, 6)
+            if f.description:
+                sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 24)
+            self._controls[f.key] = control
+            return
+        # The label just before its control, the description after it:
+        # Windows names a list from the text just before it.
+        sizer.Add(wx.StaticText(panel, label=label + ":"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        if f.kind == "multi":
+            boxes = []
+            chosen = f.default if isinstance(f.default, list) else []
+            for value, text in f.choices:
+                box = wx.CheckBox(panel, label=text.replace("&", "&&"))
+                box.SetValue(value in chosen)
+                set_accessible_name(box, f"{f.label}: {text}")
+                sizer.Add(box, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+                boxes.append((value, box))
+            if f.description:
+                sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 6)
+            self._controls[f.key] = boxes
+            return
+        if f.kind == "choice":
+            # A list, not radio buttons: Tab reaches it with nothing chosen
+            # (#428), and "(none)" leaves an optional one unanswered.
+            texts = ([] if f.required else ["(none)"]) + [text for _v, text in f.choices]
+            control = wx.Choice(panel, choices=texts)
+            values = [v for v, _t in f.choices]
+            if f.default in values:
+                control.SetSelection(values.index(f.default) + (0 if f.required else 1))
+            elif not f.required:
+                control.SetSelection(0)
+        else:
+            control = wx.TextCtrl(panel)
+            if isinstance(f.default, (str, int, float)) and not isinstance(f.default, bool):
+                control.ChangeValue(str(f.default))
+        set_accessible_name(control, name)
+        sizer.Add(control, 0, wx.EXPAND | wx.ALL, 6)
+        if f.description:
+            sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 6)
+        self._controls[f.key] = control
+
+    def values(self) -> dict:
+        """What's entered, as claude_mcp.form_content takes it."""
+        values = {}
+        for f in self.fields:
+            control = self._controls[f.key]
+            if f.kind == "boolean":
+                values[f.key] = control.GetValue()
+            elif f.kind == "multi":
+                values[f.key] = [value for value, box in control if box.GetValue()]
+            elif f.kind == "choice":
+                index = control.GetSelection() - (0 if f.required else 1)
+                values[f.key] = f.choices[index][0] if 0 <= index < len(f.choices) else None
+            else:
+                values[f.key] = control.GetValue()
+        return values
+
+    def control_for(self, key: str):
+        """The control to put focus on for a field (a set's first box)."""
+        control = self._controls.get(key)
+        return control[0][1] if isinstance(control, list) and control else control
+
+    def _on_init_dialog(self, event):
+        event.Skip()
+        self.message_text.SetFocus()
+
+    def _on_key(self, event):
+        if press_focused_button_on_a_mac(event):
+            return
+        event.Skip()
+
+    def _on_send(self, _event=None):
+        from ..claude_mcp import ACCEPT, form_content
+        if self.request.is_url:
+            if self.can_open:
+                self.action, self.content = ACCEPT, None
+                self.EndModal(wx.ID_OK)
+            return
+        content, problem, wrong = form_content(self.fields, self.values(), with_field=True)
+        if problem:
+            wx.MessageBox(problem, self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
+            target = self.control_for(wrong) if wrong else None
+            (target or self.send_btn).SetFocus()
+            return
+        self.action, self.content = ACCEPT, content
+        self.EndModal(wx.ID_OK)
+
+    def _on_decline(self, _event=None):
+        from ..claude_mcp import DECLINE
+        self.action, self.content = DECLINE, None
+        self.EndModal(wx.ID_OK)

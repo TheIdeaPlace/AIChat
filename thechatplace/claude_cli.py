@@ -796,6 +796,13 @@ class StreamParser:
                     tool_use_id=str(request.get("tool_use_id") or ""))
                 return [TurnEvent("permission", text=permission.summary(),
                                   session_id=self.session_id, request=permission)]
+            if request.get("subtype") == "elicitation" and request_id:
+                # An MCP server asking you for input (#468): waits for an
+                # answer like a permission request.
+                from .claude_mcp import elicitation_from
+                asked = elicitation_from(request_id, request)
+                return [TurnEvent("permission", text=asked.summary(),
+                                  session_id=self.session_id, request=asked)]
             if request_id:
                 self.unsupported_requests.append(request_id)
             return []
@@ -855,9 +862,13 @@ class StreamParser:
             model = event.get("model")
             self.model = model if isinstance(model, str) else ""
             # The model actually in use (#8), which may not be the one asked for.
+            # Its MCP servers and how each is doing, so a turn can say once
+            # which ones Claude can't use (#468).
+            data = {"model": model if isinstance(model, str) else ""}
+            if isinstance(event.get("mcp_servers"), list):
+                data["mcp_servers"] = event["mcp_servers"]
             return [TurnEvent("started", session_id=self.session_id, raw_type="init",
-                              text=str(event.get("permissionMode") or ""),
-                              data={"model": model if isinstance(model, str) else ""})]
+                              text=str(event.get("permissionMode") or ""), data=data)]
         if etype == "system" and subtype == "permission_denied":
             name = str(event.get("tool_name") or "A tool")
             message = str(event.get("message") or "").strip()
@@ -1040,8 +1051,12 @@ class TurnRunner:
                  images: Optional[List[dict]] = None,
                  remote_control: Optional[Dict[str, str]] = None,
                  timer: Callable[..., threading.Timer] = threading.Timer,
-                 task_list: bool = False, mcp_config: Optional[str] = None) -> None:
+                 task_list: bool = False, mcp_config: Optional[str] = None,
+                 disabled_mcp: Collection[str] = ()) -> None:
         self.command = command
+        #: MCP servers this chat turns off (#468), kept out of this turn's
+        #: process with ``--settings`` (claude_mcp.settings_args).
+        self.disabled_mcp = list(disabled_mcp or ())
         #: ``--mcp-config`` for this turn's process only (the session tools,
         #: #165), or None. Kept apart from ``command``, which is the turn's
         #: own: it ends with ``--resume <id>``, and tests read it.
@@ -1302,8 +1317,11 @@ class TurnRunner:
             ok = self._write_line({"type": "control_response", "response": {
                 "subtype": "success", "request_id": request_id, "response": response}})
             if ok:
+                # An MCP server's question answered (#468) has an action, not
+                # a behavior.
                 self.last_activity = (
                     "working" if response.get("behavior") == "allow"
+                    or "action" in response
                     else f"carrying on after you refused {request.tool_name}")
             return ok
 
@@ -1391,6 +1409,9 @@ class TurnRunner:
             # newlines into CRLF, and splitting decoded text on every Unicode
             # line break would cut JSON lines that contain U+2028.
             command = list(self.command)
+            if self.disabled_mcp:
+                from .claude_mcp import settings_args
+                command += settings_args(self.disabled_mcp)
             if self.mcp_config:
                 # Last: --mcp-config takes several values, so nothing that
                 # isn't one may follow it.
@@ -1712,9 +1733,9 @@ class TurnRunner:
         self._emit(final)
 
     def _refuse_unsupported(self) -> None:
-        """Control requests other than permission checks (hooks, MCP
-        messages): The Chat Place registers none, so say so at once rather than
-        leave the CLI waiting."""
+        """Control requests other than permission checks and MCP servers'
+        questions (hooks, MCP messages): The Chat Place registers none, so say
+        so at once rather than leave the CLI waiting."""
         while self.parser.unsupported_requests:
             request_id = self.parser.unsupported_requests.pop(0)
             with self._lock:
