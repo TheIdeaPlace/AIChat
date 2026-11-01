@@ -180,8 +180,9 @@ STEPS = [
          expect=["Subagent code-reviewer", "The retry waits too little"]),
     Step("conversation closed, back in Lists", ["Escape"],
          expect=["code-reviewer: Review the retry change"]),
+    # Orca says the window and the message you were on, not the list's name.
     Step("Lists closed, back in the messages", ["Escape"],
-         expect=["Messages in Fix the flaky upload test"]),
+         expect=["Fix the flaky upload test", "Which branch name should the release use"]),
 ]
 
 #: The question "question" asks (STEPS above).
