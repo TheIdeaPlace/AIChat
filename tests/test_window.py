@@ -213,14 +213,23 @@ def test_a_dialog_ended_by_its_turn_ending_never_allows(window, tmp_path, monkey
     real = frame.service.answer_permission
     monkeypatch.setattr(frame.service, "answer_permission",
                         lambda ref, request, decision: (answered.append(decision), real(ref, request, decision)))
+    seen = {}
+
+    def while_it_is_open():
+        # A modal runs its own event loop, so this is the only place code runs
+        # until it ends. As a turn ending does, first another chat's, then its own.
+        dialog = frame._dialog
+        if not (isinstance(dialog, dialogs.PermissionDialog) and dialog.IsModal()):
+            wx.CallLater(50, while_it_is_open)
+            return
+        frame._end_dialog(ChatRef("somewhere", "else"))
+        seen["left_open"] = frame._dialog is dialog and dialog.IsModal()
+        frame._end_dialog(info.ref)
+    wx.CallLater(50, while_it_is_open)
     frame.reply.SetValue("Hi")
     frame.send()
-    assert pump(lambda: isinstance(frame._dialog, dialogs.PermissionDialog) and frame._dialog.IsModal())
-    # As a turn ending does.
-    frame._end_dialog(ChatRef("somewhere", "else"))
-    assert frame._dialog is not None, "another chat's ending must leave it open"
-    frame._end_dialog(info.ref)
-    assert pump(lambda: frame._dialog is None)
+    assert pump(lambda: "left_open" in seen and frame._dialog is None)
+    assert seen["left_open"], "another chat's ending must leave it open"
     assert answered == []
     frame.service.stop(info.ref)
     assert pump(lambda: not frame.service.state(info.ref).busy)
