@@ -49,7 +49,7 @@ BILLING = (
     "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z")
 #: Versions whose approvals, stop, resume and history have been exercised.
-CHECKED_VERSIONS = ("2.1.296",)
+CHECKED_VERSIONS = ("2.1.296", "2.1.316")
 QUESTION_TOOL = "AskUserQuestion"
 PLAN_TOOL = "ExitPlanMode"
 INITIALIZE_ID = "thechatplace-init"
