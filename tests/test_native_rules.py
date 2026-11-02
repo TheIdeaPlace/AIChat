@@ -323,6 +323,9 @@ def test_plain_chat_follows_no_redirect():
 
     class Redirector(Target):
         def do_POST(self):
+            # Read first: hanging up on an unread request can abort the client's
+            # read before it sees the redirect.
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
             self.send_response(307)
             self.send_header("Location", f"http://127.0.0.1:{target.server_address[1]}/stolen")
             self.end_headers()
