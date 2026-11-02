@@ -86,7 +86,8 @@ def remove_leftover_scratch(now=None, older_than=_SCRATCH_STALE_SECONDS):
         return
     for folder in found:
         try:
-            if now - folder.stat().st_mtime >= older_than and folder.is_dir():
+            # Not compared at 0: a file's time can be just ahead of the clock.
+            if (not older_than or now - folder.stat().st_mtime > older_than) and folder.is_dir():
                 _remove_tree(folder)
         except OSError:
             continue
