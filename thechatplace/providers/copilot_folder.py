@@ -119,8 +119,21 @@ _MOVERS = frozenset({
     "enter-pssession", "etsn", "set-psdebug",
     # using module runs a module's code in the shell; bash's and zsh's words
     # that run the next one (noglob cd ..), and printf -v, which sets a variable.
-    "using", "noglob", "nocorrect", "repeat", "printf",
+    "using", "noglob", "nocorrect", "repeat", "printf", "%", "?", "foreach", "foreach-object",
+    "where", "where-object",
 })
+#: PowerShell's own commands that are known to leave the shell as it was, so a
+#: command you allow by hand keeps later ones answered. Any other counts as moving:
+#: adding to a list of what can change the shell kept missing some (Import-Alias,
+#: % Invoke, Update-TypeData: the reviews of b44cce4, 324e242 and 46749f8).
+_STAYS = frozenset({
+    "remove-item", "del", "erase", "rm", "ri", "rd", "rmdir",
+    "copy-item", "copy", "cp", "cpi", "move-item", "move", "mv", "mi", "rename-item", "ren", "rni",
+    "new-item", "ni", "md", "mkdir", "set-content", "sc", "add-content", "ac", "clear-content", "clc",
+    "out-file", "out-null", "write-host", "start-sleep", "sleep", "clear-host", "cls", "clear",
+    "compare-object", "group-object", "get-process", "gps", "ps", "get-command", "gcm", "get-help",
+    "help", "man", "curl", "wget", "iwr", "invoke-webrequest", "irm", "invoke-restmethod",
+    "stop-process", "kill", "spps"})
 #: PowerShell's own drives other than disks, as the start of a word
 #: ("env:PATH", "alias:ls"): writing to one changes what later commands mean.
 #: Anything else before a colon ("test:unit", "fix: typo", "https:") is an
@@ -387,6 +400,7 @@ _RULE_QUOTES = "a rule can't hold quotes or %, or end a word in a backslash"
 _RULE_PUNCTUATION = ("a rule can't hold punctuation the shell acts on, such as = > | , or brackets, "
                      "and 2>&1 needn't be in it")
 _RULE_GIT = "git in a rule may only read, or be git add"
+_RULE_SHELL = "a rule can't name a shell or something that starts other programs"
 
 
 def _allow_problem(entry, rule: Optional[Rule]) -> str:
@@ -409,6 +423,8 @@ def _allow_problem(entry, rule: Optional[Rule]) -> str:
         return _RULE_QUOTES
     if _names_git(rule.words[0]) and not _git_rule_words_ok(rule.words):
         return _RULE_GIT
+    if _starts_others(rule.words[0]):
+        return _RULE_SHELL
     return ""
 
 
@@ -1237,12 +1253,31 @@ def _git_checks(folder: str, locations, shows_changes: bool, hooks_fired) -> boo
 _GIT_NAMES = frozenset({"git", "git.exe", "git.cmd", "git.bat", "git.com"})
 
 
+#: Shells and what starts another program from its words: powershell git commit
+#: would get round what a rule may say about git (the review of 46749f8).
+_STARTERS = frozenset({
+    "powershell", "pwsh", "cmd", "command", "bash", "sh", "zsh", "dash", "fish", "wsl", "env",
+    "start-process", "saps", "start", "invoke-expression", "iex", "invoke-command", "icm",
+    "invoke-item", "ii", "xargs", "nohup", "sudo", "su", "runas", "forfiles", "wscript", "cscript",
+    "mshta", "rundll32", "regsvr32", "conhost", "explorer", "schtasks", "at", "time", "timeout",
+    "npx", "pnpx", "uvx", "pipx"})
+
+
+def _starts_others(word: str) -> bool:
+    last = re.split(r"[\\/]", _unquote(word).lower())[-1].rstrip(" .")
+    return last.split(".")[0] in _STARTERS
+
+
 def _names_git(word: str) -> bool:
     """Whether a command's first word runs git: by any extension, and by a path
     too (the adversarial review of 324e242: C:\\x\\git.exe commit skipped every
-    check, and ran a repository's hook under a rule)."""
+    check, and ran a repository's hook under a rule), or is one of the programs
+    git ships that read a repository's settings the same way (the review of
+    46749f8: scalar run fetch ran a repository's uploadpack). So only git and
+    git.exe can be allowed, and only to read or for git add."""
     last = re.split(r"[\\/]", _unquote(word).lower())[-1].rstrip(" .")
-    return last.split(".")[0] == "git"
+    stem = last.split(".")[0]
+    return stem in ("git", "gitk", "scalar") or stem.startswith("git-")
 
 
 #: git add's options that do what it says on the folder and nothing else.
@@ -1497,6 +1532,9 @@ _ALIAS_OF = {
     "gc": "get-content", "cat": "get-content", "type": "get-content", "ls": "get-childitem",
     "dir": "get-childitem", "gci": "get-childitem", "gi": "get-item", "sls": "select-string",
     "cd": "set-location", "sl": "set-location", "chdir": "set-location",
+    "select": "select-object", "sort": "sort-object", "measure": "measure-object",
+    "fl": "format-list", "ft": "format-table", "fw": "format-wide", "echo": "write-output",
+    "write": "write-output", "pwd": "get-location", "gl": "get-location",
 }
 #: git's options before its command, and the ones that take the next word.
 _GIT_VALUE_OPTIONS = frozenset({"-c", "-C", "--git-dir", "--work-tree", "--namespace",
@@ -1515,6 +1553,12 @@ def _ask_forms(words):
         forms.append(rest + plain[index:])
     if _windows() and plain and plain[0].lower() in _ALIAS_OF:
         forms.append([_ALIAS_OF[plain[0].lower()]] + plain[1:])
+    # The same path however it's put: .\\.env, ./.env, -Path .env.
+    tidy = [word[2:] if word[:2] in (".\\", "./") and len(word) > 2 else word
+            for word in plain if word.lower() not in ("-path", "-literalpath")]
+    for form in list(forms):
+        if form[1:] != tidy[1:]:
+            forms.append([form[0]] + tidy[1:])
     return forms
 
 
@@ -1555,7 +1599,8 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
         moved = _moved_to(words, folder, locations)
         return ("move", moved) if moved is not None else (None, locations)
     if exact:
-        ok = (_kept_words_ok(words) and not may_move(" ".join(words), locations)
+        ok = (not _starts_others(name) and _kept_words_ok(words)
+              and not may_move(" ".join(words), locations)
               and _program_is_found_outside(folder)
               and _paths_ok(name, words[1:], folder, locations, letters=False, long_options=True)
               # A kept git command only reads, with git's own checks each time
@@ -1743,10 +1788,13 @@ def may_move(command: str, locations=None) -> bool:
             return True
         if not _powershell_own(name):
             continue  # a child process, which can't move it
+        if name not in _STAYS and name not in READ_CMDLETS and name not in READ_ALIASES:
+            return True
         # Its words as they are: Set-Content "env:PATH" reaches the drive
-        # just the same, in quotes or not.
+        # just the same, in quotes or not, and -Path:function:x too.
         said = _words(piece.strip())
-        if said is None or any(_moving_word(_unquote(word)) for word in said):
+        if said is None or any(_moving_word(_unquote(word)) or _unquote(word).startswith("-") and ":" in word
+                               for word in said):
             return True
     return False
 

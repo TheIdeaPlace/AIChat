@@ -962,7 +962,8 @@ folder a git repository) or a git or git-lfs program of its own (<code>git.cmd</
   matches the start of each command, so "git push" covers "git push origin main" (and
   "git --no-pager push"), "Remove-Item" covers its aliases, such as ri and del, and it may end
   in <code>*</code>. A rule never allows a command that could move Copilot's shell or run a script in it
-  (pushd, <code>.\build.ps1</code>, source). The file is read again for each request, so a change counts at
+  (pushd, <code>.\build.ps1</code>, source), a shell or something that starts other programs (powershell, cmd,
+  bash, npx, Start-Process), or a program git ships other than git (scalar, git-upload-pack). The file is read again for each request, so a change counts at
   once. A file that can't be read is used as no rules at all (the chat says so, once each time
   The Chat Place runs), and a rule that can't be used is left out: Chat Permissions lists it and
   says why, and a command it names says so when it asks.</li>
@@ -1027,7 +1028,8 @@ anyway, the chat says why.</p>
 <p><strong>Where Copilot's shell is.</strong> The Chat Place doesn't count on Copilot's shell going back to the
 chat's folder between commands. Changes of folder inside the chat's folder are followed, so paths
 are checked from wherever the shell may be, in a command you allow by hand too. Once you allow by hand a command that may have moved it somewhere not followed
-(cd .., <code>cd $HOME</code>, a script, iex, anything in <code>{ }</code> or <code>$( )</code>), commands in that chat ask again
+(cd .., <code>cd $HOME</code>, a script, iex, anything in <code>{ }</code> or <code>$( )</code>, or one of PowerShell's own commands
+that doesn't only read or change files), commands in that chat ask again
 until you use Restart Copilot; file changes, which name their full path, are still allowed in Auto.
 Commands that only start another program don't count, so <code>git commit -m "fix(parser): x"</code> and
 <code>npm test 2&gt;&amp;1 | Select-Object -Last 20</code> leave things as they were. On Windows a program named by

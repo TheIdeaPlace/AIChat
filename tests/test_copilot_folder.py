@@ -2348,7 +2348,8 @@ def test_a_path_folder_inside_the_chats_folder_makes_git_and_rules_ask(repo, mon
     monkeypatch.setenv("PATH", inside + os.pathsep + os.environ["PATH"])
     assert "on your PATH" in _reason("git status", repo)
     assert "on your PATH" in _reason("npm test", repo, rules("npm test"))
-    assert copilot_folder.command_allowed("Get-ChildItem" if sys.platform == "win32" else "ls", repo)
+    if sys.platform == "win32":  # PowerShell's own, not found on PATH; elsewhere ls is a program
+        assert copilot_folder.command_allowed("Get-ChildItem", repo)
 
 
 def test_a_relative_folder_on_path_counts_as_inside(repo, monkeypatch):
@@ -2407,4 +2408,60 @@ def test_gits_commands_are_matched_exactly(repo, command):
 def test_a_programs_dash_t_value_is_checked_as_a_path(folder):
     outside = os.path.dirname(folder)
     assert not copilot_folder.command_allowed(f"foo -t {outside}", folder, rules(f"foo -t {outside}"))
+
+
+# -- the adversarial review of 46749f8: narrowed, rather than patched again --------------------
+
+
+@pytest.mark.parametrize("entry", ["scalar run fetch", "git-upload-pack x", "git-receive-pack x", "gitk",
+                                   "git-commit -m x", "C:/x/scalar.exe run"])
+def test_programs_git_ships_cant_be_rules(tmp_path, entry):
+    read = _rules_read(tmp_path, entry)
+    assert read.allow == () and "may only read" in read.unread[0]
+
+
+@pytest.mark.parametrize("entry", ["powershell git commit", "pwsh x", "cmd /c git", "bash x", "sh x",
+                                   "Start-Process git", "wsl git", "npx x", "env git", "C:/x/pwsh.exe y"])
+def test_a_rule_cant_name_a_shell(tmp_path, entry):
+    read = _rules_read(tmp_path, entry)
+    assert read.allow == () and "shell" in read.unread[0]
+
+
+@pytest.mark.parametrize("command", ["powershell git commit --allow-empty -m x", "scalar run fetch",
+                                     "git-receive-pack x", "cmd /c git status", "Start-Process git"])
+def test_allow_for_this_chat_isnt_offered_for_them(folder, command):
+    assert copilot_folder.chat_candidate(command, folder, Policy()) == ""
+
+
+@pytest.mark.parametrize("command", [
+    "Set-Content -Path:function:Get-Date x", "New-Item -Path:alias:gc -Value Set-Location -Force",
+    "Set-Content -Path:env:Path sub", "Get-Command .\\m.ps1 | % ScriptBlock | % Invoke",
+    "Get-Date | ForEach-Object x", "Invoke-History 1", "Import-Clixml x", "Register-EngineEvent x"])
+@windows_paths
+def test_powershells_own_commands_count_as_moving_unless_known_to_stay(command):
+    assert copilot_folder.may_move(command), command
+
+
+@windows_paths
+@pytest.mark.parametrize("command", ["Remove-Item src\\x.txt", "New-Item -ItemType Directory build",
+                                     "Copy-Item a.txt b.txt", "Set-Content a.txt x", "Get-Content a.txt"])
+def test_everyday_file_commands_leave_things_as_they_were(command):
+    assert not copilot_folder.may_move(command), command
+
+
+@windows_paths
+@pytest.mark.parametrize("command", ["Get-Content .\\.env", "Get-Content ./.env", "Get-Content -Path .env",
+                                     "gc .env", "cat .\\.env"])
+def test_an_ask_rule_covers_the_same_path_however_its_put(folder, command):
+    with open(os.path.join(folder, ".env"), "w", encoding="utf-8") as handle:
+        handle.write("x")
+    policy = Policy(auto=True, ask=(parse_rule("Get-Content .env"),))
+    assert not copilot_folder.command_allowed(command, folder, policy), command
+
+
+@windows_paths
+@pytest.mark.parametrize("command,rule", [("echo x", "Write-Output"), ("pwd", "Get-Location"),
+                                          ("Get-ChildItem | select Name", "Select-Object")])
+def test_an_ask_rule_covers_aliases_of_auto_commands(folder, command, rule):
+    assert not copilot_folder.command_allowed(command, folder, Policy(auto=True, ask=(parse_rule(rule),)))
 

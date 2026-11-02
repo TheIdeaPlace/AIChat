@@ -906,7 +906,8 @@ folder a git repository) or a git or git-lfs program of its own (`git.cmd`).
   matches the start of each command, so "git push" covers "git push origin main" (and
   "git --no-pager push"), "Remove-Item" covers its aliases, such as ri and del, and it may end
   in `*`. A rule never allows a command that could move Copilot's shell or run a script in it
-  (pushd, `.\build.ps1`, source). The file is read again for each request, so a change counts at
+  (pushd, `.\build.ps1`, source), a shell or something that starts other programs (powershell, cmd,
+  bash, npx, Start-Process), or a program git ships other than git (scalar, git-upload-pack). The file is read again for each request, so a change counts at
   once. A file that can't be read is used as no rules at all (the chat says so, once each time
   The Chat Place runs), and a rule that can't be used is left out: Chat Permissions lists it and
   says why, and a command it names says so when it asks.
@@ -976,7 +977,8 @@ anyway, the chat says why.
 **Where Copilot's shell is.** The Chat Place doesn't count on Copilot's shell going back to the
 chat's folder between commands. Changes of folder inside the chat's folder are followed, so paths
 are checked from wherever the shell may be, in a command you allow by hand too. Once you allow by hand a command that may have moved it somewhere not followed
-(cd .., `cd $HOME`, a script, iex, anything in `{ }` or `$( )`), commands in that chat ask again
+(cd .., `cd $HOME`, a script, iex, anything in `{ }` or `$( )`, or one of PowerShell's own commands
+that doesn't only read or change files), commands in that chat ask again
 until you use Restart Copilot; file changes, which name their full path, are still allowed in Auto.
 Commands that only start another program don't count, so `git commit -m "fix(parser): x"` and
 `npm test 2>&1 | Select-Object -Last 20` leave things as they were. On Windows a program named by
