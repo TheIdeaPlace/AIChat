@@ -43,6 +43,7 @@ class MainWindow(wx.Frame):
         self._build_body()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         self.refresh_timer = wx.Timer(self)
         self.stream_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, lambda _event: self.refresh_chats(), self.refresh_timer)
@@ -531,8 +532,21 @@ class MainWindow(wx.Frame):
             event.Skip()
 
     def _on_close(self, event: wx.CloseEvent) -> None:
+        self._shut_down()
+        event.Skip()
+
+    def _on_destroy(self, event: wx.WindowDestroyEvent) -> None:
+        # Destroy skips the close event, and a timer outliving its window
+        # crashes on a Mac. Only this window's own destruction counts: a child's
+        # event arrives here too.
+        if event.GetEventObject() is self:
+            self._shut_down()
+        event.Skip()
+
+    def _shut_down(self) -> None:
+        if self._closing:
+            return
         self._closing = True
         self.refresh_timer.Stop()
         self.stream_timer.Stop()
         threading.Thread(target=self.service.close, daemon=True, name="close-service").start()
-        event.Skip()

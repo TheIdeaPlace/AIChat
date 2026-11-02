@@ -67,9 +67,8 @@ def on_user(text):
         say("Hello")
         result()
     elif MODE == "badcontrol":
+        # Carries on only once it's heard the refusal, as a real one would.
         send({"type": "control_request", "request_id": "x-1", "request": {"subtype": "new_kind_of_request"}})
-        say("Hello")
-        result()
     else:
         say("Hello there: " + text)
         result()
@@ -83,6 +82,9 @@ for line in sys.stdin:
         continue
     if message.get("type") == "user":
         on_user(message["message"]["content"])
+    elif message.get("type") == "control_response" and message["response"].get("request_id") == "x-1":
+        say("Hello")
+        result()
     elif message.get("type") == "control_response" and state["asked"]:
         response = message["response"]["response"]
         if MODE == "question":
