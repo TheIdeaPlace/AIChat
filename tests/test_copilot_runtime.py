@@ -3356,36 +3356,65 @@ def test_a_real_ending_through_the_connection_clears_a_program(make, tmp_path, m
     assert not runtime.snapshot(chat).running
 
 
-def test_a_whole_session_in_a_real_worktree_asks_once_after_a_file_change(make, tmp_path,
-                                                                           monkeypatch):
-    """Auto with rules for npm test and git commit, as a normal session: reads,
-    git, a file change, a test run and a commit with an ordinary message, in a
-    real linked worktree whose repository has what VS Code and gh write. The
-    one prompt is npm test, after the file change it could run, which says so."""
-    from thechatplace.providers.copilot_runtime import ASKS_ONCE
-    _own_git(monkeypatch)
-    main = tmp_path / "main"
+VS_CODE_SETTINGS = ('[branch "feature"]\n\tvscode-merge-base = origin/main\n'
+                    '\tgh-merge-base = main\n\tgithub-pr-owner-number = o#r#1\n'
+                    '[remote "origin"]\n\tgh-resolved = base\n\tgithub-pr-remote = true\n'
+                    '\turl = https://github.com/example/x.git\n'
+                    '[gui]\n\twmstate = normal\n[color]\n\tui = auto\n')
+
+
+def _session_repository(tmp_path, kind):
+    """A real repository of the kind, ready for a session, and its folder."""
     env = {**os.environ, "GIT_AUTHOR_NAME": "S", "GIT_AUTHOR_EMAIL": "s@example.invalid",
            "GIT_COMMITTER_NAME": "S", "GIT_COMMITTER_EMAIL": "s@example.invalid"}
+    main = tmp_path / "main"
     subprocess.run(["git", "init", "-q", str(main)], check=True, env=env)
     subprocess.run(["git", "-C", str(main), "commit", "-q", "--allow-empty", "-m", "x"],
                    check=True, env=env)
-    with open(main / ".git" / "config", "a", encoding="utf-8") as handle:
-        handle.write('[branch "feature"]\n\tvscode-merge-base = origin/main\n'
-                     '\tgh-merge-base = main\n\tgithub-pr-owner-number = o#r#1\n'
-                     '[remote "origin"]\n\tgh-resolved = base\n\tgithub-pr-remote = true\n'
-                     '\turl = https://github.com/example/x.git\n'
-                     '[gui]\n\twmstate = normal\n[color]\n\tui = auto\n')
-    work = tmp_path / "work"
-    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", str(work)], check=True, env=env)
+    config = main / ".git" / "config"
+    with open(config, "a", encoding="utf-8") as handle:
+        handle.write(VS_CODE_SETTINGS)
+        if kind == "husky":
+            handle.write("[core]\n\thooksPath = .husky/_\n")
+        if kind == "lfs":
+            handle.write('[filter "lfs"]\n\tclean = git-lfs clean -- %f\n'
+                         '\tsmudge = git-lfs smudge -- %f\n\tprocess = git-lfs filter-process\n'
+                         '\trequired = true\n')
+    if kind == "husky":
+        hooks = main / ".husky" / "_"
+    elif kind == "lfs":
+        hooks = main / ".git" / "hooks"
+    else:
+        hooks = None
+    for name in () if hooks is None else ("pre-commit", "pre-push", "post-checkout", "post-merge"):
+        hooks.mkdir(parents=True, exist_ok=True)
+        (hooks / name).write_text("#!/bin/sh\n", encoding="utf-8")
+        os.chmod(hooks / name, 0o755)
+    work = main
+    if kind == "worktree":
+        work = tmp_path / "work"
+        subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", str(work)],
+                       check=True, env=env)
     (work / "notes.txt").write_text("synthetic", encoding="utf-8")
+    return work
+
+
+@pytest.mark.parametrize("kind", ["repository", "worktree", "husky", "lfs"])
+def test_edit_test_commit_cycles_ask_twice_each(make, tmp_path, monkeypatch, kind):
+    """Auto with an exact rule for npm test, as a normal session: reads, git, a
+    file change, a test run and a commit. Each cycle asks twice: npm test, after
+    a file change it could run, which says so; and the commit, which always
+    asks. Everything else is answered."""
+    from thechatplace.providers.copilot_runtime import ASKS_ONCE
+    _own_git(monkeypatch)
+    work = _session_repository(tmp_path, kind)
     edit = f"edit:{work.as_posix()}/notes.txt"
-    message = 'git commit -m "fix(parser): empty, and (#12) = a"'
-    steps = [READ, "git status", edit, "npm test", "git diff", message, READ, "git log --oneline"]
+    commit = 'git commit -m "fix(parser): empty, and (#12) = a"'
+    cycle = [READ, "git status", edit, "git diff", "npm test", commit, "git log --oneline"]
+    steps = cycle + cycle
     _commands(monkeypatch, *steps)
-    allow = copilot_folder.Rules(allow=tuple(copilot_folder.parse_rule(rule)
-                                             for rule in ("npm test", "git commit *")))
-    runtime, updates = make("ask", rules=lambda: allow)
+    allow = copilot_folder.Rules(allow=(copilot_folder.parse_rule("npm test"),))
+    runtime, _ = make("ask", rules=lambda: allow)
     chat = runtime.create(str(work))
     runtime.set_auto(chat, True)
     asked = []
@@ -3400,10 +3429,29 @@ def test_a_whole_session_in_a_real_worktree_asks_once_after_a_file_change(make, 
             runtime.answer(chat, state.requests[0].request_id, ALLOW_ONCE)
             assert wait(lambda: runtime.snapshot(chat).turn_id == str(number)
                         and runtime.snapshot(chat).outcome == "completed"), step
-    assert asked == [("npm test", ASKS_ONCE)]
+    assert asked == [("npm test", ASKS_ONCE), (commit, "")] * 2
     state = runtime.snapshot(chat)
-    assert len(state.auto_allowed) == len(steps) - 1
+    assert len(state.auto_allowed) == len(steps) - len(asked)
     assert not (state.location_changed or state.running or state.background or state.notice)
+
+
+@pytest.mark.parametrize("command", ["cd $HOME", 'cd "$HOME"', "cd ~/.ssh", "cd o*", "cd 'o*'"])
+def test_a_cd_of_what_the_shell_expands_makes_a_read_ask(make, tmp_path, monkeypatch, command):
+    """Kelly's review of f31123e: allowed by hand, each left the folder and the
+    next read was answered."""
+    _commands(monkeypatch, command, READ)
+    (tmp_path / "notes.txt").write_text("synthetic", encoding="utf-8")
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    runtime.send(chat, "First")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    runtime.answer(chat, runtime.snapshot(chat).requests[0].request_id, ALLOW_ONCE)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert runtime.snapshot(chat).location_changed
+    runtime.send(chat, "Second")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert runtime.snapshot(chat).requests[0].command == READ
 
 
 @pytest.mark.parametrize("set_up,sentence", [
@@ -3602,17 +3650,17 @@ def test_a_cd_allowed_by_hand_doesnt_make_commands_ask(make, tmp_path, monkeypat
 
 def test_a_hook_is_said_as_why_git_asks(make, tmp_path, monkeypatch):
     _own_git(monkeypatch)
-    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "git commit -m x")
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "git add .")
     subprocess.run(["git", "init", "-q", str(tmp_path / "w")], check=True, env={**os.environ})
-    hook = tmp_path / "w" / ".git" / "hooks" / "pre-commit"
+    hook = tmp_path / "w" / ".git" / "hooks" / "post-index-change"
     hook.write_text("#!/bin/sh\n", encoding="utf-8")
     os.chmod(hook, 0o755)
-    allow = copilot_folder.Rules(allow=(copilot_folder.parse_rule("git commit *"),))
+    allow = copilot_folder.Rules(allow=(copilot_folder.parse_rule("git add ."),))
     runtime, _ = make("ask", rules=lambda: allow)
     chat = runtime.create(str(tmp_path / "w"))
-    runtime.send(chat, "Commit")
+    runtime.send(chat, "Stage")
     assert wait(lambda: runtime.snapshot(chat).requests)
-    assert "this repository has a pre-commit hook, and hooks run programs." in (
+    assert "this repository has a post-index-change hook, and hooks run programs." in (
         runtime.snapshot(chat).notice)
 
 

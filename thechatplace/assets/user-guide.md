@@ -876,131 +876,115 @@ your home folder or a folder holding it, the temp folder, a network path (`\\ser
 your home folder's settings and secrets (`.ssh`, `.copilot`, `.claude`, AppData and the Startup
 folder, wherever Windows keeps them, and the like) or your PowerShell profiles, even with
 Documents in OneDrive. No file change for you makes a file named `HEAD` (which would make a
-folder a git repository) or a git program of its own (`git.cmd`).
+folder a git repository) or a git or git-lfs program of its own (`git.cmd`).
 
 - **Auto**, the third choice in Change Permission Mode (Ctrl+Shift+O), after a warning (No is the
   default). Copilot may read, list and search inside the chat's folder and its subfolders
   (Get-ChildItem, Get-Item, Get-Content, Select-String, Test-Path, Select-Object, Sort-Object and a
   few more; on a Mac or Linux, ls, cat, echo and pwd), change to a folder inside it (cd,
   Set-Location; on a Mac or Linux, `cd ./name` or a full path, since a plain `cd name` may follow
-  CDPATH elsewhere), read git (git status, log, diff, show, branch with no name, and a few more, with
-  common options such as `--oneline` and `--stat`), and make its own file changes inside the
-  folder. git is answered only when git itself says the chat's folder is the top of a repository,
-  or a linked worktree of one (as `git worktree add` makes), and Copilot's shell is there, the
-  repository has no submodules, its own settings are
-  only the ordinary ones git itself writes (the remote's address, branches, line endings, your
-  name and the like: anything else, such as a program for git to run, asks), and none of your git
-  settings files is inside the folder (the same goes for git commands your rules allow, which must name the git
-  command, as `git commit *` does, since `git *` alone allows none; never cover config, bisect,
-  filter-branch, hook, submodule, worktree, difftool, mergetool and a few more that change git's
-  settings or run a program; and never take options that write a file, run a program or point git
-  elsewhere, such as `--output`, `--ext-diff`, `--unsafe-paths`, `-O` or `-x`, however
-  they're shortened); git diff, show, log and blame also ask if any of your git settings name a
-  program for showing differences (a diff driver), which a repository can choose. **A repository's
-  hooks run programs, so git asks when one is there that the command can fire, and says which.**
-  git status and git diff can fire `post-index-change`, so they ask in a repository that has one;
-  a repository with only `pre-commit` or `pre-push`, or only the `.sample` files git creates, leaves
-  Auto's git alone. Under your rules, `git commit *` asks for each commit in a repository with a
-  `pre-commit`, `commit-msg`, `prepare-commit-msg`, `post-commit`, `reference-transaction` or
-  `post-index-change` hook, and git commands other than the common ones ask for any hook at all.
-  So if your own repository has commit hooks, commits ask there. It never deletes, moves, copies or writes through a command, never deletes a file
-  through a file change, and never changes anything in `.git` or another git repository's own
-  folder, `.githooks`, `.github`, `.copilot`, `.claude`, `.codex`, `.vscode`, `.idea`, `.husky`
-  or `.devcontainer`, or `.mcp.json`, `.envrc`, `.gitmodules`, `.gitattributes` or
-  `.pre-commit-config.yaml`, whose files can make a program run (git's settings, Copilot's and
-  Claude's hooks, MCP servers). A Claude Code worktree (`.claude\worktrees\...`) is an ordinary
-  folder. **After Auto changes a file, your rules and kept commands ask once:** a program you've
-  allowed, such as `npm test` or `python build.py`, runs what's in the folder (and settings such
-  as `.npmrc` or `conftest.py` can make it run anything), so once Auto has let Copilot change a
-  file, the next command your rules or Allow for This Chat would allow asks you first, and the
-  chat says why. Allowing such a command yourself, once Copilot asks after that change, lets them
-  be answered again until Auto changes another file (allowing some other command doesn't); a chat
-  opened again asks once too, saying so, since what Auto changed before isn't kept. Every chat in
-  the same folder, or in a folder inside it or holding it, shares this, and a chat opened later in
-  such a folder starts out asking once too. While a program your rules, a kept command or you
-  allowed may still be running, Auto's file changes in its folder ask, and the chat says why:
-  until Copilot reports, in its own record of the program's end, that it ended. Stopping it with
-  Stop, or Copilot stopping it, doesn't end the program (it runs on to its own end), so then it's
-  until you use Restart Copilot, in File, Chat Permissions (on a Mac or Linux a program that left
-  Copilot's group may run on after that). A command
-  Copilot will run in the background (it says so just before asking), or doesn't describe before
-  asking, always asks. One a rule allowed that Copilot moves to the background, because it's still
-  running after its wait (30 seconds), was already answered; while it or any background program
-  allowed here runs, later commands ask too. A command you allow that Copilot didn't describe
-  first makes commands ask until you use Restart Copilot. Your own git settings (your global and
-  system config) are yours: The Chat Place checks that none of their files is inside the folder,
-  but not what they set, so a program you've named there, such as core.pager or core.fsmonitor,
-  runs as it always does. The exception is a program named by a relative path (`tools/x`, `./x`),
-  which a file in the folder could stand in for: git asks then, and says so. The chat's heading ends "Auto", and Auto is kept
-  for the chat, so it's on again when the chat is opened again, until you choose Agent or Plan.
-  If Copilot switches to plan mode, Auto ends and the chat says so.
+  CDPATH elsewhere), read git, and make its own file changes inside the folder. It never deletes,
+  moves, copies or writes through a command, never deletes a file through a file change, and never
+  changes anything in `.git` or another git repository's own folder, `.githooks`, `.github`,
+  `.copilot`, `.claude`, `.codex`, `.vscode`, `.idea`, `.husky` or `.devcontainer`, or `.mcp.json`,
+  `.envrc`, `.gitmodules`, `.gitattributes`, `.pre-commit-config.yaml` or a lefthook settings file,
+  whose files can make a program run. A Claude Code worktree (`.claude\worktrees\...`) is an ordinary
+  folder. The chat's heading ends "Auto", and Auto is kept for the chat, so it's on again when the
+  chat is opened again, until you choose Agent or Plan. If Copilot switches to plan mode, Auto ends
+  and the chat says so.
 - **Your rules**, in `%APPDATA%\TheChatPlace\copilot-rules.json` (on a Mac,
   `~/Library/Application Support/TheChatPlace/copilot-rules.json`; on Linux,
   `~/.config/TheChatPlace/copilot-rules.json`), a file you write yourself, used in every Copilot
   chat started here that's in agent mode, with Auto or without. For example,
-  `{"allow": ["npm test", "npm run build", "git commit *"], "ask": ["git push *"]}`.
-  A rule is the command's words; a `*` at the end allows more words after them. `Bash(npm
-  test:*)` and `shell(npm test:*)`, as Claude Code and Copilot CLI write them, work too. "ask"
-  always asks, even when Auto or another rule would allow the command, and it matches the start
-  of each command, so "git push" covers "git push origin main" (and "git --no-pager push"), and
-  "Remove-Item" covers its aliases, such as ri and del. A rule never allows a command that could
-  move Copilot's shell or run a script in it (pushd, `.\build.ps1`, source), and after a
-  command a rule or Allow for This Chat allowed, only a pipe may follow (`npm test | Select-Object -Last 20`, not
-  `npm test; Get-Content x`): the rest was checked before that command could change anything. It's read again for each request,
-  so a change counts at once. A file that can't be read is used as no rules at all (the chat
-  says so, once each time The Chat Place runs), and a rule that can't be read is left out; Chat
-  Permissions says which.
+  `{"allow": ["npm test", "npm run build"], "ask": ["git push *"]}`.
+  An "allow" rule is one whole command, exactly as it will run: `npm test` doesn't cover
+  `npm test --watch`. It can't hold a `*`, quotes or `%`. `Bash(npm test)` and `shell(npm test)`,
+  as Claude Code and Copilot CLI write them, work too. After a rule's command, `2>&1` and a pipe to
+  a command that sorts, selects or formats may follow (`npm test 2>&1 | Select-Object -Last 20`),
+  and nothing else. "ask" always asks, even when Auto or another rule would allow the command. It
+  matches the start of each command, so "git push" covers "git push origin main" (and
+  "git --no-pager push"), "Remove-Item" covers its aliases, such as ri and del, and it may end
+  in `*`. A rule never allows a command that could move Copilot's shell or run a script in it
+  (pushd, `.\build.ps1`, source). The file is read again for each request, so a change counts at
+  once. A file that can't be read is used as no rules at all (the chat says so, once each time
+  The Chat Place runs), and a rule that can't be used is left out; Chat Permissions lists it and
+  says why.
 - **Allow for This Chat**, a button in Answer (Ctrl+Shift+A) when Copilot asks to run a command.
   It allows that command and keeps it for the chat: the next time Copilot asks to run exactly the
   same command, letter for letter, it isn't asked again. It's offered only for a command whose
   every path stays inside the folder, and Chat Permissions lists what's kept, to remove.
 
-Whichever allows it, a command is read the same strict way: every part of it (split at `|`,
-`;`, `&&`) must be allowed, every path in it must stay inside the folder, and anything the check
-can't follow asks: other folders and drives (a full path elsewhere, `..`, `~`, `\\server`,
-`HKLM:`), recursion (-Recurse, -r) and following links, wildcards (`*`, `?`), making links,
-variables such as `$env:USERPROFILE`, brackets, redirection, characters other than plain ASCII
-(such as smart quotes), and anything that runs code (`&`, `iex`, scripts). After a pipe, a command
-may only sort, select or format what comes in. A word with a colon is taken as a drive
-(`HKLM:`, `env:PATH`, `C:x`) except in a command your rule or Allow for This Chat allows for a
-program other than PowerShell's own cmdlets, where an ordinary colon is fine (`npm run
-test:unit`, `git commit -m "fix: typo"`). `2>&1` is fine for those programs as a word of its own, but
-no other redirection is. For those same programs, text in plain quotes (single
-quotes, or double quotes with no `$` or backtick; on a Mac or Linux, no `!` or backslash either)
-is only something the program receives, so it may hold brackets, commas, `#`, `=` and the like,
-as long as no part of it reaches outside the folder. A message after git commit's `-m` is never
-read as a path at all, so `git commit -m "fix(parser): src/foo.py, and a bug (#12)"` is answered
-under a `git commit *` rule, trailers included. On Windows, `&`, `|`, `<`, `>`, `^` and `%` ask
-for anything but git or a program named with its `.exe`, since a `.cmd` or `.bat` would act on
-them. `--%` always asks. Other programs' text, and Auto's own reads, stay strict. A rule's or a kept command's own program may take
-options (`--watch`), but none with a value joined on (`--file=x`), quoted or not. This is a strict reading of
-what the command says, not a lock. A command you allow can run what's in the folder: `npm test`
+**git.** Auto, a rule or a kept command only reads with git: status, log, diff, show, blame,
+ls-files, rev-parse, describe, rev-list, merge-base, branch and remote with no name, and stash
+list, with common options such as `--oneline` and `--stat`. A rule may also name `git add` with
+paths. Everything else, git commit, push, pull, fetch, merge and rebase included, always asks. A
+word in quotes, or ending in a backslash, asks.
+
+Git itself is asked where it is and what it's set to, and it's answered only when:
+
+- the chat's folder is the top of a repository, or a linked worktree of one (as `git worktree
+  add` makes), and any subfolder Copilot's shell may be in is the same repository;
+- the repository has no submodules and borrows no objects from another;
+- its own settings are only ordinary ones (the remote's address, branches, line endings, your name,
+  how git shows things, what `git lfs install` writes and the like; anything else, such as a program
+  for git to run, asks and says so);
+- none of your git settings files is inside the folder, and your global and system settings name
+  no program by a relative path (`tools/x`, `./x`), which a file in the folder could stand in for.
+  Otherwise your own git settings are yours, including your own hooks folder outside the project;
+- git diff, show, log and blame also ask if any of your git settings name a program for showing
+  differences, which a repository can choose.
+
+A repository's hooks run programs, so git asks when one is there that the command can fire. Git
+status, git diff and git add can fire `post-index-change`, so they ask in a repository that has
+one, and say so. Other hooks don't make these commands ask, so a repository with `pre-commit` or
+`pre-push`, husky or lefthook, or git-lfs's hooks leaves them alone. A hooks folder Auto can't
+change (`.husky`, `.githooks`) is fine; one it could change asks.
+
+**After Auto changes a file, your rules and kept commands ask once.** A program you've allowed,
+such as `npm test` or `python build.py`, runs what's in the folder (settings such as `.npmrc` or
+`conftest.py` can make it run anything), so once Auto has let Copilot change a file, the next
+command your rules or Allow for This Chat would allow asks you first, and the chat says why.
+Allowing such a command yourself, once Copilot asks after that change, lets them be answered again
+until Auto changes another file (allowing some other command doesn't). A chat opened again asks
+once too, saying so. Every chat in the same folder, or in a folder inside it or holding it, shares
+this, and a chat opened later in such a folder starts out asking once too.
+
+**While a program runs.** While a program your rules, a kept command or you allowed may still be
+running, Auto's file changes in its folder ask, and the chat says why, until Copilot reports the
+program's end. Stopping it with Stop doesn't end the program, so then it's until you use Restart
+Copilot. A command Copilot will run in the background, or doesn't describe before asking, always
+asks. While a program allowed here runs in the background, later commands ask too.
+
+**How a command is read.** Whichever allows it, every part of a command (split at `|`, `;`, `&&`)
+must be allowed, every path in it must stay inside the folder, and anything the check can't follow
+asks: other folders and drives (a full path elsewhere, `..`, `~`, `\\server`, `HKLM:`), recursion
+(-Recurse, -r) and following links, wildcards (`*`, `?`), making links, variables such as
+`$env:USERPROFILE`, brackets, redirection other than `2>&1`, `--%`, comments, characters other than
+plain ASCII (such as smart quotes), and anything that runs code (`&`, `iex`, scripts). After a
+pipe, a command may only sort, select or format what comes in. After a command a rule or Allow for
+This Chat allowed, only a pipe may follow (`npm test; Get-Content x` asks). This is a strict reading
+of what the command says, not a lock. A command you allow can run what's in the folder: `npm test`
 runs the folder's own scripts, which Copilot may have changed first, so allow only programs you'd
-let run on whatever's there. In Auto, Copilot can change package.json, a Makefile or a build
-script before running a command your rule allows. When a request that Auto, a rule or a kept
-command would answer asks anyway, the chat says why.
+let run on whatever's there. When a request that Auto, a rule or a kept command would answer asks
+anyway, the chat says why.
 
-Copilot's shell keeps its folder between commands. Changes of folder inside the chat's folder are
-followed, so paths are checked from wherever the shell may be. Once you allow by hand a command
-that may have moved it somewhere not followed (cd .., a script, iex, anything in `{ }` or `$( )`),
-commands in that chat ask again until you use Restart Copilot; file changes, which name their full
-path, are still allowed in Auto. Commands that only start another program don't count, so
-`git commit -m "fix(parser): x"`, `npm test 2>&1 | Select-Object -Last 20` and
-`.venv\Scripts\python.exe -m pytest` leave things as they were (on Windows, a program named by
-its path needs its `.exe`, `.cmd` or `.bat`, since PowerShell could otherwise find a script of that
-name). A `cd` to a folder inside the chat's is followed, even in a command you allow by hand.
+**Where Copilot's shell is.** It keeps its folder between commands. Changes of folder inside the
+chat's folder are followed, so paths are checked from wherever the shell may be, in a command you
+allow by hand too. Once you allow by hand a command that may have moved it somewhere not followed
+(cd .., `cd $HOME`, a script, iex, anything in `{ }` or `$( )`), commands in that chat ask again
+until you use Restart Copilot; file changes, which name their full path, are still allowed in Auto.
+Commands that only start another program don't count, so `git commit -m "fix(parser): x"` and
+`npm test 2>&1 | Select-Object -Last 20` leave things as they were. On Windows a program named by
+its path counts only if it's there as named, with `.exe`, `.cmd` or `.bat`, and no `.ps1` of the
+same name beside it, since PowerShell could otherwise run a script.
 
-After `cd` into a subfolder, all of that chat's git asks until you use Restart Copilot: the shell
-may be there, and there's no telling that a later `cd` back worked. `cd <the chat's folder> &&
-git status` is still answered, since the second part runs only if the first worked.
-
-**Restart Copilot** (Alt+S), a button in File, Chat Permissions (Ctrl+Shift+H) for a Copilot chat, is the
-way out of all that without closing The Chat Place. It stops Copilot and what Copilot started, for
-every chat, as they share one Copilot, and commands stop asking because of a shell that may have
-moved or a program that never ended. If another Copilot chat is running a turn or a program, or
-this chat a turn, it warns you first, saying how many, with No the default. Copilot starts again,
-afresh in each chat's own folder, when a chat needs it: at once for the chat that's open. Your
-rules and kept commands ask once after that, as in any chat opened again.
+**Restart Copilot** (Alt+S), a button in File, Chat Permissions (Ctrl+Shift+H) for a Copilot chat,
+is the way out of all that without closing The Chat Place. It stops Copilot and what Copilot
+started, for every chat, as they share one Copilot, and commands stop asking because of a shell
+that may have moved or a program that never ended. If another Copilot chat is running a turn or a
+program, or this chat a turn, it warns you first, saying how many, with No the default. Copilot
+starts again, afresh in each chat's own folder, when a chat needs it: at once for the chat that's
+open. Your rules and kept commands ask once after that, as in any chat opened again.
 
 It relies on Copilot asking about every command: commands your own Copilot settings
 already allow never come to The Chat Place at all. None of this is offered on a computer where

@@ -41,17 +41,6 @@ def rules(*allow, ask=()):
     return Policy(allow=tuple(parse_rule(r) for r in allow),
                   ask=tuple(parse_rule(r) for r in ask))
 
-#: Rules naming each git command a test uses ("git *" alone allows none).
-NAMED_GIT_RULES = rules("git log *", "git commit *", "git add *", "git status *", "git push *", "git grep *", "git rebase *", "git format-patch *", "git difftool *", "git diff *", "git stash *")
-
-
-#: Rules for every writing command #426 used to answer: what asks must ask
-#: even with them, since the strict reading is the same for rules.
-WRITERS = Policy(auto=True, allow=tuple(parse_rule(f"{name} *") for name in (
-    "Set-Content", "Add-Content", "Clear-Content", "New-Item", "ni", "Copy-Item", "Move-Item",
-    "Remove-Item", "Rename-Item", "Out-File", "cp", "mv", "rm")))
-
-
 def dir_link(target, link):
     """A link to a folder: a symlink, or on Windows without the right to
     make one, a junction (which PowerShell follows the same way)."""
@@ -66,9 +55,8 @@ def dir_link(target, link):
 
 
 def asks(command, folder, locations=None):
-    """Asks in Auto, and with rules for every writing command too."""
-    return (copilot_folder.check_command(command, folder, Policy(auto=True), locations) is None
-            and copilot_folder.check_command(command, folder, WRITERS, locations) is None)
+    """Asks in Auto."""
+    return copilot_folder.check_command(command, folder, Policy(auto=True), locations) is None
 
 
 @windows_paths
@@ -265,17 +253,6 @@ def test_an_exact_rule_matches_only_those_words(folder):
     assert copilot_folder.check_command("npm install", folder, policy) is None
 
 
-def test_a_prefix_rule_takes_more_words_read_the_strict_way(repo):
-    folder = repo
-    policy = rules("git commit *")
-    assert copilot_folder.check_command("git commit -m 'Fix the test'", folder, policy).by == RULE
-    assert copilot_folder.check_command("git commit --amend", folder, policy).by == RULE
-    for command in ("git commit -m x; Remove-Item notes.txt",   # what Copilot's own git:* let by
-                    "git commit -m x && rm notes.txt",
-                    "git commit -F C:\\Windows\\win.ini",
-                    "git commit -m $(evil)",
-                    "git commit --file=..\\x"):
-        assert copilot_folder.check_command(command, folder, policy) is None, command
 
 
 def test_each_part_needs_something_that_allows_it(folder):
@@ -314,28 +291,8 @@ def test_rules_ignore_case_on_windows(folder):
     assert copilot_folder.check_command("NPM Test", folder, rules("npm test")).by == RULE
 
 
-def test_a_rule_still_refuses_recursion_and_folders(folder):
-    policy = rules("Remove-Item *", "rm *")
-    assert copilot_folder.check_command("Remove-Item sub", folder, policy) is None
-    assert copilot_folder.check_command("Remove-Item -Recurse x", folder, policy) is None
-    assert copilot_folder.check_command("rm -rf sub", folder, policy) is None
-    removing = "Remove-Item notes.txt" if sys.platform == "win32" else "rm notes.txt"
-    assert copilot_folder.check_command(removing, folder, policy).by == RULE
 
 
-def test_the_rules_file(tmp_path):
-    path = tmp_path / "copilot-rules.json"
-    assert copilot_folder.read_rules(path) == copilot_folder.Rules()
-    path.write_text('{"allow": ["npm test", "git commit *", "bad; rule"], "ask": ["git push"]}',
-                    encoding="utf-8")
-    read = copilot_folder.read_rules(path)
-    assert [r.text for r in read.allow] == ["npm test", "git commit *"]
-    assert [r.text for r in read.ask] == ["git push"]
-    assert read.unread == ("bad; rule",) and not read.problem
-    for broken in ("not json", "[]", '{"allow": "npm test"}'):
-        path.write_text(broken, encoding="utf-8")
-        read = copilot_folder.read_rules(path)
-        assert read.problem and not read.allow and not read.ask
 
 
 # -- Allow for This Chat -----------------------------------------------------------------
@@ -583,17 +540,6 @@ def test_what_the_reviews_of_the_merge_found_asks(folder, command):
     assert asks(command, folder)
 
 
-@windows_paths
-@pytest.mark.parametrize("command", [
-    "Get-Content notes.txt | Select-Object -First 1",
-    "Get-ChildItem sub | Sort-Object Name | Format-Table",
-    "Copy-Item notes.txt -Destination sub\\copy.txt",   # -Destination isn't -Depth
-    "New-Item -ItemType Directory -Path build",
-    "New-Item -ItemType f -Path new.txt",
-    "Copy-Item notes.txt sub",                            # into a folder, a plain file
-])
-def test_plain_pipes_and_copies_are_allowed_by_rules(folder, command):
-    assert copilot_folder.check_command(command, folder, WRITERS)
 
 
 def test_copying_into_a_folder_checks_the_file_written(folder, tmp_path):
@@ -721,21 +667,6 @@ def test_bashs_own_cd_through_a_wrapper_moves_the_shell(command):
 # -- Claude's review of Auto -------------------------------------------------------------
 
 
-def test_git_isnt_answered_outside_a_real_repository_in_the_chats_folder(repo):
-    """git takes a folder with HEAD, objects and refs for a repository, and
-    Auto's own file changes can write those: so git is answered only with
-    the shell in the chat's folder, and that folder holding a real .git."""
-    fake = os.path.join(repo, "x")
-    for name in ("config", os.path.join("objects", "k"), os.path.join("refs", "k")):
-        assert copilot_folder.file_change_allowed(os.path.join(fake, name), (), repo)
-    # HEAD is what would make it a repository: never written for you
-    # (Kelly's review of 58c5f03).
-    for name in ("HEAD", "head", "HEAD."):
-        assert not copilot_folder.file_change_allowed(os.path.join(fake, name), (), repo), name
-    assert copilot_folder.check_command("cd x; git status", repo, Policy(auto=True)) is None
-    moved = copilot_folder.check_command(CD_SUB, repo, Policy(auto=True)).locations
-    assert copilot_folder.check_command("git status", repo, Policy(auto=True), moved) is None
-    assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
 
 
 def test_git_isnt_answered_without_a_git_folder(folder):
@@ -758,7 +689,7 @@ def test_a_file_change_to_a_stream_a_device_or_mcp_settings_asks(folder, name):
 def test_a_command_that_may_move_the_shell_isnt_kept_or_ruled(folder, command):
     assert copilot_folder.chat_candidate(command, folder, Policy()) == ""
     word = command.split()[0]
-    assert copilot_folder.check_command(command, folder, rules(f"{word} *")) is None
+    assert copilot_folder.check_command(command, folder, rules(command)) is None
 
 
 @pytest.mark.parametrize("command", [
@@ -854,7 +785,7 @@ def test_git_diff_asks_when_a_diff_program_is_named_or_unknown(repo, monkeypatch
 def test_trap_is_never_ruled_or_kept(folder):
     command = "trap 'cp x leak' DEBUG"
     assert copilot_folder.may_move(command)
-    assert copilot_folder.check_command(command, folder, rules("trap *")) is None
+    assert copilot_folder.check_command(command, folder, rules(command)) is None
 
 
 # -- Kelly's review of #426, and the reviews of its fixes ---------------------------------
@@ -1010,55 +941,18 @@ def test_cd_to_a_full_path_inside_is_followed_elsewhere(folder):
 # -- Kelly's review of 58c5f03 ------------------------------------------------------------
 
 
-def test_a_git_rule_gets_gits_checks(repo):
-    # Case A: with the rule "git status", a repository whose config names a
-    # program asked under Auto but was answered by the rule, and ran it.
-    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
-        handle.write("[core]\n\tfsmonitor = calc\n")
-    for rule in ("git status", "git *", "git log *"):
-        command = "git status" if rule != "git log *" else "git log"
-        assert copilot_folder.check_command(command, repo, rules(rule)) is None, rule
 
 
-def test_a_git_rule_isnt_answered_outside_the_chats_repository(repo):
-    # Case B: cd sub, then a rule's git status in a repository Auto's own
-    # edits could have built there.
-    sub_cd = CD_SUB
-    policy = Policy(auto=True, allow=(parse_rule("git status"),))
-    moved = copilot_folder.check_command(sub_cd, repo, policy).locations
-    assert copilot_folder.check_command("git status", repo, policy, moved) is None
-    assert copilot_folder.check_command("git status", repo, policy) is not None
 
 
 def test_a_git_rule_isnt_answered_without_a_repository(folder):
     assert copilot_folder.check_command("git status", folder, rules("git status")) is None
 
 
-@pytest.mark.parametrize("command", [
-    "git log --ext-diff -p", "git log --output x.txt", "git log --output=x.txt",
-    "git format-patch -o out HEAD~1", "git grep -O notes", "git rebase -x calc HEAD~1",
-    "git log --textconv -p", "git -c core.pager=calc log", "git -C sub log",
-    "git --git-dir=x log", "git log --exec-path", "git difftool --tool=x",
-])
-def test_a_git_rule_never_takes_options_that_write_or_run(repo, command):
-    policy = NAMED_GIT_RULES
-    assert copilot_folder.check_command(command, repo, policy) is None, command
 
 
-def test_a_git_rule_still_takes_ordinary_options(repo):
-    policy = NAMED_GIT_RULES
-    for command in ("git log --oneline -5", "git commit -m 'x y'", "git add notes.txt",
-                    "git status --short", "git push origin main"):
-        assert copilot_folder.check_command(command, repo, policy).by == RULE, command
 
 
-def test_a_git_rule_that_shows_differences_asks_with_a_diff_program(repo, monkeypatch):
-    from thechatplace import platform_paths
-    monkeypatch.setattr(platform_paths, "git_names_diff_program", lambda folder: True)
-    policy = NAMED_GIT_RULES
-    assert copilot_folder.check_command("git diff", repo, policy) is None
-    assert copilot_folder.check_command("git stash show -p", repo, policy) is None
-    assert copilot_folder.check_command("git commit -m x", repo, policy).by == RULE
 
 
 def test_redirected_settings_folders_are_guarded(tmp_path, monkeypatch):
@@ -1093,42 +987,10 @@ def test_github_actions_are_guarded(tmp_path):
                                                   str(tmp_path / "proj"))
 
 
-@pytest.mark.parametrize("command", [
-    "git grep -Ocalc hello", "git grep -iOcalc hello", "git rebase -xcalc base",
-    "git format-patch -oout -1", "git rebase --exe calc base", "git rebase --strat x base",
-    "git commit --templ x", "git difftool --ext x", "git rebase -x calc base",
-    "git format-patch -o out -1",
-])
-def test_a_git_rule_refuses_short_and_shortened_options(repo, command):
-    # Claude's review of the git rules: git reads -Ocalc as -O calc, and any
-    # unambiguous start of a long option (--exe is --exec); real git ran each.
-    assert copilot_folder.check_command(command, repo, NAMED_GIT_RULES) is None, command
 
 
-def test_a_git_rule_still_takes_grep_and_log_options(repo):
-    for command in ("git grep -e hello", "git grep -E hello", "git log -c", "git commit -am x"):
-        assert copilot_folder.check_command(command, repo, NAMED_GIT_RULES).by == RULE, command
 
 
-def test_git_star_allows_no_git_command_and_some_never_by_any_rule(repo):
-    # Kelly's review of 8345ddd: a "git *" rule ran git bisect run, filter-branch
-    # and git config --global. A rule names the command it allows (Tim's choice),
-    # and some are never answered by any rule.
-    assert copilot_folder.check_command("git status", repo, rules("git *")) is None
-    assert copilot_folder.check_command("git commit -m x", repo, rules("git *")) is None
-    for command, rule in (("git bisect run calc", "git bisect *"),
-                          ("git filter-branch -f HEAD", "git filter-branch *"),
-                          ("git config core.fsmonitor calc", "git config *"),
-                          ("git config --global core.fsmonitor calc", "git config *"),
-                          ("git hook run pre-commit", "git hook *"),
-                          ("git submodule add x", "git submodule *"),
-                          ("git worktree add wt", "git worktree *"),
-                          ("git update-index --fsmonitor", "git update-index *"),
-                          ("git init --bare sub2", "git init *")):
-        assert copilot_folder.check_command(command, repo, rules(rule)) is None, command
-    # Under any of git's names.
-    assert copilot_folder.check_command("git.cmd bisect run calc", repo,
-                                        rules("git.cmd bisect *")) is None
 
 
 def test_a_git_config_file_inside_the_folder_asks(repo, monkeypatch):
@@ -1195,12 +1057,6 @@ def test_an_ordinary_cloned_repository_is_still_answered(repo):
     assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
 
 
-def test_git_apply_unsafe_paths_asks(repo):
-    # Claude's review: --unsafe-paths let a patch write ../outside.
-    for command in ("git apply --unsafe-paths p.patch", "git apply --unsafe p.patch",
-                    "git apply --directory sub p.patch"):
-        assert copilot_folder.check_command(command, repo, rules("git apply *")) is None, command
-    assert copilot_folder.check_command("git apply p.patch", repo, rules("git apply *")).by == RULE
 
 
 def test_an_ask_rule_for_git_catches_git_cmd(repo):
@@ -1265,26 +1121,8 @@ def test_the_setting_that_made_git_ask_is_given(repo):
     assert copilot_folder.ask_reason() == ""
 
 
-@pytest.mark.parametrize("command,rule", [
-    ("git merge-index calc -a", "git merge-index *"),
-    ("git merge-one-file a b c", "git merge-one-file *"),
-    ("git update-git-for-windows", "git update-git-for-windows *"),
-    ("git lfs install", "git lfs *"),
-    ("git credential-manager configure", "git credential-manager *"),
-    ("git archive --remote sub HEAD", "git archive *"),
-])
-def test_more_git_commands_and_options_no_rule_answers(repo, command, rule):
-    assert copilot_folder.check_command(command, repo, rules(rule)) is None, command
 
 
-def test_a_git_rule_that_can_allow_nothing_is_reported(tmp_path):
-    path = tmp_path / "copilot-rules.json"
-    path.write_text('{"allow": ["git *", "git config *", "git commit *"], "ask": ["git *"]}',
-                    encoding="utf-8")
-    read = copilot_folder.read_rules(path)
-    assert [tuple(r.words) for r in read.allow] == [("git", "commit")]
-    assert "git *" in read.unread and "git config *" in read.unread
-    assert len(read.ask) == 1
 
 
 @pytest.mark.parametrize("command", ["npm run test:unit", 'git commit -m "fix: typo"',
@@ -1304,12 +1142,6 @@ def test_a_drive_word_still_counts_as_moving(command):
     assert copilot_folder.may_move(command), command
 
 
-def test_a_rule_takes_a_word_with_an_ordinary_colon(repo):
-    assert copilot_folder.check_command('git commit -m "fix: typo"', repo,
-                                        rules("git commit *")).by == RULE
-    assert copilot_folder.check_command("npm run test:unit", repo, rules("npm run *")).by == RULE
-    for command in ("npm run env:PATH", "npm run C:x", "npm run a::b"):
-        assert copilot_folder.check_command(command, repo, rules("npm run *")) is None, command
 
 
 def test_a_repository_holding_a_submodule_without_gitmodules_asks(repo, tmp_path):
@@ -1341,19 +1173,8 @@ def test_a_setting_is_named_without_its_subsection(repo):
     assert "merge.driver" in said and "trust it" not in said
 
 
-def test_remotes_isnt_refused_with_remote(repo):
-    assert copilot_folder.check_command("git log --remotes", repo, rules("git log *")).by == RULE
-    assert copilot_folder.check_command("git archive --remote x HEAD", repo,
-                                        rules("git archive *")) is None
 
 
-@windows_paths
-@pytest.mark.parametrize("command", ["Get-Content proj:x", "Get-Content x.txt:s",
-                                     "Remove-Item iis:x", "gc ad:x"])
-def test_powershell_own_commands_stay_strict_about_colons(folder, command):
-    # Claude's review: a cmdlet reads any name before a colon as a drive.
-    policy = rules("Get-Content *", "Remove-Item *", "gc *")
-    assert copilot_folder.check_command(command, folder, policy) is None, command
 
 
 def test_more_harmless_settings_dont_make_git_ask(repo):
@@ -1365,25 +1186,10 @@ def test_more_harmless_settings_dont_make_git_ask(repo):
     assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
 
 
-def test_turning_certificate_checks_off_asks(repo):
-    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
-        handle.write('[http]\n\tsslVerify = false\n')
-    assert copilot_folder.check_command("git fetch origin", repo, rules("git fetch *")) is None
 
 
-@windows_paths
-@pytest.mark.parametrize("command,rule", [("mkdir IIS:x", "mkdir *"), ("tee AD:x", "tee *"),
-                                          ("ii notes.txt:x", "ii *"), ("md SQLSERVER:x", "md *")])
-def test_powershell_aliases_and_functions_stay_strict_about_colons(folder, command, rule):
-    # The verification pass: md, tee, ii and the mkdir function run cmdlets.
-    assert copilot_folder.check_command(command, folder, rules(rule)) is None, command
 
 
-@windows_paths
-def test_a_native_program_still_takes_an_ordinary_colon(folder):
-    assert copilot_folder.check_command("npm run test:unit", folder,
-                                        rules("npm run *")).by == RULE
-    assert "cd\\" in copilot_folder._POWERSHELL_NAMES
 
 
 def test_a_long_setting_name_is_shortened_when_said(repo):
@@ -1460,13 +1266,6 @@ def test_a_folder_that_isnt_a_repository_says_git_couldnt_say(folder):
     assert "couldn't say" in _reason("git status", folder)
 
 
-def test_a_linked_worktree_is_answered(worktree):
-    # Kelly's normal way of working: Auto was offered there, but all git asked.
-    _main, linked = worktree
-    assert copilot_folder.check_command("git status", linked, Policy(auto=True)).by == AUTO
-    assert copilot_folder.check_command("git log --oneline", linked, Policy(auto=True)).by == AUTO
-    assert copilot_folder.check_command('git commit -m "fix: x, y"', linked,
-                                        rules("git commit *")).by == RULE
 
 
 def test_a_real_relative_paths_worktree_is_answered(tmp_path):
@@ -1590,15 +1389,6 @@ def test_git_settings_say_why_they_ask_without_reading_out_repository_text(repo,
     assert "press" not in said.lower() and "please" not in said.lower()
 
 
-def test_git_says_why_for_gitmodules_and_a_moved_shell(repo):
-    policy = Policy(auto=True)
-    moved = copilot_folder.check_command(CD_SUB, repo, policy).locations
-    copilot_folder.ask_reason()
-    assert copilot_folder.check_command("git status", repo, policy, moved) is None
-    assert "shell" in copilot_folder.ask_reason()
-    with open(os.path.join(repo, ".gitmodules"), "w", encoding="utf-8") as handle:
-        handle.write('[submodule "s"]\n\tpath = s\n')
-    assert "submodules" in _reason("git status", repo)
 
 
 @pytest.mark.parametrize("kind,phrase", [("missing", "couldn't find git"),
@@ -1755,32 +1545,10 @@ def test_the_second_layer_leaves_a_linked_worktree_working(worktree):
     subprocess.run(["git", "status"], cwd=linked, env=env, capture_output=True, check=True)
 
 
-@pytest.mark.parametrize("word", [
-    '"-o:{out}"', '"--output:{out}"', '"--prefix:{out}"', "abc:{out}", '"abc:{out}"',
-    '"x=../y"', '"a,../y"', '"a;/y"', '"out=../../y"',
-])
-def test_a_quoted_option_or_embedded_place_asks_under_a_rule(folder, tmp_path, word):
-    # Kelly's review of 5d378b4: a helper program wrote to the outside path.
-    out = str(tmp_path / "outside" / "zz.txt")
-    command = "foo " + word.format(out=out)
-    assert copilot_folder.check_command(command, folder, rules("foo *")) is None, command
 
 
-def test_a_rule_that_names_a_command_it_wont_answer_says_why(folder, tmp_path):
-    policy = rules("foo *")
-    for command in (f'foo "-o:{tmp_path}"', "foo > x", "foo ../x"):
-        assert "can't be sure" in _reason(command, folder, policy), command
-    assert "follows" in _reason("foo a; Get-Date", folder, policy)
-    assert _reason("bar ../x", folder, policy) == ""
-    # An ask rule asks as you said to, which needs no explaining.
-    both = Policy(allow=(parse_rule("foo *"),), ask=(parse_rule("foo"),))
-    assert _reason("foo ../x", folder, both) == ""
 
 
-def test_an_ordinary_quoted_word_is_still_answered_under_a_rule(folder):
-    for command in ('foo "a b"', 'foo "notes.txt"', "foo --watch", 'foo "--watch"',
-                    "foo https://example.invalid/z"):
-        assert copilot_folder.check_command(command, folder, rules("foo *")).by == RULE, command
 
 
 COMMIT_MESSAGES = ['"fix: typo"', '"fix(parser): x"', '"fix: typo, and a bug"', '"fix: typo (#12)"',
@@ -1790,40 +1558,12 @@ COMMIT_MESSAGES = ['"fix: typo"', '"fix(parser): x"', '"fix: typo, and a bug"', 
                    '"multi\nline\n\nCo-authored-by: Name <a@b>"']
 
 
-@pytest.mark.parametrize("message", COMMIT_MESSAGES)
-def test_git_commit_star_answers_real_commit_messages(repo, message):
-    # Kelly's review of 5d378b4: most real messages asked with no reason.
-    for command in (f"git commit -m {message}", f"git commit -am {message}",
-                    f'git commit -m "a" -m {message}',
-                    f"git commit --amend --message {message}"):
-        assert copilot_folder.check_command(command, repo, rules("git commit *")).by == RULE, command
-        assert not copilot_folder.may_move(command), command
 
 
-def test_a_co_authored_by_trailer_is_answered(repo):
-    command = 'git commit -m "a" -m "Co-authored-by: Name <a@b>"'
-    assert copilot_folder.check_command(command, repo, rules("git commit *")).by == RULE
 
 
-def test_feat_bang_is_answered_where_it_cant_be_history(repo):
-    # Only in single quotes on a Mac or Linux: bash's history reads ! in double.
-    assert copilot_folder.check_command("git commit -m 'feat!: x'", repo,
-                                        rules("git commit *")).by == RULE
-    answered = copilot_folder.check_command('git commit -m "feat!: x"', repo, rules("git commit *"))
-    assert (answered is not None) == (sys.platform == "win32")
 
 
-@pytest.mark.parametrize("command", [
-    'git commit -m "x"; cd ..', 'git commit -m "x" && cd ..', 'git commit -m "x" | cd ..',
-    'git commit -m "$(cd ..)"', 'git commit -m "`cd ..`"', 'git commit -m "x" ../outside',
-    'git commit -m "x" "../outside"', 'git commit -F -m "../outside"',
-    'git commit --reuse-message -m "../outside"', 'git commit -m "x" -- ../outside',
-    'git commit -m "open', "git commit -m 'open", 'git commit -m "x" --exec-path',
-    'git commit -m "x" "-oout"', 'git commit -m "“x”; cd ..',
-    'git commit -Fm "../outside"',
-])
-def test_git_commit_star_still_asks_for_what_reaches_past_its_message(repo, command):
-    assert copilot_folder.check_command(command, repo, rules("git commit *")) is None, command
 
 
 @pytest.mark.parametrize("command,rule", [
@@ -1856,39 +1596,22 @@ def test_bash_escapes_arent_read_as_plain_text(repo, command):
 @pytest.mark.parametrize("command", [
     "foo --% ' | New-Item x | foo --% '", "npm --% ' | New-Item x | npm --% '",
     'foo "--%" a', "foo '--%' a", "foo a --% b", 'foo "a --% b"',
-    "foo # 'x\ncd sub\n'", 'foo # "x\ncd sub\n"',
+    "foo # 'x\ncd ..\n'", 'foo # "x\ncd ..\n"',
     'foo @"\ncd sub\n"@', "foo @'\ncd sub\n'@", "foo `\n; cd sub",
 ])
 def test_what_breaks_the_reading_of_quotes_asks_and_counts_as_moving(folder, command):
     # After --% PowerShell's quotes aren't quotes, and | still splits: real 5.1
     # and 7 ran the middle stage. A comment ends at its line, though a quote
     # after it reads as going on; @ and ` stay outside quotes.
-    assert copilot_folder.check_command(command, folder, rules("foo *", "npm *")) is None, command
+    assert copilot_folder.check_command(command, folder,
+                                        Policy(exact=frozenset({command}))) is None, command
     assert copilot_folder.may_move(command), command
 
 
-@windows_paths
-@pytest.mark.parametrize("command", [
-    "foo 'g&h' '\"&echo x>y&\"'", "foo 'g&h'", 'foo "a|b"', 'foo "a < b"', 'foo "a^b"',
-    'foo "%PATH%"', "foo %PATH%",
-])
-def test_a_program_that_may_be_a_script_cant_take_what_cmd_acts_on(folder, command):
-    # Real PowerShell 5.1 and 7 both ran h from foo.cmd 'g&h'.
-    assert copilot_folder.check_command(command, folder, rules("foo *")) is None, command
 
 
-@windows_paths
-def test_a_cmdlet_isnt_a_script_so_a_percent_sign_is_a_name(folder):
-    assert copilot_folder.check_command("Get-Content 100%.txt", folder, Policy(auto=True)).by == AUTO
 
 
-@windows_paths
-def test_git_and_a_named_exe_can_take_what_cmd_acts_on(repo):
-    assert copilot_folder.check_command('git commit -m "a && b <c>"', repo,
-                                        rules("git commit *")).by == RULE
-    assert copilot_folder.check_command('foo.exe "a && b"', repo, rules("foo.exe *")).by == RULE
-    assert copilot_folder.check_command('git.cmd commit -m "a && b"', repo,
-                                        rules("git.cmd commit *")) is None
 
 
 def _hook(common, name, text="#!/bin/sh\nexit 0\n"):
@@ -1905,13 +1628,6 @@ READS = ("git status", "git diff", "git log", "git show", "git blame notes.txt",
          "git ls-files", "git rev-parse HEAD")
 
 
-def test_a_repository_with_only_samples_is_answered(repo):
-    # What git init leaves, and every ordinary clone.
-    assert any(name.endswith(".sample") for name in os.listdir(os.path.join(repo, ".git", "hooks")))
-    _hook(repo, "post-index-change.sample")
-    for command in READS:
-        assert copilot_folder.check_command(command, repo, Policy(auto=True)).by == AUTO, command
-    assert copilot_folder.check_command("git commit -m x", repo, rules("git commit *")).by == RULE
 
 
 def test_a_hook_reads_can_fire_makes_those_reads_ask_with_why(repo):
@@ -1942,6 +1658,8 @@ def test_an_unzipped_repository_with_a_hook_asks(tmp_path):
     out = tmp_path / "out"
     with zipfile.ZipFile(archive) as packed:
         packed.extractall(out)
+    # zipfile drops the executable bit, which an unzip tool may keep.
+    os.chmod(out / ".git" / "hooks" / "post-index-change", 0o755)
     assert "post-index-change" in _reason("git status", str(out))
 
 
@@ -1953,43 +1671,12 @@ def test_hooks_reads_dont_fire_dont_make_reads_ask(repo, name):
         assert copilot_folder.check_command(command, repo, Policy(auto=True)).by == AUTO, command
 
 
-@pytest.mark.parametrize("name", ["pre-commit", "prepare-commit-msg", "commit-msg", "post-commit",
-                                  "post-index-change", "reference-transaction", "post-rewrite",
-                                  "pre-auto-gc"])
-def test_a_commit_rule_asks_for_each_hook_a_commit_fires(repo, name):
-    _hook(repo, name)
-    said = _reason('git commit -m "x"', repo, rules("git commit *"))
-    assert f"this repository has a {name} hook" in said
 
 
-@pytest.mark.parametrize("name", ["pre-push", "post-merge", "pre-rebase", "post-checkout"])
-def test_a_commit_rule_isnt_stopped_by_a_hook_a_commit_doesnt_fire(repo, name):
-    _hook(repo, name)
-    assert copilot_folder.check_command('git commit -m "x"', repo, rules("git commit *")).by == RULE
 
 
-@pytest.mark.parametrize("command,hook,asks_", [
-    ("git push", "pre-push", True), ("git push", "reference-transaction", True),
-    ("git push", "pre-commit", False), ("git add notes.txt", "post-index-change", True),
-    ("git add notes.txt", "pre-commit", False), ("git fetch", "reference-transaction", True),
-    ("git fetch", "pre-commit", False), ("git tag v1", "reference-transaction", True),
-    # Not listed: any hook there asks.
-    ("git merge x", "pre-commit", True), ("git pull", "post-merge", True),
-    ("git checkout x", "post-checkout", True), ("git rebase x", "pre-rebase", True),
-    ("git reset --hard", "post-index-change", True), ("git stash", "commit-msg", True),
-    ("git branch new", "reference-transaction", True),
-])
-def test_a_rules_git_command_asks_for_the_hooks_it_can_fire(repo, command, hook, asks_):
-    _hook(repo, hook)
-    rule = " ".join(command.split()[:2]) + " *"
-    answer = copilot_folder.check_command(command, repo, rules(rule))
-    assert (answer is None) == asks_, command
 
 
-def test_a_rules_listing_git_branch_is_a_read(repo):
-    _hook(repo, "reference-transaction")
-    assert copilot_folder.check_command("git branch --list", repo,
-                                        rules("git branch *")).by == RULE
 
 
 def test_a_worktrees_hooks_are_in_its_repository(worktree):
@@ -2000,22 +1687,6 @@ def test_a_worktrees_hooks_are_in_its_repository(worktree):
     assert copilot_folder.check_command("git log", linked, Policy(auto=True)).by == AUTO
 
 
-def test_a_repositorys_own_hooks_path_asks_and_your_own_is_looked_in(repo, tmp_path, monkeypatch):
-    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
-        handle.write("[core]\n\thooksPath = hk\n")
-    assert "core.hookspath" in _reason("git status", repo)
-    with open(os.path.join(repo, ".git", "config"), "w", encoding="utf-8") as handle:
-        handle.write("[core]\n\trepositoryformatversion = 0\n")
-    mine = tmp_path / "myhooks"
-    mine.mkdir()
-    config = tmp_path / "global.cfg"
-    config.write_text(f"[core]\n\thooksPath = {mine.as_posix()}\n", encoding="utf-8")
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
-    assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
-    hook = mine / "post-index-change"
-    hook.write_text("#!/bin/sh\n", encoding="utf-8")
-    os.chmod(hook, 0o755)
-    assert "post-index-change" in _reason("git status", repo)
 
 
 @posix_only
@@ -2063,88 +1734,24 @@ def test_settings_that_can_run_something_still_ask(repo, setting):
     assert copilot_folder.check_command("git status", repo, Policy(auto=True)) is None
 
 
-def test_a_cd_you_allow_by_hand_is_followed_not_taken_for_moving(repo):
-    cd_home = f"cd {repo}".replace("\\", "/") if sys.platform != "win32" else f"cd {repo}"
-    after = copilot_folder.after_allowed_by_hand(f"{cd_home}; git add .", repo, (repo,))
-    assert after is not None
-    assert copilot_folder.after_allowed_by_hand(f"{CD_SUB}; npm test", repo, (repo,)) is not None
-    assert len(copilot_folder.after_allowed_by_hand(f"{CD_SUB}; npm test", repo, (repo,))) == 2
-    for moving in ("cd ..; git add .", "cd ..", "git add .; pushd x", "--%"):
-        assert copilot_folder.after_allowed_by_hand(moving, repo, (repo,)) is None, moving
 
 
-def test_git_after_cd_into_the_chats_folder_is_checked_from_there(repo):
-    # "cd x && y": y runs only if cd x worked. After ";" it might run anywhere.
-    policy = Policy(auto=True)
-    moved = copilot_folder.check_command(CD_SUB, repo, policy).locations
-    assert copilot_folder.check_command("git status", repo, policy, moved) is None
-    answer = copilot_folder.check_command(f"cd {repo} && git status", repo, policy, moved)
-    assert answer is not None and answer.by == AUTO
-    assert set(moved) <= set(answer.locations)  # either may be where it is after
-    assert copilot_folder.check_command(f"cd {repo}; git status", repo, policy, moved) is None
-    assert copilot_folder.check_command(f"{CD_SUB} && git status", repo, policy) is None
 
 
-def test_git_says_restart_copilot_clears_a_shell_in_a_subfolder(repo):
-    policy = Policy(auto=True)
-    moved = copilot_folder.check_command(CD_SUB, repo, policy).locations
-    copilot_folder.ask_reason()
-    assert copilot_folder.check_command("git status", repo, policy, moved) is None
-    assert "Restart Copilot" in copilot_folder.ask_reason()
 
 
-@pytest.mark.parametrize("command,rule", [
-    ("npm test 2>&1", "npm test"), ("npm test 2>&1 | Select-Object -Last 20", "npm test"),
-    ("npm run x 2>&1", "npm run *"), ('git commit -m "x" 2>&1', "git commit *"),
-])
-@windows_paths
-def test_a_bare_2_to_1_is_fine_for_a_rules_program(repo, command, rule):
-    assert copilot_folder.check_command(command, repo, rules(rule)).by == RULE, command
 
 
-@pytest.mark.parametrize("command", [
-    "npm test > x", "npm test 2> x", "npm test 2>&1>x", "npm test 2>&1 > x", "npm test >&2",
-    "npm test 1>&2", "x2>&1", "npm test 2>&1x", "Get-Content notes.txt 2>&1",
-])
-def test_no_other_redirect_gets_through(repo, command):
-    policy = Policy(auto=True, allow=(parse_rule("npm test"), parse_rule("npm test *")))
-    assert copilot_folder.check_command(command, repo, policy) is None, command
 
 
-@pytest.mark.parametrize("command", [".\\build.cmd", ".\\gradlew.bat", "scripts\\x.cmd -a",
-                                     "C:\\tools\\y.bat"])
-@windows_paths
-def test_a_named_cmd_or_bat_runs_as_a_child(command):
-    assert not copilot_folder.may_move(command), command
 
 
-@pytest.mark.parametrize("option", ["-s", "-v"])
-def test_dash_s_is_only_a_stream_to_powershell(repo, option):
-    assert copilot_folder.check_command(f"pytest {option}", repo, rules("pytest *")).by == RULE
-    assert copilot_folder.check_command(f'git commit {option} -m "x"', repo,
-                                        rules("git commit *")).by == RULE
 
 
-@windows_paths
-def test_dash_s_is_still_a_stream_to_a_cmdlet(folder):
-    assert copilot_folder.check_command("Set-Content -s x notes.txt", folder,
-                                        rules("Set-Content *")) is None
 
 
-def test_each_reason_a_rule_cant_answer_says_its_own(repo):
-    exact = rules("npm test")
-    assert "allows only those words" in _reason('npm test -- --grep "a,b"', repo, exact)
-    both = rules("git add *", "git commit *")
-    assert "follows" in _reason('git add . && git commit -m "x"', repo, both)
-    commit = rules("git commit *")
-    assert "double quotes" in _reason('git commit -m "use $x"', repo, commit)
-    assert "double quotes" in _reason('git commit -m "use `x`"', repo, commit)
 
 
-def test_a_rule_for_a_long_command_says_its_too_long(repo):
-    message = "x" * 500
-    assert "too long" in _reason(f'git commit -m "{message}"', repo, rules("git commit *"))
-    assert _reason(f'npm test "{message}"', repo, rules("git commit *")) == ""
 
 
 #: What shouldn't count as moving Copilot's shell (Kelly's review of 5d378b4,
@@ -2157,11 +1764,9 @@ EVERYDAY = [
     "git commit -m 'it (is) fine'", 'pytest tests/x.py::test_y', 'npm run test:unit',
     'curl https://x.y/z', 'git commit -m "fix: typo (#12)"',
     'git commit -m "a" -m "Co-authored-by: N <a@b>"',
+    'git status # just checking', '# looking\ngit status', "git log # it's fine",
 ]
-WINDOWS_EVERYDAY = ['Select-String -Pattern "def \\w+\\(" a.py',
-                    '.\\build.cmd', '.\\gradlew.bat test',
-                    '.venv\\Scripts\\python.exe -m pytest',
-                    'C:\\Python\\python.exe -m pytest', '"C:\\a b\\x.exe" --go']
+WINDOWS_EVERYDAY = ['Select-String -Pattern "def \\w+\\(" a.py', 'foo.exe -x']
 POSIX_EVERYDAY = [".venv/bin/python -m pytest", "./gradlew build"]
 #: What must still count.
 STILL_MOVES = [
@@ -2172,6 +1777,7 @@ STILL_MOVES = [
     'Set-Location "x"', "Set-Location 'x'", '$x = 1', '(cd ..)', '{ cd .. }.Invoke()',
     'PATH=sub ls', 'git log "a"b; cd ..', 'echo "a" ; "b"; cd ..', 'echo "a;cd .."; cd ..',
     'echo "unterminated; cd ..', "echo 'unterminated; cd ..",
+    '# just looking\ncd ..', "git status # it's fine\ncd ..", 'git log; # x\ncd ..',
     # A quote inside the other kind doesn't start one; a string with $ in it
     # isn't plain, whatever's inside it.
     "echo \"it's $(cd ..) it's\"", "echo 'a' \"$(cd ..)\" 'b'",
@@ -2184,7 +1790,8 @@ WINDOWS_STILL_MOVES = [
     'Get-Content env:x', 'Get-Content FileSystem::C:\\x',
     'Get-Content Microsoft.PowerShell.Core\\FileSystem::C:\\x', '.\\evil.exe.ps1',
     '..\\x.exe; cd ..', '.venv\\Scripts\\activate.ps1', '.venv/bin/python -m pytest',
-    '..\\x', 'D:\\x', 'scripts\\build',
+    '..\\x', 'D:\\x', 'scripts\\build', '.\\missing.cmd', '.\\missing.exe',
+    'C:\\Python\\python.exe -m pytest',
 ]
 POSIX_STILL_MOVES = ['../x', r'echo "a\" ; "; cd .. ; "\"b"', r'.\x', "./x.sh"]
 
@@ -2200,3 +1807,416 @@ def test_everyday_commands_dont_count_as_moving(command):
 def test_what_may_really_move_the_shell_still_counts(command):
     assert copilot_folder.may_move(command), command
 
+
+# -- 0.4's narrowing (Kelly's decision): exact rules, and git only to read -----------------
+
+
+def _rules_read(tmp_path, *allow, ask=()):
+    import json
+    path = tmp_path / "copilot-rules.json"
+    path.write_text(json.dumps({"allow": list(allow), "ask": list(ask)}), encoding="utf-8")
+    return copilot_folder.read_rules(path)
+
+
+def test_the_rules_file(tmp_path):
+    missing = tmp_path / "none.json"
+    assert copilot_folder.read_rules(missing) == copilot_folder.Rules()
+    read = _rules_read(tmp_path, "npm test", "bad; rule", ask=["git push"])
+    assert [r.text for r in read.allow] == ["npm test"]
+    assert [r.text for r in read.ask] == ["git push"]
+    assert len(read.unread) == 1 and read.unread[0].startswith("bad; rule (")
+    path = tmp_path / "copilot-rules.json"
+    path.write_text("not json", encoding="utf-8")
+    assert copilot_folder.read_rules(path).problem
+
+
+@pytest.mark.parametrize("entry,phrase", [
+    ("npm *", "* isn't used"), ("git commit *", "* isn't used"), ("Bash(npm test:*)", "* isn't used"),
+    ("a * b", "* isn't used"), ('npm run "a b"', "another way"), ("npm run 'a'", "another way"),
+    ("npm run %x%", "another way"), ("foo C:\\x\\", "another way"),
+    ("git commit -m x", "git in a rule"), ("git push", "git in a rule"), ("git merge x", "git in a rule"),
+    ("git rebase x", "git in a rule"), ("git fetch", "git in a rule"), ("git pull", "git in a rule"),
+    ("git stash", "git in a rule"), ("git stash pop", "git in a rule"), ("git checkout x", "git in a rule"),
+    ("git branch new", "git in a rule"), ("git branch -D main", "git in a rule"),
+    ("git remote add x y", "git in a rule"), ("git log --output x", "git in a rule"),
+    ("git log --ext-diff", "git in a rule"), ("git add -p", "git in a rule"), ("git add", "git in a rule"),
+    ("git.cmd status", "git in a rule"), ("git", "git in a rule"), ("git --no-pager log", "git in a rule"),
+    ("bad; rule", "can't be read"), ("a(b)", "can't be read"), ("x > y", "can't be read"),
+])
+def test_a_rule_that_cant_be_used_is_reported_with_why(tmp_path, entry, phrase):
+    read = _rules_read(tmp_path, entry)
+    assert read.allow == () and len(read.unread) == 1
+    assert read.unread[0].startswith(entry) and phrase in read.unread[0]
+
+
+@pytest.mark.parametrize("entry", [
+    "npm test", "npm run test:unit", "pytest -q tests", "Bash(npm run build)", "git status",
+    "git log --oneline -5", "git diff --stat", "git branch", "git add .", "git add -A",
+    "git add notes.txt", "git describe --tags", "git rev-list --count HEAD", "git remote -v",
+    "git stash list", "git merge-base HEAD main", ".venv\\Scripts\\python.exe -m pytest",
+])
+def test_a_rule_that_can_be_used_is_kept(tmp_path, entry):
+    read = _rules_read(tmp_path, entry)
+    assert len(read.allow) == 1 and read.unread == ()
+
+
+def test_an_ask_rule_keeps_its_star(tmp_path):
+    read = _rules_read(tmp_path, ask=["git push *", "Remove-Item", 'a "b"'])
+    assert [r.prefix for r in read.ask] == [True, False, False]
+
+
+def test_a_rule_matches_only_the_exact_words(folder):
+    policy = rules("npm test")
+    assert copilot_folder.check_command("npm test", folder, policy).by == RULE
+    assert copilot_folder.check_command("NPM TEST", folder, policy) is not None or sys.platform != "win32"
+    for command in ("npm test --watch", "npm tests", "npm", 'npm "test"', "npm 'test'"):
+        assert copilot_folder.check_command(command, folder, policy) is None, command
+
+
+def test_a_star_rule_given_any_way_allows_nothing(folder):
+    assert copilot_folder.check_command("foo", folder, rules("foo *")) is None
+    assert copilot_folder.check_command("foo a", folder, rules("foo *")) is None
+
+
+@windows_paths
+def test_a_text_filter_and_errors_may_follow_a_rule(folder):
+    policy = rules("npm test")
+    for command in ("npm test 2>&1", "npm test 2>&1 | Select-Object -Last 20",
+                    "npm test | Select-Object -Last 20"):
+        assert copilot_folder.check_command(command, folder, policy).by == RULE, command
+    # Select-String takes a path from what comes in.
+    assert copilot_folder.check_command("npm test | Select-String fail", folder, policy) is None
+
+
+def test_a_rule_still_gets_the_strict_reading_of_its_paths(folder):
+    remove = "Remove-Item sub" if sys.platform == "win32" else "rm sub"
+    assert copilot_folder.check_command(remove, folder, rules(remove)) is None
+    outside = "cat C:\\Windows\\win.ini" if sys.platform == "win32" else "cat /etc/hosts"
+    assert copilot_folder.check_command(outside, folder, rules(outside)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "npm test > x", "npm test 2> x", "npm test 2>&1>x", "npm test 2>&1 > x", "npm test >&2",
+    "npm test 1>&2", "x2>&1", "npm test 2>&1x", 'npm test "2>&1"', "2>&1", "2>&1 | 2>&1",
+])
+def test_no_other_redirect_gets_through(repo, command):
+    assert copilot_folder.check_command(command, repo,
+                                        Policy(auto=True, allow=(parse_rule("npm test"),))) is None
+
+
+def test_a_bare_2_to_1_is_fine_for_autos_reads_too(repo):
+    reading = "Get-ChildItem sub" if sys.platform == "win32" else "ls sub"
+    for command in ("git status 2>&1", "git log --oneline -5 2>&1", f"{reading} 2>&1"):
+        assert copilot_folder.check_command(command, repo, Policy(auto=True)).by == AUTO, command
+
+
+def test_git_in_a_rule_gets_gits_checks(repo):
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write("[core]\n\tfsmonitor = calc\n")
+    for rule in ("git status", "git add ."):
+        assert copilot_folder.check_command(rule, repo, rules(rule)) is None, rule
+
+
+def test_git_add_in_a_rule(repo):
+    assert copilot_folder.check_command("git add .", repo, rules("git add .")).by == RULE
+    assert copilot_folder.check_command("git add -A", repo, rules("git add -A")).by == RULE
+    _hook(repo, "post-index-change")
+    assert "post-index-change" in _reason("git add .", repo, rules("git add ."))
+
+
+@pytest.mark.parametrize("command", [
+    'git commit -m "x"', "git push", "git merge x", "git rebase x", "git fetch", "git pull",
+    "git checkout x", "git stash", "git tag x", "git reset", "git branch new", "git rm x",
+])
+def test_every_other_git_command_always_asks(repo, command):
+    policy = Policy(auto=True, allow=(parse_rule(command), parse_rule("git status")),
+                    exact=frozenset())
+    assert copilot_folder.check_command(command, repo, policy) is None, command
+    assert copilot_folder.chat_candidate(command, repo, Policy()) == "", command
+
+
+@pytest.mark.parametrize("command", [
+    "git log 'HEAD\" --output x.txt -- \" y' a.txt", "git log 'a b\\' ' --output pwn2.txt -- x' a.txt",
+    "git blame 'x y\" --contents z' a.txt", 'git log "a b" a.txt', "git diff 'a'", "git log a\\",
+    "git log sub\\ a.txt", 'git status "x"',
+])
+def test_autos_git_takes_no_quoted_word_or_one_ending_in_a_backslash(repo, command):
+    # PowerShell 5.1 splits these on the way to a native program.
+    assert copilot_folder.check_command(command, repo, Policy(auto=True)) is None, command
+    assert copilot_folder.chat_candidate(command, repo, Policy()) == "", command
+
+
+@pytest.mark.parametrize("command", [
+    "git describe --tags", "git describe --always", "git rev-list HEAD", "git rev-list --all",
+    "git rev-list --count HEAD", "git merge-base HEAD main", "git remote", "git remote -v",
+    "git stash list",
+])
+def test_more_read_only_git_is_answered(repo, command):
+    # Measured on real git: no hook fires, and nothing in .git is written.
+    assert copilot_folder.check_command(command, repo, Policy(auto=True)).by == AUTO, command
+
+
+@pytest.mark.parametrize("command", [
+    "git remote add x y", "git remote remove x", "git stash", "git stash pop", "git stash show",
+    "git describe --dirty", "git shortlog -s", "git rev-list --objects-edge",
+])
+def test_changing_or_unlisted_git_still_asks(repo, command):
+    assert copilot_folder.check_command(command, repo, Policy(auto=True)) is None, command
+
+
+@pytest.mark.parametrize("word", [
+    '"-o:{out}"', '"--output:{out}"', '"--prefix:{out}"', "abc:{out}", '"abc:{out}"',
+    'x%y', '"a%b"', "'a\" b'", "'a b\\'",
+])
+def test_a_kept_command_with_a_word_that_could_be_reread_cant_be_kept(folder, tmp_path, word):
+    command = "foo " + word.format(out=str(tmp_path / "outside" / "zz.txt"))
+    assert copilot_folder.chat_candidate(command, folder, Policy()) == "", command
+
+
+@pytest.mark.parametrize("command", ['foo "a b"', "foo 'a b'", "foo --watch", 'foo "notes.txt"',
+                                     "foo https://example.invalid/z"])
+def test_a_kept_command_can_hold_what_you_saw_in_quotes(folder, command):
+    assert copilot_folder.chat_candidate(command, folder, Policy()) == command
+
+
+def _exe(folder, name):
+    path = os.path.join(folder, *name.split("/"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("synthetic")
+    return path
+
+
+@windows_paths
+@pytest.mark.parametrize("name", [".venv/Scripts/python.exe", "build.cmd", "gradlew.bat", "x.com"])
+def test_a_program_named_by_path_counts_only_if_a_script_could_stand_in(folder, name):
+    written = name.replace("/", "\\")
+    command = f".\\{written} -a"
+    assert copilot_folder.may_move(command, (folder,))        # not there
+    assert copilot_folder.may_move(command)                   # or not known
+    path = _exe(folder, name)
+    assert not copilot_folder.may_move(command, (folder,))
+    assert not copilot_folder.may_move(f'"{path}" -a', (folder,))
+    with open(path + ".ps1", "w", encoding="utf-8") as handle:
+        handle.write("synthetic")
+    assert copilot_folder.may_move(command, (folder,))        # PowerShell may run that
+
+
+@posix_only
+def test_a_program_named_by_path_is_a_child_elsewhere():
+    assert not copilot_folder.may_move(".venv/bin/python -m pytest")
+    assert copilot_folder.may_move("../x") and copilot_folder.may_move("./x.sh")
+
+
+@pytest.mark.parametrize("command", [
+    "cd $HOME", 'cd "$HOME"', "cd ${HOME}", "cd ($HOME)", "cd ~\\.ssh", "cd ~/.ssh", "sl $HOME",
+    "Set-Location -LiteralPath $HOME", "cd $PWD\\..", "cd o*", "cd 'o*'", 'cd "o*"', "cd [a]",
+    "cd 'a?'", "cd `$x", "cd {a}", "cd ..", "cd", "cd -",
+])
+def test_a_cd_of_what_the_shell_expands_isnt_followed(folder, command):
+    # Kelly's review of f31123e: each went somewhere with nothing asking.
+    assert copilot_folder.after_allowed_by_hand(command, folder, (folder,)) is None, command
+    assert copilot_folder.after_allowed_by_hand(f"{command}; npm test", folder, (folder,)) is None
+    assert asks(command, folder)
+    assert asks(f"{command}; git status", folder)
+
+
+def test_a_plain_cd_you_allow_by_hand_is_followed(repo):
+    home = f"cd {repo}"
+    assert copilot_folder.after_allowed_by_hand(f"{home}; git add .", repo, (repo,)) is not None
+    places = copilot_folder.after_allowed_by_hand(f"{CD_SUB}; npm test", repo, (repo,))
+    assert len(places) == 2
+    for moving in ("cd ..; git add .", "git add .; pushd x", "--%"):
+        assert copilot_folder.after_allowed_by_hand(moving, repo, (repo,)) is None, moving
+
+
+def test_a_comment_in_a_command_you_allow_doesnt_lock_the_chat(repo):
+    assert copilot_folder.after_allowed_by_hand("git add . # staged", repo, (repo,)) is not None
+    assert copilot_folder.after_allowed_by_hand("# it's here\ngit add .", repo, (repo,)) is not None
+    assert copilot_folder.after_allowed_by_hand("# here\ncd ..", repo, (repo,)) is None
+
+
+def test_git_is_answered_from_a_subfolder_of_the_same_repository(repo):
+    # One cd sub made all git ask until Restart Copilot.
+    policy = Policy(auto=True)
+    moved = copilot_folder.check_command(CD_SUB, repo, policy).locations
+    assert len(moved) == 2
+    assert copilot_folder.check_command("git status", repo, policy, moved).by == AUTO
+    assert copilot_folder.check_command(f"{CD_SUB}; git log", repo, policy).by == AUTO
+
+
+def test_git_asks_if_the_shell_may_be_in_another_repository(repo):
+    git_init(os.path.join(repo, "sub"))
+    policy = Policy(auto=True)
+    moved = copilot_folder.check_command(CD_SUB, repo, policy).locations
+    copilot_folder.ask_reason()
+    assert copilot_folder.check_command("git status", repo, policy, moved) is None
+    said = copilot_folder.ask_reason()
+    assert "Restart Copilot" in said and "subfolder" in said
+
+
+def test_git_asks_if_a_folder_the_shell_may_be_in_cant_say(repo, monkeypatch):
+    from thechatplace import platform_paths
+    real = platform_paths.git_where
+    moved = copilot_folder.check_command(CD_SUB, repo, Policy(auto=True)).locations
+
+    def fails_in_sub(where):
+        if os.path.basename(where) == "sub":
+            raise platform_paths.GitUnanswered(platform_paths.GIT_FAILED)
+        return real(where)
+    monkeypatch.setattr(platform_paths, "git_where", fails_in_sub)
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True), moved) is None
+
+
+def test_a_linked_worktree_is_answered(worktree):
+    # Kelly's normal way of working: Auto was offered there, but all git asked.
+    _main, linked = worktree
+    assert copilot_folder.check_command("git status", linked, Policy(auto=True)).by == AUTO
+    assert copilot_folder.check_command("git log --oneline", linked, Policy(auto=True)).by == AUTO
+    assert copilot_folder.check_command("git add .", linked, rules("git add .")).by == RULE
+
+
+def test_git_isnt_answered_outside_a_real_repository_in_the_chats_folder(folder):
+    assert not copilot_folder.command_allowed("git status", folder)
+    fake = os.path.join(folder, ".git")
+    os.makedirs(fake)
+    assert not copilot_folder.command_allowed("git status", folder)
+
+
+def test_a_repository_with_only_samples_is_answered(repo):
+    # What git init leaves, and every ordinary clone.
+    assert any(name.endswith(".sample") for name in os.listdir(os.path.join(repo, ".git", "hooks")))
+    _hook(repo, "post-index-change.sample")
+    for command in READS:
+        assert copilot_folder.check_command(command, repo, Policy(auto=True)).by == AUTO, command
+    assert copilot_folder.check_command("git add .", repo, rules("git add .")).by == RULE
+
+
+def test_objects_borrowed_from_elsewhere_ask(repo):
+    info = os.path.join(repo, ".git", "objects", "info")
+    os.makedirs(info, exist_ok=True)
+    with open(os.path.join(info, "alternates"), "w", encoding="utf-8") as handle:
+        handle.write("../../../elsewhere/objects\n")
+    assert "alternates" in _reason("git status", repo)
+    assert "alternates" in _reason("git log", repo)
+
+
+def _husky(repo, hooks_path=".husky/_", *names):
+    os.makedirs(os.path.join(repo, *hooks_path.split("/")), exist_ok=True)
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write(f"[core]\n\thooksPath = {hooks_path}\n")
+    for name in names:
+        path = os.path.join(repo, *hooks_path.split("/"), name)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\n")
+        os.chmod(path, 0o755)
+
+
+@pytest.mark.parametrize("hooks_path", [".husky/_", ".husky", ".githooks"])
+def test_husky_in_a_folder_auto_cant_write_leaves_reads_alone(repo, hooks_path):
+    _husky(repo, hooks_path, "pre-commit", "commit-msg", "pre-push", "post-checkout", "post-merge")
+    for command in READS:
+        assert copilot_folder.check_command(command, repo, Policy(auto=True)).by == AUTO, command
+
+
+def test_husky_with_a_hook_reads_fire_asks(repo):
+    _husky(repo, ".husky/_", "post-index-change")
+    assert "post-index-change" in _reason("git status", repo)
+
+
+@pytest.mark.parametrize("hooks_path", ["hk", "sub/hooks", "../elsewhere", "/x/y"])
+def test_a_repositorys_hooks_path_auto_could_write_or_elsewhere_asks(repo, hooks_path):
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write(f"[core]\n\thooksPath = {hooks_path}\n")
+    assert "core.hookspath" in _reason("git status", repo)
+
+
+@pytest.mark.parametrize("name", ["lefthook.yml", ".lefthook.yml", "lefthook-local.yml"])
+def test_lefthook_settings_are_protected(folder, name):
+    assert not copilot_folder.file_change_allowed(os.path.join(folder, name), (), folder)
+
+
+def test_your_own_hooks_path_is_yours(repo, tmp_path, monkeypatch):
+    mine = tmp_path / "myhooks"
+    mine.mkdir()
+    hook = mine / "post-index-change"
+    hook.write_text("#!/bin/sh\n", encoding="utf-8")
+    os.chmod(hook, 0o755)
+    config = tmp_path / "global.cfg"
+    config.write_text(f"[core]\n\thooksPath = {mine.as_posix()}\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True)).by == AUTO
+
+
+def test_your_own_hooks_path_inside_the_chats_folder_still_counts(repo, tmp_path, monkeypatch):
+    inside = os.path.join(repo, "hk")
+    os.makedirs(inside)
+    with open(os.path.join(inside, "post-index-change"), "w", encoding="utf-8") as handle:
+        handle.write("#!/bin/sh\n")
+    os.chmod(os.path.join(inside, "post-index-change"), 0o755)
+    config = tmp_path / "global.cfg"
+    config.write_text(f"[core]\n\thooksPath = {inside.replace(os.sep, '/')}\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    assert "post-index-change" in _reason("git status", repo)
+
+
+LFS = ('[filter "lfs"]\n\tclean = git-lfs clean -- %f\n\tsmudge = git-lfs smudge -- %f\n'
+       '\tprocess = git-lfs filter-process\n\trequired = true\n')
+
+
+def test_git_lfs_with_its_hooks_leaves_reads_alone(repo):
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write(LFS + '[lfs]\n\trepositoryformatversion = 0\n')
+    for name in ("pre-push", "post-checkout", "post-commit", "post-merge"):
+        _hook(repo, name)
+    for command in READS:
+        assert copilot_folder.check_command(command, repo, Policy(auto=True)).by == AUTO, command
+
+
+@pytest.mark.parametrize("setting", [
+    '[filter "lfs"]\n\tclean = calc\n', '[filter "lfs"]\n\tsmudge = git-lfs smudge -- %f && calc\n',
+    '[filter "lfs"]\n\tprocess = ./git-lfs filter-process\n', '[filter "other"]\n\tclean = git-lfs clean -- %f\n',
+    '[filter "lfs"]\n\tother = git-lfs clean -- %f\n',
+])
+def test_any_other_filter_setting_asks(repo, setting):
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write(setting)
+    assert _reason("git status", repo)
+
+
+@pytest.mark.parametrize("name", ["git-lfs", "git-lfs.exe", "git-lfs.cmd", "GIT-LFS.BAT", "git-lfs.ps1"])
+def test_no_file_change_makes_a_git_lfs_program(folder, name):
+    assert not copilot_folder.file_change_allowed(os.path.join(folder, name), (), folder)
+
+
+def test_each_reason_a_rule_cant_answer_says_its_own(repo):
+    exact = rules("npm test")
+    assert "exact words" in _reason('npm test -- --grep x', repo, exact)
+    assert "exact words" in _reason('npm test "a,b"', repo, exact)
+    assert "text filter" in _reason("npm test 2>&1 | Select-String fail", repo, exact)
+    assert "text filter" in _reason("npm test; Get-Date", repo, exact)
+    assert "exact words" in _reason("npm test > x", repo, exact)
+    assert _reason("npm install", repo, exact) == ""
+    both = Policy(allow=(parse_rule("npm test"),), ask=(parse_rule("npm"),))
+    assert _reason("npm test --x", repo, both) == ""
+
+
+def test_git_says_why_for_gitmodules(repo):
+    with open(os.path.join(repo, ".gitmodules"), "w", encoding="utf-8") as handle:
+        handle.write('[submodule "s"]\n\tpath = s\n')
+    assert "submodules" in _reason("git status", repo)
+
+
+def test_turning_certificate_checks_off_asks(repo):
+    with open(os.path.join(repo, ".git", "config"), "a", encoding="utf-8") as handle:
+        handle.write('[http]\n\tsslVerify = false\n')
+    assert "certificates" in _reason("git status", repo)
+
+
+@windows_paths
+def test_dash_s_is_still_a_stream_to_a_cmdlet(folder):
+    assert copilot_folder.check_command("Get-Content -s x notes.txt", folder, Policy(auto=True)) is None
+
+
+def test_dash_s_is_just_an_option_to_other_programs(folder):
+    assert copilot_folder.check_command("pytest -s", folder, rules("pytest -s")).by == RULE

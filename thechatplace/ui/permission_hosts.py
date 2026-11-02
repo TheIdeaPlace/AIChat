@@ -247,9 +247,9 @@ class CopilotPermissions:
             '.mcp.json. After Auto changes a file, your rules and the commands below ask once '
             'before running.',
             f'Your own rules for Copilot are in {rules_file()}: "allow" lists commands that run '
-            'without asking in any agent-mode chat (a trailing * allows more words after '
-            'them), and "ask" lists ones that always ask. A command you allow can run what is '
-            'in the folder, which Copilot may have changed.',
+            'without asking in any agent-mode chat, each exactly as it will run, and "ask" lists '
+            'ones that always ask (a trailing * covers more words). A command you allow can run '
+            'what is in the folder, which Copilot may have changed.',
             'Restart Copilot stops Copilot, for every chat, and what it started. That clears '
             'what makes commands ask after a command that may have moved its shell, or a '
             'program that never ended. It starts again when a chat needs it.',
@@ -338,7 +338,7 @@ class CopilotPermissions:
                     parts.append('Your rules, always asked:\n'
                                  + '\n'.join(r.text for r in rules.ask))
                 if rules.unread:
-                    parts.append("Rules that couldn't be read, and aren't used:\n"
+                    parts.append("Rules that aren't used, and why:\n"
                                  + '\n'.join(rules.unread))
                 done('\n\n'.join(parts))
         self.frame._codex_work(read, ready)
