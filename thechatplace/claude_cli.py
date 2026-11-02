@@ -1078,7 +1078,8 @@ class TurnRunner:
         self.pending: Dict[str, PermissionRequest] = {}
         self._stdin_open = False
         #: What Claude Code says is running in the background, by description
-        #: (#161). While it isn't empty, an idle session doesn't end the turn.
+        #: (#161). While it isn't empty, nothing ends the turn but Stop: not an
+        #: idle session, and not the idle ceiling.
         self.background_tasks: List[str] = []
         #: Claude has answered and is idle, and the turn is kept open only
         #: for background work. A message sent now goes straight in
@@ -1235,11 +1236,15 @@ class TurnRunner:
 
     def _close_stdin_if_answered(self) -> bool:
         """End the turn (close stdin, so the CLI exits) unless a Send Now
-        message is still to be answered. The check and the close are one step
-        under ``_lock``, so a Send Now can't slip in between. True if closed
-        (or already closed)."""
+        message is still to be answered or background work is running. A
+        background agent keeps Claude Code "running" after its answer, with
+        idle only once the agent is done, so that silence isn't a stuck finish.
+        Closing stdin gives the work only 600 s more (Claude Code 2.1.296), so
+        closing here stopped agents 10 or 20 minutes in, with nothing left to
+        pick them up. The check and the close are one step under ``_lock``, so
+        a Send Now can't slip in between. True if closed (or already closed)."""
         with self._lock:
-            if self._unanswered:
+            if self._unanswered or self.background_tasks:
                 return False
             self._close_stdin_locked()
             return True
@@ -1393,8 +1398,9 @@ class TurnRunner:
             last_state = ""
             # After a result, idle should follow; if it never does (a stuck
             # hook, say), end the turn anyway after a while, as Claude Code's
-            # own SDK does. Paused while Claude waits for an answer, and while
-            # it works on a Send Now message, however long that takes (#83).
+            # own SDK does. Paused while Claude waits for an answer, while it
+            # works on a Send Now message, however long that takes (#83), and
+            # while background work runs.
             ceiling: List[threading.Timer] = []
 
             def arm_ceiling(unanswered_too: bool = False,
@@ -1512,6 +1518,11 @@ class TurnRunner:
                             final = TurnEvent("failed", text=problem, is_error=True,
                                               session_id=self.parser.session_id)
                             break
+                    if event.kind in ("tool", "text") and final is not None:
+                        # After an answer, this is Claude carrying on, however
+                        # long it takes, not a stuck finish: the next result
+                        # starts the ceiling again.
+                        disarm_ceiling()
                     if event.kind == "tool":
                         self.last_activity = f"using {event.text}"
                     elif event.kind == "text":
@@ -1527,6 +1538,7 @@ class TurnRunner:
                     if event.kind == "background":
                         tasks = list((event.data or {}).get("tasks") or [])
                         with self._lock:
+                            had_tasks = bool(self.background_tasks)
                             self.background_tasks = tasks
                             if not tasks:
                                 self.waiting_on_background = False
@@ -1536,8 +1548,20 @@ class TurnRunner:
                         elif not tasks and final is not None and last_state == "idle":
                             # All done while Claude was idle: the turn it
                             # starts to hear about it ("running") should
-                            # follow at once. If it never does, end the turn.
-                            arm_ceiling(wait=BACKGROUND_DONE_WAIT)
+                            # follow at once. If it never does, end the turn,
+                            # even with a message seemingly unanswered.
+                            if self._unanswered:
+                                arm_ceiling(unanswered_too=True)
+                            else:
+                                arm_ceiling(wait=BACKGROUND_DONE_WAIT)
+                        elif (had_tasks and not tasks and final is not None
+                              and last_state == "running" and not self._unanswered):
+                            # A background agent is done, with Claude Code
+                            # "running" all along. Claude's follow-up should
+                            # start now, and its first tool or text calls this
+                            # off; if none comes, end the turn. Read without
+                            # the lock, as "running" does.
+                            arm_ceiling()
                         self._emit(event)
                         continue
                     if event.kind == "state":
@@ -1598,7 +1622,24 @@ class TurnRunner:
                         if not event.is_error:
                             self._unsaid_reply = event.text or ""
                         idle = states_seen and last_state == "idle"
-                        if not replaced and states_seen and not idle:
+                        if (not replaced and states_seen and not idle
+                                and self.background_tasks):
+                            # Answered with a background agent still running:
+                            # Claude Code stays "running" with no idle until
+                            # it's done, but takes a message at once and leaves
+                            # the agent alone (checked with 2.1.296). So wait
+                            # as for a background command, saying each answer;
+                            # an empty result has nothing to say.
+                            if (event.text or "").strip():
+                                with self._lock:
+                                    self.waiting_on_background = False
+                                outcome = self._end_or_wait()
+                                if outcome != "unanswered":
+                                    settle(outcome, final)
+                            else:
+                                said_while_waiting = follows_waiting
+                                disarm_ceiling()
+                        elif not replaced and states_seen and not idle:
                             arm_ceiling()  # idle should follow
                         else:
                             # Answered, and idle (or no state events): closed,

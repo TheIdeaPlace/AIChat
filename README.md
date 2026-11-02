@@ -1467,8 +1467,8 @@ at once with what is still running ("Still running in the background: Windows bu
 session's row says "answered, background work running", and the turn ends when Claude goes idle
 with nothing left running. While it waits, Send goes straight to Claude as the next message rather
 than queuing, and anything already queued goes in then; Turn Status (Ctrl+Shift+T) names the work
-still running. (A background agent is different: Claude Code keeps working until the agent is done,
-so the turn simply runs until then and its answer is said at the end, as with any turn.)
+still running. A background agent works the same way, for as long as it takes: when it's done, Claude
+carries on and that answer is said too.
 Something meant to run indefinitely, such as a development server, would keep the turn open until
 you press Stop, so ask Claude to start long-running servers in a terminal of your own.
 `claude` is started suspended and only let run once it's in the job, so nothing it starts can
