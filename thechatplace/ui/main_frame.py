@@ -3284,9 +3284,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             info = self._open
             self._codex_usage_busy = True
             # It can take a few seconds: Copilot's starts Copilot CLI.
-            self._status(f'Reading {name} usage.')
+            reading = f'Reading {name} usage.'
+            self._status(reading)
             def done(lines, error):
                 self._codex_usage_busy = False
+                if self._status_latest == announce.status_text(reading):
+                    self._status('')
                 if self._open is None or self._open.key != info.key:
                     return
                 if error:
@@ -6154,8 +6157,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             percent = f", {done * 100 // total}% done" if total else ""
             kind = ("A restore" if running.get("restore") else
                     "A scheduled backup" if running.get("scheduled") else "A backup")
-            if wx.MessageBox(f"{kind} is running{percent}. Stop it?", "Back Up Now",
-                             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES:
+            answer = wx.MessageBox(f"{kind} is running{percent}. Stop it?", "Back Up Now",
+                                   wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
+            # It may have finished while the question was open.
+            if answer == wx.YES and self._backup_job is running:
                 running["cancel"] = True
                 self._feedback("Stopping the restore." if running.get("restore")
                                else "Stopping the backup.")
