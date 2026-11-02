@@ -110,7 +110,11 @@ class BackupReader:
         self._archive, self.manifest = archive, manifest
         remove_leftover_scratch()
         self._temporary = tempfile.TemporaryDirectory(prefix=_SCRATCH_PREFIX)
-        self.root = Path(self._temporary.name)
+        # In the long form, as a backup's own paths can pass Windows' 260
+        # characters: Claude names a project's folder after its whole path,
+        # so a real backup holds some that a plain open or mkdir refuses.
+        self._plain_root = Path(self._temporary.name)
+        self.root = platform_paths.long_path(self._plain_root.resolve())
         self._sessions = None
         self._readers = {}
         self._codex = None
@@ -158,13 +162,17 @@ class BackupReader:
                 self._temporary.cleanup()
                 return
             except OSError:
+                # Paths past 260 characters are the usual reason, and waiting
+                # can't help those: the long-form delete reaches them.
+                try:
+                    _remove_tree(self.root)
+                except OSError:
+                    pass
+                if not os.path.lexists(self.root):
+                    return
                 if attempt < _SCRATCH_TRIES - 1:
                     time.sleep(_SCRATCH_WAIT)
-        try:
-            _remove_tree(self.root)
-        except OSError:
-            pass
-        self.left_behind = os.path.lexists(self.root)
+        self.left_behind = True
 
     def _extract(self):
         files = self.manifest.get('files')
@@ -376,7 +384,9 @@ class BackupReader:
             return []
         from .providers.codex_archive import CodexArchive
         try:
-            self._codex = CodexArchive(self.root, self.manifest)
+            # The plain form: Codex is started in this folder, and Windows can't
+            # start a process in a long-form one. Its own paths are short.
+            self._codex = CodexArchive(self._plain_root, self.manifest)
             result = []
             for info in self._codex.sessions():
                 session = self._from_info(info)

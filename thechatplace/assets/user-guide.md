@@ -1499,6 +1499,8 @@ ordinary uses of `git status`, `switch`, `add`, `commit`, `push`, `fetch`, `diff
 isn't offered for a command run through a shell The Chat Place doesn't recognise, or one with force or delete options, unknown options, several commands
 joined together, shell expansions, another working folder, or extra access listed separately:
 those still ask. The button appears only when the request can be remembered.
+Codex usually proposes the whole command, so what's kept is often that exact command: a commit with
+another message asks again, and a commit message of several words isn't offered the button yet (#500).
 
 A remembered approval is as powerful as **Allow Once**. The command may run outside the sandbox,
 reach other files and the network, and run Git hooks or other programs Git is set up to run. The

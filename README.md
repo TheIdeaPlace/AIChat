@@ -477,6 +477,8 @@ native choice out and sends only one-time answers. For an eligible Git command,
 The Chat Place's own data, for this chat and its exact working folder. It survives restarting
 the app; a Continue Here copy starts empty. Supported operations are `git status`, `switch`,
 `add`, `commit`, `push`, `fetch`, `diff` and `log`, with ordinary supported arguments.
+Codex usually proposes the whole command, so what's kept is often that exact command: a commit with
+another message asks again, and a commit message of several words isn't offered the button yet (#500).
 Unknown options, explicit force or delete options in the command, compound commands, shell expansion, a changed
 working folder, requests for separately listed extra access, and commands run through a shell The Chat Place doesn't recognise still ask.
 Remembering has the same authority as **Allow Once**: the command may run outside the sandbox,
