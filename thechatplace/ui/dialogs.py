@@ -121,6 +121,38 @@ def copilot_mode_name(mode: str) -> str:
     return {AGENT_MODE: "agent mode", PLAN_MODE: "plan mode"}.get(mode, "another mode")
 
 
+#: Change Permission Mode's third choice for a Copilot chat (copilot_folder,
+#: #426): not one of Copilot's modes, but agent mode with The Chat Place
+#: answering for you what only reads, or edits files, inside the chat's
+#: folder. Never offered in New Session: it comes with a warning, for a chat
+#: already open.
+COPILOT_AUTO = "auto"
+COPILOT_AUTO_LABEL = ("Auto: reads, and changes files, in the chat's folder without asking; "
+                      "asks before running anything else")
+
+
+def copilot_auto_warning(folder: str) -> str:
+    # The commands named are Auto's where this runs: Copilot uses PowerShell
+    # on Windows and bash or zsh elsewhere (copilot_folder).
+    examples = ("Get-ChildItem, Get-Content, Select-String, cd and git status"
+                if sys.platform == "win32" else "ls, cat, cd and git status")
+    return (f"In Auto, Copilot reads and searches in {folder} and changes files there without "
+            f"asking you: commands such as {examples}, and its own file edits. Use it in a "
+            "folder that's backed up or under version control, and not with files you haven't "
+            "checked: instructions hidden in a file Copilot reads could steer what it changes.\n\n"
+            "It still asks before running anything else (other programs, deleting, the "
+            "network), before anything outside the folder or in your home folder's settings "
+            "and secrets, and before changing files that can make a program run (such as .git, "
+            ".github, .vscode and .mcp.json). If you've allowed a program such as npm test, "
+            "with your rules or Allow for This Chat, it runs files Auto lets Copilot change, so "
+            "after Auto changes a file it asks you once before running it again. The "
+            "Chat Place checks what each command says, which is a strict check, not a lock.\n\n"
+            "Each thing allowed for you is shown on the status bar, and Chat Permissions lists "
+            "them. Auto stays on for this chat until you choose Agent or Plan with Change "
+            "Permission Mode.\n\n"
+            "Turn on Auto for this chat?")
+
+
 #: What New Session says about a Copilot chat (#352).
 COPILOT_NOTE = ("Copilot uses your GitHub Copilot sign-in, and each message uses requests from "
                 "your Copilot plan. Model lists the models Copilot offered your last Copilot "
@@ -1783,7 +1815,14 @@ class CodexPermissionDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
         detail = request.detail(file_detail)
-        if chat_rule is not None:
+        if chat_rule is not None and provider != "Codex":
+            # Copilot's (#426): The Chat Place keeps the command and answers
+            # Allow Once each time; Copilot's own "always" is never sent.
+            detail += ('\n\nAllow for This Chat runs ' + chat_rule.description
+                       + ', again without asking, in this chat only, while every path in it '
+                       "stays inside the folder. It can run what's in the folder, which Copilot "
+                       "may change first. File, Chat Permissions lists it, to remove.")
+        elif chat_rule is not None:
             from ..providers.codex_permissions import NOTICE
             from ..providers.codex_requests import SAVED_RULE_NOTE
             detail = detail.replace(SAVED_RULE_NOTE, 'Codex offered to keep a native approval. '
@@ -1844,6 +1883,9 @@ class ChatPermissionsDialog(wx.Dialog):
     Codex's rule files, or Claude Code's own settings), whose ``done(rows, error)`` comes back on the
     UI thread, after the work is finished: a removal is never said to be done
     before it is. A host that keeps nothing (Codex, #307) gets no Remove buttons.
+    A host with ``restart(done)`` and ``restart_warning(done)`` (Copilot, #426)
+    gets Restart Copilot, which says itself what it did: the same way out of
+    what makes its commands ask on every platform.
     """
 
     def __init__(self, parent, title: str, host):
@@ -1882,6 +1924,11 @@ class ChatPermissionsDialog(wx.Dialog):
                 row.Add(button, 0, wx.RIGHT, 6)
             self.remove_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove())
             self.remove_all_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove_all())
+        self.restart_btn = None
+        if callable(getattr(host, "restart", None)):
+            self.restart_btn = wx.Button(self, label="Re&start Copilot")
+            row.Add(self.restart_btn, 0, wx.RIGHT, 6)
+            self.restart_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_restart())
         row.AddStretchSpacer()
         self.close_btn = wx.Button(self, wx.ID_CANCEL, "&Close")
         row.Add(self.close_btn, 0)
@@ -2056,6 +2103,35 @@ class ChatPermissionsDialog(wx.Dialog):
             self._fill(rows, index)
             self.list.SetFocus()
         self.host.remove(rule_id, done)
+
+    def on_restart(self):
+        """Warn first, No the default, if it ends anything you might want. The
+        work is the host's, off this thread: the dialog stays usable, and
+        says it's busy if anything's pressed meanwhile."""
+        if self._still_busy(back_to=self.restart_btn):
+            return
+        self.busy = "Still restarting Copilot. Try again in a moment."
+
+        def warned(text: str):
+            if not self._alive():
+                return
+            if text and not self._confirm(text):
+                self.busy = ""
+                self.restart_btn.SetFocus()
+                return
+            self.host.restart(done)
+
+        def done(problem):
+            if not self._alive():
+                return
+            self.busy = ""
+            self.refresh_mode()
+            self._show_note()
+            if problem:
+                self._tell(problem, wx.ICON_WARNING, back_to=self.restart_btn)
+                return
+            self.restart_btn.SetFocus()
+        self.host.restart_warning(warned)
 
     def on_change(self):
         if self._still_busy(back_to=self.change_btn):

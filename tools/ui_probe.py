@@ -990,6 +990,40 @@ def s_main_copilot_owned(frame, env):
     fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
 
 
+def s_main_copilot_auto(frame, env):
+    """A Copilot chat started here, in Auto (#426): its heading ends ", Auto",
+    two things were answered for you, and a program a rule allowed is still
+    running, so the status line says Auto's file changes ask for now (Kelly's
+    review of 9064712 asked for a surface that shows it)."""
+    import dataclasses
+    from types import SimpleNamespace
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
+    from thechatplace.sessions import WORKING
+    import fake_env
+
+    s_main_copilot(frame, env)
+    info = frame._open
+    record = OwnSession(info.cli_session_id, info.title, info.cwd, provider="copilot", started=True)
+    frame.store.add(record)
+    state = CopilotChatState(info.cli_session_id, WORKING, "1", "inProgress", mode=AGENT_MODE,
+                             auto=True, answering=True, running=True,
+                             auto_allowed=((1, "Command: Get-ChildItem src"),
+                                           (2, "Command: npm test (your rule)")))
+    frame.sessions._providers["copilot"].runtime = SimpleNamespace(
+        known=lambda: [(info.cli_session_id, info.cwd)], snapshot=lambda native: state,
+        ready=lambda native: True,
+        adopt=lambda native: None, prepare=lambda native, cwd: None, close=lambda: None)
+    frame._codex_states[info.key] = state
+    frame.open_session(dataclasses.replace(record.to_info(), state=WORKING))
+    fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy
+                  and not frame._codex_preparing, timeout=10)
+    frame._update_send_state()
+    frame._update_heading()
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
+
+
 def s_main_copilot_filter(frame, env):
     from thechatplace.sessions import FIELD_PROVIDER, VIEW_COPILOT
 
@@ -1182,6 +1216,42 @@ def d_copilot_permission(frame, env):
                                                       provider="Copilot"))
 
 
+def d_copilot_permission_keep(frame, env):
+    """Copilot asks to run a command it may keep for the chat: Allow for This
+    Chat is offered (#426)."""
+    from thechatplace.providers.copilot_auto_store import Kept
+    from thechatplace.ui.dialogs import CodexPermissionDialog
+    request = _copilot_request({"toolCallId": "call-1", "kind": "execute",
+                                "title": "Run the tests",
+                                "rawInput": {"command": "npm test", "commands": [
+                                    {"identifier": "npm test", "readOnly": False}]}})
+    return lambda: frame._modal(CodexPermissionDialog(frame, "Copilot preview", request,
+                                                      chat_rule=Kept("npm test"),
+                                                      provider="Copilot"))
+
+
+def d_chat_permissions_copilot(frame, env):
+    """File, Chat Permissions for a Copilot chat in Auto, with two commands
+    allowed for it and your rules listed (#426)."""
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.copilot_auto_store import Kept
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
+    from thechatplace.ui.dialogs import ChatPermissionsDialog
+    from thechatplace.ui.permission_hosts import CopilotPermissions
+    folder = str(env['folders']['Scratch'])
+    record = OwnSession('probe', 'Copilot preview', folder, provider='copilot', started=True)
+    info = record.to_info()
+    frame._codex_states[info.key] = CopilotChatState(
+        'probe', 'idle', mode=AGENT_MODE, auto=True,
+        auto_allowed=((1, 'Command: Get-ChildItem'), (2, 'Command: npm test (your rule)')))
+    host = CopilotPermissions(frame, info, record)
+    kept = [Kept('npm run build', 1792400000000), Kept('npm run lint', 1792400000000)]
+    host.load = lambda done: done(host._rows(kept), None)
+    host.native = lambda done: done('Your rules, allowed without asking:\nnpm test\n\n'
+                                    'Your rules, always asked:\ngit push *')
+    return lambda: frame._modal(ChatPermissionsDialog(frame, 'Copilot preview', host))
+
+
 def d_copilot_files(frame, env):
     from thechatplace.ui.dialogs import CodexPermissionDialog
     folder = env["tmp"].as_posix()
@@ -1205,18 +1275,20 @@ def d_codex_mode(frame, env):
 
 
 def d_copilot_change_mode(frame, env):
-    """File, Change Permission Mode for an owned Copilot chat in plan mode
-    (#424): agent or plan, the current one marked "(now)" and selected, as
-    main_frame._change_setting builds it. Plan's is the longer label."""
-    from thechatplace.providers.copilot_runtime import PLAN_MODE
-    from thechatplace.ui.dialogs import (COPILOT_SESSION_MODES, copilot_mode_name,
+    """File, Change Permission Mode for an owned Copilot chat in Auto (#426):
+    agent, plan or Auto, the current one marked "(now)" and selected, as
+    codex_chats._change_copilot_mode and main_frame._change_setting build it
+    where no organisation manages Copilot. Auto's, with "(now)", is the
+    widest row, so it's the one measured (Kelly's review of 8345ddd)."""
+    from thechatplace.ui.dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
                                          single_choice_dialog)
     title = "Plan the synthetic probe project's long refactor"
-    labels = [f"{label} (now)" if value == PLAN_MODE else label
-              for value, label in COPILOT_SESSION_MODES]
-    dialog = single_choice_dialog(frame, f"Mode for {title}, now {copilot_mode_name(PLAN_MODE)}:",
+    offered = COPILOT_SESSION_MODES + ((COPILOT_AUTO, COPILOT_AUTO_LABEL),)
+    labels = [f"{label} (now)" if value == COPILOT_AUTO else label
+              for value, label in offered]
+    dialog = single_choice_dialog(frame, f"Mode for {title}, now Auto:",
                                   "Change Permission Mode", labels)
-    dialog.SetSelection(1)
+    dialog.SetSelection(len(labels) - 1)
     return lambda: frame._modal(dialog)
 
 
@@ -1764,6 +1836,8 @@ SURFACES = {
                      "Synthetic Copilot CLI history in the shared window: read-only controls"),
     "main-copilot-owned": ("window", s_main_copilot_owned,
                            "A Copilot chat started here: reply box, queued message and context"),
+    "main-copilot-auto": ("window", s_main_copilot_auto,
+                          "A Copilot chat in Auto, with a program still running"),
     "main-copilot-copy": ("window", s_main_copilot_copy,
                           "A Copilot Continue Here copy: the carried history as one row"),
     "main-copilot-filter": ("window", s_main_copilot_filter,
@@ -1796,6 +1870,8 @@ SURFACES = {
     "new-session-copilot": ("dialog", d_new_session_copilot,
                             "New Session for Copilot, choosing from the models it offered"),
     "copilot-permission": ("dialog", d_copilot_permission, "Copilot asks to run a command, once"),
+    "copilot-permission-keep": ("dialog", d_copilot_permission_keep,
+                                "Copilot asks to run a command it can keep for the chat"),
     "copilot-files": ("dialog", d_copilot_files, "Copilot asks to create a file, with its diff"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
     "copilot-change-mode": ("dialog", d_copilot_change_mode,
@@ -1810,6 +1886,8 @@ SURFACES = {
     "codex-permission": ("dialog", d_codex_permission, "Codex asks for one-time command permission"),
     "codex-permission-kept": ("dialog", d_codex_permission_kept, "Remember a Codex command for this TCP chat"),
     "chat-permissions-codex-kept": ("dialog", d_chat_permissions_codex_kept, "Review and remove TCP-kept Codex approvals"),
+    "chat-permissions-copilot": ("dialog", d_chat_permissions_copilot,
+                                 "Chat Permissions: a Copilot chat in Auto, with commands kept"),
     "chat-permissions": ("dialog", d_chat_permissions, "File, Chat Permissions: a Claude chat's kept rules"),
     "chat-permissions-empty": ("dialog", d_chat_permissions_empty,
                                "File, Chat Permissions with nothing kept"),
@@ -1896,6 +1974,7 @@ DIALOG_CLASSES = {
     "copilot-continue": "NewSessionDialog",
     "new-session-copilot": "NewSessionDialog",
     "copilot-permission": "CodexPermissionDialog",
+    "copilot-permission-keep": "CodexPermissionDialog",
     "copilot-files": "CodexPermissionDialog",
     "codex-models": "NewSessionDialog",
     "codex-change-mode": "SingleChoiceDialog",
@@ -1909,6 +1988,7 @@ DIALOG_CLASSES = {
     "codex-permission": "CodexPermissionDialog",
     "codex-permission-kept": "CodexPermissionDialog",
     "chat-permissions-codex-kept": "ChatPermissionsDialog",
+    "chat-permissions-copilot": "ChatPermissionsDialog",
     "chat-permissions": "ChatPermissionsDialog",
     "chat-permissions-empty": "ChatPermissionsDialog",
     "chat-permissions-codex": "ChatPermissionsDialog",

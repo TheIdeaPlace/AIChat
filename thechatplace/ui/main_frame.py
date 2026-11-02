@@ -105,7 +105,7 @@ from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
-from .permission_hosts import ClaudePermissions, CodexPermissions
+from .permission_hosts import ClaudePermissions, CodexPermissions, CopilotPermissions
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
@@ -1882,6 +1882,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             from ..providers.copilot_runtime import PLAN_MODE
             if getattr(runtime_state, "mode", "") == PLAN_MODE:
                 kind += ", plan mode"
+            # Auto is said wherever the chat is read (#426).
+            if getattr(runtime_state, "auto", False):
+                kind += ", Auto"
         state = state_with_detail(info.state, info.detail)
         self.session_heading.set_text(f"{end_sentence(f'{info.title}, {info.repo}, {state}')} {kind}.")
         self._update_messages_label()
@@ -3910,29 +3913,26 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
 
     def on_chat_permissions(self):
         """File, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission
-        mode, and the rules kept with a chat started here, to read and remove.
-        Codex chats keep none yet: each request still asks (#307)."""
+        mode, and the rules kept with a chat started here, to read and remove:
+        Claude's tool rules, Codex's remembered approvals, and the commands
+        allowed for a Copilot chat (#426)."""
         info = self._selected_session()
         if info is None:
             self._feedback("No session selected.")
             return
-        if info.is_own and info.provider == "copilot":
-            self._feedback(f"{info.title} keeps no permissions: Copilot asks before each command "
-                           "or file change, and each answer is for that one request. Change "
-                           f"Permission Mode ({key_name('Ctrl+Shift+O')}) switches it between agent and plan "
-                           "mode.")
-            return
-        if not info.is_own or info.provider not in ("claude", "codex"):
+        if not info.is_own or info.provider not in ("claude", "codex", "copilot"):
             where = "terminal" if info.is_terminal else "desktop app"
             self._feedback(f"{info.title} is {kind_name(info)}: it's read-only here, so it keeps "
                            f"no permissions in The Chat Place. Its {where} decides what it may do.")
             return
-        if info.provider == "codex":
-            record = self.store.get(info.cli_session_id, provider="codex")
+        if info.provider in ("codex", "copilot"):
+            record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is None:
-                self._feedback("This Codex chat is no longer in The Chat Place.")
+                self._feedback(f"This {provider_name(info.provider)} chat is no longer in The "
+                               "Chat Place.")
                 return
-            host = CodexPermissions(self, info, record)
+            host = (CodexPermissions if info.provider == "codex" else CopilotPermissions)(
+                self, info, record)
         else:
             if self.store.get(info.cli_session_id) is None:
                 self._feedback("This chat is no longer in The Chat Place.")

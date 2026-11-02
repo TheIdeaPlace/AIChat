@@ -27,6 +27,7 @@ the list has terminal sessions and The Chat Place's own.
 """
 from __future__ import annotations
 
+import functools
 import json
 import ntpath
 import os
@@ -192,6 +193,58 @@ def _copilot_policy_values(winreg, hive, hive_name) -> list:
 
 #: The most read of any one Copilot settings or hook file.
 COPILOT_SETTINGS_BYTES = 2 * 1024 * 1024
+
+
+@functools.lru_cache(maxsize=None)
+def _known_folder(guid_text: str) -> Optional[str]:
+    """A Windows known folder where the shell says it is (OneDrive or an
+    organisation's folder redirection moves Documents, AppData and Startup),
+    or None. Asked once per run: the copilot_folder check asks for each path."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    import uuid
+    try:
+        raw = uuid.UUID(guid_text).bytes_le
+        guid = (ctypes.c_byte * 16).from_buffer_copy(raw)
+        path = ctypes.c_wchar_p()
+        shell32 = ctypes.WinDLL("shell32")
+        ole32 = ctypes.WinDLL("ole32")
+        shell32.SHGetKnownFolderPath.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_wchar_p)]
+        ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+        if shell32.SHGetKnownFolderPath(ctypes.byref(guid), 0, None, ctypes.byref(path)) != 0:
+            return None
+        found = path.value
+        ole32.CoTaskMemFree(path)
+        return found or None
+    except (OSError, AttributeError, ValueError, ctypes.ArgumentError):
+        return None
+
+
+#: FOLDERID_Documents, RoamingAppData, LocalAppData and Startup.
+_DOCUMENTS = "FDD39AD0-238F-46AF-ADB4-6C85480369C7"
+_SETTINGS_FOLDERS = ("3EB685DB-65F9-4CF6-A03A-E3EF65729F3D",
+                     "F1B32785-6FBA-4FCF-9D55-7B8E7F157091",
+                     "B97D20BB-F46A-4C97-BA10-5E3608430854")
+
+
+def documents_dirs() -> List[str]:
+    """The Documents folder, where PowerShell keeps its profiles: on Windows
+    the one the shell reports (OneDrive moves it, Claude's review of #426) as
+    well as the home folder's own."""
+    found = [os.path.join(os.path.expanduser("~"), "Documents")]
+    real = _known_folder(_DOCUMENTS)
+    return found + [real] if real else found
+
+
+def settings_dirs() -> List[str]:
+    """Where Windows keeps a person's settings and startup programs, as the
+    shell reports them: AppData (Roaming and Local) and the Startup folder,
+    wherever folder redirection put them (Kelly's review of 58c5f03). Empty
+    elsewhere: the home folder's own places are listed in copilot_folder."""
+    return [path for path in map(_known_folder, _SETTINGS_FOLDERS) if path]
 
 
 def copilot_sessions_dir() -> Path:
@@ -1551,6 +1604,119 @@ def bring_last_popup_forward(hwnd: int) -> bool:
     return bool(found) and bool(user32.SetForegroundWindow(found[0]))
 
 
+#: How long a check waits for git. These run on the thread reading Copilot's
+#: messages, so every chat waits too: a hung git mustn't hold them up for
+#: long, and the request asks, saying so (Kelly's review of 5d378b4).
+GIT_CHECK_SECONDS = 5
+#: git_names_diff_program's answers, by folder: (when, answer). It's asked
+#: for each git diff Copilot wants to run, so it's kept a little while.
+_DIFF_PROGRAM_SEEN: dict = {}
+#: Settings git itself puts in its own config, as git config lists them.
+_GIT_OWN_DIFF_PROGRAMS = frozenset({"diff.astextplain.textconv astextplain"})
+
+
+def git_names_diff_program(folder: str) -> Optional[bool]:
+    """Whether any git config that applies in ``folder`` (yours too, not
+    only the repository's) names a program for showing differences:
+    diff.external, or a diff driver's command or textconv. A repository's
+    .gitattributes can choose such a driver for its files, and git diff then
+    runs it (Copilot's review of Auto, #426). None if git can't say."""
+    import subprocess
+    import time
+
+    seen = _DIFF_PROGRAM_SEEN.get(folder)
+    if seen and time.monotonic() - seen[0] < 30:
+        return seen[1]
+    git = find_tool("git")
+    answer: Optional[bool] = None
+    if git:
+        try:
+            done = subprocess.run(
+                [git, "config", "--get-regexp", r"^diff\.(external|.+\.(command|textconv))$"],
+                cwd=folder, capture_output=True, timeout=GIT_CHECK_SECONDS,
+                env=copilot_child_environment(), creationflags=hidden_window_flags())
+            # git config says 1, with nothing written, when nothing matches.
+            # Git for Windows' own setting, which runs a script it ships for
+            # .doc and .pdf files, doesn't count.
+            named = [line.strip() for line in done.stdout.decode("utf-8", "replace").splitlines()
+                     if line.strip() and line.strip() not in _GIT_OWN_DIFF_PROGRAMS]
+            if done.returncode == 0:
+                answer = bool(named)
+            elif done.returncode == 1 and not done.stdout.strip():
+                answer = False
+        except (OSError, subprocess.SubprocessError, ValueError):
+            answer = None
+    _DIFF_PROGRAM_SEEN[folder] = (time.monotonic(), answer)
+    return answer
+
+
+class GitUnanswered(Exception):
+    """git couldn't answer a check: ``kind`` is GIT_MISSING, GIT_TIMED_OUT or
+    GIT_FAILED, which copilot_folder turns into the reason it gives."""
+
+    def __init__(self, kind: str):
+        super().__init__(kind)
+        self.kind = kind
+
+
+GIT_MISSING, GIT_TIMED_OUT, GIT_FAILED = "missing", "timed out", "failed"
+
+
+def _git_output(args: List[str], folder: str) -> bytes:
+    """What ``git args`` writes, run from ``folder`` with the environment
+    Copilot's own shell gets, so the answer is about what its git will do
+    (copilot_child_environment). Raises GitUnanswered for anything else."""
+    import subprocess
+
+    git = find_tool("git")
+    if not git:
+        raise GitUnanswered(GIT_MISSING)
+    try:
+        done = subprocess.run([git, *args], cwd=folder, capture_output=True,
+                              timeout=GIT_CHECK_SECONDS, env=copilot_child_environment(),
+                              creationflags=hidden_window_flags())
+    except subprocess.TimeoutExpired:
+        raise GitUnanswered(GIT_TIMED_OUT) from None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        raise GitUnanswered(GIT_FAILED) from None
+    if done.returncode != 0:
+        raise GitUnanswered(GIT_FAILED)
+    return done.stdout
+
+
+def git_where(folder: str) -> tuple:
+    """(top of the working tree, git folder, common git folder) as git itself
+    sees them from ``folder``. Asking runs nothing of the repository's. Git
+    before 2.31 echoes --path-format as a fourth line, and a path with a line
+    break gives more than three: GitUnanswered, as anything unexpected is."""
+    lines = _git_output(["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir",
+                         "--git-common-dir"], folder).decode("utf-8", "replace").split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    if len(lines) != 3 or not all(lines):
+        raise GitUnanswered(GIT_FAILED)
+    return tuple(lines)
+
+
+def git_settings(folder: str) -> List[tuple]:
+    """(scope, origin, name, value) of every setting git uses from ``folder``,
+    included files followed, as git itself reads them: ``git config --list
+    --show-scope --show-origin -z`` writes scope, NUL, origin, NUL, name, line
+    break, value, NUL, and a path isn't quoted. Asking runs nothing of the
+    repository's. Anything else is GitUnanswered."""
+    output = _git_output(["config", "--list", "--show-scope", "--show-origin", "-z"], folder)
+    pieces = output.decode("utf-8", "replace").split("\0")
+    if pieces and pieces[-1] == "":
+        pieces.pop()
+    if len(pieces) % 3:
+        raise GitUnanswered(GIT_FAILED)
+    settings = []
+    for scope, origin, setting in zip(pieces[0::3], pieces[1::3], pieces[2::3]):
+        name, _, value = setting.partition("\n")
+        settings.append((scope, origin, name, value))
+    return settings
+
+
 def high_contrast() -> Optional[bool]:
     """Whether Windows' High Contrast is on, for bug reports (#464); None
     where there's no such setting or it can't be read."""
@@ -1571,6 +1737,15 @@ def high_contrast() -> Optional[bool]:
     except (OSError, AttributeError):
         return None
     return bool(value.dwFlags & 1)
+
+
+def git_has_submodules(folder: str) -> bool:
+    """Whether the index of the repository at ``folder`` holds a submodule
+    (a gitlink, mode 160000), however it got there: git status and diff go
+    into one and run its own config. Raises GitUnanswered if git can't say.
+    Asked with fsmonitor off, so asking runs nothing of the repository's."""
+    output = _git_output(["-c", "core.fsmonitor=", "ls-files", "--stage", "-z"], folder)
+    return any(entry.startswith(b"160000 ") for entry in output.split(b"\0"))
 
 
 def hidden_window_flags() -> int:
@@ -2201,9 +2376,47 @@ def copilot_child_environment(environ=None) -> dict:
     whose answers are still GitHub Copilot's, as each turn's billing check
     confirms."""
     source = os.environ if environ is None else environ
-    return {key: value for key, value in source.items()
+    kept = {key: value for key, value in source.items()
             if key.upper() not in COPILOT_OVERRIDE_VARS
-            and not key.upper().startswith(COPILOT_OVERRIDE_PREFIXES)}
+            and not key.upper().startswith(COPILOT_OVERRIDE_PREFIXES)
+            and key.upper() not in GIT_REPOSITORY_VARS}
+    return _with_git_settings(kept)
+
+
+#: What makes git use a repository other than the one it finds from where it
+#: runs (``git rev-parse --local-env-vars``, but for GIT_CONFIG_COUNT, which
+#: is kept and added to). Left by whatever started The Chat Place, say a git
+#: hook, they'd send Copilot's git somewhere the checks never looked.
+GIT_REPOSITORY_VARS = frozenset({
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+    "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE", "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR"})
+#: Settings given to every git Copilot's shell runs, a second layer under
+#: copilot_folder's checks, for anything they miss (Kelly's review of 5d378b4:
+#: the escapes of three reviews all came through git's own settings).
+#: core.fsmonitor=false stops a repository's fsmonitor program running on git
+#: status; safe.bareRepository=explicit stops git treating a folder inside
+#: the project as a repository of its own unless told to with --git-dir. Both
+#: confirmed with real git 2.50. Whether Copilot passes its environment on to
+#: the commands it runs hasn't been confirmed, so nothing relies on this.
+_GIT_SETTINGS_FOR_COPILOT = (("core.fsmonitor", "false"), ("safe.bareRepository", "explicit"))
+
+
+def _with_git_settings(environment: dict) -> dict:
+    """``environment`` with _GIT_SETTINGS_FOR_COPILOT added after any
+    GIT_CONFIG_COUNT settings it already holds: git uses the last one given.
+    A count git couldn't read makes every git fail, so it's replaced."""
+    try:
+        count = max(int(environment.get("GIT_CONFIG_COUNT", "0")), 0)
+    except ValueError:
+        count = 0
+    for key, value in _GIT_SETTINGS_FOR_COPILOT:
+        environment[f"GIT_CONFIG_KEY_{count}"] = key
+        environment[f"GIT_CONFIG_VALUE_{count}"] = value
+        count += 1
+    environment["GIT_CONFIG_COUNT"] = str(count)
+    return environment
 
 
 #: What start_copilot_acp says when there's no Copilot CLI to start: safe

@@ -192,3 +192,148 @@ class CodexPermissions:
                     done(text)
             self.frame._codex_work(lambda: self.frame.sessions.owned_action('review_history', self.record), history_ready)
         self.frame._load_codex_saved_rules(self.record.cwd, listed)
+
+
+#: What Restart Copilot says.
+RESTART_UNKNOWN = ("The Chat Place couldn't check what other Copilot chats are doing. Restarting "
+                   "Copilot ends anything they're running. Restart it anyway?")
+RESTARTED = ("Copilot stopped, and commands no longer ask because of what it was running or where "
+             "its shell was. It starts again when a chat needs it.")
+NOT_RESTARTED = "Copilot wasn't running. It starts when a chat needs it."
+
+
+class CopilotPermissions:
+    """A Copilot chat started here (#426): its mode (agent, plan or Auto),
+    the commands allowed for it with Allow for This Chat, to read and
+    remove, and your own rules for Copilot, listed read only."""
+    can_remove = True
+    empty_text = ('No commands are allowed for this chat. Allow for This Chat, in Answer, '
+                  'keeps one.')
+    native_pending = 'Reading your rules for Copilot...'
+
+    def __init__(self, frame, info, record):
+        self.frame, self.info, self.record = frame, info, record
+
+    def _state(self):
+        return self.frame._codex_states.get(self.info.key)
+
+    def mode_text(self) -> str:
+        from .dialogs import copilot_mode_name
+        state = self._state()
+        if state is None or not getattr(state, 'mode', ''):
+            return 'not known until the chat is open'
+        if getattr(state, 'auto', False):
+            return 'Auto: reads and edits inside its folder without asking'
+        return copilot_mode_name(state.mode).capitalize() + ': asks before acting'
+
+    def can_change_mode(self):
+        return True, ''
+
+    def change_mode(self, done):
+        self.frame._change_copilot_mode(self.info, after=done)
+
+    def note(self) -> str:
+        from ..providers.copilot_auto_store import rules_file
+        state = self._state()
+        lines = [
+            'Commands allowed for this chat run without asking only when Copilot writes them '
+            'exactly the same way, and only while every path in them stays inside the chat\'s '
+            'folder. Removing one counts from the next request.',
+            'Auto, a Permission mode, also allows reading, listing and searching inside the '
+            'folder, changing to a folder inside it, reading git, and Copilot\'s own file '
+            'changes there. It never deletes, moves or writes through a command, and never '
+            'changes files that can make a program run, such as .git, .github, .vscode and '
+            '.mcp.json. After Auto changes a file, your rules and the commands below ask once '
+            'before running.',
+            f'Your own rules for Copilot are in {rules_file()}: "allow" lists commands that run '
+            'without asking in any agent-mode chat (a trailing * allows more words after '
+            'them), and "ask" lists ones that always ask. A command you allow can run what is '
+            'in the folder, which Copilot may have changed.',
+            'Restart Copilot stops Copilot, for every chat, and what it started. That clears '
+            'what makes commands ask after a command that may have moved its shell, or a '
+            'program that never ended. It starts again when a chat needs it.',
+        ]
+        from ..providers.copilot_runtime import asks_now
+        asks = asks_now(state, detail=True) if state is not None else ''
+        if asks:
+            lines.append(asks)
+        answered = getattr(state, 'auto_allowed', ())
+        if answered:
+            lines.append('Answered for you since Copilot started, newest first:\n'
+                         + '\n'.join(summary for _n, summary in reversed(answered)))
+        return '\n\n'.join(lines)
+
+    def restart_warning(self, done):
+        """``done(what to warn about or "")``, read on a worker. Can't tell:
+        warned about anyway, since it ends other chats' work."""
+        self.frame._codex_work(
+            lambda: self.frame.sessions.owned_action('restart_warning', self.record),
+            lambda text, error: done(RESTART_UNKNOWN if error else text))
+
+    def restart(self, done):
+        """Restart Copilot on a worker, the chat open in the window opened
+        again after it, and ``done(the problem or None)`` on the UI thread."""
+        def finished(running, error):
+            if error:
+                done(running or "Copilot couldn't be stopped.")
+                return
+            self.frame._feedback(RESTARTED if running else NOT_RESTARTED)
+            done(None)
+            self.frame._reopen_copilot_chat()
+        self.frame._codex_work(
+            lambda: self.frame.sessions.owned_action('restart', self.record), finished)
+
+    @staticmethod
+    def _rows(kept):
+        return [chat_permissions.PermissionRow(k.rule_id, k.description[:1].upper()
+                                               + k.description[1:] + '.', '', k.allowed_at_ms)
+                for k in kept]
+
+    def load(self, done):
+        self.frame._codex_work(
+            lambda: self.frame.sessions.owned_action('chat_rules', self.record),
+            lambda rules, error: done(
+                None if error else self._rows(rules),
+                "The commands allowed for this chat couldn't be read." if error else None))
+
+    def remove(self, rule_id, done):
+        def removed(rules, error):
+            if not error:
+                self.frame._feedback('Removed. Copilot asks again the next time it wants to run '
+                                     'it.' if rule_id is not None else
+                                     'Removed all. Copilot asks again before each command.')
+            done(None if error else self._rows(rules),
+                 (str(rules) if rules else 'The removal could not be saved. Open Chat '
+                  'Permissions to check what is still kept.') if error else None)
+        self.frame._codex_work(
+            lambda: self.frame.sessions.owned_action('remove_chat_rule', self.record, rule_id),
+            removed)
+
+    def native(self, done):
+        """Your rules for Copilot, read on a worker."""
+        from ..providers import copilot_folder
+        from ..providers.copilot_auto_store import rules_file
+
+        def read():
+            return copilot_folder.read_rules(rules_file())
+
+        def ready(rules, error):
+            if error or rules is None:
+                done("Your rules for Copilot couldn't be read.")
+            elif rules.problem:
+                done(f"Your rules file {rules.problem}, so none of its rules are used.")
+            elif not rules.allow and not rules.ask:
+                done('You have no rules for Copilot.')
+            else:
+                parts = []
+                if rules.allow:
+                    parts.append('Your rules, allowed without asking:\n'
+                                 + '\n'.join(r.text for r in rules.allow))
+                if rules.ask:
+                    parts.append('Your rules, always asked:\n'
+                                 + '\n'.join(r.text for r in rules.ask))
+                if rules.unread:
+                    parts.append("Rules that couldn't be read, and aren't used:\n"
+                                 + '\n'.join(rules.unread))
+                done('\n\n'.join(parts))
+        self.frame._codex_work(read, ready)

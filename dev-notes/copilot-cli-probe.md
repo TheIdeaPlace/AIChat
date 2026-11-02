@@ -273,6 +273,37 @@ allowed. Both times the turn's `tool.execution_complete` with `fileEdits` was al
 So the window's "Changed N files" (#401) and an agent conversation's hand-off list (#369), both
 read at the turn's end, see the turn's files then, not a turn late. Both test chats were deleted.
 
+
+## Commands' previews, background runs and ends (probed 2026-10-31 and 2026-11-01, Copilot CLI 1.0.105, #426)
+
+For Auto and your rules (#426), which answer some permission requests for you: what Copilot says
+about a shell command before and after it runs. Each probe refused or allowed only harmless
+commands (ping, Write-Output) in a scratch folder, then deleted its sessions.
+
+- **The request leaves out how a command runs.** `session/request_permission`'s `rawInput` holds
+  only `command` and `commands` (now plain strings, not `{identifier, readOnly}` objects as in
+  1.0.103), and its title is the model's own description. The `tool_call` update Copilot sends
+  just before it, with the same `toolCallId`, has the full input: `mode` (`sync` or `async`),
+  `detach`, `initial_wait` and `description`. A foreground command's preview may leave `mode`
+  out or say `sync`. The update always comes first, on the same reader thread.
+- **A normal end:** the last `tool_call_update` is `status: completed`, its text ends
+  `<shellId: N completed with exit code X>`, and `rawOutput.contents` holds
+  `{"type":"shell_exit","shellId":"N","exitCode":X}`. Only the structured `shell_exit` is
+  trusted: a program can print the text.
+- **Moved to the background:** a sync command still running when `initial_wait` (30 seconds at
+  least) runs out is reported `status: completed` too, with text ending `<command with shellId: N
+  is still running after 30 seconds...>` and no `shell_exit`. An async one says
+  `<command started in background with shellId: N>`. Its real end comes later in the same turn,
+  as a different tool call (`read_powershell`, a UUID `toolCallId`, `rawInput.shellId: N`, no
+  permission asked) whose update carries the `shell_exit` for N. Copilot holds the turn open
+  until then. shellIds are counted per Copilot process.
+- **Stopped:** `stop_powershell` (`rawInput.shellId: N`, no permission asked) completes with
+  `<command with id: N stopped>` and no `shell_exit`, and the program ran on to its own end. A
+  `session/cancel` (Stop) mid-command sends nothing more for that call, and the program ran on
+  too. Neither is an end: The Chat Place keeps such a program as running until Copilot is next
+  started. Copilot runs in a kill-on-close job on Windows (platform_paths.start_copilot_acp), so
+  closing it ends what it started.
+
 ## Next, in rough order
 
 Ideas from the first listening test, kept here so they aren't lost:
