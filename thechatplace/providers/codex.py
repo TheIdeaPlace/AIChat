@@ -246,6 +246,11 @@ class CodexReader:
         raise ValueError("Codex history page limit exceeded")
 
     def _paginated_thread(self, thread):
+        # A legacy store has bounded pages of whole turns, and answers
+        # thread/items/list with "not supported yet".
+        if thread.get("historyMode") == "legacy":
+            turns = list(self._pages("thread/turns/list", itemsView="full"))
+            return {**thread, "turns": turns}
         # Official generated protocol: turns supply metadata, item entries
         # carry turnId; item cursors can split a turn across any page boundary.
         turns = {}

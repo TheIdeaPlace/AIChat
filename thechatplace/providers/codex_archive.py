@@ -18,12 +18,8 @@ class ArchiveConnection(ReadOnlyCodexConnection):
 
 class ArchiveCodexReader(CodexReader):
     def _paginated_thread(self, thread):
-        # Legacy stores support bounded full-turn pages, not item pagination.
-        # Paginated stores reject full turn items and use the normal converter.
-        if thread.get('historyMode', 'legacy') == 'legacy':
-            turns = list(self._pages('thread/turns/list', itemsView='full'))
-            return {**thread, 'turns': turns, 'historyMode': 'legacy'}
-        return super()._paginated_thread(thread)
+        # A backup's chat that doesn't say is read as legacy: it can be old.
+        return super()._paginated_thread({'historyMode': 'legacy', **thread})
 
 
 class CodexArchive:

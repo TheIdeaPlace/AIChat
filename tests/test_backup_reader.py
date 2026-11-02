@@ -250,3 +250,63 @@ def test_file_import_does_not_consult_live_provider_or_tcp_folders(monkeypatch):
     with zipped, BackupReader(zipped,manifest) as reader:
         for session in reader.sessions():
             assert reader.read(session).messages
+
+
+def test_a_scratch_folder_that_wont_go_at_once_doesnt_fail_the_restore(monkeypatch):
+    """Codex can still be writing to its scratch profile as it dies, and
+    Windows says the folder isn't empty (WinError 145): the chats are saved."""
+    from thechatplace import backup_reader
+    monkeypatch.setattr(backup_reader, '_SCRATCH_WAIT', 0)
+    tries = []
+
+    class Stubborn:
+        def __init__(self, fails):
+            self.fails = fails
+
+        def cleanup(self):
+            tries.append(1)
+            if len(tries) <= self.fails:
+                raise OSError(145, 'The directory is not empty')
+
+    reader = object.__new__(backup_reader.BackupReader)
+    reader._closed, reader._codex, reader._temporary = False, None, Stubborn(3)
+    reader.close()
+    assert len(tries) == 4
+    tries.clear()
+    reader = object.__new__(backup_reader.BackupReader)
+    reader._closed, reader._codex, reader._temporary = False, None, Stubborn(10 ** 6)
+    reader.close()  # never raises, however long it refuses
+    assert len(tries) == backup_reader._SCRATCH_TRIES
+
+
+def test_a_failure_closing_codex_still_removes_the_scratch_copy(monkeypatch):
+    from thechatplace import backup_reader
+    removed = []
+
+    class Codex:
+        def close(self):
+            raise OSError('gone')
+
+    reader = object.__new__(backup_reader.BackupReader)
+    reader._closed, reader._codex = False, Codex()
+    reader._temporary = type('T', (), {'cleanup': lambda self: removed.append(1)})()
+    with pytest.raises(OSError):
+        reader.close()
+    assert removed
+
+
+def test_old_scratch_copies_go_and_a_running_restores_stays(tmp_path, monkeypatch):
+    import os
+    import time
+    from thechatplace import backup_reader
+    monkeypatch.setattr(backup_reader.tempfile, 'gettempdir', lambda: str(tmp_path))
+    old, new, other = (tmp_path / 'tcp-restore-reader-old', tmp_path / 'tcp-restore-reader-new',
+                       tmp_path / 'something-else')
+    for folder in (old, new, other):
+        (folder / 'chats').mkdir(parents=True)
+        (folder / 'chats' / 'one.jsonl').write_text('{}')
+    long_ago = time.time() - 2 * backup_reader._SCRATCH_STALE_SECONDS
+    os.utime(old, (long_ago, long_ago))
+    os.utime(other, (long_ago, long_ago))
+    backup_reader._remove_stale_scratch()
+    assert not old.exists() and new.exists() and other.exists()

@@ -619,3 +619,30 @@ def test_codex_file_details_keep_rename_history_in_every_display_style(style, re
     detail = file_text(changes, style)
     assert "Renamed from: src/app.py" in detail
     assert removed in detail and added in detail
+
+
+def test_a_legacy_codex_chat_reads_whole_turns_and_never_asks_for_items():
+    """Codex 0.164 reports a chat from older storage as legacy, and answers
+    thread/items/list with -32601 "not supported yet": it wouldn't open or
+    export here, though the same chat restored from a backup did."""
+    from thechatplace.providers.codex import CodexReader
+    turn = {"id": "t1", "status": "completed", "items": [
+        {"type": "userMessage", "id": "u1", "content": [{"type": "text", "text": "Hello"}]},
+        {"type": "agentMessage", "id": "a1", "text": "Hi there"}]}
+    calls = []
+
+    class Legacy:
+        def request(self, method, params=None):
+            calls.append((method, params))
+            if method == "thread/read":
+                return {"thread": {"id": "one", "historyMode": "legacy", "updatedAt": 1,
+                                   "status": {"type": "notLoaded"}}}
+            if method == "thread/turns/list":
+                assert params["itemsView"] == "full"
+                return {"data": [turn], "nextCursor": None}
+            raise AssertionError(f"not supported yet: {method}")
+
+    reader = CodexReader(Legacy(), "one")
+    assert reader.refresh() is True
+    assert [m.text for m in reader.transcript.messages] == ["Hello", "Hi there"]
+    assert "thread/items/list" not in [method for method, _params in calls]

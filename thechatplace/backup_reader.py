@@ -16,6 +16,7 @@ import time
 from pathlib import Path, PurePosixPath
 import stat
 import sqlite3
+import shutil
 import tempfile
 
 from . import backup, platform_paths
@@ -48,6 +49,30 @@ class ImportedSession:
         return 'imported:' + hashlib.sha256(encoded).hexdigest()
 
 
+_SCRATCH_PREFIX = 'tcp-restore-reader-'
+#: Removing the scratch copy: how many tries, and how long between them.
+_SCRATCH_TRIES = 10
+_SCRATCH_WAIT = 0.5
+#: Older than this, a scratch copy isn't a restore that's running.
+_SCRATCH_STALE_SECONDS = 24 * 60 * 60
+
+
+def _remove_stale_scratch(now=None):
+    """Copies an earlier restore couldn't delete: they can hold chats from an
+    encrypted backup, so they don't stay in the temp folder."""
+    now = time.time() if now is None else now
+    try:
+        found = list(Path(tempfile.gettempdir()).glob(f'{_SCRATCH_PREFIX}*'))
+    except OSError:
+        return
+    for folder in found:
+        try:
+            if now - folder.stat().st_mtime > _SCRATCH_STALE_SECONDS:
+                shutil.rmtree(folder, ignore_errors=True)
+        except OSError:
+            continue
+
+
 class BackupReader:
     def __init__(self, archive, manifest, *, cancelled=None):
         if (not isinstance(manifest, dict) or manifest.get('format') != backup.FORMAT
@@ -61,7 +86,8 @@ class BackupReader:
         self.computer_id = computer['id']
         self.notes = []
         self._archive, self.manifest = archive, manifest
-        self._temporary = tempfile.TemporaryDirectory(prefix='tcp-restore-reader-')
+        _remove_stale_scratch()
+        self._temporary = tempfile.TemporaryDirectory(prefix=_SCRATCH_PREFIX)
         self.root = Path(self._temporary.name)
         self._sessions = None
         self._readers = {}
@@ -92,7 +118,20 @@ class BackupReader:
             if self._codex is not None:
                 self._codex.close()
         finally:
-            self._temporary.cleanup()
+            self._remove_scratch()
+
+    def _remove_scratch(self):
+        """Delete the extracted copy. Codex, reading it, can still be writing
+        to its scratch profile as it dies (it fetches plugins), and Windows
+        then says the folder isn't empty: that must not fail a restore whose
+        chats are already saved. One that can't go now goes next time."""
+        for attempt in range(_SCRATCH_TRIES):
+            try:
+                self._temporary.cleanup()
+                return
+            except OSError:
+                if attempt < _SCRATCH_TRIES - 1:
+                    time.sleep(_SCRATCH_WAIT)
 
     def _extract(self):
         files = self.manifest.get('files')
