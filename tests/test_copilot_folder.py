@@ -763,11 +763,17 @@ def test_a_command_that_may_move_the_shell_isnt_kept_or_ruled(folder, command):
 
 @pytest.mark.parametrize("command", [
     "New-Item alias:\\ls -Value Remove-Item -Force", "Set-Item function:Get-Content x",
-    "Set-Item env:PATH sub", "ni function:gc x", "PATH=sub ls", "export PATH=sub",
+    "Set-Item env:PATH sub", "PATH=sub ls", "export PATH=sub",
     "alias ls=rm", "sv x y", "set -o noclobber",
 ])
 def test_changing_what_a_later_command_means_counts_as_moving(command):
     assert copilot_folder.may_move(command)
+
+
+@windows_paths
+def test_powershells_new_item_on_a_function_drive_counts_as_moving():
+    # Elsewhere the shell is bash, where ni is any other program.
+    assert copilot_folder.may_move("ni function:gc x")
 
 
 def test_an_ask_rule_catches_git_options_and_aliases(folder):

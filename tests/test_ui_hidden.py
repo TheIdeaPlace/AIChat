@@ -15692,6 +15692,7 @@ def test_restart_copilot_warns_first_with_no_the_default(frame, env, monkeypatch
     calls = _restart_copilot(frame, monkeypatch, warning=warning)
 
     def drive(dialog):
+        assert pump(lambda: not dialog.busy)         # its list has been read
         assert dialog.restart_btn.GetLabelText() == "Restart Copilot"
         dialog.on_restart()
         assert pump(lambda: not dialog.busy)
@@ -15714,6 +15715,7 @@ def test_restart_copilot_with_nothing_to_warn_about_just_does_it(frame, env, mon
     calls = _restart_copilot(frame, monkeypatch)
 
     def drive(dialog):
+        assert pump(lambda: not dialog.busy)
         dialog.on_restart()
         assert pump(lambda: not dialog.busy and "restart" in calls)
         return dialog.note.GetValue()
@@ -15731,6 +15733,7 @@ def test_restart_copilot_says_when_copilot_wasnt_running(frame, env, monkeypatch
     calls = _restart_copilot(frame, monkeypatch, result=False)
 
     def drive(dialog):
+        assert pump(lambda: not dialog.busy)
         dialog.on_restart()
         return pump(lambda: not dialog.busy and "restart" in calls)
     try:
@@ -15745,6 +15748,7 @@ def test_restart_copilot_says_if_it_failed(frame, env, monkeypatch):
     calls = _restart_copilot(frame, monkeypatch, failed=True)
 
     def drive(dialog):
+        assert pump(lambda: not dialog.busy)
         dialog.on_restart()
         return pump(lambda: not dialog.busy and "restart" in calls)
     try:
@@ -15774,6 +15778,23 @@ def test_restart_copilot_opens_the_open_chat_again(frame, env, monkeypatch):
         assert prepared == [] and not frame._codex_preparing
     finally:
         frame._codex_states.clear()
+
+
+def test_restart_copilot_says_to_wait_while_its_list_is_read(frame, env, monkeypatch):
+    # Pressed before the list is in: says so, on the button, and does nothing.
+    _copilot_chat(frame, monkeypatch, "cp-rb", "Restart Copilot")
+    calls = _restart_copilot(frame, monkeypatch)
+
+    def drive(dialog):
+        dialog.busy = "Still checking what this chat allows. Try again in a moment."
+        dialog.on_restart()
+        return list(calls)
+    try:
+        seen, asked = _chat_permissions(frame, monkeypatch, drive)
+    finally:
+        frame._codex_states.clear()
+    assert "restart" not in seen and "restart_warning" not in seen
+    assert asked and asked[0][0].startswith("Still checking")
 
 
 def test_only_a_copilot_chat_gets_restart_copilot(frame, env, fake_runner, monkeypatch):
