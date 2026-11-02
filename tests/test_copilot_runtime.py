@@ -1468,7 +1468,7 @@ def test_locks_left_by_copilots_that_exited_or_by_this_apps_own_dont_count(make,
     dead = subprocess.Popen([sys.executable, "-c", "pass"])
     dead.wait(10)
     (folder / f"inuse.{dead.pid}.lock").write_text("", encoding="utf-8")
-    own = runtime._own_pid(runtime._connection)
+    own = runtime._connection._process.process.pid
     (folder / f"inuse.{own}.lock").write_text("", encoding="utf-8")
     runtime.send(chat, "Hello")
     assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
@@ -1553,9 +1553,9 @@ def test_the_fakes_own_lock_is_really_checked(make, tmp_path, monkeypatch):
     couldn't tell its own Copilot, every send would be refused."""
     runtime, _ = make()
     chat = runtime.create(str(tmp_path))
-    own = runtime._own_pid(runtime._connection)
+    own = runtime._connection._process.process.pid
     assert (tmp_path / "sessions" / chat / f"inuse.{own}.lock").exists()
-    monkeypatch.setattr(runtime, "_own_pid", lambda connection: None)
+    monkeypatch.setattr(runtime, "_is_own", lambda connection: lambda pid: False)
     with pytest.raises(CopilotChatError, match="open in another Copilot"):
         runtime.send(chat, "Hello")
 
@@ -3546,3 +3546,122 @@ def test_the_second_layer_reaches_what_starts_copilot(monkeypatch):
     env = platform_paths.copilot_child_environment({"PATH": "p"})
     assert env["GIT_CONFIG_KEY_0"] == "core.fsmonitor"
     assert env["GIT_CONFIG_KEY_1"] == "safe.bareRepository"
+
+
+LAUNCHER = """
+import subprocess, sys, time
+sleeper = [sys.executable, "-c", "import time; time.sleep(60)"]
+print(subprocess.Popen(sleeper).pid, flush=True)
+sys.stdin.readline()  # a tool of a turn, later on, starting another
+print(subprocess.Popen(sleeper).pid, flush=True)
+time.sleep(60)
+"""
+
+
+@pytest.fixture
+def launcher():
+    """The launcher, the real Copilot it started, and a connection to them.
+    Real processes, because it's the process tree that has to know."""
+    from types import SimpleNamespace
+    tree = platform_paths.ProcessTree()
+    process = subprocess.Popen([sys.executable, "-c", LAUNCHER], stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, text=True, **tree.popen_kwargs())
+    try:
+        tree.attach(process)
+        child = int(process.stdout.readline())
+        yield SimpleNamespace(tree=tree, process=process, child=child, connection=SimpleNamespace(
+            _process=SimpleNamespace(process=process, tree=tree), own_pids=tree.members()))
+    finally:
+        tree.kill()
+        process.wait(timeout=10)
+        process.stdin.close()
+        process.stdout.close()
+        tree.close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="only a Windows job can list a tree")
+def test_a_chat_held_by_the_copilot_a_launcher_started_is_not_held_elsewhere(launcher, tmp_path):
+    """#463: VS Code's copilot command keeps running with the real Copilot as
+    its child, and the chat's lock is named for the child."""
+    from thechatplace.providers import copilot_runtime
+    is_own = CopilotChatRuntime._is_own(launcher.connection)
+    assert is_own(launcher.process.pid) and is_own(launcher.child)
+    (tmp_path / f"inuse.{launcher.child}.lock").write_text("")
+    assert not copilot_runtime.locked_elsewhere(tmp_path, is_own)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="only a Windows job can list a tree")
+def test_a_copilot_a_tool_started_later_in_the_tree_can_hold_a_chat(launcher, tmp_path):
+    """The check is there for a Copilot with the chat open and idle: one a tool
+    started is in the job, but it's another Copilot all the same."""
+    from thechatplace.providers import copilot_runtime
+    launcher.process.stdin.write("\n")
+    launcher.process.stdin.flush()
+    later = int(launcher.process.stdout.readline())
+    assert later in launcher.tree.members()
+    is_own = CopilotChatRuntime._is_own(launcher.connection)
+    assert not is_own(later)
+    (tmp_path / f"inuse.{later}.lock").write_text("")
+    assert copilot_runtime.locked_elsewhere(tmp_path, is_own)
+
+
+def test_a_copilot_outside_the_tree_still_holds_a_chat(launcher, tmp_path, live_other_pid):
+    from thechatplace.providers import copilot_runtime
+    (tmp_path / f"inuse.{live_other_pid}.lock").write_text("")
+    assert copilot_runtime.locked_elsewhere(
+        tmp_path, CopilotChatRuntime._is_own(launcher.connection))
+
+
+def test_a_pid_seen_at_the_start_that_has_left_the_tree_isnt_ours(launcher):
+    """Its number can be handed out again."""
+    from types import SimpleNamespace
+    connection = SimpleNamespace(_process=launcher.connection._process, own_pids=frozenset({999999}))
+    assert not CopilotChatRuntime._is_own(connection)(999999)
+
+
+def test_a_tree_lists_the_one_it_started_and_not_this_process(launcher):
+    assert launcher.process.pid in launcher.tree.members()
+    assert os.getpid() not in launcher.tree.members()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows jobs only")
+def test_a_list_too_small_for_a_job_is_tried_larger(launcher):
+    job = launcher.tree._job
+    assert platform_paths._job_process_ids(job, rooms=(1,))  == frozenset()
+    assert launcher.process.pid in platform_paths._job_process_ids(job, rooms=(1, 1024))
+
+
+LAUNCHER_PATH = os.path.join(os.sep, "Code", "bin", "copilot-shim", "copilot.exe")
+REAL_PATH = os.path.join(os.sep, "tools", "copilot.exe")
+
+
+def test_a_real_copilot_is_preferred_to_vs_codes_launcher(monkeypatch):
+    monkeypatch.setattr(platform_paths, "_native_codex", lambda path: True)
+    assert platform_paths.find_copilot(lambda name: LAUNCHER_PATH, [REAL_PATH]) == REAL_PATH
+
+
+def test_a_real_copilot_later_on_the_path_is_found_past_the_launcher(monkeypatch):
+    import shutil
+    monkeypatch.setattr(platform_paths, "_native_codex", lambda path: True)
+    monkeypatch.setattr(platform_paths, "copilot_native_candidates", lambda: [])
+    folder = os.path.dirname(LAUNCHER_PATH)
+    monkeypatch.setenv("PATH", os.pathsep.join([folder, "elsewhere"]))
+    seen = []
+
+    def which(name, path=None):
+        seen.append(path)
+        return LAUNCHER_PATH if path is None else REAL_PATH
+
+    monkeypatch.setattr(shutil, "which", which)
+    assert platform_paths.find_copilot() == REAL_PATH
+    assert seen == [None, "elsewhere"]
+
+
+def test_the_launcher_is_used_if_theres_nothing_else(monkeypatch):
+    monkeypatch.setattr(platform_paths, "_native_codex", lambda path: path == LAUNCHER_PATH)
+    assert platform_paths.find_copilot(lambda name: LAUNCHER_PATH, [REAL_PATH]) == LAUNCHER_PATH
+
+
+def test_a_real_copilot_first_on_the_path_stays_first(monkeypatch):
+    monkeypatch.setattr(platform_paths, "_native_codex", lambda path: True)
+    assert platform_paths.find_copilot(lambda name: REAL_PATH, [LAUNCHER_PATH]) == REAL_PATH
