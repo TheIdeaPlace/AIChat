@@ -85,6 +85,9 @@ class FakeModelServer:
                     self.send_response(500)
                     self.end_headers()
                     return
+                if outer.mode == "slowstart":
+                    outer.stop_event.wait(30)  # as a server loading a model
+                    return
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.end_headers()
@@ -96,6 +99,8 @@ class FakeModelServer:
                     chunk({"role": "assistant", "content": "Hello"})
                     if outer.mode == "hang":
                         outer.stop_event.wait(30)
+                        return
+                    if outer.mode == "noend":
                         return
                     if outer.mode == "unknown":
                         chunk({"something_new": "must never be stored"})

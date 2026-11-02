@@ -12,6 +12,7 @@ says so rather than promising otherwise.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import queue
 import socket
@@ -44,6 +45,17 @@ FORWARDED_NOTE = "The server sends this one to the cloud."
 def _forwarded(model: str) -> bool:
     """Ollama marks a model it forwards off this computer in its name."""
     return model.endswith(("-cloud", ":cloud"))
+
+
+def _shut(response) -> None:
+    """Tell the server to stop, without waiting on whoever is reading: closing a
+    response another thread is reading can wait on that read."""
+    sock = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+    try:
+        if sock is not None:
+            sock.shutdown(socket.SHUT_RDWR)
+    except (OSError, ValueError, AttributeError):
+        pass
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -138,13 +150,10 @@ class OpenAIChatIntegration(Integration):
         with self._lock:
             self._active.add(key)
         try:
-            response = _OPENER.open(request, timeout=300)
-            with self._lock:
-                self._running[key] = response
-            self._read_stream(response, emit, key)
+            self._read_stream(request, emit, key)
         except urllib.error.HTTPError:
             failure = "The model server refused that request."
-        except (OSError, ValueError, AttributeError):
+        except (OSError, ValueError, AttributeError, http.client.HTTPException):
             failure = "The connection to the model server was lost."
         finally:
             with self._lock:
@@ -157,26 +166,36 @@ class OpenAIChatIntegration(Integration):
         else:
             emit(TurnEnded(TurnStatus.STOPPED if stopped else TurnStatus.COMPLETED))
 
-    @staticmethod
-    def _pump(response, lines: "queue.Queue") -> None:
-        """Reads on its own thread: on Windows nothing wakes a read that's
-        waiting on a socket, and a turn must be able to end regardless. If it's
-        left behind, it finishes when the server closes or the read times out."""
+    def _pump(self, request, lines: "queue.Queue", key: str) -> None:
+        """Opens and reads on its own thread, because a turn must be able to end
+        regardless: a server loading a model can take minutes to answer at all,
+        and on Windows nothing wakes a read that's waiting on a socket. Left
+        behind, it finishes when the server closes or the read times out."""
+        response = None
         try:
+            response = _OPENER.open(request, timeout=300)
+            with self._lock:
+                stopping = key in self._stopping
+                if not stopping:
+                    self._running[key] = response
+            if stopping:
+                _shut(response)
+                return
             for raw in response:
                 lines.put(raw)
             lines.put(None)
-        except (OSError, ValueError, AttributeError) as error:
+        except (OSError, ValueError, AttributeError, http.client.HTTPException) as error:
             lines.put(error)
         finally:
-            try:
-                response.close()
-            except (OSError, ValueError, AttributeError):
-                pass
+            if response is not None:
+                try:
+                    response.close()
+                except (OSError, ValueError, AttributeError):
+                    pass
 
-    def _read_stream(self, response, emit: Emit, key: str) -> None:
+    def _read_stream(self, request, emit: Emit, key: str) -> None:
         lines: "queue.Queue" = queue.Queue()
-        threading.Thread(target=self._pump, args=(response, lines), daemon=True, name="model-stream").start()
+        threading.Thread(target=self._pump, args=(request, lines, key), daemon=True, name="model-stream").start()
         while True:
             with self._lock:
                 if key in self._stopping:
@@ -186,7 +205,8 @@ class OpenAIChatIntegration(Integration):
             except queue.Empty:
                 continue
             if raw is None:
-                return
+                # Closed with no ending: a reply cut off isn't a finished one.
+                raise ConnectionError("The stream ended early.")
             if isinstance(raw, Exception):
                 raise raw
             line = raw.decode("utf-8", "replace").strip()
@@ -209,6 +229,8 @@ class OpenAIChatIntegration(Integration):
                 continue
             if isinstance(delta.get("content"), str) and delta["content"]:
                 emit(ReplyText(delta["content"], "reply"))
+            if choice.get("finish_reason"):
+                return
             for field in set(delta) - {"content", "role", "reasoning", "reasoning_content", "tool_calls", "refusal"}:
                 self.drift.unknown(f"delta:{field}")
 
@@ -218,12 +240,5 @@ class OpenAIChatIntegration(Integration):
                 return
             self._stopping.add(ref.native_id)
             response = self._running.get(ref.native_id)
-        if response is None:
-            return
-        # Closing a response another thread is reading can wait on that read,
-        # so its socket is shut down, which ends the read at once.
-        sock = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
-        try:
-            sock.shutdown(socket.SHUT_RDWR) if sock is not None else response.close()
-        except (OSError, ValueError, AttributeError):
-            pass
+        if response is not None:
+            _shut(response)

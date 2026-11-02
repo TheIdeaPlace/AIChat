@@ -21,7 +21,7 @@ from ..contracts import (Activity, AskPermission, AskQuestion, Capability, ChatI
                          PermissionRequest, PlanUpdate, QuestionItem, QuestionRequest, Refused, ReplyText, Status,
                          TurnEnded, TurnStatus, UnknownUpdate, UsageUpdate, effective_capabilities)
 from ..drift import DriftCounters
-from ..policy import checked_decision
+from ..policy import DETAIL_LIMIT, checked_decision
 from .jsonrpc import Connection, RpcError
 
 COMMAND, FILES, QUESTIONS = ("item/commandExecution/requestApproval", "item/fileChange/requestApproval",
@@ -97,6 +97,8 @@ class CodexIntegration(Integration):
         #: Held while the program starts. ``_lock`` isn't, because answering a
         #: request from the window takes it.
         self._connect_lock = threading.Lock()
+        #: Counts closes, so a program still starting when close came isn't kept.
+        self._closes = 0
         self._connection: Optional[Connection] = None
         self._turns: Dict[str, _Turn] = {}
         self._resumed: set = set()
@@ -129,6 +131,7 @@ class CodexIntegration(Integration):
                 if self._connection is not None and not self._connection.closed:
                     return self._connection
                 self._resumed.clear()
+                closes = self._closes
             if self._start is not None:
                 process = self._start()
             else:
@@ -151,8 +154,11 @@ class CodexIntegration(Integration):
                 connection.close()
                 raise
             with self._lock:
-                self._connection = connection
-            return connection
+                if closes == self._closes:
+                    self._connection = connection
+                    return connection
+            connection.close()
+            raise IntegrationError("Codex was turned off as it started.")
 
     def _on_closed(self, connection: Connection) -> None:
         with self._lock:
@@ -250,10 +256,9 @@ class CodexIntegration(Integration):
         finally:
             with self._lock:
                 self._turns.pop(native_id, None)
-                connection = self._connection
-            if connection is not None:
+            if turn.connection is not None:
                 for rpc_id, method, _offered in turn.pending.values():
-                    self._decline(connection, rpc_id, method)
+                    self._decline(turn.connection, rpc_id, method)
 
     @staticmethod
     def _ending(turn: _Turn) -> TurnEnded:
@@ -277,7 +282,8 @@ class CodexIntegration(Integration):
 
     def stop(self, ref: ChatRef) -> None:
         with self._lock:
-            turn, connection = self._turns.get(ref.native_id), self._connection
+            turn = self._turns.get(ref.native_id)
+            connection = turn.connection if turn is not None else None
             if turn is None or connection is None:
                 return
             first = not turn.stop_requested
@@ -293,7 +299,11 @@ class CodexIntegration(Integration):
         def give_up() -> None:
             # Codex ignored the interrupt, so nothing else can end the turn.
             # The app-server is shared: other chats resume on their next message.
-            if not turn.status:
+            # Only if this turn is still the one running: one that has already
+            # ended must not take another chat's turn down with it.
+            with self._lock:
+                running = self._turns.get(ref.native_id) is turn
+            if running and not turn.status:
                 connection.close()
                 turn.done.set()
         timer = threading.Timer(STOP_GRACE_SECONDS, give_up)
@@ -357,16 +367,19 @@ class CodexIntegration(Integration):
         accepted = listed is None or (isinstance(listed, list) and "accept" in listed)
         reason = _text(params.get("reason"), 2000)
         if method == FILES:
-            detail = "\n".join(filter(None, [turn.files.get(_text(params.get("itemId"), 256), ""), reason]))
+            # Allow rests on which files, never on Codex's reason for them alone.
+            files = turn.files.get(_text(params.get("itemId"), 256), "")
+            detail = "\n".join(filter(None, [files, reason]))
             if params.get("grantRoot"):
                 return deny_only, "Codex asks to write outside this chat's folder.", detail
-            return (both if detail and accepted else deny_only), "Codex asks to change files.", detail
-        command = _text(params.get("command"), 2000)
-        lines = [f"Command: {command}" if command else "", f"Folder: {_text(params.get('cwd'), 1000)}", reason]
+            return (both if files and accepted else deny_only), "Codex asks to change files.", detail
+        command = params.get("command") if isinstance(params.get("command"), str) else ""
+        lines = [f"Command: {command[:DETAIL_LIMIT]}" if command else "", f"Folder: {_text(params.get('cwd'), 1000)}", reason]
         detail = "\n".join(filter(None, lines))
         extra = (params.get("kind", "command") != "command" or params.get("networkApprovalContext")
                  or params.get("additionalPermissions")
-                 or params.get("environmentId") not in (None, "local"))
+                 or params.get("environmentId") not in (None, "local")
+                 or len(command) > DETAIL_LIMIT)  # the rest of it couldn't be read
         if extra or not command or not accepted:
             return deny_only, "Codex asks for access The Chat Place can't fully show, so it can only be denied.", detail
         return both, "Codex asks to run a command.", detail
@@ -394,7 +407,8 @@ class CodexIntegration(Integration):
 
     def answer_permission(self, ref: ChatRef, request_id: str, decision: Decision) -> None:
         with self._lock:
-            turn, connection = self._turns.get(ref.native_id), self._connection
+            turn = self._turns.get(ref.native_id)
+            connection = turn.connection if turn is not None else None
             found = turn.pending.pop(request_id, None) if turn is not None else None
         if found is None or connection is None or found[1] == QUESTIONS:
             return
@@ -403,7 +417,8 @@ class CodexIntegration(Integration):
 
     def answer_question(self, ref: ChatRef, request_id: str, answers: Optional[Mapping[str, str]]) -> None:
         with self._lock:
-            turn, connection = self._turns.get(ref.native_id), self._connection
+            turn = self._turns.get(ref.native_id)
+            connection = turn.connection if turn is not None else None
             found = turn.pending.pop(request_id, None) if turn is not None else None
         if found is None or connection is None or found[1] != QUESTIONS:
             return
@@ -563,6 +578,7 @@ class CodexIntegration(Integration):
 
     def close(self) -> None:
         with self._lock:
+            self._closes += 1
             connection, self._connection = self._connection, None
         if connection is not None:
             connection.close()

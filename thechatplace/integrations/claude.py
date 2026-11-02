@@ -30,7 +30,7 @@ from ..contracts import (Activity, AskPermission, AskQuestion, Capability, ChatI
                          PermissionRequest, QuestionItem, QuestionRequest, Refused, ReplyText, Status, TurnEnded,
                          TurnStatus, UnknownUpdate, UsageUpdate, effective_capabilities)
 from ..drift import DriftCounters
-from ..policy import checked_decision
+from ..policy import checked_decision, describe_fields
 
 SESSION_INJECTED = (
     "CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT", "CLAUDE_AGENT_SDK_VERSION", "CLAUDE_PREVIEW_CLASSIFIER_FLOOR",
@@ -109,19 +109,6 @@ def _target(tool_input: dict, limit: int = 2000) -> str:
         if isinstance(value, str) and value.strip():
             return f"{key}: {value[:limit]}"
     return ""
-
-
-def _describe_input(tool_input: dict, limit: int = 4000) -> str:
-    """What a tool will do, in full enough to decide on: its target, and an
-    edit's change. Input with no target this app knows is shown as it is."""
-    target = _target(tool_input)
-    parts = [target] if target else []
-    for key, label in (("old_string", "Replace"), ("new_string", "With"), ("content", "Content")):
-        if isinstance(tool_input.get(key), str):
-            parts.append(f"{label}:\n{tool_input[key][:limit]}")
-    if not parts and tool_input:
-        parts.append(json.dumps(tool_input, ensure_ascii=False)[:limit])
-    return "\n".join(parts)
 
 
 @dataclass
@@ -336,9 +323,12 @@ class ClaudeIntegration(Integration):
                 turn.pending[request_id] = (QUESTION_TOOL, tool_input, tuple(items))
             turn.emit(AskQuestion(QuestionRequest(request_id, tuple(items))))
             return
-        detail = str(tool_input.get("plan") or "") if tool == PLAN_TOOL else _describe_input(tool_input)
-        # With nothing to read, there's nothing to allow.
-        offered = (Decision.ALLOW_ONCE, Decision.DENY) if detail else (Decision.DENY,)
+        if tool == PLAN_TOOL:
+            detail, complete = str(tool_input.get("plan") or ""), True
+        else:
+            detail, complete = describe_fields(tool_input)
+        # Allow sends all of the input, so all of it must be readable first.
+        offered = (Decision.ALLOW_ONCE, Decision.DENY) if detail and complete else (Decision.DENY,)
         summary = ("Claude has a plan and asks to go ahead." if tool == PLAN_TOOL
                    else f"Claude asks to use {tool}.")
         with self._lock:
@@ -482,7 +472,8 @@ class ClaudeIntegration(Integration):
             try:
                 handle = path.open("rb")
             except OSError:
-                continue
+                # Not the same as an empty chat, which is how it would look.
+                raise IntegrationError("Claude's record of this chat couldn't be read.") from None
             with handle:
                 for raw in handle:
                     record = self._parse(raw)

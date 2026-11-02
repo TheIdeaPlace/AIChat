@@ -132,9 +132,88 @@ def test_a_store_that_cant_be_read_or_set_aside_isnt_overwritten(tmp_path, monke
 def test_a_message_read_and_held_shows_once():
     from thechatplace.service import _merged
     one, two = Message("user", "One"), Message("assistant", "Two")
-    assert _merged([one, two], [two]) == [one, two]
-    assert _merged([one], [two]) == [one, two]
-    assert _merged([one, one], [one]) == [one, one]
+    assert _merged([one, two], [two])[0] == [one, two]
+    assert _merged([one], [two])[0] == [one, two]
+    assert _merged([one, one], [one])[0] == [one, one]
+
+
+def test_an_older_message_isnt_mistaken_for_one_just_sent():
+    from thechatplace.service import _merged
+    yes, other = Message("user", "yes"), Message("assistant", "Other")
+    assert _merged([yes, other], [yes])[0] == [yes, other, yes]
+
+
+def test_a_turn_streaming_during_a_load_keeps_writing_to_its_own_message(tmp_path):
+    from thechatplace.contracts import ReplyText
+    from thechatplace.service import ChatService
+    from harness import acp
+    store = Store(tmp_path)
+    integration = acp("answer")
+    service = ChatService([integration], store)
+    ref = ChatRef(integration.id, "chat")
+    store.save_chat(OwnedChat(ref, "T", "F"))
+    store.append_history(ref, Message("user", "Old question"))
+    store.append_history(ref, Message("assistant", "Old answer"))
+    state = service.state(ref)
+    state.messages = [Message("user", "New")]
+    service._on_event(integration, ref, state, ReplyText("Part one", "b"))
+    assert service.load_history(ref)[-1].text == "Part one"
+    service._on_event(integration, ref, state, ReplyText(" and two", "b"))
+    assert [m.text for m in service.messages(ref)] == ["Old question", "Old answer", "New", "Part one and two"]
+
+
+def test_describing_fields_shows_all_of_them_and_says_when_cut():
+    text, complete = policy.describe_fields({"a": "b", "flag": True, "list": [1]})
+    assert complete and text == "a: b\nflag: true\nlist: [1]"
+    text, complete = policy.describe_fields({"a": "x" * (policy.DETAIL_LIMIT + 1)})
+    assert not complete and text.endswith("(cut short)")
+    assert policy.describe_fields("nope") == ("", False)
+
+
+def test_a_slow_provider_doesnt_hold_up_the_list(tmp_path, monkeypatch):
+    import threading
+    import time
+    from thechatplace import service as service_module
+    from thechatplace.contracts import ChatInfo, Status
+    from thechatplace.service import ChatService
+    from harness import acp
+    monkeypatch.setattr(service_module, "LIST_WAIT_SECONDS", 0.2)
+    slow, quick = acp("answer"), acp("answer")
+    slow.id, slow.name = "slow", "Slow"
+    quick.id, quick.name = "quick", "Quick"
+    release = threading.Event()
+    row = ChatInfo(ChatRef("quick", "a"), "Quick chat")
+
+    def hangs():
+        release.wait(5)
+        return [ChatInfo(ChatRef("slow", "b"), "Slow chat")]
+    slow.list_foreign = hangs
+    quick.list_foreign = lambda: [row]
+    store = Store(tmp_path)
+    store.set_enabled("slow", True)
+    store.set_enabled("quick", True)
+    service = ChatService([slow, quick], store)
+    began = time.monotonic()
+    chats, problems = service.list_chats()
+    assert time.monotonic() - began < 2
+    assert [c.title for c in chats] == ["Quick chat"] and problems == ["Slow"]
+    release.set()
+    time.sleep(0.1)
+    chats, problems = service.list_chats()
+    assert {c.title for c in chats} == {"Quick chat", "Slow chat"} and problems == []
+
+
+def test_a_chat_from_elsewhere_is_read_again_each_time(tmp_path):
+    from thechatplace.service import ChatService
+    from harness import acp
+    integration = acp("answer")
+    integration.app_keeps_history = False
+    said = [[Message("user", "One")], [Message("user", "One"), Message("assistant", "Two")]]
+    integration.read_history = lambda ref: said.pop(0)
+    service = ChatService([integration], Store(tmp_path))
+    ref = ChatRef(integration.id, "elsewhere")
+    assert len(service.load_history(ref)) == 1
+    assert len(service.load_history(ref)) == 2
 
 
 def test_turn_details_say_whatever_is_known():

@@ -160,24 +160,27 @@ class MainWindow(wx.Frame):
         current = self.current
 
         def work() -> None:
-            chats, problems = None, []
+            # The list first: reading one chat can take far longer.
             try:
                 chats, problems = self.service.list_chats()
-                if current is not None and not current.owned:
-                    self.service.load_history(current.ref)  # it may have moved on
-            except (IntegrationError, OSError):
-                pass
+                self._after(self._show_chats, chats, problems)
             except Exception:  # noqa: BLE001 - the next refresh tries again
                 pass
-            self._after(self._refresh_done, chats, problems)
+            if current is not None and not current.owned:
+                try:
+                    self.service.load_history(current.ref)  # it may have moved on
+                    self._after(self._show_if_current, current.ref)
+                except Exception:  # noqa: BLE001 - what's showing stays until a read works
+                    pass
+            self._after(self._refresh_done)
         threading.Thread(target=work, daemon=True, name="list-chats").start()
 
-    def _refresh_done(self, chats: Optional[List[ChatInfo]], problems: List[str]) -> None:
+    def _show_if_current(self, ref: ChatRef) -> None:
+        if self.current is not None and self.current.ref == ref:
+            self.show_messages()
+
+    def _refresh_done(self) -> None:
         self._refreshing = False
-        if chats is not None:
-            self._show_chats(chats, problems)
-            if self.current is not None and not self.current.owned:
-                self.show_messages()
         if self._refresh_again:
             self._refresh_again = False
             self.refresh_chats()
@@ -340,7 +343,7 @@ class MainWindow(wx.Frame):
         if queued:
             existing = self.reply.GetValue()
             self.reply.SetValue("\n\n".join(([existing] if existing.strip() else []) + queued))
-        self._end_dialog()
+        self._end_dialog(self.current.ref)
 
     # -- what the service reports ---------------------------------------------
 
@@ -413,6 +416,7 @@ class MainWindow(wx.Frame):
         if state.pending_permission is not None:
             request = state.pending_permission
             dialog = PermissionDialog(self, title, request)
+            dialog.chat_ref = ref
             decision = Decision.DENY
             ended = False
 
@@ -428,6 +432,7 @@ class MainWindow(wx.Frame):
         elif state.pending_question is not None:
             request = state.pending_question
             dialog = QuestionDialog(self, title, request)
+            dialog.chat_ref = ref
             answers = None
 
             def read_answers(shown: QuestionDialog) -> None:
@@ -457,12 +462,13 @@ class MainWindow(wx.Frame):
             if self.current is not None and not self._closing:
                 self._ask_if_waiting(self.current.ref)
 
-    def _end_dialog(self, ref: Optional[ChatRef] = None) -> None:
-        """A request that's been overtaken (the turn ended) can't be answered."""
+    def _end_dialog(self, ref: ChatRef) -> None:
+        """A request that's been overtaken (its own chat's turn ended) can't be
+        answered. Another chat's ending leaves it open."""
         dialog = self._dialog
-        if isinstance(dialog, (PermissionDialog, QuestionDialog)) and dialog.IsModal():
-            if ref is None or self.current is None or self.current.ref == ref:
-                dialog.EndModal(wx.ID_CANCEL)
+        if (isinstance(dialog, (PermissionDialog, QuestionDialog)) and dialog.IsModal()
+                and getattr(dialog, "chat_ref", None) == ref):
+            dialog.EndModal(wx.ID_CANCEL)
 
     # -- other dialogs --------------------------------------------------------
 
@@ -492,6 +498,10 @@ class MainWindow(wx.Frame):
 
     def _chat_started(self, info: ChatInfo) -> None:
         self._add_chat(info)
+        if self._dialog is not None:
+            # Something's being asked: the chat behind it mustn't change.
+            self.say(f"{info.title} is ready in the list.")
+            return
         self.open_chat(info, focus_messages=False)
         self.reply.SetFocus()
 
@@ -524,7 +534,13 @@ class MainWindow(wx.Frame):
             try:
                 for group, value in changes:
                     self.service.set_option(ref, group, value)
-                self._after(self.say, "Options changed." if changes else "No changes.", True)
+                if not changes:
+                    words = "No changes."
+                elif self.service.state(ref).busy:
+                    words = "Options changed. A turn already running may keep the old ones until your next message."
+                else:
+                    words = "Options changed."
+                self._after(self.say, words, True)
             except (IntegrationError, OSError) as error:
                 message = str(error) if isinstance(error, IntegrationError) else "That option couldn't be changed."
                 self._after(self.say, message, True)

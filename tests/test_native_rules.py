@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 from harness import FakeModelServer, Run, claude, codex
-from thechatplace.contracts import (AskPermission, ChatRef, Decision, IntegrationError, OwnedChat, Refused, TurnStatus)
+from thechatplace.contracts import (AskPermission, ChatRef, Decision, IntegrationError, OwnedChat, Refused, ReplyText,
+                                    TurnStatus)
 from thechatplace.integrations import claude as claude_module
 from thechatplace.integrations.claude import (api_key_problem, build_command, check_can_send, child_environment)
 from thechatplace.integrations.openai_chat import OpenAIChatIntegration, check_local_url
@@ -108,11 +109,116 @@ def test_claude_answers_a_question_with_nothing_to_ask(setup):
     assert '"behavior": "deny"' in (data / "claude.log").read_text(encoding="utf-8")
 
 
-def test_claude_offers_allow_only_with_something_to_read():
-    from thechatplace.integrations.claude import _describe_input
-    assert _describe_input({}) == ""
-    assert "old" in _describe_input({"file_path": "a", "old_string": "old", "new_string": "new"})
-    assert "unusual" in _describe_input({"something": "unusual"})
+def test_claude_shows_everything_allow_would_send(setup):
+    make, data = setup
+    run = make(claude("hidden", data))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    request = run.wait(AskPermission).request
+    assert "command: ls" in request.detail and "dangerouslyDisableSandbox: true" in request.detail
+    assert Decision.ALLOW_ONCE in request.decisions
+    run.service.answer_permission(info.ref, request, Decision.DENY)
+    run.end_turn()
+
+
+def test_claude_cant_allow_what_it_cant_show_in_full(setup):
+    make, data = setup
+    run = make(claude("toolong", data))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    request = run.wait(AskPermission).request
+    assert request.decisions == (Decision.DENY,) and "cut short" in request.detail
+    # A forged Allow still comes out as a denial.
+    run.service.answer_permission(info.ref, request, Decision.ALLOW_ONCE)
+    run.end_turn()
+    run.idle(info.ref)
+    assert "assistant:Denied" in run.text(info.ref)
+
+
+def test_an_unreadable_claude_transcript_isnt_an_empty_chat(tmp_path, monkeypatch):
+    folder = tmp_path / "projects" / "one"
+    folder.mkdir(parents=True)
+    path = folder / "abc-123.jsonl"
+    path.write_text("{}", encoding="utf-8")
+    integration = claude_module.ClaudeIntegration(projects_dir=lambda: tmp_path / "projects", program="x")
+    real = Path.open
+
+    def refuses(self, *args, **kwargs):
+        if self.name == path.name:
+            raise PermissionError("held")
+        return real(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", refuses)
+    with pytest.raises(IntegrationError):
+        integration.read_history(ChatRef("claude", "abc-123"))
+
+
+def test_claudes_folder_follows_its_setting(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+    assert platform_paths.claude_projects_dir() == tmp_path / "projects"
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR")
+    assert platform_paths.claude_projects_dir() == Path.home() / ".claude" / "projects"
+
+
+def test_codex_cant_allow_a_command_it_cant_show_in_full(setup):
+    make, data = setup
+    run = make(codex("toolong", data))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    request = run.wait(AskPermission).request
+    assert request.decisions == (Decision.DENY,)
+    run.service.answer_permission(info.ref, request, Decision.DENY)
+    run.end_turn()
+
+
+def test_codexs_reason_alone_cant_allow_a_file_change(setup):
+    make, data = setup
+    run = make(codex("reasononly", data))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    request = run.wait(AskPermission).request
+    assert "harmless typo fix" in request.detail and request.decisions == (Decision.DENY,)
+    run.service.answer_permission(info.ref, request, Decision.DENY)
+    run.end_turn()
+
+
+def test_codex_really_can_edit_when_a_chat_is_set_to(setup):
+    make, data = setup
+    run = make(codex("answer", data))
+    info = run.start(sandbox="workspace-write")
+    run.service.send(info.ref, "Hi")
+    run.end_turn()
+    turn = next(m for m in _codex_sent(data) if m.get("method") == "turn/start")["params"]
+    assert turn["sandboxPolicy"]["type"] == "workspaceWrite" and turn["sandboxPolicy"]["networkAccess"] is False
+
+
+def test_codex_ignoring_an_interrupt_is_closed_after_the_grace(setup, monkeypatch):
+    from thechatplace.integrations import codex as codex_module
+    monkeypatch.setattr(codex_module, "STOP_GRACE_SECONDS", 0.2)
+    make, data = setup
+    run = make(codex("deaf", data))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    run.wait(ReplyText)
+    run.service.stop(info.ref)
+    assert run.end_turn(timeout=10).status is TurnStatus.STOPPED
+
+
+def test_codexs_give_up_spares_a_turn_thats_already_over(setup, monkeypatch):
+    """Its timer firing later must not close what another chat is now using."""
+    from thechatplace.integrations import codex as codex_module
+    monkeypatch.setattr(codex_module, "STOP_GRACE_SECONDS", 0.2)
+    make, data = setup
+    integration = codex("answer", data)
+    run = make(integration)
+    info = run.start()
+    connection = integration._connection
+    turn = codex_module._Turn(lambda event: None, connection=connection, turn_id="x")
+    integration._turns[info.ref.native_id] = turn
+    integration.stop(info.ref)
+    integration._turns.pop(info.ref.native_id)  # it ended some other way
+    import time
+    time.sleep(0.6)
+    assert not connection.closed
 
 
 def test_claude_refuses_an_unknown_control_request_and_carries_on(setup):
@@ -176,6 +282,19 @@ def test_codex_checks_sign_in_and_pins_its_endpoint_when_resuming_too(setup):
     assert methods.index("account/read") < methods.index("thread/resume") < methods.index("turn/start")
     config = next(m for m in sent if m.get("method") == "thread/resume")["params"]["config"]
     assert config["forced_login_method"] == "chatgpt" and config["openai_base_url"] is None
+
+
+def test_codex_ignores_a_replaced_connections_messages(setup):
+    make, data = setup
+    integration = codex("answer", data)
+    make(integration)
+    from thechatplace.integrations.codex import _Turn
+    told = []
+    turn = _Turn(told.append, connection=object(), turn_id="now")
+    integration._turns["thread"] = turn
+    integration._on_notification(object(), "item/agentMessage/delta", {"threadId": "thread", "turnId": "now", "itemId": "a", "delta": "x"})
+    assert told == []
+    integration._turns.clear()
 
 
 def test_codex_ignores_an_earlier_turns_messages(setup):
@@ -363,6 +482,57 @@ def test_closing_a_program_that_stopped_reading_doesnt_hang(tmp_path):
     closing.join(8)
     assert not closing.is_alive(), "close hung"
     assert process.process.poll() is not None
+
+
+def test_plain_chat_cut_off_mid_reply_fails_rather_than_finishing(setup):
+    """Chunked and closed early, which the fake server doesn't otherwise do."""
+    import socket
+    import threading
+    make, data = setup
+    listener = socket.create_server(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+    reply = (b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n"
+             + b"%x\r\n" % 44 + b'data: {"choices":[{"delta":{"content":"Part"}}]}'[:44] + b"\r\n")
+
+    def serve():
+        while True:
+            try:
+                connection, _address = listener.accept()
+            except OSError:
+                return
+            connection.recv(65536)
+            connection.sendall(reply + b"ff\r\ncut")  # promises more, then goes
+            connection.close()
+    threading.Thread(target=serve, daemon=True).start()
+    run = make(OpenAIChatIntegration(id="cut", name="Cut", base_url=f"http://127.0.0.1:{port}/v1"))
+    info = run.start(model="m1")
+    run.service.send(info.ref, "Hi")
+    ended = run.end_turn(timeout=10)
+    assert ended.status is TurnStatus.FAILED and "lost" in ended.message
+    listener.close()
+
+
+def test_plain_chat_closed_with_no_ending_isnt_a_finished_reply(setup):
+    make, data = setup
+    server = FakeModelServer("noend")
+    run = make(OpenAIChatIntegration(id="n", name="N", base_url=server.url))
+    info = run.start(model="m1")
+    run.service.send(info.ref, "Hi")
+    assert run.end_turn(timeout=10).status is TurnStatus.FAILED
+    server.close()
+
+
+def test_plain_chat_can_be_stopped_before_the_server_answers(setup):
+    make, data = setup
+    server = FakeModelServer("slowstart")
+    run = make(OpenAIChatIntegration(id="s", name="S", base_url=server.url))
+    info = run.start(model="m1")
+    run.service.send(info.ref, "Hi")
+    import time
+    time.sleep(0.3)
+    run.service.stop(info.ref)
+    assert run.end_turn(timeout=3).status is TurnStatus.STOPPED
+    server.close()
 
 
 def test_a_late_stop_doesnt_end_the_next_plain_chat_turn():

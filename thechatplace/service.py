@@ -178,7 +178,9 @@ class ChatService:
         messages = self.store.read_history(ref) if integration.app_keeps_history else integration.read_history(ref)
         with self._lock:
             if owned:
-                state.messages = _merged(messages, state.messages)
+                # A turn may be streaming into what's held, so its place follows.
+                state.messages, moved = _merged(messages, state.messages)
+                state.blocks = {block: moved(index) for block, index in state.blocks.items()}
             else:
                 state.messages = list(messages)
             state.loaded = True
@@ -268,14 +270,21 @@ class ChatService:
         self.listener(ref, Notice(text))
 
     def _next_in_queue(self, integration: Integration, ref: ChatRef, state: ChatState) -> None:
+        stranded: List[str] = []
         with self._lock:
-            next_text = state.queue.pop(0) if state.queue and self._is_on(integration) else None
+            if not self._is_on(integration):
+                # Sent later, unprompted, they'd be a surprise. Kept where they
+                # can be read and copied.
+                stranded, state.queue = state.queue, []
+            next_text = state.queue.pop(0) if state.queue else None
             if next_text is None:
                 state.busy = False
             else:
                 state.generation += 1
         if next_text is not None:
             self._start_turn(integration, ref, next_text)
+        if stranded:
+            self._note(ref, state, f"{integration.name} was turned off, so these weren't sent: " + " / ".join(stranded))
 
     def _add_message(self, ref: ChatRef, state: ChatState, message: Message, integration: Integration) -> None:
         with self._lock:
@@ -345,17 +354,17 @@ class ChatService:
         with self._lock:
             queued, state.queue = state.queue, []
             state.pending.clear()
-        threading.Thread(target=self._keep_stopping, args=(ref, state), daemon=True, name="stop-turn").start()
+            generation = state.generation
+        threading.Thread(target=self._keep_stopping, args=(ref, state, generation), daemon=True,
+                         name="stop-turn").start()
         return queued
 
-    def _keep_stopping(self, ref: ChatRef, state: ChatState) -> None:
+    def _keep_stopping(self, ref: ChatRef, state: ChatState, generation: int) -> None:
         """Ask until the turn has ended. A Stop can arrive before a turn has
         finished starting, when an integration has nothing to stop yet, and an
         agent may ignore a cancel that reaches it before its prompt."""
         integration = self.integrations[ref.integration]
         deadline = time.monotonic() + STOP_RETRY_SECONDS
-        with self._lock:
-            generation = state.generation
         while state.busy and state.generation == generation and time.monotonic() < deadline:
             try:
                 integration.stop(ref)
@@ -398,14 +407,17 @@ class ChatService:
             integration.close()
 
 
-def _merged(read: Sequence[Message], held: Sequence[Message]) -> List[Message]:
+def _merged(read: Sequence[Message], held: Sequence[Message]) -> Tuple[List[Message], Callable[[int], int]]:
     """What was read, then what's held that the read didn't include: a message
-    sent while reading mustn't vanish, or show twice if the read caught it."""
-    remaining = list(read)
-    extra = []
-    for message in held:
-        if message in remaining:
-            remaining.remove(message)
-        else:
-            extra.append(message)
-    return list(read) + extra
+    sent while reading mustn't vanish, or show twice if the read caught it. Held
+    messages are newer than anything else read, so only the end of the read can
+    overlap them: an older "yes" isn't the "yes" just sent. Also returns where a
+    held message's index has moved to."""
+    overlap = 0
+    for size in range(min(len(read), len(held)), 0, -1):
+        if list(read[-size:]) == list(held[:size]):
+            overlap = size
+            break
+    return list(read) + list(held[overlap:]), lambda index: len(read) - overlap + index
+
+

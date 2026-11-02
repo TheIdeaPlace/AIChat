@@ -206,6 +206,39 @@ def test_a_request_behind_an_open_dialog_is_said_and_asked_after_it_closes(windo
     assert pump(lambda: not frame.service.state(info.ref).busy)
 
 
+def test_a_dialog_ended_by_its_turn_ending_never_allows(window, tmp_path, monkeypatch):
+    frame = window(acp("ask"))
+    info = _started(frame, tmp_path)
+    answered = []
+    real = frame.service.answer_permission
+    monkeypatch.setattr(frame.service, "answer_permission",
+                        lambda ref, request, decision: (answered.append(decision), real(ref, request, decision)))
+    frame.reply.SetValue("Hi")
+    frame.send()
+    assert pump(lambda: isinstance(frame._dialog, dialogs.PermissionDialog) and frame._dialog.IsModal())
+    # As a turn ending does.
+    frame._end_dialog(ChatRef("somewhere", "else"))
+    assert frame._dialog is not None, "another chat's ending must leave it open"
+    frame._end_dialog(info.ref)
+    assert pump(lambda: frame._dialog is None)
+    assert answered == []
+    frame.service.stop(info.ref)
+    assert pump(lambda: not frame.service.state(info.ref).busy)
+
+
+def test_a_chat_starting_behind_a_dialog_doesnt_change_the_chat(window, tmp_path):
+    frame = window(acp("answer"))
+    one = _started(frame, tmp_path)
+    other = frame.service.start_chat("fakeagent", str(tmp_path), "Chat two", {})
+    dialog = dialogs.TextDialog(frame, "Reading", "Some text")
+    frame._dialog = dialog
+    frame._chat_started(other)
+    assert frame.current.ref == one.ref
+    assert any("Chat two" in s for s in frame.recorder.spoken)
+    frame._dialog = None
+    dialog.Destroy()
+
+
 def test_a_draft_stays_with_its_chat(window, tmp_path):
     frame = window(acp("answer"))
     one = _started(frame, tmp_path)

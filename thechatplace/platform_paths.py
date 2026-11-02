@@ -31,7 +31,9 @@ def app_data_dir() -> Path:
 
 
 def claude_projects_dir() -> Path:
-    return Path.home() / ".claude" / "projects"
+    # The variable is left in Claude's environment, so it's where Claude writes.
+    configured = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (Path(configured) if configured else Path.home() / ".claude") / "projects"
 
 
 #: Run through cmd.exe, a command could be injected from a chat's title, so a

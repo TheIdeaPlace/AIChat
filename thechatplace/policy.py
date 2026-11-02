@@ -7,6 +7,7 @@ agent's Allow carries a caution, and no agent wording reaches a button.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Dict, Iterable, Mapping, Optional, Tuple
 
@@ -45,6 +46,27 @@ def read_acp_options(options: object) -> Optional[AcpPermission]:
         return None
     order = tuple(d for d in (Decision.ALLOW_ONCE, Decision.DENY) if d in ids)
     return AcpPermission(order, ids)
+
+
+#: The most of any one value shown. Past this the request can't be read in
+#: full, so it can't be allowed.
+DETAIL_LIMIT = 8000
+
+
+def describe_fields(fields: object) -> Tuple[str, bool]:
+    """Every field of what would run, as lines, and whether all of it is shown.
+    Only known fields, or the start of a long one, could hide what Allow does:
+    a command followed by something else, or a flag turning a sandbox off."""
+    if not isinstance(fields, Mapping):
+        return "", False
+    lines, complete = [], True
+    for key, value in fields.items():
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        if len(text) > DETAIL_LIMIT:
+            complete = False
+            text = text[:DETAIL_LIMIT] + " (cut short)"
+        lines.append(f"{key}: {text}")
+    return "\n".join(lines), complete
 
 
 def checked_decision(decision: object, offered: Iterable[Decision]) -> Decision:

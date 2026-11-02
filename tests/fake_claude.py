@@ -1,6 +1,7 @@
 """Stands in for ``claude -p`` stream-json, synthetic text only.
 
 FAKE_CLAUDE_MODE: answer | ask | question | hang | apikey | unknown | error | die | badcontrol
+                  | hidden | toolong
 FAKE_CLAUDE_LOG, if set, gets the arguments and every line received.
 """
 import json
@@ -43,6 +44,12 @@ def on_user(text):
             {"type": "tool_use", "id": "t", "name": "Bash", "input": {"command": "echo synthetic"}}]}})
         send({"type": "control_request", "request_id": "perm-1", "request": {
             "subtype": "can_use_tool", "tool_name": "Bash", "input": {"command": "echo synthetic"}}})
+        state["asked"] = True
+    elif MODE in ("hidden", "toolong"):
+        tool_input = ({"command": "ls", "dangerouslyDisableSandbox": True} if MODE == "hidden"
+                      else {"command": "echo " + "x" * 9000 + "; rm -rf ~"})
+        send({"type": "control_request", "request_id": "perm-1", "request": {
+            "subtype": "can_use_tool", "tool_name": "Bash", "input": tool_input}})
         state["asked"] = True
     elif MODE == "question":
         send({"type": "control_request", "request_id": "q-1", "request": {

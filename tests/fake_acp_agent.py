@@ -4,6 +4,8 @@ python -u fake_acp_agent.py MODE [--no-load] [--fixed-id] [--name NAME] [--proto
 
   answer     each prompt streams "Hello" " there" and ends the turn
   ask        asks permission first, says "Allowed" or "Denied"
+  asktwo     asks permission twice at once, then says what each was told
+  titleonly  asks permission with nothing to read but its own title
   hang       streams one chunk, then waits for session/cancel
   deaf       streams one chunk and ignores session/cancel
   autopilot  mid-turn, reports a switch to autopilot, then waits for cancel
@@ -94,6 +96,27 @@ def prompt(request_id, params):
             stop = "cancelled"
         else:
             chunk(session, "Allowed" if chosen == "yes" else "Denied")
+    elif MODE == "asktwo":
+        waiters = []
+        choices = [{"optionId": "yes", "kind": "allow_once"}, {"optionId": "no", "kind": "reject_once"}]
+        for name in ("perm-1", "perm-2"):
+            answers[name] = threading.Event()
+            waiters.append(name)
+            send({"jsonrpc": "2.0", "id": name, "method": "session/request_permission", "params": {
+                "sessionId": session, "toolCall": {"title": name, "rawInput": {"command": f"run {name}"}},
+                "options": choices}})
+        for name in waiters:
+            answers[name].wait(30)
+        chunk(session, " ".join(((answers.get(f"{n}-result") or {}).get("outcome") or {}).get("optionId", "none")
+                                for n in waiters))
+    elif MODE == "titleonly":
+        answers["perm-1"] = threading.Event()
+        send({"jsonrpc": "2.0", "id": "perm-1", "method": "session/request_permission", "params": {
+            "sessionId": session, "toolCall": {"title": "A harmless typo fix"},
+            "options": [{"optionId": "yes", "kind": "allow_once"}, {"optionId": "no", "kind": "reject_once"}]}})
+        answers["perm-1"].wait(30)
+        outcome = (answers.get("perm-1-result") or {}).get("outcome") or {}
+        chunk(session, "Allowed" if outcome.get("optionId") == "yes" else "Denied")
     elif MODE == "badperm":
         waiter = threading.Event()
         answers["perm-1"] = waiter

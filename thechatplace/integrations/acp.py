@@ -90,7 +90,8 @@ class _Live:
     groups: Dict[str, dict] = field(default_factory=dict)
     models: List[dict] = field(default_factory=list)
     current_model: str = ""
-    modes_via_config: bool = False
+    #: The option a mode is set through, whatever the agent calls it.
+    mode_option: str = ""
     pending: Dict[str, Tuple[object, policy.AcpPermission]] = field(default_factory=dict)
     next_request: int = 0
     turn_number: int = 0
@@ -111,6 +112,8 @@ class AcpIntegration(Integration):
         #: Held while a program starts, which can take a minute. ``_lock`` isn't,
         #: because answering a request from the window takes it.
         self._connect_lock = threading.Lock()
+        #: Counts closes, so a program still starting when close came isn't kept.
+        self._closes = 0
         self._connection: Optional[Connection] = None
         self._can_load: Optional[bool] = None
         self._live: Dict[str, _Live] = {}
@@ -174,6 +177,7 @@ class AcpIntegration(Integration):
                 if self._connection is not None and not self._connection.closed:
                     return self._connection
                 self._live.clear()
+                closes = self._closes
             connection = Connection(self._spawn(cwd), self._on_notification, self._on_request,
                                     self._on_closed, self.drift, self.name)
             try:
@@ -187,8 +191,11 @@ class AcpIntegration(Integration):
                 connection.close()
                 raise
             with self._lock:
-                self._connection = connection
-            return connection
+                if closes == self._closes:
+                    self._connection = connection
+                    return connection
+            connection.close()
+            raise IntegrationError(f"{self.name} was turned off as it started.")
 
     def _check_initialize(self, result: object) -> None:
         result = result if isinstance(result, dict) else {}
@@ -273,7 +280,7 @@ class AcpIntegration(Integration):
                 live.config[option["id"]] = option["currentValue"]
                 if option["id"] == "mode" or option.get("category") == "mode":
                     live.mode = option["currentValue"]
-                    live.modes_via_config = True
+                    live.mode_option = option["id"]
 
     def _safety_problem(self, live: _Live) -> Optional[str]:
         return (policy.mode_problem(live.mode, self.definition.safe_modes)
@@ -282,9 +289,9 @@ class AcpIntegration(Integration):
     def _set_mode(self, connection: Connection, live: _Live, mode: str) -> None:
         if mode not in self.definition.safe_modes:
             raise Refused("That mode isn't one The Chat Place can offer for this agent.")
-        if live.modes_via_config:
+        if live.mode_option:
             result = self._request(connection, "session/set_config_option",
-                                   {"sessionId": live.native_id, "configId": "mode", "value": mode})
+                                   {"sessionId": live.native_id, "configId": live.mode_option, "value": mode})
             self._read_settings(live, result)
         else:
             self._request(connection, "session/set_mode", {"sessionId": live.native_id, "modeId": mode})
@@ -316,16 +323,20 @@ class AcpIntegration(Integration):
             raise
         live.loading = False
         self._read_settings(live, result)
-        wanted = chat.options.get("mode")
-        if wanted and wanted != live.mode:
-            try:
+        try:
+            wanted = chat.options.get("mode")
+            if wanted and wanted != live.mode:
                 self._set_mode(connection, live, wanted)
-            except Exception:
-                # Forgotten, so the next turn tries again rather than running
-                # in a mode the chat isn't set to.
-                with self._lock:
-                    self._live.pop(live.native_id, None)
-                raise
+            # A model the chat chose, which may also decide what a turn costs.
+            for group, value in chat.options.items():
+                if group != "mode":
+                    self._apply_option(connection, live, group, value)
+        except Exception:
+            # Forgotten, so the next turn tries again rather than running on
+            # settings the chat isn't set to.
+            with self._lock:
+                self._live.pop(live.native_id, None)
+            raise
         return connection, live
 
     def run_turn(self, chat: OwnedChat, text: str, emit: Emit) -> None:
@@ -431,9 +442,8 @@ class AcpIntegration(Integration):
             live.emit(Notice(f"{self.name} asked for permission without a way to say no, "
                              "so The Chat Place refused. Nothing was allowed."))
             return
-        detail = self._describe_call(params.get("toolCall"))
-        # With nothing to read, there's nothing to allow.
-        decisions = permission.decisions if detail else (Decision.DENY,)
+        detail, can_allow = self._describe_call(params.get("toolCall"))
+        decisions = permission.decisions if can_allow else (Decision.DENY,)
         with self._lock:
             live.next_request += 1
             key = str(live.next_request)
@@ -448,15 +458,26 @@ class AcpIntegration(Integration):
         return self.status().verified
 
     @staticmethod
-    def _describe_call(call: object) -> str:
+    def _describe_call(call: object) -> Tuple[str, bool]:
+        """What a tool call would do, and whether it can be allowed: only with
+        its actual input, files or changes to read, all of it, not the agent's
+        title for it alone. The title is shown, but it's only what the agent says."""
         if not isinstance(call, dict):
-            return ""
-        lines = [_text(call.get("title"), 500)]
-        raw = call.get("rawInput") if isinstance(call.get("rawInput"), dict) else {}
-        for key in ("command", "commandLine", "fileName", "path", "url"):
-            if isinstance(raw.get(key), str):
-                lines.append(f"{key}: {raw[key][:2000]}")
-        return "\n".join(line for line in lines if line)
+            return "", False
+        parts = [policy.describe_fields(call.get("rawInput") or {})]
+        locations = call.get("locations") if isinstance(call.get("locations"), list) else []
+        paths = [_text(place.get("path"), 2000) for place in locations if isinstance(place, dict)]
+        if paths:
+            parts.append(("\n".join(f"File: {path}" for path in paths if path), True))
+        content = call.get("content") if isinstance(call.get("content"), list) else []
+        for item in content:
+            if isinstance(item, dict):
+                shown = {key: value for key, value in item.items() if key != "type" and value is not None}
+                parts.append(policy.describe_fields(shown))
+        evidence = [text for text, _complete in parts if text]
+        complete = all(is_complete for _text_of, is_complete in parts)
+        title = _text(call.get("title"), 500)
+        return "\n".join(filter(None, [title, *evidence])), bool(evidence) and complete
 
     def answer_permission(self, ref: ChatRef, request_id: str, decision: Decision) -> None:
         with self._lock:
@@ -577,6 +598,10 @@ class AcpIntegration(Integration):
             return
         if not any(g.id == group and any(v.id == value for v in g.values) for g in self.chat_options(chat)):
             raise Refused("That isn't one of this chat's options.")
+        self._apply_option(connection, live, group, value)
+        chat.options[group] = value  # so it's put back after a restart
+
+    def _apply_option(self, connection: Connection, live: _Live, group: str, value: str) -> None:
         if group == "session-model":
             self._request(connection, "session/set_model", {"sessionId": live.native_id, "modelId": value})
             live.current_model = value
@@ -590,6 +615,7 @@ class AcpIntegration(Integration):
 
     def close(self) -> None:
         with self._lock:
+            self._closes += 1
             connection, self._connection = self._connection, None
         if connection is not None:
             connection.close()

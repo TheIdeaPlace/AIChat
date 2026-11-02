@@ -176,6 +176,23 @@ def test_an_agent_ignoring_cancel_is_closed_after_the_grace(setup, monkeypatch):
     assert run.end_turn(timeout=10).status is TurnStatus.STOPPED
 
 
+def test_a_late_message_from_a_replaced_connection_is_dropped(setup):
+    run = setup(acp("answer"))
+    info = run.start()
+    current = run.integration._connection
+    live = run.integration._live[info.ref.native_id]
+    told = []
+    live.emit = told.append
+    old = object()
+    update = {"sessionId": info.ref.native_id, "update": {"sessionUpdate": "agent_message_chunk",
+                                                         "content": {"type": "text", "text": "late"}}}
+    run.integration._on_notification(old, "session/update", update)
+    assert told == []
+    run.integration._on_notification(current, "session/update", update)
+    assert len(told) == 1
+    live.emit = None
+
+
 def test_an_old_connection_closing_leaves_its_replacement_alone(setup):
     run = setup(acp("answer"))
     run.start()
@@ -187,19 +204,116 @@ def test_an_old_connection_closing_leaves_its_replacement_alone(setup):
     run.integration._connection = old
 
 
-def test_two_requests_at_once_are_both_answered(setup):
-    run = setup(acp("ask"))
+def test_two_requests_at_once_are_both_asked_and_answered_apart(setup):
+    run = setup(acp("asktwo"))
     info = run.start()
     run.service.send(info.ref, "Hi")
-    first = run.wait(AskPermission).request
-    second = PermissionRequest("other", "Also asked.", "detail", (Decision.DENY,))
-    state = run.service.state(info.ref)
-    state.pending.append(second)
-    assert state.pending_permission is first
+    first, second = run.wait(AskPermission).request, run.wait(AskPermission).request
+    assert "perm-1" in first.detail and "perm-2" in second.detail
     run.service.answer_permission(info.ref, second, Decision.DENY)
-    assert state.pending == [first]
-    run.service.answer_permission(info.ref, first, Decision.DENY)
+    assert run.service.state(info.ref).pending == [first]
+    run.service.answer_permission(info.ref, first, Decision.ALLOW_ONCE)
     assert run.end_turn().status is TurnStatus.COMPLETED
+    run.idle(info.ref)
+    assert "assistant:yes no" in run.text(info.ref)
+
+
+def test_allow_never_rests_on_the_agents_title_alone(setup):
+    run = setup(acp("titleonly"))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    request = run.wait(AskPermission).request
+    assert "A harmless typo fix" in request.detail  # shown, as its words
+    assert request.decisions == (Decision.DENY,)
+    run.service.answer_permission(info.ref, request, Decision.ALLOW_ONCE)
+    run.end_turn()
+    run.idle(info.ref)
+    assert "assistant:Denied" in run.text(info.ref)
+
+
+def test_a_call_is_described_in_full_and_can_be_allowed_only_then():
+    describe = acp_module.AcpIntegration._describe_call
+    detail, can_allow = describe({"title": "T", "rawInput": {"command": "ls", "dangerouslyDisableSandbox": True}})
+    assert can_allow and "dangerouslyDisableSandbox: true" in detail and "command: ls" in detail
+    detail, can_allow = describe({"title": "T", "rawInput": {"command": "x" * 9000 + "; rm -rf ~"}})
+    assert not can_allow and "cut short" in detail
+    detail, can_allow = describe({"title": "T", "locations": [{"path": "a.py"}]})
+    assert can_allow and "File: a.py" in detail
+    detail, can_allow = describe({"title": "T", "content": [{"type": "diff", "path": "a.py", "newText": "new"}]})
+    assert can_allow and "newText: new" in detail
+    assert describe({"title": "T"})[1] is False and describe(None) == ("", False)
+
+
+def test_a_chosen_model_is_put_back_after_a_reconnect(setup, tmp_path):
+    log = tmp_path / "agent.log"
+    run = setup(acp("answer", env={"FAKE_ACP_LOG": str(log)}))
+    info = run.start()
+    run.service.set_option(info.ref, "model", "m2")
+    assert run.service.store.get_chat(info.ref).options["model"] == "m2"
+    run.integration.close()
+    log.write_text("", encoding="utf-8")
+    run.service.send(info.ref, "Hi")
+    assert run.end_turn().status is TurnStatus.COMPLETED
+    sent = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    methods = [m.get("method") for m in sent]
+    put_back = next(m for m in sent if m.get("method") == "session/set_config_option")
+    assert put_back["params"]["configId"] == "model" and put_back["params"]["value"] == "m2"
+    assert methods.index("session/load") < methods.index("session/set_config_option") < methods.index("session/prompt")
+
+
+def test_a_mode_is_set_through_the_option_the_agent_named(setup):
+    integration = acp("answer")
+    live = acp_module._Live("id", "folder")
+    integration._read_config(live, [{"type": "select", "id": "posture", "category": "mode", "currentValue": MODE_AGENT}])
+    assert live.mode == MODE_AGENT and live.mode_option == "posture"
+
+
+def test_two_at_once_starting_it_share_one_program(setup):
+    import threading
+    started = []
+    definition = fake_definition()
+    real = acp("answer", definition=definition)
+    spawn = real._start
+
+    def counting(cwd):
+        started.append(cwd)
+        return spawn(cwd)
+    real._start = counting
+    run = setup(real)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(run.start())) for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(20)
+    assert len(results) == 3 and len(started) == 1
+
+
+def test_a_program_still_starting_when_turned_off_isnt_kept(setup, tmp_path):
+    import threading
+    real = acp("answer")
+    spawn = real._start
+    release = threading.Event()
+
+    def slow(cwd):
+        release.wait(10)
+        return spawn(cwd)
+    real._start = slow
+    run = setup(real)
+    failure = []
+
+    def start():
+        try:
+            run.start()
+        except IntegrationError as error:
+            failure.append(str(error))
+    thread = threading.Thread(target=start)
+    thread.start()
+    real.close()
+    release.set()
+    thread.join(15)
+    assert failure and "turned off" in failure[0]
+    assert real._connection is None
 
 
 def test_two_chats_can_run_at_once_on_one_agent(setup):

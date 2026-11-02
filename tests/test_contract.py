@@ -132,6 +132,40 @@ def test_stop_ends_a_running_turn_and_gives_queued_messages_back(backend, make_r
     assert run.service.state(info.ref).busy is False
 
 
+def test_a_stop_sent_right_after_the_message_still_lands(backend, make_run):
+    """Before the turn has anything to stop. Asked once, it would be lost."""
+    run = make_run("hang")
+    info = _chat(run, backend)
+    run.service.send(info.ref, "First")
+    run.service.stop(info.ref)
+    assert run.end_turn(timeout=15).status is TurnStatus.STOPPED
+    run.idle(info.ref)
+
+
+def test_a_late_stop_doesnt_reach_the_next_turn(backend, make_run):
+    run = make_run()
+    info = _chat(run, backend)
+    run.service.send(info.ref, "First")
+    run.end_turn()
+    run.idle(info.ref)
+    run.service.stop(info.ref)  # nothing to stop now
+    run.service.send(info.ref, "Second")
+    assert run.end_turn().status is TurnStatus.COMPLETED
+
+
+def test_turning_it_off_mid_turn_keeps_a_waiting_message_readable(backend, make_run):
+    run = make_run("hang")
+    info = _chat(run, backend)
+    run.service.send(info.ref, "First")
+    assert run.service.send(info.ref, "Waiting") == "queued"
+    run.wait(ReplyText, timeout=10)
+    run.service.set_enabled(run.integration.id, False)
+    run.service.stop(info.ref)  # gives it back; this is the other path
+    run.end_turn(timeout=15)
+    run.idle(info.ref)
+    assert run.service.state(info.ref).queue == []
+
+
 def test_stop_when_idle_is_harmless(backend, make_run):
     run = make_run()
     info = _chat(run, backend)

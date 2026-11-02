@@ -1,7 +1,8 @@
 """Stands in for ``codex app-server``: NDJSON JSON-RPC, synthetic text only.
 
 Usage: fake_codex.py MODE, with FAKE_CODEX_DIR holding threads across restarts.
-MODE: answer | ask | question | hang | unknown | apikey | fail | die | newrequest | netask
+MODE: answer | ask | question | hang | deaf | unknown | apikey | fail | die | newrequest | netask
+      | toolong | reasononly
 """
 import json
 import os
@@ -62,6 +63,18 @@ def turn(thread, turn_id, text):
         answer = ask("appr-1", "item/commandExecution/requestApproval", {
             "threadId": thread, "turnId": turn_id, "itemId": "c1", "command": "echo synthetic", "cwd": "."})
         reply = "Allowed" if (answer or {}).get("decision") == "accept" else "Denied"
+    elif MODE == "toolong":
+        answer = ask("appr-1", "item/commandExecution/requestApproval", {
+            "threadId": thread, "turnId": turn_id, "itemId": "c1", "cwd": ".",
+            "command": "echo " + "x" * 9000 + "; rm -rf ~"})
+        reply = "Allowed" if (answer or {}).get("decision") == "accept" else "Denied"
+    elif MODE == "reasononly":
+        answer = ask("appr-1", "item/fileChange/requestApproval", {
+            "threadId": thread, "turnId": turn_id, "itemId": "unknown-item", "reason": "harmless typo fix"})
+        reply = "Allowed" if (answer or {}).get("decision") == "accept" else "Denied"
+    elif MODE == "deaf":
+        note("item/agentMessage/delta", threadId=thread, turnId=turn_id, itemId="a1", delta="Working")
+        threading.Event().wait(120)
     elif MODE == "netask":
         answer = ask("appr-1", "item/commandExecution/requestApproval", {
             "threadId": thread, "turnId": turn_id, "itemId": "c1", "command": "curl",

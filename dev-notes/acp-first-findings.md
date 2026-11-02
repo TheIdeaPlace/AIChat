@@ -8,7 +8,7 @@ The question: if The Chat Place had started with what we know now, what would it
 
 ## What held up, with evidence
 
-**A new ACP agent really can be one row.** Hermes was added as a 9-line definition in `integrations/agents.py`, with no other code change. Real Hermes then ran a reply, a permission request that was denied, a reconnect and its model list, through the same window and dialogs as everything else. `main` has about 3,850 lines of Copilot code; here the shared backend and both agent definitions are about 640.
+**A new ACP agent really can be one row.** Hermes was added as a 9-line definition in `integrations/agents.py`, with no other code change. Real Hermes then ran a reply, a permission request that was denied, a reconnect and its model list, through the same window and dialogs as everything else. `main` has about 3,850 lines of Copilot code; here the shared backend, the transport under it and both agent definitions are about 900.
 
 That doesn't mean a new agent is free. Being listed gets it running, not trusted. Hermes shows "This version hasn't been checked" and carries a caution on Allow until someone exercises its approvals, cancel and reload. Its turns can also go to a paid API key, which this app can't check, so it stays off until you turn it on. The first real run also found that Hermes refuses a handshake without `clientInfo.version`, which `main`'s client doesn't send. A generic backend still has to meet each agent.
 
@@ -16,7 +16,7 @@ That doesn't mean a new agent is free. Being listed gets it running, not trusted
 
 **Claude and Codex fit without going through ACP.** They keep their own routes and their guards, and reach the window through the same contracts. Nothing in the contracts had to bend for them. The ACP adapters for Claude and Codex weren't tried, because their billing is the first thing to check (#489 step 3).
 
-**One test suite does work across all of them.** `tests/test_contract.py` runs the same checks on ACP, Claude, Codex and plain chat. It found a real bug straight away: pressing Stop before a turn had finished starting did nothing, on some backends. Fixing that in the service fixed it for all of them.
+**One test suite does work across all of them.** `tests/test_contract.py` runs the same checks on ACP, Claude, Codex and plain chat. It found a real bug straight away: pressing Stop before a turn had finished starting did nothing, on some backends. The fix went in the service, so every backend got it, and the suite now tests a Stop sent right after the message on each one. Where the suite's checks were too weak, a second review's mutations showed it, which is why it's only as good as its tests.
 
 **The drift counters are worth having at once (#466).** The first real run named things no one had noticed: Codex sending `thread/goal/cleared`, `turn/moderationMetadata` and `deprecationNotice`. Then Claude Code updated itself from 2.1.296 to 2.1.316 *while this was being written*. The next run said "this version hasn't been checked" and counted four new transcript record types (`api-request`, `api-request-blob`, `api-request-shape`, `tools-used`). That is #466's whole problem, noticed by the app without anyone reading a changelog.
 
@@ -33,7 +33,7 @@ These aren't comparable as they stand, because `main` does far more. They show r
 
 ## What it cost, and what it would still cost
 
-The architecture was the easy part. Most of `main`'s size is years of behaviour: fixes for specific bugs, each with a test. A rewrite loses those unless each is found again. The review of this branch shows how: an independent review found 35 problems in about 4,700 new lines, including closing a stuck program hanging forever, a tightened permission mode being undone when a turn ended, and a permission request going unasked behind another dialog. Walking it by keyboard found more, such as Alt keys landing on the wrong control. `main` has already paid for that learning.
+The architecture was the easy part. Most of `main`'s size is years of behaviour: fixes for specific bugs, each with a test. A rewrite loses those unless each is found again. The reviews of this branch show how. The first found 35 problems in about 4,700 new lines, including closing a stuck program hanging forever, a tightened permission mode being undone when a turn ended, and a permission request going unasked behind another dialog. The second found 19 more, most seriously that a permission dialog could hide part of what Allow would run. Walking it by keyboard found others, such as Alt keys landing on the wrong control. `main` has already paid for that learning.
 
 That's the main reason to port rather than switch.
 
