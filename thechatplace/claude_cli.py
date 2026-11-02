@@ -1433,6 +1433,9 @@ class TurnRunner:
             #: finish for the ceiling to end; and if the turn ends with no
             #: result since, the reply was said already (#161).
             said_while_waiting = False
+            #: True from a tool or text after an answer until the next result:
+            #: Claude is carrying on, so nothing starts the ceiling meanwhile.
+            carrying_on = False
 
             def settle(outcome: str, final_event: TurnEvent) -> None:
                 """After ``_end_or_wait`` said "closed" or "…waiting": the turn
@@ -1530,6 +1533,7 @@ class TurnRunner:
                         # After an answer, this is Claude carrying on, however
                         # long it takes, not a stuck finish: the next result
                         # starts the ceiling again.
+                        carrying_on = True
                         disarm_ceiling()
                     if event.kind == "tool":
                         self.last_activity = f"using {event.text}"
@@ -1550,10 +1554,15 @@ class TurnRunner:
                             self.background_tasks = tasks
                             if not tasks:
                                 self.waiting_on_background = False
-                        if tasks and (self.waiting_on_background or final is not None):
+                        if tasks and (self.waiting_on_background
+                                      or (final is not None and not carrying_on
+                                          and not self._unanswered)):
                             self.last_activity = ("waiting for background work: "
                                                   + "; ".join(tasks))
-                        elif not tasks and final is not None and last_state == "idle":
+                        elif (had_tasks and not tasks
+                              and self.last_activity.startswith("waiting for background")):
+                            self.last_activity = "working"
+                        if had_tasks and not tasks and final is not None and last_state == "idle":
                             # All done while Claude was idle: the turn it
                             # starts to hear about it ("running") should
                             # follow at once. If it never does, end the turn,
@@ -1564,13 +1573,12 @@ class TurnRunner:
                                 arm_ceiling(wait=BACKGROUND_DONE_WAIT)
                         elif (had_tasks and not tasks and final is not None
                               and last_state == "running" and not self._unanswered
-                              and not said_while_waiting):
+                              and not said_while_waiting and not carrying_on):
                             # A background agent is done, with Claude Code
                             # "running" all along. Claude's follow-up should
                             # start now, and its first tool or text calls this
                             # off; if none comes, end the turn. Read without
                             # the lock, as "running" does.
-                            self.last_activity = "working"
                             arm_ceiling()
                         self._emit(event)
                         continue
@@ -1596,9 +1604,10 @@ class TurnRunner:
                             # Read without the lock on purpose: a Send Now
                             # landing just after only meets the ceiling that
                             # checks again before closing.
-                            if self._unanswered or said_while_waiting:
-                                # On the Send Now message, or on what the
-                                # background work brought back.
+                            if self._unanswered or said_while_waiting or carrying_on:
+                                # On the Send Now message, on what the
+                                # background work brought back, or on Claude's
+                                # own follow-up after a permission answer.
                                 disarm_ceiling()
                             else:
                                 arm_ceiling()
@@ -1606,6 +1615,7 @@ class TurnRunner:
                     if event.kind == "finished":
                         follows_waiting = said_while_waiting
                         said_while_waiting = False
+                        carrying_on = False
                         # The latest result is the turn's, carrying every
                         # refusal and error of the turn. With state events,
                         # more can follow (a background agent's notification
@@ -1664,8 +1674,9 @@ class TurnRunner:
             self._close_stdin()
             process.wait()
             err_thread.join(timeout=2)
-            if (final is not None and not said_while_waiting and not self._cancelled
-                    and process.returncode and self.background_tasks):
+            if (final is not None and not final.is_error and not said_while_waiting
+                    and not self._cancelled and process.returncode
+                    and self.background_tasks):
                 # Claude Code died with an agent going: the answer before it
                 # isn't how the turn ended.
                 detail = next((x for x in reversed(stderr_lines) if x.strip()), "")

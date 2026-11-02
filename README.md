@@ -1470,7 +1470,8 @@ than queuing, and anything already queued goes in then; Turn Status (Ctrl+Shift+
 still running. (A background agent is different: Claude Code keeps working until the agent is done,
 so the turn runs until then, however long that takes, and Claude's latest answer is said at the end,
 as with any turn. Meanwhile the row says working, Turn Status names the agent, and what you send is
-queued unless you steer it (Ctrl+Alt+Enter).)
+queued unless you steer it (Ctrl+Alt+Enter). The answer to a steered message goes in the chat, but
+may not be read out until later.)
 Something meant to run indefinitely, such as a development server, would keep the turn open until
 you press Stop, so ask Claude to start long-running servers in a terminal of your own.
 `claude` is started suspended and only let run once it's in the job, so nothing it starts can
