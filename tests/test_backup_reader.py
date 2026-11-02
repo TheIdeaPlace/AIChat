@@ -415,7 +415,6 @@ def test_a_real_backups_long_claude_project_path_is_restored_and_removed(tmp_pat
     project = 'C--Users-kelly-' + '-'.join(['scratch-workspaces-e2e89692'] * 7)
     native = '11111111-2222-3333-4444-555555555555'
     name = f'claude/home/projects/{project}/{native}.jsonl'
-    assert len(str(tmp_path)) + len(name) > 200
     line = {'type': 'assistant', 'uuid': 'a1', 'sessionId': native, 'cwd': 'C:/work',
             'timestamp': '2026-11-01T00:00:00.000Z',
             'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': 'Synthetic reply'}]}}
@@ -424,6 +423,75 @@ def test_a_real_backups_long_claude_project_path_is_restored_and_removed(tmp_pat
     with zipfile.ZipFile(tmp_path / 'b.zip') as archive, BackupReader(archive, manifest) as reader:
         root = reader.root
         path = root.joinpath(*name.split('/'))
+        # CI's runners have long paths turned on, where a plain path works too,
+        # and most PCs don't: so the form is checked as well as the reading.
+        assert str(root).startswith('\\\\?\\') and not str(reader.plain_root).startswith('\\\\')
         assert len(str(path)) > 260 and path.read_bytes() == content
         assert [s.native_id for s in reader.sessions()] == [native]
     assert not os.path.lexists(root)
+
+
+def test_codex_gets_the_plain_folder_and_the_outcome_says_the_plain_one(tmp_path, monkeypatch):
+    from thechatplace import backup as backup_module, backup_reader, imported_store
+    from thechatplace.providers import codex_archive
+    name = 'codex/home/sessions/rollout.jsonl'
+    manifest = _archive_with(tmp_path / 'b.zip', name, b'{}\n')
+    given = []
+
+    class Archive:
+        notes = []
+
+        def __init__(self, root, _manifest):
+            given.append(root)
+
+        def sessions(self):
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(codex_archive, 'CodexArchive', Archive)
+    with zipfile.ZipFile(tmp_path / 'b.zip') as archive, backup_reader.BackupReader(archive, manifest) as reader:
+        reader.sessions()
+        assert given == [reader.plain_root] and not str(given[0]).startswith('\\\\')
+
+    monkeypatch.setattr(backup_reader.BackupReader, '_remove_scratch',
+                        lambda self: setattr(self, 'left_behind', True))
+    monkeypatch.setattr(backup_module, 'opened', _opened_as_is)
+    outcome = imported_store.restore_backup(tmp_path / 'b.zip', manifest, None, confirm=lambda *a: True,
+                                            store=imported_store.ImportedStore(tmp_path / 'store'))
+    assert outcome.left_behind and not outcome.left_behind.startswith('\\\\')
+
+
+def _opened_as_is(path, _passphrase, _cancelled=None):
+    from contextlib import nullcontext
+    return nullcontext(path)
+
+
+def _scratch_link(target, link):
+    import os
+    import subprocess
+    if os.name == 'nt':
+        subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(target)], check=True,
+                       capture_output=True)
+    else:
+        os.symlink(target, link)
+
+
+def test_a_link_named_like_a_leftover_is_left_and_what_it_points_at_survives(tmp_path, monkeypatch):
+    """A review reproduced this: a junction with the name had its target deleted,
+    at every start of the app. Anyone can make one in a shared temp folder."""
+    from thechatplace import backup_reader
+    temp = tmp_path / 'temp'
+    temp.mkdir()
+    precious = tmp_path / 'precious'
+    precious.mkdir()
+    (precious / 'keep.txt').write_text('keep', encoding='utf-8')
+    link = temp / (backup_reader._SCRATCH_PREFIX + 'planted')
+    _scratch_link(precious, link)
+    real = temp / (backup_reader._SCRATCH_PREFIX + 'real')
+    real.mkdir()
+    monkeypatch.setattr(backup_reader.tempfile, 'gettempdir', lambda: str(temp))
+    backup_reader.remove_leftover_scratch(older_than=0)
+    assert (precious / 'keep.txt').read_text(encoding='utf-8') == 'keep'
+    assert not real.exists()

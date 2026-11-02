@@ -69,11 +69,24 @@ def _remove_tree(folder):
             pass
 
     # A plugin Codex fetched can go past Windows' 260 characters.
-    folder = platform_paths.long_path(Path(folder).resolve())
+    # Not resolved: that would follow a link in place of refusing it.
+    folder = platform_paths.long_path(Path(os.path.abspath(folder)))
     if sys.version_info >= (3, 12):
         shutil.rmtree(folder, onexc=writable_then_retry)
     else:  # pragma: no cover - 3.12 is what's built and tested
         shutil.rmtree(folder, onerror=writable_then_retry)
+
+
+def _is_our_scratch(folder) -> bool:
+    """A real folder of this user's. Anyone can name a link or junction after
+    one in a shared temp folder, and deleting through it would delete where it
+    points."""
+    if folder.is_symlink() or (hasattr(os.path, 'isjunction') and os.path.isjunction(folder)):
+        return False
+    details = os.lstat(folder)
+    if not stat.S_ISDIR(details.st_mode):
+        return False
+    return not hasattr(os, 'getuid') or details.st_uid == os.getuid()
 
 
 def remove_leftover_scratch(now=None, older_than=_SCRATCH_STALE_SECONDS):
@@ -89,7 +102,8 @@ def remove_leftover_scratch(now=None, older_than=_SCRATCH_STALE_SECONDS):
     for folder in found:
         try:
             # Not compared at 0: a file's time can be just ahead of the clock.
-            if (not older_than or now - folder.stat().st_mtime > older_than) and folder.is_dir():
+            if _is_our_scratch(folder) and (
+                    not older_than or now - folder.stat().st_mtime > older_than):
                 _remove_tree(folder)
         except OSError:
             continue
@@ -113,8 +127,8 @@ class BackupReader:
         # In the long form, as a backup's own paths can pass Windows' 260
         # characters: Claude names a project's folder after its whole path,
         # so a real backup holds some that a plain open or mkdir refuses.
-        self._plain_root = Path(self._temporary.name)
-        self.root = platform_paths.long_path(self._plain_root.resolve())
+        self.plain_root = Path(self._temporary.name)
+        self.root = platform_paths.long_path(self.plain_root.resolve())
         self._sessions = None
         self._readers = {}
         self._codex = None
@@ -155,8 +169,8 @@ class BackupReader:
         to its scratch profile as it dies (it fetches plugins), and Windows
         then says the folder isn't empty: that must not fail a restore whose
         chats are already saved. So does a path too long for a plain delete,
-        which the last pass reaches. If some of it stays, ``left_behind`` says so,
-        and the app's next start tries again."""
+        which the long-form delete reaches. If some of it stays, ``left_behind``
+        says so, and the app's next start tries again."""
         for attempt in range(_SCRATCH_TRIES):
             try:
                 self._temporary.cleanup()
@@ -384,9 +398,10 @@ class BackupReader:
             return []
         from .providers.codex_archive import CodexArchive
         try:
-            # The plain form: Codex is started in this folder, and Windows can't
-            # start a process in a long-form one. Its own paths are short.
-            self._codex = CodexArchive(self._plain_root, self.manifest)
+            # The plain form: these become Codex's home, temp folders and the paths
+            # written into its index, so Codex gets ordinary ones, as it does
+            # everywhere else. Its own paths are short.
+            self._codex = CodexArchive(self.plain_root, self.manifest)
             result = []
             for info in self._codex.sessions():
                 session = self._from_info(info)

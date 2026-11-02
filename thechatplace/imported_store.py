@@ -492,7 +492,7 @@ def restore_backup(path, manifest: dict, passphrase: Optional[str], *, confirm,
             BackupReader(archive, manifest, cancelled=cancelled) as reader:
         outcome = restore(reader)
     if outcome is not None and reader.left_behind:
-        outcome.left_behind = str(reader.root)
+        outcome.left_behind = str(reader.plain_root)  # said aloud: no \\?\ prefix
     return outcome
 
 
