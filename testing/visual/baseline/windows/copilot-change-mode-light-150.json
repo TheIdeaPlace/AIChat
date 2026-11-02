@@ -1,0 +1,121 @@
+{
+ "title": "Change Permission Mode",
+ "class": "SingleChoiceDialog",
+ "size": [
+  967,
+  290
+ ],
+ "client": [
+  945,
+  234
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Mode for Plan the synthetic probe project's long refactor, now Auto:",
+   "rect": [
+    23,
+    23,
+    542,
+    26
+   ],
+   "best": [
+    542,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "listBox",
+   "label": "",
+   "rect": [
+    25,
+    74,
+    899,
+    79
+   ],
+   "best": [
+    899,
+    79
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Agent: asks before running commands or changing files",
+    "Plan: plans first and doesn't edit your files; asks before anything else",
+    "Auto: reads, and changes files, in the chat's folder without asking; asks before running anything else (now)"
+   ],
+   "selection": 2
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    687,
+    183,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    811,
+    183,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticLine",
+   "name": "staticLine",
+   "label": "",
+   "rect": [
+    16,
+    167,
+    915,
+    2
+   ],
+   "best": [
+    -1,
+    2
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

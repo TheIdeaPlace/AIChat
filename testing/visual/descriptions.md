@@ -435,9 +435,33 @@ The same 680 by 620 dialog as copilot-new, titled "Continue Here: Copilot still 
 
 **What looks off:** Nothing.
 
+## chat-permissions-copilot: File, Chat Permissions for a Copilot chat in Auto (#426)
+
+A 666 by 513 dialog titled "Chat Permissions: Copilot preview". "Permission mode:" with a read-only box, "Auto: reads and edits inside its folder without asking", and Change... to its right. "Allowed for this chat:" heads a list taking about a third of the height, with two rows ("Exactly this command: npm run build. Allowed 19 October 2026 at 03:53."), the first selected, white on blue. Below it, in a row, Remove..., Remove All... and Restart Copilot on the left, Close on the right. "About these permissions:" heads a read-only box filling the rest, scrolled to its top. At 150% everything is larger and the four buttons still fit in the row with room to spare. In High Contrast Aquatic the dialog is near-black with white text and the selected row cyan with dark text (#8EE3F0 and #061B4D, 11.3:1 measured).
+
+**What looks off:** Nothing.
+
+## chat-permissions-copilot-moved: Chat Permissions while a chat's commands ask until Restart Copilot (#426)
+
+The same dialog, with "Commands in this chat ask until you use Restart Copilot, in File, Chat Permissions, since a command you allowed may have moved Copilot's shell. Auto's file changes are still answered for you." as the first paragraph of the About box.
+
+**What looks off:** Nothing.
+
+## copilot-permission-keep: Copilot asks to run a command that can be kept for the chat (#426)
+
+Like copilot-permission, with "Run the tests", "Command:", "npm test" and a paragraph about Allow for This Chat in the box. "Allow for This Chat" sits alone, right-aligned, between the box and the row of Allow Once, Deny (the default, outlined) and Answer Later.
+
+**What looks off:** The box is mostly empty for a short request, as in copilot-permission.
+
+## main-copilot-auto: A Copilot chat started here in Auto (#426)
+
+Like main-copilot-owned, with the heading ending "Copilot chat, Auto." and "Copilot is working." under the buttons.
+
+**What looks off:** Nothing beyond the cut session rows, which is normal for that list.
+
 ## copilot-change-mode: Change Permission Mode for an owned Copilot chat in plan mode
 
-wx's standard single-choice dialog, 479 by 189, titled "Change Permission Mode" (#424). The prompt reads "Mode for Plan the synthetic probe project's long refactor, now plan mode:", black on #F0F0F0 (18.4:1). Below it a list with two rows: "Agent: asks before running commands or changing files", black on white (21:1), and, selected, "Plan: plans first and doesn't edit your files; asks before anything else (now)", white on the system blue (#FFFFFF on #0078D4, 4.5:1). The selected row's text ends just short of the list's scroll bar, in full. "OK" (default) and "Cancel" sit at the bottom right. In High Contrast Aquatic the dialog is near-black with white text (16.3:1), the selected row is light aqua with dark text (#202020 on #8EE3F0, 11.2:1), and OK is filled light aqua.
+wx's standard single-choice dialog, 647 by 189 so the Auto row fits, titled "Change Permission Mode" (#424, #426). It lists Agent, Plan and Auto, with Auto selected and marked "(now)". The prompt reads "Mode for Plan the synthetic probe project's long refactor, now Auto:", black on #F0F0F0 (18.4:1). Below it a list with two rows: "Agent: asks before running commands or changing files", black on white (21:1), and, selected, "Plan: plans first and doesn't edit your files; asks before anything else (now)", white on the system blue (#FFFFFF on #0078D4, 4.5:1). The selected row's text ends just short of the list's scroll bar, in full. "OK" (default) and "Cancel" sit at the bottom right. In High Contrast Aquatic the dialog is near-black with white text (16.3:1), the selected row is light aqua with dark text (#202020 on #8EE3F0, 11.2:1), and OK is filled light aqua.
 
 **What looks off:** The list keeps a scroll bar though both rows fit, which is wx's own list. Nothing else.
 

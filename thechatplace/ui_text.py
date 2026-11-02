@@ -75,13 +75,15 @@ SHORTCUTS = [
                          "another app here, as a copy you can reply to (the original isn't "
                          "changed)"),
         ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes, Codex file access and "
-                         "approval reviewer, or Copilot agent or plan mode for the selected (or "
-                         "loaded) Chat Place session (File, Change Effort and Change Model are "
-                         "beside it)"),
+                         "approval reviewer, or Copilot agent mode, plan mode or Auto for the "
+                         "selected (or loaded) Chat Place session (File, Change Effort and Change "
+                         "Model are beside it)"),
         ("Ctrl+Shift+H", "Chat Permissions: the selected (or loaded) Chat Place chat's permission "
-                         "mode, and, for a Claude chat, the commands and tools it may use without "
-                         "asking (Delete or Remove takes one back, and Remove All takes them all) "
-                         "and the rules from Claude Code's own settings for its folder"),
+                         "mode, and the commands and tools it may use without asking: for a "
+                         "Claude chat, those it keeps and the rules from Claude Code's own "
+                         "settings for its folder; for a Copilot chat, the commands allowed for it "
+                         "and your rules for Copilot (Delete or Remove takes one back, and Remove "
+                         "All takes them all)"),
         ("F5", "Refresh the list now and put it back in order (it also refreshes itself "
                "every few seconds, without moving rows while you're in it)"),
         ("Alt+V, O", "Sort Sessions: by status, newest first, oldest first, by title or "
