@@ -43,7 +43,7 @@ def set_accessible_name(control: wx.Window, label: str) -> None:
     gtk_a11y.set_label(control, label)
     # A combo box too (#154): Windows names one by the text in it, so the
     # Folder box was read as its path rather than as Folder.
-    if not isinstance(control, (wx.TextCtrl, wx.ComboBox)):
+    if not isinstance(control, (wx.TextCtrl, wx.ComboBox, wx.Choice)):
         return
     existing = getattr(control, "_hub_accessible", None)
     if existing is not None:

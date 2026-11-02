@@ -21,11 +21,11 @@ from . import a11y
 _BUTTON_LABELS = {Decision.ALLOW_ONCE: "&Allow Once", Decision.DENY: "&Deny"}
 
 
-def _labelled(parent: wx.Window, sizer: wx.Sizer, label: str, control: wx.Window, proportion: int = 0) -> None:
+def _labelled(parent: wx.Window, sizer: wx.Sizer, label: str, make: Callable[[], wx.Window], proportion: int = 0) -> wx.Window:
+    """A label and the control ``make`` creates, in that order. Windows finds an
+    Alt key's control, and a screen reader a control's label, by creation order."""
     text = wx.StaticText(parent, label=label)
-    # The control exists already. Its label goes ahead of it, for reading order
-    # and because Windows looks for a label just before a control.
-    text.MoveBeforeInTabOrder(control)
+    control = make()
     sizer.Add(text, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
     sizer.Add(control, proportion, wx.EXPAND | wx.ALL, 8)
     name = label.replace("&", "").rstrip(":")
@@ -34,6 +34,7 @@ def _labelled(parent: wx.Window, sizer: wx.Sizer, label: str, control: wx.Window
         a11y.set_list_items_accessible(control, lambda: name, lambda _index: None)
     else:
         a11y.set_accessible_name(control, name)
+    return control
 
 
 def _value_label(label: str, description: str) -> str:
@@ -64,9 +65,9 @@ class PermissionDialog(wx.Dialog):
         self.decision = Decision.DENY
         self.request = request
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.text = wx.TextCtrl(self, value=ui_text.permission_text(request.summary, request.detail, request.caution),
-                                style=wx.TE_MULTILINE | wx.TE_READONLY)
-        _labelled(self, sizer, "What's being asked:", self.text, 1)
+        words = ui_text.permission_text(request.summary, request.detail, request.caution)
+        self.text = _labelled(self, sizer, "What's being asked:",
+                              lambda: wx.TextCtrl(self, value=words, style=wx.TE_MULTILINE | wx.TE_READONLY), 1)
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.buttons: Dict[Decision, wx.Button] = {}
         for decision in request.decisions:
@@ -109,13 +110,12 @@ class QuestionDialog(wx.Dialog):
         for item in request.items:
             choices, other = None, None
             if item.choices:
-                choices = wx.ListBox(self, choices=[_value_label(c.label, c.description) for c in item.choices])
-                _labelled(self, sizer, item.prompt, choices, 1)
+                rows = [_value_label(c.label, c.description) for c in item.choices]
+                choices = _labelled(self, sizer, item.prompt, lambda rows=rows: wx.ListBox(self, choices=rows), 1)
                 first = first or choices
             if item.allow_other:
                 label = "Or type your own answer:" if item.choices else item.prompt
-                other = wx.TextCtrl(self)
-                _labelled(self, sizer, label, other)
+                other = _labelled(self, sizer, label, lambda: wx.TextCtrl(self))
                 first = first or other
             self._controls.append((item, choices, other))
         self.error = wx.StaticText(self, label="")
@@ -165,13 +165,13 @@ class OptionControls:
         self.groups = tuple(groups)
         self.choices: Dict[str, wx.Choice] = {}
         for group in self.groups:
-            choice = wx.Choice(parent, choices=[_value_label(v.label, v.description) for v in group.values])
+            rows = [_value_label(v.label, v.description) for v in group.values]
+            choice = _labelled(parent, sizer, group.label + ":", lambda rows=rows: wx.Choice(parent, choices=rows))
             ids = [v.id for v in group.values]
             if group.current in ids:
                 choice.SetSelection(ids.index(group.current))
             elif ids:
                 choice.SetSelection(0)
-            _labelled(parent, sizer, group.label + ":", choice)
             self.choices[group.id] = choice
 
     def values(self) -> Dict[str, str]:
@@ -211,12 +211,9 @@ class NewChatDialog(wx.Dialog):
         self._generation = 0
         self.option_controls: Optional[OptionControls] = None
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.provider = wx.Choice(self, choices=[name for _id, name in providers])
-        _labelled(self, sizer, "&AI:", self.provider)
-        self.title_box = wx.TextCtrl(self)
-        _labelled(self, sizer, "&Title:", self.title_box)
-        self.folder = wx.TextCtrl(self, value=folder)
-        _labelled(self, sizer, "&Folder:", self.folder)
+        self.provider = _labelled(self, sizer, "&AI:", lambda: wx.Choice(self, choices=[name for _id, name in providers]))
+        self.title_box = _labelled(self, sizer, "&Title:", lambda: wx.TextCtrl(self))
+        self.folder = _labelled(self, sizer, "&Folder:", lambda: wx.TextCtrl(self, value=folder))
         browse = wx.Button(self, label="&Browse…")
         browse.Bind(wx.EVT_BUTTON, self._on_browse)
         sizer.Add(browse, 0, wx.LEFT | wx.BOTTOM, 8)
@@ -294,13 +291,13 @@ class ProvidersDialog(wx.Dialog):
         self.rows, self._is_on, self._set_on, self._details = tuple(rows), is_on, set_on, details
         self._generation = 0
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.list = wx.ListBox(self, choices=[self._row(i) for i in range(len(self.rows))])
-        _labelled(self, sizer, "&Providers:", self.list, 1)
+        self.list = _labelled(self, sizer, "&Providers:",
+                              lambda: wx.ListBox(self, choices=[self._row(i) for i in range(len(self.rows))]), 1)
         self.toggle = wx.Button(self, label="&Turn On")
         self.toggle.Bind(wx.EVT_BUTTON, self._on_toggle)
         sizer.Add(self.toggle, 0, wx.LEFT, 8)
-        self.detail = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        _labelled(self, sizer, "&About this provider:", self.detail, 2)
+        self.detail = _labelled(self, sizer, "&About this provider:",
+                                lambda: wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY), 2)
         close = wx.Button(self, wx.ID_CANCEL, "Close")
         sizer.Add(close, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)

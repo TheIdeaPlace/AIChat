@@ -201,3 +201,14 @@ def test_a_row_shows_when_a_chat_needs_you(window, tmp_path):
     assert any("needs you" in s for s in frame.recorder.spoken)
     frame.service.stop(info.ref)
     assert pump(lambda: not frame.service.state(info.ref).busy)
+
+
+def test_a_dialogs_labels_come_before_their_controls(app, tmp_path):
+    """Alt keys and screen readers both go by creation order: the walk found
+    Alt+A landing on the wrong control when a label came after."""
+    dialog = dialogs.NewChatDialog(None, [("one", "One")], str(tmp_path), lambda provider: ())
+    children = list(dialog.GetChildren())
+    for label, control in (("&AI:", dialog.provider), ("&Title:", dialog.title_box), ("&Folder:", dialog.folder)):
+        index = children.index(control)
+        assert children[index - 1].GetLabel() == label
+    dialog.Destroy()
