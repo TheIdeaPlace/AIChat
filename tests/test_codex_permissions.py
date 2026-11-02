@@ -495,7 +495,7 @@ def test_mode_change_revokes_rules_even_if_native_policy_check_fails(tmp_path, m
         service.close()
 
 
-def test_telling_the_window_of_a_kept_approval_doesnt_end_the_listener(tmp_path):
+def test_the_window_hears_of_a_kept_approval(tmp_path):
     """Found with real Codex: a kept approval's notice is named by a number,
     which the check for review notices took for text. The exception ended the
     listener and the turn hung. prepared_runtime replaces _notify, so this needs
@@ -505,8 +505,59 @@ def test_telling_the_window_of_a_kept_approval_doesnt_end_the_listener(tmp_path)
         service.allow_for_chat(record, req)
         executor.current = [replace(req, request_id=2, command='git commit -m second', proposed_prefix=())]
         assert service._auto_answer(proof, executor)
-        assert service.snapshot(record.cli_session_id).permission_notices[0][:2] == ('turn', 2)
+        heard = []
+        service._on_update = heard.append
         del service._notify  # back to the class's own
         service._notify(record.cli_session_id)
+        assert heard[-1].permission_notices[0][:2] == ('turn', 2)
+    finally:
+        service.close()
+
+
+def test_a_failure_saving_doesnt_stop_the_window_hearing(tmp_path, monkeypatch):
+    """Saving is only for showing later. A message taken from the queue must
+    still come back to the window, or it's lost."""
+    from thechatplace.providers import codex_runtime
+    service, connection, record, proof, executor, req = prepared_runtime(tmp_path)
+    try:
+        heard, failures = [], []
+        monkeypatch.setattr(codex_runtime, 'record_failure', failures.append)
+
+        def broken(*_args):
+            raise TypeError('not a save problem it expected')
+        monkeypatch.setattr(service, '_save_for_later', broken)
+        service._on_update = heard.append
+        del service._notify
+        service._notify(record.cli_session_id, unsent=('waiting message',))
+        assert heard and heard[-1].unsent == ('waiting message',)
+        assert len(failures) == 1
+    finally:
+        service.close()
+
+
+def test_a_failure_with_one_chat_doesnt_end_the_listener(tmp_path, monkeypatch):
+    """One listener serves every chat on a connection: it goes on, and the next
+    chat is still heard."""
+    from thechatplace.providers import codex_runtime
+    service, connection, record, proof, executor, req = prepared_runtime(tmp_path)
+    try:
+        failures, heard = [], []
+        monkeypatch.setattr(codex_runtime, 'record_failure', failures.append)
+        other = SimpleNamespace(native_id='other', connection=proof.connection)
+        service._proofs = {proof.native_id: proof, 'other': other}
+        calls = []
+
+        def listen_to(native_id, _proof, _executor, _changed):
+            calls.append(native_id)
+            if native_id == proof.native_id and calls.count(native_id) == 1:
+                raise RuntimeError('cannot start a new thread')
+            heard.append(native_id)
+            if len(heard) >= 2:
+                service._stop.set()
+        monkeypatch.setattr(service, '_listen_to', listen_to)
+        drained = SimpleNamespace(drain=lambda: {proof.native_id, 'other'})
+        service._stop.clear()
+        service._listen(proof.connection, drained)
+        assert 'other' in heard and len(failures) == 1
     finally:
         service.close()
