@@ -864,22 +864,12 @@ class CodexChatRuntime:
                               + tuple(self._queues.pop(native_id, ())))
             with self._plan_lock:
                 state = self.snapshot(native_id)
-                reviews = tuple(row for row in state.permission_notices if row[1].startswith('auto-review:'))
-                if reviews and self._saved_reviews.get(native_id) != reviews:
-                    try:
-                        self.review_store.remember(native_id, state.turn_id, [(row[1], row[2]) for row in reviews])
-                        self._saved_reviews[native_id] = reviews
-                    except (OSError, ValueError):
-                        pass  # Never interrupt execution to save display history.
-                if state.plan_received:
-                    signature = (state.turn_id, tuple((t.task_id, t.subject, t.status) for t in state.tasks))
-                    if self._saved_plans.get(native_id) != signature:
-                        try:
-                            self.plan_store.save(native_id, state.turn_id, state.tasks)
-                            self._saved_plans[native_id] = signature
-                        except (OSError, ValueError):
-                            # Progress persistence must never cancel a running turn.
-                            pass
+                # Saving is only for showing later. If it fails the window must
+                # still hear this, with any message taken from the queue above.
+                try:
+                    self._save_for_later(native_id, state)
+                except Exception as error:
+                    record_failure(error)
             if unsent:
                 state = self.snapshot(native_id, unsent=unsent)
             try:
@@ -887,7 +877,31 @@ class CodexChatRuntime:
             except Exception:
                 pass  # a closing UI cannot change execution or replay a prompt
 
+    def _save_for_later(self, native_id, state):
+        # A kept approval's notice is named by Codex's request id, a number,
+        # not a review's text. Raising here ended the listener and hung the turn.
+        reviews = tuple(row for row in state.permission_notices
+                        if str(row[1]).startswith('auto-review:'))
+        if reviews and self._saved_reviews.get(native_id) != reviews:
+            try:
+                self.review_store.remember(native_id, state.turn_id, [(row[1], row[2]) for row in reviews])
+                self._saved_reviews[native_id] = reviews
+            except (OSError, ValueError):
+                pass  # Never interrupt execution to save display history.
+        if state.plan_received:
+            signature = (state.turn_id, tuple((t.task_id, t.subject, t.status) for t in state.tasks))
+            if self._saved_plans.get(native_id) != signature:
+                try:
+                    self.plan_store.save(native_id, state.turn_id, state.tasks)
+                    self._saved_plans[native_id] = signature
+                except (OSError, ValueError):
+                    # Progress persistence must never cancel a running turn.
+                    pass
+
     def _listen(self, connection, executor):
+        """One listener serves every chat on the connection, so a failure with
+        one chat is recorded and goes no further: if the listener ended, every
+        Codex chat would stop updating with nothing said."""
         while not self._stop.wait(.05):
             try:
                 changed = executor.drain()
@@ -899,21 +913,30 @@ class CodexChatRuntime:
                         self._stopping.discard(proof.native_id)
                         self._problems[proof.native_id] = safe_reason(error) or 'Codex connection interrupted. ' + STOP_TO_RECONNECT
                 for proof in affected:
-                    self._notify(proof.native_id)
+                    try:
+                        self._notify(proof.native_id)
+                    except Exception as failure:
+                        record_failure(failure)
                 return
             with self._lock:
                 proofs = {p.native_id: p for p in self._proofs.values() if p.connection is connection}
             for native_id, proof in proofs.items():
-                auto_answered = self._auto_answer(proof, executor)
-                if native_id not in changed and not auto_answered:
-                    continue
-                if proof is not None:
-                    if executor.snapshot(proof).status != 'inProgress':
-                        with self._lock:
-                            if native_id not in self._sending:
-                                self._stopping.discard(native_id)
-                    self._notify(native_id)
-                    self._advance(proof, executor)
+                try:
+                    self._listen_to(native_id, proof, executor, changed)
+                except Exception as error:
+                    record_failure(error)
+
+    def _listen_to(self, native_id, proof, executor, changed):
+        auto_answered = self._auto_answer(proof, executor)
+        if native_id not in changed and not auto_answered:
+            return
+        if proof is not None:
+            if executor.snapshot(proof).status != 'inProgress':
+                with self._lock:
+                    if native_id not in self._sending:
+                        self._stopping.discard(native_id)
+            self._notify(native_id)
+            self._advance(proof, executor)
 
     def close(self):
         self._stop.set()
