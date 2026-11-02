@@ -1289,16 +1289,6 @@ def start_claude_install(env: Optional[dict] = None):
 CREATE_SUSPENDED = 0x00000004
 
 
-def long_path(path) -> str:
-    """A path that works past Windows' 260 characters: a plugin Codex fetched
-    can go deeper than that, and a plain delete then can't reach it and says
-    the folder isn't empty (#494). Elsewhere it's the path as it is."""
-    path = os.path.abspath(path)
-    if sys.platform != "win32" or path.startswith("\\\\"):
-        return path
-    return "\\?\\" + path
-
-
 class ProcessTree:
     """Lets a child process be killed together with everything it started.
 

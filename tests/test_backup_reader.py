@@ -377,7 +377,7 @@ def test_a_path_too_long_for_a_plain_delete_still_goes(tmp_path, monkeypatch):
     monkeypatch.setattr(backup_reader, '_SCRATCH_WAIT', 0)
     monkeypatch.setattr(backup_reader.tempfile, 'gettempdir', lambda: str(tmp_path))
     root = tmp_path / (backup_reader._SCRATCH_PREFIX + 'long')
-    deep = platform_paths.long_path(root / '/'.join(['d' * 40] * 8))
+    deep = str(platform_paths.long_path(root / '/'.join(['d' * 40] * 8)))
     os.makedirs(deep)
     with open(os.path.join(deep, 'file.md'), 'w', encoding='utf-8') as out:
         out.write('x')

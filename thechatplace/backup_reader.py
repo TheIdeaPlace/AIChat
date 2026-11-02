@@ -68,7 +68,8 @@ def _remove_tree(folder):
         except OSError:
             pass
 
-    folder = platform_paths.long_path(folder)
+    # A plugin Codex fetched can go past Windows' 260 characters.
+    folder = platform_paths.long_path(Path(folder).resolve())
     if sys.version_info >= (3, 12):
         shutil.rmtree(folder, onexc=writable_then_retry)
     else:  # pragma: no cover - 3.12 is what's built and tested
