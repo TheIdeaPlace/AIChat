@@ -68,6 +68,7 @@ def _remove_tree(folder):
         except OSError:
             pass
 
+    folder = platform_paths.long_path(folder)
     if sys.version_info >= (3, 12):
         shutil.rmtree(folder, onexc=writable_then_retry)
     else:  # pragma: no cover - 3.12 is what's built and tested
@@ -148,7 +149,8 @@ class BackupReader:
         """Delete the extracted copy. Codex, reading it, can still be writing
         to its scratch profile as it dies (it fetches plugins), and Windows
         then says the folder isn't empty: that must not fail a restore whose
-        chats are already saved. If some of it stays, ``left_behind`` says so,
+        chats are already saved. So does a path too long for a plain delete,
+        which the last pass reaches. If some of it stays, ``left_behind`` says so,
         and the app's next start tries again."""
         for attempt in range(_SCRATCH_TRIES):
             try:

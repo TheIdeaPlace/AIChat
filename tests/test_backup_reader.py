@@ -366,3 +366,21 @@ def test_a_restore_says_when_some_of_the_backups_files_stayed():
     outcome = RestoreOutcome({"added": 1}, left_behind="C:/temp/x")
     assert "couldn't be deleted from C:/temp/x" in restore_summary(outcome)
     assert "deleted" not in restore_summary(RestoreOutcome({"added": 1}))
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason="Windows' 260-character limit")
+def test_a_path_too_long_for_a_plain_delete_still_goes(tmp_path, monkeypatch):
+    """Found in the VM: a plugin Codex fetched into the scratch profile had
+    paths of 260 to 275 characters, and retrying could never remove them."""
+    import os
+    from thechatplace import backup_reader, platform_paths
+    monkeypatch.setattr(backup_reader, '_SCRATCH_WAIT', 0)
+    monkeypatch.setattr(backup_reader.tempfile, 'gettempdir', lambda: str(tmp_path))
+    root = tmp_path / (backup_reader._SCRATCH_PREFIX + 'long')
+    deep = platform_paths.long_path(root / '/'.join(['d' * 40] * 8))
+    os.makedirs(deep)
+    with open(os.path.join(deep, 'file.md'), 'w', encoding='utf-8') as out:
+        out.write('x')
+    assert len(deep) > 300
+    backup_reader.remove_leftover_scratch(older_than=0)
+    assert not root.exists()
