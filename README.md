@@ -665,14 +665,14 @@ folder a git repository) or a git or git-lfs program of its own (`git.cmd`).
   "git --no-pager push"), "Remove-Item" covers its aliases, such as ri and del, and it may end
   in `*`. A rule never allows a command that could move Copilot's shell or run a script in it
   (pushd, `.\build.ps1`, source), a shell or something that starts other programs (powershell, cmd,
-  bash, npx, Start-Process), or a program git ships other than git (scalar, git-upload-pack). The file is read again for each request, so a change counts at
+  bash, Start-Process), or a program git ships other than git (scalar, git-upload-pack). The file is read again for each request, so a change counts at
   once. A file that can't be read is used as no rules at all (the chat says so, once each time
   The Chat Place runs), and a rule that can't be used is left out: Chat Permissions lists it and
   says why, and a command it names says so when it asks.
 - **Allow for This Chat**, a button in Answer (Ctrl+Shift+A) when Copilot asks to run a command.
   It allows that command and keeps it for the chat: the next time Copilot asks to run exactly the
   same command, letter for letter, it isn't asked again. It's offered only for a command whose
-  every path stays inside the folder, and Chat Permissions lists what's kept, to remove.
+  every path stays inside the folder, and not for a shell or git itself unless it only reads, and Chat Permissions lists what's kept, to remove.
 
 **git.** Auto, a rule or a kept command only reads with git: status, log, diff, show, blame,
 ls-files, rev-parse, describe, rev-list, merge-base, branch and remote with no name, and stash

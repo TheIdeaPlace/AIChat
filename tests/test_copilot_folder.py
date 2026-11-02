@@ -1831,14 +1831,14 @@ def test_the_rules_file(tmp_path):
     ("npm *", "* isn't used"), ("git commit *", "* isn't used"), ("Bash(npm test:*)", "* isn't used"),
     ("a * b", "* isn't used"), ('npm run "a b"', "quotes"), ("npm run 'a'", "quotes"),
     ("npm run %x%", "quotes"), ("foo C:\\x\\", "quotes"),
-    ("git commit -m x", "git in a rule"), ("git push", "git in a rule"), ("git merge x", "git in a rule"),
-    ("git rebase x", "git in a rule"), ("git fetch", "git in a rule"), ("git pull", "git in a rule"),
-    ("git stash", "git in a rule"), ("git stash pop", "git in a rule"), ("git checkout x", "git in a rule"),
-    ("git branch new", "git in a rule"), ("git branch -D main", "git in a rule"),
-    ("git remote add x y", "git in a rule"), ("git log --output x", "git in a rule"),
-    ("git log --ext-diff", "git in a rule"), ("git add -p", "git in a rule"), ("git add", "git in a rule"),
-    ("git.cmd status", "git in a rule"), ("git", "git in a rule"),
-    ("bad; rule", "can't be read"), ("a(b)", "punctuation"), ("x > y", "punctuation"),
+    ("git commit -m x", "only to read"), ("git push", "only to read"), ("git merge x", "only to read"),
+    ("git rebase x", "only to read"), ("git fetch", "only to read"), ("git pull", "only to read"),
+    ("git stash", "only to read"), ("git stash pop", "only to read"), ("git checkout x", "only to read"),
+    ("git branch new", "only to read"), ("git branch -D main", "only to read"),
+    ("git remote add x y", "only to read"), ("git log --output x", "only to read"),
+    ("git log --ext-diff", "only to read"), ("git add -p", "only to read"), ("git add", "only to read"),
+    ("git.cmd status", "only to read"), ("git", "only to read"),
+    ("bad; rule", "punctuation"), ("a(b)", "punctuation"), ("x > y", "punctuation"),
 ])
 def test_a_rule_that_cant_be_used_is_reported_with_why(tmp_path, entry, phrase):
     read = _rules_read(tmp_path, entry)
@@ -1871,8 +1871,8 @@ def test_an_ask_rule_matches_the_start_of_a_command_with_its_star_or_without(fol
     ('npm test -- --reporter=dot', "punctuation"),
     ('npm test 2>&1', "punctuation"),
     ('git log --format=%H', "quotes or %"),
-    ('git commit -m x', "may only read"),
-    ('git push', "may only read"),
+    ('git commit -m x', "only to read"),
+    ('git push', "only to read"),
 ])
 def test_a_rule_that_cant_be_used_says_its_real_reason(tmp_path, entry, says):
     read = _rules_read(tmp_path, entry)
@@ -2393,7 +2393,7 @@ def test_block_comments_and_lead_words_count_as_moving(folder, command):
                                    "tools/git.vbs commit", "GIT.EXE commit"])
 def test_git_named_by_a_path_or_any_extension_gets_gits_rules(tmp_path, entry):
     read = _rules_read(tmp_path, entry)
-    assert read.allow == () and "may only read" in read.unread[0]
+    assert read.allow == () and "only to read" in read.unread[0]
 
 
 def test_a_kept_command_naming_git_by_a_path_can_be_kept_only_if_it_reads_as_git(folder):
@@ -2417,11 +2417,11 @@ def test_a_programs_dash_t_value_is_checked_as_a_path(folder):
                                    "git-commit -m x", "C:/x/scalar.exe run"])
 def test_programs_git_ships_cant_be_rules(tmp_path, entry):
     read = _rules_read(tmp_path, entry)
-    assert read.allow == () and "may only read" in read.unread[0]
+    assert read.allow == () and "only to read" in read.unread[0]
 
 
 @pytest.mark.parametrize("entry", ["powershell git commit", "pwsh x", "cmd /c git", "bash x", "sh x",
-                                   "Start-Process git", "wsl git", "npx x", "env git", "C:/x/pwsh.exe y"])
+                                   "Start-Process git", "wsl git", "env git", "C:/x/pwsh.exe y"])
 def test_a_rule_cant_name_a_shell(tmp_path, entry):
     read = _rules_read(tmp_path, entry)
     assert read.allow == () and "shell" in read.unread[0]
@@ -2483,4 +2483,42 @@ def test_an_ask_rule_covers_repeated_dot_slashes(folder):
         handle.write("x")
     policy = Policy(auto=True, ask=(parse_rule("Get-Content .env"),))
     assert not copilot_folder.command_allowed("Get-Content .\\.\\.env", folder, policy)
+
+
+@pytest.mark.parametrize("command", ["docker-compose up", "pre-commit run", "ts-node x", "yt-dlp x",
+                                     "clang-format a.txt", "node-gyp rebuild", "pip-compile",
+                                     'echo "--- Results: ---"', "Write-Host '-- done: ok'",
+                                     "more a.txt", "ConvertTo-Json a"])
+def test_programs_and_quoted_text_dont_count_as_moving(command):
+    assert not copilot_folder.may_move(command), command
+
+
+@pytest.mark.parametrize("entry", ["docker-compose up", "npx tsc", ".\\\\start.cmd"])
+def test_rules_for_ordinary_programs_can_be_used(tmp_path, entry):
+    read = _rules_read(tmp_path, entry)
+    assert len(read.allow) == 1 and read.unread == ()
+
+
+@windows_paths
+def test_an_unset_variable_on_path_leaves_things_answered(repo, monkeypatch):
+    monkeypatch.setenv("PATH", "%JAVA_HOME%\\bin" + os.pathsep + os.environ["PATH"])
+    assert copilot_folder.command_allowed("git status", repo)
+
+
+@windows_paths
+def test_no_file_change_makes_a_path_with_a_percent_sign(folder):
+    assert not copilot_folder.file_change_allowed(os.path.join(folder, "%JAVA_HOME%", "bin", "git"), (), folder)
+    assert not copilot_folder.file_change_allowed(os.path.join(folder, "%x%.txt"), (), folder)
+
+
+def test_the_path_reason_names_the_entry(repo, monkeypatch):
+    inside = os.path.join(repo, "bin")
+    monkeypatch.setenv("PATH", inside + os.pathsep + os.environ["PATH"])
+    assert "bin" in _reason("git status", repo) and "PATH" in _reason("git status", repo)
+
+
+def test_a_rule_for_git_stash_list_takes_no_names(tmp_path):
+    assert _rules_read(tmp_path, "git stash list -- x").allow == ()
+    assert _rules_read(tmp_path, "git stash list x").allow == ()
+    assert len(_rules_read(tmp_path, "git stash list").allow) == 1
 

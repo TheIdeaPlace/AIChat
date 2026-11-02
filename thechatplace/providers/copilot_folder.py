@@ -133,7 +133,23 @@ _STAYS = frozenset({
     "out-file", "out-null", "write-host", "start-sleep", "sleep", "clear-host", "cls", "clear",
     "compare-object", "group-object", "get-process", "gps", "ps", "get-command", "gcm", "get-help",
     "help", "man", "curl", "wget", "iwr", "invoke-webrequest", "irm", "invoke-restmethod",
-    "stop-process", "kill", "spps"})
+    "stop-process", "kill", "spps", "compare", "group", "diff", "more", "tee", "tee-object",
+    "get-service", "gsv", "convertto-json", "convertfrom-json", "expand-archive", "compress-archive",
+    "test-connection"})
+#: PowerShell's approved verbs (Get-Verb): docker-compose, pre-commit and node-gyp
+#: are programs, which can't change the shell, not cmdlets.
+_PS_VERBS = frozenset({
+    "add", "clear", "close", "copy", "enter", "exit", "find", "format", "get", "hide", "join",
+    "lock", "move", "new", "open", "optimize", "pop", "push", "redo", "remove", "rename", "reset",
+    "resize", "search", "select", "set", "show", "skip", "split", "step", "switch", "undo",
+    "unlock", "watch", "backup", "checkpoint", "compare", "compress", "convert", "convertfrom",
+    "convertto", "dismount", "edit", "expand", "export", "group", "import", "initialize", "limit",
+    "merge", "mount", "out", "publish", "restore", "save", "sync", "unpublish", "update",
+    "approve", "assert", "build", "complete", "confirm", "deny", "deploy", "disable", "enable",
+    "install", "invoke", "register", "request", "restart", "resume", "start", "stop", "submit",
+    "suspend", "uninstall", "unregister", "wait", "debug", "measure", "ping", "repair", "resolve",
+    "test", "trace", "connect", "disconnect", "read", "receive", "send", "write", "block", "grant",
+    "protect", "revoke", "unblock", "unprotect", "use"})
 #: PowerShell's own drives other than disks, as the start of a word
 #: ("env:PATH", "alias:ls"): writing to one changes what later commands mean.
 #: Anything else before a colon ("test:unit", "fix: typo", "https:") is an
@@ -399,7 +415,7 @@ _RULE_STAR = "a rule is the exact command, so * isn't used"
 _RULE_QUOTES = "a rule can't hold quotes or %, or end a word in a backslash"
 _RULE_PUNCTUATION = ("a rule can't hold punctuation the shell acts on, such as = > | , or brackets, "
                      "and 2>&1 needn't be in it")
-_RULE_GIT = "git in a rule may only read, or be git add"
+_RULE_GIT = "a rule may name git only to read, or for git add, and no program named git-something"
 _RULE_SHELL = "a rule can't name a shell or something that starts other programs"
 
 
@@ -417,8 +433,8 @@ def _allow_problem(entry, rule: Optional[Rule]) -> str:
     if re.search(r"""['"%]""", text):
         return _RULE_QUOTES
     if rule is None:
-        return (_RULE_PUNCTUATION if isinstance(entry, str) and _REFUSED.search(entry)
-                else _RULE_UNREAD)
+        return (_RULE_PUNCTUATION if isinstance(entry, str)
+                and (_REFUSED.search(entry) or _SPLIT.search(entry)) else _RULE_UNREAD)
     if any(word.endswith("\\") for word in rule.words):
         return _RULE_QUOTES
     if _names_git(rule.words[0]) and not _git_rule_words_ok(rule.words):
@@ -668,6 +684,8 @@ def _plain_file(path: str) -> bool:
     rest = path[2:] if _windows() and _WINDOWS_DRIVE.match(path) else path
     if ":" in rest:
         return False
+    if _windows() and "%" in rest:
+        return False  # could become a PATH entry naming an unset variable
     whole = os.path.basename(path.replace("\\", "/")).lower().rstrip(" .")
     # A file named HEAD is what makes a folder with objects and refs a git
     # repository, whose config git then reads and runs (Kelly's review of
@@ -876,8 +894,8 @@ def _git_asks(why: str) -> bool:
     return _asks_because(f"git asks here because {why}.")
 
 
-_PATH_INSIDE_ASKS = ("This asks since a folder on your PATH is inside this chat's folder, where a "
-                     "program there could stand in for the one named.")
+_PATH_INSIDE_ASKS = ("This asks since {entry}, on your PATH, is inside this chat's folder or is a "
+                     "relative path, so a program there could stand in for the one named.")
 _GIT_MOVED_ASKS = ("git asks here until you use Restart Copilot, in File, Chat Permissions, because "
                    "Copilot's shell may be in a subfolder.")
 _GIT_ALTERNATES = "this repository borrows objects from another (objects/info/alternates)"
@@ -1207,23 +1225,27 @@ def _active_hook(hooks: str, names) -> str:
     return ""
 
 
-def _path_folder_inside(folder: str) -> bool:
-    """Whether a folder programs are found in is inside the chat's folder, or
-    is relative and so could be: a program Auto wrote there would run in place
-    of the one named (the adversarial review of b44cce4)."""
+def _path_folder_inside(folder: str) -> str:
+    """The folder programs are found in that's inside the chat's folder, or is
+    relative and so could be, or "": a program Auto wrote there would run in
+    place of the one named (the adversarial review of b44cce4). On Windows an
+    entry holding %, an unset variable such as %JAVA_HOME%\\bin, is left out:
+    no file change makes a path with % in it (_plain_file)."""
     base = _normal(folder)
     for entry in os.environ.get("PATH", "").split(os.pathsep):
         place = entry.strip().strip('"')
         if not place:
             if _windows():
                 continue
-            return True  # the current folder, there
+            return "an empty entry"  # the current folder, there
+        if _windows() and "%" in place:
+            continue
         try:
             if not os.path.isabs(place) or _under(_normal(place), base):
-                return True
+                return place[-80:]
         except (OSError, ValueError):
-            return True
-    return False
+            return place[-80:]
+    return ""
 
 
 def _git_checks(folder: str, locations, shows_changes: bool, hooks_fired) -> bool:
@@ -1233,10 +1255,9 @@ def _git_checks(folder: str, locations, shows_changes: bool, hooks_fired) -> boo
     f42c582: a post-index-change in an unzipped repository ran on Auto's git
     status), and, for one
     that shows differences, no diff driver: a repository's .gitattributes may
-    choose one, from your own git config too (Copilot's review of Auto). git
-    status shows none."""
-    if _path_folder_inside(folder):
-        return _asks_because(_PATH_INSIDE_ASKS)
+    choose one, from your own git config too (Copilot's review of Auto)."""
+    if not _program_is_found_outside(folder):
+        return False
     found = _git_repository_here(folder, locations)
     if found is None or not _git_config_safe(locations, *found):
         return False
@@ -1268,13 +1289,15 @@ _STARTERS = frozenset({
     "start-process", "saps", "start", "invoke-expression", "iex", "invoke-command", "icm",
     "invoke-item", "ii", "xargs", "nohup", "sudo", "su", "runas", "forfiles", "wscript", "cscript",
     "mshta", "rundll32", "regsvr32", "conhost", "explorer", "schtasks", "at", "time", "timeout",
-    "npx", "pnpx", "uvx", "pipx", "pcalua", "wt", "winrs", "msiexec", "hh", "cmstp", "certutil",
+    "pcalua", "wt", "winrs", "msiexec", "hh", "cmstp", "certutil",
     "bitsadmin", "powershell_ise"})
 
 
 def _starts_others(word: str) -> bool:
+    # By its own name, .exe or .com: a project's own start.cmd is its own.
     last = re.split(r"[\\/]", _unquote(word).lower())[-1].rstrip(" .")
-    return last.split(".")[0] in _STARTERS
+    stem, _dot, extension = last.partition(".")
+    return stem in _STARTERS and extension in ("", "exe", "com")
 
 
 def _names_git(word: str) -> bool:
@@ -1309,7 +1332,11 @@ def _git_rule_words_ok(words) -> bool:
         if not rest or rest[0] != "list":
             return False
         rest = rest[1:]
+        if any(word == "--" or not word.startswith("-") for word in rest):
+            return False
     if sub not in GIT_READ:
+        return False
+    if "--" in rest and any(word.startswith("-") for word in rest[rest.index("--") + 1:]):
         return False
     for word in rest:
         if word.startswith("-"):
@@ -1590,7 +1617,8 @@ def _kept_words_ok(command_words) -> bool:
 
 
 def _program_is_found_outside(folder: str) -> bool:
-    return not _path_folder_inside(folder) or _asks_because(_PATH_INSIDE_ASKS)
+    entry = _path_folder_inside(folder)
+    return not entry or _asks_because(_PATH_INSIDE_ASKS.format(entry=entry))
 
 
 def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: bool):
@@ -1620,7 +1648,7 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
     if policy.auto:
         # Outside Windows these are programs found on PATH, not the shell's own.
         reading = (name in READ_CMDLETS or name in READ_ALIASES) if _windows() \
-            else name in POSIX_READ and not _path_folder_inside(folder)
+            else name in POSIX_READ and _program_is_found_outside(folder)
         if reading and _paths_ok(name, words[1:], folder, locations,
                                  letters=True, long_options=False):
             return AUTO, locations
@@ -1797,12 +1825,15 @@ def may_move(command: str, locations=None) -> bool:
             return True
         if not _powershell_own(name):
             continue  # a child process, which can't move it
+        verb_noun = re.fullmatch(r"([a-z]+)-[a-z0-9]+", name)
+        if verb_noun and verb_noun.group(1) not in _PS_VERBS:
+            continue  # docker-compose: a program
         if name not in _STAYS and name not in READ_CMDLETS and name not in READ_ALIASES:
             return True
         # Its words as they are: Set-Content "env:PATH" reaches the drive
         # just the same, in quotes or not, and -Path:function:x too.
         said = _words(piece.strip())
-        if said is None or any(_moving_word(_unquote(word)) or _unquote(word).startswith("-") and ":" in word
+        if said is None or any(_moving_word(_unquote(word)) or re.match(r"-[A-Za-z]+:", _unquote(word))
                                for word in said):
             return True
     return False
