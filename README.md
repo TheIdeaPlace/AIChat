@@ -7,8 +7,8 @@ VO+M), rather than Windows Alt menu sequences.
 A keyboard and screen reader friendly home for your AI chats, together in one session list.
 
 The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
-Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
-OpenAI products.
+Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
+OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.
 
 New to The Chat Place? The [user guide](https://theideaplace.github.io/AIChat/user-guide.html) starts
 with the everyday things and goes deeper; it's also in the app, under Help, User Guide. This README
@@ -478,7 +478,7 @@ The Chat Place's own data, for this chat and its exact working folder. It surviv
 the app; a Continue Here copy starts empty. Supported operations are `git status`, `switch`,
 `add`, `commit`, `push`, `fetch`, `diff` and `log`, with ordinary supported arguments.
 Codex usually proposes the whole command, so what's kept is often that exact command: a commit with
-another message asks again, and a commit message of several words isn't offered the button yet (#500).
+another message asks again, and a commit message of several words isn't offered the button yet.
 Unknown options, explicit force or delete options in the command, compound commands, shell expansion, a changed
 working folder, requests for separately listed extra access, and commands run through a shell The Chat Place doesn't recognise still ask.
 Remembering has the same authority as **Allow Once**: the command may run outside the sandbox,
@@ -565,7 +565,7 @@ on the clipboard.
 **Settings: GitHub Copilot CLI chats.** Enable **Include GitHub Copilot CLI
 chats (preview; restart required)** (Alt+I), save and restart to list GitHub Copilot CLI
 sessions alongside Claude, and to start Copilot chats of your own. The option appears once
-Copilot CLI is installed or has saved a session on this computer: to decide that, Settings looks
+Copilot CLI is installed or has saved a session on your computer: to decide that, Settings looks
 for the Copilot CLI program and at the names of the folders in Copilot's session folder and
 whether each has a conversation log, never what's in them, even with the option off; with it off
 nothing else of Copilot's is read.
@@ -589,8 +589,8 @@ settings are its own. Each message uses requests from your Copilot plan. Type an
 Copilot is answering wait their turn, and Stop (Ctrl+Period) cancels the answer and
 puts any waiting messages back in the message box, unsent. Copilot asks before it runs a command
 or changes a file: you hear "needs your answer", and Answer (Ctrl+Shift+A) shows the whole
-command or change, with **Allow Once** and **Deny**. Deny is the default, and nothing is ever
-allowed for later. A command or change too long to show in full can only be denied. The Chat
+command or change, with **Allow Once**, **Allow for This Chat** when it's offered, and **Deny**,
+the default. A command or change too long to show in full can only be denied. The Chat
 Place won't send to Copilot:
 
 - in a folder whose Copilot hooks could act without asking you (a project's hooks of any kind,
@@ -829,7 +829,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   permission choices: read-only or edits in its folder, with human or automatic approval
   review, as in New Session. Templates keep human review unless you explicitly choose
   automatic review. A new Copilot chat has one choice, "Asks you before it changes files or
-  runs commands": Copilot asks you about each edit and command, so a reviewer's role ("don't
+  runs commands": Copilot asks you about each edit and command that its rules, Auto or a kept command doesn't
+  answer, so a reviewer's role ("don't
   edit files") is up to it to keep, and to you when it asks. Kind of conversation fills in the roles, new chats'
   permissions and who goes first for a builder and reviewer, a second opinion, a debate,
   or plan and do. An optional third agent joins in turn: replies go from the first to the
@@ -881,7 +882,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   - A reply passed on ends with the files its agent changed in that turn, so a reviewer
     knows what to look at. For Copilot, these are read from its log when the turn ends.
   - Questions and requests needing human approval come to you, from each agent, through Answer
-    (Ctrl+Shift+A). Codex uses its selected approval reviewer; Copilot always asks you. A message from one agent can
+    (Ctrl+Shift+A). Codex uses its selected approval reviewer; Copilot asks you, apart from what its rules, Auto or a kept command answer. A message from one agent can
     never answer or approve anything for the other. Rename (F2), Properties (Alt+Enter) and
     Delete (Shift+Delete) work on the row; deleting it keeps both chats and their histories
     and puts them back in the list. A member chat can't be deleted while it's in a conversation.
@@ -1009,7 +1010,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Chat Place's own sessions for good, from any view, hidden or not: after you confirm (No is the
   default), its Claude Code transcript is deleted (permanent deletion is currently supported for Claude chats) from the computer and it leaves the list, its
   groups and the hidden list. It waits while the session is working, here or in a terminal.
-  Desktop app sessions can only be hidden; delete those in the desktop app.
+  Desktop app sessions can only be hidden; delete those in the desktop app. A restored or kept chat
+  can be deleted: that deletes only The Chat Place's copy.
   On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).
 - **Groups**, like groups in Claude on the web: **Ctrl+G** (File, Add to Group) puts the
   selected session in a group, or a new one; File, Remove from Group takes it out; File,
@@ -1407,7 +1409,7 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode and kept rules (for Copilot, the commands allowed for the chat and your rules), to read and remove |
 | Session list | F5 | Refresh the list now and put it in order |
 | Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
-| Session list | Shift+Delete | Delete a Claude chat started here permanently, after you confirm; on an agent conversation, delete the conversation and keep its chats |
+| Session list | Shift+Delete | Delete a Claude chat started here permanently, after you confirm, or The Chat Place's copy of a restored or kept chat; on an agent conversation, delete the conversation and keep its chats |
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |

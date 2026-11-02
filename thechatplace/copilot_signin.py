@@ -42,7 +42,9 @@ class SignIn:
 def install_command() -> str:
     if sys.platform == "darwin":
         return "brew install copilot-cli"
-    return "winget install GitHub.Copilot"
+    if sys.platform == "win32":
+        return "winget install GitHub.Copilot"
+    return "curl -fsSL https://gh.io/copilot-install | bash"  # GitHub's install script
 
 
 def _unusable_copilot(which=None) -> str:

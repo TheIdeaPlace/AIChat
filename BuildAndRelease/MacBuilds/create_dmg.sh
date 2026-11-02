@@ -37,7 +37,7 @@ cat > "$STAGING/README.txt" <<README
 The Chat Place $VERSION
 =======================
 
-A keyboard and screen reader friendly home for your Claude Code chats.
+A keyboard and screen reader friendly home for your AI agent chats.
 
 To install, drag $APP_NAME onto Applications, then open it from
 Applications (or with Spotlight: Cmd+Space, "The Chat Place").

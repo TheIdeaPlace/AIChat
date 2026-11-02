@@ -35,7 +35,7 @@ VSVersionInfo(
       StringTable(
         '040904B0',
         [StringStruct('CompanyName', 'Kelly Ford'),
-         StringStruct('FileDescription', 'The Chat Place, a home for your Claude Code chats'),
+         StringStruct('FileDescription', 'The Chat Place, a home for your AI agent chats'),
          StringStruct('FileVersion', '{version}'),
          StringStruct('InternalName', 'TheChatPlace'),
          StringStruct('LegalCopyright', 'Copyright (c) Kelly Ford. MIT License.'),
