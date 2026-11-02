@@ -351,7 +351,7 @@ quoted word or one ending in a backslash.
 
 ## Real sessions for 0.4 (Copilot CLI 1.0.105, Windows on arm64, 2 November 2026)
 
-Six prompts, through the app's real `CopilotChatRuntime`, in throwaway repositories under a scratch
+Five prompts (two of them cut short by mistakes in the script), through the app's real `CopilotChatRuntime`, in throwaway repositories under a scratch
 folder with `GIT_CONFIG_GLOBAL` set, every raw request logged. Scripts: `real_copilot*.py` in
 Kelly's `scratchix426`, not in the repository.
 
