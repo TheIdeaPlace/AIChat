@@ -23,9 +23,17 @@ _BUTTON_LABELS = {Decision.ALLOW_ONCE: "&Allow Once", Decision.DENY: "&Deny"}
 
 def _labelled(parent: wx.Window, sizer: wx.Sizer, label: str, control: wx.Window, proportion: int = 0) -> None:
     text = wx.StaticText(parent, label=label)
+    # The control exists already. Its label goes ahead of it, for reading order
+    # and because Windows looks for a label just before a control.
+    text.MoveBeforeInTabOrder(control)
     sizer.Add(text, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
     sizer.Add(control, proportion, wx.EXPAND | wx.ALL, 8)
-    a11y.set_accessible_name(control, label.replace("&", "").rstrip(":"))
+    name = label.replace("&", "").rstrip(":")
+    if isinstance(control, wx.ListBox):
+        # SetName doesn't reach a list box in MSAA.
+        a11y.set_list_items_accessible(control, lambda: name, lambda _index: None)
+    else:
+        a11y.set_accessible_name(control, name)
 
 
 def _value_label(label: str, description: str) -> str:
@@ -38,7 +46,7 @@ class TextDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, title: str, text: str):
         super().__init__(parent, title=title, size=(760, 520), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.text = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        self.text = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_READONLY)
         a11y.set_accessible_name(self.text, title)
         sizer.Add(self.text, 1, wx.EXPAND | wx.ALL, 8)
         close = wx.Button(self, wx.ID_CANCEL, "Close")
@@ -57,7 +65,7 @@ class PermissionDialog(wx.Dialog):
         self.request = request
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.text = wx.TextCtrl(self, value=ui_text.permission_text(request.summary, request.detail, request.caution),
-                                style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+                                style=wx.TE_MULTILINE | wx.TE_READONLY)
         _labelled(self, sizer, "What's being asked:", self.text, 1)
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.buttons: Dict[Decision, wx.Button] = {}
@@ -291,7 +299,7 @@ class ProvidersDialog(wx.Dialog):
         self.toggle = wx.Button(self, label="&Turn On")
         self.toggle.Bind(wx.EVT_BUTTON, self._on_toggle)
         sizer.Add(self.toggle, 0, wx.LEFT, 8)
-        self.detail = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        self.detail = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY)
         _labelled(self, sizer, "&About this provider:", self.detail, 2)
         close = wx.Button(self, wx.ID_CANCEL, "Close")
         sizer.Add(close, 0, wx.ALIGN_RIGHT | wx.ALL, 8)

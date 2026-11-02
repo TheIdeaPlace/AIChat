@@ -87,7 +87,7 @@ def prompt(request_id, params):
             "options": [{"optionId": "always", "name": "Allow always", "kind": "allow_always"},
                         {"optionId": "yes", "name": "Definitely safe", "kind": "allow_once"},
                         {"optionId": "no", "name": "Nope", "kind": "reject_once"}]}})
-        waiter.wait(30)
+        waiter.wait(600)
         outcome = answers.get("perm-1-result") or {}
         chosen = (outcome.get("outcome") or {}).get("optionId")
         if (outcome.get("outcome") or {}).get("outcome") == "cancelled":

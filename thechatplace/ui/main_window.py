@@ -28,6 +28,10 @@ STREAM_REFRESH_MS = 400
 class MainWindow(wx.Frame):
     def __init__(self, service: ChatService, speaker: Optional[Speaker] = None, auto_refresh: bool = True):
         super().__init__(None, title="The Chat Place (experiment)", size=(1000, 720))
+        # Send and Stop mustn't fall off a small screen.
+        area = wx.Display(wx.Display.GetFromWindow(self) if wx.Display.GetFromWindow(self) >= 0 else 0).GetClientArea()
+        self.SetSize(min(1000, area.width), min(720, area.height))
+        self.CentreOnScreen()
         self.service = service
         self.speaker = speaker or Speaker()
         self.service.listener = self._from_service
