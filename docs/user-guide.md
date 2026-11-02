@@ -885,8 +885,9 @@ folder a git repository) or a git program of its own (`git.cmd`).
   Set-Location; on a Mac or Linux, `cd ./name` or a full path, since a plain `cd name` may follow
   CDPATH elsewhere), read git (git status, log, diff, show, branch with no name, and a few more, with
   common options such as `--oneline` and `--stat`), and make its own file changes inside the
-  folder. git is answered only when the chat's folder is the top of a repository (it has a `.git`
-  folder) and Copilot's shell is there, the repository has no submodules, its own settings are
+  folder. git is answered only when git itself says the chat's folder is the top of a repository,
+  or a linked worktree of one (as `git worktree add` makes), and Copilot's shell is there, the
+  repository has no submodules, its own settings are
   only the ordinary ones git itself writes (the remote's address, branches, line endings, your
   name and the like: anything else, such as a program for git to run, asks), and none of your git
   settings files is inside the folder (the same goes for git commands your rules allow, which must name the git
@@ -913,16 +914,17 @@ folder a git repository) or a git program of its own (`git.cmd`).
   allowed may still be running, Auto's file changes in its folder ask, and the chat says why:
   until Copilot reports, in its own record of the program's end, that it ended. Stopping it with
   Stop, or Copilot stopping it, doesn't end the program (it runs on to its own end), so then it's
-  until you close The Chat Place and open it again, which on Windows ends what Copilot started
-  (on a Mac or Linux a program that left Copilot's group may run on). A command
+  until you use Restart Copilot, in File, Chat Permissions (on a Mac or Linux a program that left
+  Copilot's group may run on after that). A command
   Copilot will run in the background (it says so just before asking), or doesn't describe before
   asking, always asks. One a rule allowed that Copilot moves to the background, because it's still
   running after its wait (30 seconds), was already answered; while it or any background program
   allowed here runs, later commands ask too. A command you allow that Copilot didn't describe
-  first makes commands ask until Copilot is next started. Your own git settings (your global and
-  system config) are yours: The Chat Place checks only that none of their files is inside the
-  folder, not what they set, so a program you've named there, such as core.fsmonitor, runs as it
-  always does. The chat's heading ends "Auto", and Auto is kept
+  first makes commands ask until you use Restart Copilot. Your own git settings (your global and
+  system config) are yours: The Chat Place checks that none of their files is inside the folder,
+  but not what they set, so a program you've named there, such as core.pager or core.fsmonitor,
+  runs as it always does. The exception is a program named by a relative path (`tools/x`, `./x`),
+  which a file in the folder could stand in for: git asks then, and says so. The chat's heading ends "Auto", and Auto is kept
   for the chat, so it's on again when the chat is opened again, until you choose Agent or Plan.
   If Copilot switches to plan mode, Auto ends and the chat says so.
 - **Your rules**, in `%APPDATA%\TheChatPlace\copilot-rules.json` (on a Mac,
@@ -955,19 +957,38 @@ variables such as `$env:USERPROFILE`, brackets, redirection, characters other th
 may only sort, select or format what comes in. A word with a colon is taken as a drive
 (`HKLM:`, `env:PATH`, `C:x`) except in a command your rule or Allow for This Chat allows for a
 program other than PowerShell's own cmdlets, where an ordinary colon is fine (`npm run
-test:unit`, `git commit -m "fix: typo"`). A rule's or a kept command's own program may take
-options (`--watch`), but none with a value joined on (`--file=x`). This is a strict reading of
+test:unit`, `git commit -m "fix: typo"`). For those same programs, text in plain quotes (single
+quotes, or double quotes with no `$` or backtick; on a Mac or Linux, no `!` or backslash either)
+is only something the program receives, so it may hold brackets, commas, `#`, `=` and the like,
+as long as no part of it reaches outside the folder. A message after git commit's `-m` is never
+read as a path at all, so `git commit -m "fix(parser): src/foo.py, and a bug (#12)"` is answered
+under a `git commit *` rule, trailers included. Other programs' text, and Auto's own reads, stay
+strict. A rule's or a kept command's own program may take
+options (`--watch`), but none with a value joined on (`--file=x`), quoted or not. This is a strict reading of
 what the command says, not a lock. A command you allow can run what's in the folder: `npm test`
 runs the folder's own scripts, which Copilot may have changed first, so allow only programs you'd
 let run on whatever's there. In Auto, Copilot can change package.json, a Makefile or a build
-script before running a command your rule allows.
+script before running a command your rule allows. When a request that Auto, a rule or a kept
+command would answer asks anyway, the chat says why.
 
 Copilot's shell keeps its folder between commands. Changes of folder inside the chat's folder are
 followed, so paths are checked from wherever the shell may be. Once you allow by hand a command
-that may have moved it somewhere not followed (cd .., a script, iex), commands in that chat ask
-again until Copilot is next started (close The Chat Place and open it again, which starts
-Copilot afresh in each chat's own folder); file changes, which name their full path, are still allowed
-in Auto. It relies on Copilot asking about every command: commands your own Copilot settings
+that may have moved it somewhere not followed (cd .., a script, iex, anything in `{ }` or `$( )`),
+commands in that chat ask again until you use Restart Copilot; file changes, which name their full
+path, are still allowed in Auto. Commands that only start another program don't count, so
+`git commit -m "fix(parser): x"`, `npm test 2>&1 | Select-Object -Last 20` and
+`.venv\Scripts\python.exe -m pytest` leave things as they were (on Windows, a program named by
+its path needs its `.exe`, since PowerShell could otherwise find a script of that name).
+
+**Restart Copilot**, a button in File, Chat Permissions (Ctrl+Shift+H) for a Copilot chat, is the
+way out of all that without closing The Chat Place. It stops Copilot and what Copilot started, for
+every chat, as they share one Copilot, and commands stop asking because of a shell that may have
+moved or a program that never ended. If another Copilot chat is running a turn or a program, or
+this chat a turn, it warns you first, saying how many, with No the default. Copilot starts again,
+afresh in each chat's own folder, when a chat needs it: at once for the chat that's open. Your
+rules and kept commands ask once after that, as in any chat opened again.
+
+It relies on Copilot asking about every command: commands your own Copilot settings
 already allow never come to The Chat Place at all. None of this is offered on a computer where
 your organisation has installed GitHub Copilot policy (in `C:\ProgramData\GitHub\Copilot\policy.d`,
 the registry's `Software\Policies\GitHub\Copilot`, or `/etc/github-copilot/policy.d`): there
