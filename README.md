@@ -478,7 +478,7 @@ The Chat Place's own data, for this chat and its exact working folder. It surviv
 the app; a Continue Here copy starts empty. Supported operations are `git status`, `switch`,
 `add`, `commit`, `push`, `fetch`, `diff` and `log`, with ordinary supported arguments.
 Codex usually proposes the whole command, so what's kept is often that exact command: a commit with
-another message asks again, and a commit message of several words isn't offered the button yet (#500).
+another message asks again, and a commit message of several words isn't offered the button yet.
 Unknown options, explicit force or delete options in the command, compound commands, shell expansion, a changed
 working folder, requests for separately listed extra access, and commands run through a shell The Chat Place doesn't recognise still ask.
 Remembering has the same authority as **Allow Once**: the command may run outside the sandbox,
@@ -565,7 +565,7 @@ on the clipboard.
 **Settings: GitHub Copilot CLI chats.** Enable **Include GitHub Copilot CLI
 chats (preview; restart required)** (Alt+I), save and restart to list GitHub Copilot CLI
 sessions alongside Claude, and to start Copilot chats of your own. The option appears once
-Copilot CLI is installed or has saved a session on this computer: to decide that, Settings looks
+Copilot CLI is installed or has saved a session on your computer: to decide that, Settings looks
 for the Copilot CLI program and at the names of the folders in Copilot's session folder and
 whether each has a conversation log, never what's in them, even with the option off; with it off
 nothing else of Copilot's is read.
@@ -881,7 +881,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   - A reply passed on ends with the files its agent changed in that turn, so a reviewer
     knows what to look at. For Copilot, these are read from its log when the turn ends.
   - Questions and requests needing human approval come to you, from each agent, through Answer
-    (Ctrl+Shift+A). Codex uses its selected approval reviewer; Copilot always asks you. A message from one agent can
+    (Ctrl+Shift+A). Codex uses its selected approval reviewer; Copilot asks you, apart from what its rules, Auto or a kept command answer. A message from one agent can
     never answer or approve anything for the other. Rename (F2), Properties (Alt+Enter) and
     Delete (Shift+Delete) work on the row; deleting it keeps both chats and their histories
     and puts them back in the list. A member chat can't be deleted while it's in a conversation.

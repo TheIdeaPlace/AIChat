@@ -110,7 +110,8 @@ SHORTCUTS = [
         ("Delete", "Hide the selected session; View, Show Sessions, Hidden lists hidden "
                    "sessions, and File, Bring Back Session returns one"),
         ("Shift+Delete", "Delete a Claude chat started here permanently, transcript and "
-                         "all, after you confirm (other chats can only be hidden); on an agent "
+                         "all, after you confirm, or The Chat Place's copy of a restored or kept chat "
+                         "(other chats can only be hidden); on an agent "
                          "conversation, delete the conversation and keep its chats"),
         ("Ctrl+F", "Show only sessions whose title, folder or what they need contains some "
                    "text; Escape in the list shows them all again"),

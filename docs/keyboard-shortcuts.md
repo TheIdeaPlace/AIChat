@@ -37,7 +37,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Alt+F, O | Remote Control (Claude chats): reach the selected session from claude.ai and your phone (a desktop app session can be continued here with it on) |
 | Ctrl+G | Add the selected session to a group (or a new one); File, Remove from Group and Manage Groups are on the File menu |
 | Delete | Hide the selected session; View, Show Sessions, Hidden lists hidden sessions, and File, Bring Back Session returns one |
-| Shift+Delete | Delete a Claude chat started here permanently, transcript and all, after you confirm (other chats can only be hidden); on an agent conversation, delete the conversation and keep its chats |
+| Shift+Delete | Delete a Claude chat started here permanently, transcript and all, after you confirm, or The Chat Place's copy of a restored or kept chat (other chats can only be hidden); on an agent conversation, delete the conversation and keep its chats |
 | Ctrl+F | Show only sessions whose title, folder or what they need contains some text; Escape in the list shows them all again |
 
 ## Messages

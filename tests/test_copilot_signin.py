@@ -158,3 +158,8 @@ def test_not_signed_in_mentions_the_github_cli(tmp_path):
     record (seen on a machine nobody had signed in to, #391)."""
     status = copilot_signin.check("copilot", home=tmp_path)
     assert "GitHub CLI (gh)" in copilot_signin.describe(status)
+
+
+def test_linux_is_told_githubs_install_script_not_winget(monkeypatch):
+    monkeypatch.setattr(copilot_signin.sys, "platform", "linux")
+    assert "copilot-install" in copilot_signin.install_command()
