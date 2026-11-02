@@ -224,15 +224,16 @@ def test_a_dialog_ended_by_its_turn_ending_never_allows(window, tmp_path, monkey
             return
         frame._end_dialog(ChatRef("somewhere", "else"))
         seen["left_open"] = frame._dialog is dialog and dialog.IsModal()
-        frame._end_dialog(info.ref)
+        frame.stop_turn()  # clears the request, then ends its dialog
     wx.CallLater(50, while_it_is_open)
     frame.reply.SetValue("Hi")
     frame.send()
     assert pump(lambda: "left_open" in seen and frame._dialog is None)
     assert seen["left_open"], "another chat's ending must leave it open"
     assert answered == []
-    frame.service.stop(info.ref)
     assert pump(lambda: not frame.service.state(info.ref).busy)
+    # Told to stop while asking, it never heard an Allow.
+    assert not any(m.role == "assistant" and "Allowed" in m.text for m in frame.service.messages(info.ref))
 
 
 def test_a_chat_starting_behind_a_dialog_doesnt_change_the_chat(window, tmp_path):
