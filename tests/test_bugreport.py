@@ -280,3 +280,16 @@ def test_a_report_still_opens_when_windows_cant_say_its_version(monkeypatch):
         assert system == f"Windows-{major}.{minor}.{build} (platform.platform failed)"
     else:
         assert system == sys.platform
+
+
+def test_a_report_says_when_copilot_runs_through_vs_codes_launcher(monkeypatch):
+    """#463: whether a launcher is in the way can't be told from a version."""
+    from types import SimpleNamespace
+    from thechatplace import bugreport, platform_paths
+    monkeypatch.setattr(bugreport.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
+        stdout="GitHub Copilot CLI 1.0.105.\n"))
+    monkeypatch.setattr(platform_paths, "find_copilot",
+                        lambda: "C:/Code/bin/copilot-shim/copilot.exe")
+    assert bugreport.cli_version("copilot") == "1.0.105 (through VS Code's launcher)"
+    monkeypatch.setattr(platform_paths, "find_copilot", lambda: "C:/tools/copilot.exe")
+    assert bugreport.cli_version("copilot") == "1.0.105"
