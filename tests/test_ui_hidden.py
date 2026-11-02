@@ -15853,3 +15853,37 @@ def test_chat_permissions_removal_names_copilot_and_comes_first_with_what_asks(f
         auto_allowed=((1, "Command: Get-ChildItem"),))
     assert host.note().startswith("Its commands ask until you use Restart Copilot")
     assert "Get-ChildItem" not in host.note() and "Get-ChildItem" in host.note_last()
+
+
+def test_a_backup_that_finished_behind_its_stop_question_isnt_stopped(frame, monkeypatch):
+    """Yes, to a question about a backup that's already done, said "Stopping
+    the backup." with nothing running, and it stayed in the status bar."""
+    import wx
+    job = {"progress": (92, 100), "cancel": False}
+    frame._backup_job = job
+    said = []
+    monkeypatch.setattr(frame, '_feedback', said.append)
+
+    def finished_meanwhile(*args, **kwargs):
+        frame._backup_job = None
+        return wx.YES
+
+    monkeypatch.setattr(wx, 'MessageBox', finished_meanwhile)
+    frame.on_back_up_now()
+    assert not job["cancel"] and not said
+
+
+def test_reading_usage_leaves_the_status_bar_when_its_done(frame, monkeypatch):
+    frame._open = dataclasses.replace(frame._snapshot.sessions[0], provider='copilot')
+    monkeypatch.setattr(frame, '_require_capability', lambda *args: True)
+    callbacks = []
+    monkeypatch.setattr(frame, '_codex_work', lambda action, done: callbacks.append(done))
+    monkeypatch.setattr(frame, '_modal', lambda *_: None)
+    frame.on_usage()
+    assert frame._status_latest == 'Reading Copilot usage.'
+    callbacks[0](['Line'], False)
+    assert frame._status_latest != 'Reading Copilot usage.'
+    frame.on_usage()
+    frame._status('Something newer.')
+    callbacks[1](['Line'], False)
+    assert frame._status_latest == 'Something newer.'

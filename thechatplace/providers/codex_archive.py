@@ -18,12 +18,8 @@ class ArchiveConnection(ReadOnlyCodexConnection):
 
 class ArchiveCodexReader(CodexReader):
     def _paginated_thread(self, thread):
-        # Legacy stores support bounded full-turn pages, not item pagination.
-        # Paginated stores reject full turn items and use the normal converter.
-        if thread.get('historyMode', 'legacy') == 'legacy':
-            turns = list(self._pages('thread/turns/list', itemsView='full'))
-            return {**thread, 'turns': turns, 'historyMode': 'legacy'}
-        return super()._paginated_thread(thread)
+        # A backup's chat that doesn't say is read as legacy: it can be old.
+        return super()._paginated_thread({'historyMode': 'legacy', **thread})
 
 
 class CodexArchive:
@@ -53,8 +49,11 @@ class CodexArchive:
         if index.is_file():
             shutil.copyfile(index, self.profile/index.name)
         # Deliberately omit config, auth, plugins, skills, goals and queues.
-        # Nothing in an imported archive may install hooks or resume work.
-        (self.profile/'config.toml').write_text('cli_auth_credentials_store = "file"\n', encoding='utf-8')
+        # Nothing in an imported archive may install hooks or resume work, and
+        # reading a backup doesn't go online for Codex's plugins.
+        (self.profile/'config.toml').write_text(
+            'cli_auth_credentials_store = "file"\n\n[features]\nplugins = false\napps = false\n',
+            encoding='utf-8')
         databases = {}
         for folder in (home, self.root/'codex/sqlite-home'):
             if not folder.is_dir():

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from markers import windows_paths
+from thechatplace import platform_paths
 from thechatplace.providers import copilot_folder
 from thechatplace.providers.copilot_folder import AUTO, CHAT, RULE, Policy, parse_rule
 from thechatplace.providers.copilot_runtime import COMMAND, FILES, OTHER
@@ -287,8 +288,8 @@ def test_an_ask_rule_beats_auto_rules_and_this_chat(folder):
 
 
 @windows_paths
-def test_rules_ignore_case_on_windows(folder):
-    assert copilot_folder.check_command("NPM Test", folder, rules("npm test")).by == RULE
+def test_a_rules_program_name_ignores_case_on_windows(folder):
+    assert copilot_folder.check_command("NPM test", folder, rules("npm test")).by == RULE
 
 
 
@@ -1888,15 +1889,12 @@ def test_a_command_an_unusable_rule_names_says_so_when_it_asks(tmp_path, folder,
 
 
 def test_a_rule_may_name_git_with_no_pager_and_still_gets_gits_checks(tmp_path, repo, monkeypatch):
-    settings = tmp_path / "global.cfg"
-    settings.write_text("", encoding="utf-8")
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(settings))
     read = _rules_read(tmp_path, "git --no-pager log")
     assert len(read.allow) == 1 and read.unread == ()
     policy = Policy(allow=read.allow)
     assert copilot_folder.command_allowed("git --no-pager log", repo, policy)
     # Not "--no-pager" read as the command, which would skip the diff driver check.
-    settings.write_text('[diff "x"]\n\tcommand = fake-diff\n', encoding="utf-8")
+    monkeypatch.setattr(platform_paths, "git_names_diff_program", lambda folder: True)
     assert not copilot_folder.command_allowed("git --no-pager log", repo, policy)
 
 
@@ -1939,7 +1937,7 @@ def test_a_chat_in_too_broad_a_folder_says_why_a_rule_asks(tmp_path):
 def test_a_rule_matches_only_the_exact_words(folder):
     policy = rules("npm test")
     assert copilot_folder.check_command("npm test", folder, policy).by == RULE
-    assert copilot_folder.check_command("NPM TEST", folder, policy) is not None or sys.platform != "win32"
+    assert copilot_folder.check_command("NPM TEST", folder, policy) is None
     for command in ("npm test --watch", "npm tests", "npm", 'npm "test"', "npm 'test'"):
         assert copilot_folder.check_command(command, folder, policy) is None, command
 
@@ -2291,3 +2289,90 @@ def test_dash_s_is_still_a_stream_to_a_cmdlet(folder):
 
 def test_dash_s_is_just_an_option_to_other_programs(folder):
     assert copilot_folder.check_command("pytest -s", folder, rules("pytest -s")).by == RULE
+
+
+# -- the adversarial review of b44cce4 ------------------------------------------------------
+
+
+@windows_paths
+@pytest.mark.parametrize("command", [
+    "Get-ChildItem -Path.link", "Get-Content -Path.hard", "Select-String CANARY -Path.hard",
+    "Get-ChildItem -Name -Recurse.link", "Get-ChildItem -Name -Recurse.", "Get-ChildItem -r.",
+    "gci -Path.github", "Get-ChildItem -Recurse.git", "Get-Content -Path.mcp.json",
+    "Get-Content a.txt -Stream.x", "Get-ChildItem '-dash'", 'Get-Content "-Path"',
+])
+def test_a_dot_ends_a_parameter_name_so_it_asks(folder, command):
+    # PowerShell reads -Path.link as -Path .link, whose value nothing checked.
+    assert not copilot_folder.command_allowed(command, folder), command
+
+
+@pytest.mark.parametrize("command", ["git status -v", "git status -vv", "git stash list -p",
+                                     "git stash list --patch", "git stash list"])
+def test_git_that_can_show_a_diff_asks_when_a_setting_names_a_diff_program(repo, monkeypatch, command):
+    assert copilot_folder.command_allowed(command, repo), command
+    monkeypatch.setattr(platform_paths, "git_names_diff_program", lambda folder: True)
+    assert not copilot_folder.command_allowed(command, repo), command
+
+
+@pytest.mark.parametrize("command", ["git status -V", "git log -P", "git log -S", "git branch -A"])
+def test_gits_options_are_matched_exactly(repo, command):
+    assert not copilot_folder.command_allowed(command, repo), command
+
+
+@pytest.mark.parametrize("command", ["git status", "git diff", "git log"])
+def test_your_own_filter_program_asks_since_a_repository_can_choose_it(repo, tmp_path, monkeypatch, command):
+    settings = tmp_path / "global.cfg"
+    settings.write_text('[filter "myf"]\n\tclean = my-clean\n', encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(settings))
+    assert "filter" in _reason(command, repo)
+
+
+def test_git_lfss_own_filter_in_your_settings_leaves_reads_alone(repo, tmp_path, monkeypatch):
+    settings = tmp_path / "global.cfg"
+    settings.write_text('[filter "lfs"]\n\tclean = git-lfs clean -- %f\n\tsmudge = git-lfs smudge -- %f\n'
+                        '\tprocess = git-lfs filter-process\n\trequired = true\n', encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(settings))
+    assert copilot_folder.command_allowed("git status", repo)
+
+
+@pytest.mark.parametrize("name", ["git.vbs", "git.js", "git.py", "git.wsf", "GIT.VBE", "git.anything",
+                                  "git-lfs.vbs"])
+def test_no_file_change_makes_a_git_program_of_any_kind(folder, name):
+    assert not copilot_folder.file_change_allowed(os.path.join(folder, name), (), folder)
+
+
+def test_a_path_folder_inside_the_chats_folder_makes_git_and_rules_ask(repo, monkeypatch):
+    inside = os.path.join(repo, "bin")
+    os.makedirs(inside, exist_ok=True)
+    assert copilot_folder.command_allowed("git status", repo)
+    monkeypatch.setenv("PATH", inside + os.pathsep + os.environ["PATH"])
+    assert "on your PATH" in _reason("git status", repo)
+    assert "on your PATH" in _reason("npm test", repo, rules("npm test"))
+    assert copilot_folder.command_allowed("Get-ChildItem" if sys.platform == "win32" else "ls", repo)
+
+
+def test_a_relative_folder_on_path_counts_as_inside(repo, monkeypatch):
+    monkeypatch.setenv("PATH", "." + os.pathsep + os.environ["PATH"])
+    assert "on your PATH" in _reason("git status", repo)
+
+
+@pytest.mark.parametrize("char", ["\x1c", "\x1d", "\x1e", "\x1f", "\x00", "\x0b", "\x0c", "\x7f"])
+def test_control_characters_ask_and_count_as_moving(folder, char):
+    assert not copilot_folder.command_allowed(f"Get-ChildItem {char}2>&1 sub", folder)
+    assert not copilot_folder.command_allowed(f"Get-ChildItem sub{char}", folder)
+    assert copilot_folder.may_move(f"npm test{char}")
+
+
+@pytest.mark.parametrize("command", ["Import-Alias -Force a.csv", "ipal a.csv", "Add-Type -Path x.dll",
+                                     "Update-TypeData -PrependPath t.ps1xml", "Update-FormatData f.ps1xml",
+                                     "Enter-PSSession x", "etsn x", "Set-PSDebug -Trace 1"])
+def test_more_ways_to_change_the_shell_count_as_moving(command):
+    assert copilot_folder.may_move(command), command
+
+
+def test_an_exact_rule_keeps_its_arguments_case(folder):
+    policy = rules("npm test -c")
+    assert copilot_folder.command_allowed("npm test -c", folder, policy)
+    assert not copilot_folder.command_allowed("npm test -C", folder, policy)
+    assert not copilot_folder.command_allowed("npm TEST -c", folder, policy)
+

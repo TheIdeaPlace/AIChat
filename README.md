@@ -690,8 +690,12 @@ Git itself is asked where it is and what it's set to, and it's answered only whe
 - none of your git settings files is inside the folder, and your global and system settings name
   no program by a relative path (`tools/x`, `./x`), which a file in the folder could stand in for.
   Otherwise your own git settings are yours, including your own hooks folder outside the project;
-- git diff, show, log and blame also ask if any of your git settings name a program for showing
-  differences, which a repository can choose.
+- no folder on your PATH is inside the chat's folder, where a program there could stand in for git
+  (this goes for your rules and kept commands too);
+- none of your git settings names a filter program other than git-lfs's, which a repository can
+  choose;
+- git diff, show, log, blame, `git status -v` and `git stash list` also ask if any of your git
+  settings name a program for showing differences, which a repository can choose too.
 
 A repository's hooks run programs, so git asks when one is there that the command can fire. Git
 status, git diff and git add can fire `post-index-change`, so they ask in a repository that has
