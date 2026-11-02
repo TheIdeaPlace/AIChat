@@ -1249,6 +1249,12 @@ class TurnRunner:
             self._close_stdin_locked()
             return True
 
+    def _close_stdin_if_no_work(self) -> None:
+        """End the turn, answered or not, unless background work is running."""
+        with self._lock:
+            if not self.background_tasks:
+                self._close_stdin_locked()
+
     def respond(self, request_id: str, response: dict) -> bool:
         """Answer a permission request (from the UI thread). False if the turn
         is already over or the request isn't waiting."""
@@ -1407,10 +1413,12 @@ class TurnRunner:
                             wait: float = IDLE_AFTER_RESULT_WAIT) -> None:
                 """``unanswered_too``: Claude Code says it's idle with a Send
                 Now message seemingly unanswered; end the turn even so, after
-                the same while, rather than leave it open for ever."""
+                the same while, rather than leave it open for ever. Running
+                background work holds it off either way, and the ceiling armed
+                when that's done takes over."""
                 disarm_ceiling()
                 timer = self._timer(wait,
-                                    self._close_stdin if unanswered_too
+                                    self._close_stdin_if_no_work if unanswered_too
                                     else self._close_stdin_if_answered)
                 timer.daemon = True
                 ceiling.append(timer)
@@ -1542,7 +1550,7 @@ class TurnRunner:
                             self.background_tasks = tasks
                             if not tasks:
                                 self.waiting_on_background = False
-                        if tasks and self.waiting_on_background:
+                        if tasks and (self.waiting_on_background or final is not None):
                             self.last_activity = ("waiting for background work: "
                                                   + "; ".join(tasks))
                         elif not tasks and final is not None and last_state == "idle":
@@ -1555,12 +1563,14 @@ class TurnRunner:
                             else:
                                 arm_ceiling(wait=BACKGROUND_DONE_WAIT)
                         elif (had_tasks and not tasks and final is not None
-                              and last_state == "running" and not self._unanswered):
+                              and last_state == "running" and not self._unanswered
+                              and not said_while_waiting):
                             # A background agent is done, with Claude Code
                             # "running" all along. Claude's follow-up should
                             # start now, and its first tool or text calls this
                             # off; if none comes, end the turn. Read without
                             # the lock, as "running" does.
+                            self.last_activity = "working"
                             arm_ceiling()
                         self._emit(event)
                         continue
@@ -1622,24 +1632,14 @@ class TurnRunner:
                         if not event.is_error:
                             self._unsaid_reply = event.text or ""
                         idle = states_seen and last_state == "idle"
-                        if (not replaced and states_seen and not idle
-                                and self.background_tasks):
-                            # Answered with a background agent still running:
-                            # Claude Code stays "running" with no idle until
-                            # it's done, but takes a message at once and leaves
-                            # the agent alone (checked with 2.1.296). So wait
-                            # as for a background command, saying each answer;
-                            # an empty result has nothing to say.
-                            if (event.text or "").strip():
-                                with self._lock:
-                                    self.waiting_on_background = False
-                                outcome = self._end_or_wait()
-                                if outcome != "unanswered":
-                                    settle(outcome, final)
-                            else:
-                                said_while_waiting = follows_waiting
-                                disarm_ceiling()
-                        elif not replaced and states_seen and not idle:
+                        if not replaced and states_seen and not idle:
+                            if self.background_tasks:
+                                # Answered with a background agent going: Claude
+                                # Code stays "running" until it's done, and the
+                                # ceiling won't end the turn meanwhile.
+                                self.last_activity = (
+                                    "waiting for background work: "
+                                    + "; ".join(self.background_tasks))
                             arm_ceiling()  # idle should follow
                         else:
                             # Answered, and idle (or no state events): closed,
@@ -1664,6 +1664,13 @@ class TurnRunner:
             self._close_stdin()
             process.wait()
             err_thread.join(timeout=2)
+            if (final is not None and not said_while_waiting and not self._cancelled
+                    and process.returncode and self.background_tasks):
+                # Claude Code died with an agent going: the answer before it
+                # isn't how the turn ended.
+                detail = next((x for x in reversed(stderr_lines) if x.strip()), "")
+                final = TurnEvent("failed", text=exit_message(process.returncode, detail),
+                                  is_error=True, session_id=self.parser.session_id)
             if said_while_waiting and final is not None:
                 # Over with no result since the reply was said, with the
                 # background work running (#161): don't say it again.
