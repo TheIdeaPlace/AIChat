@@ -211,6 +211,8 @@ class CopilotPermissions:
     empty_text = ('No commands are allowed for this chat. Allow for This Chat, in Answer, '
                   'keeps one.')
     native_pending = 'Reading your rules for Copilot...'
+    #: What Remove's confirmation says happens next.
+    removal_effect = 'Copilot asks again the next time it wants to run it.'
 
     def __init__(self, frame, info, record):
         self.frame, self.info, self.record = frame, info, record
@@ -248,21 +250,27 @@ class CopilotPermissions:
             'before running.',
             f'Your own rules for Copilot are in {rules_file()}: "allow" lists commands that run '
             'without asking in any agent-mode chat, each exactly as it will run, and "ask" lists '
-            'ones that always ask (a trailing * covers more words). A command you allow can run '
+            'ones that always ask, matching the start of a command. A command you allow can run '
             'what is in the folder, which Copilot may have changed.',
             'Restart Copilot stops Copilot, for every chat, and what it started. That clears '
             'what makes commands ask after a command that may have moved its shell, or a '
             'program that never ended. It starts again when a chat needs it.',
         ]
+        # What's making commands ask right now comes first: it's what you'd
+        # open this for.
         from ..providers.copilot_runtime import asks_now
         asks = asks_now(state, detail=True) if state is not None else ''
         if asks:
-            lines.append(asks)
-        answered = getattr(state, 'auto_allowed', ())
-        if answered:
-            lines.append('Answered for you since Copilot started, newest first:\n'
-                         + '\n'.join(summary for _n, summary in reversed(answered)))
+            lines.insert(0, asks)
         return '\n\n'.join(lines)
+
+    def note_last(self) -> str:
+        """What goes after your rules, as it can run to 200 lines."""
+        answered = getattr(self._state(), 'auto_allowed', ())
+        if not answered:
+            return ''
+        return ('Answered for you since Copilot started, newest first:\n'
+                + '\n'.join(summary for _n, summary in reversed(answered)))
 
     def restart_warning(self, done):
         """``done(what to warn about or "")``, read on a worker. Can't tell:
@@ -327,7 +335,7 @@ class CopilotPermissions:
                 done("Your rules for Copilot couldn't be read.")
             elif rules.problem:
                 done(f"Your rules file {rules.problem}, so none of its rules are used.")
-            elif not rules.allow and not rules.ask:
+            elif not rules.allow and not rules.ask and not rules.unread:
                 done('You have no rules for Copilot.')
             else:
                 parts = []

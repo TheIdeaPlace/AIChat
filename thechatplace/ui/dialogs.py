@@ -136,20 +136,14 @@ def copilot_auto_warning(folder: str) -> str:
     # on Windows and bash or zsh elsewhere (copilot_folder).
     examples = ("Get-ChildItem, Get-Content, Select-String, cd and git status"
                 if sys.platform == "win32" else "ls, cat, cd and git status")
-    return (f"In Auto, Copilot reads and searches in {folder} and changes files there without "
-            f"asking you: commands such as {examples}, and its own file edits. Use it in a "
-            "folder that's backed up or under version control, and not with files you haven't "
-            "checked: instructions hidden in a file Copilot reads could steer what it changes.\n\n"
-            "It still asks before running anything else (other programs, deleting, the "
-            "network), before anything outside the folder or in your home folder's settings "
-            "and secrets, and before changing files that can make a program run (such as .git, "
-            ".github, .vscode and .mcp.json). If you've allowed a program such as npm test, "
-            "with your rules or Allow for This Chat, it runs files Auto lets Copilot change, so "
-            "after Auto changes a file it asks you once before running it again. The "
-            "Chat Place checks what each command says, which is a strict check, not a lock.\n\n"
-            "Each thing allowed for you is shown on the status bar, and Chat Permissions lists "
-            "them. Auto stays on for this chat until you choose Agent or Plan with Change "
-            "Permission Mode.\n\n"
+    return (f"In Auto, Copilot reads in {folder} and changes files there without asking you: "
+            f"commands such as {examples}, and its own file edits. Use it in a folder that's "
+            "backed up or under version control, and not with files you haven't checked: "
+            "instructions hidden in a file Copilot reads could steer what it changes.\n\n"
+            "It still asks before running anything else, before anything outside the folder, and "
+            "before changing files that can make a program run. The Chat Place checks what each "
+            "command says, which is a strict check, not a lock.\n\n"
+            "Auto stays on for this chat until you choose Agent or Plan.\n\n"
             "Turn on Auto for this chat?")
 
 
@@ -1975,6 +1969,9 @@ class ChatPermissionsDialog(wx.Dialog):
         parts = [self.host.note()]
         if self._native:
             parts.append(self._native)
+        last = getattr(self.host, "note_last", None)
+        if callable(last):
+            parts.append(last())
         self.note.ChangeValue("\n\n".join(p for p in parts if p))
         self.note.SetInsertionPoint(0)
 

@@ -15,12 +15,6 @@ the request says, and asks about everything it can't read:
   make a program run (``.git``, ``.github``, ``.copilot``, ``.claude``,
   ``.vscode`` and the like, PROTECTED). Nothing that deletes, moves or writes
   through a command, and no file change that deletes.
-
-Nothing at all is answered in a chat whose folder is a whole drive, the home
-folder or a folder holding it (folder_too_broad), and nothing anywhere is
-answered for a path in the home folder's settings and secrets or PowerShell's
-profiles, or with a PROTECTED name anywhere on its path (Kelly's review of
-#426, and the reviews of its fixes).
 - **Your rules** (``copilot-rules.json`` in The Chat Place's folder, in any
   Agent-mode chat): ``allow`` lists commands you trust, each exactly as it
   will be run, with no ``*``; ``ask`` lists ones that always ask, ``*`` allowed,
@@ -28,15 +22,21 @@ profiles, or with a PROTECTED name anywhere on its path (Kelly's review of
 - **Allowed for this chat**: a command you allowed with Allow for This Chat,
   kept for that chat only, matched letter for letter.
 
+Nothing at all is answered in a chat whose folder is a whole drive, the home
+folder or a folder holding it (folder_too_broad), and nothing anywhere is
+answered for a path in the home folder's settings and secrets or PowerShell's
+profiles, or with a PROTECTED name anywhere on its path (Kelly's review of
+#426, and the reviews of its fixes).
+
 Whatever allows it, a command is read the same strict way. It is answered
 only when:
 
 - every part of it (split at ``|``, ``;``, ``&&``, ``||`` and new lines) is
   allowed: a changing of folder, a text filter after a pipe, or something one
   of the above allows;
-- it has none of ``( ) @ , < > = $ ` { } ~ & * ? [ ] ^ # ! ..``, no ``:``
-  except a drive's ``X:\\`` at the start of a word (Windows only), and no
-  quote in the middle of a word (PowerShell joins ``C'':\\x`` into one path);
+- it has none of ``( ) @ , < > = $ ` { } ~ & * ? [ ] ^ # ! ..`` (but for a
+  bare ``2>&1``), no ``:`` in Auto's own commands except a drive's ``X:\\`` at
+  the start of a word (Windows only), and no quote in the middle of a word (PowerShell joins ``C'':\\x`` into one path);
 - every word that isn't an option is a path inside the folder, from every
   folder Copilot's shell may be in (see below), and none is in one of the
   settings folders above;
@@ -176,8 +176,9 @@ GIT_OPTIONS = frozenset({
     "--cached", "--staged", "--short", "--porcelain", "--branch", "--graph", "--all",
     "--decorate", "--no-color", "--patch", "--abbrev-commit", "--no-ext-diff",
     "--no-textconv", "--show-current", "--show-toplevel", "--list", "--reverse",
-    "--first-parent", "--no-merges", "--merges", "--", "-p", "-s", "-b", "-n", "-v", "-vv",
+    "--first-parent", "--no-merges", "--merges", "--", "-p", "-s", "-b", "-sb", "-n", "-v", "-vv",
     "-a", "-r", "-u", "-q", "--quiet", "--tags", "--always", "--count", "--is-ancestor",
+    "--abbrev-ref",
 })
 #: git's commands that show differences, through a diff driver if one is set.
 _GIT_SHOWS_CHANGES = frozenset({"diff", "show", "log", "blame"})
@@ -321,18 +322,16 @@ def _pieces(command: str, masked: str) -> list:
 
 @dataclass(frozen=True)
 class Rule:
-    """One rule from copilot-rules.json: its words, and whether more may
-    follow (a trailing ``*``, for an ask rule)."""
+    """One rule from copilot-rules.json: its words."""
     words: tuple
-    prefix: bool = False
     text: str = ""
 
-    def matches(self, words, *, as_prefix: bool = False) -> bool:
+    def matches(self, words) -> bool:
+        """The command starts with these words: how an ask rule matches, with
+        a trailing ``*`` or without."""
         said = tuple(_fold(_unquote(w)) for w in words)
         mine = tuple(_fold(w) for w in self.words)
-        if len(said) < len(mine) or said[:len(mine)] != mine:
-            return False
-        return self.prefix or as_prefix or len(said) == len(mine)
+        return said[:len(mine)] == mine
 
     def is_exactly(self, words) -> bool:
         """The command's words as written, quotes and all, are this rule's."""
@@ -350,30 +349,31 @@ def _fold(word: str) -> str:
 
 def parse_rule(text) -> Optional[Rule]:
     """A rule as written in the file, or None if it can't be read as one.
-    Takes ``npm test``, ``git commit *``, and Claude Code's and Copilot's
-    spellings, ``Bash(npm test:*)``, ``shell(git commit:*)``."""
+    Takes ``npm test``, an ask rule's ``git push *``, and Claude Code's and
+    Copilot's spellings, ``Bash(npm test)``, ``shell(git push:*)``."""
     if not isinstance(text, str):
         return None
     body = text.strip()
     wrapped = re.fullmatch(r"(?i)(?:shell|bash|powershell)\((.*)\)", body)
     if wrapped:
         body = wrapped.group(1).strip()
-    prefix = False
     for tail in (":*", " *"):
         if body.endswith(tail):
-            body, prefix = body[:-len(tail)].strip(), True
+            body = body[:-len(tail)].strip()
             break
     if not body or len(body) > MAX_COMMAND or _REFUSED.search(body) or _SPLIT.search(body):
         return None
     words = _words(body)
     if not words:
         return None
-    return Rule(tuple(_unquote(w) for w in words), prefix, text.strip())
+    return Rule(tuple(_unquote(w) for w in words), text.strip())
 
 
 _RULE_UNREAD = "it can't be read as a command"
 _RULE_STAR = "a rule is the exact command, so * isn't used"
-_RULE_REREAD = "it holds something the shell could read another way"
+_RULE_QUOTES = "a rule can't hold quotes or %, or end a word in a backslash"
+_RULE_PUNCTUATION = ("a rule can't hold punctuation the shell acts on, such as = > | , or brackets, "
+                     "and 2>&1 needn't be in it")
 _RULE_GIT = "git in a rule may only read, or be git add"
 
 
@@ -388,10 +388,13 @@ def _allow_problem(entry, rule: Optional[Rule]) -> str:
     text = str(entry)
     if "*" in text:
         return _RULE_STAR
+    if re.search(r"""['"%]""", text):
+        return _RULE_QUOTES
     if rule is None:
-        return _RULE_UNREAD
-    if re.search(r"""['"%]""", text) or any(word.endswith("\\") for word in rule.words):
-        return _RULE_REREAD
+        return (_RULE_PUNCTUATION if isinstance(entry, str) and _REFUSED.search(entry)
+                else _RULE_UNREAD)
+    if any(word.endswith("\\") for word in rule.words):
+        return _RULE_QUOTES
     if rule.words[0].lower() in _GIT_NAMES and not _git_rule_words_ok(rule.words):
         return _RULE_GIT
     return ""
@@ -404,6 +407,9 @@ class Rules:
     ask: tuple = ()
     unread: tuple = ()
     problem: str = ""
+    #: The allow rules that can't be used, as far as they can be read, so a
+    #: command one names can say so when it asks.
+    unusable: tuple = ()
 
 
 def read_rules(path) -> Rules:
@@ -424,7 +430,7 @@ def read_rules(path) -> Rules:
         return Rules(problem="isn't JSON")
     if not isinstance(raw, dict):
         return Rules(problem='needs to be an object with "allow" and "ask" lists')
-    lists, unread = {}, []
+    lists, unread, unusable = {}, [], []
     for key in ("allow", "ask"):
         entries = raw.get(key, [])
         if not isinstance(entries, list):
@@ -437,12 +443,14 @@ def read_rules(path) -> Rules:
             why = _allow_problem(entry, rule) if key == "allow" else ""
             if why:
                 unread.append(f"{str(entry)[:200]} ({why})")
+                if rule is not None:
+                    unusable.append(Rule(tuple(" ".join(rule.words).split()), rule.text))
             elif rule is None:
                 unread.append(f"{str(entry)[:200]} ({_RULE_UNREAD})")
             else:
                 kept.append(rule)
         lists[key] = tuple(kept)
-    return Rules(lists["allow"], lists["ask"], tuple(unread))
+    return Rules(lists["allow"], lists["ask"], tuple(unread), unusable=tuple(unusable))
 
 
 @dataclass(frozen=True)
@@ -453,6 +461,8 @@ class Policy:
     allow: tuple = ()
     ask: tuple = ()
     exact: frozenset = field(default_factory=frozenset)
+    #: Rules.unusable: these allow nothing, and only say why a command asks.
+    unusable: tuple = ()
 
     @property
     def any(self) -> bool:
@@ -913,7 +923,7 @@ def _setting_problem(key: str, value: str) -> str:
     if name in ("remote.url", "remote.pushurl") and "::" in plain:
         return _GIT_HELPER_REMOTE  # ext::sh -c ... runs a program
     if name in _GIT_TRUE_ONLY and plain.lower() not in ("true", "yes", "on", "1"):
-        return _GIT_NO_CERTIFICATES  # it lets a fetch your rule allows skip checking them
+        return _GIT_NO_CERTIFICATES
     if name in _GIT_FALSE_ONLY and plain.lower() not in ("false", "no", "off", "0"):
         return _GIT_RUNS_NAMED.format(setting=name)
     if name in ("branch.remote", "branch.pushremote") and not re.fullmatch(
@@ -1044,21 +1054,28 @@ _GIT_SAFE_SETTINGS = frozenset({
     "diff.renames", "diff.algorithm", "diff.colormoved", "rebase.autostash", "core.fscache",
     "core.preloadindex", "submodule.active", "lfs.locksverify", "lfs.access", "http.sslverify",
     "safe.directory", "extensions.relativeworktrees", "log.date", "core.fsmonitor",
-    # Signing runs gpg or ssh-keygen as your own PATH finds them, not one in
-    # the folder (checked with real git 2.50 with a gpg.exe and ssh-keygen.exe
-    # at the top of the repository). gpg.program and gpg.ssh.* would name one,
-    # so they aren't listed.
-    "commit.gpgsign", "tag.gpgsign", "user.signingkey", "gpg.format"})
+    # Commit signing, which only git commit acts on, and that always asks.
+    # gpg.program and gpg.ssh.* name a program, so they aren't listed.
+    "commit.gpgsign", "tag.gpgsign", "user.signingkey", "gpg.format",
+    # What git maintenance start and an everyday setup write: on or off, or a
+    # file only git commit reads. None names a program.
+    "maintenance.auto", "maintenance.strategy", "gc.autodetach", "core.hidedotfiles",
+    "commit.template"})
+
+
+def _without_git_quiet_options(words) -> list:
+    """Options Copilot puts before git's command, which only stop git waiting
+    on a pager or taking a lock, left out."""
+    words = list(words)
+    while len(words) > 1 and _unquote(words[1]).lower() in ("--no-pager", "--no-optional-locks"):
+        del words[1]
+    return words
 
 
 def _git_ok(words, folder: str, locations) -> bool:
     """git with one of GIT_READ and only GIT_OPTIONS: ``git status``,
     ``git log --oneline -5``, ``git diff -- notes.txt``."""
-    words = list(words)
-    # Options Copilot puts before the command, which only stop git waiting
-    # on a pager or taking a lock.
-    while len(words) > 1 and _unquote(words[1]).lower() in ("--no-pager", "--no-optional-locks"):
-        del words[1]
+    words = _without_git_quiet_options(words)
     if len(words) < 2 or _unquote(words[1]).lower() not in GIT_READ:
         return False
     sub = _unquote(words[1]).lower()
@@ -1130,7 +1147,7 @@ def _git_checks(folder: str, locations, shows_changes: bool, hooks_fired) -> boo
     kept command: the shell in the chat's own repository, its settings naming
     no program, no hook it can fire that's there to run (Kelly's review of
     f42c582: a post-index-change in an unzipped repository ran on Auto's git
-    status, and a commit rule ran all of a repository's hooks), and, for one
+    status), and, for one
     that shows differences, no diff driver: a repository's .gitattributes may
     choose one, from your own git config too (Copilot's review of Auto). git
     status shows none."""
@@ -1166,6 +1183,7 @@ def _git_rule_words_ok(words) -> bool:
     """Whether a rule's words name git as a rule may: git itself, not a script
     of that name, reading as Auto reads (GIT_READ with only GIT_OPTIONS), or
     git add with paths."""
+    words = _without_git_quiet_options(words)
     if len(words) < 2 or words[0].lower() not in ("git", "git.exe"):
         return False
     if words[1].lower() == "add":
@@ -1191,7 +1209,7 @@ def _git_rule_words_ok(words) -> bool:
 def _git_rule_ok(words, folder: str, locations) -> bool:
     """A git command your rule allows gets the checks Auto's git does (Kelly's
     review of 58c5f03: a rule's git status ran a repository's core.fsmonitor)."""
-    sub = words[1].lower()
+    sub = _without_git_quiet_options(words)[1].lower()
     return _git_checks(folder, locations, sub in _GIT_SHOWS_CHANGES, _hooks_fired(sub))
 
 
@@ -1247,8 +1265,12 @@ def _git_repository_here(folder: str, locations) -> Optional[tuple]:
         # folder, and only after a cd (Kelly's review of f31123e: one cd sub
         # made all git ask until Restart Copilot).
         for where in {_normal(place) for place in locations} - {base}:
-            if (tuple(_normal(path) for path in platform_paths.git_where(where))[:3]
-                    != (top, gitdir, common)):
+            try:
+                same = (tuple(_normal(path) for path in platform_paths.git_where(where))[:3]
+                        == (top, gitdir, common))
+            except platform_paths.GitUnanswered:
+                same = False  # a cd to a folder that isn't there was followed
+            if not same:
                 _asks_because(_GIT_MOVED_ASKS)
                 return None
         dot = os.path.join(base, ".git")
@@ -1333,8 +1355,13 @@ AUTO, RULE, CHAT = "auto", "rule", "chat"
 #: Said when a rule or kept command names the command but it isn't answered.
 CANT_FOLLOW_ASKS = ("This asks since The Chat Place can't be sure all of it stays inside this "
                     "chat's folder.")
-MORE_AFTER_ASKS = "This asks since only a text filter may follow the command your rule allows."
+MORE_AFTER_ASKS = ("This asks since only 2>&1, or a pipe to a command that sorts, selects or "
+                   "formats, may follow the command your rule allows.")
 EXACT_RULE_ASKS = "This asks since your rule allows only those exact words."
+UNUSABLE_RULE_ASKS = ("This asks since a rule of yours that names it can't be used. File, Chat "
+                      "Permissions says why.")
+TOO_BROAD_ASKS = ("This asks since nothing is answered for you in this chat's folder: start a "
+                  "Copilot chat in a project's own folder for that.")
 
 
 @dataclass(frozen=True)
@@ -1422,7 +1449,7 @@ def _ask_forms(words):
 
 def _asked(words, policy: Policy) -> bool:
     """An ``ask`` rule matches the start of this part, in any of its forms."""
-    return any(rule.matches(form, as_prefix=True)
+    return any(rule.matches(form)
                for rule in policy.ask for form in _ask_forms(words))
 
 
@@ -1495,15 +1522,16 @@ def _why_it_asks(command: str, policy: Policy) -> str:
     isn't answered and nothing has said why; "" if none names it."""
     text = _ERRORS_TO_OUTPUT.sub(" ", command)
     first = _SPLIT.split(text)[0].split()
-    if any(rule.matches(text.split(), as_prefix=True) for rule in policy.ask):
+    if any(rule.matches(text.split()) for rule in policy.ask):
         return ""
     if command.strip() in policy.exact:
         return CANT_FOLLOW_ASKS
-    usable = [rule for rule in policy.allow if not rule.prefix]
-    if any(rule.is_exactly(first) for rule in usable):
+    if any(rule.is_exactly(first) for rule in policy.allow):
         return MORE_AFTER_ASKS if _SPLIT.search(text) else CANT_FOLLOW_ASKS
-    if any(rule.matches(first[:len(rule.words)]) for rule in usable):
+    if any(rule.matches(first) for rule in policy.allow):
         return EXACT_RULE_ASKS
+    if any(rule.matches(first) for rule in policy.unusable):
+        return UNUSABLE_RULE_ASKS
     return ""
 
 
@@ -1669,20 +1697,20 @@ def after_allowed_by_hand(command: str, folder: str, locations) -> Optional[tupl
     return places
 
 
-def decide(request, folder: Optional[str], policy: Policy, locations=None,
-           location_changed: bool = False) -> Optional[Answer]:
+def decide(request, folder: Optional[str], policy: Policy, locations=None) -> Optional[Answer]:
     """Whether a Copilot permission request may be answered "allow once" for
     you. Requests too long to show, a file move, or of another kind, always
-    ask; commands, once the shell may have moved, too. A file change only
+    ask. A file change only
     in Auto: rules and Allow for This Chat are for commands."""
     from .copilot_runtime import COMMAND, FILES
-    if (not folder or getattr(request, "too_long", True)
-            or getattr(request, "paths_too_long", True) or folder_too_broad(folder)):
+    if not folder or getattr(request, "too_long", True) or getattr(request, "paths_too_long", True):
         return None
     method = getattr(request, "method", "")
+    if folder_too_broad(folder):
+        if method == COMMAND and policy.any:
+            _asks_because(TOO_BROAD_ASKS)
+        return None
     if method == COMMAND:
-        if location_changed:
-            return None
         return check_command(getattr(request, "command", ""), folder, policy, locations)
     if method == FILES and policy.auto:
         # A move names where it goes in a way not checked here: it asks.

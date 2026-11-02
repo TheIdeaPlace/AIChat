@@ -898,17 +898,18 @@ folder a git repository) or a git or git-lfs program of its own (`git.cmd`).
   chat started here that's in agent mode, with Auto or without. For example,
   `{"allow": ["npm test", "npm run build"], "ask": ["git push *"]}`.
   An "allow" rule is one whole command, exactly as it will run: `npm test` doesn't cover
-  `npm test --watch`. It can't hold a `*`, quotes or `%`. `Bash(npm test)` and `shell(npm test)`,
+  `npm test --watch`. It can't hold a `*`, quotes, `%` or punctuation the shell acts on, such as
+  `=`, `>`, `|`, a comma or brackets. `Bash(npm test)` and `shell(npm test)`,
   as Claude Code and Copilot CLI write them, work too. After a rule's command, `2>&1` and a pipe to
-  a command that sorts, selects or formats may follow (`npm test 2>&1 | Select-Object -Last 20`),
-  and nothing else. "ask" always asks, even when Auto or another rule would allow the command. It
+  a command that sorts, selects or formats (on a Mac or Linux, only `cat`) may follow
+  (`npm test 2>&1 | Select-Object -Last 20`), and nothing else. "ask" always asks, even when Auto or another rule would allow the command. It
   matches the start of each command, so "git push" covers "git push origin main" (and
   "git --no-pager push"), "Remove-Item" covers its aliases, such as ri and del, and it may end
   in `*`. A rule never allows a command that could move Copilot's shell or run a script in it
   (pushd, `.\build.ps1`, source). The file is read again for each request, so a change counts at
   once. A file that can't be read is used as no rules at all (the chat says so, once each time
-  The Chat Place runs), and a rule that can't be used is left out; Chat Permissions lists it and
-  says why.
+  The Chat Place runs), and a rule that can't be used is left out: Chat Permissions lists it and
+  says why, and a command it names says so when it asks.
 - **Allow for This Chat**, a button in Answer (Ctrl+Shift+A) when Copilot asks to run a command.
   It allows that command and keeps it for the chat: the next time Copilot asks to run exactly the
   same command, letter for letter, it isn't asked again. It's offered only for a command whose

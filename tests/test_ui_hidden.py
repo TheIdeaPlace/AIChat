@@ -15818,3 +15818,38 @@ def test_only_a_copilot_chat_gets_restart_copilot(frame, env, fake_runner, monke
     frame.on_open_session()
     result, _asked = _chat_permissions(frame, monkeypatch, lambda dialog: dialog.restart_btn)
     assert result is None
+
+
+def _copilot_permissions_host(frame, tmp_path, monkeypatch, rules_text):
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers import copilot_auto_store
+    from thechatplace.ui.permission_hosts import CopilotPermissions
+    path = tmp_path / "copilot-rules.json"
+    path.write_text(rules_text, encoding="utf-8")
+    monkeypatch.setattr(copilot_auto_store, "rules_file", lambda: path)
+    record = OwnSession("probe", "Copilot preview", str(tmp_path), provider="copilot", started=True)
+    return CopilotPermissions(frame, record.to_info(), record)
+
+
+def test_chat_permissions_says_why_when_every_copilot_rule_is_unusable(frame, tmp_path, monkeypatch):
+    host = _copilot_permissions_host(frame, tmp_path, monkeypatch,
+                                     '{"allow": ["npm *", "git commit -m x"]}')
+    said = []
+    host.native(said.append)
+    assert pump(lambda: said)
+    assert "You have no rules" not in said[0]
+    assert "npm *" in said[0] and "isn't used" in said[0] and "git commit -m x" in said[0]
+
+
+def test_chat_permissions_removal_names_copilot_and_comes_first_with_what_asks(frame, tmp_path, monkeypatch):
+    from thechatplace import chat_permissions
+    from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
+    host = _copilot_permissions_host(frame, tmp_path, monkeypatch, "{}")
+    row = chat_permissions.PermissionRow("x", "Exactly this command: npm test.", "", 0)
+    text = chat_permissions.confirm_text(row, [row], after=host.removal_effect)
+    assert "Copilot asks again" in text and "Claude" not in text
+    frame._codex_states[host.info.key] = CopilotChatState(
+        "probe", "idle", mode=AGENT_MODE, auto=True, location_changed=True,
+        auto_allowed=((1, "Command: Get-ChildItem"),))
+    assert host.note().startswith("Its commands ask until you use Restart Copilot")
+    assert "Get-ChildItem" not in host.note() and "Get-ChildItem" in host.note_last()

@@ -3,6 +3,7 @@ your rules and Allow for This Chat, and what still asks. Errs toward asking
 (copilot_folder). Each of the bypasses the security reviews of #426 found is
 a case here."""
 import os
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -228,16 +229,15 @@ def test_a_link_into_a_settings_folder_is_protected(folder):
 # -- your rules --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("text,words,prefix", [
-    ("npm test", ("npm", "test"), False),
-    ("git commit *", ("git", "commit"), True),
-    ("Bash(npm run build:*)", ("npm", "run", "build"), True),
-    ("shell(pytest -q)", ("pytest", "-q"), False),
-    ("PowerShell(Remove-Item:*)", ("Remove-Item",), True),
+@pytest.mark.parametrize("text,words", [
+    ("npm test", ("npm", "test")),
+    ("git commit *", ("git", "commit")),
+    ("Bash(npm run build:*)", ("npm", "run", "build")),
+    ("shell(pytest -q)", ("pytest", "-q")),
+    ("PowerShell(Remove-Item:*)", ("Remove-Item",)),
 ])
-def test_rules_are_read_in_the_usual_spellings(text, words, prefix):
-    rule = parse_rule(text)
-    assert (rule.words, rule.prefix) == (words, prefix)
+def test_rules_are_read_in_the_usual_spellings(text, words):
+    assert parse_rule(text).words == words
 
 
 @pytest.mark.parametrize("text", ["", "   ", "*", "npm test; rm x", "a | b", "git $(x)",
@@ -463,10 +463,6 @@ def test_once_you_allow_a_command_that_may_move_the_shell_no_command_is_answered
     command = _request(COMMAND, command=plain)
     auto = Policy(auto=True)
     assert copilot_folder.decide(command, folder, auto)
-    assert copilot_folder.decide(command, folder, auto, location_changed=True) is None
-    # A file change names its full path, so it still is.
-    change = _request(FILES, file_name=os.path.join(folder, "notes.txt"))
-    assert copilot_folder.decide(change, folder, auto, location_changed=True)
 
 
 def test_a_file_move_always_asks(folder):
@@ -1832,16 +1828,16 @@ def test_the_rules_file(tmp_path):
 
 @pytest.mark.parametrize("entry,phrase", [
     ("npm *", "* isn't used"), ("git commit *", "* isn't used"), ("Bash(npm test:*)", "* isn't used"),
-    ("a * b", "* isn't used"), ('npm run "a b"', "another way"), ("npm run 'a'", "another way"),
-    ("npm run %x%", "another way"), ("foo C:\\x\\", "another way"),
+    ("a * b", "* isn't used"), ('npm run "a b"', "quotes"), ("npm run 'a'", "quotes"),
+    ("npm run %x%", "quotes"), ("foo C:\\x\\", "quotes"),
     ("git commit -m x", "git in a rule"), ("git push", "git in a rule"), ("git merge x", "git in a rule"),
     ("git rebase x", "git in a rule"), ("git fetch", "git in a rule"), ("git pull", "git in a rule"),
     ("git stash", "git in a rule"), ("git stash pop", "git in a rule"), ("git checkout x", "git in a rule"),
     ("git branch new", "git in a rule"), ("git branch -D main", "git in a rule"),
     ("git remote add x y", "git in a rule"), ("git log --output x", "git in a rule"),
     ("git log --ext-diff", "git in a rule"), ("git add -p", "git in a rule"), ("git add", "git in a rule"),
-    ("git.cmd status", "git in a rule"), ("git", "git in a rule"), ("git --no-pager log", "git in a rule"),
-    ("bad; rule", "can't be read"), ("a(b)", "can't be read"), ("x > y", "can't be read"),
+    ("git.cmd status", "git in a rule"), ("git", "git in a rule"),
+    ("bad; rule", "can't be read"), ("a(b)", "punctuation"), ("x > y", "punctuation"),
 ])
 def test_a_rule_that_cant_be_used_is_reported_with_why(tmp_path, entry, phrase):
     read = _rules_read(tmp_path, entry)
@@ -1860,9 +1856,84 @@ def test_a_rule_that_can_be_used_is_kept(tmp_path, entry):
     assert len(read.allow) == 1 and read.unread == ()
 
 
-def test_an_ask_rule_keeps_its_star(tmp_path):
-    read = _rules_read(tmp_path, ask=["git push *", "Remove-Item", 'a "b"'])
-    assert [r.prefix for r in read.ask] == [True, False, False]
+def test_an_ask_rule_matches_the_start_of_a_command_with_its_star_or_without(folder):
+    read = rules("Get-Date")
+    asked = Policy(auto=True, allow=read.allow, ask=(parse_rule("git push *"), parse_rule("git status")))
+    assert not copilot_folder.command_allowed("git push origin main", folder, asked)
+    assert not copilot_folder.command_allowed("git --no-pager push", folder, asked)
+    assert not copilot_folder.command_allowed("git status --short", folder, asked)
+
+
+@pytest.mark.parametrize("entry,says", [
+    ('npm *', "* isn't used"),
+    ('"npm test"', "quotes"),
+    ('npm test -- --reporter=dot', "punctuation"),
+    ('npm test 2>&1', "punctuation"),
+    ('git log --format=%H', "quotes or %"),
+    ('git commit -m x', "may only read"),
+    ('git push', "may only read"),
+])
+def test_a_rule_that_cant_be_used_says_its_real_reason(tmp_path, entry, says):
+    read = _rules_read(tmp_path, entry)
+    assert read.allow == () and len(read.unread) == 1 and says in read.unread[0]
+
+
+@pytest.mark.parametrize("entry,command", [("npm *", "npm test"), ("git commit -m x", "git commit -m x"),
+                                           ('"npm test"', "npm test --watch")])
+def test_a_command_an_unusable_rule_names_says_so_when_it_asks(tmp_path, folder, entry, command):
+    read = _rules_read(tmp_path, entry)
+    policy = Policy(allow=read.allow, ask=read.ask, unusable=read.unusable)
+    assert "can't be used" in _reason(command, folder, policy)
+    assert _reason("cargo build", folder, policy) == ""
+
+
+def test_a_rule_may_name_git_with_no_pager_and_still_gets_gits_checks(tmp_path, repo, monkeypatch):
+    settings = tmp_path / "global.cfg"
+    settings.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(settings))
+    read = _rules_read(tmp_path, "git --no-pager log")
+    assert len(read.allow) == 1 and read.unread == ()
+    policy = Policy(allow=read.allow)
+    assert copilot_folder.command_allowed("git --no-pager log", repo, policy)
+    # Not "--no-pager" read as the command, which would skip the diff driver check.
+    settings.write_text('[diff "x"]\n\tcommand = fake-diff\n', encoding="utf-8")
+    assert not copilot_folder.command_allowed("git --no-pager log", repo, policy)
+
+
+@pytest.mark.parametrize("command", ["git status -sb", "git rev-parse --abbrev-ref HEAD"])
+def test_commands_copilot_really_writes_are_answered(repo, command):
+    assert copilot_folder.command_allowed(command, repo)
+
+
+@pytest.mark.parametrize("setting,value", [
+    ("maintenance.auto", "false"), ("maintenance.strategy", "incremental"),
+    ("gc.autoDetach", "false"), ("core.hideDotFiles", "dotGitOnly"), ("commit.template", "x.txt")])
+def test_settings_that_name_no_program_leave_reads_alone(repo, setting, value):
+    subprocess.run(["git", "-C", repo, "config", setting, value], check=True)
+    assert copilot_folder.command_allowed("git status", repo)
+
+
+def test_real_copilots_first_command_asks_and_counts_as_moving(repo):
+    # What real Copilot wrote first for an ordinary request (dev-notes/copilot-cli-probe.md).
+    command = ("git status --short; if (Test-Path 'src\\a.py') { Get-Content 'src\\a.py' } "
+               "else { Write-Output 'src\\a.py not found' }")
+    assert not copilot_folder.command_allowed(command, repo)
+    assert copilot_folder.after_allowed_by_hand(command, repo, (repo,)) is None
+
+
+def test_a_followed_folder_that_isnt_there_says_restart(repo):
+    missing = os.path.join(repo, "missing")
+    copilot_folder.ask_reason()
+    assert copilot_folder.check_command("git status", repo, Policy(auto=True), (repo, missing)) is None
+    assert "Restart Copilot" in copilot_folder.ask_reason()
+
+
+def test_a_chat_in_too_broad_a_folder_says_why_a_rule_asks(tmp_path):
+    copilot_folder.ask_reason()
+    home = os.path.expanduser("~")
+    request = _request(COMMAND, command="npm test")
+    assert copilot_folder.decide(request, home, rules("npm test")) is None
+    assert "project's own folder" in copilot_folder.ask_reason()
 
 
 def test_a_rule_matches_only_the_exact_words(folder):
@@ -2193,8 +2264,8 @@ def test_each_reason_a_rule_cant_answer_says_its_own(repo):
     exact = rules("npm test")
     assert "exact words" in _reason('npm test -- --grep x', repo, exact)
     assert "exact words" in _reason('npm test "a,b"', repo, exact)
-    assert "text filter" in _reason("npm test 2>&1 | Select-String fail", repo, exact)
-    assert "text filter" in _reason("npm test; Get-Date", repo, exact)
+    assert "sorts, selects or formats" in _reason("npm test 2>&1 | Select-String fail", repo, exact)
+    assert "sorts, selects or formats" in _reason("npm test; Get-Date", repo, exact)
     assert "exact words" in _reason("npm test > x", repo, exact)
     assert _reason("npm install", repo, exact) == ""
     both = Policy(allow=(parse_rule("npm test"),), ask=(parse_rule("npm"),))

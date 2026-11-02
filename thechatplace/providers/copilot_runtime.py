@@ -1569,7 +1569,7 @@ class CopilotChatRuntime:
             self._rules_said = problem
             auto, exact = chat.auto, self._allowed_here.get(chat.native_id, frozenset())
             policy = copilot_folder.Policy(auto=auto, allow=rules.allow, ask=rules.ask,
-                                           exact=exact)
+                                           exact=exact, unusable=rules.unusable)
             chat.answering = policy.any
         if said:
             self._notify(chat)  # said now, not only with the next change

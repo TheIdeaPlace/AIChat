@@ -954,17 +954,18 @@ folder a git repository) or a git or git-lfs program of its own (<code>git.cmd</
   chat started here that's in agent mode, with Auto or without. For example,
   <code>{"allow": ["npm test", "npm run build"], "ask": ["git push *"]}</code>.
   An "allow" rule is one whole command, exactly as it will run: <code>npm test</code> doesn't cover
-  <code>npm test --watch</code>. It can't hold a <code>*</code>, quotes or <code>%</code>. <code>Bash(npm test)</code> and <code>shell(npm test)</code>,
+  <code>npm test --watch</code>. It can't hold a <code>*</code>, quotes, <code>%</code> or punctuation the shell acts on, such as
+  <code>=</code>, <code>&gt;</code>, <code>|</code>, a comma or brackets. <code>Bash(npm test)</code> and <code>shell(npm test)</code>,
   as Claude Code and Copilot CLI write them, work too. After a rule's command, <code>2&gt;&amp;1</code> and a pipe to
-  a command that sorts, selects or formats may follow (<code>npm test 2&gt;&amp;1 | Select-Object -Last 20</code>),
-  and nothing else. "ask" always asks, even when Auto or another rule would allow the command. It
+  a command that sorts, selects or formats (on a Mac or Linux, only <code>cat</code>) may follow
+  (<code>npm test 2&gt;&amp;1 | Select-Object -Last 20</code>), and nothing else. "ask" always asks, even when Auto or another rule would allow the command. It
   matches the start of each command, so "git push" covers "git push origin main" (and
   "git --no-pager push"), "Remove-Item" covers its aliases, such as ri and del, and it may end
   in <code>*</code>. A rule never allows a command that could move Copilot's shell or run a script in it
   (pushd, <code>.\build.ps1</code>, source). The file is read again for each request, so a change counts at
   once. A file that can't be read is used as no rules at all (the chat says so, once each time
-  The Chat Place runs), and a rule that can't be used is left out; Chat Permissions lists it and
-  says why.</li>
+  The Chat Place runs), and a rule that can't be used is left out: Chat Permissions lists it and
+  says why, and a command it names says so when it asks.</li>
 <li><strong>Allow for This Chat</strong>, a button in Answer (Ctrl+Shift+A) when Copilot asks to run a command.
   It allows that command and keeps it for the chat: the next time Copilot asks to run exactly the
   same command, letter for letter, it isn't asked again. It's offered only for a command whose

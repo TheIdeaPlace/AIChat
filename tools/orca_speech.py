@@ -166,7 +166,7 @@ STEPS = [
     Step("Auto", ["Down", "Down"], expect=["Auto: reads, and changes files"]),
     # The warning is a Yes/No message box, No the default.
     Step("the Auto warning", ["Return"],
-         expect=["In Auto, Copilot reads and searches", "Turn on Auto for this chat"]),
+         expect=["In Auto, Copilot reads in", "Turn on Auto for this chat"]),
     # Return takes the default, No: the chat still asks.
     Step("No, the default, so it still asks", ["Return"],
          expect=[f"Messages in {COPILOT_TITLE}"],
