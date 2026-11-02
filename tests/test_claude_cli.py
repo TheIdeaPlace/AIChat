@@ -1585,6 +1585,350 @@ def test_background_work_keeps_the_turn_open_until_claude_carries_on(tmp_path):
     assert box["runner"].waiting_on_background is False
 
 
+# As Claude Code 2.1.296 does it (captured with a real background agent): the
+# answer, then "running" with no idle until the agent is done, then a result for
+# Claude's follow-up, an empty one, and idle.
+STARTED = ev(type="result", subtype="success", result="I've started on the fixes.")
+
+
+def test_a_background_agent_outlives_the_ceiling(tmp_path):
+    # Ten minutes of that silence ended the turn, and Claude Code stops
+    # background work 600 s after that (captured: stdin closed at 20 s, stopped
+    # at 620 s).
+    gate = threading.Event()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Implement the fixes"), STARTED, gate, _tasks(),
+        ev(type="result", subtype="success", result="The fixes are in."),
+        ev(type="result", subtype="success", result=""), IDLE])
+    timers = box["timers"]
+    assert timers.ceiling_armed.wait(5)
+    timers.fire_ceilings()
+    assert not process.stdin_closed.is_set()
+    assert not box["done"].is_set()
+    runner = box["runner"]
+    assert runner.last_activity == "waiting for background work: Implement the fixes"
+    assert runner.waiting_on_background is False  # Claude Code isn't idle
+    gate.set()
+    assert box["done"].wait(5)
+    assert events[-1].kind == "finished" and events[-1].text == "The fixes are in."
+    assert not events[-1].is_error
+    assert not any(e.kind == "waiting" for e in events)
+    assert process.stdin_closed.is_set()
+
+
+def test_the_turn_still_ends_if_nothing_follows_the_background_agent(tmp_path):
+    gate, stuck = threading.Event(), threading.Event()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Implement the fixes"), STARTED, gate, _tasks(), stuck])
+    timers = box["timers"]
+    assert timers.ceiling_armed.wait(5)
+    timers.fire_ceilings()
+    assert not timers.live_ceilings()
+    gate.set()
+    assert _wait_for(timers.live_ceilings)  # afresh, from when the agent finished
+    assert box["runner"].last_activity == "working"
+    assert not process.stdin_closed.is_set()
+    timers.fire_ceilings()
+    assert process.stdin_closed.is_set()
+    stuck.set()
+    assert box["done"].wait(5)
+    assert events[-1].kind == "finished" and events[-1].text == "I've started on the fixes."
+
+
+def test_claudes_long_follow_up_to_an_agent_isnt_cut_off(tmp_path):
+    gate, working = threading.Event(), threading.Event()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Implement the fixes"), STARTED, gate, _tasks(),
+        ev(type="assistant", message={"content": [{"type": "text", "text": "Acting on it."}]}),
+        working, ev(type="result", subtype="success", result="Acted on it."), IDLE])
+    assert box["timers"].ceiling_armed.wait(5)
+    gate.set()
+    assert _wait_for(lambda: any(e.kind == "text" for e in events))
+    assert _wait_for(lambda: not box["timers"].live_ceilings())
+    assert not process.stdin_closed.is_set()
+    working.set()
+    assert box["done"].wait(5)
+    assert events[-1].text == "Acted on it."
+
+
+def test_turn_status_keeps_up_with_the_agents_still_running(tmp_path):
+    gate = threading.Event()
+    events, box, _ = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("One", "Two"), STARTED, _tasks("Two"), gate, _tasks(),
+        ev(type="result", subtype="success", result="Both are done."), IDLE])
+    assert _wait_for(lambda: box["runner"].last_activity
+                     == "waiting for background work: Two")
+    gate.set()
+    assert box["done"].wait(5)
+
+
+def test_work_brought_back_by_a_background_command_stays_without_a_ceiling(tmp_path):
+    # Said while waiting, then "running" with the list emptying after it: new
+    # work, however long it takes (#161), not a stuck finish.
+    gate, carry_on, held = threading.Event(), threading.Event(), threading.Event()
+
+    def on_event(event, box):
+        if event.kind == "background" and event.data == {"tasks": []}:
+            held.set()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Windows build"), STARTED, IDLE, RUNNING, gate, _tasks(),
+        carry_on, ev(type="result", subtype="success", result="Build passed."), IDLE], on_event)
+    timers = box["timers"]
+    assert _wait_for(lambda: any(e.kind == "waiting" for e in events))
+    assert _wait_for(lambda: not box["runner"].waiting_on_background)
+    assert not timers.live_ceilings()
+    gate.set()
+    assert held.wait(5)
+    assert not timers.live_ceilings()
+    carry_on.set()
+    assert box["done"].wait(5)
+    assert events[-1].text == "Build passed."
+
+
+def test_a_second_agent_finishing_doesnt_cut_off_claudes_follow_up(tmp_path):
+    # One finishes, Claude starts acting on it, then Two finishes mid-work.
+    gate, second, working = threading.Event(), threading.Event(), threading.Event()
+    seen = threading.Event()
+
+    def on_event(event, box):
+        if event.kind == "background" and event.data == {"tasks": []}:
+            seen.set()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("One", "Two"), STARTED, gate, _tasks("Two"),
+        ev(type="assistant", message={"content": [{"type": "text", "text": "Acting on it."}]}),
+        second, _tasks(), working,
+        ev(type="result", subtype="success", result="Both are done."), IDLE], on_event)
+    timers = box["timers"]
+    assert timers.ceiling_armed.wait(5)
+    gate.set()
+    assert _wait_for(lambda: any(e.kind == "text" for e in events))
+    assert _wait_for(lambda: not timers.live_ceilings())
+    second.set()
+    assert seen.wait(5)
+    assert not timers.live_ceilings()
+    assert not process.stdin_closed.is_set()
+    assert box["runner"].last_activity == "writing a reply"  # not overwritten
+    working.set()
+    assert box["done"].wait(5)
+    assert events[-1].text == "Both are done."
+
+
+def test_turn_status_doesnt_name_agents_while_claude_answers_a_send_now(tmp_path):
+    gate, listed, carry_on = threading.Event(), threading.Event(), threading.Event()
+
+    def on_event(event, box):
+        if event.kind == "background" and event.data == {"tasks": ["Two"]}:
+            box["activity"] = box["runner"].last_activity
+            listed.set()
+    events, box, _ = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("One", "Two"), STARTED, gate, _tasks("Two"), carry_on,
+        _tasks(), ev(type="result", subtype="success", result="Answered."), IDLE], on_event)
+    assert box["timers"].ceiling_armed.wait(5)
+    assert box["runner"].send_now("Do this instead")
+    box["runner"].last_activity = "starting on your new message"
+    gate.set()
+    assert listed.wait(5)
+    assert box["activity"] == "starting on your new message"
+    carry_on.set()
+    assert box["done"].wait(5)
+
+
+def test_a_real_error_stands_if_claude_code_then_exits_with_an_agent_listed(tmp_path):
+    gate = threading.Event()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Implement the fixes"),
+        ev(type="result", subtype="success", is_error=True, result="Usage limit reached"), gate])
+    process._final = 1
+    assert box["timers"].ceiling_armed.wait(5)
+    gate.set()
+    process.stdin_closed.set()
+    assert box["done"].wait(5)
+    assert "Usage limit reached" in events[-1].text and events[-1].is_error
+
+
+def test_ambient_changes_dont_restart_the_ceiling_for_an_unanswered_send_now(tmp_path):
+    gate, more = threading.Event(), threading.Event()
+    ambient = ev(type="system", subtype="background_tasks_changed", tasks=[
+        {"task_id": "w", "description": "Watch PR", "ambient": True}])
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, STARTED, gate, IDLE, more, ambient, ambient])
+    timers = box["timers"]
+    assert timers.ceiling_armed.wait(5)
+    assert box["runner"].send_now("Do this instead")
+    made = len(timers.made)
+    gate.set()
+    assert _wait_for(lambda: len(timers.made) > made)
+    made = len(timers.made)
+    more.set()
+    assert _wait_for(lambda: sum(e.kind == "background" for e in events) == 2)
+    assert len(timers.made) == made
+    timers.fire_ceilings()
+    assert process.stdin_closed.is_set()
+    assert box["done"].wait(5)
+
+
+def test_a_permission_answer_during_claudes_follow_up_starts_no_ceiling(tmp_path):
+    # "running" after the answer mustn't start the ceiling on a long tool.
+    gate, marked = threading.Event(), threading.Event()
+    ambient = ev(type="system", subtype="background_tasks_changed", tasks=[
+        {"task_id": "w", "description": "Watch PR", "ambient": True}])
+    asking = ev(type="system", subtype="session_state_changed", state="requires_action")
+
+    def on_event(event, box):
+        if event.kind == "background":
+            marked.set()
+    events, box, _ = _background_turn(tmp_path, [
+        RUNNING, INIT, STARTED,
+        ev(type="assistant", message={"content": [{"type": "text", "text": "Carrying on."}]}),
+        asking, RUNNING, ambient, gate,
+        ev(type="result", subtype="success", result="Carried on."), IDLE], on_event)
+    assert marked.wait(5)
+    assert not box["timers"].live_ceilings()
+    gate.set()
+    assert box["done"].wait(5)
+
+
+def test_the_next_answer_lets_the_ceiling_run_again_for_an_agent(tmp_path):
+    # Claude carried on and answered again, so the agent finishing is back to
+    # being a possible stuck finish.
+    gate, stuck = threading.Event(), threading.Event()
+
+    def on_event(event, box):
+        if event.kind == "text":
+            box["text"] = True
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Agent"), STARTED,
+        ev(type="assistant", message={"content": [{"type": "text", "text": "More."}]}),
+        ev(type="result", subtype="success", result="Still going."), gate, _tasks(), stuck],
+        on_event)
+    timers = box["timers"]
+    assert _wait_for(lambda: "text" in box and timers.live_ceilings())
+    timers.fire_ceilings()
+    assert not timers.live_ceilings()
+    gate.set()
+    assert _wait_for(timers.live_ceilings)
+    timers.fire_ceilings()
+    assert process.stdin_closed.is_set()
+    stuck.set()
+    assert box["done"].wait(5)
+
+
+def test_turn_status_doesnt_name_agents_while_claude_carries_on(tmp_path):
+    gate, listed = threading.Event(), threading.Event()
+
+    def on_event(event, box):
+        if event.kind == "background" and event.data == {"tasks": ["Two"]}:
+            box["activity"] = box["runner"].last_activity
+            listed.set()
+    events, box, _ = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("One", "Two"), STARTED,
+        ev(type="assistant", message={"content": [{"type": "text", "text": "Acting on it."}]}),
+        _tasks("Two"), gate, _tasks(),
+        ev(type="result", subtype="success", result="Done."), IDLE], on_event)
+    assert listed.wait(5)
+    assert box["activity"] == "writing a reply"
+    gate.set()
+    assert box["done"].wait(5)
+
+
+def test_claude_code_dying_during_an_agent_is_said(tmp_path):
+    gate = threading.Event()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Implement the fixes"), STARTED, gate])
+    process._final = 1
+    assert box["timers"].ceiling_armed.wait(5)
+    gate.set()
+    process.stdin_closed.set()  # stdout ends, with stdin never closed: it died
+    assert box["done"].wait(5)
+    assert events[-1].kind == "failed" and events[-1].is_error
+
+
+def test_stop_during_an_agent_isnt_called_a_crash(tmp_path):
+    gate = threading.Event()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Implement the fixes"), STARTED, gate])
+    assert box["timers"].ceiling_armed.wait(5)
+    box["runner"].cancel()
+    gate.set()
+    process.stdin_closed.set()
+    assert box["done"].wait(5)
+    assert events[-1].kind == "finished" and events[-1].text == "I've started on the fixes."
+
+
+def test_ambient_changes_dont_keep_restarting_the_ceiling(tmp_path):
+    gate = threading.Event()
+    ambient = ev(type="system", subtype="background_tasks_changed", tasks=[
+        {"task_id": "w", "description": "Watch PR", "ambient": True}])
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, ev(type="result", subtype="success", result="Done."),
+        ambient, ambient, ambient, gate])
+    timers = box["timers"]
+    assert _wait_for(lambda: sum(e.kind == "background" for e in events) == 3)
+    assert sum(t.interval == cli.IDLE_AFTER_RESULT_WAIT for t in timers.made) == 1
+    timers.fire_ceilings()
+    assert process.stdin_closed.is_set()
+    gate.set()
+    assert box["done"].wait(5)
+
+
+def test_an_agent_finishing_before_the_first_answer_starts_no_ceiling(tmp_path):
+    gate = threading.Event()
+    events, box, _ = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Look it up"), _tasks(), gate,
+        ev(type="result", subtype="success", result="Found it."), IDLE])
+    assert _wait_for(lambda: sum(e.kind == "background" for e in events) == 2)
+    assert not box["timers"].live_ceilings()
+    gate.set()
+    assert box["done"].wait(5)
+
+
+def test_the_agent_finishing_starts_no_ceiling_for_a_send_now(tmp_path):
+    # Working on a Send Now message: no limit, however long (#83).
+    gate, carry_on, held = threading.Event(), threading.Event(), threading.Event()
+
+    def on_event(event, box):
+        if event.kind == "background" and event.data == {"tasks": []}:
+            held.set()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Implement the fixes"), STARTED, gate, _tasks(), carry_on,
+        ev(type="result", subtype="success", result="Answered."), IDLE], on_event)
+    timers = box["timers"]
+    assert timers.ceiling_armed.wait(5)
+    made = len(timers.made)
+    assert box["runner"].send_now("Do this instead")
+    gate.set()
+    assert held.wait(5)
+    assert len(timers.made) == made
+    timers.fire_ceilings()  # the one from the answer can't end it either
+    assert not process.stdin_closed.is_set()
+    carry_on.set()
+    assert box["done"].wait(5)
+
+
+def test_a_seemingly_unanswered_send_now_waits_for_the_work_then_ends(tmp_path):
+    # Idle with the message unanswered: the ceiling that ends the turn even so
+    # leaves running work alone, and has to come back when it's done, or the
+    # turn stays open for ever.
+    first, second, stuck = threading.Event(), threading.Event(), threading.Event()
+    events, box, process = _background_turn(tmp_path, [
+        RUNNING, INIT, _tasks("Build"), STARTED, first, IDLE, second, _tasks(), stuck])
+    timers = box["timers"]
+    assert timers.ceiling_armed.wait(5)
+    made = len(timers.made)
+    assert box["runner"].send_now("Do this instead")
+    first.set()
+    assert _wait_for(lambda: len(timers.made) > made)
+    timers.fire_ceilings()
+    assert not process.stdin_closed.is_set()
+    made = len(timers.made)
+    second.set()
+    assert _wait_for(lambda: len(timers.made) > made)
+    timers.fire_ceilings()
+    assert process.stdin_closed.is_set()
+    stuck.set()
+    assert box["done"].wait(5)
+
+
 def test_a_message_sent_while_waiting_on_background_work_goes_straight_in(tmp_path):
     gate = threading.Event()
 
