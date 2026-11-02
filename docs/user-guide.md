@@ -2,7 +2,7 @@
 
 This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M).
+VO+M). The Alt keys listed beside a dialog's settings work on Windows and Linux only.
 
 The Chat Place is a keyboard and screen reader friendly home for your AI chats. Claude, Codex
 and GitHub Copilot CLI chats share one list: read, find and export conversations, hear replies,
@@ -641,7 +641,7 @@ the original's, followed by "(continued)". The original chat isn't changed, and 
 the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats, for
 Codex chats and for Copilot chats; not for Cowork chats. A Copilot copy is a little different:
 Copilot can't copy a chat, so your first message goes with the conversation so far, as text (see
-"Starting a Copilot chat").
+"Continuing a Copilot chat here").
 
 ### Following a chat as it works
 
@@ -1002,6 +1002,8 @@ Commands that only start another program don't count, so `git commit -m "fix(par
 its path counts only if it's there as named, with `.exe`, `.cmd` or `.bat`, and no `.ps1` of the
 same name beside it, since PowerShell could otherwise run a script.
 
+### Restart Copilot, Chat Permissions and agent conversations
+
 **Restart Copilot** (Alt+S), a button in File, Chat Permissions (Ctrl+Shift+H) for a Copilot chat,
 is the way out of all that without closing The Chat Place. It stops Copilot and what Copilot
 started, for every chat, as they share one Copilot, and commands stop asking because of a shell
@@ -1010,8 +1012,8 @@ program, or this chat a turn, it warns you first, saying how many, with No the d
 starts again, afresh in each chat's own folder, when a chat needs it: at once for the chat that's
 open. Your rules and kept commands ask once after that, as in any chat opened again.
 
-It relies on Copilot asking about every command: commands your own Copilot settings
-already allow never come to The Chat Place at all. None of this is offered on a computer where
+Auto, your rules and kept commands rely on Copilot asking about every command: commands your own Copilot settings
+already allow never come to The Chat Place at all. None of them is offered on a computer where
 your organisation has installed GitHub Copilot policy (in `C:\ProgramData\GitHub\Copilot\policy.d`,
 the registry's `Software\Policies\GitHub\Copilot`, or `/etc/github-copilot/policy.d`): there
 each request asks. Use Auto only in a folder that's backed up or under version control, and not
@@ -1078,7 +1080,7 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
     - Codex: read-only, or able to edit files in this folder (the default for a new chat), each
       with you reviewing requests or with **automatic approval review** (see "Permissions and
       questions").
-    - Copilot: agent mode or plan mode. See "Starting a Copilot chat".
+    - Copilot: agent mode or plan mode. See "Copilot plan mode".
 - **About permissions:** a note on what the choices mean for the chosen provider.
 - **First message:** what you'd like the AI to do.
 
@@ -1109,7 +1111,8 @@ the premium requests a message costs, and you hear the change, such as "Fix the 
 Mini (0.33x), from its next turn." The chat must be open in Copilot first: select it and wait
 until it's ready. Once it is, the chat's heading says the model Copilot reports for it, such as
 "on GPT Mini (0.33x)". Change Effort doesn't apply: effort is Copilot's own. Change Permission
-Mode switches between agent mode, plan mode and Auto (see "Starting a Copilot chat").
+Mode switches between agent mode, plan mode and Auto (see "Copilot plan mode" and "Fewer questions:
+Auto, your rules and Allow for This Chat").
 
 For a Codex chat started here, **Change Permission Mode** switches between read-only and editing
 files in its folder, with you or automatic approval review checking requests. Finish or stop the
@@ -1404,7 +1407,8 @@ What each provider offers:
   hidden as you type it. The Question box starts with what Codex wrote in this turn before
   asking, as for Claude.
 - **Copilot:** the whole command or change, with **Allow Once**, **Deny**, the default, and
-  **Allow for This Chat** for a command it can keep (see "Starting a Copilot chat").
+  **Allow for This Chat** for a command it can keep (see "Fewer questions: Auto, your rules and
+  Allow for This Chat").
 
 ### Review or change permissions
 

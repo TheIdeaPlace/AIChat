@@ -589,8 +589,8 @@ settings are its own. Each message uses requests from your Copilot plan. Type an
 Copilot is answering wait their turn, and Stop (Ctrl+Period) cancels the answer and
 puts any waiting messages back in the message box, unsent. Copilot asks before it runs a command
 or changes a file: you hear "needs your answer", and Answer (Ctrl+Shift+A) shows the whole
-command or change, with **Allow Once** and **Deny**. Deny is the default, and nothing is ever
-allowed for later. A command or change too long to show in full can only be denied. The Chat
+command or change, with **Allow Once**, **Allow for This Chat** when it's offered, and **Deny**,
+the default. A command or change too long to show in full can only be denied. The Chat
 Place won't send to Copilot:
 
 - in a folder whose Copilot hooks could act without asking you (a project's hooks of any kind,
@@ -829,7 +829,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   permission choices: read-only or edits in its folder, with human or automatic approval
   review, as in New Session. Templates keep human review unless you explicitly choose
   automatic review. A new Copilot chat has one choice, "Asks you before it changes files or
-  runs commands": Copilot asks you about each edit and command, so a reviewer's role ("don't
+  runs commands": Copilot asks you about each edit and command that its rules, Auto or a kept command doesn't
+  answer, so a reviewer's role ("don't
   edit files") is up to it to keep, and to you when it asks. Kind of conversation fills in the roles, new chats'
   permissions and who goes first for a builder and reviewer, a second opinion, a debate,
   or plan and do. An optional third agent joins in turn: replies go from the first to the
@@ -1009,7 +1010,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Chat Place's own sessions for good, from any view, hidden or not: after you confirm (No is the
   default), its Claude Code transcript is deleted (permanent deletion is currently supported for Claude chats) from the computer and it leaves the list, its
   groups and the hidden list. It waits while the session is working, here or in a terminal.
-  Desktop app sessions can only be hidden; delete those in the desktop app.
+  Desktop app sessions can only be hidden; delete those in the desktop app. A restored or kept chat
+  can be deleted: that deletes only The Chat Place's copy.
   On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).
 - **Groups**, like groups in Claude on the web: **Ctrl+G** (File, Add to Group) puts the
   selected session in a group, or a new one; File, Remove from Group takes it out; File,
@@ -1407,7 +1409,7 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode and kept rules (for Copilot, the commands allowed for the chat and your rules), to read and remove |
 | Session list | F5 | Refresh the list now and put it in order |
 | Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
-| Session list | Shift+Delete | Delete a Claude chat started here permanently, after you confirm; on an agent conversation, delete the conversation and keep its chats |
+| Session list | Shift+Delete | Delete a Claude chat started here permanently, after you confirm, or The Chat Place's copy of a restored or kept chat; on an agent conversation, delete the conversation and keep its chats |
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
