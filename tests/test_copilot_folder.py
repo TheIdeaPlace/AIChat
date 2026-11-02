@@ -2522,3 +2522,41 @@ def test_a_rule_for_git_stash_list_takes_no_names(tmp_path):
     assert _rules_read(tmp_path, "git stash list x").allow == ()
     assert len(_rules_read(tmp_path, "git stash list").allow) == 1
 
+
+
+def test_an_ask_rule_that_wont_parse_or_a_broken_file_says_commands_cant_be_answered(tmp_path):
+    path = tmp_path / "rules.json"
+    path.write_text('{"ask": ["Get-Content .env"],}', encoding="utf-8")
+    assert not copilot_folder.read_rules(path).can_answer_commands
+    path.write_text('{"ask": ["Get-Content .env*"]}', encoding="utf-8")
+    assert not copilot_folder.read_rules(path).can_answer_commands
+    path.write_text('{"ask": ["Get-Content .env"], "allow": ["npm *"]}', encoding="utf-8")
+    assert copilot_folder.read_rules(path).can_answer_commands  # an allow rule stops nothing
+
+
+def test_commands_ask_and_file_changes_dont_when_rules_cant_be_read(tmp_path):
+    policy = copilot_folder.Policy(auto=True, commands=False)
+    common = dict(too_long=False, paths_too_long=False)
+    command = SimpleNamespace(method=COMMAND, command="Get-Content notes.txt", **common)
+    assert copilot_folder.decide(command, str(tmp_path), policy) is None
+    assert copilot_folder.ask_reason() == copilot_folder.RULES_BROKEN_ASKS
+    change = SimpleNamespace(method=FILES, file_name=str(tmp_path / "a.txt"),
+                             paths=(str(tmp_path / "a.txt"),), tool_kind="edit", **common)
+    assert copilot_folder.decide(change, str(tmp_path), policy) is not None
+
+
+def test_nothing_is_checked_on_disk_when_nothing_could_answer(tmp_path, monkeypatch):
+    monkeypatch.setattr(copilot_folder, "folder_too_broad",
+                        lambda folder: pytest.fail("looked at the disk"))
+    request = SimpleNamespace(method=COMMAND, command="npm test", too_long=False,
+                              paths_too_long=False)
+    assert copilot_folder.decide(request, str(tmp_path), copilot_folder.Policy()) is None
+
+
+@windows_paths
+def test_an_ask_rule_naming_an_alias_covers_the_cmdlet_and_its_other_aliases(tmp_path):
+    (tmp_path / ".env").write_text("x", encoding="utf-8")
+    rule = copilot_folder.parse_rule("cat .env")
+    policy = copilot_folder.Policy(auto=True, ask=(rule,))
+    for command in ("cat .env", "Get-Content .env", "gc .env", "type .env"):
+        assert copilot_folder.check_command(command, str(tmp_path), policy) is None, command

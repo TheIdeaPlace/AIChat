@@ -66,7 +66,7 @@ import json
 import os
 import re
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from .. import platform_paths
@@ -454,6 +454,14 @@ class Rules:
     #: The allow rules that can't be used, as far as they can be read, so a
     #: command one names can say so when it asks.
     unusable: tuple = ()
+    #: An ask rule couldn't be read, so what it was meant to stop isn't known.
+    ask_unread: bool = False
+
+    @property
+    def can_answer_commands(self) -> bool:
+        """Whether every "always ask" this file means is known: a typo mustn't
+        turn one off while Auto and kept commands go on answering."""
+        return not self.problem and not self.ask_unread
 
 
 def read_rules(path) -> Rules:
@@ -474,7 +482,7 @@ def read_rules(path) -> Rules:
         return Rules(problem="isn't JSON")
     if not isinstance(raw, dict):
         return Rules(problem='needs to be an object with "allow" and "ask" lists')
-    lists, unread, unusable = {}, [], []
+    lists, unread, unusable, ask_unread = {}, [], [], False
     for key in ("allow", "ask"):
         entries = raw.get(key, [])
         if not isinstance(entries, list):
@@ -491,10 +499,12 @@ def read_rules(path) -> Rules:
                     unusable.append(Rule(tuple(" ".join(rule.words).split()), rule.text))
             elif rule is None:
                 unread.append(f"{str(entry)[:200]} ({_RULE_UNREAD})")
+                ask_unread = ask_unread or key == "ask"
             else:
                 kept.append(rule)
         lists[key] = tuple(kept)
-    return Rules(lists["allow"], lists["ask"], tuple(unread), unusable=tuple(unusable))
+    return Rules(lists["allow"], lists["ask"], tuple(unread), unusable=tuple(unusable),
+                 ask_unread=ask_unread)
 
 
 @dataclass(frozen=True)
@@ -507,6 +517,9 @@ class Policy:
     exact: frozenset = field(default_factory=frozenset)
     #: Rules.unusable: these allow nothing, and only say why a command asks.
     unusable: tuple = ()
+    #: Rules.can_answer_commands: if not, every command asks. File changes
+    #: don't depend on it, as rules are only for commands.
+    commands: bool = True
 
     @property
     def any(self) -> bool:
@@ -1277,11 +1290,6 @@ def _git_checks(folder: str, locations, shows_changes: bool, hooks_fired) -> boo
     return _git_asks(_GIT_DIFF_PROGRAM if named else _GIT_DIFF_UNKNOWN)
 
 
-#: How git may be named: each gets git's checks (Kelly's review of 8345ddd:
-#: a rule naming git.cmd skipped them).
-_GIT_NAMES = frozenset({"git", "git.exe", "git.cmd", "git.bat", "git.com"})
-
-
 #: Shells and what starts another program from its words: powershell git commit
 #: would get round what a rule may say about git (the review of 46749f8).
 _STARTERS = frozenset({
@@ -1502,6 +1510,8 @@ MORE_AFTER_ASKS = ("This asks since only 2>&1, or a pipe to a command that sorts
 EXACT_RULE_ASKS = "This asks since your rule allows only those exact words."
 UNUSABLE_RULE_ASKS = ("This asks since a rule of yours that names it can't be used. File, Chat "
                       "Permissions says why.")
+RULES_BROKEN_ASKS = ("This asks since a rule in your copilot-rules.json can't be read, and it may "
+                     "be one that should stop this. File, Chat Permissions says which.")
 TOO_BROAD_ASKS = ("This asks since nothing is answered for you in this chat's folder: start a "
                   "Copilot chat in a project's own folder for that.")
 
@@ -1600,8 +1610,17 @@ def _ask_forms(words):
 
 def _asked(words, policy: Policy) -> bool:
     """An ``ask`` rule matches the start of this part, in any of its forms."""
-    return any(rule.matches(form)
-               for rule in policy.ask for form in _ask_forms(words))
+    return any(named.matches(form) for rule in policy.ask for named in _ask_rule_forms(rule)
+               for form in _ask_forms(words))
+
+
+def _ask_rule_forms(rule):
+    """An ask rule, and on Windows the same rule by its cmdlet if it names an
+    alias: Copilot chooses the spelling, so "cat .env" means Get-Content and gc
+    as well."""
+    yield rule
+    if _windows() and rule.words and rule.words[0].lower() in _ALIAS_OF:
+        yield replace(rule, words=(_ALIAS_OF[rule.words[0].lower()],) + tuple(rule.words[1:]))
 
 
 def _kept_words_ok(command_words) -> bool:
@@ -1873,7 +1892,12 @@ def decide(request, folder: Optional[str], policy: Policy, locations=None) -> Op
     from .copilot_runtime import COMMAND, FILES
     if not folder or getattr(request, "too_long", True) or getattr(request, "paths_too_long", True):
         return None
+    if not policy.any and not policy.unusable:
+        return None  # nothing could answer it, so no disk or git to wait for
     method = getattr(request, "method", "")
+    if method == COMMAND and not policy.commands:
+        _asks_because(RULES_BROKEN_ASKS)
+        return None
     if folder_too_broad(folder):
         if method == COMMAND and policy.any:
             _asks_because(TOO_BROAD_ASKS)

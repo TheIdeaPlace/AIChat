@@ -3781,3 +3781,44 @@ def test_the_launcher_is_used_if_theres_nothing_else(monkeypatch):
 def test_a_real_copilot_first_on_the_path_stays_first(monkeypatch):
     monkeypatch.setattr(platform_paths, "_native_codex", lambda path: True)
     assert platform_paths.find_copilot(lambda name: REAL_PATH, [LAUNCHER_PATH]) == REAL_PATH
+
+
+@pytest.mark.parametrize("rules", [
+    copilot_folder.Rules(problem="isn't JSON"),
+    copilot_folder.Rules(ask_unread=True),
+])
+def test_an_ask_rule_that_cant_be_read_stops_auto_answering_commands(make, tmp_path, monkeypatch,
+                                                                     rules):
+    """Kelly's final review: a trailing comma lost every "always ask" while Auto
+    kept answering what they named, such as Get-Content .env."""
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "Get-Content notes.txt")
+    (tmp_path / "notes.txt").write_text("x", encoding="utf-8")
+    runtime, _ = make("ask", rules=lambda: rules)
+    chat = runtime.create(str(tmp_path))
+    runtime.set_auto(chat, True)
+    runtime.send(chat, "Read it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert copilot_folder.RULES_BROKEN_ASKS in runtime.snapshot(chat).notice
+
+
+def test_a_check_that_fails_asks_and_doesnt_decline(make, tmp_path, monkeypatch):
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("no")
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "npm test")
+    monkeypatch.setattr(copilot_folder, "decide", broken)
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Test it")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+
+
+def test_every_reason_for_asking_leaves_the_notice_with_the_request():
+    """Kelly's review of 9064712: "This asks" stayed after the answer."""
+    from thechatplace.providers import copilot_runtime
+    constants = [value for module in (copilot_folder, copilot_runtime)
+                 for name, value in vars(module).items()
+                 if name.endswith("_ASKS") and isinstance(value, str)]
+    assert len(constants) > 10
+    for text in constants:
+        text = text.format(entry=r"C:\\tools") if "{entry}" in text else text
+        assert copilot_runtime._without_asks(f"Other. {text}") == "Other.", text

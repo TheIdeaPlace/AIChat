@@ -951,6 +951,13 @@ class CopilotProvider:
                 # in agent mode (Claude's review of Auto).
                 copilot_auto_store.save_auto(native_id, False)
                 self._say_mode_problem(native_id, str(exc))
+        else:
+            # Off in the store, or the store couldn't be read: a chat reopened
+            # after Restart Copilot is the same _Chat, and mustn't keep answering
+            # while it says Copilot asks before it acts.
+            state = self.runtime.snapshot(native_id)
+            if getattr(state, "auto", False):
+                self.runtime.set_auto(native_id, False)
         self._remember_models()
 
     def set_model_owned(self, record, model: str) -> None:

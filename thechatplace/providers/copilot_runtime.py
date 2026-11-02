@@ -226,7 +226,7 @@ def _without_asks(notice: str) -> str:
     """A chat's notice without the sentences saying why a request asks."""
     for text in _ASK_SENTENCES:
         notice = notice.replace(text, "")
-    notice = _GIT_SENTENCE.sub("", notice)
+    notice = _PATH_SENTENCE.sub("", _GIT_SENTENCE.sub("", notice))
     return " ".join(notice.split())
 
 
@@ -425,10 +425,16 @@ PLAN_MODE_ASKS = "This asks since this chat is in plan mode."
 _ASK_SENTENCES = (ASKS_ONCE, REOPENED_ASKS, STILL_RUNNING_ASKS, MOVED_ASKS, BACKGROUND_ASKS,
                   RUNS_IN_BACKGROUND_ASKS, NOT_DESCRIBED_ASKS, ANOTHER_WAITING_ASKS,
                   PLAN_MODE_ASKS, copilot_folder.CANT_FOLLOW_ASKS,
-                  copilot_folder.MORE_AFTER_ASKS, copilot_folder.EXACT_RULE_ASKS)
+                  copilot_folder.MORE_AFTER_ASKS, copilot_folder.EXACT_RULE_ASKS,
+                  copilot_folder.UNUSABLE_RULE_ASKS, copilot_folder.TOO_BROAD_ASKS,
+                  copilot_folder.RULES_BROKEN_ASKS)
 #: copilot_folder's reasons for git, one sentence each, a setting's name
 #: within one having no space after its dot.
 _GIT_SENTENCE = re.compile(r"git asks here .+?\.(?= |$)")
+#: copilot_folder._PATH_INSIDE_ASKS, whose folder can't be known here.
+_PATH_SENTENCE = re.compile(r"This asks since .+?, on your PATH, is inside this chat's folder or "
+                            r"is a relative path, so a program there could stand in for the one "
+                            r"named\.")
 
 
 def _ask_reason(chat, request, covered, why: str, *, running: bool, background: bool,
@@ -1115,11 +1121,6 @@ class _Chat:
         #: You allowed a command that may move Copilot's shell somewhere not
         #: followed: no command is answered for you after it.
         self.location_changed = False
-        #: Auto answered a file change since you last allowed a command
-        #: yourself: your rules and kept commands ask until you do. A program
-        #: you allowed (npm test, pytest) runs files Auto lets Copilot change,
-        #: and settings such as .npmrc or conftest.py can make it run anything
-        #: (Kelly's review of 58c5f03; Tim chose to ask).
         #: toolCallId -> (command, runs in the background), from the
         #: tool_call update Copilot sends just before each request. Only that
         #: update says a command runs in the background (mode async, detach,
@@ -1569,7 +1570,8 @@ class CopilotChatRuntime:
             self._rules_said = problem
             auto, exact = chat.auto, self._allowed_here.get(chat.native_id, frozenset())
             policy = copilot_folder.Policy(auto=auto, allow=rules.allow, ask=rules.ask,
-                                           exact=exact, unusable=rules.unusable)
+                                           exact=exact, unusable=rules.unusable,
+                                           commands=rules.can_answer_commands)
             chat.answering = policy.any
         if said:
             self._notify(chat)  # said now, not only with the next change
@@ -2391,7 +2393,10 @@ class CopilotChatRuntime:
                 places = chat.locations
             policy = self._policy(chat)
             copilot_folder.ask_reason()  # forget any earlier check's reason
-            covered = copilot_folder.decide(request, chat.cwd, policy, places or (chat.cwd,))
+            try:
+                covered = copilot_folder.decide(request, chat.cwd, policy, places or (chat.cwd,))
+            except Exception:  # noqa: BLE001 - a check that fails asks, it doesn't decline
+                covered = None
             why = copilot_folder.ask_reason()
         with self._lock:
             # Checked and stored in one go, so a Stop can't slip in between

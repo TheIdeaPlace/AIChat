@@ -47,13 +47,14 @@ def test_a_file_that_isnt_what_was_written_is_set_aside_not_overwritten(data):
     assert [p.name.startswith("copilot-auto.json.bad-") for p in data.iterdir()] == [True]
 
 
-def test_entries_that_arent_the_apps_are_left_out(data):
+def test_entries_that_arent_the_apps_set_the_file_aside(data):
+    """Not dropped one by one: the next save would have lost them for good."""
     (data / "copilot-auto.json").write_text(
         '{"version": 1, "chats": {"../evil": {"auto": true}, "%s": {"auto": "yes", '
         '"allowed": [{"command": "npm test"}, {"command": " padded "}, {"command": 7}, "x"]}}}'
         % ONE, encoding="utf-8")
     auto, kept, problem = store.load(ONE)
-    assert not auto and [k.command for k in kept] == ["npm test"] and not problem
+    assert not auto and not kept and problem == store.SET_ASIDE
 
 
 def test_a_file_that_cant_be_opened_is_not_saved_over(data, monkeypatch):
@@ -203,3 +204,28 @@ def test_auto_saved_for_a_chat_that_reopens_in_another_mode_is_turned_off(tmp_pa
     provider.prepare_owned(_record(tmp_path))
     assert not store.load(ONE)[0]
     assert ("add_notice", (ONE, "not in agent mode")) in runtime.calls
+
+
+def test_a_file_from_a_newer_release_is_neither_obeyed_nor_written_over(data):
+    text = '{"version": 99, "future": 1, "chats": {"%s": {"auto": true}}}' % ONE
+    (data / "copilot-auto.json").write_text(text, encoding="utf-8")
+    auto, _kept, problem = store.load(ONE)
+    assert not auto and problem == store.UNREADABLE
+    assert store.save_auto(ONE, False) == store.NOT_SAVED
+    assert (data / "copilot-auto.json").read_text(encoding="utf-8") == text
+
+
+@pytest.mark.parametrize("entry", [
+    '{"auto": "yes"}', '{"allowed": "npm test"}', '{"allowed": [{"command": 1}]}', '[]'])
+def test_a_chat_half_understood_sets_the_whole_file_aside(data, entry):
+    (data / "copilot-auto.json").write_text(
+        '{"version": 1, "chats": {"%s": {"auto": true}, "%s": %s}}' % (ONE, "22222222-3333-4444-5555-666666666666", entry),
+        encoding="utf-8")
+    auto, _kept, problem = store.load(ONE)
+    assert not auto and problem == store.SET_ASIDE
+    assert any(p.name.startswith("copilot-auto.json.bad-") for p in data.iterdir())
+
+
+def test_brackets_too_deep_to_read_set_the_file_aside(data):
+    (data / "copilot-auto.json").write_text("[" * 200000, encoding="utf-8")
+    assert store.load(ONE)[2] == store.SET_ASIDE

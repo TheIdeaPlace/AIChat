@@ -6,7 +6,8 @@ releases that don't know these never see or drop them.
 Like the modes file, one that can't be read as what's written here is moved
 aside (``.bad-<when>``), never written over, and one that can't be opened is
 left alone and not saved to: a chat then opens asking, as if nothing were
-kept. Nothing is ever answered for you from a file only half understood.
+kept. So is one from a newer release, which this one can't read and mustn't
+lose. Nothing is ever answered for you from a file only half understood.
 
 Copilot's own rules, ``copilot-rules.json``, are the person's to write; The
 Chat Place only reads them (copilot_folder.read_rules).
@@ -34,6 +35,8 @@ UNREADABLE = ("What The Chat Place kept for your Copilot chats couldn't be opene
 #: Said when a change couldn't be saved.
 NOT_SAVED = ("The Chat Place couldn't save that change for this chat, so the next time the chat "
              "opens it may be as it was before.")
+#: The file's format.
+VERSION = 1
 #: The most commands kept for one chat.
 MAX_KEPT = 200
 
@@ -97,30 +100,43 @@ def _read() -> tuple:
         chats = raw.get("chats") if isinstance(raw, dict) else None
         if not isinstance(chats, dict):
             raise ValueError("no chats")
-    except ValueError:
+        version = raw.get("version", 1)
+        if type(version) is int and version > VERSION:
+            return None, UNREADABLE
+        read = _read_chats(chats)
+    except (ValueError, RecursionError):
         try:
             os.replace(path, _set_aside_path(path))
         except OSError:
             return None, UNREADABLE
         return {}, SET_ASIDE
+    return read, ""
+
+
+def _read_chats(chats: dict) -> dict:
+    """The chats in the file; ValueError if any isn't as written here, so the
+    whole file is kept aside rather than part of it being dropped on the next save."""
     read = {}
     for native_id, entry in chats.items():
         if not (isinstance(native_id, str) and platform_paths.is_safe_id(native_id)
-                and isinstance(entry, dict)):
-            continue
+                and isinstance(entry, dict)
+                and isinstance(entry.get("auto", False), bool)
+                and isinstance(entry.get("allowed", []), list)):
+            raise ValueError("not a chat")
         allowed = []
-        for item in entry.get("allowed", ()) if isinstance(entry.get("allowed"), list) else ():
+        for item in entry.get("allowed", []):
             command = item.get("command") if isinstance(item, dict) else None
-            at = item.get("at") if isinstance(item, dict) else 0
-            if isinstance(command, str) and command.strip() == command and command:
-                allowed.append(Kept(command, at if isinstance(at, int) else 0))
-        read[native_id] = {"auto": entry.get("auto") is True, "allowed": allowed[:MAX_KEPT]}
-    return read, ""
+            if not (isinstance(command, str) and command and command.strip() == command):
+                raise ValueError("not a command")
+            at = item.get("at", 0)
+            allowed.append(Kept(command, at if isinstance(at, int) else 0))
+        read[native_id] = {"auto": entry.get("auto", False), "allowed": allowed[:MAX_KEPT]}
+    return read
 
 
 def _write(chats: dict) -> bool:
     from ..provider_storage import atomic_write_json
-    payload = {"version": 1, "chats": {
+    payload = {"version": VERSION, "chats": {
         native_id: {"auto": entry["auto"],
                     "allowed": [{"command": k.command, "at": k.allowed_at_ms}
                                 for k in entry["allowed"]]}

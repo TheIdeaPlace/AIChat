@@ -666,9 +666,14 @@ folder a git repository) or a git or git-lfs program of its own (`git.cmd`).
   in `*`. A rule never allows a command that could move Copilot's shell or run a script in it
   (pushd, `.\build.ps1`, source), a shell or something that starts other programs (powershell, cmd,
   bash, Start-Process), or a program git ships other than git (scalar, git-upload-pack). The file is read again for each request, so a change counts at
-  once. A file that can't be read is used as no rules at all (the chat says so, once each time
-  The Chat Place runs), and a rule that can't be used is left out: Chat Permissions lists it and
-  says why, and a command it names says so when it asks.
+  once. If the file can't be read, or an "ask" rule in it can't be, every command asks until it's fixed, so a
+  typo never turns an "always ask" off (the chat says so; a file change in Auto is still answered). An
+  "allow" rule that can't be used is left out: Chat Permissions lists it and says why, and a command
+  it names says so when it asks.
+- **git in every Copilot chat started here:** Copilot starts with git's filesystem monitor off and
+  without bare repositories being found by themselves (`core.fsmonitor=false`,
+  `safe.bareRepository=explicit`), so a repository can't run a program through them. Git in a very
+  large repository can be slower in these chats.
 - **Allow for This Chat**, a button in Answer (Ctrl+Shift+A) when Copilot asks to run a command.
   It allows that command and keeps it for the chat: the next time Copilot asks to run exactly the
   same command, letter for letter, it isn't asked again. It's offered only for a command whose
