@@ -7464,8 +7464,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             "screen reader friendly, with Claude, Codex and GitHub Copilot in one session list. "
             "Replies use your sign-in with the selected provider.\n\n"
             "An independent project by Kelly Ford, not made, sponsored or endorsed by "
-            "Anthropic, OpenAI or GitHub. Claude and Claude Code are trademarks of Anthropic; "
-            "ChatGPT and Codex are OpenAI products; GitHub Copilot is a GitHub product.\n\n"
+            "Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; "
+            "ChatGPT and Codex are OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.\n\n"
             "Questions and bug reports: support@theideaplace.net",
             f"About {APP_NAME}", wx.OK | wx.ICON_INFORMATION, self)
 
