@@ -207,14 +207,17 @@ def asks_now(state, detail: bool = False) -> str:
     if moved:
         parts.append("Its commands ask until you use Restart Copilot, in File, Chat Permissions, "
                      "since a command you allowed may have moved Copilot's shell.")
+    program = True
     if background and not moved:
         parts.append("Commands and file changes ask while a program allowed here runs." if auto
                      else "Commands ask while a program allowed here runs.")
     elif running and auto:
         parts.append("File changes ask while a program allowed here runs.")
-    elif moved and auto:
-        parts.append("Auto's file changes are still answered for you.")
-    if detail and (running or background):
+    else:
+        program = False  # so "it", below, would have nothing to mean
+        if moved and auto:
+            parts.append("Auto's file changes are still answered for you.")
+    if detail and program:
         parts.append(_STOP_DOESNT_END)
     return " ".join(parts)
 
@@ -404,9 +407,9 @@ ASKS_ONCE = ("This asks although your rules or the chat's kept commands allow it
 REOPENED_ASKS = ("This asks although your rules or the chat's kept commands allow it, since this "
                  "chat was opened again and what Auto may have changed here before isn't known. "
                  "Once you allow it yourself, they can be answered for you again.")
-#: Said when Auto's file change asks because an allowed program may be running.
 _STOP_DOESNT_END = ("Stopping it in Copilot doesn't end it; Restart Copilot, in File, Chat "
                     "Permissions, does.")
+#: Said when Auto's file change asks because an allowed program may be running.
 STILL_RUNNING_ASKS = ("This file change asks, since a program allowed in this folder may still "
                       "be running and could use it. It's answered for you again once Copilot "
                       f"says the program ended. {_STOP_DOESNT_END}")
@@ -421,7 +424,9 @@ ANOTHER_WAITING_ASKS = "This asks since another command is waiting for your answ
 PLAN_MODE_ASKS = "This asks since this chat is in plan mode."
 _ASK_SENTENCES = (ASKS_ONCE, REOPENED_ASKS, STILL_RUNNING_ASKS, MOVED_ASKS, BACKGROUND_ASKS,
                   RUNS_IN_BACKGROUND_ASKS, NOT_DESCRIBED_ASKS, ANOTHER_WAITING_ASKS,
-                  PLAN_MODE_ASKS, copilot_folder.TOO_LONG_ASKS, copilot_folder.CANT_FOLLOW_ASKS)
+                  PLAN_MODE_ASKS, copilot_folder.TOO_LONG_ASKS, copilot_folder.CANT_FOLLOW_ASKS,
+                  copilot_folder.EXPANDS_ASKS, copilot_folder.MORE_AFTER_ASKS,
+                  copilot_folder.EXACT_RULE_ASKS)
 #: copilot_folder's reasons for git, one sentence each, a setting's name
 #: within one having no space after its dot.
 _GIT_SENTENCE = re.compile(r"git asks here because .+?\.(?= |$)")
@@ -2298,12 +2303,16 @@ class CopilotChatRuntime:
         # the shell, commands ask from then on. Worked out first, with no
         # lock held (it reads the disk); location_changed is only ever set,
         # never put back, so two answers at once can't undo each other.
-        followed, moves = None, False
+        followed, moves, after = None, False, ()
         if peek is not None and decision == ALLOW_ONCE and peek.method == COMMAND:
             policy = self._policy(chat)
             tracking = copilot_folder.Policy(auto=True, allow=policy.allow, exact=policy.exact)
             followed = copilot_folder.check_command(peek.command, cwd, tracking, places)
-            moves = followed is None and copilot_folder.may_move(peek.command)
+            if followed is not None:
+                after = followed.locations
+            else:
+                after = copilot_folder.after_allowed_by_hand(peek.command, cwd, places)
+                moves = after is None
         with self._lock:
             chat = self._chats.get(native_id)
             request = chat.requests.get(request_id) if chat else None
@@ -2340,7 +2349,7 @@ class CopilotChatRuntime:
                     chat.location_changed = True  # not described first: not known
             # Before Copilot hears the answer, so nothing after the command
             # can be answered for you first.
-            if moves or (followed is not None and not _follow(chat, followed.locations)):
+            if moves or (after and not _follow(chat, after)):
                 chat.location_changed = True
             connection = chat.connection
             folder_changed = shared != self._shared(chat)

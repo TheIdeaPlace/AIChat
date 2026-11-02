@@ -68,8 +68,9 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
 Every prompt logs a user.message first, as Copilot does (except in refused).
 
 In ask mode, FAKE_COPILOT_COMMANDS (a JSON list) gives each prompt's command in
-turn, each its own tool call, and FAKE_COPILOT_EXIT reports each allowed
-command's real end as 1.0.105 does: completed, with a shell_exit.
+turn, each its own tool call (or "edit:<path>", a file change there), and
+FAKE_COPILOT_EXIT reports each allowed command's real end as 1.0.105 does:
+completed, with a shell_exit.
 
 FAKE_COPILOT_SESSIONS names the folder session logs are written under, as
 Copilot writes ~/.copilot/session-state/<id>/events.jsonl.
@@ -298,6 +299,15 @@ def prompt(message_id, session, text=""):
         command = (ASK_COMMANDS[min(turns[0], len(ASK_COMMANDS)) - 1] if ASK_COMMANDS
                    else ASK_COMMAND)
         call_id = f"call-{turns[0]}" if ASK_COMMANDS else "call-1"
+        if command.startswith("edit:"):
+            target = command[len("edit:"):]
+            ask(session, {"toolCallId": call_id, "title": "Change a file", "kind": "edit",
+                          "locations": [{"path": target}], "rawInput": {
+                              "fileName": target,
+                              "diff": f"--- a/{target}\n+++ b/{target}\n+synthetic\n"}})
+            log_usage(session)
+            send({"jsonrpc": "2.0", "id": message_id, "result": {"stopReason": "end_turn"}})
+            return
         shown = {"command": command if preview != "other" else "echo other",
                  "description": "Run it", "mode": "sync", "initial_wait": 30}
         if preview == "async":

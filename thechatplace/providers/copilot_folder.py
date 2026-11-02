@@ -257,19 +257,29 @@ def _plain_quoted(text: str) -> bool:
     return text[0] == "'" or not re.search(r"[`$]" if _windows() else r"[`$!]", text)
 
 
-def _masked(command: str) -> Optional[str]:
-    """``command``, the same length, with what's inside each plain quoted
-    string blanked, so what's left is what the shell itself acts on. None if
-    it can't be read that way: a quote left open, anything not plain ASCII
-    (PowerShell takes curly quotes for quotes), or outside Windows a backslash
-    outside single quotes, since bash's escape changes where a quote ends:
-    in ``"a\\" ; "; cd .. ; "\\"b"``, cd is a command there but looks quoted."""
-    if _NON_ASCII.search(command):
+def _read_quotes(command: str, plain) -> Optional[str]:
+    """``command`` with each plain quoted string as ``plain`` gives it, so
+    what's left is what the shell itself acts on: the one reading of quotes
+    (_masked, may_move). None if it can't be read that way:
+    - anything not plain ASCII (PowerShell takes curly quotes for quotes);
+    - a quote left open;
+    - ``--%``, however it's quoted: after it PowerShell stops treating quotes
+      as quotes but still splits at ``|``, so ``npm --% ' | New-Item x | npm
+      --% '`` ran New-Item (Kelly's review of f42c582);
+    - a comment starting outside quotes, which ends at the line's end though
+      a quote after it reads as going on past that line;
+    - outside Windows a backslash outside single quotes, since bash's escape
+      changes where a quote ends: in ``"a\\" ; "; cd .. ; "\\"b"``, cd is a
+      command there but looks quoted.
+    (A here-string's @ and a line carried on by a backtick stay outside quotes,
+    where they're refused, as they count as moving.)"""
+    if _NON_ASCII.search(command) or "--%" in command:
         return None
     pieces, end = [], 0
 
     def readable(gap: str) -> bool:
-        return not ("'" in gap or '"' in gap or (not _windows() and "\\" in gap))
+        return not ("'" in gap or '"' in gap or (not _windows() and "\\" in gap)
+                    or re.search(r"(^|\s)#", gap))
 
     for match in _QUOTED.finditer(command):
         if not readable(command[end:match.start()]):
@@ -278,11 +288,17 @@ def _masked(command: str) -> Optional[str]:
         if text[0] == '"' and not _windows() and "\\" in text:
             return None
         pieces.append(command[end:match.start()])
-        pieces.append(text[0] + "_" * (len(text) - 2) + text[-1] if _plain_quoted(text) else text)
+        pieces.append(plain(text) if _plain_quoted(text) else text)
         end = match.end()
     if not readable(command[end:]):
         return None
     return "".join(pieces) + command[end:]
+
+
+def _masked(command: str) -> Optional[str]:
+    """``command``, the same length, with what's inside each plain quoted
+    string blanked (_read_quotes)."""
+    return _read_quotes(command, lambda text: text[0] + "_" * (len(text) - 2) + text[-1])
 
 
 def _pieces(command: str, masked: str) -> list:
@@ -691,7 +707,8 @@ def _paths_ok(name: str, words, folder: str, locations, *, letters: bool,
                                     "-informationvariable", "-pipelinevariable"))
                                 or _prefix_of(lowered, "-wait", 4))):
                 return False
-            if (_prefix_of(lowered, "-stream") or _prefix_of(lowered, "-recurse", 2)
+            if ((_powershell_own(name) and _prefix_of(lowered, "-stream"))
+                    or _prefix_of(lowered, "-recurse", 2)
                     or _prefix_of(lowered, "-followsymlink", 4) or "follow" in lowered
                     or lowered in ("--recursive", "--dereference")
                     or (name in _LISTING and lowered.startswith("-de"))
@@ -775,14 +792,20 @@ def _git_asks(why: str) -> bool:
     return _asks_because(f"git asks here because {why}.")
 
 
+_GIT_TOO_OLD = "this git is too old for The Chat Place's check, which needs git 2.31 or later"
 _GIT_UNANSWERED = {
     platform_paths.GIT_MISSING: "The Chat Place couldn't find git",
     platform_paths.GIT_TIMED_OUT: f"git took more than {platform_paths.GIT_CHECK_SECONDS} seconds "
                                   "to answer The Chat Place's check",
     platform_paths.GIT_FAILED: "git couldn't say which repository this folder is in or how it's "
                                "set up",
+    platform_paths.GIT_TOO_OLD: _GIT_TOO_OLD,
 }
-_GIT_SHELL_MOVED = "Copilot's shell may be in a folder inside this chat's"
+_GIT_SHELL_MOVED = ("Copilot's shell may be in a folder inside this chat's, which Restart Copilot, "
+                    "in File, Chat Permissions, clears")
+_GIT_WORKTREE_MOVED = ("this linked worktree doesn't match its repository's record of it, which "
+                       "git worktree repair can fix if it was moved")
+_GIT_HOOK = "this repository has a {hook} hook, and hooks run programs"
 _GIT_NOT_THE_TOP = "this chat's folder isn't the top of its git repository"
 _GIT_UNUSUAL = "this folder's .git isn't an ordinary repository or linked worktree"
 _GIT_SUBMODULES = "this repository has submodules, and git would use their settings too"
@@ -817,12 +840,16 @@ _GIT_SECTIONS = frozenset({
 #: of 9064712: VS Code and gh made 13 of 19 real clones ask for everything).
 _TOOL_SETTINGS = re.compile(
     r"branch\.(vscode-merge-base|gh-merge-base|github-pr-[a-z0-9-]+)"
-    r"|remote\.(gh-resolved|github-pr-remote)|gui\.[a-z0-9-]+")
+    r"|remote\.(gh-resolved|github-pr-remote)|gui\.[a-z0-9-]+"
+    # Only how git shows things (Kelly's review of f42c582): none names a program.
+    r"|(color|column|advice|status)\.[a-z0-9-]+")
 
 
 #: Safe only when on: http.sslVerify off lets a fetch skip checking the
 #: server's certificate (Copilot's verification pass).
 _GIT_TRUE_ONLY = frozenset({"http.sslverify"})
+#: Safe only when off: on, or naming a hook, core.fsmonitor runs a program.
+_GIT_FALSE_ONLY = frozenset({"core.fsmonitor"})
 
 
 def _setting_problem(key: str, value: str) -> str:
@@ -841,6 +868,8 @@ def _setting_problem(key: str, value: str) -> str:
         return _GIT_HELPER_REMOTE  # ext::sh -c ... runs a program
     if name in _GIT_TRUE_ONLY and plain.lower() not in ("true", "yes", "on", "1"):
         return _GIT_NO_CERTIFICATES  # it lets a fetch your rule allows skip checking them
+    if name in _GIT_FALSE_ONLY and plain.lower() not in ("false", "no", "off", "0"):
+        return _GIT_RUNS_NAMED.format(setting=name)
     if name in ("branch.remote", "branch.pushremote") and not re.fullmatch(
             r"[A-Za-z0-9._-]+", plain):
         return _GIT_HELPER_REMOTE  # a branch's remote may be a URL too: only a remote's name
@@ -962,7 +991,12 @@ _GIT_SAFE_SETTINGS = frozenset({
     "merge.conflictstyle", "rerere.enabled", "lfs.repositoryformatversion",
     "diff.renames", "diff.algorithm", "diff.colormoved", "rebase.autostash", "core.fscache",
     "core.preloadindex", "submodule.active", "lfs.locksverify", "lfs.access", "http.sslverify",
-    "safe.directory"})
+    "safe.directory", "extensions.relativeworktrees", "log.date", "core.fsmonitor",
+    # Signing runs gpg or ssh-keygen as your own PATH finds them, not one in
+    # the folder (checked with real git 2.50 with a gpg.exe and ssh-keygen.exe
+    # at the top of the repository). gpg.program and gpg.ssh.* would name one,
+    # so they aren't listed.
+    "commit.gpgsign", "tag.gpgsign", "user.signingkey", "gpg.format"})
 
 
 def _git_ok(words, folder: str, locations) -> bool:
@@ -999,18 +1033,75 @@ def _git_ok(words, folder: str, locations) -> bool:
         # which a branch name is.
         if not _inside_from(text, folder, locations):
             return False
-    return _git_checks(folder, locations, sub in _GIT_SHOWS_CHANGES)
+    return _git_checks(folder, locations, sub in _GIT_SHOWS_CHANGES, _hooks_fired(sub, rest))
 
 
-def _git_checks(folder: str, locations, shows_changes: bool) -> bool:
+#: Every hook githooks(5) documents (git 2.50), which git runs by these names.
+GIT_HOOKS = frozenset({
+    "applypatch-msg", "pre-applypatch", "post-applypatch", "pre-commit", "pre-merge-commit",
+    "prepare-commit-msg", "commit-msg", "post-commit", "pre-rebase", "post-checkout",
+    "post-merge", "pre-push", "pre-receive", "update", "proc-receive", "post-receive",
+    "post-update", "reference-transaction", "push-to-checkout", "pre-auto-gc", "post-rewrite",
+    "sendemail-validate", "fsmonitor-watchman", "post-index-change"})
+_INDEX = frozenset({"post-index-change"})
+_NO_HOOKS: frozenset = frozenset()
+#: Which hooks a git command can fire, from running each with every hook
+#: installed in a real repository (git 2.50, tools in dev-notes/copilot-cli-probe.md),
+#: and githooks(5) for what takes more than that to reach (gc's pre-auto-gc,
+#: --amend's post-rewrite). git status and git diff write a stale index back
+#: (just unzipping a repository leaves one), which fires post-index-change.
+#: fsmonitor-watchman runs only when core.fsmonitor names it, which asks
+#: already. A command not listed may fire any of them.
+_GIT_HOOKS_FIRED = {
+    "status": _INDEX, "diff": _INDEX, "log": _NO_HOOKS, "show": _NO_HOOKS, "blame": _NO_HOOKS,
+    "ls-files": _NO_HOOKS, "rev-parse": _NO_HOOKS, "add": _INDEX, "rm": _INDEX, "mv": _INDEX,
+    "commit": frozenset({"pre-commit", "prepare-commit-msg", "commit-msg", "post-commit",
+                         "post-rewrite", "post-index-change", "reference-transaction",
+                         "pre-auto-gc"}),
+    "push": frozenset({"pre-push", "reference-transaction"}),
+    "fetch": frozenset({"reference-transaction", "pre-auto-gc"}),
+    "tag": frozenset({"reference-transaction"}),
+}
+
+
+def _hooks_fired(sub: str, rest) -> frozenset:
+    """The hooks ``git sub rest...`` can fire (_GIT_HOOKS_FIRED). git branch
+    only lists with nothing but listing options; otherwise it's a change."""
+    if sub == "branch" and all(_unquote(word).lower() in GIT_OPTIONS for word in rest):
+        return _NO_HOOKS
+    return _GIT_HOOKS_FIRED.get(sub, GIT_HOOKS)
+
+
+def _active_hook(hooks: str, names) -> str:
+    """The first of ``names`` git would run from the folder ``hooks``, or "".
+    git goes by whether it can run the file: off Windows it must be
+    executable, and on Windows any file with the name counts, with .exe added
+    too. So a .sample, or anything else in there, doesn't. The name said is
+    from the list, never the repository's own text."""
+    for name in sorted(names):
+        forms = [name, f"{name}.exe"] if _windows() else [name]
+        if any(os.access(os.path.join(hooks, form), os.X_OK) for form in forms):
+            return name
+    return ""
+
+
+def _git_checks(folder: str, locations, shows_changes: bool, hooks_fired) -> bool:
     """What every git command answered for you must pass, by Auto, a rule or a
     kept command: the shell in the chat's own repository, its settings naming
-    no program, and, for one that shows differences, no diff driver: a
-    repository's .gitattributes may choose one, from your own git config too
-    (Copilot's review of Auto). git status shows none."""
+    no program, no hook it can fire that's there to run (Kelly's review of
+    f42c582: a post-index-change in an unzipped repository ran on Auto's git
+    status, and a commit rule ran all of a repository's hooks), and, for one
+    that shows differences, no diff driver: a repository's .gitattributes may
+    choose one, from your own git config too (Copilot's review of Auto). git
+    status shows none."""
     found = _git_repository_here(folder, locations)
-    if found is None or not _git_config_safe(locations, *found):
+    if found is None or not _git_config_safe(locations, found[0], found[1]):
         return False
+    # Only now, the settings having said no repository's core.hooksPath moves
+    # it, the folder git named is its real one; your own hooksPath's too.
+    hook = _active_hook(found[2], hooks_fired)
+    if hook:
+        return _git_asks(_GIT_HOOK.format(hook=hook))
     if not shows_changes:
         return True
     named = platform_paths.git_names_diff_program(folder)
@@ -1118,7 +1209,8 @@ def _git_rule_ok(words, folder: str, locations, rule=None) -> bool:
         if (place not in messages and text.startswith("-") and len(text) > 1
                 and _git_rule_option_refused(text)):
             return False
-    return _git_checks(folder, locations, sub in _GIT_DIFFS)
+    return _git_checks(folder, locations, sub in _GIT_DIFFS,
+                       _hooks_fired(sub, plain[index + 1:]))
 
 
 #: git commit's options before -m that take no value of their own: only after
@@ -1169,33 +1261,33 @@ def _one_line(path: str) -> Optional[str]:
     return found.group(1) if found else None
 
 
-def _linked_worktree(base: str, dot: str, gitdir: str, common: str) -> bool:
-    """Whether git's answer is a normal linked worktree of a repository
-    elsewhere, as git worktree add makes one: git folder
+def _linked_worktree_problem(base: str, dot: str, gitdir: str, common: str) -> str:
+    """Why git's answer isn't a normal linked worktree of a repository
+    elsewhere, as git worktree add makes one, or "": git folder
     <common>/worktrees/<name>, the chat folder's .git a file naming it, and
     that folder naming this .git back. Its config is judged as git reads it,
     wherever it is. But each folder must be outside the chat's, where Auto
     can't change them, and a .git file that says anything else (a crafted one,
     a submodule's, git init --separate-git-dir) asks."""
-    if os.path.dirname(gitdir) != os.path.join(common, "worktrees"):
-        return False
-    if os.path.islink(dot) or not os.path.isfile(dot):
-        return False
-    if _under(gitdir, base) or _under(common, base) or _under(base, common):
-        return False
+    if (os.path.dirname(gitdir) != os.path.join(common, "worktrees")
+            or os.path.islink(dot) or not os.path.isfile(dot)
+            or _under(gitdir, base) or _under(common, base) or _under(base, common)):
+        return _GIT_UNUSUAL
     pointer = _one_line(dot)
-    if pointer is None or not pointer.startswith("gitdir: "):
-        return False
-    if _normal(os.path.join(base, pointer[len("gitdir: "):])) != gitdir:
-        return False
+    if (pointer is None or not pointer.startswith("gitdir: ")
+            or _normal(os.path.join(base, pointer[len("gitdir: "):])) != gitdir):
+        return _GIT_UNUSUAL
     back = _one_line(os.path.join(gitdir, "gitdir"))
-    return back is not None and _normal(os.path.join(gitdir, back)) == dot
+    if back is None or _normal(os.path.join(gitdir, back)) != dot:
+        return _GIT_WORKTREE_MOVED
+    return ""
 
 
 def _git_repository_here(folder: str, locations) -> Optional[tuple]:
-    """(git folder, common git folder) if git, asked from the shell's folder,
-    says it's in the chat's own repository at its top: either that folder's
-    plain .git folder, or a normal linked worktree (_linked_worktree). None,
+    """(git folder, common git folder, hooks folder) if git, asked from the
+    shell's folder, says it's in the chat's own repository at its top: either
+    that folder's plain .git folder, or a normal linked worktree
+    (_linked_worktree_problem). None,
     with why, for anything else. Elsewhere git could find one Copilot made: a
     folder with HEAD, objects and refs in it is a repository to git, and
     Auto's file changes could write those; an empty .git is passed over for a
@@ -1206,15 +1298,16 @@ def _git_repository_here(folder: str, locations) -> Optional[tuple]:
         if any(_normal(where) != base for where in locations):
             _git_asks(_GIT_SHELL_MOVED)
             return None
-        top, gitdir, common = (_normal(path) for path in platform_paths.git_where(folder))
+        top, gitdir, common, hooks = (_normal(path) for path in platform_paths.git_where(folder))
         dot = os.path.join(base, ".git")
         if top != base:
             _git_asks(_GIT_NOT_THE_TOP)
             return None
         plain = (gitdir == dot and common == dot
                  and os.path.isdir(dot) and not os.path.islink(dot))
-        if not plain and not _linked_worktree(base, dot, gitdir, common):
-            _git_asks(_GIT_UNUSUAL)
+        problem = "" if plain else _linked_worktree_problem(base, dot, gitdir, common)
+        if problem:
+            _git_asks(problem)
             return None
         # git status and diff read each submodule's own config too, which
         # isn't checked here (Claude's review of the merged fixes): a repository
@@ -1234,12 +1327,12 @@ def _git_repository_here(folder: str, locations) -> Optional[tuple]:
     except (OSError, ValueError):
         _git_asks(_GIT_UNANSWERED[platform_paths.GIT_FAILED])
         return None
-    return gitdir, common
+    return gitdir, common, hooks
 
 
-def _moved_to(words, folder: str, locations) -> Optional[tuple]:
-    """The folders the shell may be in after ``cd x`` (``Set-Location
-    -Path x``), or None if it isn't a plain change to a folder inside the
+def _cd_targets(words, folder: str, locations) -> Optional[list]:
+    """The folders ``cd x`` (``Set-Location -Path x``) goes to from each of
+    ``locations``, or None if it isn't a plain change to a folder inside the
     chat's. ``cd`` alone (home), ``cd -`` and ``cd ..`` are refused."""
     rest = list(words[1:])
     if _windows() and len(rest) == 2 and _unquote(rest[0]).lower() in ("-path", "-literalpath"):
@@ -1265,12 +1358,20 @@ def _moved_to(words, folder: str, locations) -> Optional[tuple]:
     if not _inside_from(text, folder, locations):
         return None
     if os.path.isabs(text) or (_windows() and _WINDOWS_DRIVE.match(text)):
-        new = [os.path.normpath(text)]
-    else:
-        # "./sub" is kept as sub, so later paths compare as the same folder.
-        new = [os.path.normpath(os.path.join(where, text)) for where in locations]
-    # Every folder it may have been in stays: a command that fails to
-    # change folder leaves the shell where it was.
+        return [os.path.normpath(text)]
+    # "./sub" is kept as sub, so later paths compare as the same folder.
+    return [os.path.normpath(os.path.join(where, text)) for where in locations]
+
+
+def _moved_to(words, folder: str, locations) -> Optional[tuple]:
+    """The folders the shell may be in after ``cd x``. Every folder it may
+    have been in stays: a command that fails to change folder leaves the shell
+    where it was. There's no telling that it didn't, so the list never
+    shrinks: a chat's git asks from the first cd into a folder, until Restart
+    Copilot. None for one _cd_targets refuses, or past MAX_LOCATIONS."""
+    new = _cd_targets(words, folder, locations)
+    if new is None:
+        return None
     kept = list(dict.fromkeys([*locations, *new]))
     return tuple(kept) if len(kept) <= MAX_LOCATIONS else None
 
@@ -1282,9 +1383,15 @@ AUTO, RULE, CHAT = "auto", "rule", "chat"
 #: Said when a rule would allow a command but it's longer than MAX_COMMAND.
 TOO_LONG_ASKS = "This asks since the command is too long to be answered for you."
 #: Said when a rule or kept command names the command, but the strict reading
-#: won't answer all of it (a path outside, a redirect, more after it).
+#: won't answer all of it (a path outside, a redirect).
 CANT_FOLLOW_ASKS = ("This asks since The Chat Place can't be sure all of it stays inside this "
                     "chat's folder.")
+#: More particular reasons for the same.
+EXPANDS_ASKS = ("This asks since the shell would expand what's in its double quotes. In single "
+                "quotes it's only text.")
+MORE_AFTER_ASKS = ("This asks since something follows the command your rule allows, which could "
+                   "change what the rest does.")
+EXACT_RULE_ASKS = "This asks since your rule allows only those words: end it with * to allow more."
 
 
 @dataclass(frozen=True)
@@ -1295,15 +1402,24 @@ class Answer:
     locations: tuple = ()
 
 
+#: A bare 2>&1, as its own word: what Copilot adds to nearly every test command.
+#: It sends errors where the output goes, and only that: any other > still asks.
+_ERRORS_TO_OUTPUT = re.compile(r"(?<!\S)2>&1(?!\S)")
+
+
 def _parts(command: str):
     """[(words, whether a pipe brought it what it reads, whether it holds
-    punctuation only a program you chose may have)], or None if the command
-    can't be read: too long, empty, with a refused character outside plain
-    quotes, a quote inside a word, or a pipe carried on to the next line."""
+    punctuation only a program you chose may have, whether it follows &&)],
+    or None if the command can't be read: too long, empty, with a refused
+    character outside plain quotes, a quote inside a word, or a pipe carried
+    on to the next line."""
     if not command or not command.strip() or len(command) > MAX_COMMAND:
         return None
     masked = _masked(command)
-    if masked is None or _REFUSED.search(masked.replace("&&", " ; ")):
+    if masked is None:
+        return None
+    masked = _ERRORS_TO_OUTPUT.sub(lambda found: " " * len(found.group()), masked)
+    if _REFUSED.search(masked.replace("&&", " ; ")):
         return None
     # bash and zsh read a backslash as an escape: sub/\.\./x is ../x there.
     # On Windows it's only the path separator.
@@ -1314,10 +1430,10 @@ def _parts(command: str):
     if re.search(r"\|[ \t]*[\r\n]", masked):
         return None
     pieces = _pieces(command, masked)
-    parts, piped = [], False
+    parts, piped, chained = [], False, False
     for index, piece in enumerate(pieces):
         if index % 2:
-            piped = piece == "|"
+            piped, chained = piece == "|", piece == "&&"
         elif piece.strip():
             words = _words(piece.strip())
             if not words:
@@ -1327,7 +1443,7 @@ def _parts(command: str):
             # program you chose gets the quoted text it's handed).
             punctuated = bool(_REFUSED.search(piece) or _SPLIT.search(piece)
                               or (not _windows() and "\\" in piece))
-            parts.append((words, piped, punctuated))
+            parts.append(([word for word in words if word != "2>&1"], piped, punctuated, chained))
         elif index:
             return None  # "a ; ; b", or one ending in a pipe
     return parts or None
@@ -1374,6 +1490,20 @@ def _asked(words, policy: Policy) -> bool:
                for rule in policy.ask for form in _ask_forms(words))
 
 
+#: What cmd.exe acts on in a command line, in a quoted word or not.
+_CMD_SPECIAL = re.compile(r"[&|<>^%]")
+
+
+def _script_could_reread(name: str, words) -> bool:
+    """On Windows, whether a word could be run by cmd.exe: a program named
+    npm or foo may be a .cmd or .bat, which cmd.exe runs, reading the command
+    line again for itself. Real PowerShell 5.1 and 7 both ran h from foo.cmd
+    'g&h', though it's a single quoted word to them. git and a named .exe
+    aren't scripts (Kelly's review of f42c582)."""
+    return (_windows() and not name.endswith((".exe", ".com")) and name != "git"
+            and any(_CMD_SPECIAL.search(_unquote(word)) for word in words[1:]))
+
+
 def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: bool,
           punctuated: bool = False):
     """(what allows one part of a command, or None; the folders after it).
@@ -1388,6 +1518,8 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
         return None, locations
     if punctuated and (piped or _powershell_own(name) or name in _LOCATION
                        or _REFUSED.search(words[0])):
+        return None, locations
+    if _script_could_reread(name, words):
         return None, locations
     if piped:
         after = _AFTER_PIPE if _windows() else _AFTER_PIPE_POSIX
@@ -1432,11 +1564,26 @@ def check_command(command: str, folder: str, policy: Policy,
     answer = _checked(command, folder, policy, locations)
     if answer is None and command and not getattr(_WHY, "reason", ""):
         words = command.split()
-        named = command.strip() in policy.exact or any(
-            rule.matches(words[:len(rule.words)]) for rule in policy.allow)
-        if named and not any(rule.matches(words, as_prefix=True) for rule in policy.ask):
-            _asks_because(TOO_LONG_ASKS if len(command) > MAX_COMMAND else CANT_FOLLOW_ASKS)
+        named = [rule for rule in policy.allow if rule.matches(words[:len(rule.words)])]
+        if ((named or command.strip() in policy.exact)
+                and not any(rule.matches(words, as_prefix=True) for rule in policy.ask)):
+            _asks_because(_why_it_cant_be_followed(command, words, named))
     return answer
+
+
+def _why_it_cant_be_followed(command: str, words, named) -> str:
+    """The reason for a command your rule or a kept command names, but which
+    isn't answered and nothing has said why."""
+    if len(command) > MAX_COMMAND:
+        return TOO_LONG_ASKS
+    if any(not _plain_quoted(quoted.group()) for quoted in _QUOTED.finditer(command)):
+        return EXPANDS_ASKS
+    parts = _parts(command)
+    if parts and any(not piped for _words_, piped, _punctuated, _chained in parts[1:]):
+        return MORE_AFTER_ASKS
+    if named and not any(rule.prefix or len(rule.words) >= len(words) for rule in named):
+        return EXACT_RULE_ASKS
+    return CANT_FOLLOW_ASKS
 
 
 def _checked(command: str, folder: str, policy: Policy, locations) -> Optional[Answer]:
@@ -1448,18 +1595,27 @@ def _checked(command: str, folder: str, policy: Policy, locations) -> Optional[A
     places = tuple(locations) if locations else (folder,)
     exact = command.strip() in policy.exact
     found = set()
-    for words, piped, punctuated in parts:
+    # In "cd x && y", y runs only if cd x worked, so only from x. (After ";"
+    # it runs from wherever the shell was if cd x failed.)
+    targets = None
+    for words, piped, punctuated, chained in parts:
         # After a part your rule or Allow for This Chat allows, only what a
         # pipe hands text to: the rest was checked against the disk as it was
         # before that part ran, and that part may change it (Kelly's review of
         # #426: a move, then a path through a link already in what moved).
         if (RULE in found or CHAT in found) and not piped:
             return None
-        by, places = _part(words, piped, folder, places, policy, exact=exact,
-                           punctuated=punctuated)
+        here = targets if chained and targets else places
+        by, after = _part(words, piped, folder, here, policy, exact=exact, punctuated=punctuated)
         if by is None:
             return None
         found.add(by)
+        targets = None
+        if by == "move":
+            targets = _cd_targets(words, folder, here)
+            places = tuple(dict.fromkeys([*places, *after]))
+            if len(places) > MAX_LOCATIONS:
+                return None
     if exact:
         return Answer(CHAT, places)
     for by in (RULE, AUTO):
@@ -1533,8 +1689,9 @@ def may_move(command: str) -> bool:
         if not piece.strip():
             continue
         first = _FIRST_WORD.match(piece)
-        rest = _QUOTED.sub(lambda quoted: "Q" if _plain_quoted(quoted.group()) else quoted.group(),
-                           piece[first.end():])
+        rest = _read_quotes(piece[first.end():], lambda quoted: "Q")
+        if rest is None:
+            return True
         shown = piece[:first.end()] + rest
         if _MOVING.search(shown):
             return True
@@ -1551,7 +1708,8 @@ def may_move(command: str) -> bool:
             return True
         if re.match(r"[A-Za-z_][A-Za-z0-9_]*\+?=", raw):  # PATH=sub ls
             return True
-        program = name.endswith((".exe", ".com")) and ".." not in name
+        # A .cmd or .bat is run by cmd.exe, a child process too.
+        program = name.endswith((".exe", ".com", ".cmd", ".bat")) and ".." not in name
         if not program and (re.match(r"[a-z]:", name) or _moves_by_path(name)):  # D: changes drive
             return True
         if program or not _powershell_own(name):
@@ -1562,6 +1720,32 @@ def may_move(command: str) -> bool:
         if said is None or any(_moving_word(_unquote(word)) for word in said):
             return True
     return False
+
+
+def after_allowed_by_hand(command: str, folder: str, locations) -> Optional[tuple]:
+    """The folders the shell may be in after a command you allowed yourself
+    that nothing here would answer, or None if it may have gone somewhere not
+    followed: a cd that a chat's folder allows is followed, and the rest of it
+    judged by may_move, so ``cd <the chat's folder>; git add .`` isn't taken
+    for moving away (Kelly's review of f42c582)."""
+    if not command or len(command) > MAX_COMMAND * 10:
+        return None
+    text = command.replace("2>&1", " ")
+    masked = _masked(text)
+    if masked is None:
+        return None
+    places = tuple(locations)
+    for piece in _pieces(text, masked)[::2]:
+        if not piece.strip():
+            continue
+        words = _words(piece.strip())
+        if words and _unquote(words[0]).lower() in (_LOCATION if _windows() else _POSIX_LOCATION):
+            places = _moved_to(words, folder, places)
+            if places is None:
+                return None
+        elif may_move(piece):
+            return None
+    return places
 
 
 def decide(request, folder: Optional[str], policy: Policy, locations=None,

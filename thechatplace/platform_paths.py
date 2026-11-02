@@ -1660,6 +1660,7 @@ class GitUnanswered(Exception):
 
 
 GIT_MISSING, GIT_TIMED_OUT, GIT_FAILED = "missing", "timed out", "failed"
+GIT_TOO_OLD = "too old"
 
 
 def _git_output(args: List[str], folder: str) -> bytes:
@@ -1685,15 +1686,19 @@ def _git_output(args: List[str], folder: str) -> bytes:
 
 
 def git_where(folder: str) -> tuple:
-    """(top of the working tree, git folder, common git folder) as git itself
-    sees them from ``folder``. Asking runs nothing of the repository's. Git
-    before 2.31 echoes --path-format as a fourth line, and a path with a line
-    break gives more than three: GitUnanswered, as anything unexpected is."""
+    """(top of the working tree, git folder, common git folder, hooks folder)
+    as git itself sees them from ``folder``. Asking runs nothing of the
+    repository's. Git before 2.31 echoes --path-format as a line of its own
+    (GIT_TOO_OLD), and a path with a line break gives too many lines:
+    GitUnanswered, as anything unexpected is."""
     lines = _git_output(["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir",
-                         "--git-common-dir"], folder).decode("utf-8", "replace").split("\n")
+                         "--git-common-dir", "--git-path", "hooks"],
+                        folder).decode("utf-8", "replace").split("\n")
     if lines and lines[-1] == "":
         lines.pop()
-    if len(lines) != 3 or not all(lines):
+    if lines and lines[0] == "--path-format=absolute":
+        raise GitUnanswered(GIT_TOO_OLD)
+    if len(lines) != 4 or not all(lines):
         raise GitUnanswered(GIT_FAILED)
     return tuple(lines)
 

@@ -952,7 +952,14 @@ folder a git repository) or a git program of its own (<code>git.cmd</code>).</p>
   settings or run a program; and never take options that write a file, run a program or point git
   elsewhere, such as <code>--output</code>, <code>--ext-diff</code>, <code>--unsafe-paths</code>, <code>-O</code> or <code>-x</code>, however
   they're shortened); git diff, show, log and blame also ask if any of your git settings name a
-  program for showing differences (a diff driver), which a repository can choose. It never deletes, moves, copies or writes through a command, never deletes a file
+  program for showing differences (a diff driver), which a repository can choose. <strong>A repository's
+  hooks run programs, so git asks when one is there that the command can fire, and says which.</strong>
+  git status and git diff can fire <code>post-index-change</code>, so they ask in a repository that has one;
+  a repository with only <code>pre-commit</code> or <code>pre-push</code>, or only the <code>.sample</code> files git creates, leaves
+  Auto's git alone. Under your rules, <code>git commit *</code> asks for each commit in a repository with a
+  <code>pre-commit</code>, <code>commit-msg</code>, <code>prepare-commit-msg</code>, <code>post-commit</code>, <code>reference-transaction</code> or
+  <code>post-index-change</code> hook, and git commands other than the common ones ask for any hook at all.
+  So if your own repository has commit hooks, commits ask there. It never deletes, moves, copies or writes through a command, never deletes a file
   through a file change, and never changes anything in <code>.git</code> or another git repository's own
   folder, <code>.githooks</code>, <code>.github</code>, <code>.copilot</code>, <code>.claude</code>, <code>.codex</code>, <code>.vscode</code>, <code>.idea</code>, <code>.husky</code>
   or <code>.devcontainer</code>, or <code>.mcp.json</code>, <code>.envrc</code>, <code>.gitmodules</code>, <code>.gitattributes</code> or
@@ -1013,13 +1020,15 @@ variables such as <code>$env:USERPROFILE</code>, brackets, redirection, characte
 may only sort, select or format what comes in. A word with a colon is taken as a drive
 (<code>HKLM:</code>, <code>env:PATH</code>, <code>C:x</code>) except in a command your rule or Allow for This Chat allows for a
 program other than PowerShell's own cmdlets, where an ordinary colon is fine (<code>npm run
-test:unit</code>, <code>git commit -m "fix: typo"</code>). For those same programs, text in plain quotes (single
+test:unit</code>, <code>git commit -m "fix: typo"</code>). <code>2&gt;&amp;1</code> is fine for those programs as a word of its own, but
+no other redirection is. For those same programs, text in plain quotes (single
 quotes, or double quotes with no <code>$</code> or backtick; on a Mac or Linux, no <code>!</code> or backslash either)
 is only something the program receives, so it may hold brackets, commas, <code>#</code>, <code>=</code> and the like,
 as long as no part of it reaches outside the folder. A message after git commit's <code>-m</code> is never
 read as a path at all, so <code>git commit -m "fix(parser): src/foo.py, and a bug (#12)"</code> is answered
-under a <code>git commit *</code> rule, trailers included. Other programs' text, and Auto's own reads, stay
-strict. A rule's or a kept command's own program may take
+under a <code>git commit *</code> rule, trailers included. On Windows, <code>&amp;</code>, <code>|</code>, <code>&lt;</code>, <code>&gt;</code>, <code>^</code> and <code>%</code> ask
+for anything but git or a program named with its <code>.exe</code>, since a <code>.cmd</code> or <code>.bat</code> would act on
+them. <code>--%</code> always asks. Other programs' text, and Auto's own reads, stay strict. A rule's or a kept command's own program may take
 options (<code>--watch</code>), but none with a value joined on (<code>--file=x</code>), quoted or not. This is a strict reading of
 what the command says, not a lock. A command you allow can run what's in the folder: <code>npm test</code>
 runs the folder's own scripts, which Copilot may have changed first, so allow only programs you'd
@@ -1033,8 +1042,12 @@ commands in that chat ask again until you use Restart Copilot; file changes, whi
 path, are still allowed in Auto. Commands that only start another program don't count, so
 <code>git commit -m "fix(parser): x"</code>, <code>npm test 2&gt;&amp;1 | Select-Object -Last 20</code> and
 <code>.venv\Scripts\python.exe -m pytest</code> leave things as they were (on Windows, a program named by
-its path needs its <code>.exe</code>, since PowerShell could otherwise find a script of that name).</p>
-<p><strong>Restart Copilot</strong>, a button in File, Chat Permissions (Ctrl+Shift+H) for a Copilot chat, is the
+its path needs its <code>.exe</code>, <code>.cmd</code> or <code>.bat</code>, since PowerShell could otherwise find a script of that
+name). A <code>cd</code> to a folder inside the chat's is followed, even in a command you allow by hand.</p>
+<p>After <code>cd</code> into a subfolder, all of that chat's git asks until you use Restart Copilot: the shell
+may be there, and there's no telling that a later <code>cd</code> back worked. <code>cd &lt;the chat's folder&gt; &amp;&amp;
+git status</code> is still answered, since the second part runs only if the first worked.</p>
+<p><strong>Restart Copilot</strong> (Alt+S), a button in File, Chat Permissions (Ctrl+Shift+H) for a Copilot chat, is the
 way out of all that without closing The Chat Place. It stops Copilot and what Copilot started, for
 every chat, as they share one Copilot, and commands stop asking because of a shell that may have
 moved or a program that never ended. If another Copilot chat is running a turn or a program, or

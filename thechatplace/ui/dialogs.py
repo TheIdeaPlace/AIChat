@@ -2122,15 +2122,17 @@ class ChatPermissionsDialog(wx.Dialog):
             self.host.restart(done)
 
         def done(problem):
+            # Whether it could be told here: the host says it otherwise.
             if not self._alive():
-                return
+                return False
             self.busy = ""
             self.refresh_mode()
             self._show_note()
             if problem:
                 self._tell(problem, wx.ICON_WARNING, back_to=self.restart_btn)
-                return
-            self.restart_btn.SetFocus()
+            else:
+                self.restart_btn.SetFocus()
+            return True
         self.host.restart_warning(warned)
 
     def on_change(self):

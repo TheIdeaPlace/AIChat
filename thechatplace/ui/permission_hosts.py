@@ -195,6 +195,7 @@ class CodexPermissions:
 
 
 #: What Restart Copilot says.
+RESTARTING = "Restarting Copilot."
 RESTART_UNKNOWN = ("The Chat Place couldn't check what other Copilot chats are doing. Restarting "
                    "Copilot ends anything they're running. Restart it anyway?")
 RESTARTED = ("Copilot stopped, and commands no longer ask because of what it was running or where "
@@ -273,13 +274,17 @@ class CopilotPermissions:
     def restart(self, done):
         """Restart Copilot on a worker, the chat open in the window opened
         again after it, and ``done(the problem or None)`` on the UI thread."""
-        def finished(running, error):
+        def finished(result, error):
             if error:
-                done(running or "Copilot couldn't be stopped.")
+                problem = result or "Copilot couldn't be stopped."
+                # Closed meanwhile, the dialog can't say so.
+                if not done(problem):
+                    self.frame._feedback(problem)
                 return
-            self.frame._feedback(RESTARTED if running else NOT_RESTARTED)
+            self.frame._feedback(RESTARTED if result else NOT_RESTARTED)
             done(None)
             self.frame._reopen_copilot_chat()
+        self.frame._feedback(RESTARTING)
         self.frame._codex_work(
             lambda: self.frame.sessions.owned_action('restart', self.record), finished)
 

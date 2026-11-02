@@ -3203,6 +3203,10 @@ def test_what_asks_now_is_said_one_way_everywhere():
     for said in (running, background, moved, asks_now(
             SimpleNamespace(running=True, auto=True), detail=True)):
         assert "closing The Chat Place" not in said and "close The Chat Place" not in said
+    # "It" always has a program to mean.
+    assert asks_now(SimpleNamespace(running=True, auto=False), detail=True) == ""
+    assert "Stopping" not in asks_now(SimpleNamespace(location_changed=True, auto=True),
+                                      detail=True)
 
 
 def test_a_call_naming_its_own_shell_clears_on_its_own_exit(make, tmp_path):
@@ -3352,29 +3356,53 @@ def test_a_real_ending_through_the_connection_clears_a_program(make, tmp_path, m
     assert not runtime.snapshot(chat).running
 
 
-def test_a_whole_session_goes_unasked(make, tmp_path, monkeypatch):
+def test_a_whole_session_in_a_real_worktree_asks_once_after_a_file_change(make, tmp_path,
+                                                                           monkeypatch):
     """Auto with rules for npm test and git commit, as a normal session: reads,
-    git, a test run and a commit with an ordinary message, in a real repository."""
+    git, a file change, a test run and a commit with an ordinary message, in a
+    real linked worktree whose repository has what VS Code and gh write. The
+    one prompt is npm test, after the file change it could run, which says so."""
+    from thechatplace.providers.copilot_runtime import ASKS_ONCE
     _own_git(monkeypatch)
-    subprocess.run(["git", "init", "-q", str(tmp_path / "work")], check=True,
-                   env={**os.environ})
+    main = tmp_path / "main"
+    env = {**os.environ, "GIT_AUTHOR_NAME": "S", "GIT_AUTHOR_EMAIL": "s@example.invalid",
+           "GIT_COMMITTER_NAME": "S", "GIT_COMMITTER_EMAIL": "s@example.invalid"}
+    subprocess.run(["git", "init", "-q", str(main)], check=True, env=env)
+    subprocess.run(["git", "-C", str(main), "commit", "-q", "--allow-empty", "-m", "x"],
+                   check=True, env=env)
+    with open(main / ".git" / "config", "a", encoding="utf-8") as handle:
+        handle.write('[branch "feature"]\n\tvscode-merge-base = origin/main\n'
+                     '\tgh-merge-base = main\n\tgithub-pr-owner-number = o#r#1\n'
+                     '[remote "origin"]\n\tgh-resolved = base\n\tgithub-pr-remote = true\n'
+                     '\turl = https://github.com/example/x.git\n'
+                     '[gui]\n\twmstate = normal\n[color]\n\tui = auto\n')
     work = tmp_path / "work"
+    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", str(work)], check=True, env=env)
     (work / "notes.txt").write_text("synthetic", encoding="utf-8")
+    edit = f"edit:{work.as_posix()}/notes.txt"
     message = 'git commit -m "fix(parser): empty, and (#12) = a"'
-    steps = [READ, "git status", "npm test", "git diff", message, READ, "git log --oneline"]
+    steps = [READ, "git status", edit, "npm test", "git diff", message, READ, "git log --oneline"]
     _commands(monkeypatch, *steps)
     allow = copilot_folder.Rules(allow=tuple(copilot_folder.parse_rule(rule)
                                              for rule in ("npm test", "git commit *")))
     runtime, updates = make("ask", rules=lambda: allow)
     chat = runtime.create(str(work))
     runtime.set_auto(chat, True)
+    asked = []
     for number, step in enumerate(steps, 1):
         runtime.send(chat, step)
-        assert wait(lambda: runtime.snapshot(chat).turn_id == str(number)
-                    and runtime.snapshot(chat).outcome == "completed"), step
-    assert not any(state.requests for state in updates)
+        assert wait(lambda: runtime.snapshot(chat).requests
+                    or (runtime.snapshot(chat).turn_id == str(number)
+                        and runtime.snapshot(chat).outcome == "completed")), step
+        state = runtime.snapshot(chat)
+        if state.requests:
+            asked.append((state.requests[0].command, state.notice))
+            runtime.answer(chat, state.requests[0].request_id, ALLOW_ONCE)
+            assert wait(lambda: runtime.snapshot(chat).turn_id == str(number)
+                        and runtime.snapshot(chat).outcome == "completed"), step
+    assert asked == [("npm test", ASKS_ONCE)]
     state = runtime.snapshot(chat)
-    assert len(state.auto_allowed) == len(steps)
+    assert len(state.auto_allowed) == len(steps) - 1
     assert not (state.location_changed or state.running or state.background or state.notice)
 
 
@@ -3542,10 +3570,50 @@ def test_restart_copilot_warns_about_other_chats_programs_not_your_own(make, tmp
 
 
 def test_the_second_layer_reaches_what_starts_copilot(monkeypatch):
-    # Never real Copilot: only that its environment has them.
-    env = platform_paths.copilot_child_environment({"PATH": "p"})
-    assert env["GIT_CONFIG_KEY_0"] == "core.fsmonitor"
-    assert env["GIT_CONFIG_KEY_1"] == "safe.bareRepository"
+    # Never real Copilot: what the start path really hands the process.
+    seen = {}
+
+    def popen(_command, **options):
+        seen.update(options)
+        raise OSError("not started")
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    monkeypatch.setattr(platform_paths, "_native_codex", lambda path: True)
+    monkeypatch.setenv("GIT_DIR", "elsewhere")
+    monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+    with pytest.raises(OSError):
+        platform_paths.start_copilot_acp("copilot-stand-in")
+    assert seen["env"]["GIT_CONFIG_KEY_0"] == "core.fsmonitor"
+    assert seen["env"]["GIT_CONFIG_KEY_1"] == "safe.bareRepository"
+    assert seen["env"]["GIT_CONFIG_COUNT"] == "2" and "GIT_DIR" not in seen["env"]
+
+
+def test_a_cd_allowed_by_hand_doesnt_make_commands_ask(make, tmp_path, monkeypatch):
+    """Kelly's review of f42c582: cd <the chat's folder>; git add . did."""
+    work = str(tmp_path).replace("\\", "/") if os.name != "nt" else str(tmp_path)
+    _commands(monkeypatch, f"cd {work}; git add .")
+    runtime, _ = make("ask")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "First")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    runtime.answer(chat, runtime.snapshot(chat).requests[0].request_id, ALLOW_ONCE)
+    assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
+    assert not runtime.snapshot(chat).location_changed
+
+
+def test_a_hook_is_said_as_why_git_asks(make, tmp_path, monkeypatch):
+    _own_git(monkeypatch)
+    monkeypatch.setenv("FAKE_COPILOT_COMMAND", "git commit -m x")
+    subprocess.run(["git", "init", "-q", str(tmp_path / "w")], check=True, env={**os.environ})
+    hook = tmp_path / "w" / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\n", encoding="utf-8")
+    os.chmod(hook, 0o755)
+    allow = copilot_folder.Rules(allow=(copilot_folder.parse_rule("git commit *"),))
+    runtime, _ = make("ask", rules=lambda: allow)
+    chat = runtime.create(str(tmp_path / "w"))
+    runtime.send(chat, "Commit")
+    assert wait(lambda: runtime.snapshot(chat).requests)
+    assert "this repository has a pre-commit hook, and hooks run programs." in (
+        runtime.snapshot(chat).notice)
 
 
 LAUNCHER = """

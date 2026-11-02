@@ -15759,6 +15759,22 @@ def test_restart_copilot_says_if_it_failed(frame, env, monkeypatch):
     assert not any("Copilot stopped" in said for said in env["feedback"])
 
 
+def test_restart_copilot_says_a_failure_when_the_dialog_has_closed(frame, env, monkeypatch):
+    from thechatplace.ui.permission_hosts import CopilotPermissions
+    info = _copilot_chat(frame, monkeypatch, "cp-rg", "Restart Copilot")
+    record = frame.store.get("cp-rg", provider="copilot")
+    _restart_copilot(frame, monkeypatch, failed=True)
+    told = []
+    host = CopilotPermissions(frame, info, record)
+    try:
+        host.restart(lambda problem: told.append(problem) or False)   # False: it's gone
+        assert pump(lambda: told)
+        assert env["feedback"][0] == "Restarting Copilot." or "Restarting Copilot." in env["feedback"]
+        assert any("couldn't be stopped" in said for said in env["feedback"])
+    finally:
+        frame._codex_states.clear()
+
+
 def test_restart_copilot_opens_the_open_chat_again(frame, env, monkeypatch):
     info = _copilot_chat(frame, monkeypatch, "cp-ro", "Restart Copilot")
     monkeypatch.setattr(frame, "_open", info)
