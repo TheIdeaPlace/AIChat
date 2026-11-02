@@ -19,8 +19,8 @@ heading, so your screen reader's heading keys move between them. For every key i
 Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guide uses.
 
 The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
-Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
-OpenAI products.
+Anthropic, OpenAI or GitHub. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
+OpenAI products; GitHub Copilot is a GitHub product.
 
 ## Before you start
 

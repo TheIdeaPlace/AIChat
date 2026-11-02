@@ -7,8 +7,8 @@ VO+M), rather than Windows Alt menu sequences.
 A keyboard and screen reader friendly home for your AI chats, together in one session list.
 
 The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
-Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
-OpenAI products.
+Anthropic, OpenAI or GitHub. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
+OpenAI products; GitHub Copilot is a GitHub product.
 
 New to The Chat Place? The [user guide](https://theideaplace.github.io/AIChat/user-guide.html) starts
 with the everyday things and goes deeper; it's also in the app, under Help, User Guide. This README
