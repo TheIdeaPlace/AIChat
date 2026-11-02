@@ -493,3 +493,20 @@ def test_mode_change_revokes_rules_even_if_native_policy_check_fails(tmp_path, m
         assert service.permission_store.load(record.cli_session_id) == ()
     finally:
         service.close()
+
+
+def test_telling_the_window_of_a_kept_approval_doesnt_end_the_listener(tmp_path):
+    """Found with real Codex: a kept approval's notice is named by a number,
+    which the check for review notices took for text. The exception ended the
+    listener and the turn hung. prepared_runtime replaces _notify, so this needs
+    the real one."""
+    service, connection, record, proof, executor, req = prepared_runtime(tmp_path)
+    try:
+        service.allow_for_chat(record, req)
+        executor.current = [replace(req, request_id=2, command='git commit -m second', proposed_prefix=())]
+        assert service._auto_answer(proof, executor)
+        assert service.snapshot(record.cli_session_id).permission_notices[0][:2] == ('turn', 2)
+        del service._notify  # back to the class's own
+        service._notify(record.cli_session_id)
+    finally:
+        service.close()

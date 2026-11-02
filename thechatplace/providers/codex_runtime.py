@@ -864,7 +864,10 @@ class CodexChatRuntime:
                               + tuple(self._queues.pop(native_id, ())))
             with self._plan_lock:
                 state = self.snapshot(native_id)
-                reviews = tuple(row for row in state.permission_notices if row[1].startswith('auto-review:'))
+                # A kept approval's notice is named by Codex's request id, a number,
+                # not a review's text. Raising here ended the listener and hung the turn.
+                reviews = tuple(row for row in state.permission_notices
+                                if str(row[1]).startswith('auto-review:'))
                 if reviews and self._saved_reviews.get(native_id) != reviews:
                     try:
                         self.review_store.remember(native_id, state.turn_id, [(row[1], row[2]) for row in reviews])
@@ -912,7 +915,12 @@ class CodexChatRuntime:
                         with self._lock:
                             if native_id not in self._sending:
                                 self._stopping.discard(native_id)
-                    self._notify(native_id)
+                    # Nothing about telling the window may end the listener: the
+                    # turn would hang with no way to hear it finish.
+                    try:
+                        self._notify(native_id)
+                    except Exception as error:
+                        record_failure(error)
                     self._advance(proof, executor)
 
     def close(self):
