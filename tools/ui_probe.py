@@ -1230,9 +1230,10 @@ def d_copilot_permission_keep(frame, env):
                                                       provider="Copilot"))
 
 
-def d_chat_permissions_copilot(frame, env):
+def d_chat_permissions_copilot(frame, env, *, moved=False):
     """File, Chat Permissions for a Copilot chat in Auto, with two commands
-    allowed for it and your rules listed (#426)."""
+    allowed for it and your rules listed (#426). ``moved``: a command allowed
+    by hand may have moved Copilot's shell, so its commands ask."""
     from thechatplace.own_store import OwnSession
     from thechatplace.providers.copilot_auto_store import Kept
     from thechatplace.providers.copilot_runtime import AGENT_MODE, CopilotChatState
@@ -1242,7 +1243,7 @@ def d_chat_permissions_copilot(frame, env):
     record = OwnSession('probe', 'Copilot preview', folder, provider='copilot', started=True)
     info = record.to_info()
     frame._codex_states[info.key] = CopilotChatState(
-        'probe', 'idle', mode=AGENT_MODE, auto=True,
+        'probe', 'idle', mode=AGENT_MODE, auto=True, location_changed=moved,
         auto_allowed=((1, 'Command: Get-ChildItem'), (2, 'Command: npm test (your rule)')))
     host = CopilotPermissions(frame, info, record)
     kept = [Kept('npm run build', 1792400000000), Kept('npm run lint', 1792400000000)]
@@ -1250,6 +1251,12 @@ def d_chat_permissions_copilot(frame, env):
     host.native = lambda done: done('Your rules, allowed without asking:\nnpm test\n\n'
                                     'Your rules, always asked:\ngit push *')
     return lambda: frame._modal(ChatPermissionsDialog(frame, 'Copilot preview', host))
+
+
+def d_chat_permissions_copilot_moved(frame, env):
+    """Chat Permissions once Copilot's shell may have moved: it says commands
+    ask until Restart Copilot (#426)."""
+    return d_chat_permissions_copilot(frame, env, moved=True)
 
 
 def d_copilot_files(frame, env):
@@ -1886,6 +1893,8 @@ SURFACES = {
     "codex-permission": ("dialog", d_codex_permission, "Codex asks for one-time command permission"),
     "codex-permission-kept": ("dialog", d_codex_permission_kept, "Remember a Codex command for this TCP chat"),
     "chat-permissions-codex-kept": ("dialog", d_chat_permissions_codex_kept, "Review and remove TCP-kept Codex approvals"),
+    "chat-permissions-copilot-moved": ("dialog", d_chat_permissions_copilot_moved,
+                                       "Chat Permissions: commands ask until Restart Copilot"),
     "chat-permissions-copilot": ("dialog", d_chat_permissions_copilot,
                                  "Chat Permissions: a Copilot chat in Auto, with commands kept"),
     "chat-permissions": ("dialog", d_chat_permissions, "File, Chat Permissions: a Claude chat's kept rules"),
@@ -1988,6 +1997,7 @@ DIALOG_CLASSES = {
     "codex-permission": "CodexPermissionDialog",
     "codex-permission-kept": "CodexPermissionDialog",
     "chat-permissions-codex-kept": "ChatPermissionsDialog",
+    "chat-permissions-copilot-moved": "ChatPermissionsDialog",
     "chat-permissions-copilot": "ChatPermissionsDialog",
     "chat-permissions": "ChatPermissionsDialog",
     "chat-permissions-empty": "ChatPermissionsDialog",
