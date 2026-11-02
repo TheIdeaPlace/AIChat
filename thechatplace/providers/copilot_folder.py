@@ -43,8 +43,9 @@ only when:
 - it doesn't recurse, delete a folder or make a link (a link inside the
   folder can point outside it, and PowerShell 5.1 follows junctions).
 
-Copilot's shell keeps its current folder between commands, and relative
-paths are read from there. So every change of folder answered here is kept
+Copilot CLI 1.0.105 runs each command in a new shell in the chat's folder
+(dev-notes/copilot-cli-probe.md), but nothing promises that stays so, and
+relative paths are read from wherever it is. So every change of folder answered here is kept
 (``locations``: each folder the shell may be in, the chat's own always among
 them), and paths are checked from each. After a command you allowed yourself
 that could have moved the shell somewhere unknown (``may_move``), no command

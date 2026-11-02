@@ -1773,7 +1773,7 @@ STILL_MOVES = [
     'cd ..', 'Set-Location x', 'sl x', 'pushd x', 'iex "cd .."', 'Invoke-Expression "cd .."',
     'echo "$(cd ..)"', 'echo "`$x"', '"a"; cd ..', "'a'; cd ..",
     'git commit -m "x"; cd ..', 'git commit -m "x" && cd ..', 'git log | cd ..',
-    'D:', 'echo \u201cx\u201d; cd ..', '& "cd" ..', '"cd" ..', "'cd' ..",
+    'echo \u201cx\u201d; cd ..', '& "cd" ..', '"cd" ..', "'cd' ..",
     'Set-Location "x"', "Set-Location 'x'", '$x = 1', '(cd ..)', '{ cd .. }.Invoke()',
     'PATH=sub ls', 'git log "a"b; cd ..', 'echo "a" ; "b"; cd ..', 'echo "a;cd .."; cd ..',
     'echo "unterminated; cd ..', "echo 'unterminated; cd ..",
@@ -1790,7 +1790,7 @@ WINDOWS_STILL_MOVES = [
     'Get-Content env:x', 'Get-Content FileSystem::C:\\x',
     'Get-Content Microsoft.PowerShell.Core\\FileSystem::C:\\x', '.\\evil.exe.ps1',
     '..\\x.exe; cd ..', '.venv\\Scripts\\activate.ps1', '.venv/bin/python -m pytest',
-    '..\\x', 'D:\\x', 'scripts\\build', '.\\missing.cmd', '.\\missing.exe',
+    '..\\x', 'D:', 'D:\\x', 'scripts\\build', '.\\missing.cmd', '.\\missing.exe',
     'C:\\Python\\python.exe -m pytest',
 ]
 POSIX_STILL_MOVES = ['../x', r'echo "a\" ; "; cd .. ; "\"b"', r'.\x', "./x.sh"]

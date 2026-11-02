@@ -2403,8 +2403,8 @@ GIT_REPOSITORY_VARS = frozenset({
 #: core.fsmonitor=false stops a repository's fsmonitor program running on git
 #: status; safe.bareRepository=explicit stops git treating a folder inside
 #: the project as a repository of its own unless told to with --git-dir. Both
-#: confirmed with real git 2.50. Whether Copilot passes its environment on to
-#: the commands it runs hasn't been confirmed, so nothing relies on this.
+#: confirmed with real git 2.50, and real Copilot CLI 1.0.105 passes them on to the
+#: commands it runs (dev-notes/copilot-cli-probe.md). Nothing relies on this.
 _GIT_SETTINGS_FOR_COPILOT = (("core.fsmonitor", "false"), ("safe.bareRepository", "explicit"))
 
 

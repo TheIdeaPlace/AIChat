@@ -348,3 +348,34 @@ command line by wrapping a word with a space in double quotes without escaping w
 `git log 'HEAD" --output x -- " y' a.txt` reaches git as separate options, and a word ending in a
 backslash escapes its closing quote. So a rule can't hold quotes or `%`, and Auto's git takes no
 quoted word or one ending in a backslash.
+
+## Real sessions for 0.4 (Copilot CLI 1.0.105, Windows on arm64, 2 November 2026)
+
+Six prompts, through the app's real `CopilotChatRuntime`, in throwaway repositories under a scratch
+folder with `GIT_CONFIG_GLOBAL` set, every raw request logged. Scripts: `real_copilot*.py` in
+Kelly's `scratchix426`, not in the repository.
+
+- **Which PowerShell:** PowerShell 7 where it's installed (7.6.9, from the Microsoft Store here;
+  `$PSVersionTable`, `Get-Process -Id $PID`). 5.1 wasn't seen, but this PC has 7, so a PC with only
+  5.1 is untested. Auto's refusal of quoted words before git stays.
+- **Environment:** what the app sets when it starts `copilot --acp` reaches the commands.
+  `git config --show-scope --get-regexp` showed `command core.fsmonitor false` and
+  `command safe.barerepository explicit`, so the second layer is live.
+- **Quoted commands match their preview:** `tool_call`'s `rawInput.command` and the permission
+  request's `rawInput.command` were the same, letter for letter, including `echo "two words"` and a
+  `git commit -m "..."`.
+- **Exit shapes match the fake:** `rawOutput.contents` holds `{"type": "shell_exit", "shellId",
+  "exitCode", "cwd"}` for each command, with a failing `cmd /c exit 3` reporting 3. Nothing stayed
+  "running" at the end of a turn.
+- **Every command gets a new shell in the chat's folder.** `shellId` counts up, `$PID` differs
+  between two commands in a row, `$env:X` and `Set-Alias` are gone by the next command, and after
+  `cd src` the next command ran in the chat's folder and `shell_exit` reported that folder. The
+  module's tracking of where the shell may be is therefore more careful than this version needs. It
+  stays, since nothing promises this, and `after_allowed_by_hand` errs the same way (#491).
+- **Prompts, one ordinary request** ("add a function, check with git, run the test, stage, commit"),
+  with Auto and rules for `node --version` and `git add .`: 7 asks, 1 answered (the file edit). The
+  first command Copilot wrote was `git status --short; if (Test-Path 'src.py') { ... } else { ... }`.
+  Allowing that by hand counts as possibly moving the shell, so 3 of the other 6 asked only because
+  of that, each saying so, until Restart Copilot. Without it the count would be 4, all ones that
+  should ask (the first command, a test script, a delete, `git add`/`git commit` chained). This
+  is the first thing #491 should look at.

@@ -726,9 +726,9 @@ runs the folder's own scripts, which Copilot may have changed first, so allow on
 let run on whatever's there. When a request that Auto, a rule or a kept command would answer asks
 anyway, the chat says why.
 
-**Where Copilot's shell is.** It keeps its folder between commands. Changes of folder inside the
-chat's folder are followed, so paths are checked from wherever the shell may be, in a command you
-allow by hand too. Once you allow by hand a command that may have moved it somewhere not followed
+**Where Copilot's shell is.** The Chat Place doesn't count on Copilot's shell going back to the
+chat's folder between commands. Changes of folder inside the chat's folder are followed, so paths
+are checked from wherever the shell may be, in a command you allow by hand too. Once you allow by hand a command that may have moved it somewhere not followed
 (cd .., `cd $HOME`, a script, iex, anything in `{ }` or `$( )`), commands in that chat ask again
 until you use Restart Copilot; file changes, which name their full path, are still allowed in Auto.
 Commands that only start another program don't count, so `git commit -m "fix(parser): x"` and
