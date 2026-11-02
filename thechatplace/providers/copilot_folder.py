@@ -1501,6 +1501,7 @@ def _script_could_reread(name: str, words) -> bool:
     'g&h', though it's a single quoted word to them. git and a named .exe
     aren't scripts (Kelly's review of f42c582)."""
     return (_windows() and not name.endswith((".exe", ".com")) and name != "git"
+            and not _powershell_own(name)
             and any(_CMD_SPECIAL.search(_unquote(word)) for word in words[1:]))
 
 

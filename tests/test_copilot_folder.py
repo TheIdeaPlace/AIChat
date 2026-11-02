@@ -1878,6 +1878,11 @@ def test_a_program_that_may_be_a_script_cant_take_what_cmd_acts_on(folder, comma
 
 
 @windows_paths
+def test_a_cmdlet_isnt_a_script_so_a_percent_sign_is_a_name(folder):
+    assert copilot_folder.check_command("Get-Content 100%.txt", folder, Policy(auto=True)).by == AUTO
+
+
+@windows_paths
 def test_git_and_a_named_exe_can_take_what_cmd_acts_on(repo):
     assert copilot_folder.check_command('git commit -m "a && b <c>"', repo,
                                         rules("git commit *")).by == RULE
