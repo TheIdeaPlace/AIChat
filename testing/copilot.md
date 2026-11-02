@@ -27,7 +27,7 @@ copilot -C <scratch folder> --continue --allow-tool shell -p "Read notes.txt bac
 ## Reading Copilot chats (#355)
 
 1. **Settings.** Open Settings. "Include GitHub Copilot CLI chats (read-only; restart required)"
-   is there, on Alt+O, only because Copilot has saved a session. Check it, save, and hear
+   is there, on Alt+I, only because Copilot has saved a session. Check it, save, and hear
    "Settings saved. Restart The Chat Place to change which chats are listed." Restart.
 2. **The list.** Alt+V, H, then G: GitHub Copilot Chats. The list's name says so and how many.
    A Copilot CLI chat started in a terminal also shows in Terminal Sessions (Alt+V, H, T).
@@ -83,15 +83,16 @@ It says "Safe to send (agent mode, allow-all off): yes", then asks "You (empty l
 
 ## Running Copilot chats in the window
 
-Run from source with the Copilot setting on (Settings, Alt+O, then restart). Use a scratch folder
+Run from source with the Copilot setting on (Settings, Alt+I, then restart). Use a scratch folder
 that isn't a git repository with hooks. Each message uses Copilot requests.
 
 1. **Settings.** The check box reads "Include GitHub Copilot CLI chats (preview; restart
    required)".
 2. **New Session (Ctrl+N).** Provider offers Claude, Codex (if set up) and Copilot. Choose
-   Copilot: Model, Effort and Permission mode say "Copilot's configured model", "Copilot's own
-   setting" and "Asks before running commands or changing files", and can't be changed; the note
-   says Copilot asks before acting and uses your plan's requests. Choose the scratch folder, type
+   Copilot: Model lists the models Copilot offered your last Copilot chat here, each with the
+   premium requests a message costs, and Permission mode offers Agent and Plan. Effort says
+   "Copilot's own setting" and can't be changed. The note says Copilot asks before acting and uses
+   your plan's requests. Choose the scratch folder, type
    `Reply with just the word: ready` and start.
 3. **The new chat.** It opens with "No messages yet.", you hear "Sent to …", then "… replied.
    ready". The row is a Chat Place session with Provider Copilot, the message box is there, and
@@ -125,8 +126,38 @@ that isn't a git repository with hooks. Each message uses Copilot requests.
     message is refused, naming the file. Delete the file afterwards.
 12. **Other chats stay read-only.** A chat started in Copilot CLI in a terminal still says
     "Reply in Copilot CLI", with no message box.
-13. **Chat Permissions (Ctrl+Shift+H)** on a Copilot chat started here says it keeps no
-    permissions and Copilot asks each time.
+13. **Chat Permissions (Ctrl+Shift+H)** on a Copilot chat started here lists the commands kept for
+    it, your rules, and what asks now. See below.
+
+## Fewer questions: Auto, your rules and Allow for This Chat (#426)
+
+Use a scratch git repository. Listen with JAWS and NVDA. Each message uses Copilot requests.
+
+1. **Auto.** Ctrl+Shift+O, choose Auto. A warning opens with No as the default, and says it's a
+   strict reading, not a lock. Choose Yes. The chat's heading ends "Auto". Ask for a small edit:
+   reads, search and the edit don't ask, and each answer is said.
+2. **What still asks.** Ask for a delete outside the folder, a program such as `npm test`, and
+   `git commit`. Each asks, and says why where a rule or Auto would otherwise have answered.
+3. **A rule.** Put `{"allow": ["npm test"], "ask": ["cat .env"]}` in `copilot-rules.json` in The
+   Chat Place's data folder. `npm test` is answered until Auto changes a file, then asks once.
+   `cat .env`, `Get-Content .env` and `gc .env` all ask.
+4. **A rule that can't be used.** Change it to `{"allow": ["npm *"]}`. Chat Permissions lists it and
+   says why, and `npm test` says a rule of yours can't be used.
+5. **A broken file.** Add a trailing comma, then separately misspell "ask" as "asks". Each time, the
+   chat says every command asks until it's fixed, every command does ask, and a file change in Auto
+   is still answered. Fix the file: commands are answered again.
+6. **Allow for This Chat.** In Answer (Ctrl+Shift+A), the button says which exact command it keeps.
+   That same command isn't asked again; one letter different is. It's offered for neither a shell
+   nor a command that moves folder.
+7. **Chat Permissions (Ctrl+Shift+H).** It lists kept commands, and Delete removes one, with focus on
+   the row that took its place.
+8. **Restart Copilot (Alt+S).** Allow a command with `if` in it by hand. Later commands ask and say
+   Copilot's shell may have moved. Restart Copilot, in Chat Permissions, warns first if another chat
+   is busy, with No as the default, and focus returns to the button. Commands are answered again.
+9. **A chat reopened.** Restart The Chat Place and open the chat. Auto is on again and its heading
+   says so. Plan mode turns Auto off.
+10. **Not available.** Auto is refused for a whole drive or the home folder, and where an
+    organisation manages Copilot.
 
 ## What to report in the PR
 
