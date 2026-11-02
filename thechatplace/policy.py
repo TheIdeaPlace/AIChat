@@ -53,9 +53,10 @@ def checked_decision(decision: object, offered: Iterable[Decision]) -> Decision:
 
 
 def mode_problem(mode: str, safe_modes: Mapping[str, object]) -> Optional[str]:
-    """Why a mode can't be run in. An agent with no known modes isn't judged
-    here: its mode can't be understood, so it isn't offered either."""
-    if safe_modes and mode and mode not in safe_modes:
+    """Why a mode can't be run in. With safe modes listed, anything else counts,
+    including reporting none. An agent with none listed isn't judged here: its
+    modes can't be understood, so they aren't offered either."""
+    if safe_modes and mode not in safe_modes:
         return "The agent switched to a mode where it may stop asking before it acts, so this turn was stopped."
     return None
 

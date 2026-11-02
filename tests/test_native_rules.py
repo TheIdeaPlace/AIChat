@@ -71,7 +71,48 @@ def test_claude_stops_a_turn_reporting_an_api_key(setup, tmp_path):
     run.service.send(info.ref, "Hi")
     ended = run.end_turn()
     assert ended.status is TurnStatus.FAILED and "API key" in ended.message
+    run.idle(info.ref)
+    assert not any(t.startswith("assistant") for t in run.text(info.ref))
     assert api_key_problem("none") is None and api_key_problem(None) is None
+
+
+def test_claude_starts_a_session_until_one_really_exists(setup):
+    """Counting turns would leave a chat resuming a session that never existed."""
+    make, data = setup
+    run = make(claude("apikey", data))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    run.end_turn()
+    run.idle(info.ref)
+    run.service.send(info.ref, "Again")
+    run.end_turn()
+    run.idle(info.ref)
+    args = [line for line in (data / "claude.log").read_text(encoding="utf-8").splitlines() if line.startswith("ARGS")]
+    assert len(args) == 2 and all("--session-id" in line and "--resume" not in line for line in args)
+    folder = data / "projects" / "here"
+    folder.mkdir(parents=True)
+    (folder / f"{info.ref.native_id}.jsonl").write_text("{}", encoding="utf-8")
+    run.service.send(info.ref, "Once more")
+    run.end_turn()
+    args = [line for line in (data / "claude.log").read_text(encoding="utf-8").splitlines() if line.startswith("ARGS")]
+    assert "--resume" in args[-1]
+
+
+def test_claude_answers_a_question_with_nothing_to_ask(setup):
+    make, data = setup
+    run = make(claude("emptyquestion", data))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    assert run.end_turn().status is TurnStatus.COMPLETED
+    assert run.service.state(info.ref).pending_permission is None
+    assert '"behavior": "deny"' in (data / "claude.log").read_text(encoding="utf-8")
+
+
+def test_claude_offers_allow_only_with_something_to_read():
+    from thechatplace.integrations.claude import _describe_input
+    assert _describe_input({}) == ""
+    assert "old" in _describe_input({"file_path": "a", "old_string": "old", "new_string": "new"})
+    assert "unusual" in _describe_input({"something": "unusual"})
 
 
 def test_claude_refuses_an_unknown_control_request_and_carries_on(setup):
@@ -113,6 +154,65 @@ def test_codex_refuses_anything_but_chatgpt_sign_in(setup):
     run = make(codex("apikey", data))
     with pytest.raises(Refused, match="ChatGPT"):
         run.start()
+
+
+def _codex_sent(data):
+    return [json.loads(l) for l in (data / "codex.log").read_text(encoding="utf-8").splitlines()]
+
+
+def test_codex_checks_sign_in_and_pins_its_endpoint_when_resuming_too(setup):
+    make, data = setup
+    run = make(codex("answer", data))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    run.end_turn()
+    run.idle(info.ref)
+    run.integration.close()
+    (data / "codex.log").write_text("", encoding="utf-8")
+    run.service.send(info.ref, "Again")
+    assert run.end_turn().status is TurnStatus.COMPLETED
+    sent = _codex_sent(data)
+    methods = [m.get("method") for m in sent]
+    assert methods.index("account/read") < methods.index("thread/resume") < methods.index("turn/start")
+    config = next(m for m in sent if m.get("method") == "thread/resume")["params"]["config"]
+    assert config["forced_login_method"] == "chatgpt" and config["openai_base_url"] is None
+
+
+def test_codex_ignores_an_earlier_turns_messages(setup):
+    make, data = setup
+    integration = codex("answer", data)
+    run = make(integration)
+    from thechatplace.integrations.codex import _Turn
+    connection = object()
+    told = []
+    turn = _Turn(told.append, connection=connection, turn_id="now")
+    integration._turns["thread"] = turn
+    integration._on_notification(connection, "turn/completed", {"threadId": "thread", "turn": {"id": "before", "status": "completed"}})
+    assert not turn.done.is_set()
+    integration._on_notification(connection, "item/agentMessage/delta", {"threadId": "thread", "turnId": "before", "itemId": "a", "delta": "old"})
+    assert told == []
+    integration._on_notification(connection, "turn/completed", {"threadId": "thread", "turn": {"id": "now", "status": "completed"}})
+    assert turn.done.is_set()
+    integration._turns.clear()
+
+
+def test_a_failed_codex_read_isnt_an_empty_chat(setup):
+    make, data = setup
+    integration = codex("answer", data)
+    run = make(integration)
+    ref = ChatRef("codex", "someone-elses")
+
+    class Broken:
+        closed = False
+
+        def request(self, *args, **kwargs):
+            raise integration_rpc_error
+    from thechatplace.integrations.jsonrpc import RpcError
+    integration_rpc_error = RpcError("no")
+    integration._connect = lambda: Broken()  # type: ignore[method-assign]
+    with pytest.raises(IntegrationError):
+        run.service.load_history(ref)
+    assert run.service.state(ref).loaded is False
 
 
 def test_codex_pins_its_endpoint_and_starts_read_only(setup):
@@ -202,6 +302,70 @@ def test_plain_chat_sends_no_key_and_the_whole_conversation(setup):
     assert [m["role"] for m in last["body"]["messages"]] == ["user", "assistant", "user"]
     assert last["body"]["model"] == "m1"
     server.close()
+
+
+def test_plain_chat_follows_no_redirect():
+    """A local server mustn't be able to send a chat's text elsewhere."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from thechatplace.integrations.openai_chat import _OPENER
+    import urllib.error
+    hits = []
+
+    class Target(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            hits.append(self.path)
+            self.send_response(200)
+            self.end_headers()
+
+    class Redirector(Target):
+        def do_POST(self):
+            self.send_response(307)
+            self.send_header("Location", f"http://127.0.0.1:{target.server_address[1]}/stolen")
+            self.end_headers()
+    target = HTTPServer(("127.0.0.1", 0), Target)
+    redirector = HTTPServer(("127.0.0.1", 0), Redirector)
+    for server in (target, redirector):
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    import urllib.request
+    request = urllib.request.Request(f"http://127.0.0.1:{redirector.server_address[1]}/v1", data=b"secret")
+    with pytest.raises(urllib.error.HTTPError):
+        _OPENER.open(request, timeout=5)
+    assert hits == []
+    for server in (target, redirector):
+        server.shutdown()
+        server.server_close()
+
+
+def test_closing_a_program_that_stopped_reading_doesnt_hang(tmp_path):
+    """Writing to a full pipe holds stdin's lock; close must kill it first."""
+    import sys
+    import threading
+    import time
+    process = platform_paths.OwnedProcess([sys.executable, "-c", "import time; time.sleep(60)"])
+
+    def writer():
+        try:
+            process.stdin.write(b"x" * 4_000_000)
+            process.stdin.flush()
+        except (OSError, ValueError):
+            pass
+    threading.Thread(target=writer, daemon=True).start()
+    time.sleep(0.5)
+    closing = threading.Thread(target=process.close, daemon=True)
+    closing.start()
+    closing.join(8)
+    assert not closing.is_alive(), "close hung"
+    assert process.process.poll() is not None
+
+
+def test_a_late_stop_doesnt_end_the_next_plain_chat_turn():
+    integration = OpenAIChatIntegration(id="l", name="L", base_url="http://127.0.0.1:9/v1")
+    integration.stop(ChatRef("l", "chat"))
+    assert integration._stopping == set()
 
 
 def test_plain_chat_needs_a_model(setup):

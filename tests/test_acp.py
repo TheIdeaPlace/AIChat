@@ -7,8 +7,8 @@ import os
 import pytest
 
 from harness import MODE_AGENT, MODE_BAD, MODE_PLAN, Run, acp, fake_definition
-from thechatplace.contracts import (AskPermission, Capability, ChatRef, Decision, IntegrationError, OwnedChat, Refused,
-                                    TurnStatus)
+from thechatplace.contracts import (AskPermission, Capability, Decision, IntegrationError, PermissionRequest, Refused,
+                                    ReplyText, TurnStatus)
 from thechatplace import policy
 from thechatplace.integrations import acp as acp_module
 from thechatplace.integrations.agents import AGENTS, COPILOT
@@ -89,7 +89,7 @@ def test_without_load_session_a_chat_says_it_cant_reopen(setup):
     assert ended.status is TurnStatus.FAILED and "can't reopen" in ended.message
     run.idle(info.ref)
     # And now the capability says what the behaviour said.
-    assert Capability.SEND not in run.service.info(info.ref).capabilities or run.integration._can_load is None
+    assert Capability.SEND not in run.service.info(info.ref).capabilities
 
 
 def test_a_reloaded_chat_drops_its_replayed_history(setup):
@@ -171,9 +171,66 @@ def test_an_agent_ignoring_cancel_is_closed_after_the_grace(setup, monkeypatch):
     run = setup(acp("deaf"))
     info = run.start()
     run.service.send(info.ref, "Hi")
-    run.wait(object)
+    run.wait(ReplyText)
     run.service.stop(info.ref)
     assert run.end_turn(timeout=10).status is TurnStatus.STOPPED
+
+
+def test_an_old_connection_closing_leaves_its_replacement_alone(setup):
+    run = setup(acp("answer"))
+    run.start()
+    old = run.integration._connection
+    replacement = object()
+    run.integration._connection = replacement
+    run.integration._on_closed(old)
+    assert run.integration._connection is replacement
+    run.integration._connection = old
+
+
+def test_two_requests_at_once_are_both_answered(setup):
+    run = setup(acp("ask"))
+    info = run.start()
+    run.service.send(info.ref, "Hi")
+    first = run.wait(AskPermission).request
+    second = PermissionRequest("other", "Also asked.", "detail", (Decision.DENY,))
+    state = run.service.state(info.ref)
+    state.pending.append(second)
+    assert state.pending_permission is first
+    run.service.answer_permission(info.ref, second, Decision.DENY)
+    assert state.pending == [first]
+    run.service.answer_permission(info.ref, first, Decision.DENY)
+    assert run.end_turn().status is TurnStatus.COMPLETED
+
+
+def test_two_chats_can_run_at_once_on_one_agent(setup):
+    run = setup(acp("answer"))
+    one, two = run.start(), run.start()
+    run.service.send(one.ref, "For one")
+    run.service.send(two.ref, "For two")
+    run.end_turn()
+    run.end_turn()
+    run.idle(one.ref)
+    run.idle(two.ref)
+    assert any("For one" in t and t.startswith("assistant") for t in run.text(one.ref))
+    assert any("For two" in t and t.startswith("assistant") for t in run.text(two.ref))
+    assert not any("For two" in t for t in run.text(one.ref))
+
+
+def test_a_chat_set_to_plan_never_runs_after_failing_to_get_back_there(setup, monkeypatch):
+    run = setup(acp("answer"))
+    info = run.start(mode=MODE_PLAN)
+    run.integration.close()
+    chat = run.service.store.get_chat(info.ref)
+    real = run.integration._set_mode
+
+    def refuses(*args):
+        raise IntegrationError("no")
+    monkeypatch.setattr(run.integration, "_set_mode", refuses)
+    run.service.send(info.ref, "Hi")
+    assert run.end_turn().status is TurnStatus.FAILED
+    run.idle(info.ref)
+    assert chat.ref.native_id not in run.integration._live
+    monkeypatch.setattr(run.integration, "_set_mode", real)
 
 
 def test_garbage_lines_are_counted_and_harmless(setup):
@@ -216,7 +273,16 @@ def test_every_listed_agent_has_what_a_definition_needs():
         assert agent.name and agent.program and agent.sign_in_hint and agent.billing
 
 
-def test_copilot_cant_be_put_in_autopilot_and_moves_no_billing():
-    assert not any("autopilot" in mode for mode in COPILOT.safe_modes)
-    assert COPILOT.forbidden_options == {"allow_all": ("on",)}
-    assert {"GITHUB_TOKEN", "GH_TOKEN", "COPILOT_GITHUB_TOKEN"} <= set(COPILOT.strip_env_names)
+def test_copilot_cant_be_put_in_autopilot_and_its_billing_cant_be_moved():
+    from thechatplace import platform_paths
+    integration = acp_module.AcpIntegration(COPILOT)
+    env = platform_paths.clean_environment(COPILOT.strip_env_names, COPILOT.strip_env_prefixes,
+                                           {"github_token": "x", "COPILOT_PROVIDER_URL": "y", "PATH": "keep"})
+    assert env == {"PATH": "keep"}
+    live = acp_module._Live("id", "folder", mode="https://agentclientprotocol.com/protocol/session-modes#autopilot")
+    assert integration._safety_problem(live)
+    live.mode = next(iter(COPILOT.safe_modes))
+    live.config["allow_all"] = "on"
+    assert integration._safety_problem(live)
+    live.config["allow_all"] = "off"
+    assert integration._safety_problem(live) is None

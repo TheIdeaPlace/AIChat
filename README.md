@@ -45,6 +45,7 @@ Three parts, in Tab order: the chats, the messages, and the reply box with Send 
 | Escape | From the messages or the reply box, back to the chats |
 | Ctrl+N | New chat |
 | Ctrl+Shift+O | Options for this chat |
+| Ctrl+Shift+D | Turn details: what it's doing, its plan and how full the context is |
 | F5 | Refresh the chats |
 
 ## Tests

@@ -13,8 +13,8 @@ from typing import Dict, List, Optional
 import wx
 
 from .. import ui_text
-from ..contracts import (DECISION_LABELS, AskPermission, AskQuestion, Capability, ChatInfo, ChatRef, IntegrationError,
-                         Notice, Refused, TurnEnded, TurnStatus)
+from ..contracts import (DECISION_LABELS, AskPermission, AskQuestion, Capability, ChatInfo, ChatRef, Decision,
+                         IntegrationError, Notice, Refused, TurnEnded, TurnStatus)
 from ..service import ChatService
 from ..speak import Speaker
 from . import a11y
@@ -40,8 +40,10 @@ class MainWindow(wx.Frame):
         self._closing = False
         self._dialog: Optional[wx.Dialog] = None
         self._stream_dirty = False
-        self._refresh_generation = 0
-        self._announced: Dict[str, int] = {}
+        self._refreshing = False
+        self._refresh_again = False
+        #: Text typed for each chat, so it can't be sent to another.
+        self._drafts: Dict[str, str] = {}
 
         self._build_menu()
         self._build_body()
@@ -67,6 +69,7 @@ class MainWindow(wx.Frame):
         self.new_item = file_menu.Append(wx.ID_NEW, "&New Chat\tCtrl+N")
         self.options_item = file_menu.Append(wx.ID_ANY, "Chat &Options\tCtrl+Shift+O")
         self.stop_item = file_menu.Append(wx.ID_ANY, "&Stop Turn\tCtrl+.")
+        self.details_item = file_menu.Append(wx.ID_ANY, "Turn &Details\tCtrl+Shift+D")
         self.refresh_item = file_menu.Append(wx.ID_REFRESH, "&Refresh\tF5")
         file_menu.AppendSeparator()
         exit_item = file_menu.Append(wx.ID_EXIT, "E&xit")
@@ -79,6 +82,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, lambda _e: self.new_chat(), self.new_item)
         self.Bind(wx.EVT_MENU, lambda _e: self.chat_options(), self.options_item)
         self.Bind(wx.EVT_MENU, lambda _e: self.stop_turn(), self.stop_item)
+        self.Bind(wx.EVT_MENU, lambda _e: self.turn_details(), self.details_item)
         self.Bind(wx.EVT_MENU, lambda _e: self.refresh_chats(), self.refresh_item)
         self.Bind(wx.EVT_MENU, lambda _e: self.Close(), exit_item)
         self.Bind(wx.EVT_MENU, lambda _e: self.show_providers(), providers_item)
@@ -148,25 +152,42 @@ class MainWindow(wx.Frame):
     # -- the chat list --------------------------------------------------------
 
     def refresh_chats(self) -> None:
-        self._refresh_generation += 1
-        generation = self._refresh_generation
+        """One at a time: a slow one must finish, not be overtaken and thrown away."""
+        if self._refreshing:
+            self._refresh_again = True
+            return
+        self._refreshing = True
+        current = self.current
 
         def work() -> None:
+            chats, problems = None, []
             try:
                 chats, problems = self.service.list_chats()
+                if current is not None and not current.owned:
+                    self.service.load_history(current.ref)  # it may have moved on
+            except (IntegrationError, OSError):
+                pass
             except Exception:  # noqa: BLE001 - the next refresh tries again
-                return
-            self._after(self._show_chats, generation, chats, problems)
+                pass
+            self._after(self._refresh_done, chats, problems)
         threading.Thread(target=work, daemon=True, name="list-chats").start()
+
+    def _refresh_done(self, chats: Optional[List[ChatInfo]], problems: List[str]) -> None:
+        self._refreshing = False
+        if chats is not None:
+            self._show_chats(chats, problems)
+            if self.current is not None and not self.current.owned:
+                self.show_messages()
+        if self._refresh_again:
+            self._refresh_again = False
+            self.refresh_chats()
 
     def _row_for(self, info: ChatInfo) -> str:
         state = self.service.state(info.ref)
         needs = bool(state.pending_permission or state.pending_question)
         return ui_text.chat_row(info, state.busy, needs)
 
-    def _show_chats(self, generation: int, chats: List[ChatInfo], problems: List[str]) -> None:
-        if generation != self._refresh_generation:
-            return
+    def _show_chats(self, chats: List[ChatInfo], problems: List[str]) -> None:
         old_keys = [c.ref.key for c in self.chats]
         new_keys = [c.ref.key for c in chats]
         if self.chat_list.HasFocus() and sorted(old_keys) == sorted(new_keys) and old_keys != new_keys:
@@ -216,7 +237,10 @@ class MainWindow(wx.Frame):
             self.open_chat(info)
 
     def open_chat(self, info: ChatInfo, focus_messages: bool = True) -> None:
+        if self.current is not None:
+            self._drafts[self.current.ref.key] = self.reply.GetValue()
         self.current = info
+        self.reply.SetValue(self._drafts.get(info.ref.key, ""))
         self.message_list.Clear()
         self.show_reply_for(info)
         if focus_messages:
@@ -227,7 +251,7 @@ class MainWindow(wx.Frame):
             try:
                 self.service.load_history(info.ref)
                 problem = ""
-            except (IntegrationError, OSError):
+            except (IntegrationError, OSError, ValueError):
                 problem = f"{info.provider} couldn't read this chat's messages."
             self._after(self._chat_loaded, info, problem)
         threading.Thread(target=work, daemon=True, name="load-chat").start()
@@ -248,6 +272,8 @@ class MainWindow(wx.Frame):
         self.send_button.Enable(can_send)
         self.stop_button.Enable(can_send)
         self.options_item.Enable(bool(info and Capability.OPTIONS in info.capabilities))
+        self.details_item.Enable(bool(info and (Capability.USAGE in info.capabilities
+                                                or Capability.PLANS in info.capabilities)))
         self.note.SetValue(info.read_only_note or "This chat can't be replied to from here." if info
                            else "Open a chat from the list, or start one with Ctrl+N.")
         self.panel.Layout()
@@ -307,6 +333,7 @@ class MainWindow(wx.Frame):
 
     def stop_turn(self) -> None:
         if self.current is None or not self.service.state(self.current.ref).busy:
+            self.say("Nothing to stop.", interrupt=True)
             return
         queued = self.service.stop(self.current.ref)
         self.say("Stopping.", interrupt=True)
@@ -330,11 +357,12 @@ class MainWindow(wx.Frame):
             self._announce_end(ref, event)
         elif isinstance(event, (AskPermission, AskQuestion)):
             self._update_row(ref)
+            # Said even for this chat: a dialog may be open, hiding the request
+            # until it closes.
+            if not is_current or self._dialog is not None:
+                self.say(f"{self._title_of(ref)} needs you.")
             if is_current:
                 self._ask_if_waiting(ref)
-            else:
-                name = self._title_of(ref)
-                self.say(f"{name} needs you.")
         elif isinstance(event, Notice):
             if is_current:
                 self.show_messages()
@@ -368,8 +396,7 @@ class MainWindow(wx.Frame):
         elif event.status is TurnStatus.FAILED:
             self.say(event.message or f"{provider} couldn't finish in {title}.")
         else:
-            replies = [m for m in self.service.messages(ref) if m.role == "assistant"]
-            self.say(ui_text.reply_announcement(provider, title, replies[-1].text if replies else ""))
+            self.say(ui_text.reply_announcement(provider, title, self.service.state(ref).last_reply))
 
     # -- questions and permissions --------------------------------------------
 
@@ -386,28 +413,49 @@ class MainWindow(wx.Frame):
         if state.pending_permission is not None:
             request = state.pending_permission
             dialog = PermissionDialog(self, title, request)
-            self._show_modal(dialog)
-            if state.pending_permission is request:
-                self.service.answer_permission(ref, request, dialog.decision)
+            decision = Decision.DENY
+            ended = False
+
+            def read(shown: PermissionDialog) -> None:
+                nonlocal decision
+                decision = shown.decision
+            ended = self._show_modal(dialog, read) == wx.ID_CANCEL
+            if not ended and request in state.pending:
+                # Off this thread: an answer can wait on a busy program.
+                self._in_background(self.service.answer_permission, ref, request, decision)
                 self._update_row(ref)
-                self.say(f"{DECISION_LABELS[dialog.decision]}: done.", interrupt=True)
+                self.say(f"{DECISION_LABELS[decision]}: done.", interrupt=True)
         elif state.pending_question is not None:
             request = state.pending_question
             dialog = QuestionDialog(self, title, request)
-            self._show_modal(dialog)
-            if state.pending_question is request:
-                self.service.answer_question(ref, request, dialog.answers)
-                self._update_row(ref)
-        if state.pending_permission is not None or state.pending_question is not None:
-            self._ask_if_waiting(ref)
+            answers = None
 
-    def _show_modal(self, dialog: wx.Dialog) -> int:
+            def read_answers(shown: QuestionDialog) -> None:
+                nonlocal answers
+                answers = shown.answers
+            self._show_modal(dialog, read_answers)
+            if request in state.pending:
+                self._in_background(self.service.answer_question, ref, request, answers)
+                self._update_row(ref)
+
+    def _in_background(self, function, *args) -> None:
+        threading.Thread(target=function, args=args, daemon=True, name="answer").start()
+
+    def _show_modal(self, dialog: wx.Dialog, read=None) -> int:
+        """Show it, read it, then ask anything that came in behind it. Every
+        modal comes through here: a request that arrives while one's open would
+        otherwise never be asked."""
         self._dialog = dialog
         try:
-            return dialog.ShowModal()
+            result = dialog.ShowModal()
+            if read is not None:
+                read(dialog)
+            return result
         finally:
             self._dialog = None
             dialog.Destroy()
+            if self.current is not None and not self._closing:
+                self._ask_if_waiting(self.current.ref)
 
     def _end_dialog(self, ref: Optional[ChatRef] = None) -> None:
         """A request that's been overtaken (the turn ended) can't be answered."""
@@ -422,15 +470,14 @@ class MainWindow(wx.Frame):
         providers = [(i.id, i.name) for i in self.service.enabled_integrations()]
         folder = self.current.folder if self.current and self.current.folder else str(Path.home())
         dialog = NewChatDialog(self, providers, folder, self.service.new_chat_options)
-        self._dialog = dialog
-        try:
-            if dialog.ShowModal() != wx.ID_OK:
-                return
-            provider, title = dialog.provider_id(), dialog.title_box.GetValue().strip()
-            folder, options = dialog.folder.GetValue().strip(), dialog.options()
-        finally:
-            self._dialog = None
-            dialog.Destroy()
+        chosen = {}
+
+        def read(shown: NewChatDialog) -> None:
+            chosen.update(provider=shown.provider_id(), title=shown.title_box.GetValue().strip(),
+                          folder=shown.folder.GetValue().strip(), options=shown.options())
+        if self._show_modal(dialog, read) != wx.ID_OK:
+            return
+        provider, title, folder, options = chosen["provider"], chosen["title"], chosen["folder"], chosen["options"]
         self.say("Starting the chat.")
 
         def work() -> None:
@@ -452,19 +499,25 @@ class MainWindow(wx.Frame):
         if self.current is None or Capability.OPTIONS not in self.current.capabilities:
             return
         ref, title = self.current.ref, self.current.title
-        groups = self.service.chat_options(ref)
+        self.say("Getting this chat's options.")
+
+        def work() -> None:
+            try:
+                groups = self.service.chat_options(ref)
+            except (IntegrationError, OSError):
+                groups = ()
+            self._after(self._show_chat_options, ref, title, groups)
+        threading.Thread(target=work, daemon=True, name="get-options").start()
+
+    def _show_chat_options(self, ref: ChatRef, title: str, groups) -> None:
+        if self._dialog is not None:
+            return
         if not groups:
             self.say("This chat has no options to change.", interrupt=True)
             return
-        dialog = OptionsDialog(self, title, groups)
-        self._dialog = dialog
-        try:
-            if dialog.ShowModal() != wx.ID_OK:
-                return
-            chosen = dialog.controls.values()
-        finally:
-            self._dialog = None
-            dialog.Destroy()
+        chosen = {}
+        if self._show_modal(OptionsDialog(self, title, groups), lambda shown: chosen.update(shown.controls.values())) != wx.ID_OK:
+            return
         changes = [(g.id, chosen[g.id]) for g in groups if g.id in chosen and chosen[g.id] != g.current]
 
         def work() -> None:
@@ -476,6 +529,13 @@ class MainWindow(wx.Frame):
                 message = str(error) if isinstance(error, IntegrationError) else "That option couldn't be changed."
                 self._after(self.say, message, True)
         threading.Thread(target=work, daemon=True, name="set-options").start()
+
+    def turn_details(self) -> None:
+        if self.current is None:
+            return
+        state = self.service.state(self.current.ref)
+        self._show_modal(TextDialog(self, f"Turn details: {self.current.title}",
+                                    ui_text.turn_details(state.activity, state.plan, state.usage)))
 
     def show_providers(self) -> None:
         integrations = self.service.integrations
@@ -553,4 +613,8 @@ class MainWindow(wx.Frame):
         self._closing = True
         self.refresh_timer.Stop()
         self.stream_timer.Stop()
-        threading.Thread(target=self.service.close, daemon=True, name="close-service").start()
+        closing = threading.Thread(target=self.service.close, daemon=True, name="close-service")
+        closing.start()
+        # Long enough for running turns to be stopped before the app goes. On a
+        # Mac or Linux nothing else ends them; a stuck one can't hold the app.
+        closing.join(2.0)

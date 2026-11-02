@@ -1,8 +1,4 @@
-"""Builds each integration against its fake, for the shared suite.
-
-Each harness names what its integration should support, and the suite's
-capability checks hold that against what it actually does.
-"""
+"""Builds each integration against its fake, for the shared suite."""
 from __future__ import annotations
 
 import json

@@ -77,6 +77,8 @@ class _Turn:
     done: threading.Event = field(default_factory=threading.Event)
     turn_id: str = ""
     status: str = ""
+    #: Which connection this turn runs on: another closing doesn't end it.
+    connection: Optional[Connection] = None
     stop_requested: bool = False
     pending: Dict[str, Tuple[object, str, tuple]] = field(default_factory=dict)
     next_request: int = 0
@@ -92,6 +94,9 @@ class CodexIntegration(Integration):
         self.drift = DriftCounters()
         self._start = start
         self._lock = threading.RLock()
+        #: Held while the program starts. ``_lock`` isn't, because answering a
+        #: request from the window takes it.
+        self._connect_lock = threading.Lock()
         self._connection: Optional[Connection] = None
         self._turns: Dict[str, _Turn] = {}
         self._resumed: set = set()
@@ -119,10 +124,11 @@ class CodexIntegration(Integration):
     # -- the app-server -------------------------------------------------------
 
     def _connect(self) -> Connection:
-        with self._lock:
-            if self._connection is not None and not self._connection.closed:
-                return self._connection
-            self._resumed.clear()
+        with self._connect_lock:
+            with self._lock:
+                if self._connection is not None and not self._connection.closed:
+                    return self._connection
+                self._resumed.clear()
             if self._start is not None:
                 process = self._start()
             else:
@@ -144,13 +150,15 @@ class CodexIntegration(Integration):
             except Exception:
                 connection.close()
                 raise
-            self._connection = connection
+            with self._lock:
+                self._connection = connection
             return connection
 
-    def _on_closed(self) -> None:
+    def _on_closed(self, connection: Connection) -> None:
         with self._lock:
-            self._connection = None
-            turns = list(self._turns.values())
+            if self._connection is connection:
+                self._connection = None
+            turns = [t for t in self._turns.values() if t.connection is connection]
         for turn in turns:
             turn.done.set()
 
@@ -175,6 +183,15 @@ class CodexIntegration(Integration):
 
     def new_chat_options(self) -> Tuple[OptionGroup, ...]:
         return (FILE_ACCESS,)
+
+    def chat_options(self, chat: OwnedChat) -> Tuple[OptionGroup, ...]:
+        return (OptionGroup(FILE_ACCESS.id, FILE_ACCESS.label, FILE_ACCESS.values,
+                            chat.options.get("sandbox", "read-only")),)
+
+    def set_option(self, chat: OwnedChat, group: str, value: str) -> None:
+        if group != "sandbox" or value not in ("read-only", "workspace-write"):
+            raise Refused("That isn't one of this chat's options.")
+        chat.options["sandbox"] = value  # each turn says what it may do
 
     def check_prompt(self, text: str) -> Optional[str]:
         if text.lstrip().startswith("/"):
@@ -209,6 +226,9 @@ class CodexIntegration(Integration):
             self._turns[native_id] = turn
         try:
             connection = self._connect()
+            turn.connection = connection
+            if connection.closed:
+                turn.done.set()
             self._ensure_resumed(connection, chat)
             sandbox = chat.options.get("sandbox", "read-only")
             result = connection.request("turn/start", {
@@ -271,8 +291,10 @@ class CodexIntegration(Integration):
             return
 
         def give_up() -> None:
-            # Ends only this chat's wait; a later message reconnects if needed.
+            # Codex ignored the interrupt, so nothing else can end the turn.
+            # The app-server is shared: other chats resume on their next message.
             if not turn.status:
+                connection.close()
                 turn.done.set()
         timer = threading.Timer(STOP_GRACE_SECONDS, give_up)
         timer.daemon = True
@@ -289,11 +311,23 @@ class CodexIntegration(Integration):
         except RpcError:
             pass
 
-    def _on_request(self, rpc_id, method: str, params: dict) -> None:
-        connection = self._connection
-        if connection is None:
-            return
-        turn = self._turns.get(_text(params.get("threadId"), 256))
+    def _current_turn(self, connection: Connection, params: dict) -> Optional[_Turn]:
+        """The turn this message belongs to, or None. A turn that was given up
+        on can still be sending, and must never reach the one after it."""
+        with self._lock:
+            turn = self._turns.get(_text(params.get("threadId"), 256))
+        if turn is None or turn.connection is not connection:
+            return None
+        said = _text(params.get("turnId"), 256)
+        if not said and isinstance(params.get("turn"), dict):
+            said = _text(params["turn"].get("id"), 256)
+        if said and turn.turn_id and said != turn.turn_id:
+            self.drift.ignored("message-from-an-earlier-turn")
+            return None
+        return turn
+
+    def _on_request(self, connection: Connection, rpc_id, method: str, params: dict) -> None:
+        turn = self._current_turn(connection, params)
         if method not in (COMMAND, FILES, QUESTIONS):
             self.drift.unknown(f"request:{method}")
             connection.respond_error(rpc_id, -32601, "The Chat Place doesn't support this request.")
@@ -380,8 +414,8 @@ class CodexIntegration(Integration):
             return
         connection.respond(found[0], {"answers": {item.id: {"answers": [answers[item.id]]} for item in items}})
 
-    def _on_notification(self, method: str, params: dict) -> None:
-        turn = self._turns.get(_text(params.get("threadId"), 256))
+    def _on_notification(self, connection: Connection, method: str, params: dict) -> None:
+        turn = self._current_turn(connection, params)
         if method in IGNORED:
             self.drift.ignored(method)
             return
@@ -499,6 +533,8 @@ class CodexIntegration(Integration):
         try:
             result = connection.request("thread/read", {"threadId": native_id, "includeTurns": True})
         except RpcError:
+            # A failure here raises rather than returning nothing: a read that
+            # failed must never look like an empty chat.
             return self._paged_items(connection, native_id)
         thread = result.get("thread") if isinstance(result, dict) else None
         turns = thread.get("turns") if isinstance(thread, dict) else None
@@ -515,13 +551,10 @@ class CodexIntegration(Integration):
             params: dict = {"threadId": native_id, "sortDirection": "asc", "limit": 100}
             if cursor:
                 params["cursor"] = cursor
-            try:
-                page = connection.request("thread/items/list", params)
-            except RpcError:
-                return items
+            page = connection.request("thread/items/list", params)
             data = page.get("data") if isinstance(page, dict) else None
             if not isinstance(data, list):
-                return items
+                raise IntegrationError("Codex couldn't read this chat's messages.")
             items.extend(entry.get("item") for entry in data if isinstance(entry, dict))
             cursor = page.get("nextCursor")
             if not cursor:

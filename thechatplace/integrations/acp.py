@@ -93,6 +93,7 @@ class _Live:
     modes_via_config: bool = False
     pending: Dict[str, Tuple[object, policy.AcpPermission]] = field(default_factory=dict)
     next_request: int = 0
+    turn_number: int = 0
 
 
 class AcpIntegration(Integration):
@@ -107,6 +108,9 @@ class AcpIntegration(Integration):
         self.drift = DriftCounters()
         self._start = start
         self._lock = threading.RLock()
+        #: Held while a program starts, which can take a minute. ``_lock`` isn't,
+        #: because answering a request from the window takes it.
+        self._connect_lock = threading.Lock()
         self._connection: Optional[Connection] = None
         self._can_load: Optional[bool] = None
         self._live: Dict[str, _Live] = {}
@@ -165,10 +169,11 @@ class AcpIntegration(Integration):
             raise IntegrationError(f"{self.name} couldn't be started.") from None
 
     def _connect(self, cwd: str) -> Connection:
-        with self._lock:
-            if self._connection is not None and not self._connection.closed:
-                return self._connection
-            self._live.clear()
+        with self._connect_lock:
+            with self._lock:
+                if self._connection is not None and not self._connection.closed:
+                    return self._connection
+                self._live.clear()
             connection = Connection(self._spawn(cwd), self._on_notification, self._on_request,
                                     self._on_closed, self.drift, self.name)
             try:
@@ -181,7 +186,8 @@ class AcpIntegration(Integration):
             except Exception:
                 connection.close()
                 raise
-            self._connection = connection
+            with self._lock:
+                self._connection = connection
             return connection
 
     def _check_initialize(self, result: object) -> None:
@@ -193,9 +199,10 @@ class AcpIntegration(Integration):
         caps = result.get("agentCapabilities") if isinstance(result.get("agentCapabilities"), dict) else {}
         self._can_load = caps.get("loadSession") is True
 
-    def _on_closed(self) -> None:
+    def _on_closed(self, connection: Connection) -> None:
         with self._lock:
-            self._connection = None
+            if self._connection is connection:
+                self._connection = None
 
     def _request(self, connection: Connection, method: str, params: dict, timeout=60.0):
         try:
@@ -311,7 +318,14 @@ class AcpIntegration(Integration):
         self._read_settings(live, result)
         wanted = chat.options.get("mode")
         if wanted and wanted != live.mode:
-            self._set_mode(connection, live, wanted)
+            try:
+                self._set_mode(connection, live, wanted)
+            except Exception:
+                # Forgotten, so the next turn tries again rather than running
+                # in a mode the chat isn't set to.
+                with self._lock:
+                    self._live.pop(live.native_id, None)
+                raise
         return connection, live
 
     def run_turn(self, chat: OwnedChat, text: str, emit: Emit) -> None:
@@ -327,6 +341,7 @@ class AcpIntegration(Integration):
         with self._lock:
             live.emit, live.busy, live.stop_requested, live.safety_stop = emit, True, False, ""
             live.block_open = False
+            live.turn_number += 1
         try:
             result = self._request(connection, "session/prompt",
                                    {"sessionId": live.native_id,
@@ -376,10 +391,12 @@ class AcpIntegration(Integration):
         if not first:
             return
 
+        turn_number = live.turn_number
+
         def give_up() -> None:
             # An agent that ignores a cancel leaves no other way to stop. The
             # process is shared, so other chats reopen on their next message.
-            if live.busy and live.stop_requested:
+            if live.busy and live.stop_requested and live.turn_number == turn_number:
                 connection.close()
         timer = threading.Timer(STOP_GRACE_SECONDS, give_up)
         timer.daemon = True
@@ -393,21 +410,18 @@ class AcpIntegration(Integration):
         except RpcError:
             pass
 
-    def _on_request(self, request_id, method: str, params: dict) -> None:
-        connection = self._connection
+    def _on_request(self, connection: Connection, request_id, method: str, params: dict) -> None:
         if method != "session/request_permission":
             self.drift.unknown(f"request:{method}")
             live = self._live.get(_text(params.get("sessionId"), 500))
             if live is not None and live.emit is not None:
                 live.emit(UnknownUpdate(f"request:{method}"))
-            if connection is not None:
-                connection.respond_error(request_id, -32601, "The Chat Place doesn't support this request.")
+            connection.respond_error(request_id, -32601, "The Chat Place doesn't support this request.")
             return
         with self._lock:
             live = self._live.get(_text(params.get("sessionId"), 500))
-        if connection is None:
-            return
-        if live is None or not live.busy or live.emit is None or live.loading or live.stop_requested:
+            stale = connection is not self._connection
+        if stale or live is None or not live.busy or live.emit is None or live.loading or live.stop_requested:
             self._answer_cancelled(connection, request_id)
             return
         permission = policy.read_acp_options(params.get("options"))
@@ -417,13 +431,16 @@ class AcpIntegration(Integration):
             live.emit(Notice(f"{self.name} asked for permission without a way to say no, "
                              "so The Chat Place refused. Nothing was allowed."))
             return
+        detail = self._describe_call(params.get("toolCall"))
+        # With nothing to read, there's nothing to allow.
+        decisions = permission.decisions if detail else (Decision.DENY,)
         with self._lock:
             live.next_request += 1
             key = str(live.next_request)
-            live.pending[key] = (request_id, permission)
+            live.pending[key] = (request_id, policy.AcpPermission(decisions, permission.option_ids))
         live.emit(AskPermission(PermissionRequest(
-            key, f"{self.name} asks for permission.", self._describe_call(params.get("toolCall")),
-            permission.decisions, "" if self.status_verified() else policy.UNVERIFIED_CAUTION)))
+            key, f"{self.name} asks for permission.", detail, decisions,
+            "" if self.status_verified() else policy.UNVERIFIED_CAUTION)))
 
     def status_verified(self) -> bool:
         if self._start is not None:
@@ -451,7 +468,9 @@ class AcpIntegration(Integration):
         choice = policy.checked_decision(decision, permission.decisions)
         connection.respond(rpc_id, {"outcome": {"outcome": "selected", "optionId": permission.option_ids[choice]}})
 
-    def _on_notification(self, method: str, params: dict) -> None:
+    def _on_notification(self, connection: Connection, method: str, params: dict) -> None:
+        if connection is not self._connection and self._connection is not None:
+            return  # a late message from a connection that's been replaced
         if method != "session/update":
             self.drift.unknown(f"notification:{method}")
             return
@@ -539,7 +558,7 @@ class AcpIntegration(Integration):
 
     @staticmethod
     def _flat_values(options: object) -> Tuple[OptionValue, ...]:
-        """One value of each: Copilot lists Auto twice, and ACP allows groups."""
+        """One value of each: an agent may list a value twice."""
         seen, values = set(), []
         for option in options if isinstance(options, list) else ():
             if not isinstance(option, dict) or not isinstance(option.get("value"), str):

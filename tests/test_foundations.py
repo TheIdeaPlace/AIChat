@@ -54,6 +54,7 @@ def test_a_decision_that_wasnt_offered_counts_as_deny():
 
 def test_mode_and_option_policy():
     assert policy.mode_problem("bad", {"good": 1}) and policy.mode_problem("good", {"good": 1}) is None
+    assert policy.mode_problem("", {"good": 1})  # saying nothing isn't being safe
     assert policy.mode_problem("anything", {}) is None
     assert policy.option_problem({"allow_all": "on"}, {"allow_all": ("on",)})
     assert policy.option_problem({"allow_all": "off"}, {"allow_all": ("on",)}) is None
@@ -104,9 +105,42 @@ def test_kept_history_survives_a_line_cut_short(tmp_path):
     store = Store(tmp_path)
     ref = ChatRef("x", "1")
     store.append_history(ref, Message("user", "One"))
-    with store._history_path(ref).open("a", encoding="utf-8") as handle:
-        handle.write('{"role": "assist')
+    with store._history_path(ref).open("ab") as handle:
+        # Cut in the middle of a multi-byte character, as a crash can leave it.
+        handle.write('{"role": "assistant", "text": "é'.encode("utf-8")[:-1])
     assert store.read_history(ref) == [Message("user", "One")]
+    # And what's written next isn't lost by joining onto the cut line.
+    store.append_history(ref, Message("user", "Two"))
+    assert store.read_history(ref) == [Message("user", "One"), Message("user", "Two")]
+
+
+def test_a_store_that_cant_be_read_or_set_aside_isnt_overwritten(tmp_path, monkeypatch):
+    (tmp_path / "chats.json").write_text("{damaged", encoding="utf-8")
+    real = __import__("os").replace
+
+    def refuses(source, target):
+        if str(source).endswith("chats.json"):
+            raise PermissionError("held")
+        return real(source, target)
+    monkeypatch.setattr("thechatplace.store.os.replace", refuses)
+    store = Store(tmp_path)
+    with pytest.raises(OSError):
+        store.save_chat(OwnedChat(ChatRef("x", "1"), "T", "F"))
+    assert (tmp_path / "chats.json").read_text(encoding="utf-8") == "{damaged"
+
+
+def test_a_message_read_and_held_shows_once():
+    from thechatplace.service import _merged
+    one, two = Message("user", "One"), Message("assistant", "Two")
+    assert _merged([one, two], [two]) == [one, two]
+    assert _merged([one], [two]) == [one, two]
+    assert _merged([one, one], [one]) == [one, one]
+
+
+def test_turn_details_say_whatever_is_known():
+    assert "Nothing has been reported" in ui_text.turn_details("", (), None)
+    text = ui_text.turn_details("Reading", (("Step", "completed"),), (10, 100))
+    assert "Reading" in text and "Step (completed)" in text and "10%" in text
 
 
 def test_enabled_defaults_and_persists(tmp_path):
@@ -157,11 +191,14 @@ _CARRIED = {"a11y.py", "gtk_a11y.py", "mac_a11y.py"}
 
 
 @pytest.mark.parametrize("path", [p for p in sorted((ROOT / "ui").glob("*.py")) if p.name not in _CARRIED] +
-                         [ROOT / "service.py", ROOT / "store.py", ROOT / "ui_text.py", ROOT / "contracts.py"],
+                         [ROOT / "service.py", ROOT / "store.py", ROOT / "ui_text.py", ROOT / "contracts.py", ROOT / "policy.py",
+                          ROOT / "drift.py"],
                          ids=lambda p: p.name)
 def test_shared_code_names_no_provider(path):
-    """#489's acceptance test: no branch in shared code can name a provider,
-    because no code there can name one at all. Prose is checked too."""
+    """#489's acceptance test: shared code can't branch on a provider by name,
+    because no code there can name one: strings, docstrings and identifiers are
+    all checked. Comments aren't, as they don't reach the AST, and a branch on an
+    id held in a variable wouldn't be caught."""
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     words = _provider_words()

@@ -19,6 +19,7 @@ SHORTCUTS = (
     ("Ctrl+Period", "Stop the running turn; waiting messages come back to the reply box"),
     ("Ctrl+N", "New chat"),
     ("Ctrl+Shift+O", "Options for this chat"),
+    ("Ctrl+Shift+D", "Turn details: what it's doing, its plan and how full the context is"),
     ("F5", "Refresh the chats"),
 )
 
@@ -71,6 +72,18 @@ def permission_text(summary: str, detail: str, caution: str) -> str:
     if caution:
         parts.append(caution)
     return "\n\n".join(parts)
+
+
+def turn_details(activity: str, plan, usage) -> str:
+    """What's known about the turn, from whichever of these the AI reports."""
+    lines = [f"Doing now: {activity}"] if activity else []
+    if plan:
+        lines.append("Plan:")
+        lines.extend(f"{step} ({status})" if status else step for step, status in plan)
+    if usage:
+        used, size = usage
+        lines.append(f"Context: {used:,} of {size:,} used" + (f", {used * 100 // size}%" if size else ""))
+    return "\n".join(lines) or "Nothing has been reported about this chat's turn yet."
 
 
 def drift_lines(name: str, report: dict) -> str:

@@ -8,7 +8,7 @@ import pytest
 
 from harness import acp, fake_definition
 from thechatplace.contracts import (AskPermission, Capability, ChatInfo, ChatRef, Decision, Message, OptionGroup, OptionValue,
-                                    PermissionRequest, QuestionItem, QuestionRequest, TurnStatus)
+                                    PermissionRequest, QuestionItem, QuestionRequest, TurnEnded, TurnStatus)
 from thechatplace.service import ChatService
 from thechatplace.store import Store
 
@@ -61,6 +61,7 @@ def window(app, tmp_path):
 
     yield make
     for frame in windows:
+        frame.Close(True)
         frame.Destroy()
     wx.Yield()
 
@@ -182,6 +183,76 @@ def test_providers_dialog_turns_one_on_and_shows_what_wasnt_understood(app):
     dialog._on_toggle(None)
     assert state["a"] is True and dialog.list.GetString(0) == "Alpha, on"
     assert dialog.toggle.GetLabel().replace("&", "") == "Turn Off"
+    dialog.Destroy()
+
+
+def test_a_request_behind_an_open_dialog_is_said_and_asked_after_it_closes(window, tmp_path, monkeypatch):
+    frame = window(acp("ask"))
+    info = _started(frame, tmp_path)
+    asked = []
+    monkeypatch.setattr(frame, "_ask", lambda ref: asked.append(ref))
+    dialog = dialogs.TextDialog(frame, "Reading", "Some text")
+    frame._dialog = dialog
+    frame.reply.SetValue("Hi")
+    frame.send()
+    assert pump(lambda: frame.service.state(info.ref).pending_permission is not None)
+    assert pump(lambda: any("needs you" in s for s in frame.recorder.spoken))
+    assert asked == []
+    frame._dialog = None
+    dialog.Destroy()
+    frame._ask_if_waiting(info.ref)
+    assert pump(lambda: asked == [info.ref])
+    frame.service.stop(info.ref)
+    assert pump(lambda: not frame.service.state(info.ref).busy)
+
+
+def test_a_draft_stays_with_its_chat(window, tmp_path):
+    frame = window(acp("answer"))
+    one = _started(frame, tmp_path)
+    frame.reply.SetValue("For the first")
+    two = frame.service.start_chat("fakeagent", str(tmp_path), "Chat two", {})
+    frame._add_chat(two)
+    frame.open_chat(two)
+    assert frame.reply.GetValue() == ""
+    frame.open_chat(one)
+    assert frame.reply.GetValue() == "For the first"
+
+
+def test_a_turn_with_no_reply_doesnt_read_out_an_old_one(window, tmp_path):
+    frame = window(acp("answer"))
+    info = _started(frame, tmp_path)
+    frame.service.state(info.ref).messages.append(Message("assistant", "An old reply"))
+    frame._announce_end(info.ref, TurnEnded(TurnStatus.COMPLETED))
+    assert not any("An old reply" in s for s in frame.recorder.spoken)
+
+
+def test_stopping_with_nothing_running_says_so(window, tmp_path):
+    frame = window(acp("answer"))
+    _started(frame, tmp_path)
+    frame.stop_turn()
+    assert "Nothing to stop." in frame.recorder.spoken
+
+
+def test_new_chat_cant_start_until_the_ais_choices_load(app, tmp_path):
+    import threading
+    release = threading.Event()
+    groups = (OptionGroup("mode", "Mode", (OptionValue("x", "X"),), "x"),)
+
+    def slow(provider):
+        release.wait(10)
+        return groups
+    dialog = dialogs.NewChatDialog(None, [("one", "One")], str(tmp_path), slow)
+    assert not dialog.ok.IsEnabled()
+    release.set()
+    assert pump(dialog.ok.IsEnabled)
+    assert dialog.options() == {"mode": "x"}
+    dialog.Destroy()
+
+
+def test_new_chat_hides_the_choices_when_an_ai_has_none(app, tmp_path):
+    dialog = dialogs.NewChatDialog(None, [("one", "One")], str(tmp_path), lambda provider: ())
+    assert pump(dialog.ok.IsEnabled)
+    assert not dialog.options_panel.IsShown()
     dialog.Destroy()
 
 

@@ -12,9 +12,13 @@ from typing import Callable
 import pytest
 
 from harness import FakeModelServer, Run, acp, claude, codex
-from thechatplace.contracts import (Activity, AskPermission, AskQuestion, Capability, ChatRef, Decision, Notice, Refused,
-                                    TurnStatus)
+from thechatplace.contracts import (AskPermission, AskQuestion, Capability, ChatRef, Decision, Integration, Refused,
+                                    ReplyText, TurnStatus)
 from thechatplace.integrations.openai_chat import OpenAIChatIntegration
+
+
+#: What every owned chat can do, wherever it comes from.
+_CORE = {Capability.READ, Capability.SEND, Capability.STOP, Capability.RESUME, Capability.OPTIONS}
 
 
 @dataclass
@@ -22,6 +26,9 @@ class Backend:
     name: str
     make: Callable
     needs_options: dict
+    #: Exactly what it should claim. A claim gets its positive test below, and
+    #: anything it doesn't claim gets its absence checked, never a skip.
+    capabilities: frozenset
 
 
 def _local(mode, data):
@@ -32,10 +39,13 @@ def _local(mode, data):
 
 
 BACKENDS = [
-    Backend("acp", lambda mode, data: acp(mode), {}),
-    Backend("claude", lambda mode, data: claude(mode, data), {}),
-    Backend("codex", lambda mode, data: codex(mode, data), {}),
-    Backend("plain", _local, {"model": "m1"}),
+    Backend("acp", lambda mode, data: acp(mode), {},
+            frozenset(_CORE | {Capability.APPROVALS, Capability.USAGE, Capability.PLANS})),
+    Backend("claude", lambda mode, data: claude(mode, data), {},
+            frozenset(_CORE | {Capability.APPROVALS, Capability.QUESTIONS, Capability.USAGE})),
+    Backend("codex", lambda mode, data: codex(mode, data), {},
+            frozenset(_CORE | {Capability.APPROVALS, Capability.QUESTIONS, Capability.USAGE, Capability.PLANS})),
+    Backend("plain", _local, {"model": "m1"}, frozenset(_CORE)),
 ]
 
 
@@ -69,10 +79,26 @@ def _chat(run, backend):
     return run.start(**backend.needs_options)
 
 
+def test_it_claims_exactly_what_it_should(backend, make_run):
+    run = make_run()
+    info = _chat(run, backend)
+    assert info.owned and info.capabilities == backend.capabilities
+
+
+def test_options_are_real_where_claimed(backend, make_run):
+    run = make_run()
+    info = _chat(run, backend)
+    groups = run.service.chat_options(info.ref)
+    assert groups, "it claims options but has none"
+    group = groups[0]
+    other = next(v.id for v in group.values if v.id != group.current)
+    run.service.set_option(info.ref, group.id, other)
+    assert run.service.store.get_chat(info.ref).options[group.id] == other
+
+
 def test_a_turn_streams_and_ends(backend, make_run):
     run = make_run()
     info = _chat(run, backend)
-    assert Capability.SEND in info.capabilities and info.owned
     assert run.service.send(info.ref, "First") == "sent"
     assert run.end_turn().status is TurnStatus.COMPLETED
     run.idle(info.ref)
@@ -85,13 +111,12 @@ def test_a_second_message_waits_its_turn(backend, make_run):
     run = make_run()
     info = _chat(run, backend)
     assert run.service.send(info.ref, "First") == "sent"
-    outcome = run.service.send(info.ref, "Second")
-    assert outcome in ("queued", "sent")
+    assert run.service.send(info.ref, "Second") == "queued"
     run.end_turn()
-    if outcome == "queued":
-        run.end_turn()
+    run.end_turn()
     run.idle(info.ref)
-    assert "user:Second" in run.text(info.ref)
+    users = [t for t in run.text(info.ref) if t.startswith("user:")]
+    assert users == ["user:First", "user:Second"]
 
 
 def test_stop_ends_a_running_turn_and_gives_queued_messages_back(backend, make_run):
@@ -99,7 +124,7 @@ def test_stop_ends_a_running_turn_and_gives_queued_messages_back(backend, make_r
     info = _chat(run, backend)
     run.service.send(info.ref, "First")
     assert run.service.send(info.ref, "Waiting") == "queued"
-    run.wait(object, timeout=10)  # the turn has really started
+    run.wait(ReplyText, timeout=10)  # the turn has really started
     assert run.service.stop(info.ref) == ["Waiting"]
     assert run.end_turn().status is TurnStatus.STOPPED
     run.idle(info.ref)
@@ -117,11 +142,10 @@ def test_stop_when_idle_is_harmless(backend, make_run):
 def test_approvals_match_the_capability(backend, make_run):
     run = make_run("ask")
     info = _chat(run, backend)
-    if Capability.APPROVALS not in info.capabilities:
-        # Nothing to approve: it just answers. No request can reach the user.
-        run.service.send(info.ref, "First")
-        run.end_turn()
-        assert run.service.state(info.ref).pending_permission is None
+    assert (Capability.APPROVALS in info.capabilities) == (Capability.APPROVALS in backend.capabilities)
+    if Capability.APPROVALS not in backend.capabilities:
+        # Its adapter has no way to ask at all, so no request can reach anyone.
+        assert type(run.integration).answer_permission is Integration.answer_permission
         return
     run.service.send(info.ref, "First")
     request = run.wait(AskPermission).request
@@ -136,8 +160,8 @@ def test_approvals_match_the_capability(backend, make_run):
 def test_denying_is_heard(backend, make_run):
     run = make_run("ask")
     info = _chat(run, backend)
-    if Capability.APPROVALS not in info.capabilities:
-        pytest.skip("no approvals here; test_approvals_match_the_capability covers that")
+    if Capability.APPROVALS not in backend.capabilities:
+        return  # test_approvals_match_the_capability checks the absence
     run.service.send(info.ref, "First")
     request = run.wait(AskPermission).request
     run.service.answer_permission(info.ref, request, Decision.DENY)
@@ -149,8 +173,8 @@ def test_denying_is_heard(backend, make_run):
 def test_stopping_during_a_request_never_allows_it(backend, make_run):
     run = make_run("ask")
     info = _chat(run, backend)
-    if Capability.APPROVALS not in info.capabilities:
-        pytest.skip("no approvals here")
+    if Capability.APPROVALS not in backend.capabilities:
+        return  # test_approvals_match_the_capability checks the absence
     run.service.send(info.ref, "First")
     run.wait(AskPermission)
     run.service.stop(info.ref)
@@ -162,8 +186,9 @@ def test_stopping_during_a_request_never_allows_it(backend, make_run):
 def test_questions_match_the_capability(backend, make_run):
     run = make_run("question")
     info = _chat(run, backend)
-    if Capability.QUESTIONS not in info.capabilities:
-        pytest.skip("this integration can't ask questions")
+    if Capability.QUESTIONS not in backend.capabilities:
+        assert type(run.integration).answer_question is Integration.answer_question
+        return
     run.service.send(info.ref, "First")
     request = run.wait(AskQuestion).request
     item = request.items[0]
@@ -210,10 +235,13 @@ def test_the_chat_survives_a_restart(backend, make_run):
     assert info.ref.key in listed
     reopened = again.service.info(info.ref)
     assert Capability.SEND in reopened.capabilities
-    if backend.name != "claude":  # the fake doesn't write Claude's transcript
-        assert any("user:First" == f"{m.role}:{m.text}" for m in again.service.load_history(info.ref))
-    else:
-        again.service.state(info.ref).loaded = True
+    if backend.name == "claude":
+        # The fake doesn't write Claude's transcript, so one's written here.
+        folder = run.data / "projects" / "here"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{info.ref.native_id}.jsonl").write_text(
+            json.dumps({"type": "user", "message": {"content": "First"}}), encoding="utf-8")
+    assert "First" in [m.text for m in again.service.load_history(info.ref) if m.role == "user"]
     again.service.send(info.ref, "Second")
     assert again.end_turn().status is TurnStatus.COMPLETED
 
@@ -240,4 +268,48 @@ def test_a_turn_that_fails_says_so_and_the_chat_stays_usable(backend, make_run):
     ended = run.end_turn()
     assert ended.status is TurnStatus.FAILED and ended.message
     run.idle(info.ref)
+    # Usable means it takes another message and that turn ends too.
+    run.service.send(info.ref, "Again")
+    assert run.end_turn().status is TurnStatus.FAILED
+    run.idle(info.ref)
+    assert "user:Again" in run.text(info.ref)
+
+
+def test_an_option_changed_during_a_turn_survives_it(backend, make_run):
+    run = make_run("hang")
+    info = _chat(run, backend)
+    run.service.send(info.ref, "First")
+    run.wait(ReplyText, timeout=10)
+    group = run.service.chat_options(info.ref)[0]
+    other = next(v.id for v in group.values if v.id != group.current)
+    run.service.set_option(info.ref, group.id, other)
+    run.service.stop(info.ref)
+    run.end_turn()
+    run.idle(info.ref)
+    assert run.service.store.get_chat(info.ref).options[group.id] == other
+
+
+def test_a_store_failure_leaves_the_chat_usable(backend, make_run, monkeypatch):
+    run = make_run()
+    info = _chat(run, backend)
+    real = run.service.store.save_chat
+
+    def fails(chat):
+        raise PermissionError("held by something else")
+    monkeypatch.setattr(run.service.store, "save_chat", fails)
+    run.service.send(info.ref, "First")
+    run.end_turn()
+    run.idle(info.ref)
     assert run.service.state(info.ref).busy is False
+    monkeypatch.setattr(run.service.store, "save_chat", real)
+    assert run.service.send(info.ref, "Second") == "sent"
+    run.end_turn()
+    run.idle(info.ref)
+
+
+def test_a_turned_off_provider_takes_no_messages(backend, make_run):
+    run = make_run()
+    info = _chat(run, backend)
+    run.service.set_enabled(run.integration.id, False)
+    with pytest.raises(Refused, match="turned off"):
+        run.service.send(info.ref, "Hello")

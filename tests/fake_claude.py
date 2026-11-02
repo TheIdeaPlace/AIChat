@@ -66,6 +66,9 @@ def on_user(text):
         send({"type": "something_new", "secret": "must never be stored"})
         say("Hello")
         result()
+    elif MODE == "emptyquestion":
+        send({"type": "control_request", "request_id": "x-1", "request": {
+            "subtype": "can_use_tool", "tool_name": "AskUserQuestion", "input": {"questions": []}}})
     elif MODE == "badcontrol":
         # Carries on only once it's heard the refusal, as a real one would.
         send({"type": "control_request", "request_id": "x-1", "request": {"subtype": "new_kind_of_request"}})

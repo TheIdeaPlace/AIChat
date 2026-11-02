@@ -83,6 +83,7 @@ def check_can_send(native_id: str, owned: bool) -> None:
 
 
 def build_command(program: str, chat: OwnedChat, first: bool) -> List[str]:
+    """``first`` means Claude has no such session yet, so it's made under this id."""
     check_can_send(chat.ref.native_id, True)
     mode = chat.options.get("mode", "manual")
     if mode not in _MODE_IDS:
@@ -95,8 +96,11 @@ def build_command(program: str, chat: OwnedChat, first: bool) -> List[str]:
 def api_key_problem(source: object) -> Optional[str]:
     if source is None or source in ("", "none"):
         return None
-    return ("Claude would have used an API key instead of your subscription login, so The Chat Place stopped "
-            "the turn before anything was sent. Remove that key from your settings, then try again.")
+    # The message goes in before Claude says which credential it has, so it may
+    # already have gone. Claude reports this only once it's started.
+    return ("Claude is set up to use an API key instead of your subscription login, so The Chat Place stopped "
+            "the turn. Your message may already have been sent with that key. Remove the key from your settings, "
+            "then try again.")
 
 
 def _target(tool_input: dict, limit: int = 2000) -> str:
@@ -105,6 +109,19 @@ def _target(tool_input: dict, limit: int = 2000) -> str:
         if isinstance(value, str) and value.strip():
             return f"{key}: {value[:limit]}"
     return ""
+
+
+def _describe_input(tool_input: dict, limit: int = 4000) -> str:
+    """What a tool will do, in full enough to decide on: its target, and an
+    edit's change. Input with no target this app knows is shown as it is."""
+    target = _target(tool_input)
+    parts = [target] if target else []
+    for key, label in (("old_string", "Replace"), ("new_string", "With"), ("content", "Content")):
+        if isinstance(tool_input.get(key), str):
+            parts.append(f"{label}:\n{tool_input[key][:limit]}")
+    if not parts and tool_input:
+        parts.append(json.dumps(tool_input, ensure_ascii=False)[:limit])
+    return "\n".join(parts)
 
 
 @dataclass
@@ -184,7 +201,9 @@ class ClaudeIntegration(Integration):
             emit(TurnEnded(TurnStatus.FAILED, "Claude Code isn't installed."))
             return
         try:
-            command = build_command(program, chat, chat.turns == 0)
+            # By what's on disk, not a count of turns: a turn stopped before
+            # Claude made the session must not leave the chat resuming nothing.
+            command = build_command(program, chat, not self._has_transcript(chat.ref.native_id))
             process = self._spawn(command, chat.folder)
         except IntegrationError as error:
             emit(TurnEnded(TurnStatus.FAILED, str(error)))
@@ -228,7 +247,12 @@ class ClaudeIntegration(Integration):
         else:
             emit(ended or TurnEnded(TurnStatus.FAILED, "Claude Code stopped before the turn ended."))
 
+    def _has_transcript(self, native_id: str) -> bool:
+        return bool(_SAFE_ID.match(native_id)) and any(self._projects_dir().glob(f"*/{native_id}.jsonl"))
+
     def _on_line(self, turn: _Turn, raw: bytes) -> Optional[TurnEnded]:
+        if turn.aborted:
+            return TurnEnded(TurnStatus.FAILED, turn.aborted)
         try:
             event = json.loads(raw)
         except ValueError:
@@ -258,6 +282,8 @@ class ClaudeIntegration(Integration):
 
     def _on_system(self, turn: _Turn, event: dict) -> Optional[TurnEnded]:
         if event.get("subtype") == "init":
+            if "apiKeySource" not in event:
+                self.drift.malformed("init-without-apiKeySource")
             problem = api_key_problem(event.get("apiKeySource"))
             if problem:
                 turn.aborted = problem
@@ -299,13 +325,20 @@ class ClaudeIntegration(Integration):
         tool_input = request.get("input") if isinstance(request.get("input"), dict) else {}
         if tool == QUESTION_TOOL:
             items = self._questions(tool_input)
-            if items:
-                with self._lock:
-                    turn.pending[request_id] = (QUESTION_TOOL, tool_input, tuple(items))
-                turn.emit(AskQuestion(QuestionRequest(request_id, tuple(items))))
+            if not items:
+                # Nothing to ask, so answer now: it would otherwise wait forever.
+                self.drift.malformed("question-without-questions")
+                turn.write({"type": "control_response", "response": {
+                    "subtype": "success", "request_id": request_id,
+                    "response": {"behavior": "deny", "message": "That question had nothing to ask."}}})
                 return
-        detail = (str(tool_input.get("plan") or "") if tool == PLAN_TOOL else _target(tool_input))
-        offered = (Decision.ALLOW_ONCE, Decision.DENY)
+            with self._lock:
+                turn.pending[request_id] = (QUESTION_TOOL, tool_input, tuple(items))
+            turn.emit(AskQuestion(QuestionRequest(request_id, tuple(items))))
+            return
+        detail = str(tool_input.get("plan") or "") if tool == PLAN_TOOL else _describe_input(tool_input)
+        # With nothing to read, there's nothing to allow.
+        offered = (Decision.ALLOW_ONCE, Decision.DENY) if detail else (Decision.DENY,)
         summary = ("Claude has a plan and asks to go ahead." if tool == PLAN_TOOL
                    else f"Claude asks to use {tool}.")
         with self._lock:
@@ -373,6 +406,12 @@ class ClaudeIntegration(Integration):
             turn.stop_requested = True
             turn.pending.clear()
         turn.process.kill()
+
+    def close(self) -> None:
+        with self._lock:
+            running = list(self._turns)
+        for native_id in running:
+            self.stop(ChatRef(self.id, native_id))
 
     # -- reading --------------------------------------------------------------
 

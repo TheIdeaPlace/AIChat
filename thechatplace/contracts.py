@@ -263,6 +263,9 @@ class Integration(ABC):
     def read_history(self, ref: ChatRef) -> List[Message]:
         return []
 
+    def use_kept_history(self, read: Callable[[ChatRef], List[Message]]) -> None:
+        """For an AI that's sent the whole chat each turn: how to get it."""
+
     def new_chat_options(self) -> Tuple[OptionGroup, ...]:
         return ()
 

@@ -13,6 +13,7 @@ says so rather than promising otherwise.
 from __future__ import annotations
 
 import json
+import queue
 import socket
 import threading
 import urllib.error
@@ -68,6 +69,9 @@ class OpenAIChatIntegration(Integration):
         self.history = history or (lambda ref: [])
         self._lock = threading.Lock()
         self._running: Dict[str, object] = {}
+        #: Turns underway, and those asked to stop. A Stop only counts for a turn
+        #: underway, so a late one can't end the next message before it starts.
+        self._active: set = set()
         self._stopping: set = set()
 
     def _models(self) -> Tuple[OptionValue, ...]:
@@ -87,7 +91,17 @@ class OpenAIChatIntegration(Integration):
             count = len(self._models())
         except (OSError, ValueError):
             return Status(False, "No local model server is answering.", hint, billing)
-        return Status(True, f"A local model server is answering, with {count} models.", hint, billing, True)
+        # Any server may answer here, so this says nothing about having checked it.
+        return Status(True, f"A local model server is answering, with {count} models.", hint, billing)
+
+    def use_kept_history(self, read: Callable[[ChatRef], List[Message]]) -> None:
+        self.history = read
+
+    def close(self) -> None:
+        with self._lock:
+            running = list(self._active)
+        for native_id in running:
+            self.stop(ChatRef(self.id, native_id))
 
     def new_chat_options(self) -> Tuple[OptionGroup, ...]:
         try:
@@ -120,35 +134,61 @@ class OpenAIChatIntegration(Integration):
         body = json.dumps({"model": chat.options.get("model", ""), "messages": messages, "stream": True}).encode("utf-8")
         request = urllib.request.Request(self.base_url + "/chat/completions", data=body,
                                          headers={"Content-Type": "application/json"})
+        failure = ""
+        with self._lock:
+            self._active.add(key)
         try:
-            with _OPENER.open(request, timeout=300) as response:
-                with self._lock:
-                    self._running[key] = response
-                    stopped = key in self._stopping
-                if not stopped:
-                    self._read_stream(response, emit, key)
-        except urllib.error.HTTPError:
-            emit(TurnEnded(TurnStatus.FAILED, "The model server refused that request."))
-            return
-        except (OSError, ValueError, AttributeError):
+            response = _OPENER.open(request, timeout=300)
             with self._lock:
-                stopped = key in self._stopping
-            if not stopped:
-                emit(TurnEnded(TurnStatus.FAILED, "The connection to the model server was lost."))
-                return
+                self._running[key] = response
+            self._read_stream(response, emit, key)
+        except urllib.error.HTTPError:
+            failure = "The model server refused that request."
+        except (OSError, ValueError, AttributeError):
+            failure = "The connection to the model server was lost."
         finally:
             with self._lock:
                 self._running.pop(key, None)
-        with self._lock:
-            stopped = key in self._stopping
-            self._stopping.discard(key)
-        emit(TurnEnded(TurnStatus.STOPPED if stopped else TurnStatus.COMPLETED))
+                self._active.discard(key)
+                stopped = key in self._stopping
+                self._stopping.discard(key)
+        if failure and not stopped:
+            emit(TurnEnded(TurnStatus.FAILED, failure))
+        else:
+            emit(TurnEnded(TurnStatus.STOPPED if stopped else TurnStatus.COMPLETED))
+
+    @staticmethod
+    def _pump(response, lines: "queue.Queue") -> None:
+        """Reads on its own thread: on Windows nothing wakes a read that's
+        waiting on a socket, and a turn must be able to end regardless. If it's
+        left behind, it finishes when the server closes or the read times out."""
+        try:
+            for raw in response:
+                lines.put(raw)
+            lines.put(None)
+        except (OSError, ValueError, AttributeError) as error:
+            lines.put(error)
+        finally:
+            try:
+                response.close()
+            except (OSError, ValueError, AttributeError):
+                pass
 
     def _read_stream(self, response, emit: Emit, key: str) -> None:
-        for raw in response:
+        lines: "queue.Queue" = queue.Queue()
+        threading.Thread(target=self._pump, args=(response, lines), daemon=True, name="model-stream").start()
+        while True:
             with self._lock:
                 if key in self._stopping:
                     return
+            try:
+                raw = lines.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if raw is None:
+                return
+            if isinstance(raw, Exception):
+                raise raw
             line = raw.decode("utf-8", "replace").strip()
             if not line or line.startswith(":"):
                 continue
@@ -174,6 +214,8 @@ class OpenAIChatIntegration(Integration):
 
     def stop(self, ref: ChatRef) -> None:
         with self._lock:
+            if ref.native_id not in self._active:
+                return
             self._stopping.add(ref.native_id)
             response = self._running.get(ref.native_id)
         if response is None:

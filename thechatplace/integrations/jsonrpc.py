@@ -32,9 +32,12 @@ class NotSent(RpcError):
 
 
 class Connection:
-    def __init__(self, process, on_notification: Callable[[str, dict], None],
-                 on_request: Callable[[object, str, dict], None],
-                 on_closed: Optional[Callable[[], None]] = None,
+    """Every callback is told which connection it's from: an old one's closing
+    or late messages must never touch whatever has replaced it."""
+
+    def __init__(self, process, on_notification: Callable[["Connection", str, dict], None],
+                 on_request: Callable[["Connection", object, str, dict], None],
+                 on_closed: Optional[Callable[["Connection"], None]] = None,
                  drift: Optional[DriftCounters] = None, name: str = "The agent"):
         self._process = process
         self._on_notification = on_notification
@@ -146,9 +149,9 @@ class Connection:
             is_request = "id" in message
             try:
                 if is_request:
-                    self._on_request(message["id"], method, params)
+                    self._on_request(self, message["id"], method, params)
                 else:
-                    self._on_notification(method, params)
+                    self._on_notification(self, method, params)
             except Exception:  # noqa: BLE001 - one bad message mustn't end the chat
                 self._drift.malformed(method)
                 if is_request:
@@ -186,6 +189,6 @@ class Connection:
             pass
         if self._on_closed is not None:
             try:
-                self._on_closed()
+                self._on_closed(self)
             except Exception:  # noqa: BLE001 - telling chats is best effort
                 pass

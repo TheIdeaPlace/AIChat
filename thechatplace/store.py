@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Callable, Dict, Iterable, List, Optional, Set
 
 from .contracts import ChatRef, Message, OwnedChat
 
@@ -23,6 +23,8 @@ def _atomic_write(path: Path, text: str) -> None:
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(name, path)
     except Exception:
         try:
@@ -40,6 +42,8 @@ class Store:
         self._lock = threading.RLock()
         self._chats: Dict[str, dict] = {}
         self._settings: dict = {}
+        #: Files that couldn't be read or set aside: saving would destroy them.
+        self._protected: Set[str] = set()
         self._chats = self._load("chats.json").get("chats", {}) or {}
         self._settings = self._load("settings.json")
 
@@ -54,13 +58,15 @@ class Store:
             try:
                 os.replace(path, path.with_suffix(f".bad-{int(time.time())}"))
             except OSError:
-                pass
+                self._protected.add(name)
             return {}
         return data if isinstance(data, dict) else {}
 
     # -- chats ----------------------------------------------------------------
 
     def _save_chats(self) -> None:
+        if "chats.json" in self._protected:
+            raise OSError("chats.json couldn't be read, so it isn't being replaced.")
         _atomic_write(self.folder / "chats.json", json.dumps({"chats": self._chats}, ensure_ascii=False, indent=1))
 
     def save_chat(self, chat: OwnedChat) -> None:
@@ -70,6 +76,14 @@ class Store:
                 "folder": chat.folder, "options": dict(chat.options), "turns": chat.turns,
                 "created": chat.created, "updated": chat.updated}
             self._save_chats()
+
+    def update_chat(self, ref: ChatRef, change: Callable[[OwnedChat], None]) -> None:
+        """Change a chat as it's saved now, not as someone read it earlier."""
+        with self._lock:
+            chat = self.get_chat(ref)
+            if chat is not None:
+                change(chat)
+                self.save_chat(chat)
 
     def get_chat(self, ref: ChatRef) -> Optional[OwnedChat]:
         with self._lock:
@@ -99,20 +113,27 @@ class Store:
 
     def append_history(self, ref: ChatRef, message: Message) -> None:
         line = json.dumps({"role": message.role, "text": message.text}, ensure_ascii=False) + "\n"
+        path = self._history_path(ref)
         with self._lock:
-            with self._history_path(ref).open("a", encoding="utf-8") as handle:
-                handle.write(line)
+            # After a crash the last line may be cut short; this one starts fresh.
+            unfinished = False
+            if path.exists() and path.stat().st_size:
+                with path.open("rb") as handle:
+                    handle.seek(-1, os.SEEK_END)
+                    unfinished = handle.read(1) != b"\n"
+            with path.open("ab") as handle:
+                handle.write((("\n" if unfinished else "") + line).encode("utf-8"))
 
     def read_history(self, ref: ChatRef) -> List[Message]:
         messages: List[Message] = []
         try:
-            handle = self._history_path(ref).open(encoding="utf-8")
-        except OSError:
+            handle = self._history_path(ref).open("rb")
+        except FileNotFoundError:
             return messages
         with handle:
-            for line in handle:
+            for raw in handle:
                 try:
-                    record = json.loads(line)
+                    record = json.loads(raw.decode("utf-8"))
                     messages.append(Message(str(record["role"]), str(record["text"])))
                 except (ValueError, KeyError, TypeError):
                     continue  # a line cut short by a crash loses only itself

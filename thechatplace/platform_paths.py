@@ -101,14 +101,18 @@ class OwnedProcess:
             raise OSError("A script launcher can't be started safely.")
         kwargs: dict = {}
         if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            # Suspended until it's in the job, so nothing it starts can escape.
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | _CREATE_SUSPENDED
         else:
             kwargs["start_new_session"] = True
         self.process = subprocess.Popen(list(argv), env=dict(env) if env is not None else None,
                                         cwd=cwd or None, stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kwargs)
         self.stdin, self.stdout = self.process.stdin, self.process.stdout
-        self._job = _job_for(self.process) if sys.platform == "win32" else None
+        self._job = None
+        if sys.platform == "win32":
+            self._job = _job_for(self.process)
+            _resume(self.process)
 
     def kill(self) -> None:
         if sys.platform == "win32":
@@ -127,15 +131,28 @@ class OwnedProcess:
                 pass
 
     def close(self) -> None:
+        # Killed first: closing stdin waits for any write in progress, which
+        # never ends if the program has stopped reading.
+        self.kill()
         try:
             self.stdin.close()
-        except OSError:
+        except (OSError, ValueError):
             pass
-        self.kill()
         try:
             self.process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             pass
+
+
+_CREATE_SUSPENDED = 0x00000004
+
+
+def _resume(process) -> None:
+    import ctypes
+    from ctypes import wintypes
+    ntdll = ctypes.WinDLL("ntdll")
+    ntdll.NtResumeProcess.argtypes = [wintypes.HANDLE]
+    ntdll.NtResumeProcess(int(process._handle))
 
 
 def _job_for(process):

@@ -244,23 +244,38 @@ class NewChatDialog(wx.Dialog):
     def _reload_options(self) -> None:
         self._generation += 1
         generation, provider = self._generation, self.provider_id()
+        # Starting now would use the last AI's choices, or none.
+        self.ok.Enable(False)
 
         def work() -> None:
             try:
                 groups = tuple(self._load_options(provider))
-            except Exception:  # noqa: BLE001 - shown as no options
-                groups = ()
-            wx.CallAfter(self._show_options, generation, groups)
+                problem = ""
+            except Exception:  # noqa: BLE001 - said in the dialog
+                groups, problem = (), "That AI's choices couldn't be loaded."
+            wx.CallAfter(self._show_options, generation, groups, problem)
         threading.Thread(target=work, daemon=True, name="new-chat-options").start()
 
-    def _show_options(self, generation: int, groups: Sequence[OptionGroup]) -> None:
+    def _show_options(self, generation: int, groups: Sequence[OptionGroup], problem: str = "") -> None:
         if not self or generation != self._generation:
             return
         panel = self.options_panel
+        # Focus can't be left on a control about to go.
+        focus = wx.Window.FindFocus()
+        if focus is not None and (focus is panel or panel.IsDescendant(focus)):
+            self.provider.SetFocus()
         panel.GetSizer().Clear(delete_windows=True)
         self.option_controls = OptionControls(panel, panel.GetSizer(), groups)
+        # Empty, it would be a Tab stop with nothing in it.
+        panel.Show(bool(groups))
         panel.Layout()
+        self.error.SetLabel(problem)
+        self.ok.Enable(True)
         self.Layout()
+        speak = getattr(self.GetParent(), "say", None)
+        if speak is not None:
+            names = ", ".join(group.label for group in groups)
+            speak(problem or (f"Choices for this AI: {names}." if names else "This AI has no choices to make."))
 
     def options(self) -> Dict[str, str]:
         return self.option_controls.values() if self.option_controls else {}
@@ -341,3 +356,6 @@ class ProvidersDialog(wx.Dialog):
         index = self.list.GetSelection()
         self.list.SetString(index, self._row(index))
         self._show()
+        speak = getattr(self.GetParent(), "say", None)
+        if speak is not None:
+            speak(self._row(index), interrupt=True)
