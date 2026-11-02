@@ -1140,9 +1140,17 @@ def _git_ok(words, folder: str, locations) -> bool:
     # f31123e). So git takes no quoted word, or one ending in a backslash.
     if any(word[:1] in ("'", '"') or word.endswith("\\") for word in words):
         return False
+    # git stash list drops a -- and hands what follows to git log as options
+    # (git stash list -- --output x wrote x: the fourth adversarial review), so
+    # a word starting with - after one asks, for every command, and git stash
+    # list takes no -- or name at all.
     after_dashes = False
     for index, word in enumerate(rest):
         text = _unquote(word)
+        if after_dashes and text.startswith("-"):
+            return False
+        if sub == "stash" and (text == "--" or not text.startswith("-")):
+            return False
         if not after_dashes and text.startswith("-"):
             if text == "--":
                 after_dashes = True
@@ -1260,7 +1268,8 @@ _STARTERS = frozenset({
     "start-process", "saps", "start", "invoke-expression", "iex", "invoke-command", "icm",
     "invoke-item", "ii", "xargs", "nohup", "sudo", "su", "runas", "forfiles", "wscript", "cscript",
     "mshta", "rundll32", "regsvr32", "conhost", "explorer", "schtasks", "at", "time", "timeout",
-    "npx", "pnpx", "uvx", "pipx"})
+    "npx", "pnpx", "uvx", "pipx", "pcalua", "wt", "winrs", "msiexec", "hh", "cmstp", "certutil",
+    "bitsadmin", "powershell_ise"})
 
 
 def _starts_others(word: str) -> bool:
@@ -1554,7 +1563,7 @@ def _ask_forms(words):
     if _windows() and plain and plain[0].lower() in _ALIAS_OF:
         forms.append([_ALIAS_OF[plain[0].lower()]] + plain[1:])
     # The same path however it's put: .\\.env, ./.env, -Path .env.
-    tidy = [word[2:] if word[:2] in (".\\", "./") and len(word) > 2 else word
+    tidy = [re.sub(r"^(\.[\\/]+)+(?=.)", "", word)
             for word in plain if word.lower() not in ("-path", "-literalpath")]
     for form in list(forms):
         if form[1:] != tidy[1:]:

@@ -2465,3 +2465,22 @@ def test_an_ask_rule_covers_the_same_path_however_its_put(folder, command):
 def test_an_ask_rule_covers_aliases_of_auto_commands(folder, command, rule):
     assert not copilot_folder.command_allowed(command, folder, Policy(auto=True, ask=(parse_rule(rule),)))
 
+
+@pytest.mark.parametrize("command", ["git stash list -- --output x8", "git stash list -- x", "git stash list x",
+                                     "git stash list -- -O", "git log -- --output x", "git diff -- -x"])
+def test_no_option_can_follow_dashes_and_stash_list_takes_no_names(repo, command):
+    assert not copilot_folder.command_allowed(command, repo), command
+
+
+def test_ordinary_paths_still_follow_dashes(repo):
+    assert copilot_folder.command_allowed("git diff -- src", repo)
+    assert copilot_folder.command_allowed("git stash list", repo)
+
+
+@windows_paths
+def test_an_ask_rule_covers_repeated_dot_slashes(folder):
+    with open(os.path.join(folder, ".env"), "w", encoding="utf-8") as handle:
+        handle.write("x")
+    policy = Policy(auto=True, ask=(parse_rule("Get-Content .env"),))
+    assert not copilot_folder.command_allowed("Get-Content .\\.\\.env", folder, policy)
+
