@@ -1,0 +1,3 @@
+wxPython>=4.2
+# JAWS speech from the app itself.
+comtypes==1.4.17; sys_platform == "win32"

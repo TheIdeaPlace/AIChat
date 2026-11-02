@@ -1,0 +1,56 @@
+name: ACP-first experiment tests
+
+# The whole suite, windows included, on the platforms the app ships for.
+on:
+  push:
+    branches: [experiment/acp-first]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acp-first-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: pytest (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+          - name: macOS
+            os: macos-latest
+          - name: Linux x64
+            os: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      TCP_GUI_TESTS: "1"
+    steps:
+      # Pinned to release commits, as main's workflow does.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        if: runner.os != 'Linux'
+        with:
+          python-version: '3.12'
+      - name: Install
+        if: runner.os != 'Linux'
+        run: python -m pip install -r requirements-dev.txt
+      - name: Test
+        if: runner.os != 'Linux'
+        run: python -m pytest -v tests
+      - name: Install (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            python3-venv python3-wxgtk4.0 python3-wxgtk-webview4.0 xvfb xauth at-spi2-core
+          /usr/bin/python3 -m venv --system-site-packages .venv
+          .venv/bin/python -m pip install pytest
+      - name: Test (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" .venv/bin/python -m pytest -v tests
