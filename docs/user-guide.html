@@ -1519,7 +1519,9 @@ approval.</p>
 ordinary uses of <code>git status</code>, <code>switch</code>, <code>add</code>, <code>commit</code>, <code>push</code>, <code>fetch</code>, <code>diff</code> and <code>log</code>. It
 isn't offered for a command run through a shell The Chat Place doesn't recognise, or one with force or delete options, unknown options, several commands
 joined together, shell expansions, another working folder, or extra access listed separately:
-those still ask. The button appears only when the request can be remembered.</p>
+those still ask. The button appears only when the request can be remembered.
+Codex usually proposes the whole command, so what's kept is often that exact command: a commit with
+another message asks again, and a commit message of several words isn't offered the button yet (#500).</p>
 <p>A remembered approval is as powerful as <strong>Allow Once</strong>. The command may run outside the sandbox,
 reach other files and the network, and run Git hooks or other programs Git is set up to run. The
 working folder is where it starts, not a limit on what it can do. A plain push follows the
