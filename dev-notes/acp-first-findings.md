@@ -26,10 +26,10 @@ These aren't comparable as they stand, because `main` does far more. They show r
 
 | | `main` | This branch |
 |---|---|---|
-| App code | 47,124 lines | 4,666 lines, plus 5 accessibility and speech files carried over |
-| Window and dialogs | 17,000 | 981 |
-| Provider integrations | 11,158 | 2,148 |
-| Tests | 50,293 | 2,180 |
+| App code | 47,124 lines | 4,766 lines, plus 5 accessibility and speech files carried over |
+| Window and dialogs | 17,000 | 997 |
+| Provider integrations | 11,158 | 2,196 |
+| Tests | 50,293 | 2,671 |
 
 ## What it cost, and what it would still cost
 
@@ -49,6 +49,7 @@ Copilot's check of each turn's log for billing to another provider isn't carried
 - **A real Mac or Linux desktop.** CI runs the window tests on both, but no one has used it there with a screen reader.
 - **Real approvals being allowed.** The real AIs were asked and denied. Allowing was only exercised against fakes, on purpose.
 - **The real AIs' question requests.** Only fakes have asked one.
+- **The second review's fixes by keyboard.** The dialogs were walked in the test VM before those fixes. They changed when Allow is offered and how a dialog ends, and CI's window tests cover them, but nobody has walked them with real key presses since.
 
 ## Recommended order for `main`
 
