@@ -1883,6 +1883,9 @@ class ChatPermissionsDialog(wx.Dialog):
     Codex's rule files, or Claude Code's own settings), whose ``done(rows, error)`` comes back on the
     UI thread, after the work is finished: a removal is never said to be done
     before it is. A host that keeps nothing (Codex, #307) gets no Remove buttons.
+    A host with ``restart(done)`` and ``restart_warning(done)`` (Copilot, #426)
+    gets Restart Copilot, which says itself what it did: the same way out of
+    what makes its commands ask on every platform.
     """
 
     def __init__(self, parent, title: str, host):
@@ -1921,6 +1924,11 @@ class ChatPermissionsDialog(wx.Dialog):
                 row.Add(button, 0, wx.RIGHT, 6)
             self.remove_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove())
             self.remove_all_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove_all())
+        self.restart_btn = None
+        if callable(getattr(host, "restart", None)):
+            self.restart_btn = wx.Button(self, label="Re&start Copilot")
+            row.Add(self.restart_btn, 0, wx.RIGHT, 6)
+            self.restart_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_restart())
         row.AddStretchSpacer()
         self.close_btn = wx.Button(self, wx.ID_CANCEL, "&Close")
         row.Add(self.close_btn, 0)
@@ -2095,6 +2103,35 @@ class ChatPermissionsDialog(wx.Dialog):
             self._fill(rows, index)
             self.list.SetFocus()
         self.host.remove(rule_id, done)
+
+    def on_restart(self):
+        """Warn first, No the default, if it ends anything you might want. The
+        work is the host's, off this thread: the dialog stays usable, and
+        says it's busy if anything's pressed meanwhile."""
+        if self._still_busy(back_to=self.restart_btn):
+            return
+        self.busy = "Still restarting Copilot. Try again in a moment."
+
+        def warned(text: str):
+            if not self._alive():
+                return
+            if text and not self._confirm(text):
+                self.busy = ""
+                self.restart_btn.SetFocus()
+                return
+            self.host.restart(done)
+
+        def done(problem):
+            if not self._alive():
+                return
+            self.busy = ""
+            self.refresh_mode()
+            self._show_note()
+            if problem:
+                self._tell(problem, wx.ICON_WARNING, back_to=self.restart_btn)
+                return
+            self.restart_btn.SetFocus()
+        self.host.restart_warning(warned)
 
     def on_change(self):
         if self._still_busy(back_to=self.change_btn):

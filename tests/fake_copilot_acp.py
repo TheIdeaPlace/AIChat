@@ -67,6 +67,10 @@ with synthetic text only. Run as ``python -u fake_copilot_acp.py MODE``:
 
 Every prompt logs a user.message first, as Copilot does (except in refused).
 
+In ask mode, FAKE_COPILOT_COMMANDS (a JSON list) gives each prompt's command in
+turn, each its own tool call, and FAKE_COPILOT_EXIT reports each allowed
+command's real end as 1.0.105 does: completed, with a shell_exit.
+
 FAKE_COPILOT_SESSIONS names the folder session logs are written under, as
 Copilot writes ~/.copilot/session-state/<id>/events.jsonl.
 FAKE_COPILOT_LOG, if set, gets every message received, one per line.
@@ -103,6 +107,17 @@ prompting = threading.Event()  # strict: set as a prompt is read, before its thr
 #: The command "ask" asks to run (FAKE_COPILOT_COMMAND): Auto, rules and
 #: Allow for This Chat are tested with ones they do and don't cover (#426).
 ASK_COMMAND = os.environ.get("FAKE_COPILOT_COMMAND", "echo synthetic")
+ASK_COMMANDS = json.loads(os.environ.get("FAKE_COPILOT_COMMANDS", "[]"))
+
+
+def exited(call_id, shell):
+    """A shell command's real end, shaped like Copilot 1.0.105's."""
+    text = f"ok\n<shellId: {shell} completed with exit code 0>"
+    return {"sessionUpdate": "tool_call_update", "toolCallId": call_id, "status": "completed",
+            "content": [{"type": "content", "content": {"type": "text", "text": text}}],
+            "rawOutput": {"content": text, "detailedContent": text,
+                          "contents": [{"type": "shell_exit", "shellId": shell, "exitCode": 0,
+                                        "cwd": "synthetic", "outputPreview": "ok\n"}]}}
 
 def send(message):
     with write_lock:
@@ -280,13 +295,16 @@ def prompt(message_id, session, text=""):
         # asking (FAKE_COPILOT_PREVIEW: "async" or "detach" runs it in the
         # background, "none" sends no input, "other" previews another one).
         preview = os.environ.get("FAKE_COPILOT_PREVIEW", "")
-        shown = {"command": ASK_COMMAND if preview != "other" else "echo other",
+        command = (ASK_COMMANDS[min(turns[0], len(ASK_COMMANDS)) - 1] if ASK_COMMANDS
+                   else ASK_COMMAND)
+        call_id = f"call-{turns[0]}" if ASK_COMMANDS else "call-1"
+        shown = {"command": command if preview != "other" else "echo other",
                  "description": "Run it", "mode": "sync", "initial_wait": 30}
         if preview == "async":
             shown.update(mode="async", initial_wait=10)
         elif preview == "detach":
             shown.update(mode="async", detach=True, initial_wait=10)
-        call = {"sessionUpdate": "tool_call", "toolCallId": "call-1",
+        call = {"sessionUpdate": "tool_call", "toolCallId": call_id,
                 "title": "Run a synthetic command", "kind": "execute", "status": "pending"}
         if preview != "none":
             call["rawInput"] = shown
@@ -295,17 +313,19 @@ def prompt(message_id, session, text=""):
         answers[ask_id] = [done, None]
         send({"jsonrpc": "2.0", "id": ask_id, "method": "session/request_permission", "params": {
             "sessionId": session,
-            "toolCall": {"toolCallId": "call-1", "title": "Run a synthetic command",
+            "toolCall": {"toolCallId": call_id, "title": "Run a synthetic command",
                          "kind": "execute", "rawInput": {
-                             "command": ASK_COMMAND,
+                             "command": command,
                              # As Copilot 1.0.105 lists the commands it found.
-                             "commands": [ASK_COMMAND]}},
+                             "commands": [command]}},
             "options": [{"optionId": "allow_once", "name": "Allow once", "kind": "allow_once"},
                         {"optionId": "allow_always", "name": "Always", "kind": "allow_always"},
                         {"optionId": "reject_once", "name": "Reject", "kind": "reject_once"}]}})
         done.wait(30)
         chosen = (answers[ask_id][1] or {}).get("outcome", {}).get("optionId")
         text = "Allowed" if chosen == "allow_once" else "Denied"
+        if chosen == "allow_once" and os.environ.get("FAKE_COPILOT_EXIT"):
+            update(session, exited(call_id, str(turns[0])))
         update(session, {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}})
     else:
         reply = f"Hello there: {text}" if MODE == "slow" else "Hello there"

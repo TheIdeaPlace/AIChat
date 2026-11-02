@@ -36,7 +36,9 @@ only when:
   of the above allows;
 - it has none of ``( ) @ , < > = $ ` { } ~ & * ? [ ] ^ # ! ..``, no ``:``
   except a drive's ``X:\\`` at the start of a word (Windows only), and no
-  quote in the middle of a word (PowerShell joins ``C'':\\x`` into one path);
+  quote in the middle of a word (PowerShell joins ``C'':\\x`` into one path).
+  A rule's or kept command's own program, if it isn't PowerShell's, may have
+  those inside plain quotes, which it only receives as an argument (_masked);
 - every word that isn't an option is a path inside the folder, from every
   folder Copilot's shell may be in (see below), and none is in one of the
   settings folders above;
@@ -48,8 +50,16 @@ paths are read from there. So every change of folder answered here is kept
 (``locations``: each folder the shell may be in, the chat's own always among
 them), and paths are checked from each. After a command you allowed yourself
 that could have moved the shell somewhere unknown (``may_move``), no command
-is answered for that chat until Copilot is restarted (location_changed).
-File changes, which name full paths, still are.
+is answered for that chat until Copilot is restarted (location_changed), which
+Restart Copilot in Chat Permissions does. File changes, which name full paths,
+still are.
+
+Whichever allows it, git is answered only after asking git itself where it is
+and what it's set to (_git_repository_here, _git_config_safe): working that
+out by hand kept disagreeing with git about which files count.
+
+When a request that would be answered asks instead, the chat says why:
+ask_reason gives this module's part of that, and copilot_runtime the rest.
 """
 from __future__ import annotations
 
@@ -207,8 +217,27 @@ _SPLIT = re.compile(r"(\|\||&&|[|;\n\r])")
 #: # and ! take part in them too). Anything not plain ASCII too: PowerShell
 #: reads smart quotes as quotes and en and em dashes as "-".
 _REFUSED = re.compile(r"[()@,<>=$`{}~&*?\[\]^#!]|\.\.|::|[^\x00-\x7f]")
-#: What may make a hand-allowed command move the shell in a way not read.
-_MOVING = re.compile(r"[$`(){}@&]|[^\x00-\x7f]")
+#: What may make a hand-allowed command move the shell in a way not read,
+#: outside plain quoted text (may_move).
+_MOVING = re.compile(r"[$`(){}@&]")
+_NON_ASCII = re.compile(r"[^\x00-\x7f]")
+#: A quoted string, read left to right so a quote inside the other kind of
+#: quotes doesn't start one.
+_QUOTED = re.compile(r"""'[^']*'|"[^"]*\"""")
+#: A provider-qualified path: Registry::HKLM\x, or with its module's name.
+_PROVIDER = re.compile(r"(^|\\)(filesystem|registry|environment|alias|function|variable"
+                       r"|certificate|wsman)::", re.I)
+#: A word's first word, as written ("cd" .. is still cd in bash).
+_FIRST_WORD = re.compile(r"""\s*('[^']*'|"[^"]*"|\S+)""")
+#: Another place inside a word: a drive ("abc:C:\x", "abc:C:x") or a root after
+#: a colon ("abc:/x"), but not a URL's "://" (Kelly's review of 5d378b4: a
+#: helper program wrote to the place after the first colon).
+_EMBEDDED_PLACE = re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/]|:[A-Za-z]:|:\\|:/(?!/)")
+#: In a word holding punctuation the strict reading refuses (only reached in
+#: plain quotes, for a program you chose): what may name a place outside when
+#: the program splits it up ("out=../x", "a,/x"), which the check of the whole
+#: word as one path wouldn't see.
+_REACHES_OUT = re.compile(r"\.\.|~|(?:^|[^\w.-])[\\/]")
 _WORD = re.compile(r"""'[^']*'|"[^"]*"|[^\s'"]+""")
 _WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 #: Commands longer than this always ask: the status bar says what was
@@ -218,6 +247,52 @@ MAX_COMMAND = 400
 
 def _windows() -> bool:
     return os.name == "nt"
+
+
+def _plain_quoted(text: str) -> bool:
+    """Whether a quoted string is only text, which a program can only receive
+    as an argument: single quotes, or double quotes with nothing the shell
+    expands in them. bash reads ! there too (history), and PowerShell doesn't.
+    (A backslash, bash's escape, doesn't get this far: _masked.)"""
+    return text[0] == "'" or not re.search(r"[`$]" if _windows() else r"[`$!]", text)
+
+
+def _masked(command: str) -> Optional[str]:
+    """``command``, the same length, with what's inside each plain quoted
+    string blanked, so what's left is what the shell itself acts on. None if
+    it can't be read that way: a quote left open, anything not plain ASCII
+    (PowerShell takes curly quotes for quotes), or outside Windows a backslash
+    outside single quotes, since bash's escape changes where a quote ends:
+    in ``"a\\" ; "; cd .. ; "\\"b"``, cd is a command there but looks quoted."""
+    if _NON_ASCII.search(command):
+        return None
+    pieces, end = [], 0
+
+    def readable(gap: str) -> bool:
+        return not ("'" in gap or '"' in gap or (not _windows() and "\\" in gap))
+
+    for match in _QUOTED.finditer(command):
+        if not readable(command[end:match.start()]):
+            return None
+        text = match.group()
+        if text[0] == '"' and not _windows() and "\\" in text:
+            return None
+        pieces.append(command[end:match.start()])
+        pieces.append(text[0] + "_" * (len(text) - 2) + text[-1] if _plain_quoted(text) else text)
+        end = match.end()
+    if not readable(command[end:]):
+        return None
+    return "".join(pieces) + command[end:]
+
+
+def _pieces(command: str, masked: str) -> list:
+    """``command`` split as _SPLIT would, at the separators outside quotes:
+    pieces and separators in turn, each piece as written."""
+    pieces, end = [], 0
+    for separator in _SPLIT.finditer(masked):
+        pieces += [command[end:separator.start()], separator.group()]
+        end = separator.end()
+    return pieces + [command[end:]]
 
 
 # -- rules --------------------------------------------------------------------------
@@ -586,7 +661,9 @@ def _paths_ok(name: str, words, folder: str, locations, *, letters: bool,
         lowered = text.lower()
         if lowered in _LINKS:
             return False
-        if word.startswith("-"):
+        # Whether it's written in quotes or not: "-o:C:\\x" is an option to the
+        # program all the same (Kelly's review of 5d378b4).
+        if text.startswith("-"):
             previous = lowered
             # A parameter name only: one with its value attached
             # (-Path:C:\x, bash's -o/tmp/x) asks.
@@ -637,6 +714,10 @@ def _paths_ok(name: str, words, folder: str, locations, *, letters: bool,
         previous = ""
         if os.path.basename(lowered.replace("\\", "/")).rstrip(" .").split(".")[0] in _DEVICES:
             return False  # CON, NUL, COM1: devices, not files
+        place = text[3:] if _windows() and _WINDOWS_DRIVE.match(text) else text
+        if _EMBEDDED_PLACE.search(place) or ((_REFUSED.search(text) or _SPLIT.search(text))
+                                              and _REACHES_OUT.search(place)):
+            return False
         if ":" in text and not (_windows() and _WINDOWS_DRIVE.match(text)
                                 and text.count(":") == 1):
             # Another drive or provider, or a file's stream. A word for a
@@ -672,132 +753,71 @@ def _paths_ok(name: str, words, folder: str, locations, *, letters: bool,
     return True
 
 
-#: Words in a repository's own git config that can make git run a program
-#: or read config from elsewhere (core.fsmonitor on git status,
-#: diff.external and diff.<driver>.command or textconv on git diff,
-#: core.pager, filter.<name>.clean, include.path, ...). A folder can arrive
-#: with any of them already set (a downloaded copy with its .git): then git
-#: asks (Copilot's review).
-# (_GIT_RUNS, a list of the settings known to run a program, gave way to
-# _GIT_SAFE_SETTINGS, a list of the ones known not to.)
-
-
-def _git_dirs(start: str) -> list:
-    """The git folders whose config applies to a command run from
-    ``start``: the first .git found going up (a folder, or a worktree's
-    .git file naming one, with its common folder). None if one can't be
-    read: then git asks."""
-    here = os.path.realpath(start)
-    while True:
-        dot = os.path.join(here, ".git")
-        try:
-            if os.path.isdir(dot):
-                # git reads a commondir file in any git folder, and then the
-                # config there (the verification pass).
-                return _with_common(dot)
-            if os.path.isfile(dot):
-                with open(dot, "r", encoding="utf-8", errors="replace") as handle:
-                    text = handle.read(4096)
-                found = re.match(r"\s*gitdir:\s*(.+?)\s*$", text)
-                if not found:
-                    return None
-                gitdir = found.group(1)
-                gitdir = gitdir if os.path.isabs(gitdir) else os.path.join(here, gitdir)
-                return _with_common(gitdir)
-        except OSError:
-            return None
-        parent = os.path.dirname(here)
-        if parent == here:
-            return []  # not in a repository: git has no repository config to read
-        here = parent
-
-
-def _with_common(gitdir: str) -> list:
-    """A git folder, and the common folder its commondir file names, if it
-    has one (a worktree's, or any git folder's: git reads it either way)."""
-    dirs = [gitdir]
-    common = os.path.join(gitdir, "commondir")
-    if os.path.isfile(common):
-        with open(common, "r", encoding="utf-8", errors="replace") as handle:
-            shared = handle.read(4096).strip()
-        dirs.append(shared if os.path.isabs(shared) else os.path.join(gitdir, shared))
-    return dirs
-
-
-def _git_config_safe(locations) -> bool:
-    """Whether the repository config git would read, from every folder the
-    shell may be in, sets nothing that can run a program; and whether every
-    other config file git reads (yours, the system's, ones they include) is
-    outside the folders it may be in, where Auto's edits could write one
-    (Kelly's review of 8345ddd). Your own config is yours: what it names
-    isn't judged here, only where it is."""
-    for where in locations:
-        files = platform_paths.git_config_files(where)
-        if files is None:
-            return False
-        for path in files:
-            try:
-                # git names the repository's own relative to where it ran.
-                full = path if os.path.isabs(path) else os.path.join(where, path)
-                real = os.path.normcase(os.path.realpath(full))
-            except (OSError, ValueError):
-                return False
-            if os.path.basename(os.path.dirname(real)) == ".git" and os.path.basename(real) in (
-                    "config", "config.worktree"):
-                continue  # the repository's own, read below
-            if any(_under(real, os.path.normcase(os.path.realpath(place)))
-                   for place in locations):
-                return False
-    for where in locations:
-        dirs = _git_dirs(where)
-        if dirs is None:
-            return False
-        for gitdir in dirs:
-            for name in ("config", "config.worktree"):
-                path = os.path.join(gitdir, name)
-                try:
-                    with open(path, "rb") as handle:
-                        text = handle.read(512 * 1024 + 1)
-                except FileNotFoundError:
-                    continue
-                except OSError:
-                    return False
-                if len(text) > 512 * 1024 or not _git_names_safe(text.decode("utf-8", "replace")):
-                    return False
-                # And as git itself reads it, so a setting written to read
-                # one way here and another to git (a subsection with a quote
-                # and a bracket in it) is judged as git sees it (Kelly's
-                # review of 9064712: [merge "a\"]ff=1"] hid a merge driver).
-                entries = platform_paths.git_config_entries(path)
-                if entries is None:
-                    return False
-                for key, value in entries:
-                    if not _setting_safe(key, value):
-                        # Named by section and name only: the subsection is
-                        # the repository's own text, said aloud otherwise.
-                        parts = key.split(".")
-                        _WHY.setting = f"{parts[0]}.{parts[-1]}"[:60]
-                        return False
-    return True
-
-
-#: Why git last asked, for the chat to say (git_refusal): the setting that
-#: isn't known to be safe. Set and read on the thread that checks a request.
+#: Why the last check asked, for the chat to say (ask_reason). Set and read on
+#: the thread that checks a request.
 _WHY = threading.local()
 
 
-def git_refusal() -> str:
-    """The repository setting that last made git ask, once, or ""."""
-    setting = getattr(_WHY, "setting", "")
-    _WHY.setting = ""
-    return setting
+def ask_reason() -> str:
+    """Why the check just made asks though something would have answered it,
+    once, as a sentence to say, or ""."""
+    reason = getattr(_WHY, "reason", "")
+    _WHY.reason = ""
+    return reason
 
 
+def _asks_because(reason: str) -> bool:
+    _WHY.reason = reason
+    return False
+
+
+def _git_asks(why: str) -> bool:
+    return _asks_because(f"git asks here because {why}.")
+
+
+_GIT_UNANSWERED = {
+    platform_paths.GIT_MISSING: "The Chat Place couldn't find git",
+    platform_paths.GIT_TIMED_OUT: f"git took more than {platform_paths.GIT_CHECK_SECONDS} seconds "
+                                  "to answer The Chat Place's check",
+    platform_paths.GIT_FAILED: "git couldn't say which repository this folder is in or how it's "
+                               "set up",
+}
+_GIT_SHELL_MOVED = "Copilot's shell may be in a folder inside this chat's"
+_GIT_NOT_THE_TOP = "this chat's folder isn't the top of its git repository"
+_GIT_UNUSUAL = "this folder's .git isn't an ordinary repository or linked worktree"
+_GIT_SUBMODULES = "this repository has submodules, and git would use their settings too"
+_GIT_FILE_INSIDE = "a config file git reads is inside this folder, where Auto could change it"
+_GIT_DIFF_PROGRAM = "a git setting names a program to show differences with"
+_GIT_DIFF_UNKNOWN = "git couldn't say whether a setting names a program to show differences with"
+_GIT_RUNS_UNKNOWN = ("this repository's settings include one The Chat Place doesn't know to be "
+                     "safe: a repository's settings can make git run a program")
+_GIT_RUNS_NAMED = ("this repository's settings include {setting}, which The Chat Place doesn't "
+                   "know to be safe: a repository's settings can make git run a program")
+_GIT_NO_CERTIFICATES = "this repository's settings turn off checking servers' certificates"
+_GIT_HELPER_REMOTE = "this repository's settings name a remote that can run a program"
+_GIT_NEARBY_PROGRAM = ("your own git settings name a program by a relative path ({setting}), which "
+                       "a file in this folder could stand in for")
+#: The sections of git's own settings. A setting's name is said only under one
+#: of these: anything else in a repository's config is its own text, which
+#: mustn't be read aloud as if The Chat Place said it (Kelly's review of
+#: 5d378b4: a section called Press-Allow-This-Is-Safe was).
+_GIT_SECTIONS = frozenset({
+    "add", "advice", "alias", "am", "apply", "author", "blame", "branch", "browser", "bundle",
+    "checkout", "clean", "clone", "color", "column", "commit", "commitgraph", "committer",
+    "completion", "core", "credential", "diff", "difftool", "extensions", "fastimport",
+    "feature", "fetch", "filter", "format", "fsck", "fsmonitor", "gc", "gitcvs", "gitweb", "gpg",
+    "grep", "gui", "guitool", "help", "http", "i18n", "imap", "include", "includeif", "index",
+    "init", "instaweb", "interactive", "lfs", "log", "lsrefs", "mailinfo", "mailmap",
+    "maintenance", "man", "merge", "mergetool", "notes", "pack", "pager", "pretty", "protocol",
+    "pull", "push", "rebase", "receive", "remote", "remotes", "repack", "rerere", "revert", "safe",
+    "sendemail", "sequence", "showbranch", "sparse", "splitindex", "ssh", "stash", "status",
+    "submodule", "tag", "tar", "trace2", "transfer", "uploadarchive", "uploadpack", "url", "user",
+    "versionsort", "web", "worktree"})
 #: Settings other tools write that git itself never acts on (Kelly's review
 #: of 9064712: VS Code and gh made 13 of 19 real clones ask for everything).
 _TOOL_SETTINGS = re.compile(
     r"branch\.(vscode-merge-base|gh-merge-base|github-pr-[a-z0-9-]+)"
-    r"|remote\.gh-resolved|gui\.[a-z0-9-]+")
+    r"|remote\.(gh-resolved|github-pr-remote)|gui\.[a-z0-9-]+")
 
 
 #: Safe only when on: http.sslVerify off lets a fetch skip checking the
@@ -805,23 +825,116 @@ _TOOL_SETTINGS = re.compile(
 _GIT_TRUE_ONLY = frozenset({"http.sslverify"})
 
 
-def _setting_safe(key: str, value: str) -> bool:
-    """One setting as git names it (section, any subsection, name): known to
-    be safe by section and name, its value too where that matters."""
-    parts = key.split(".")
-    if len(parts) < 2:
-        return False
-    name = f"{parts[0]}.{parts[-1]}".lower()
-    if not (name in _GIT_SAFE_SETTINGS or _TOOL_SETTINGS.fullmatch(name)):
-        return False
-    plain = value.replace('"', "").strip()
+def _setting_problem(key: str, value: str) -> str:
+    """Why a setting in a repository's own config asks (as git names it:
+    section, any subsection, name), or "" if it's known to be safe, by section
+    and name, its value too where that matters. Named by section and name
+    only, under a section git knows: the rest is the repository's own text."""
+    parts = key.lower().split(".")
+    name = f"{parts[0]}.{parts[-1]}"
+    if len(parts) < 2 or not (name in _GIT_SAFE_SETTINGS or _TOOL_SETTINGS.fullmatch(name)):
+        known = (len(parts) >= 2 and parts[0] in _GIT_SECTIONS
+                 and re.fullmatch(r"[a-z][a-z0-9]{0,30}", parts[-1]))
+        return _GIT_RUNS_NAMED.format(setting=name) if known else _GIT_RUNS_UNKNOWN
+    plain = value.strip()
     if name in ("remote.url", "remote.pushurl") and "::" in plain:
-        return False
+        return _GIT_HELPER_REMOTE  # ext::sh -c ... runs a program
     if name in _GIT_TRUE_ONLY and plain.lower() not in ("true", "yes", "on", "1"):
-        return False  # off, it lets a fetch your rule allows skip checking certificates
+        return _GIT_NO_CERTIFICATES  # it lets a fetch your rule allows skip checking them
     if name in ("branch.remote", "branch.pushremote") and not re.fullmatch(
             r"[A-Za-z0-9._-]+", plain):
+        return _GIT_HELPER_REMOTE  # a branch's remote may be a URL too: only a remote's name
+    return ""
+
+
+#: Settings of your own config that name a program git runs, or (hookspath) a
+#: folder of them.
+_GIT_PROGRAM_SETTING = re.compile(
+    r"core\.(fsmonitor|pager|editor|sshcommand|gitproxy|askpass|hookspath)"
+    r"|diff\.external|diff\..+\.(command|textconv)|difftool\..+\.(cmd|path)"
+    r"|merge\..+\.driver|mergetool\..+\.(cmd|path)|filter\..+\.(clean|smudge|process)"
+    r"|credential\.(.+\.)?helper|gpg\.(.+\.)?program|sequence\.editor|pager\..+|alias\..+"
+    r"|browser\..+\.(cmd|path)|man\..+\.(cmd|path)")
+#: A word starting "./" or "../", anywhere in a command line.
+_DOT_PATH = re.compile(r"""(?:^|[\s"'=;&|(])\.{1,2}[\\/]""")
+
+
+def _full_path(word: str) -> bool:
+    return (word.startswith(("/", "\\", "~", "$", "%")) or bool(_WINDOWS_DRIVE.match(word))
+            or os.path.isabs(word))
+
+
+def _names_nearby_program(key: str, value: str) -> bool:
+    """Whether a setting of your own git config names a program by a relative
+    path. git runs that from the top of the repository, so a file Auto
+    changes could be what it runs (Kelly's review of 8345ddd). A program's
+    bare name (code --wait, delta) is found on PATH and a full path is where
+    it is: both stay yours, as what your config sets always has."""
+    name, text = key.lower(), value.strip()
+    if not _GIT_PROGRAM_SETTING.fullmatch(name):
         return False
+    if name.startswith("alias.") and not text.startswith("!"):
+        return False  # another git command, not a program
+    text = text.lstrip("!").strip()
+    if name == "core.hookspath":
+        return bool(text) and not _full_path(text.strip("\"'"))
+    if _DOT_PATH.search(text):
+        return True
+    first = _FIRST_WORD.match(text)
+    word = _unquote(first.group(1)) if first else ""
+    return ("/" in word or "\\" in word) and not _full_path(word)
+
+
+def _config_files_of(where: str, origin: str, key: str, value: str) -> list:
+    """The file a setting came from, and any file it includes, there yet or
+    not: an empty or missing one, which Auto could then write, holds no
+    setting for git to list (Claude's verification pass)."""
+    if not origin.startswith("file:"):
+        return []
+    # git names the repository's own relative to where it ran.
+    source = os.path.join(where, origin[len("file:"):])
+    files = [source]
+    name = key.lower()
+    if value and (name == "include.path" or (name.startswith("includeif.")
+                                             and name.endswith(".path"))):
+        files.append(os.path.join(os.path.dirname(source), os.path.expanduser(value)))
+    return files
+
+
+def _git_config_safe(locations, gitdir: str, common: str) -> bool:
+    """Every setting git really uses from where the shell is, asked of git
+    (Kelly's review of 5d378b4: a commondir with a leading space and an empty
+    .git each hid the real config from a reading of the files here). The
+    repository's own must be known to be safe (_setting_problem). Your own
+    (global and system, and any given through the environment) are yours, but
+    for a program named by a relative path. And no config file git reads or
+    an include names may be inside the folders the shell may be in, where
+    Auto's edits could write one (Kelly's review of 8345ddd), other than the
+    repository's own, which Auto never changes."""
+    where = locations[0]
+    try:
+        settings = platform_paths.git_settings(where)
+        places = [_normal(place) for place in locations]
+        own = {os.path.join(common, "config"), os.path.join(gitdir, "config.worktree")}
+        for scope, origin, key, value in settings:
+            for path in _config_files_of(where, origin, key, value):
+                real = _normal(path)
+                if real not in own and any(_under(real, place) for place in places):
+                    return _git_asks(_GIT_FILE_INSIDE)
+            if scope in ("local", "worktree"):
+                problem = _setting_problem(key, value)
+                if problem:
+                    return _git_asks(problem)
+            elif scope not in ("system", "global", "command"):
+                return _git_asks(_GIT_UNUSUAL)
+            elif _names_nearby_program(key, value):
+                parts = key.lower().split(".")
+                return _git_asks(_GIT_NEARBY_PROGRAM.format(
+                    setting=f"{parts[0]}.{parts[-1]}"[:60]))
+    except platform_paths.GitUnanswered as exc:
+        return _git_asks(_GIT_UNANSWERED[exc.kind])
+    except (OSError, ValueError):
+        return _git_asks(_GIT_UNANSWERED[platform_paths.GIT_FAILED])
     return True
 
 
@@ -848,58 +961,8 @@ _GIT_SAFE_SETTINGS = frozenset({
     "gc.auto", "index.version", "feature.manyfiles", "color.ui", "merge.ff",
     "merge.conflictstyle", "rerere.enabled", "lfs.repositoryformatversion",
     "diff.renames", "diff.algorithm", "diff.colormoved", "rebase.autostash", "core.fscache",
-    "core.preloadindex", "submodule.active", "lfs.locksverify", "http.sslverify",
+    "core.preloadindex", "submodule.active", "lfs.locksverify", "lfs.access", "http.sslverify",
     "safe.directory"})
-
-
-def _git_names_safe(text: str) -> bool:
-    """A git config file's settings: only _GIT_SAFE_SETTINGS, and no remote
-    address that names a transport helper (ext::, fd::), which runs a
-    program. A line it can't read as a setting counts as one that might."""
-    section = ""
-    # git breaks lines only at \n. Python's splitlines also breaks at form
-    # feed, \x0b, \x1c to \x1e, \x85 and \u2028, so a "#\x0c[x]" comment
-    # to git hid an [include] from this reading (Claude's review of the
-    # merged fixes). Any such character asks.
-    if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x85\u2028\u2029]", text):
-        return False
-    for raw in text.split("\n"):
-        line = raw.strip()
-        if line.endswith("\\"):
-            return False  # carried on to the next line: not read, so taken as unsafe
-        if not line or line[0] in "#;":
-            continue
-        header = re.match(r"\[\s*([A-Za-z0-9.-]+)(?:\s+\"[^\"]*\")?\s*\](.*)$", line)
-        if header:
-            section = header.group(1)
-            line = header.group(2).strip()  # a setting may follow on the same line
-            if not line or line[0] in "#;":
-                continue
-        if line.startswith("["):
-            return False
-        key = re.match(r"([A-Za-z][A-Za-z0-9-]*)\s*(=|$|[#;])", line)
-        if not key:
-            # A value carried on from the line before (a backslash at its
-            # end) reads as no setting: taken as one that might.
-            return False
-        name = f"{section}.{key.group(1)}".lower()
-        if not (name in _GIT_SAFE_SETTINGS or _TOOL_SETTINGS.fullmatch(name)):
-            # Named as section.name, shortened: the rest is the repository's
-            # own text (the verification pass).
-            _WHY.setting = f"{section.split('.')[0]}.{key.group(1)}".lower()[:60]
-            return False
-        # A value as git reads it: quotes joined away ("ext:"":sh" is
-        # ext::sh) and escapes undone (Claude's verification pass).
-        value = line[key.end():].split("#")[0].split(";")[0]
-        value = value.replace('"', "").replace("\\", "").strip()
-        if name in ("remote.url", "remote.pushurl") and "::" in value:
-            return False  # ext::sh -c ... runs a program
-        if name in _GIT_TRUE_ONLY and value.lower() not in ("true", "yes", "on", "1"):
-            return False
-        if name in ("branch.remote", "branch.pushremote") and not re.fullmatch(
-                r"[A-Za-z0-9._-]+", value):
-            return False  # a branch's remote may be a URL too: only a remote's name
-    return True
 
 
 def _git_ok(words, folder: str, locations) -> bool:
@@ -936,15 +999,24 @@ def _git_ok(words, folder: str, locations) -> bool:
         # which a branch name is.
         if not _inside_from(text, folder, locations):
             return False
-    if not (_git_repository_here(folder, locations) and _git_config_safe(locations)):
+    return _git_checks(folder, locations, sub in _GIT_SHOWS_CHANGES)
+
+
+def _git_checks(folder: str, locations, shows_changes: bool) -> bool:
+    """What every git command answered for you must pass, by Auto, a rule or a
+    kept command: the shell in the chat's own repository, its settings naming
+    no program, and, for one that shows differences, no diff driver: a
+    repository's .gitattributes may choose one, from your own git config too
+    (Copilot's review of Auto). git status shows none."""
+    found = _git_repository_here(folder, locations)
+    if found is None or not _git_config_safe(locations, *found):
         return False
-    # Showing differences runs a diff driver the repository's .gitattributes
-    # may choose, from your own git config too: only when none names a
-    # program (Copilot's review of Auto). git status shows none.
-    if sub in _GIT_SHOWS_CHANGES:
-        from .. import platform_paths
-        return platform_paths.git_names_diff_program(folder) is False
-    return True
+    if not shows_changes:
+        return True
+    named = platform_paths.git_names_diff_program(folder)
+    if named is False:
+        return True
+    return _git_asks(_GIT_DIFF_PROGRAM if named else _GIT_DIFF_UNKNOWN)
 
 
 #: git options a rule may never add, however it's written: ones that write a
@@ -1039,46 +1111,130 @@ def _git_rule_ok(words, folder: str, locations, rule=None) -> bool:
         named = [w.lower() for w in rule.words[1:] if not w.startswith("-")]
         if not named or named[0] != sub:
             return False
-    for text in plain[index + 1:]:
+    messages = _commit_messages(words)
+    for place, text in enumerate(plain[index + 1:], index + 1):
         if text == "--":
             break
-        if text.startswith("-") and len(text) > 1 and _git_rule_option_refused(text):
+        if (place not in messages and text.startswith("-") and len(text) > 1
+                and _git_rule_option_refused(text)):
             return False
-    if not (_git_repository_here(folder, locations) and _git_config_safe(locations)):
-        return False
-    if sub in _GIT_DIFFS:
-        from .. import platform_paths as paths
-        return paths.git_names_diff_program(folder) is False
-    return True
+    return _git_checks(folder, locations, sub in _GIT_DIFFS)
 
 
-def _git_repository_here(folder: str, locations) -> bool:
-    """git is answered only with the shell in the chat's own folder, and that
-    folder holding a real .git folder (not a link, not a .git file): git
-    then reads that repository and no other. Elsewhere it could find one
-    Copilot made: a folder with HEAD, objects and refs in it is a repository
-    to git, and Auto's file changes could write those."""
-    base = os.path.normcase(os.path.realpath(folder))
-    if any(os.path.normcase(os.path.realpath(where)) != base for where in locations):
+#: git commit's options before -m that take no value of their own: only after
+#: these is the next -m sure to be the option, not another option's value
+#: (git commit -F -m "x" reads a message file named -m).
+_GIT_COMMIT_FLAGS = frozenset({"-a", "-s", "-q", "-n", "-v", "--all", "--amend", "--signoff",
+                               "--quiet", "--verbose", "--no-verify", "--allow-empty",
+                               "--allow-empty-message", "--no-edit"})
+_GIT_MESSAGE_OPTION = re.compile(r"-[asqnv]*m|--message")
+
+
+def _commit_messages(words) -> set:
+    """Which of a command's words are git commit's message text (-m, -am,
+    --message). It never reaches a program as a path, and git stores it as it
+    is, so a message can say "src/foo.py: fix" or "wait..." without asking
+    (Kelly's review of 5d378b4). Read only as far as what's sure: anything
+    else from there on is read as a path as usual."""
+    plain = [_unquote(w) for w in words]
+    if not plain or plain[0].lower() not in _GIT_NAMES:
+        return set()
+    index = 1
+    while index < len(plain) and plain[index].lower() in ("--no-pager", "--no-optional-locks"):
+        index += 1
+    if index >= len(plain) or plain[index].lower() != "commit":
+        return set()
+    index += 1
+    messages = set()
+    while index < len(plain):
+        if _GIT_MESSAGE_OPTION.fullmatch(plain[index]):
+            messages.add(index + 1)
+            index += 2
+        elif plain[index] in _GIT_COMMIT_FLAGS or re.fullmatch(r"-[asqnv]+", plain[index]):
+            index += 1
+        else:
+            break
+    return messages
+
+
+def _normal(path: str) -> str:
+    return os.path.normcase(os.path.realpath(path))
+
+
+def _one_line(path: str) -> Optional[str]:
+    """A small file's one line of text, without its line ending; else None."""
+    with open(path, "r", encoding="utf-8", errors="replace", newline="") as handle:
+        text = handle.read(4096)
+    found = re.fullmatch(r"([^\r\n]+)[\r\n]*", text)
+    return found.group(1) if found else None
+
+
+def _linked_worktree(base: str, dot: str, gitdir: str, common: str) -> bool:
+    """Whether git's answer is a normal linked worktree of a repository
+    elsewhere, as git worktree add makes one: git folder
+    <common>/worktrees/<name>, the chat folder's .git a file naming it, and
+    that folder naming this .git back. Its config is judged as git reads it,
+    wherever it is. But each folder must be outside the chat's, where Auto
+    can't change them, and a .git file that says anything else (a crafted one,
+    a submodule's, git init --separate-git-dir) asks."""
+    if os.path.dirname(gitdir) != os.path.join(common, "worktrees"):
         return False
-    dot = os.path.join(folder, ".git")
-    # git status and diff read each submodule's own config too, which isn't
-    # checked here (Claude's review of the merged fixes): a repository with
-    # submodules asks.
-    if (os.path.lexists(os.path.join(folder, ".gitmodules"))
-            or os.path.lexists(os.path.join(dot, "modules"))):
+    if os.path.islink(dot) or not os.path.isfile(dot):
         return False
-    # Nor one whose index holds a submodule however it got there: git status
-    # and diff go into it and run its own config, .gitmodules or not
-    # (Claude's review of the round answering Kelly's review of 9064712:
-    # an embedded sub/.git's core.fsmonitor ran on Auto's git status).
-    if platform_paths.git_has_submodules(folder) is not False:
+    if _under(gitdir, base) or _under(common, base) or _under(base, common):
         return False
+    pointer = _one_line(dot)
+    if pointer is None or not pointer.startswith("gitdir: "):
+        return False
+    if _normal(os.path.join(base, pointer[len("gitdir: "):])) != gitdir:
+        return False
+    back = _one_line(os.path.join(gitdir, "gitdir"))
+    return back is not None and _normal(os.path.join(gitdir, back)) == dot
+
+
+def _git_repository_here(folder: str, locations) -> Optional[tuple]:
+    """(git folder, common git folder) if git, asked from the shell's folder,
+    says it's in the chat's own repository at its top: either that folder's
+    plain .git folder, or a normal linked worktree (_linked_worktree). None,
+    with why, for anything else. Elsewhere git could find one Copilot made: a
+    folder with HEAD, objects and refs in it is a repository to git, and
+    Auto's file changes could write those; an empty .git is passed over for a
+    repository above (Kelly's review of 5d378b4); a commondir file can name
+    another git folder altogether (the same review)."""
     try:
-        return os.path.isdir(dot) and not os.path.islink(dot) and \
-            os.path.normcase(os.path.realpath(dot)) == os.path.normcase(os.path.join(base, ".git"))
-    except OSError:
-        return False
+        base = _normal(folder)
+        if any(_normal(where) != base for where in locations):
+            _git_asks(_GIT_SHELL_MOVED)
+            return None
+        top, gitdir, common = (_normal(path) for path in platform_paths.git_where(folder))
+        dot = os.path.join(base, ".git")
+        if top != base:
+            _git_asks(_GIT_NOT_THE_TOP)
+            return None
+        plain = (gitdir == dot and common == dot
+                 and os.path.isdir(dot) and not os.path.islink(dot))
+        if not plain and not _linked_worktree(base, dot, gitdir, common):
+            _git_asks(_GIT_UNUSUAL)
+            return None
+        # git status and diff read each submodule's own config too, which
+        # isn't checked here (Claude's review of the merged fixes): a repository
+        # with submodules asks. Also one whose index holds a submodule however
+        # it got there: git status and diff go into it and run its own config,
+        # .gitmodules or not (Claude's review of the round answering Kelly's
+        # review of 9064712: an embedded sub/.git's core.fsmonitor ran).
+        if (os.path.lexists(os.path.join(folder, ".gitmodules"))
+                or os.path.lexists(os.path.join(gitdir, "modules"))
+                or os.path.lexists(os.path.join(common, "modules"))
+                or platform_paths.git_has_submodules(folder) is not False):
+            _git_asks(_GIT_SUBMODULES)
+            return None
+    except platform_paths.GitUnanswered as exc:
+        _git_asks(_GIT_UNANSWERED[exc.kind])
+        return None
+    except (OSError, ValueError):
+        _git_asks(_GIT_UNANSWERED[platform_paths.GIT_FAILED])
+        return None
+    return gitdir, common
 
 
 def _moved_to(words, folder: str, locations) -> Optional[tuple]:
@@ -1123,6 +1279,8 @@ def _moved_to(words, folder: str, locations) -> Optional[tuple]:
 
 
 AUTO, RULE, CHAT = "auto", "rule", "chat"
+#: Said when a rule would allow a command but it's longer than MAX_COMMAND.
+TOO_LONG_ASKS = "This asks since the command is too long to be answered for you."
 
 
 @dataclass(frozen=True)
@@ -1134,21 +1292,24 @@ class Answer:
 
 
 def _parts(command: str):
-    """[(words, whether a pipe brought it what it reads)], or None if the
-    command can't be read: too long, empty, with a refused character, a
-    quote inside a word, or a pipe carried on to the next line."""
-    if (not command or not command.strip() or len(command) > MAX_COMMAND
-            or _REFUSED.search(command.replace("&&", " ; "))):
+    """[(words, whether a pipe brought it what it reads, whether it holds
+    punctuation only a program you chose may have)], or None if the command
+    can't be read: too long, empty, with a refused character outside plain
+    quotes, a quote inside a word, or a pipe carried on to the next line."""
+    if not command or not command.strip() or len(command) > MAX_COMMAND:
+        return None
+    masked = _masked(command)
+    if masked is None or _REFUSED.search(masked.replace("&&", " ; ")):
         return None
     # bash and zsh read a backslash as an escape: sub/\.\./x is ../x there.
     # On Windows it's only the path separator.
-    if not _windows() and "\\" in command:
+    if not _windows() and "\\" in masked:
         return None
     # PowerShell carries a pipe on to the next line: "gci sub |" then a
     # line "Set-Content x" is one pipeline (Claude's review of #426).
-    if re.search(r"\|[ \t]*[\r\n]", command):
+    if re.search(r"\|[ \t]*[\r\n]", masked):
         return None
-    pieces = _SPLIT.split(command)
+    pieces = _pieces(command, masked)
     parts, piped = [], False
     for index, piece in enumerate(pieces):
         if index % 2:
@@ -1157,7 +1318,12 @@ def _parts(command: str):
             words = _words(piece.strip())
             if not words:
                 return None
-            parts.append((words, piped))
+            # All that's strict about a part: nothing _REFUSED, or that used
+            # to split it, even in quotes (Kelly's review of 5d378b4: only a
+            # program you chose gets the quoted text it's handed).
+            punctuated = bool(_REFUSED.search(piece) or _SPLIT.search(piece)
+                              or (not _windows() and "\\" in piece))
+            parts.append((words, piped, punctuated))
         elif index:
             return None  # "a ; ; b", or one ending in a pipe
     return parts or None
@@ -1204,11 +1370,20 @@ def _asked(words, policy: Policy) -> bool:
                for rule in policy.ask for form in _ask_forms(words))
 
 
-def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: bool):
+def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: bool,
+          punctuated: bool = False):
     """(what allows one part of a command, or None; the folders after it).
-    "move" and "filter" go along with what allows the rest."""
+    "move" and "filter" go along with what allows the rest. ``punctuated``:
+    it holds punctuation only inside plain quotes. That's for a rule's or a
+    kept command's program, which only receives it as an argument, unless the
+    program is PowerShell's own (a cmdlet reads more into a word), and never
+    for Auto, a filter after a pipe or a change of folder (Kelly's review of
+    5d378b4: every other real commit message asked under git commit *)."""
     name = _unquote(words[0]).lower()
     if _asked(words, policy):
+        return None, locations
+    if punctuated and (piped or _powershell_own(name) or name in _LOCATION
+                       or _REFUSED.search(words[0])):
         return None, locations
     if piped:
         after = _AFTER_PIPE if _windows() else _AFTER_PIPE_POSIX
@@ -1225,7 +1400,7 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
               # config, the repository, a diff program).
               and (name not in _GIT_NAMES or _git_ok(words, folder, locations)))
         return (CHAT if ok else None), locations
-    if policy.auto:
+    if policy.auto and not punctuated:
         reading = (name in READ_CMDLETS or name in READ_ALIASES) if _windows() \
             else name in POSIX_READ
         if reading and _paths_ok(name, words[1:], folder, locations,
@@ -1235,7 +1410,9 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
             return AUTO, locations
     for rule in policy.allow:
         if rule.matches(words) and not may_move(" ".join(words)):
-            extra = words[len(rule.words):]
+            messages = _commit_messages(words)
+            extra = [word for place, word in enumerate(words)
+                     if place >= len(rule.words) and place not in messages]
             if (_paths_ok(name, extra, folder, locations, letters=False, long_options=True)
                     and (name not in _GIT_NAMES
                          or _git_rule_ok(words, folder, locations, rule))):
@@ -1251,18 +1428,25 @@ def check_command(command: str, folder: str, policy: Policy,
         return None
     parts = _parts(command)
     if parts is None:
+        # Too long to be read through when something would otherwise allow
+        # it, as a commit message with a long body can be: said, or it sounds
+        # like the rule stopped working.
+        if command and len(command) > MAX_COMMAND and any(
+                rule.matches(command.split()[:len(rule.words)]) for rule in policy.allow):
+            _asks_because(TOO_LONG_ASKS)
         return None
     places = tuple(locations) if locations else (folder,)
     exact = command.strip() in policy.exact
     found = set()
-    for words, piped in parts:
+    for words, piped, punctuated in parts:
         # After a part your rule or Allow for This Chat allows, only what a
         # pipe hands text to: the rest was checked against the disk as it was
         # before that part ran, and that part may change it (Kelly's review of
         # #426: a move, then a path through a link already in what moved).
         if (RULE in found or CHAT in found) and not piped:
             return None
-        by, places = _part(words, piped, folder, places, policy, exact=exact)
+        by, places = _part(words, piped, folder, places, policy, exact=exact,
+                           punctuated=punctuated)
         if by is None:
             return None
         found.add(by)
@@ -1293,36 +1477,80 @@ def chat_candidate(command: str, folder: str, policy: Policy, locations=None) ->
     return command.strip() if check_command(command, folder, trial, locations) else ""
 
 
+#: What starts a command in bash without being the command: "time cd ..",
+#: "! cd ..", and the words of a compound command, one split at its ";".
+_KEYWORDS = frozenset({"time", "if", "then", "elif", "else", "while", "until", "do", "for",
+                       "case", "coproc"})
+
+
+def _moves_by_path(name: str) -> bool:
+    """Whether a program named by a path may run in the shell itself. On
+    Windows PowerShell may find a .ps1 for any path without an extension of a
+    real program. Elsewhere a path is a child process, which can't move the
+    shell (.venv/bin/python), though a ".." gets no such benefit of the doubt."""
+    if _windows():
+        return name.startswith(".") or "\\" in name or "/" in name
+    return "\\" in name or ".." in name.split("/")
+
+
+def _moving_word(text: str) -> bool:
+    """A word that, given to one of PowerShell's own commands, reaches a drive
+    other than a disk's (alias:\\ls, env:PATH, or a disk's current folder, C:x)
+    or goes through a provider: writing there changes what later commands
+    mean. test:unit isn't one, nor x.py::test_y."""
+    head = text.split(":", 1)[0].lower()
+    if ":" in text and (head in _PS_DRIVES or (len(head) == 1
+                                               and not _WINDOWS_DRIVE.match(text))):
+        return True
+    return bool(_PROVIDER.search(text))
+
+
 def may_move(command: str) -> bool:
     """Whether a command you allowed yourself may have moved Copilot's shell
     somewhere not followed here: a change of folder, a script (which runs in
-    the same session), or text run as code. Erring toward yes: anything not
-    read as plain words is taken as moving."""
-    if (not command or len(command) > MAX_COMMAND * 10
-            or _MOVING.search(command.replace("&&", " ; "))):
+    the same session), or text run as code. Erring toward yes, but reading
+    quotes: what's in plain quotes is only an argument, and a program that
+    isn't the shell's own runs as a child process, which can't move it (Kelly's
+    review of 5d378b4: one allowed git commit -m "fix(parser): x" made every
+    later command ask)."""
+    if not command or len(command) > MAX_COMMAND * 10:
         return True
-    for piece in _SPLIT.split(command)[::2]:
+    text = command.replace("2>&1", " ")  # git and npm output, not a redirect to read
+    masked = _masked(text)
+    if masked is None:
+        return True
+    for piece in _pieces(text, masked)[::2]:
         if not piece.strip():
             continue
-        words = _words(piece.strip())
+        first = _FIRST_WORD.match(piece)
+        rest = _QUOTED.sub(lambda quoted: "Q" if _plain_quoted(quoted.group()) else quoted.group(),
+                           piece[first.end():])
+        shown = piece[:first.end()] + rest
+        if _MOVING.search(shown):
+            return True
+        words = _words(shown.strip())
         if not words:
             return True
-        name = _unquote(words[0]).lower()
-        # PowerShell's own cd.. and cd\ are functions, one word each.
-        if (name in _MOVERS or re.match(r"(cd|chdir|sl)\W", name) or name.startswith(".")
-                or "\\" in name or "/" in name):
+        raw = _unquote(words[0])
+        name = raw.lower()
+        # PowerShell's own cd.. and cd\\ are functions, one word each.
+        if (name in _MOVERS or name in _KEYWORDS or re.match(r"(cd|chdir|sl)\W", name)
+                or name[:1] in ("", "[", "!")):
             return True
         if name.endswith((".ps1", ".psm1", ".psd1", ".sh", ".bash", ".zsh")):
             return True
-        for word in words:
-            text = _unquote(word)
-            # A PowerShell drive other than a disk's (alias:\ls, env:PATH),
-            # or a bash assignment (PATH=sub ls). A colon in an ordinary word
-            # (test:unit, "fix: typo") isn't one.
-            if _drive_word(text) and not (_windows() and _WINDOWS_DRIVE.match(text)):
-                return True
-            if re.match(r"[A-Za-z_][A-Za-z0-9_]*\+?=", text):
-                return True
+        if re.match(r"[A-Za-z_][A-Za-z0-9_]*\+?=", raw):  # PATH=sub ls
+            return True
+        program = name.endswith((".exe", ".com")) and ".." not in name
+        if not program and (re.match(r"[a-z]:", name) or _moves_by_path(name)):  # D: changes drive
+            return True
+        if program or not _powershell_own(name):
+            continue
+        # Its words as they are: Set-Content "env:PATH" reaches the drive
+        # just the same, in quotes or not.
+        said = _words(piece.strip())
+        if said is None or any(_moving_word(_unquote(word)) for word in said):
+            return True
     return False
 
 

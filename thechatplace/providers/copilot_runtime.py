@@ -93,6 +93,9 @@ CANCEL_GRACE_SECONDS = 15.0
 CHUNK_NOTIFY_SECONDS = 0.05
 #: The session log is written a moment after the turn's answer arrives.
 BILLING_WAIT_SECONDS = 15.0
+#: How long Restart Copilot lets turns on the Copilot it closed finish ending,
+#: so the chat can be opened again straight away.
+RESTART_WAIT_SECONDS = 5.0
 
 
 def _content_diff(call: dict) -> tuple:
@@ -188,38 +191,50 @@ def _note_exits(chat, call_id: str, update: dict) -> None:
         # Auto's file changes ask, until Copilot is next started.
 
 
-def asks_now(state) -> str:
+def asks_now(state, detail: bool = False) -> str:
     """What asks for now in a chat where something is answered for you, and
     why, in one place, so the status line, what's said and Chat Permissions
     agree (Kelly's review of 9064712: they said file changes were still
-    allowed while a running program made them ask). "" when nothing does."""
+    allowed while a running program made them ask). "" when nothing does.
+    Kept short: any command over 30 seconds says it (Kelly's review of
+    5d378b4). ``detail`` adds what Stop does and doesn't do, for Chat
+    Permissions, which has room for it and the button that helps."""
     moved = getattr(state, "location_changed", False)
     background = getattr(state, "background", False)
     running = getattr(state, "running", False)
+    auto = getattr(state, "auto", False)
     parts = []
     if moved:
-        parts.append("Its commands ask until Copilot is next started, since a command you "
-                     "allowed may have moved Copilot's shell.")
-    elif background:
-        parts.append("Its commands ask while a program allowed in this folder runs in the "
-                     "background.")
-    if running and getattr(state, "auto", False):
-        parts.append("Auto's file changes ask while a program allowed in this folder may still "
-                     "be running. Stopping it in Copilot doesn't end it; closing The Chat Place "
-                     "and opening it again does on Windows.")
-    elif (moved or background) and getattr(state, "auto", False):
+        parts.append("Its commands ask until you use Restart Copilot, in File, Chat Permissions, "
+                     "since a command you allowed may have moved Copilot's shell.")
+    if background and not moved:
+        parts.append("Commands and file changes ask while a program allowed here runs." if auto
+                     else "Commands ask while a program allowed here runs.")
+    elif running and auto:
+        parts.append("File changes ask while a program allowed here runs.")
+    elif moved and auto:
         parts.append("Auto's file changes are still answered for you.")
+    if detail and (running or background):
+        parts.append(_STOP_DOESNT_END)
     return " ".join(parts)
 
 
 def _without_asks(notice: str) -> str:
     """A chat's notice without the sentences saying why a request asks."""
-    for text in (ASKS_ONCE, REOPENED_ASKS, STILL_RUNNING_ASKS):
+    for text in _ASK_SENTENCES:
         notice = notice.replace(text, "")
-    notice = re.sub(r"git asks here because this repository's settings include .{1,60}?, which The "
-                    r"Chat Place doesn't know to be safe: a repository's settings can make git run "
-                    r"a program\.", "", notice)
+    notice = _GIT_SENTENCE.sub("", notice)
     return " ".join(notice.split())
+
+
+def notice_to_say(before: str, now: str) -> str:
+    """What's new to say when a chat's notice goes from ``before`` to ``now``:
+    nothing when only a reason for asking went (Kelly's review of 5d378b4: "Other.
+    This asks..." becoming "Other." said "Other." again), and only what was
+    added when something was."""
+    if not now or now == before or now == _without_asks(before):
+        return ""
+    return now[len(before):].strip() if before and now.startswith(before) else now
 
 
 def _folder_key(cwd: str) -> str:
@@ -253,7 +268,10 @@ def _remember_preview(chat, update: dict) -> None:
         return
     background = (raw.get("mode") not in (None, "sync") or "detach" in raw
                   or "shellId" in raw)
-    if background and call_id in chat.answered_calls:
+    # Not one that's finished, even if its last update repeats how it ran
+    # ("mode": "async"): that would start it again (Kelly's review of 5d378b4).
+    if (background and call_id in chat.answered_calls
+            and update.get("status") not in ("completed", "failed")):
         # Answered as a foreground command, it now runs in the background:
         # commands ask until its end is seen.
         chat.mark_background(call_id)
@@ -386,15 +404,58 @@ ASKS_ONCE = ("This asks although your rules or the chat's kept commands allow it
 REOPENED_ASKS = ("This asks although your rules or the chat's kept commands allow it, since this "
                  "chat was opened again and what Auto may have changed here before isn't known. "
                  "Once you allow it yourself, they can be answered for you again.")
-#: Said when git asks because of a setting in the repository's own config.
-GIT_SETTING_ASKS = ("git asks here because this repository's settings include {setting}, which "
-                    "The Chat Place doesn't know to be safe: a repository's settings can make git "
-                    "run a program.")
 #: Said when Auto's file change asks because an allowed program may be running.
+_STOP_DOESNT_END = ("Stopping it in Copilot doesn't end it; Restart Copilot, in File, Chat "
+                    "Permissions, does.")
 STILL_RUNNING_ASKS = ("This file change asks, since a program allowed in this folder may still "
                       "be running and could use it. It's answered for you again once Copilot "
-                      "says the program ended. Stopping it in Copilot doesn't end it; closing "
-                      "The Chat Place and opening it again does on Windows.")
+                      f"says the program ended. {_STOP_DOESNT_END}")
+#: Said when something would answer a command, but these make it ask.
+MOVED_ASKS = ("This asks since a command you allowed may have moved Copilot's shell. Restart "
+              "Copilot, in File, Chat Permissions, clears that.")
+BACKGROUND_ASKS = ("This asks while a program allowed here runs in the background. It's answered "
+                   "for you again once it ends.")
+RUNS_IN_BACKGROUND_ASKS = "This asks since Copilot will run it in the background."
+NOT_DESCRIBED_ASKS = "This asks since Copilot didn't describe it before asking."
+ANOTHER_WAITING_ASKS = "This asks since another command is waiting for your answer."
+PLAN_MODE_ASKS = "This asks since this chat is in plan mode."
+_ASK_SENTENCES = (ASKS_ONCE, REOPENED_ASKS, STILL_RUNNING_ASKS, MOVED_ASKS, BACKGROUND_ASKS,
+                  RUNS_IN_BACKGROUND_ASKS, NOT_DESCRIBED_ASKS, ANOTHER_WAITING_ASKS,
+                  PLAN_MODE_ASKS, copilot_folder.TOO_LONG_ASKS)
+#: copilot_folder's reasons for git, one sentence each, a setting's name
+#: within one having no space after its dot.
+_GIT_SENTENCE = re.compile(r"git asks here because .+?\.(?= |$)")
+
+
+def _ask_reason(chat, request, covered, why: str, *, running: bool, background: bool,
+                another_waiting: bool, ask_once: bool) -> str:
+    """Why a request that Auto, a rule or a kept command would answer asks
+    instead, as one short sentence (call with the lock held). "" if nothing
+    would have answered it, which needs no saying. Every prompt of that kind
+    says why, or it sounds like the rule stopped working (Kelly's reviews of
+    8345ddd and 5d378b4)."""
+    if request.method == FILES:
+        return STILL_RUNNING_ASKS if covered is not None and running else ""
+    if request.method != COMMAND or (covered is None and not why):
+        return ""
+    if chat.location_changed:
+        return MOVED_ASKS
+    if background:
+        return BACKGROUND_ASKS
+    if covered is None:
+        return why
+    if chat.mode != AGENT_MODE:
+        return PLAN_MODE_ASKS
+    seen = _preview(chat, request)[1]
+    if seen is not False:
+        return RUNS_IN_BACKGROUND_ASKS if seen else NOT_DESCRIBED_ASKS
+    if another_waiting:
+        return ANOTHER_WAITING_ASKS
+    if ask_once and covered.by in (copilot_folder.RULE, copilot_folder.CHAT):
+        # Said truly: an edit Auto made, or a chat opened again where earlier
+        # edits aren't known (Kelly's review of 9064712).
+        return ASKS_ONCE if chat.edited else REOPENED_ASKS
+    return ""
 
 
 #: Said once a run when your rules file for Copilot can't be used.
@@ -1191,6 +1252,8 @@ class CopilotChatRuntime:
         #: The models Copilot last offered a chat here, for a new one.
         self._last_models: tuple = ()
         self._closed = False
+        #: The Copilot Restart Copilot closed: its chats don't each say so.
+        self._restarted = None
 
     # -- the connection ------------------------------------------------------
 
@@ -1239,7 +1302,7 @@ class CopilotChatRuntime:
                 return
             chats = [c for c in self._chats.values() if c.connection is connection]
             for chat in chats:
-                if not chat.busy and not chat.notice:
+                if not chat.busy and not chat.notice and connection is not self._restarted:
                     chat.notice = "Copilot stopped; open this chat again to send to it."
         for chat in chats:
             self._notify(chat)
@@ -1253,6 +1316,77 @@ class CopilotChatRuntime:
                     chat.cancel_timer.cancel()
         if connection is not None:
             connection.close()
+
+    def restart_warning(self, native_id: str) -> str:
+        """What Restart Copilot would end that you might want, in words, with
+        the question to ask, or "": a turn in this chat, or a turn or a
+        program in any other. (This chat's own program is what it's for.)"""
+        with self._lock:
+            connection = self._connection
+            if connection is None or connection.closed:
+                return ""
+            active = {chat.native_id for chat in self._chats.values()
+                      if chat.busy and chat.connection is connection}
+            for folder in self._folder_states():
+                active |= {chat for (chat, _call), runs_under in folder.running.items()
+                           if runs_under is connection}
+            own_turn = native_id in {chat.native_id for chat in self._chats.values()
+                                     if chat.busy and chat.connection is connection}
+            others = len(active - {native_id})
+        said = []
+        if own_turn:
+            said.append("This chat is running a turn.")
+        if others:
+            said.append(f"{others} other Copilot "
+                        + ("chat is" if others == 1 else "chats are")
+                        + " running a turn or a program.")
+        if not said:
+            return ""
+        return (" ".join(said) + " Restarting Copilot ends them, and what they were doing isn't "
+                "picked up again. Restart it anyway?")
+
+    def _folder_states(self) -> list:
+        """Every _Folder in use (with _lock held)."""
+        found = {id(folder): folder for folder in self._folders.values()}
+        found.update((id(chat.folder), chat.folder) for chat in self._chats.values())
+        return list(found.values())
+
+    def restart(self) -> bool:
+        """Restart Copilot, in Chat Permissions: stop its process, which ends
+        everything it runs, and clear what that leaves stuck: a shell that may
+        have moved, and programs still counted as running, which nothing else
+        can end (Kelly's review of 5d378b4). The next chat opened starts it
+        again, in that chat's own folder. Whether it was running. Waits for it
+        to close, so call it off the UI thread."""
+        with self._connect_lock:
+            with self._lock:
+                if self._closed:
+                    return False
+                connection, self._connection = self._connection, None
+                self._restarted = connection
+            running = connection is not None and not connection.closed
+            if connection is not None:
+                connection.close()
+            # Turns on it end by themselves now; a chat can't be opened again
+            # until they have.
+            deadline = time.monotonic() + RESTART_WAIT_SECONDS
+            while time.monotonic() < deadline:
+                with self._lock:
+                    if not any(chat.busy and chat.connection is connection
+                               for chat in self._chats.values()):
+                        break
+                time.sleep(0.02)
+            with self._lock:
+                # After it's closed: nothing it sent can undo this.
+                for folder in self._folder_states():
+                    folder.running, folder.background, folder.shells = {}, set(), {}
+                chats = list(self._chats.values())
+                for chat in chats:
+                    chat.location_changed, chat.locations = False, ()
+                    chat.previews, chat.reads, chat.answered_calls = {}, {}, {}
+        for chat in chats:
+            self._notify(chat)
+        return running
 
     def _hooks_refusal(self, cwd: str) -> str:
         """Why nothing may be sent in ``cwd`` because of a hook, or ""
@@ -2174,6 +2308,7 @@ class CopilotChatRuntime:
                 # (Kelly's review of 9064712: "This asks" stayed after).
                 chat.notice = _without_asks(chat.notice)
             asked_at = chat.asked_at.pop(request_id, None)
+            shared = self._shared(chat)
             if decision == ALLOW_ONCE and request.method == COMMAND:
                 # Only a command your rule or a kept command covers, asked
                 # after Auto's last edit, ends the ask-once: allowing an
@@ -2198,6 +2333,7 @@ class CopilotChatRuntime:
             if moves or (followed is not None and not _follow(chat, followed.locations)):
                 chat.location_changed = True
             connection = chat.connection
+            folder_changed = shared != self._shared(chat)
         if connection is None or connection.closed:
             raise CopilotChatError("Copilot isn't running.")
         try:
@@ -2205,6 +2341,8 @@ class CopilotChatRuntime:
         except copilot_acp.AcpError as exc:
             raise CopilotChatError(str(exc)) from None
         self._notify(chat)
+        if folder_changed:
+            self._notify_folder(chat)
 
     # -- what Copilot sends ----------------------------------------------------
 
@@ -2226,17 +2364,17 @@ class CopilotChatRuntime:
         # Whether Auto, a rule or this chat covers it, worked out first: it
         # reads the disk (links are followed), never with the lock held. The
         # folders it's read from are noted, so a change meanwhile asks.
+        # (Worked out even when the shell may have moved or a background
+        # program runs, which are checked below, so the chat can say that's
+        # why it asks when something would otherwise have answered it.)
         covered, places, why = None, None, ""
         if request is not None and chat is not None:
             with self._lock:
                 places = chat.locations
-                moved = chat.location_changed or any(
-                    folder.live_background() for folder in self._related(chat))
             policy = self._policy(chat)
-            copilot_folder.git_refusal()  # forget any earlier check's reason
-            covered = copilot_folder.decide(request, chat.cwd, policy,
-                                            places or (chat.cwd,), moved)
-            why = copilot_folder.git_refusal()
+            copilot_folder.ask_reason()  # forget any earlier check's reason
+            covered = copilot_folder.decide(request, chat.cwd, policy, places or (chat.cwd,))
+            why = copilot_folder.ask_reason()
         with self._lock:
             # Checked and stored in one go, so a Stop can't slip in between
             # and leave this request stored but never answered.
@@ -2259,6 +2397,7 @@ class CopilotChatRuntime:
             # until its end is seen (_Folder.background).
             background_here = any(folder.live_background() for folder in related)
             ask_once = chat is not None and (chat.edited or chat.reopened)
+            shared = self._shared(chat) if chat is not None else None
             # Only in agent mode: plan mode promises not to edit your files,
             # and nothing is answered for it (Claude's review of #426).
             auto = (watched and covered is not None and request is not None and chat.safe
@@ -2304,29 +2443,14 @@ class CopilotChatRuntime:
             elif watched and request is not None:
                 chat.requests[request_id] = request
                 chat.asked_at[request_id] = chat.edit_seq
-                # When the ask-once is why your rule's or a kept command asks,
-                # say so, or it sounds like the rule stopped working (Kelly's
-                # review of 8345ddd).
-                if (covered is not None and ask_once
-                        and covered.by in (copilot_folder.RULE, copilot_folder.CHAT)):
-                    # Said truly: an edit Auto made, or a chat opened again
-                    # where earlier edits aren't known (Kelly's review of
-                    # 9064712).
-                    text = ASKS_ONCE if chat.edited else REOPENED_ASKS
-                    if text not in chat.notice:
-                        chat.notice = f"{chat.notice} {text}" if chat.notice else text
-                # And when a repository setting is why git asks.
-                if why and request.method == COMMAND:
-                    text = GIT_SETTING_ASKS.format(setting=why)
-                    if text not in chat.notice:
-                        chat.notice = f"{chat.notice} {text}" if chat.notice else text
-                # And when a running program is why a file change asks.
-                if (covered is not None and request.method == FILES and running_here
-                        and STILL_RUNNING_ASKS not in chat.notice):
-                    chat.notice = (f"{chat.notice} {STILL_RUNNING_ASKS}" if chat.notice
-                                   else STILL_RUNNING_ASKS)
+                text = _ask_reason(chat, request, covered, why, running=running_here,
+                                   background=background_here, another_waiting=command_waiting,
+                                   ask_once=ask_once)
+                if text and text not in chat.notice:
+                    chat.notice = f"{chat.notice} {text}" if chat.notice else text
             elif watched:
                 chat.notice = problem
+            folder_changed = chat is not None and shared != self._shared(chat)
         if auto:
             try:
                 connection.respond(request_id, request.approval_answer(ALLOW_ONCE))
@@ -2342,6 +2466,8 @@ class CopilotChatRuntime:
             if not watched:
                 return
         self._notify(chat)
+        if folder_changed:
+            self._notify_folder(chat)
 
     def _on_notification(self, connection, method: str, params: dict) -> None:
         if method != "session/update":
@@ -2350,6 +2476,7 @@ class CopilotChatRuntime:
         chat = self._chat_on(connection, params.get("sessionId"))
         if chat is None:
             return
+        folder_changed = False
         with self._lock:
             kind = update.get("sessionUpdate")
             # Settings changes count even while history is replayed.
@@ -2381,7 +2508,9 @@ class CopilotChatRuntime:
                 chat.last_chunk_notice = now
             elif kind in ("tool_call", "tool_call_update"):
                 chat.reply_open = False  # text after a tool is a new reply
+                shared = self._shared(chat)
                 _remember_preview(chat, update)
+                folder_changed = shared != self._shared(chat)
                 if _text(update.get("title"), 500):
                     chat.activity = _text(update.get("title"), 500)
             elif kind == "usage_update":
@@ -2399,6 +2528,8 @@ class CopilotChatRuntime:
         if kind in ("config_option_update", "current_mode_update") and unsafe_turn:
             self.stop(chat.native_id, hold=True)
         self._notify(chat)
+        if folder_changed:
+            self._notify_folder(chat)
 
     # -- state -----------------------------------------------------------------
 
@@ -2436,6 +2567,23 @@ class CopilotChatRuntime:
             changed_paths=chat.changed_paths, model=chat.model, models=chat.models,
             token_usage=(ContextReport(min(1.0, chat.context[0] / chat.context[1]), chat.context[1])
                          if chat.context[1] > 0 and chat.context[0] >= 0 else None))
+
+    def _shared(self, chat: _Chat) -> tuple:
+        """What this chat's state says of its folder and those related to it,
+        which other chats there say too (with _lock held)."""
+        related = self._related(chat)
+        return (any(folder.live() for folder in related),
+                any(folder.live_background() for folder in related))
+
+    def _notify_folder(self, chat: _Chat) -> None:
+        """Tell the other chats sharing this one's folder when what they share
+        changed, or their status goes stale (Kelly's review of 5d378b4)."""
+        with self._lock:
+            related = self._related(chat)
+            others = [other for other in self._chats.values()
+                      if other is not chat and any(other.folder is folder for folder in related)]
+        for other in others:
+            self._notify(other)
 
     def _notify(self, chat: _Chat) -> None:
         ended = False

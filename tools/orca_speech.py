@@ -182,6 +182,18 @@ STEPS = [
     Step("Copilot's Chat Permissions", ["ctrl+shift+h"],
          expect=["Chat Permissions", "Allowed for this chat", "npm run lint"]),
     Step("the command just kept", ["Down"], expect=["Exactly this command: npm test"]),
+    # Past Remove and Remove All, Restart Copilot, whose name says what it does.
+    Step("Tab to Restart Copilot", ["Tab", "Tab", "Tab"], expect=["Restart Copilot"]),
+    # Another chat is running something: a Yes/No message box, No the default.
+    Step("Restart Copilot warns first", ["space"],
+         expect=["1 other Copilot chat is running", "Restart it anyway"]),
+    # Return takes the default, No: nothing's said to have stopped, and the
+    # focus is back on the button.
+    Step("No, the default, so nothing stops", ["Return"], expect=["Restart Copilot"],
+         refuse=["Copilot stopped"]),
+    # The other chat has finished by now: it stops, and says so.
+    Step("Restart Copilot", ["space"], expect=["Restart Copilot"],
+         expect_dbus=["Copilot stopped"]),
     # Back on the row it left, which Orca 46 reads without the list's name.
     Step("Chat Permissions closed, back in the messages", ["Escape"],
          expect=[f"{COPILOT_TITLE} — The Chat Place", "What changed"]),
@@ -295,13 +307,19 @@ def copilot_chat(frame, env) -> None:
         allowed.clear()
         allowed.update(commands)
 
+    # Warned about once, as if another chat then finished.
+    warnings = ["1 other Copilot chat is running a turn or a program. Restarting Copilot ends "
+                "them, and what they were doing isn't picked up again. Restart it anyway?"]
+
     frame.sessions._providers["copilot"].runtime = SimpleNamespace(
         known=lambda: [(native, info.cwd)], snapshot=lambda _native: now["state"],
         ready=lambda _native: True, adopt=lambda _native: None,
         prepare=lambda _native, _cwd: None, close=lambda: None,
         chat_candidate=lambda _native, _request_id: request.command,
         allowed_here=lambda _native: set(allowed), keep_allowed=keep_allowed, answer=answer,
-        set_mode=lambda _native, mode: mode, set_auto=lambda _native, on: None)
+        set_mode=lambda _native, mode: mode, set_auto=lambda _native, on: None,
+        restart_warning=lambda _native: warnings.pop() if warnings else "",
+        restart=lambda: True)
     frame._codex_states[info.key] = now["state"]
     frame.open_session(dataclasses.replace(record.to_info(), state=IDLE))
     fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy

@@ -467,6 +467,19 @@ class CodexChats:
             self._update_send_state()
         self._codex_work(prepare, done)
 
+    def _reopen_copilot_chat(self):
+        """After Restart Copilot, the chat open in the window: anything else
+        is opened when it's next chosen, and this one's already chosen."""
+        info = self._open
+        if info is None or info.provider != 'copilot' or not self._can_edit(info):
+            return
+        record = self.store.get(info.cli_session_id, provider=info.provider)
+        if record is None or self.sessions.owned_action('ready', record):
+            return
+        self._codex_preparing[info.key] = self._open_generation
+        self._update_send_state()
+        self._prepare_codex_owned(self._open_generation)
+
     def _send_codex_owned(self, record, text, announce_send=True, restore=True, on_result=None):
         """``announce_send`` and ``restore`` off: an agent conversation (#248)
         says what was sent, and keeps the text if it fails (``on_result``)."""
@@ -776,8 +789,10 @@ class CodexChats:
             # yet: its preparation's done() says a mode problem still left
             # (#424).
             self._say(f'{record.title}: {state.problem}', interrupt=False)
-        if state.notice and (previous is None or previous.notice != state.notice):
-            self._say(f'{record.title}: {state.notice}', interrupt=False)
+        from ..providers.copilot_runtime import notice_to_say
+        new_notice = notice_to_say(previous.notice if previous is not None else '', state.notice)
+        if new_notice:
+            self._say(f'{record.title}: {new_notice}', interrupt=False)
         before_mode, mode = getattr(previous, 'mode', ''), getattr(state, 'mode', '')
         if (provider == 'copilot' and before_mode and mode and before_mode != mode
                 and key not in getattr(self, '_copilot_mode_pending', ())

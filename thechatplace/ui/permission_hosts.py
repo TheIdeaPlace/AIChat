@@ -194,6 +194,14 @@ class CodexPermissions:
         self.frame._load_codex_saved_rules(self.record.cwd, listed)
 
 
+#: What Restart Copilot says.
+RESTART_UNKNOWN = ("The Chat Place couldn't check what other Copilot chats are doing. Restarting "
+                   "Copilot ends anything they're running. Restart it anyway?")
+RESTARTED = ("Copilot stopped, and commands no longer ask because of what it was running or where "
+             "its shell was. It starts again when a chat needs it.")
+NOT_RESTARTED = "Copilot wasn't running. It starts when a chat needs it."
+
+
 class CopilotPermissions:
     """A Copilot chat started here (#426): its mode (agent, plan or Auto),
     the commands allowed for it with Allow for This Chat, to read and
@@ -241,18 +249,39 @@ class CopilotPermissions:
             'without asking in any agent-mode chat (a trailing * allows more words after '
             'them), and "ask" lists ones that always ask. A command you allow can run what is '
             'in the folder, which Copilot may have changed.',
+            'Restart Copilot stops Copilot, for every chat, and what it started. That clears '
+            'what makes commands ask after a command that may have moved its shell, or a '
+            'program that never ended. It starts again when a chat needs it.',
         ]
         from ..providers.copilot_runtime import asks_now
-        asks = asks_now(state) if state is not None else ''
+        asks = asks_now(state, detail=True) if state is not None else ''
         if asks:
-            if "opening it again" not in asks:
-                asks += " Closing The Chat Place and opening it again starts Copilot afresh."
             lines.append(asks)
         answered = getattr(state, 'auto_allowed', ())
         if answered:
             lines.append('Answered for you since Copilot started, newest first:\n'
                          + '\n'.join(summary for _n, summary in reversed(answered)))
         return '\n\n'.join(lines)
+
+    def restart_warning(self, done):
+        """``done(what to warn about or "")``, read on a worker. Can't tell:
+        warned about anyway, since it ends other chats' work."""
+        self.frame._codex_work(
+            lambda: self.frame.sessions.owned_action('restart_warning', self.record),
+            lambda text, error: done(RESTART_UNKNOWN if error else text))
+
+    def restart(self, done):
+        """Restart Copilot on a worker, the chat open in the window opened
+        again after it, and ``done(the problem or None)`` on the UI thread."""
+        def finished(running, error):
+            if error:
+                done(running or "Copilot couldn't be stopped.")
+                return
+            self.frame._feedback(RESTARTED if running else NOT_RESTARTED)
+            done(None)
+            self.frame._reopen_copilot_chat()
+        self.frame._codex_work(
+            lambda: self.frame.sessions.owned_action('restart', self.record), finished)
 
     @staticmethod
     def _rows(kept):

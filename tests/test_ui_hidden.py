@@ -15662,3 +15662,122 @@ def test_export_chats_dialog_starts_with_none_chosen(frame, env, monkeypatch):
         assert dialog.format.GetName() == "Format"
     finally:
         dialog.Destroy()
+
+
+def _restart_copilot(frame, monkeypatch, *, warning="", result=True, failed=False):
+    """What Restart Copilot asks of the provider, recorded; ``failed`` raises."""
+    from thechatplace.ui import permission_hosts  # noqa: F401
+    calls = []
+
+    def owned_action(action, record, *args):
+        calls.append(action)
+        if action == "restart_warning":
+            return warning
+        if action == "restart":
+            if failed:
+                raise ValueError("Copilot couldn't be stopped.")
+            return result
+        if action == "ready":
+            return True
+        return []
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    return calls
+
+
+def test_restart_copilot_warns_first_with_no_the_default(frame, env, monkeypatch):
+    """Kelly's review of 5d378b4: the way out of a stuck chat, without closing
+    The Chat Place, that ends other chats' work only if you say so."""
+    _copilot_chat(frame, monkeypatch, "cp-rs", "Restart Copilot")
+    warning = "1 other Copilot chat is running a turn or a program. Restart it anyway?"
+    calls = _restart_copilot(frame, monkeypatch, warning=warning)
+
+    def drive(dialog):
+        assert dialog.restart_btn.GetLabelText() == "Restart Copilot"
+        dialog.on_restart()
+        assert pump(lambda: not dialog.busy)
+        assert "restart" not in calls               # answered No
+        dialog.on_restart()
+        assert pump(lambda: not dialog.busy and "restart" in calls)
+        return True
+    try:
+        result, asked = _chat_permissions(frame, monkeypatch, drive, [wx.NO, wx.YES])
+    finally:
+        frame._codex_states.clear()
+    assert result
+    assert [text for text, _style in asked] == [warning, warning]
+    assert all(style & wx.NO_DEFAULT and style & wx.YES_NO for _text, style in asked)
+    assert any("Copilot stopped" in said for said in env["feedback"])
+
+
+def test_restart_copilot_with_nothing_to_warn_about_just_does_it(frame, env, monkeypatch):
+    _copilot_chat(frame, monkeypatch, "cp-rn", "Restart Copilot")
+    calls = _restart_copilot(frame, monkeypatch)
+
+    def drive(dialog):
+        dialog.on_restart()
+        assert pump(lambda: not dialog.busy and "restart" in calls)
+        return dialog.note.GetValue()
+    try:
+        note, asked = _chat_permissions(frame, monkeypatch, drive)
+    finally:
+        frame._codex_states.clear()
+    assert asked == []
+    assert "Restart Copilot" in note
+    assert any("Copilot stopped" in said for said in env["feedback"])
+
+
+def test_restart_copilot_says_when_copilot_wasnt_running(frame, env, monkeypatch):
+    _copilot_chat(frame, monkeypatch, "cp-rw", "Restart Copilot")
+    calls = _restart_copilot(frame, monkeypatch, result=False)
+
+    def drive(dialog):
+        dialog.on_restart()
+        return pump(lambda: not dialog.busy and "restart" in calls)
+    try:
+        _chat_permissions(frame, monkeypatch, drive)
+    finally:
+        frame._codex_states.clear()
+    assert any("wasn't running" in said for said in env["feedback"])
+
+
+def test_restart_copilot_says_if_it_failed(frame, env, monkeypatch):
+    _copilot_chat(frame, monkeypatch, "cp-rf", "Restart Copilot")
+    calls = _restart_copilot(frame, monkeypatch, failed=True)
+
+    def drive(dialog):
+        dialog.on_restart()
+        return pump(lambda: not dialog.busy and "restart" in calls)
+    try:
+        _result, asked = _chat_permissions(frame, monkeypatch, drive)
+    finally:
+        frame._codex_states.clear()
+    assert any("couldn't be stopped" in text for text, _style in asked)
+    assert not any("Copilot stopped" in said for said in env["feedback"])
+
+
+def test_restart_copilot_opens_the_open_chat_again(frame, env, monkeypatch):
+    info = _copilot_chat(frame, monkeypatch, "cp-ro", "Restart Copilot")
+    monkeypatch.setattr(frame, "_open", info)
+    prepared = []
+    monkeypatch.setattr(frame, "_prepare_codex_owned", prepared.append)
+    ready = [False]
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record, *args: ready[0] if action == "ready" else None)
+    try:
+        frame._reopen_copilot_chat()
+        assert prepared == [frame._open_generation]
+        assert frame._codex_preparing[info.key] == frame._open_generation
+        frame._codex_preparing.clear()
+        prepared.clear()
+        ready[0] = True                              # already opened
+        frame._reopen_copilot_chat()
+        assert prepared == [] and not frame._codex_preparing
+    finally:
+        frame._codex_states.clear()
+
+
+def test_only_a_copilot_chat_gets_restart_copilot(frame, env, fake_runner, monkeypatch):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    result, _asked = _chat_permissions(frame, monkeypatch, lambda dialog: dialog.restart_btn)
+    assert result is None

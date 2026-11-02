@@ -881,6 +881,15 @@ class CopilotProvider:
         self._say_mode_problem(native_id, problem)
         return problem or None
 
+    def restart_warning_owned(self, record) -> str:
+        """What Restart Copilot would end, to warn about first, or ""."""
+        return self.runtime.restart_warning(record.cli_session_id)
+
+    def restart_owned(self, record) -> bool:
+        """Restart Copilot: every chat's, as they share its one process.
+        Waits for it to close, so call it off the UI thread."""
+        return self.runtime.restart()
+
     def chat_rules_owned(self, record):
         from . import copilot_auto_store
         _auto, kept, _problem = copilot_auto_store.load(record.cli_session_id)
