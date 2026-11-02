@@ -949,6 +949,9 @@ class CopilotProvider:
             except CopilotChatError as exc:
                 # Not left on to come back by itself another time it opens
                 # in agent mode (Claude's review of Auto).
+                # And not left on in memory, where the same chat reopened would
+                # keep it while saying it can't be in Auto.
+                self.runtime.set_auto(native_id, False)
                 copilot_auto_store.save_auto(native_id, False)
                 self._say_mode_problem(native_id, str(exc))
         else:

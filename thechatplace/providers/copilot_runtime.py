@@ -204,6 +204,8 @@ def asks_now(state, detail: bool = False) -> str:
     running = getattr(state, "running", False)
     auto = getattr(state, "auto", False)
     parts = []
+    if getattr(state, "rules_broken", False):
+        parts.append("Commands ask until your copilot-rules.json is fixed.")
     if moved:
         parts.append("Commands in this chat ask until you use Restart Copilot, in File, Chat Permissions, "
                      "since a command you allowed may have moved Copilot's shell.")
@@ -469,8 +471,8 @@ def _ask_reason(chat, request, covered, why: str, *, running: bool, background: 
 
 
 #: Said once a run when your rules file for Copilot can't be used.
-RULES_PROBLEM = ("Your rules file for Copilot, copilot-rules.json, {problem}, so none of its rules "
-                 "are used until it's fixed. File, Chat Permissions says where it is.")
+RULES_PROBLEM = ("Your rules file for Copilot, copilot-rules.json, {problem}, so every command "
+                 "asks until it's fixed. File, Chat Permissions says where it is.")
 
 
 #: Said when a chat's folder is a whole drive or the home folder.
@@ -545,6 +547,7 @@ class CopilotChatState:
     location_changed: bool = False
     #: Auto, a rule or a kept command may answer requests in this chat.
     answering: bool = False
+    rules_broken: bool = False
     #: A program allowed in this folder may still be running: Auto's file
     #: changes ask (Kelly's review of 9064712: the window said they were
     #: still allowed).
@@ -1149,6 +1152,8 @@ class _Chat:
         #: kept command), as last worked out: the window says when commands
         #: ask again only then.
         self.answering = False
+        #: Your rules couldn't all be read when last looked at: commands ask.
+        self.rules_broken = False
 
     @property
     def safe(self) -> bool:
@@ -1559,8 +1564,8 @@ class CopilotChatRuntime:
         rules = self._read_rules()
         with self._lock:
             # A rules file that can't be used is said once a run, in the chat
-            # it was found in, not only in Chat Permissions: one typo turns
-            # off every rule (Kelly's review of 58c5f03). Said again if it
+            # it was found in, not only in Chat Permissions: one typo makes
+            # every command ask (Kelly's review of 58c5f03). Said again if it
             # breaks again after being fixed.
             problem = rules.problem
             said = bool(problem) and problem != getattr(self, "_rules_said", "")
@@ -1568,6 +1573,7 @@ class CopilotChatRuntime:
                 text = RULES_PROBLEM.format(problem=problem)
                 chat.notice = f"{chat.notice} {text}" if chat.notice else text
             self._rules_said = problem
+            chat.rules_broken = not rules.can_answer_commands
             auto, exact = chat.auto, self._allowed_here.get(chat.native_id, frozenset())
             policy = copilot_folder.Policy(auto=auto, allow=rules.allow, ask=rules.ask,
                                            exact=exact, unusable=rules.unusable,
@@ -1580,7 +1586,7 @@ class CopilotChatRuntime:
     def _read_rules(self) -> "copilot_folder.Rules":
         try:
             return self._rules()
-        except Exception:  # noqa: BLE001 - unreadable rules are no rules
+        except Exception:  # noqa: BLE001 - unreadable rules: every command asks
             return copilot_folder.Rules(problem="couldn't be read")
 
     def chat_candidate(self, native_id: str, request_id) -> str:
@@ -2584,6 +2590,7 @@ class CopilotChatRuntime:
             notice=chat.notice, context_used=chat.context[0], context_size=chat.context[1],
             context_epoch=chat.context_epoch, checking=chat.busy and chat.answered,
             mode=chat.mode, auto=chat.auto, auto_allowed=tuple(chat.auto_allowed),
+            rules_broken=chat.rules_broken,
             location_changed=chat.location_changed, answering=chat.answering or chat.auto,
             running=any(folder.live() for folder in self._related(chat)),
             background=any(folder.live_background() for folder in self._related(chat)),

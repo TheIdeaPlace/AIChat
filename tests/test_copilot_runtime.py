@@ -3822,3 +3822,10 @@ def test_every_reason_for_asking_leaves_the_notice_with_the_request():
     for text in constants:
         text = text.format(entry=r"C:\\tools") if "{entry}" in text else text
         assert copilot_runtime._without_asks(f"Other. {text}") == "Other.", text
+
+
+def test_the_status_says_commands_ask_while_rules_cant_be_read():
+    from types import SimpleNamespace
+    from thechatplace.providers.copilot_runtime import asks_now
+    assert "copilot-rules.json" in asks_now(SimpleNamespace(rules_broken=True))
+    assert asks_now(SimpleNamespace(rules_broken=False)) == ""

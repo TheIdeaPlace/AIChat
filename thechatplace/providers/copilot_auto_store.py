@@ -97,13 +97,15 @@ def _read() -> tuple:
         return None, UNREADABLE
     try:
         raw = json.loads(data.decode("utf-8"))
-        chats = raw.get("chats") if isinstance(raw, dict) else None
-        if not isinstance(chats, dict):
-            raise ValueError("no chats")
-        version = raw.get("version", 1)
+        if not isinstance(raw, dict):
+            raise ValueError("not an object")
+        # First: a newer release may keep "chats" in another shape.
+        version = raw.get("version", VERSION)
         if type(version) is int and version > VERSION:
             return None, UNREADABLE
-        read = _read_chats(chats)
+        if type(version) is not int or version != VERSION or not isinstance(raw.get("chats"), dict):
+            raise ValueError("not this format")
+        read = _read_chats(raw["chats"])
     except (ValueError, RecursionError):
         try:
             os.replace(path, _set_aside_path(path))

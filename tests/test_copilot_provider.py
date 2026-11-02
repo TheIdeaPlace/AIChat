@@ -1010,3 +1010,26 @@ def test_reopening_turns_auto_off_when_the_store_says_off_or_cant_be_read(monkey
     monkeypatch.setattr(provider, "_remember_models", lambda: None)
     provider.prepare_owned(SimpleNamespace(cli_session_id="x", cwd="c"))
     assert calls == [False]
+
+
+def test_auto_that_couldnt_come_back_is_turned_off_in_memory_too(monkeypatch):
+    """Saved off and said can't be in Auto, but left on for the same chat."""
+    from types import SimpleNamespace
+    from thechatplace.providers import copilot, copilot_auto_store
+    from thechatplace.providers.copilot_runtime import CopilotChatError
+    monkeypatch.setattr(copilot, "chosen_mode", lambda native: ("", ""))
+    monkeypatch.setattr(copilot_auto_store, "load", lambda native: (True, (), ""))
+    monkeypatch.setattr(copilot_auto_store, "save_auto", lambda native, on: "")
+    calls = []
+
+    def set_auto(native, on):
+        calls.append(on)
+        if on:
+            raise CopilotChatError("no")
+    provider = CopilotProvider()
+    provider.runtime = SimpleNamespace(adopt=lambda n: None, keep_allowed=lambda n, c: None,
+                                       prepare=lambda n, cwd, mode="": None, set_auto=set_auto)
+    monkeypatch.setattr(provider, "_say_mode_problem", lambda n, p: None)
+    monkeypatch.setattr(provider, "_remember_models", lambda: None)
+    provider.prepare_owned(SimpleNamespace(cli_session_id="x", cwd="c"))
+    assert calls == [True, False]

@@ -908,8 +908,9 @@ folder a git repository) or a git or git-lfs program of its own (`git.cmd`).
   in `*`. A rule never allows a command that could move Copilot's shell or run a script in it
   (pushd, `.\build.ps1`, source), a shell or something that starts other programs (powershell, cmd,
   bash, Start-Process), or a program git ships other than git (scalar, git-upload-pack). The file is read again for each request, so a change counts at
-  once. If the file can't be read, or an "ask" rule in it can't be, every command asks until it's fixed, so a
-  typo never turns an "always ask" off (the chat says so; a file change in Auto is still answered). An
+  once. If the file can't be read, has a key other than "allow" and "ask", or has an "ask" rule that can't
+  be read, every command asks until it's fixed, so a typo doesn't turn an "always ask" off (the chat
+  says so; a file change in Auto is still answered). An
   "allow" rule that can't be used is left out: Chat Permissions lists it and says why, and a command
   it names says so when it asks.
 - **git in every Copilot chat started here:** Copilot starts with git's filesystem monitor off and

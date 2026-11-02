@@ -163,8 +163,9 @@ def test_auto_isnt_kept_if_the_runtime_refuses_it(tmp_path, data):
     class Refusing(Runtime):
         def __getattr__(self, name):
             if name == "set_auto":
-                def refuse(*args):
-                    raise CopilotChatError("not in agent mode")
+                def refuse(_native, on):
+                    if on:  # as the runtime: turning it off is never refused
+                        raise CopilotChatError("not in agent mode")
                 return refuse
             return super().__getattr__(name)
     provider = CopilotProvider(tmp_path, runtime=Refusing())
@@ -195,8 +196,9 @@ def test_auto_saved_for_a_chat_that_reopens_in_another_mode_is_turned_off(tmp_pa
     class Refusing(Runtime):
         def __getattr__(self, name):
             if name == "set_auto":
-                def refuse(*args):
-                    raise CopilotChatError("not in agent mode")
+                def refuse(_native, on):
+                    if on:  # as the runtime: turning it off is never refused
+                        raise CopilotChatError("not in agent mode")
                 return refuse
             return super().__getattr__(name)
     runtime = Refusing()
@@ -229,3 +231,24 @@ def test_a_chat_half_understood_sets_the_whole_file_aside(data, entry):
 def test_brackets_too_deep_to_read_set_the_file_aside(data):
     (data / "copilot-auto.json").write_text("[" * 200000, encoding="utf-8")
     assert store.load(ONE)[2] == store.SET_ASIDE
+
+
+def test_a_newer_format_in_another_shape_is_left_alone(data):
+    text = '{"version": 2, "chats": []}'
+    (data / "copilot-auto.json").write_text(text, encoding="utf-8")
+    assert store.load(ONE)[2] == store.UNREADABLE
+    assert (data / "copilot-auto.json").read_text(encoding="utf-8") == text
+
+
+@pytest.mark.parametrize("version", ['"2"', '2.0', 'true', 'null', '0'])
+def test_a_version_that_isnt_a_version_sets_the_file_aside(data, version):
+    (data / "copilot-auto.json").write_text(
+        '{"version": %s, "chats": {"%s": {"auto": true}}}' % (version, ONE), encoding="utf-8")
+    auto, _kept, problem = store.load(ONE)
+    assert not auto and problem == store.SET_ASIDE
+
+
+def test_a_missing_version_is_this_format(data):
+    (data / "copilot-auto.json").write_text('{"chats": {"%s": {"auto": true}}}' % ONE,
+                                            encoding="utf-8")
+    assert store.load(ONE)[0] is True

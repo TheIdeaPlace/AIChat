@@ -2560,3 +2560,26 @@ def test_an_ask_rule_naming_an_alias_covers_the_cmdlet_and_its_other_aliases(tmp
     policy = copilot_folder.Policy(auto=True, ask=(rule,))
     for command in ("cat .env", "Get-Content .env", "gc .env", "type .env"):
         assert copilot_folder.check_command(command, str(tmp_path), policy) is None, command
+
+
+@pytest.mark.parametrize("text", ['{"asks": ["Get-Content .env"]}', '{"Ask": ["x"]}',
+                                  '{"ask ": ["x"], "allow": ["npm test"]}'])
+def test_a_misspelt_key_isnt_silently_no_rules(tmp_path, text):
+    path = tmp_path / "rules.json"
+    path.write_text(text, encoding="utf-8")
+    rules = copilot_folder.read_rules(path)
+    assert rules.problem and not rules.can_answer_commands
+
+
+def test_allow_for_this_chat_isnt_offered_while_rules_cant_be_read(tmp_path):
+    (tmp_path / "notes.txt").write_text("x", encoding="utf-8")
+    command = "Get-Content notes.txt" if os.name == "nt" else "cat notes.txt"
+    assert copilot_folder.chat_candidate(command, str(tmp_path), Policy()) == command
+    assert copilot_folder.chat_candidate(command, str(tmp_path), Policy(commands=False)) == ""
+
+
+@windows_paths
+def test_a_rule_naming_an_alias_doesnt_say_the_wrong_reason(tmp_path):
+    (tmp_path / "notes.txt").write_text("x", encoding="utf-8")
+    policy = Policy(ask=(parse_rule("cat notes.txt"),), allow=(parse_rule("Get-Content notes.txt"),))
+    assert copilot_folder._why_it_asks("Get-Content notes.txt", policy) == ""

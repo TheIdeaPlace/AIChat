@@ -465,8 +465,9 @@ class Rules:
 
 
 def read_rules(path) -> Rules:
-    """The rules in ``path``. A missing file is none; one that can't be read
-    is none too, with why, so nothing is answered from half a file."""
+    """The rules in ``path``. A missing file is none. One that can't be read
+    has none either, with why, and then no command is answered
+    (Rules.can_answer_commands), so nothing is answered from half a file."""
     try:
         with open(path, "rb") as handle:
             data = handle.read(256 * 1024 + 1)
@@ -482,6 +483,10 @@ def read_rules(path) -> Rules:
         return Rules(problem="isn't JSON")
     if not isinstance(raw, dict):
         return Rules(problem='needs to be an object with "allow" and "ask" lists')
+    # "asks" or "Ask" would otherwise be no rules at all, silently.
+    unknown = sorted(str(key) for key in raw if key not in ("allow", "ask"))
+    if unknown:
+        return Rules(problem=f'has "{unknown[0][:40]}", which isn\'t "allow" or "ask"')
     lists, unread, unusable, ask_unread = {}, [], [], False
     for key in ("allow", "ask"):
         entries = raw.get(key, [])
@@ -1510,8 +1515,8 @@ MORE_AFTER_ASKS = ("This asks since only 2>&1, or a pipe to a command that sorts
 EXACT_RULE_ASKS = "This asks since your rule allows only those exact words."
 UNUSABLE_RULE_ASKS = ("This asks since a rule of yours that names it can't be used. File, Chat "
                       "Permissions says why.")
-RULES_BROKEN_ASKS = ("This asks since a rule in your copilot-rules.json can't be read, and it may "
-                     "be one that should stop this. File, Chat Permissions says which.")
+RULES_BROKEN_ASKS = ("This asks since your copilot-rules.json can't all be read, and it may hold a "
+                     "rule that should stop this. File, Chat Permissions says why.")
 TOO_BROAD_ASKS = ("This asks since nothing is answered for you in this chat's folder: start a "
                   "Copilot chat in a project's own folder for that.")
 
@@ -1701,7 +1706,7 @@ def _why_it_asks(command: str, policy: Policy) -> str:
     isn't answered and nothing has said why; "" if none names it."""
     text = _ERRORS_TO_OUTPUT.sub(" ", command)
     first = _SPLIT.split(text)[0].split()
-    if any(rule.matches(text.split()) for rule in policy.ask):
+    if _asked(text.split(), policy):
         return ""
     if command.strip() in policy.exact:
         return CANT_FOLLOW_ASKS
@@ -1755,7 +1760,9 @@ def chat_candidate(command: str, folder: str, policy: Policy, locations=None) ->
     kept: one the strict reading can't follow, that reaches outside the
     folder, or that an ``ask`` rule covers. Kept as Copilot wrote it, so
     only the very same command is answered later."""
-    if not folder or folder_too_broad(folder):
+    # While rules can't be read a kept command wouldn't be answered anyway, so
+    # the button would seem not to work.
+    if not folder or not policy.commands or folder_too_broad(folder):
         return ""
     trial = Policy(auto=False, ask=policy.ask, exact=frozenset({command.strip()}))
     return command.strip() if check_command(command, folder, trial, locations) else ""

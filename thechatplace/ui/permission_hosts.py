@@ -334,7 +334,7 @@ class CopilotPermissions:
             if error or rules is None:
                 done("Your rules for Copilot couldn't be read.")
             elif rules.problem:
-                done(f"Your rules file {rules.problem}, so none of its rules are used.")
+                done(f"Your rules file {rules.problem}, so every command asks until it's fixed.")
             elif not rules.allow and not rules.ask and not rules.unread:
                 done('You have no rules for Copilot.')
             else:
@@ -345,6 +345,9 @@ class CopilotPermissions:
                 if rules.ask:
                     parts.append('Your rules, always asked:\n'
                                  + '\n'.join(r.text for r in rules.ask))
+                if not rules.can_answer_commands:
+                    parts.append("An always-asked rule can't be read, so every command asks until "
+                                 "it's fixed.")
                 if rules.unread:
                     parts.append("Rules that aren't used, and why:\n"
                                  + '\n'.join(rules.unread))
