@@ -319,3 +319,41 @@ Ideas from the first listening test, kept here so they aren't lost:
    experimental, and `connect` internal, so check them when the CLI moves on.
 4. **Upstream:** an issue proposing Copilot support, then this reading slice as its first PR,
    following the slice-by-slice pattern used for Codex (#184).
+
+## Which git hooks each command fires (git 2.50, for Kelly's review of f42c582)
+
+Every hook in githooks(5) installed, each logging its own name, then each command run in a new real
+repository. This is where `copilot_folder._GIT_HOOKS_FIRED` comes from. `post-index-change` fires
+when git writes the index back, which status and diff do on a stale one (a repository just unzipped
+has one). `git --no-optional-locks status` doesn't fire it.
+
+| Command | Hooks that fired |
+| --- | --- |
+| status, diff | post-index-change |
+| diff --cached, log, log -p, show, blame, branch (listing), ls-files, rev-parse | none |
+| add, rm, mv | post-index-change |
+| commit | pre-commit, prepare-commit-msg, commit-msg, post-commit, post-index-change, reference-transaction |
+| commit --amend | the same and post-rewrite |
+| push | pre-push, reference-transaction |
+| fetch, tag, branch new or -d, gc | reference-transaction |
+| pull (no local change) | reference-transaction |
+| merge | pre-merge-commit, prepare-commit-msg, commit-msg, post-merge, post-index-change, reference-transaction |
+| merge (fast forward), checkout, switch | post-checkout, post-index-change, reference-transaction |
+| restore | post-checkout, post-index-change |
+| reset | post-index-change, reference-transaction |
+| rebase | pre-rebase, post-checkout, post-commit, prepare-commit-msg, post-rewrite, post-index-change, reference-transaction |
+| cherry-pick, revert | prepare-commit-msg, post-commit, post-index-change, reference-transaction |
+| stash | post-index-change, reference-transaction |
+| clean | none |
+
+Also: only a `.sample` fires nothing. On Windows a file with the hook's name runs with no executable
+bit. `pre-auto-gc` needs gc to have work to do, so commit and fetch list it from githooks(5).
+`fsmonitor-watchman` runs only when `core.fsmonitor` names it, which already asks. In a linked
+worktree the hooks are the repository's, in its common folder, as `git rev-parse --git-path hooks` says.
+
+## What breaks reading quotes in PowerShell (PowerShell 5.1 and 7)
+
+`npm --% ' | New-Item x | npm --% '` runs `New-Item`: after `--%` single quotes aren't strings, and
+`|` still splits. With `foo` a `.cmd`, `foo 'g&h'` runs `h`, because cmd.exe reads the command line
+again; `foo 'c:\x\" & echo x>y & rem'` also ran `echo` in 7. So a program that may be a script can't
+take `& | < > ^ %` under a rule.

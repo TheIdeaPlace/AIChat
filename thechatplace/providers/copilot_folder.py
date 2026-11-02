@@ -1046,7 +1046,7 @@ GIT_HOOKS = frozenset({
 _INDEX = frozenset({"post-index-change"})
 _NO_HOOKS: frozenset = frozenset()
 #: Which hooks a git command can fire, from running each with every hook
-#: installed in a real repository (git 2.50, tools in dev-notes/copilot-cli-probe.md),
+#: installed in a real repository (git 2.50; dev-notes/copilot-cli-probe.md has the results),
 #: and githooks(5) for what takes more than that to reach (gc's pre-auto-gc,
 #: --amend's post-rewrite). git status and git diff write a stale index back
 #: (just unzipping a repository leaves one), which fires post-index-change.

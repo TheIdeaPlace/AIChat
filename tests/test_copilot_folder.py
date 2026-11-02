@@ -2033,7 +2033,8 @@ def test_old_gits_reason_says_to_update_git(repo, monkeypatch):
 
 
 @pytest.mark.parametrize("setting", [
-    '[extensions]\n\trelativeWorktrees = true\n', '[color]\n\tui = auto\n',
+    '[core]\n\trepositoryformatversion = 1\n[extensions]\n\trelativeWorktrees = true\n',
+    '[color]\n\tui = auto\n',
     '[color "diff"]\n\tmeta = yellow\n', '[column]\n\tui = auto\n',
     '[advice]\n\tdetachedHead = false\n', '[log]\n\tdate = iso\n',
     '[status]\n\tshowUntrackedFiles = all\n', '[core]\n\tfsmonitor = false\n',
