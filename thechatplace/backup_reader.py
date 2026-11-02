@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 import stat
 import sqlite3
 import shutil
+import sys
 import tempfile
 
 from . import backup, platform_paths
@@ -57,9 +58,27 @@ _SCRATCH_WAIT = 0.5
 _SCRATCH_STALE_SECONDS = 24 * 60 * 60
 
 
-def _remove_stale_scratch(now=None):
+def _remove_tree(folder):
+    """Delete all of it that can go, past anything that can't: stopping at the
+    first file in use would leave the chats after it. Git's packs are read-only."""
+    def writable_then_retry(function, path, _exc):
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            function(path)
+        except OSError:
+            pass
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(folder, onexc=writable_then_retry)
+    else:  # pragma: no cover - 3.12 is what's built and tested
+        shutil.rmtree(folder, onerror=writable_then_retry)
+
+
+def remove_leftover_scratch(now=None, older_than=_SCRATCH_STALE_SECONDS):
     """Copies an earlier restore couldn't delete: they can hold chats from an
-    encrypted backup, so they don't stay in the temp folder."""
+    encrypted backup, so they don't stay in the temp folder. At the app's start
+    nothing can be using one, as only one copy runs and it restores one at a
+    time, so that passes ``older_than=0``."""
     now = time.time() if now is None else now
     try:
         found = list(Path(tempfile.gettempdir()).glob(f'{_SCRATCH_PREFIX}*'))
@@ -67,8 +86,8 @@ def _remove_stale_scratch(now=None):
         return
     for folder in found:
         try:
-            if now - folder.stat().st_mtime > _SCRATCH_STALE_SECONDS:
-                shutil.rmtree(folder, ignore_errors=True)
+            if now - folder.stat().st_mtime >= older_than and folder.is_dir():
+                _remove_tree(folder)
         except OSError:
             continue
 
@@ -86,13 +105,15 @@ class BackupReader:
         self.computer_id = computer['id']
         self.notes = []
         self._archive, self.manifest = archive, manifest
-        _remove_stale_scratch()
+        remove_leftover_scratch()
         self._temporary = tempfile.TemporaryDirectory(prefix=_SCRATCH_PREFIX)
         self.root = Path(self._temporary.name)
         self._sessions = None
         self._readers = {}
         self._codex = None
         self._closed = False
+        #: The extracted copy couldn't all be deleted: the restore says so.
+        self.left_behind = False
         try:
             self._extract()
         except BaseException:
@@ -117,6 +138,8 @@ class BackupReader:
         try:
             if self._codex is not None:
                 self._codex.close()
+        except Exception:  # noqa: BLE001 - cleanup: the chats are already saved
+            pass
         finally:
             self._remove_scratch()
 
@@ -124,7 +147,8 @@ class BackupReader:
         """Delete the extracted copy. Codex, reading it, can still be writing
         to its scratch profile as it dies (it fetches plugins), and Windows
         then says the folder isn't empty: that must not fail a restore whose
-        chats are already saved. One that can't go now goes next time."""
+        chats are already saved. If some of it stays, ``left_behind`` says so,
+        and the app's next start tries again."""
         for attempt in range(_SCRATCH_TRIES):
             try:
                 self._temporary.cleanup()
@@ -132,6 +156,11 @@ class BackupReader:
             except OSError:
                 if attempt < _SCRATCH_TRIES - 1:
                     time.sleep(_SCRATCH_WAIT)
+        try:
+            _remove_tree(self.root)
+        except OSError:
+            pass
+        self.left_behind = os.path.lexists(self.root)
 
     def _extract(self):
         files = self.manifest.get('files')
@@ -353,7 +382,10 @@ class BackupReader:
             return result
         except (OSError, ValueError, RuntimeError, sqlite3.Error):
             if self._codex is not None:
-                self._codex.close()
+                try:
+                    self._codex.close()
+                except Exception:  # noqa: BLE001 - the other providers can still be imported
+                    pass
                 self._codex = None
             self.notes.append('Codex history could not be listed. Install a compatible native Codex '
                               'CLI and try again; other providers can still be imported.')

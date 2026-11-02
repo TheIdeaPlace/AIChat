@@ -638,7 +638,7 @@ def test_a_legacy_codex_chat_reads_whole_turns_and_never_asks_for_items():
                 return {"thread": {"id": "one", "historyMode": "legacy", "updatedAt": 1,
                                    "status": {"type": "notLoaded"}}}
             if method == "thread/turns/list":
-                assert params["itemsView"] == "full"
+                assert params["itemsView"] == "full" and params["limit"] == 10
                 return {"data": [turn], "nextCursor": None}
             raise AssertionError(f"not supported yet: {method}")
 
