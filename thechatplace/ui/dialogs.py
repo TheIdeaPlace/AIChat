@@ -141,7 +141,8 @@ def copilot_auto_warning(folder: str) -> str:
             "backed up or under version control, and not with files you haven't checked: "
             "instructions hidden in a file Copilot reads could steer what it changes.\n\n"
             "It still asks before running anything else, before anything outside the folder, and "
-            "before changing files that can make a program run. The Chat Place checks what each "
+            "before changing files that can make a program run, such as .git and .vscode. The Chat "
+            "Place checks what each "
             "command says, which is a strict check, not a lock.\n\n"
             "Auto stays on for this chat until you choose Agent or Plan.\n\n"
             "Turn on Auto for this chat?")

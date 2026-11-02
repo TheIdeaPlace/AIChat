@@ -15851,7 +15851,7 @@ def test_chat_permissions_removal_names_copilot_and_comes_first_with_what_asks(f
     frame._codex_states[host.info.key] = CopilotChatState(
         "probe", "idle", mode=AGENT_MODE, auto=True, location_changed=True,
         auto_allowed=((1, "Command: Get-ChildItem"),))
-    assert host.note().startswith("Its commands ask until you use Restart Copilot")
+    assert host.note().startswith("Commands in this chat ask until you use Restart Copilot")
     assert "Get-ChildItem" not in host.note() and "Get-ChildItem" in host.note_last()
 
 

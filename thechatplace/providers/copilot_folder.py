@@ -117,6 +117,9 @@ _MOVERS = frozenset({
     # More that change what a later command means (the adversarial review).
     "import-alias", "ipal", "add-type", "update-typedata", "update-formatdata",
     "enter-pssession", "etsn", "set-psdebug",
+    # using module runs a module's code in the shell; bash's and zsh's words
+    # that run the next one (noglob cd ..), and printf -v, which sets a variable.
+    "using", "noglob", "nocorrect", "repeat", "printf",
 })
 #: PowerShell's own drives other than disks, as the start of a word
 #: ("env:PATH", "alias:ls"): writing to one changes what later commands mean.
@@ -226,7 +229,7 @@ _SPLIT = re.compile(r"(\|\||&&|[|;\n\r])")
 _REFUSED = re.compile(r"[()@,<>=$`{}~&*?\[\]^#!]|\.\.|::|[^\x09\x0a\x0d\x20-\x7e]")
 #: What may make a hand-allowed command move the shell in a way not read,
 #: outside plain quoted text (may_move).
-_MOVING = re.compile(r"[$`(){}@&]")
+_MOVING = re.compile(r"[$`(){}@&<]")
 _NON_ASCII = re.compile(r"[^\x09\x0a\x0d\x20-\x7e]")
 #: A quoted string, read left to right so a quote inside the other kind of
 #: quotes doesn't start one.
@@ -404,7 +407,7 @@ def _allow_problem(entry, rule: Optional[Rule]) -> str:
                 else _RULE_UNREAD)
     if any(word.endswith("\\") for word in rule.words):
         return _RULE_QUOTES
-    if rule.words[0].lower() in _GIT_NAMES and not _git_rule_words_ok(rule.words):
+    if _names_git(rule.words[0]) and not _git_rule_words_ok(rule.words):
         return _RULE_GIT
     return ""
 
@@ -787,7 +790,8 @@ def _paths_ok(name: str, words, folder: str, locations, *, letters: bool,
             continue
         # New-Item's -ItemType (or -Type), however shortened, may only be a
         # file or a folder: "s" or "Junc" would make a link.
-        if previous.startswith(("-it", "-ty")) or previous in ("-i", "-t"):
+        if _powershell_own(name) and (previous.startswith(("-it", "-ty"))
+                                      or previous in ("-i", "-t")):
             if not lowered or not ("file".startswith(lowered)
                                    or "directory".startswith(lowered)):
                 return False
@@ -1104,9 +1108,10 @@ def _git_ok(words, folder: str, locations) -> bool:
     """git with one of GIT_READ and only GIT_OPTIONS: ``git status``,
     ``git log --oneline -5``, ``git diff -- notes.txt``."""
     words = _without_git_quiet_options(words)
-    if len(words) < 2 or _unquote(words[1]).lower() not in GIT_READ:
+    # Exactly: git Status is your own alias's, if you have one, and not git status.
+    if len(words) < 2 or _unquote(words[1]) not in GIT_READ:
         return False
-    sub = _unquote(words[1]).lower()
+    sub = _unquote(words[1])
     rest = words[2:]
     if sub == "stash":
         if not rest or rest[0] != "list":
@@ -1186,7 +1191,9 @@ def _path_folder_inside(folder: str) -> bool:
     for entry in os.environ.get("PATH", "").split(os.pathsep):
         place = entry.strip().strip('"')
         if not place:
-            continue
+            if _windows():
+                continue
+            return True  # the current folder, there
         try:
             if not os.path.isabs(place) or _under(_normal(place), base):
                 return True
@@ -1230,6 +1237,14 @@ def _git_checks(folder: str, locations, shows_changes: bool, hooks_fired) -> boo
 _GIT_NAMES = frozenset({"git", "git.exe", "git.cmd", "git.bat", "git.com"})
 
 
+def _names_git(word: str) -> bool:
+    """Whether a command's first word runs git: by any extension, and by a path
+    too (the adversarial review of 324e242: C:\\x\\git.exe commit skipped every
+    check, and ran a repository's hook under a rule)."""
+    last = re.split(r"[\\/]", _unquote(word).lower())[-1].rstrip(" .")
+    return last.split(".")[0] == "git"
+
+
 #: git add's options that do what it says on the folder and nothing else.
 _GIT_ADD_OPTIONS = frozenset({"-A", "-u", "--all", "--update"})
 
@@ -1241,10 +1256,10 @@ def _git_rule_words_ok(words) -> bool:
     words = _without_git_quiet_options(words)
     if len(words) < 2 or words[0].lower() not in ("git", "git.exe"):
         return False
-    if words[1].lower() == "add":
+    if words[1] == "add":
         return len(words) > 2 and all(not word.startswith("-") or word in _GIT_ADD_OPTIONS
                                       for word in words[2:])
-    sub = words[1].lower()
+    sub = words[1]
     rest = list(words[2:])
     if sub == "stash":
         if not rest or rest[0] != "list":
@@ -1265,7 +1280,7 @@ def _git_rule_ok(words, folder: str, locations) -> bool:
     """A git command your rule allows gets the checks Auto's git does (Kelly's
     review of 58c5f03: a rule's git status ran a repository's core.fsmonitor)."""
     words = _without_git_quiet_options(words)
-    sub = words[1].lower()
+    sub = words[1]
     return _git_checks(folder, locations, _git_shows_changes(sub, words[2:]), _hooks_fired(sub))
 
 
@@ -1493,7 +1508,7 @@ def _ask_forms(words):
     own leading options left out, and on Windows with an alias's cmdlet."""
     forms = [list(words)]
     plain = [_unquote(w) for w in words]
-    if plain and plain[0].lower() in _GIT_NAMES:
+    if plain and _names_git(plain[0]):
         rest, index = ["git"], 1
         while index < len(plain) and plain[index].startswith("-"):
             index += 2 if plain[index] in _GIT_VALUE_OPTIONS else 1
@@ -1545,12 +1560,13 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
               and _paths_ok(name, words[1:], folder, locations, letters=False, long_options=True)
               # A kept git command only reads, with git's own checks each time
               # (its config, the repository, a diff program).
-              and (name not in _GIT_NAMES
+              and (not _names_git(name)
                    or (name in ("git", "git.exe") and _git_ok(words, folder, locations))))
         return (CHAT if ok else None), locations
     if policy.auto:
+        # Outside Windows these are programs found on PATH, not the shell's own.
         reading = (name in READ_CMDLETS or name in READ_ALIASES) if _windows() \
-            else name in POSIX_READ
+            else name in POSIX_READ and not _path_folder_inside(folder)
         if reading and _paths_ok(name, words[1:], folder, locations,
                                  letters=True, long_options=False):
             return AUTO, locations
@@ -1561,7 +1577,7 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
                 and _program_is_found_outside(folder)
                 and not may_move(" ".join(words), locations)
                 and _paths_ok(name, words[1:], folder, locations, letters=False, long_options=True)
-                and (name not in _GIT_NAMES or _git_rule_ok(words, folder, locations))):
+                and (not _names_git(name) or _git_rule_ok(words, folder, locations))):
             return RULE, locations
     return None, locations
 
@@ -1692,7 +1708,8 @@ def may_move(command: str, locations=None) -> bool:
     review of 5d378b4: one allowed git commit -m "fix(parser): x" made every
     later command ask). ``locations``: the folders the shell may be in, for a
     program named by its path (_moves_by_path)."""
-    if not command or len(command) > MAX_COMMAND * 10:
+    if not command or len(command) > MAX_COMMAND * 10 or "<#" in command:
+        # PowerShell's block comment (<# x #> cd ..): only a line comment is cut below.
         return True
     text = _without_comments(command).replace("2>&1", " ")  # errors to output isn't a redirect
     masked = _masked(text)
@@ -1715,7 +1732,8 @@ def may_move(command: str, locations=None) -> bool:
         name = raw.lower()
         # PowerShell's own cd.. and cd\\ are functions, one word each.
         if (name in _MOVERS or name in _KEYWORDS or re.match(r"(cd|chdir|sl)\W", name)
-                or name[:1] in ("", "[", "!")):
+                or name[:1] in ("", "[", "!") or re.match(r"\d*[<>]", name)):
+            # (A redirection may come first: >/dev/null cd ..)
             return True
         if name.endswith((".ps1", ".psm1", ".psd1", ".sh", ".bash", ".zsh")):
             return True
@@ -1739,7 +1757,7 @@ def after_allowed_by_hand(command: str, folder: str, locations) -> Optional[tupl
     followed: a cd that a chat's folder allows is followed, and the rest of it
     judged by may_move, so ``cd <the chat's folder>; git add .`` isn't taken
     for moving away (Kelly's review of f42c582)."""
-    if not command or len(command) > MAX_COMMAND * 10:
+    if not command or len(command) > MAX_COMMAND * 10 or "<#" in command:
         return None
     text = _without_comments(command).replace("2>&1", " ")
     masked = _masked(text)

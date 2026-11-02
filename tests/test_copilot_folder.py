@@ -2376,3 +2376,35 @@ def test_an_exact_rule_keeps_its_arguments_case(folder):
     assert not copilot_folder.command_allowed("npm test -C", folder, policy)
     assert not copilot_folder.command_allowed("npm TEST -c", folder, policy)
 
+
+# -- the adversarial review of 324e242 ------------------------------------------------------
+
+
+@pytest.mark.parametrize("command", ["<# x #> cd ..", "Get-Date <# x #> ; cd ..", "using module .\\m.psm1",
+                                     ">/dev/null cd ..", "</dev/null cd ..", "2>/dev/null cd ..",
+                                     "noglob cd ..", "nocorrect cd ..", "repeat 1 cd ..", "printf -v PATH x"])
+def test_block_comments_and_lead_words_count_as_moving(folder, command):
+    assert copilot_folder.may_move(command), command
+    assert copilot_folder.after_allowed_by_hand(command, folder, (folder,)) is None, command
+
+
+@pytest.mark.parametrize("entry", ["C:\\tools\\git.exe commit -m x", "/usr/bin/git commit -m x",
+                                   "tools/git.vbs commit", "GIT.EXE commit"])
+def test_git_named_by_a_path_or_any_extension_gets_gits_rules(tmp_path, entry):
+    read = _rules_read(tmp_path, entry)
+    assert read.allow == () and "may only read" in read.unread[0]
+
+
+def test_a_kept_command_naming_git_by_a_path_can_be_kept_only_if_it_reads_as_git(folder):
+    assert copilot_folder.chat_candidate("tools/git.exe commit -m x", folder, Policy()) == ""
+
+
+@pytest.mark.parametrize("command", ["git Status", "git STATUS", "git Log", "git Stash list"])
+def test_gits_commands_are_matched_exactly(repo, command):
+    assert not copilot_folder.command_allowed(command, repo), command
+
+
+def test_a_programs_dash_t_value_is_checked_as_a_path(folder):
+    outside = os.path.dirname(folder)
+    assert not copilot_folder.command_allowed(f"foo -t {outside}", folder, rules(f"foo -t {outside}"))
+

@@ -205,7 +205,7 @@ def asks_now(state, detail: bool = False) -> str:
     auto = getattr(state, "auto", False)
     parts = []
     if moved:
-        parts.append("Its commands ask until you use Restart Copilot, in File, Chat Permissions, "
+        parts.append("Commands in this chat ask until you use Restart Copilot, in File, Chat Permissions, "
                      "since a command you allowed may have moved Copilot's shell.")
     program = True
     if background and not moved:
