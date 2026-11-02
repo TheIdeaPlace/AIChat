@@ -192,8 +192,8 @@ STEPS = [
     Step("No, the default, so nothing stops", ["Return"], expect=["Restart Copilot"],
          refuse=["Copilot stopped"]),
     # The other chat has finished by now: it stops, and says so.
-    Step("Restart Copilot", ["space"], expect=["Restart Copilot"],
-         expect_dbus=["Copilot stopped"]),
+    # The focus stays on the button, so only the announcement is new.
+    Step("Restart Copilot", ["space"], expect_dbus=["Copilot stopped"]),
     # Back on the row it left, which Orca 46 reads without the list's name.
     Step("Chat Permissions closed, back in the messages", ["Escape"],
          expect=[f"{COPILOT_TITLE} — The Chat Place", "What changed"]),

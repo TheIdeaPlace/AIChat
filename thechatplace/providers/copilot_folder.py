@@ -1281,6 +1281,10 @@ def _moved_to(words, folder: str, locations) -> Optional[tuple]:
 AUTO, RULE, CHAT = "auto", "rule", "chat"
 #: Said when a rule would allow a command but it's longer than MAX_COMMAND.
 TOO_LONG_ASKS = "This asks since the command is too long to be answered for you."
+#: Said when a rule or kept command names the command, but the strict reading
+#: won't answer all of it (a path outside, a redirect, more after it).
+CANT_FOLLOW_ASKS = ("This asks since The Chat Place can't be sure all of it stays inside this "
+                    "chat's folder.")
 
 
 @dataclass(frozen=True)
@@ -1423,17 +1427,23 @@ def _part(words, piped: bool, folder: str, locations, policy: Policy, *, exact: 
 def check_command(command: str, folder: str, policy: Policy,
                   locations=None) -> Optional[Answer]:
     """Whether a command may be answered for you, and the folders Copilot's
-    shell may be in after it; None if it asks."""
+    shell may be in after it; None if it asks, with why (ask_reason) if your
+    rule or a kept command names it, or it sounds like that stopped working."""
+    answer = _checked(command, folder, policy, locations)
+    if answer is None and command and not getattr(_WHY, "reason", ""):
+        words = command.split()
+        named = command.strip() in policy.exact or any(
+            rule.matches(words[:len(rule.words)]) for rule in policy.allow)
+        if named and not any(rule.matches(words, as_prefix=True) for rule in policy.ask):
+            _asks_because(TOO_LONG_ASKS if len(command) > MAX_COMMAND else CANT_FOLLOW_ASKS)
+    return answer
+
+
+def _checked(command: str, folder: str, policy: Policy, locations) -> Optional[Answer]:
     if not folder or not policy.any:
         return None
     parts = _parts(command)
     if parts is None:
-        # Too long to be read through when something would otherwise allow
-        # it, as a commit message with a long body can be: said, or it sounds
-        # like the rule stopped working.
-        if command and len(command) > MAX_COMMAND and any(
-                rule.matches(command.split()[:len(rule.words)]) for rule in policy.allow):
-            _asks_because(TOO_LONG_ASKS)
         return None
     places = tuple(locations) if locations else (folder,)
     exact = command.strip() in policy.exact

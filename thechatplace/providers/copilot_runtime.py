@@ -421,7 +421,7 @@ ANOTHER_WAITING_ASKS = "This asks since another command is waiting for your answ
 PLAN_MODE_ASKS = "This asks since this chat is in plan mode."
 _ASK_SENTENCES = (ASKS_ONCE, REOPENED_ASKS, STILL_RUNNING_ASKS, MOVED_ASKS, BACKGROUND_ASKS,
                   RUNS_IN_BACKGROUND_ASKS, NOT_DESCRIBED_ASKS, ANOTHER_WAITING_ASKS,
-                  PLAN_MODE_ASKS, copilot_folder.TOO_LONG_ASKS)
+                  PLAN_MODE_ASKS, copilot_folder.TOO_LONG_ASKS, copilot_folder.CANT_FOLLOW_ASKS)
 #: copilot_folder's reasons for git, one sentence each, a setting's name
 #: within one having no space after its dot.
 _GIT_SENTENCE = re.compile(r"git asks here because .+?\.(?= |$)")

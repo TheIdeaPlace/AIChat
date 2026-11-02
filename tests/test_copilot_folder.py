@@ -1748,6 +1748,16 @@ def test_a_quoted_option_or_embedded_place_asks_under_a_rule(folder, tmp_path, w
     assert copilot_folder.check_command(command, folder, rules("foo *")) is None, command
 
 
+def test_a_rule_that_names_a_command_it_wont_answer_says_why(folder, tmp_path):
+    policy = rules("foo *")
+    for command in (f'foo "-o:{tmp_path}"', "foo > x", "foo a; cd sub", "foo ../x"):
+        assert "can't be sure" in _reason(command, folder, policy), command
+    assert _reason("bar ../x", folder, policy) == ""
+    # An ask rule asks as you said to, which needs no explaining.
+    both = Policy(allow=(parse_rule("foo *"),), ask=(parse_rule("foo"),))
+    assert _reason("foo ../x", folder, both) == ""
+
+
 def test_an_ordinary_quoted_word_is_still_answered_under_a_rule(folder):
     for command in ('foo "a b"', 'foo "notes.txt"', "foo --watch", 'foo "--watch"',
                     "foo https://example.invalid/z"):
