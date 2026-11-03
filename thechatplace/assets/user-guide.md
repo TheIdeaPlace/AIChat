@@ -222,8 +222,8 @@ works for every provider and opens on the selected message. Each message is a le
 saying who wrote it and when, so **2** moves from message to message, and **H** also stops at the
 headings inside a reply. It shows the messages in the list, so tool activity is there only with Show
 Tool Activity on, as level 3 headings naming what each did. It's a snapshot: close it and press the
-key again to see later messages. Escape puts you back where you pressed the key. **Read as Plain
-Text** (Alt+P) shows the same chat in a text box, at the same message.
+key again to see later messages. Escape puts you back where you pressed the key.
+**Read as Plain Text** (Alt+P) shows the same chat in a text box, at the same message.
 
 Press **Enter** on a message to read it as a formatted page. There, your screen reader's browse
 mode moves by heading (H), table (T), list (L) and code block (each code block is a region: R in

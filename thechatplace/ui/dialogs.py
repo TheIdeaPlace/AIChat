@@ -1584,7 +1584,7 @@ document.addEventListener('keydown', function (e) {
              window.webkit.messageHandlers.hub) || window.hub;
   if (!hub) { return; }
   if (e.key === 'Escape') { e.preventDefault(); hub.postMessage('escape'); }
-  else if (e.altKey && (e.code === 'KeyP' || e.key === 'p' || e.key === 'P')) {
+  else if (e.altKey && e.code === 'KeyP') {
     e.preventDefault(); hub.postMessage('plain'); }
 }, true);
 """
