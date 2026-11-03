@@ -1,6 +1,9 @@
 """Explicit per-thread access to configured Codex MCP servers (#467)."""
 from dataclasses import dataclass
 
+#: A status that isn't already in words.
+STATUS_WORDS = {'needs-auth': 'needs sign-in'}
+
 
 def server_names(names):
     if (not isinstance(names, (list, tuple)) or len(names) > 100
@@ -33,8 +36,12 @@ class CodexTool:
         if self.missing:
             return (f"{self.name}: no longer in Codex's configuration, so this chat can't send. "
                     'Make a copy without it, or add it back to config.toml.')
-        state = 'off for this chat' if self.off_for_chat else self.status
-        return f'{self.name}: {state}, configured Codex MCP server, {len(self.tools)} tools'
+        # Said as Claude's list says it. ``status`` stays as it is: the dialog's
+        # sign-in line goes by it, for either provider.
+        state = 'off for this chat' if self.off_for_chat else STATUS_WORDS.get(self.status, self.status)
+        count = len(self.tools)
+        return (f'{self.name}: {state}, configured Codex MCP server, '
+                f'{count} tool' + ('' if count == 1 else 's'))
 
 
 def inventory(connection, info, allowed=(), *, read_only=False, status_optional=False):

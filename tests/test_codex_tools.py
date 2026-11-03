@@ -57,6 +57,22 @@ def test_the_provider_never_sends_another_chats_thread_id_to_discovery():
     assert connection.calls == ["config/read"] and rows[0].read_only
 
 
+def test_a_row_counts_tools_in_words_and_says_needs_sign_in():
+    def row(tools=(), status="connected"):
+        return CodexTool("notes", status, tools, False).text()
+    assert row(("find",)).endswith(", 1 tool")
+    assert row(("find", "add")).endswith(", 2 tools")
+    assert row(()).endswith(", 0 tools")
+    assert row(status="needs-auth").startswith("notes: needs sign-in,")
+    assert "needs-auth" not in row(status="needs-auth")
+    # What the dialog checks for its sign-in line is still Codex's own status.
+    connection = FakeConnection(servers={"notes": {}},
+                                status=[{"name": "notes", "runtimeStatus": "authenticationRequired"}])
+    info = SimpleNamespace(cwd="folder", cli_session_id="native-1")
+    only = inventory(connection, info, ("notes",))[0]
+    assert only.status == "needs-auth" and "needs sign-in" in only.text()
+
+
 def test_a_chat_of_its_own_still_reads_status_on_its_own_connection():
     connection = FakeConnection(status=[{"name": "notes", "runtimeStatus": "connected",
                                          "tools": {"find": {}}}])

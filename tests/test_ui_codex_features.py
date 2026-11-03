@@ -125,6 +125,12 @@ def test_client_command_keeps_the_draft_below_it(frame, env, monkeypatch):
     assert frame.reply_text.GetValue() == 'Draft to finish later'
 
 
+def test_connected_tools_note_names_the_app_in_full(frame, env):
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    note = CodexConnectedTools(frame, owned(frame, env).to_info()).note()
+    assert "questions that The Chat Place cannot display" in note and "TCP" not in note
+
+
 def test_tool_copy_is_serial_and_does_not_navigate_after_dialog_closes(frame, env, monkeypatch):
     from thechatplace.ui.codex_tools_host import CodexConnectedTools
     from thechatplace.providers.codex_tools import CodexTool
