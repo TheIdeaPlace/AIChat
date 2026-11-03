@@ -5,6 +5,7 @@ said, and thinking in the transcript. Windowless.
 The stream-json lines marked "captured" are as Claude Code 2.1.296 sent
 them in real Haiku turns (ids shortened); the rest follow its schema."""
 import json
+import re
 import threading
 
 import pytest
@@ -261,6 +262,69 @@ def test_background_work_started_while_the_end_waits_waits_for_it(tmp_path):
     assert kinds[-1] == "finished"
 
 
+def test_the_context_wait_running_out_as_background_work_starts_still_says_the_reply(tmp_path):
+    """The order that lost the reply: the worker has taken in the background
+    list, and before it looks at the close, the 1.5 second wait runs out. The
+    wait leaves the turn open for the work, so the worker must still say the
+    reply and wait, however the two interleave."""
+    process = LiveProcess([RUNNING, INIT, REPLY, RESULT, IDLE, BACKGROUND])
+    timers = FakeTimers()
+    events, done = [], threading.Event()
+
+    def on_event(event):
+        events.append(event)
+        if event.kind == "background" and event.data.get("tasks"):
+            # Between the list being set and the worker's check, on the worker.
+            [wait_timer] = [t for t in timers.made if t.interval == cli.CONTEXT_WAIT]
+            wait_timer.function()
+        if event.kind in ("finished", "failed"):
+            done.set()
+    runner = TurnRunner(["claude", "-p", "--model", "haiku"], str(tmp_path), "Build it", on_event,
+                        popen=lambda cmd, **k: process, env={"PATH": "x"}, timer=timers,
+                        context_usage=True)
+    runner.start()
+    assert wait(lambda: any(e.kind == "waiting" for e in events))
+    assert runner.waiting_on_background
+    assert not process.stdin_closed.is_set()
+    assert not done.is_set()
+    process.stdin.close()  # the process goes, ending the fake's stdout
+    assert done.wait(5)
+
+
+def test_a_late_context_answer_doesnt_end_a_turn_that_went_on_to_wait(tmp_path):
+    """The worker took the close back for background work, which has since
+    finished: the answer to the old request mustn't close stdin under the
+    turn Claude starts to hear about it."""
+    go = threading.Event()
+    lines_ = [RUNNING, INIT, REPLY, RESULT, IDLE, BACKGROUND, NO_BACKGROUND, go]
+    runner, process, timers, events, done = live_turn_run(tmp_path, lines_, context_usage=True)
+    assert wait(lambda: any(t.interval == cli.BACKGROUND_DONE_WAIT for t in timers.made))
+    [wait_timer] = [t for t in timers.made if t.interval == cli.CONTEXT_WAIT]
+    wait_timer.function()
+    assert not process.stdin_closed.is_set()
+    go.set()
+    process.stdin.close()  # the process goes, ending the fake's stdout
+    assert done.wait(5)
+
+
+def test_going_back_to_work_during_the_context_wait_calls_off_the_close(tmp_path):
+    """Claude Code says "running" inside the wait, a notification's turn say:
+    the wait running out mustn't close stdin under it. The next idle ends it."""
+    go = threading.Event()
+    lines_ = [RUNNING, INIT, REPLY, RESULT, IDLE, RUNNING, go, REPLY, RESULT, IDLE,
+              lambda p: answer(last_request(p, "get_context_usage")[0], response={})]
+    runner, process, timers, events, done = live_turn_run(tmp_path, lines_, context_usage=True)
+    # Idle called off the ceiling the result armed, so a live one is "running"'s.
+    assert wait(lambda: timers.live_ceilings()
+                and any(t.interval == cli.CONTEXT_WAIT for t in timers.made))
+    [wait_timer] = [t for t in timers.made if t.interval == cli.CONTEXT_WAIT]
+    wait_timer.function()
+    assert not process.stdin_closed.is_set()
+    go.set()
+    assert done.wait(5)
+    assert events[-1].kind == "finished"
+
+
 def test_set_permission_mode_sends_the_mode_and_status_reaches_the_window(tmp_path):
     go, answered = threading.Event(), threading.Event()
     lines_ = [RUNNING, INIT, REPLY, go,
@@ -296,6 +360,23 @@ def test_control_requests_fail_when_unanswered_or_the_turn_ends(tmp_path):
                      ("second", False, "the turn ended")]
     assert runner.set_model("opus", lambda *a: heard.append("late")) is False
     assert "late" not in heard
+
+
+def test_the_background_list_says_a_finished_task_is_gone_before_the_turn_ends(tmp_path):
+    """What Stop Background Task checks before sending anything: a task that
+    ended is off ``background_entries``, with the turn still open."""
+    go = threading.Event()
+    done_list = ev(type="system", subtype="background_tasks_changed", tasks=[
+        {"task_id": "b2", "task_type": "local_bash", "description": "Watch CI"}])
+    two = ev(type="system", subtype="background_tasks_changed", tasks=[
+        {"task_id": "b1", "task_type": "local_bash", "description": "Windows build"},
+        {"task_id": "b2", "task_type": "local_bash", "description": "Watch CI"}])
+    runner, process, _t, _events, done = live_turn_run(
+        tmp_path, [RUNNING, INIT, two, done_list, go, NO_BACKGROUND, REPLY, RESULT, IDLE])
+    assert wait(lambda: [e["task_id"] for e in runner.background_entries] == ["b2"])
+    assert not any(l.get("request", {}).get("subtype") == "stop_task" for l in process.sent())
+    go.set()
+    assert done.wait(5)
 
 
 def test_stop_task_names_the_task_and_the_turn_ends_once_its_work_is_gone(tmp_path):
@@ -383,11 +464,53 @@ def test_a_retry_is_kept_for_turn_status_until_the_turn_moves_on(tmp_path):
     runner, _p, _t, events, done = live_turn_run(tmp_path, [RUNNING, INIT, RETRY, go, REPLY,
                                                             RESULT, IDLE])
     assert wait(lambda: runner.retry is not None)
-    assert runner.retry["attempt"] == 2 and runner.last_activity == "retrying"
+    assert runner.retry["attempt"] == 2
+    # Turn Status says the retry itself; what Claude last did still stands.
+    assert runner.last_activity == "starting"
     go.set()
     assert done.wait(5)
     assert runner.retry is None
     assert [e.kind for e in events].count("retry") == 1
+
+
+def test_a_retry_while_a_background_agent_waits_isnt_the_turn_retrying(tmp_path):
+    """Claude Code's heartbeat for a subagent on a rate limit, with Claude
+    idle and the reply said: still passed on, but Turn Status is left alone."""
+    go = threading.Event()
+    runner, _p, _t, events, done = live_turn_run(
+        tmp_path, [RUNNING, INIT, BACKGROUND, REPLY, RESULT, IDLE, RETRY, go, NO_BACKGROUND, IDLE])
+    assert wait(lambda: any(e.kind == "retry" for e in events))
+    assert runner.waiting_on_background
+    assert runner.retry is None
+    assert runner.last_activity.startswith("waiting for background work")
+    go.set()
+    assert done.wait(5)
+
+
+def test_a_retry_after_the_answer_with_an_agent_still_going_isnt_the_turn_retrying(tmp_path):
+    """A background agent keeps Claude Code "running" after its answer, so
+    waiting_on_background never comes on: it's the answer that says so."""
+    go = threading.Event()
+    runner, _p, _t, events, done = live_turn_run(
+        tmp_path, [RUNNING, INIT, BACKGROUND, REPLY, RESULT, RETRY, go, NO_BACKGROUND, IDLE])
+    assert wait(lambda: any(e.kind == "retry" for e in events))
+    assert not runner.waiting_on_background
+    assert runner.retry is None
+    assert runner.last_activity.startswith("waiting for background work")
+    go.set()
+    assert done.wait(5)
+
+
+def test_a_retry_once_claude_is_carrying_on_after_its_answer_counts(tmp_path):
+    """Claude's own follow-up: it's working again, so this one is the turn's."""
+    go = threading.Event()
+    runner, _p, _t, events, done = live_turn_run(
+        tmp_path, [RUNNING, INIT, REPLY, RESULT, RUNNING, REPLY, RETRY, go, RESULT, IDLE])
+    assert wait(lambda: any(e.kind == "retry" for e in events))
+    assert runner.retry is not None
+    go.set()
+    assert done.wait(5)
+    assert runner.retry is None
 
 
 @pytest.mark.parametrize("line", [
@@ -451,15 +574,87 @@ def test_retry_words():
     assert live_turn.retry_status_text(None) == ""
 
 
-def test_retries_are_said_first_then_at_most_every_30_seconds():
+@pytest.mark.parametrize("error", sorted(live_turn._RETRY_REASONS))
+def test_every_retry_reason_reads_as_a_sentence(error):
+    reason = live_turn._RETRY_REASONS[error]
+    # A subject and a verb, so it stands after "Claude is retrying:".
+    assert re.search(r"\b(is|isn't|was|wasn't|had|failed|needs|there's)(\s|$)", reason), reason
+    assert reason.split()[0] in ("the", "your", "signing", "there's"), reason
+    text = live_turn.retry_text({"error": error})
+    assert text == f"Claude is retrying: {reason}."
+
+
+def test_billing_and_credentials_retries_read_properly():
+    assert live_turn.retry_text({"error": "billing_error"}) == \
+        "Claude is retrying: there's a billing problem."
+    assert live_turn.retry_status_text({"error": "cloud_credential_error", "attempt": 1}) == \
+        "Claude is retrying: there's a credentials problem, attempt 1."
+
+
+@pytest.mark.parametrize("delay, ending", [
+    (0, "Attempt 2 of 10."),
+    (-5000, "Attempt 2 of 10."),   # retry_at already past
+    (400, "Attempt 2 of 10."),     # nothing to speak of
+    (1000, "Attempt 2 of 10, next in 1 second."),
+    (90000, "Attempt 2 of 10, next in 1 minute 30 seconds."),
+    (5400000, "Attempt 2 of 10, next in 1 hour 30 minutes."),
+])
+def test_a_retrys_wait_is_said_as_a_time_and_left_out_when_nothing(delay, ending):
+    assert live_turn.retry_text({"attempt": 2, "max_retries": 10, "retry_delay_ms": delay,
+                                 "error": "overloaded"}) == \
+        f"Claude is retrying: the service is overloaded. {ending}"
+
+
+def test_a_retrys_wait_is_said_without_an_attempt_too():
+    assert live_turn.retry_text({"retry_delay_ms": 120000, "error": "overloaded"}) == \
+        "Claude is retrying: the service is overloaded. Next in 2 minutes."
+
+
+def test_a_retry_is_said_once_per_turn_for_each_reason():
     throttle = live_turn.RetryThrottle()
-    assert throttle.should_speak("a", 100.0)
-    assert not throttle.should_speak("a", 110.0)
-    assert throttle.should_speak("b", 110.0)  # another chat's turn
-    assert not throttle.should_speak("a", 129.9)
-    assert throttle.should_speak("a", 130.0)
+    assert throttle.should_speak("a", "busy")
+    assert not throttle.should_speak("a", "busy")  # the heartbeat, for hours
+    assert throttle.should_speak("b", "busy")  # another chat's turn
+    assert throttle.should_speak("a", "overloaded")  # a new reason
+    assert not throttle.should_speak("a", "busy")  # going back and forth stays quiet
+    assert not throttle.should_speak("a", "overloaded")
     throttle.turn_ended("a")
-    assert throttle.should_speak("a", 131.0)  # a new turn's first
+    assert throttle.should_speak("a", "busy")  # a new turn's first
+    assert not throttle.should_speak("b", "busy")
+
+
+AUTO_THIS_TURN = "Claude Code switched to auto mode for this turn. Later turns start in manual mode."
+
+
+@pytest.mark.parametrize("saved, mode, before_plan, keep, said", [
+    # Claude planning by itself: kept, and said.
+    ("auto", "plan", "", "plan", "Claude Code switched to plan mode."),
+    ("manual", "plan", "", "plan", "Claude Code switched to plan mode."),
+    # Asking more often: safe to keep.
+    ("auto", "manual", "", "manual", "Claude Code switched to manual mode."),
+    ("auto", "acceptEdits", "", "acceptEdits", "Claude Code switched to accept edits mode."),
+    # More without asking, not chosen here: this turn only.
+    ("manual", "auto", "", "", AUTO_THIS_TURN),
+    ("manual", "acceptEdits", "", "",
+     "Claude Code switched to accept edits mode for this turn. Later turns start in manual mode."),
+    ("acceptEdits", "auto", "", "",
+     "Claude Code switched to auto mode for this turn. "
+     "Later turns start in accept edits mode."),
+    # Out of the plan mode Claude chose: back to yours, or no further than it.
+    ("plan", "manual", "manual", "manual", "Claude Code switched to manual mode."),
+    ("plan", "manual", "auto", "manual", "Claude Code switched to manual mode."),
+    ("plan", "auto", "manual", "manual", AUTO_THIS_TURN),
+    # Out of a plan mode you chose: your choice stands.
+    ("plan", "auto", "", "",
+     "Claude Code switched to auto mode for this turn. Later turns start in plan mode."),
+])
+def test_what_is_kept_and_said_when_claude_code_changes_the_mode(saved, mode, before_plan, keep,
+                                                                 said):
+    assert live_turn.mode_change(saved, mode, before_plan) == (keep, said)
+
+
+def test_a_saved_mode_the_app_doesnt_know_never_takes_on_a_change():
+    assert live_turn.mode_change("somethingNew", "manual")[0] == ""
 
 
 def test_fallback_and_memory_words():
@@ -482,6 +677,9 @@ def test_background_rows_and_stop_results():
     assert live_turn.stop_result_text("Windows build", True, False) == "Stopped Windows build."
     assert "still running" in live_turn.stop_result_text("X", True, True)
     assert live_turn.stop_result_text("X", False, True, "nope") == "Couldn't stop X: nope."
+    assert live_turn.already_finished_text("Windows build") == \
+        "Windows build has already finished."
+    assert live_turn.already_finished_text("the task") == "The task has already finished."
 
 
 def test_context_lines_from_a_captured_answer():

@@ -1202,7 +1202,10 @@ class TurnRunner:
                 command[command.index("--permission-mode") + 1])
         except (ValueError, IndexError):
             self._mode = ""
-        #: A close waiting on the context breakdown (#468).
+        #: A close waiting on the context breakdown (#468). The answer or its
+        #: timeout only clears this by closing; anything else that calls the
+        #: close off is the worker's to clear, so whichever order they run in,
+        #: the worker still sees it and goes on to wait for the work.
         self._closing = False
         #: ``--mcp-config`` for this turn's process only (the session tools,
         #: #165), or None. Kept apart from ``command``, which is the turn's
@@ -1508,14 +1511,22 @@ class TurnRunner:
         timer.start()
 
     def _close_if_done(self) -> None:
-        """End the turn, unless something sent since is still to be answered
-        or background work started meanwhile (the worker then waits for it,
-        as ``_end_or_wait`` does)."""
+        """End the turn, unless the worker has called the close off, something
+        sent since is still to be answered, or background work started
+        meanwhile. That last leaves ``_closing`` set: the worker, on the same
+        background event, waits for the work and says the reply."""
         with self._lock:
-            self._closing = False
-            if self._unanswered or self.background_tasks:
+            if not self._closing or self._unanswered or self.background_tasks:
                 return
+            self._closing = False
             self._close_stdin_locked()
+
+    def _call_off_close(self) -> bool:
+        """The worker's: stop a close waiting on the context breakdown. True
+        if one was waiting."""
+        with self._lock:
+            waiting, self._closing = self._closing, False
+            return waiting
 
     def _write_send_now(self, prompt: str) -> bool:
         """Interrupt, then the message. Call with ``_lock`` held."""
@@ -1848,9 +1859,17 @@ class TurnRunner:
                             self._emit(event)
                         continue
                     if event.kind == "retry":
-                        # Claude Code is retrying (#468), for turn status too.
-                        self.retry = {**(event.data or {}), "at": self._clock()}
-                        self.last_activity = "retrying"
+                        # Claude Code is retrying (#468), for Turn Status too,
+                        # which says so itself: what Claude last did stands.
+                        # It also sends these as a heartbeat, about every 30
+                        # seconds, while a subagent waits on a rate limit
+                        # (seen in 2.1.316's code), so with the turn answered
+                        # and nothing new under way one doesn't mean the turn
+                        # is retrying.
+                        if not (self.waiting_on_background
+                                or (final is not None and not carrying_on
+                                    and not self._unanswered)):
+                            self.retry = {**(event.data or {}), "at": self._clock()}
                         self._emit(event)
                         continue
                     if event.kind == "fallback":
@@ -1974,11 +1993,10 @@ class TurnRunner:
                             # the lock, as "running" does.
                             arm_ceiling()
                         self._emit(event)
-                        if tasks and self._closing and final is not None:
+                        if tasks and final is not None and self._call_off_close():
                             # Work started while the end waited for the
                             # context breakdown (#468): wait for it instead,
                             # saying the reply, as ``_end_or_wait`` would.
-                            self._closing = False
                             outcome = self._end_or_wait()
                             if outcome != "unanswered":
                                 settle(outcome, final)
@@ -2002,6 +2020,8 @@ class TurnRunner:
                             with self._lock:
                                 self.waiting_on_background = False
                                 self._answered = False
+                                # Back at work: the next idle ends the turn.
+                                self._closing = False
                             # Read without the lock on purpose: a Send Now
                             # landing just after only meets the ceiling that
                             # checks again before closing.

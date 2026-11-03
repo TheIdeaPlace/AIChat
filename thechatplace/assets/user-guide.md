@@ -1314,16 +1314,23 @@ To end just one piece of background work and keep the turn, choose
 **File, Stop Background Task**. It's available while the loaded Claude chat has background work running. It lists each
 one with how long it has run ("Windows build, running 3 minutes"); choose one, press Enter, and
 answer Yes to stop it. You hear "Stopped Windows build." The rest keeps running. If that was the
-last of it and Claude had already answered, the turn ends as it would when the work finished.
+last of it and Claude had already answered, the turn ends as it would when the work finished. If
+it finishes while you're choosing, you hear "Windows build has already finished" and nothing else
+happens.
 
 If Claude Code can't reach Claude's service, or the service is busy, it tries again by itself.
-You hear the first retry of a turn, such as "Claude is retrying: the service is overloaded.
-Attempt 2 of 10, next in 8 seconds", and after that at most every 30 seconds; the status bar
-shows each one. If Claude Code moves a turn to another model because the first one failed, you
+You hear a retry once per turn for each reason, such as "Claude is retrying: the service is
+overloaded. Attempt 2 of 10, next in 8 seconds"; the status bar shows each one. If Claude Code moves a turn to another model because the first one failed, you
 hear that too: "Claude switched to Sonnet 5.5 because Opus 5.5 was overloaded." It goes back to
 the chat's model on the next turn. A turn that would move to Fable is still stopped. When Claude
 saves a memory, you hear "Claude saved a memory: build steps" if announcements are set to Full;
 otherwise it's on the status bar.
+
+You also hear when Claude Code changes a chat's permission mode by itself, such as when Claude
+starts planning. A change to plan mode, or to one that asks more often, stays with the chat. A mode
+that lets Claude do more without asking, such as a change over Remote Control, applies to that turn
+only:
+"Claude Code switched to auto mode for this turn. Later turns start in manual mode."
 
 **Ctrl+Shift+T** (Turn Status) says how long the AI has been working on this turn and what it last
 did, or what is still running in the background, whether Claude is retrying, and how far along
