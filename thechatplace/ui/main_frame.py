@@ -2517,15 +2517,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         selected = self._selected_message()
         start = next((i for i, m in enumerate(messages) if m is selected), len(messages) - 1)
         title = f"Whole chat: {info.title}"
-        generation, mark = self._open_generation, self._codex_mark()
+        key, mark = info.key, self._codex_mark()
 
         def work():
             try:
                 page, problem = export.reading_page(title, messages), None
             except Exception as exc:  # noqa: BLE001 - said in the window
                 page, problem = None, exc
-            wx.CallAfter(self._whole_chat_ready, generation, mark, title, messages, start, page,
-                         problem)
+            wx.CallAfter(self._whole_chat_ready, key, mark, title, messages, start, page, problem)
 
         self._whole_chat_building = True
         self._feedback("Preparing the whole chat.")
@@ -2534,18 +2533,27 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         except RuntimeError:  # the pool is shut down: the window is closing
             self._whole_chat_building = False
 
-    def _whole_chat_ready(self, generation, mark, title, messages, start, page, problem):
+    def _whole_chat_ready(self, key, mark, title, messages, start, page, problem):
         self._whole_chat_building = False
-        if self._gone() or self._closing or generation != self._open_generation:
-            return  # another chat was loaded while it was built
+        if self._gone() or self._closing:
+            return
+        self._status("")  # "Preparing" is over, one way or another
+        if self._open is None or self._open.key != key:
+            # By chat, not generation: a turn ending in the same chat bumps that.
+            self._feedback("Another chat was opened, so the whole chat didn't open.")
+            return
         if problem is not None:
             self._feedback(f"Couldn't prepare the whole chat: {problem}")
             return
-        if not self._codex_may_open(mark, "The whole chat is"):
-            return
+        if self._codex_may_open(mark, "The whole chat is"):
+            self._open_whole_chat(title, messages, start, page)
+
+    def _open_whole_chat(self, title, messages, start, page):
         if self._show_page(title, page, start_at=export.message_anchor(start)):
             return
-        self._modal(MessageDialog(self, title, export.to_text(title, messages)))
+        # Plain text on request, or no web view: on the same message.
+        text, tail = export.reading_text(messages, start)
+        self._modal(MessageDialog(self, "Whole chat", text, title=title, start_tail=tail))
 
     def _show_page(self, title: str, page: str, parent=None, start_at: str = "") -> bool:
         """Show ``page`` in the formatted view. False when it can't be shown,

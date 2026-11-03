@@ -20,6 +20,7 @@ Session list:
   Ctrl+Shift+L: Copy Session Link (Claude chats): Enter copies a Markdown link that opens the session in The Chat Place; the list also has the bare link, and where they apply its Open in Claude link and claude.ai address
   Ctrl+Shift+N: Continue the selected chat from the desktop app, a terminal or another app here, as a copy you can reply to (the original isn't changed)
   Ctrl+Shift+O: Change Permission Mode: Claude permission modes, Codex file access and approval reviewer, or Copilot agent mode, plan mode or Auto for the selected (or loaded) Chat Place session (File, Change Effort and Change Model are beside it)
+  Ctrl+Shift+W: Read the loaded chat as one page, starting at the selected message: 2 moves from message to message; Alt+P reads it as plain text instead
   Ctrl+Shift+H: Chat Permissions: the selected (or loaded) Chat Place chat's permission mode, and the commands and tools it may use without asking: for a Claude chat, those it keeps and the rules from Claude Code's own settings for its folder; for a Copilot chat, the commands allowed for it and your rules for Copilot (Delete or Remove takes one back, and Remove All takes them all)
   F5: Refresh the list now and put it back in order (it also refreshes itself every few seconds, without moving rows while you're in it)
   Alt+V, O: Sort Sessions: by status, newest first, oldest first, by title or by folder; the choice is remembered
@@ -36,7 +37,6 @@ Session list:
 
 Messages:
   Enter, or Applications key / Shift+F10 then Read Full Message: Read the whole message as a formatted page (move by heading, table, list and code block); Alt+P reads it as plain text instead; Escape comes back to it
-  Ctrl+Shift+W: Read the whole chat as one page, starting at this message: H moves from message to message; Alt+P reads it as plain text instead
   Ctrl+C: Copy the whole message
   Ctrl+Shift+C: Copy the message's last code block
   Ctrl+Enter on a queued message: Send it now (Claude chats): Claude stops what it's doing and answers it

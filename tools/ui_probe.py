@@ -1094,8 +1094,8 @@ def d_whole_chat(frame, env):
     messages = frame._visible_messages()
     start = messages.index(frame._selected_message())
     title = "Whole chat: Fix the flaky upload test"
-    return lambda: frame._show_page(title, export.reading_page(title, messages),
-                                    start_at=export.message_anchor(start))
+    return lambda: frame._open_whole_chat(title, messages, start,
+                                          export.reading_page(title, messages))
 
 
 def d_message_plain(frame, env):
@@ -2392,7 +2392,7 @@ DIALOG_CLASSES = {
 #: What a formatted-page surface shows instead where there's no web view
 #: (a Mac, or Windows without the WebView2 runtime).
 PLAIN_INSTEAD = {"shortcuts-page": "ShortcutsDialog", "user-guide": "MessageDialog",
-                 "message-formatted": "MessageDialog"}
+                 "message-formatted": "MessageDialog", "whole-chat": "MessageDialog"}
 
 
 def expected_class(name: str) -> str:

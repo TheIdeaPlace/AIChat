@@ -63,10 +63,12 @@ Codex offer different built-in commands; they aren't expected to have identical 
 
 In a Claude chat, then a Codex chat, with a few messages. Select a message in the middle and press
 **Ctrl+Shift+W**. Expect: you hear "Preparing the whole chat.", then the page opens with the reading
-position on that message's heading. Press **H**. Expect: the next heading, often the next message;
-**2** moves only between messages. Each says who wrote it and when. Press **Escape**. Expect: back on
-the message you started from. Turn on tool activity (**Ctrl+T**) and try a long chat. Expect: it still
-opens, with tool rows included. Press **Alt+P** in the page. Expect: the same chat in a plain text box.
+position on that message's heading. Press **2**. Expect: the next message, saying who wrote it and
+when. **H** also stops at headings inside a reply. Press **Escape**. Expect: back on the message you
+started from. Turn on tool activity (**Ctrl+T**) and try a long chat. Expect: it still opens, and
+**3** reaches tool rows that say what each did, while **2** stays on messages. It may take a moment for
+your screen reader to take in a very long page. Press **Alt+P** in the page. Expect: the same chat in
+a plain text box, at that message, with no "Exported" line.
 
 ## Ask Aside: both Claude and Codex
 

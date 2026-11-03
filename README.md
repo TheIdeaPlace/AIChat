@@ -1637,12 +1637,12 @@ shows it as plain text instead.
 | Anywhere | Alt+V, E | Session List Columns: choose what each session's line says, and in what order |
 | Anywhere | Ctrl+Shift+N | Continue the selected (or loaded) chat from the desktop app, a terminal or another app here, as a copy |
 | Anywhere | Ctrl+Shift+O | Change Permission Mode: Claude permission modes, Codex file access and approval reviewer, or Copilot agent mode, plan mode or Auto for the selected (or loaded) Chat Place session |
+| Anywhere | Ctrl+Shift+W | Read the loaded chat as one page, starting at the selected message: 2 moves from message to message; Alt+P reads it as plain text instead |
 | Anywhere | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode and kept rules (for Copilot, the commands allowed for the chat and your rules), to read and remove |
 | Session list | F5 | Refresh the list now and put it in order |
 | Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
 | Session list | Shift+Delete | Delete a Claude chat started here permanently, after you confirm, or The Chat Place's copy of a restored or kept chat; on an agent conversation, delete the conversation and keep its chats |
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
-| Messages | Ctrl+Shift+W | Read the whole chat as one page, starting at this message: H moves from message to message; Alt+P reads it as plain text instead |
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
 | Messages | Ctrl+L | Lists, on Links: every link in the chat, to open in your browser or copy (also from the session list and the reply box) |

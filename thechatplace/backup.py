@@ -350,9 +350,11 @@ def tcp_inventory() -> Inventory:
                           "The Chat Place's settings, groups and session records"))
     inv.items = walk(root, "thechatplace/data",
                      exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json",
+                                    platform_paths.WHOLE_CHAT_PAGE_FILE,
                                     platform_paths.BACKUP_SECRET_FILE + "*"),
                      inventory=inv)
     inv.skipped += ["*.log (diagnostic logs)",
+                    "a whole chat's page while it's open (a copy, gone when it's closed)",
                     "session-tools.json (a running chat's connection key, made anew)",
                     "computer.json (this computer's id; another computer has its own)",
                     "the scheduled backups' protected passphrase (it only works here)"]

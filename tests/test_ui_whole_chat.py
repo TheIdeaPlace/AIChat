@@ -40,7 +40,7 @@ def test_opens_on_the_selected_message_after_building_off_the_window(frame, env,
     title, page, start_at = shown[0]
     assert title.startswith("Whole chat: ")
     assert start_at == f"m{index + 1}" and f'id="{start_at}"' in page
-    assert "<h3>Result</h3>" in page
+    assert "<h4>Result</h4>" in page
 
 
 def test_read_as_plain_text_gives_the_whole_chat_in_a_text_box(frame, env, monkeypatch):
@@ -52,6 +52,9 @@ def test_read_as_plain_text_gives_the_whole_chat_in_a_text_box(frame, env, monke
     frame.on_read_whole_chat()
     assert pump(lambda: plain)
     assert plain[0].GetTitle().startswith("Whole chat: ")
+    assert "Exported" not in plain[0].text.GetValue()
+    assert "A reply" in plain[0].text.GetValue()
+    assert plain[0].text.GetInsertionPoint() > 0  # on the selected message, the last here
     plain[0].Destroy()
 
 
@@ -80,10 +83,28 @@ def test_moving_on_while_it_builds_doesnt_open_it(frame, env, monkeypatch):
     assert any("you've moved on" in f for f in env["feedback"])
 
 
-def test_another_chat_loading_while_it_builds_doesnt_open_it(frame, env, monkeypatch):
+def test_another_chat_opened_while_it_builds_says_so(frame, env, monkeypatch):
+    import dataclasses
+    _load_reply(frame, env, "A reply")
+    shown = _viewer(monkeypatch, wx.ID_CANCEL)
+    frame.on_read_whole_chat()
+    frame._open = dataclasses.replace(frame._open, key="claude:another")
+    assert pump(lambda: not frame._whole_chat_building)
+    assert shown == []
+    assert any("Another chat was opened" in f for f in env["feedback"])
+
+
+def test_a_turn_ending_in_the_same_chat_doesnt_stop_it(frame, env, monkeypatch):
     _load_reply(frame, env, "A reply")
     shown = _viewer(monkeypatch, wx.ID_CANCEL)
     frame.on_read_whole_chat()
     frame._open_generation += 1
-    assert pump(lambda: not frame._whole_chat_building)
-    assert shown == []
+    assert pump(lambda: shown)
+
+
+def test_preparing_doesnt_stay_on_the_status_bar(frame, env, monkeypatch):
+    _load_reply(frame, env, "A reply")
+    shown = _viewer(monkeypatch, wx.ID_CANCEL)
+    frame.on_read_whole_chat()
+    assert pump(lambda: shown)
+    assert "Preparing" not in frame._status_latest

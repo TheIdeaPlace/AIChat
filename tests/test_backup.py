@@ -910,3 +910,14 @@ def test_the_protected_passphrase_file_isnt_backed_up(homes):
     write(homes["data"] / platform_paths.BACKUP_SECRET_FILE, "protected")
     write(homes["data"] / "a.json", "{}")
     assert names(backup.tcp_inventory()) == {"thechatplace/data/a.json"}
+
+
+def test_a_whole_chats_open_page_isnt_backed_up(tmp_path, monkeypatch):
+    # A copy, gone when it's closed: closing it mid-backup would count as a failure.
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    (tmp_path / platform_paths.WHOLE_CHAT_PAGE_FILE).write_text("a chat", encoding="utf-8")
+    (tmp_path / "groups.json").write_text("{}", encoding="utf-8")
+    inventory = backup.tcp_inventory()
+    assert "groups.json" in str(inventory.items)
+    assert platform_paths.WHOLE_CHAT_PAGE_FILE not in str(inventory.items)

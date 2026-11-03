@@ -1488,9 +1488,12 @@ class MessageDialog(wx.Dialog):
     on the same message.
     """
 
-    def __init__(self, parent, speaker_label: str, text: str):
-        super().__init__(parent, title=(speaker_label if speaker_label == "User Guide"
-                                      else f"Message: {speaker_label}"),
+    def __init__(self, parent, speaker_label: str, text: str, title: str = "",
+                 start_tail: str = ""):
+        """``title``: the window's, when it isn't one message's. ``start_tail``:
+        the end of ``text`` to put the caret at the start of."""
+        super().__init__(parent, title=title or (speaker_label if speaker_label == "User Guide"
+                                                 else f"Message: {speaker_label}"),
                          size=dialog_size(parent, 720, 520), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         sizer = wx.BoxSizer(wx.VERTICAL)
         label = f"{speaker_label}:"
@@ -1503,7 +1506,12 @@ class MessageDialog(wx.Dialog):
         sizer.Add(close, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
-        self.text.SetInsertionPoint(0)
+        position = 0
+        if start_tail:
+            from ..aside import answer_start
+            position = answer_start(self.text.GetValue(), start_tail, self.text.GetLastPosition())
+        self.text.SetInsertionPoint(position)
+        self.text.ShowPosition(position)
         wx.CallAfter(self.text.SetFocus)
 
 
@@ -1576,7 +1584,7 @@ document.addEventListener('keydown', function (e) {
              window.webkit.messageHandlers.hub) || window.hub;
   if (!hub) { return; }
   if (e.key === 'Escape') { e.preventDefault(); hub.postMessage('escape'); }
-  else if (e.altKey && e.code === 'KeyP') {
+  else if (e.altKey && (e.code === 'KeyP' || e.key === 'p' || e.key === 'P')) {
     e.preventDefault(); hub.postMessage('plain'); }
 }, true);
 """
@@ -1610,7 +1618,7 @@ def _webview_backend():
 def whole_chat_page_path():
     """Where a whole chat too long to pass to WebView2 goes while it's open."""
     from .. import platform_paths
-    return platform_paths.app_data_dir() / "whole chat page.html"
+    return platform_paths.app_data_dir() / platform_paths.WHOLE_CHAT_PAGE_FILE
 
 
 def remove_whole_chat_page() -> None:
@@ -1701,6 +1709,14 @@ class FormattedMessageDialog(wx.Dialog):
             self.view.EnableAccessToDevTools(False)
             self.view.AddScriptMessageHandler("hub")
             self.view.AddUserScript(_KEY_RELAY)
+            from ..rendering import go_to_script
+            start_script = go_to_script(start_at)
+            if start_script:
+                # As well as on loading, below: WebKit may refuse RunScript's eval
+                # under the page's rules, and this needs none. RunScript was seen
+                # working on WebView2; Mac and Linux haven't been run.
+                self.view.AddUserScript("document.addEventListener('DOMContentLoaded',"
+                                        f"function(){{{start_script}}});")
             if wx.Platform == "__WXGTK__":
                 self.view.AddUserScript(_FOCUS_PAGE)
         except Exception:  # noqa: BLE001 - Escape still works from the buttons
@@ -1712,19 +1728,20 @@ class FormattedMessageDialog(wx.Dialog):
         self._load(page_html)
 
     def _load(self, page_html: str):
-        from ..rendering import DIRECT_PAGE_BYTES
-        if sys.platform == "win32" and len(page_html.encode("utf-8")) > DIRECT_PAGE_BYTES:
+        from ..rendering import needs_page_file, page_file_bytes
+        if sys.platform == "win32" and needs_page_file(page_html):
             # WebView2's limit for a page passed in. The file holds the chat, so
             # it's in the app's own folder and goes when the page does.
             path = whole_chat_page_path()
             try:
-                path.write_text(page_html, encoding="utf-8")
-            except OSError:
-                pass  # WebView2 may yet take it, and says so if not
-            else:
-                self._page_file = path
-                self.view.LoadURL(path.as_uri())
-                return
+                path.write_bytes(page_file_bytes(page_html))
+            except OSError as exc:
+                # Passed in, it would be a blank page where Escape doesn't work.
+                self.Destroy()
+                raise RuntimeError(f"Couldn't show the formatted page: {exc}") from exc
+            self._page_file = path
+            self.view.LoadURL(path.as_uri())
+            return
         self.view.SetPage(page_html, "")
 
     def Destroy(self):
@@ -1758,8 +1775,10 @@ class FormattedMessageDialog(wx.Dialog):
             wx.CallAfter(self.EndModal, ID_PLAIN_TEXT)
 
     def _on_navigating(self, event):
-        if not self._loaded:
-            return  # the page itself
+        url = event.GetURL()
+        if not self._loaded and not url.lower().startswith(
+                ("http:", "https:", "mailto:", "thechatplace:")):
+            return  # the page itself. A long one can be followed from before it's all in.
         # A link: never in here. http, https and mailto go to the browser.
         event.Veto()
         self._follow(event.GetURL())

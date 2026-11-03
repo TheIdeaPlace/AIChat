@@ -78,6 +78,8 @@ SHORTCUTS = [
                          "approval reviewer, or Copilot agent mode, plan mode or Auto for the "
                          "selected (or loaded) Chat Place session (File, Change Effort and Change "
                          "Model are beside it)"),
+        ("Ctrl+Shift+W", "Read the loaded chat as one page, starting at the selected message: 2 "
+                         "moves from message to message; Alt+P reads it as plain text instead"),
         ("Ctrl+Shift+H", "Chat Permissions: the selected (or loaded) Chat Place chat's permission "
                          "mode, and the commands and tools it may use without asking: for a "
                          "Claude chat, those it keeps and the rules from Claude Code's own "
@@ -120,8 +122,6 @@ SHORTCUTS = [
         ("Enter, or Applications key / Shift+F10 then Read Full Message",
          "Read the whole message as a formatted page (move by heading, table, list and "
          "code block); Alt+P reads it as plain text instead; Escape comes back to it"),
-        ("Ctrl+Shift+W", "Read the whole chat as one page, starting at this message: H moves "
-                         "from message to message; Alt+P reads it as plain text instead"),
         ("Ctrl+C", "Copy the whole message"),
         ("Ctrl+Shift+C", "Copy the message's last code block"),
         ("Ctrl+Enter on a queued message", "Send it now (Claude chats): Claude stops what it's doing and "

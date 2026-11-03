@@ -178,6 +178,38 @@ def test_a_message_anchor_is_its_place_in_the_list():
 
 def test_the_go_to_script_takes_only_a_message_anchor():
     from thechatplace.rendering import go_to_script
-    assert "getElementById('m12')" in go_to_script("m12") and "focus()" in go_to_script("m12")
+    assert "h2#m12" in go_to_script("m12") and "focus()" in go_to_script("m12")
     for bad in ("", "x", "m1'); alert(1); //", "m", None):
         assert go_to_script(bad) == ""
+
+
+def test_headings_a_message_writes_any_way_stay_under_it():
+    page = export.reading_page("T", [ChatMessage(ASSISTANT, "Big\n===\n\nSub\n---\n\n> # quoted", "", "a")])
+    assert "<h3>Big</h3>" in page and "<h4>Sub</h4>" in page and "<h3>quoted</h3>" in page
+    assert page.count("<h2") == 1 and page.count("<h1") == 1
+
+
+def test_a_tool_row_is_below_the_messages_and_says_what_it_did():
+    class Tool:
+        label, whole, detail, timestamp, is_activity = "Tool", "Bash: git diff main", "", "", True
+    page = export.reading_page("T", [ChatMessage(USER, "Hi", "", "a"), Tool()])
+    assert '<h2 id="m1">You</h2>' in page
+    assert '<h3 id="m2">Tool: Bash: git diff main</h3>' in page
+
+
+def test_plain_reading_has_no_export_line_and_finds_the_message():
+    text, tail = export.reading_text(MESSAGES, 1)
+    assert "Exported" not in text and text.startswith("You\nFix the build")
+    assert text.endswith(tail) and tail.startswith("Claude\n")
+
+
+def test_half_an_emoji_doesnt_stop_a_page():
+    from thechatplace.rendering import needs_page_file, page_file_bytes
+    assert not needs_page_file("cut \ud83d off")
+    assert page_file_bytes("cut \ud83d off") == b"cut ? off"
+    assert needs_page_file("x" * 1_500_001) and not needs_page_file("x" * 1_500_000)
+
+
+def test_the_go_to_script_goes_to_a_heading_not_anything_with_that_id():
+    from thechatplace.rendering import go_to_script
+    assert "h2#m7,h3#m7" in go_to_script("m7")

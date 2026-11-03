@@ -448,6 +448,10 @@ def user_guide_path() -> Path:
     return Path(__file__).resolve().parent / "assets" / "user-guide.md"
 
 
+#: A whole chat's page while it's open, when too long to pass to WebView2.
+WHOLE_CHAT_PAGE_FILE = "whole chat page.html"
+
+
 def app_data_dir() -> Path:
     """The Chat Place's own settings and session store."""
     return _roaming_dir() / APP_DIR_NAME
