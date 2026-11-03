@@ -45,6 +45,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Keys | What it does |
 | --- | --- |
 | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message as a formatted page (move by heading, table, list and code block); Alt+P reads it as plain text instead; Escape comes back to it |
+| Ctrl+Shift+W | Read the whole chat as one page, starting at this message: H moves from message to message; Alt+P reads it as plain text instead |
 | Ctrl+C | Copy the whole message |
 | Ctrl+Shift+C | Copy the message's last code block |
 | Ctrl+Enter on a queued message | Send it now (Claude chats): Claude stops what it's doing and answers it |

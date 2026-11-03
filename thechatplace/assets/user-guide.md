@@ -217,6 +217,13 @@ and a code block is read as what it is, such as "Code block, Python, 14 lines". 
 hear just the first line, turn that off in Settings, Reading messages. On a Mac, VoiceOver reads
 each line as it's shown, the first line only; press Enter to read the whole message.
 
+To read a whole chat that way, press **Ctrl+Shift+W** (View, **Read Whole Chat as a Page**). It
+works for every provider and opens on the message you're on. Each message is a heading saying who
+wrote it and when, so **H** moves from message to message, or press **2** to skip the headings
+inside a reply. It shows the messages in the list, so tool activity is there only with Show Tool
+Activity on. It's a snapshot: close it and press the key again to see later messages. Closing it
+puts you back on the message you started from.
+
 Press **Enter** on a message to read it as a formatted page. There, your screen reader's browse
 mode moves by heading (H), table (T), list (L) and code block (each code block is a region: R in
 JAWS, D in NVDA). Links open in your browser. **Read as Plain Text** (Alt+P) shows the message in

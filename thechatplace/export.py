@@ -137,6 +137,28 @@ def to_html(title: str, messages: Iterable, folder: str = "",
     return html_page(title, "\n".join(body), landmark=True)
 
 
+def message_anchor(index: int) -> str:
+    """The id of a message's heading in ``reading_page``, by its place in the list."""
+    return f"m{index + 1}"
+
+
+def reading_page(title: str, messages: Iterable) -> str:
+    """A whole chat as one page to read in the app (#538): a heading per message,
+    with the message's own headings under it, so H moves from message to message.
+    Unlike ``to_html`` no message is a landmark: a named region for each only made
+    a screen reader say so before every one (#341)."""
+    messages = list(messages)
+    body = [f"<h1>{html.escape(title)}</h1>"]
+    for index, (message, heading) in enumerate(zip(messages, _headings(messages))):
+        text = message.whole
+        if getattr(message, "detail", ""):
+            # Exactly what was sent reads line for line, as on a message's own page.
+            text = "\n".join(line + "  " if line.strip() else line for line in text.split("\n"))
+        body.append(f'<section><h2 id="{message_anchor(index)}">{html.escape(heading)}</h2>'
+                    f"{markdown_to_html(shift_headings(text))}</section>")
+    return html_page(title, "\n".join(body))
+
+
 def render(fmt: str, title: str, messages: Iterable, folder: str = "",
            when: Optional[datetime] = None) -> str:
     messages = list(messages)

@@ -1085,6 +1085,19 @@ def d_message_formatted(frame, env):
     return frame.on_read_message
 
 
+def d_whole_chat(frame, env):
+    """The page itself, on the selected message; on_read_whole_chat builds it on
+    another thread, and the probe photographs what an opener opens."""
+    from thechatplace import export
+    _open(frame, "Fix the flaky upload test")
+    _select_message(frame, "What changed")
+    messages = frame._visible_messages()
+    start = messages.index(frame._selected_message())
+    title = "Whole chat: Fix the flaky upload test"
+    return lambda: frame._show_page(title, export.reading_page(title, messages),
+                                    start_at=export.message_anchor(start))
+
+
 def d_message_plain(frame, env):
     _open(frame, "Fix the flaky upload test")
     _select_message(frame, "What changed")
@@ -2146,6 +2159,7 @@ SURFACES = {
     "user-guide": ("dialog", d_user_guide, "Help, User Guide (formatted page)"),
     "message-formatted": ("dialog", d_message_formatted,
                           "A message read as a formatted page: heading, list, code, table, link"),
+    "whole-chat": ("dialog", d_whole_chat, "A whole chat as one page, on the selected message"),
     "message-plain": ("dialog", d_message_plain, "The same message as plain text"),
     "settings": ("dialog", d_settings, "Settings with no Codex installation"),
     "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
@@ -2282,6 +2296,7 @@ DIALOG_CLASSES = {
     "shortcuts-plain": "ShortcutsDialog",
     "user-guide": "FormattedMessageDialog",
     "message-formatted": "FormattedMessageDialog",
+    "whole-chat": "FormattedMessageDialog",
     "message-plain": "MessageDialog",
     "settings": "SettingsDialog",
     "settings-codex": "SettingsDialog",

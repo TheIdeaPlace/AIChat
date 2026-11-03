@@ -59,6 +59,15 @@ Repeat this section in a new Claude chat, then a new Codex chat, in your test fo
 If the picker is empty of personal skills, that is normal when none are installed. Claude and
 Codex offer different built-in commands; they aren't expected to have identical lists.
 
+## Read a whole chat as a page
+
+In a Claude chat, then a Codex chat, with a few messages. Select a message in the middle and press
+**Ctrl+Shift+W**. Expect: you hear "Preparing the whole chat.", then the page opens with the reading
+position on that message's heading. Press **H**. Expect: the next heading, often the next message;
+**2** moves only between messages. Each says who wrote it and when. Press **Escape**. Expect: back on
+the message you started from. Turn on tool activity (**Ctrl+T**) and try a long chat. Expect: it still
+opens, with tool rows included. Press **Alt+P** in the page. Expect: the same chat in a plain text box.
+
 ## Ask Aside: both Claude and Codex
 
 1. Load a chat with a few replies. Press **Ctrl+Shift+Y** (File, Ask Aside).

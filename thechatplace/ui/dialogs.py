@@ -1607,6 +1607,20 @@ def _webview_backend():
     return wx.html2.WebViewBackendWebKit
 
 
+def whole_chat_page_path():
+    """Where a whole chat too long to pass to WebView2 goes while it's open."""
+    from .. import platform_paths
+    return platform_paths.app_data_dir() / "whole chat page.html"
+
+
+def remove_whole_chat_page() -> None:
+    """A page left by a run that ended before closing it: it holds a chat."""
+    try:
+        whole_chat_page_path().unlink()
+    except OSError:
+        pass
+
+
 def formatted_view_available() -> bool:
     """Whether this computer's web view (Edge WebView2 on Windows, WebKit on
     a Mac, WebKitGTK on Linux) can show the formatted page."""
@@ -1646,9 +1660,12 @@ class FormattedMessageDialog(wx.Dialog):
     MessageDialog.
     """
 
-    def __init__(self, parent, title: str, page_html: str):
+    def __init__(self, parent, title: str, page_html: str, start_at: str = ""):
+        """``start_at``: the heading to open on (``export.message_anchor``)."""
         import wx.html2
         from .. import platform_paths
+        self._start_at = start_at
+        self._page_file = None
         super().__init__(parent, title=title, size=dialog_size(parent, 820, 620),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         _prepare_webview_data_folder()
@@ -1692,7 +1709,32 @@ class FormattedMessageDialog(wx.Dialog):
         self.view.Bind(wx.html2.EVT_WEBVIEW_NAVIGATING, self._on_navigating)
         self.view.Bind(wx.html2.EVT_WEBVIEW_NEWWINDOW, self._on_new_window)
         self.view.Bind(wx.html2.EVT_WEBVIEW_LOADED, self._on_loaded)
+        self._load(page_html)
+
+    def _load(self, page_html: str):
+        from ..rendering import DIRECT_PAGE_BYTES
+        if sys.platform == "win32" and len(page_html.encode("utf-8")) > DIRECT_PAGE_BYTES:
+            # WebView2's limit for a page passed in. The file holds the chat, so
+            # it's in the app's own folder and goes when the page does.
+            path = whole_chat_page_path()
+            try:
+                path.write_text(page_html, encoding="utf-8")
+            except OSError:
+                pass  # WebView2 may yet take it, and says so if not
+            else:
+                self._page_file = path
+                self.view.LoadURL(path.as_uri())
+                return
         self.view.SetPage(page_html, "")
+
+    def Destroy(self):
+        if self._page_file is not None:
+            try:
+                self._page_file.unlink()
+            except OSError:
+                pass  # the next run removes it
+            self._page_file = None
+        return super().Destroy()
 
     def _on_loaded(self, _event):
         if not self._loaded:
@@ -1700,6 +1742,13 @@ class FormattedMessageDialog(wx.Dialog):
             # Into the page, so the screen reader starts reading it.
             self.view.SetFocus()
             gtk_a11y.focus_web_view(self.view)  # Linux: past wx's wrapper, into the page
+            from ..rendering import go_to_script
+            script = go_to_script(self._start_at)
+            if script:
+                try:
+                    self.view.RunScript(script)
+                except Exception:  # noqa: BLE001 - it's still open, at the top
+                    pass
 
     def _on_script_message(self, event):
         message = event.GetString()

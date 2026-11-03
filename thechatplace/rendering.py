@@ -152,6 +152,21 @@ def html_page(title: str, body_html: str, *, landmark: bool = False) -> str:
             f"<body>{body}</body></html>")
 
 
+#: WebView2 refuses a page passed in directly past about 2 MB of text, so a
+#: longer one goes through a file. A long chat with tool activity on measured 5 MB.
+DIRECT_PAGE_BYTES = 1_500_000
+
+
+def go_to_script(anchor: str) -> str:
+    """Script moving the page to the heading ``anchor``: focus, so a screen
+    reader's browse mode starts there, and scrolled into view for anyone looking.
+    "" for anything that isn't one of ``export.message_anchor``'s."""
+    if not re.fullmatch(r"m\d+", anchor or ""):
+        return ""
+    return (f"var e=document.getElementById('{anchor}');"
+            "if(e){e.setAttribute('tabindex','-1');e.focus();e.scrollIntoView();}")
+
+
 def message_page(title: str, text: str, heading: str = "") -> str:
     """A message's markdown as a whole page. With ``heading`` (who wrote it,
     "Claude"), the page starts with it as heading 1 and the message's own

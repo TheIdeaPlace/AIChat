@@ -129,6 +129,7 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, Backu
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
                       formatted_view_available, press_focused_button_on_a_mac,
+                      remove_whole_chat_page,
                       single_choice_dialog)
 
 APP_NAME = "The Chat Place"
@@ -417,6 +418,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._history_reads = 0
         self._attachments: Dict[str, List[str]] = {}  # per session, for its next message
         self._aside_histories: Dict[tuple, list] = {}  # Ask Aside's, while the app is open
+        self._whole_chat_building = False
         # Search (#21): text the session list is filtered by, and the last
         # text looked for in the messages.
         self._session_filter = ""
@@ -552,6 +554,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._startup_sign_in = wx.CallLater(UPDATE_CHECK_DELAY_MS, self._check_sign_in,
                                              manual=False)
         self._pool.submit(attachments.remove_old_pastes)  # pasted pictures over 30 days old
+        self._pool.submit(remove_whole_chat_page)
         self.session_list.SetFocus()
         if check_updates_at_start:
             # A few seconds in, so the list is read first.
@@ -693,6 +696,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._item(view, "S&ession List Columns...", lambda e: self.on_session_columns())
         view.AppendSeparator()
         self._item(view, "Read &Full Message", lambda e: self.on_read_message())
+        self._item(view, "Read &Whole Chat as a Page\tCtrl+Shift+W",
+                   lambda e: self.on_read_whole_chat())
         self._item(view, "F&ind...\tCtrl+F", lambda e: self.on_find())
         self._item(view, "Find &Next\tF3", lambda e: self.find_again(True))
         self._item(view, "Find Pre&vious\tShift+F3", lambda e: self.find_again(False))
@@ -2490,13 +2495,66 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         self._modal(ShortcutsDialog(self))
 
-    def _show_page(self, title: str, page: str, parent=None) -> bool:
+    def on_read_whole_chat(self, _event=None):
+        """View, Read Whole Chat as a Page (Ctrl+Shift+W, #538): every message in
+        the list, as one page to move through by heading, on the selected one. A
+        snapshot: reopen it for later messages. Built off the window's thread, as
+        a long chat with tool activity on measured 3 seconds."""
+        info = self._open
+        if info is None:
+            self._feedback("Load a chat first.")
+            return
+        if not self._chat_loaded:
+            self._feedback("The messages are still loading.")
+            return
+        if self._whole_chat_building:
+            self._feedback("Still preparing the whole chat.")
+            return
+        messages = [m for m in self._visible_messages() if m.kind not in TAIL_KINDS]
+        if not messages:
+            self._feedback("This chat has no messages yet.")
+            return
+        selected = self._selected_message()
+        start = next((i for i, m in enumerate(messages) if m is selected), len(messages) - 1)
+        title = f"Whole chat: {info.title}"
+        generation, mark = self._open_generation, self._codex_mark()
+
+        def work():
+            try:
+                page, problem = export.reading_page(title, messages), None
+            except Exception as exc:  # noqa: BLE001 - said in the window
+                page, problem = None, exc
+            wx.CallAfter(self._whole_chat_ready, generation, mark, title, messages, start, page,
+                         problem)
+
+        self._whole_chat_building = True
+        self._feedback("Preparing the whole chat.")
+        try:
+            self._pool.submit(work)
+        except RuntimeError:  # the pool is shut down: the window is closing
+            self._whole_chat_building = False
+
+    def _whole_chat_ready(self, generation, mark, title, messages, start, page, problem):
+        self._whole_chat_building = False
+        if self._gone() or self._closing or generation != self._open_generation:
+            return  # another chat was loaded while it was built
+        if problem is not None:
+            self._feedback(f"Couldn't prepare the whole chat: {problem}")
+            return
+        if not self._codex_may_open(mark, "The whole chat is"):
+            return
+        if self._show_page(title, page, start_at=export.message_anchor(start)):
+            return
+        self._modal(MessageDialog(self, title, export.to_text(title, messages)))
+
+    def _show_page(self, title: str, page: str, parent=None, start_at: str = "") -> bool:
         """Show ``page`` in the formatted view. False when it can't be shown,
         or Kelly chose Read as Plain Text."""
         if not formatted_view_available():
             return False
         try:
-            dialog = FormattedMessageDialog(parent or self, title, page)
+            options = {"start_at": start_at} if start_at else {}
+            dialog = FormattedMessageDialog(parent or self, title, page, **options)
         except RuntimeError as exc:
             self._status(str(exc))
             return False

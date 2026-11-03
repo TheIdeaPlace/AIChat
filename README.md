@@ -1642,6 +1642,7 @@ shows it as plain text instead.
 | Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
 | Session list | Shift+Delete | Delete a Claude chat started here permanently, after you confirm, or The Chat Place's copy of a restored or kept chat; on an agent conversation, delete the conversation and keep its chats |
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
+| Messages | Ctrl+Shift+W | Read the whole chat as one page, starting at this message: H moves from message to message; Alt+P reads it as plain text instead |
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
 | Messages | Ctrl+L | Lists, on Links: every link in the chat, to open in your browser or copy (also from the session list and the reply box) |
