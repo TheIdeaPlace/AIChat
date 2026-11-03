@@ -311,6 +311,11 @@ class CodexChatRuntime:
             self._reopening.add(native_id)
         try:
             if subject == 'permissions':
+                # First, on purpose (#184): a resume below can put the new grant
+                # on the real thread and then fail, so waiting for the checks
+                # could leave old approvals answering under a grant they were
+                # never given for. A failed change costs you a question asked
+                # again, never a command run without one.
                 with self._permission_lock:
                     self.permission_store.clear(native_id)
             connection, _ = self._binding()
@@ -347,7 +352,8 @@ class CodexChatRuntime:
                 effort=proof.saved_effort if effort is _KEEP else effort, sandbox=policy.sandbox,
                 approval_policy=policy.approval, approvals_reviewer=policy.reviewer,
                 mcp_servers=proof.mcp_servers,
-                collaboration=proof.collaboration if collaboration is _KEEP else collaboration)
+                collaboration=proof.collaboration if collaboration is _KEEP else collaboration,
+                allow_retired=model is _KEEP and effort is _KEEP)
             if checked.policy != policy:
                 raise CodexRpcError('Changed Codex workspace scope could not be verified')
             if (model is not _KEEP or effort is not _KEEP) and checked.effort is None:

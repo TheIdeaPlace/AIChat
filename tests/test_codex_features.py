@@ -535,6 +535,84 @@ def test_a_chat_on_a_retired_model_still_opens():
         CodexOwnedThreads(connection).resume(gone)
 
 
+def _retired_model_chat(tmp_path):
+    """A chat on gpt-default, which the catalog has since stopped listing."""
+    from test_codex_runtime import policy_runtime
+    service, connection, record = policy_runtime(tmp_path)
+    assert record.provider_options['model'] == 'gpt-default'
+    original = connection.request
+
+    def request(method, params):
+        if method == 'model/list':
+            return {'data': [{'id': 'gpt-now', 'model': 'gpt-now', 'displayName': 'Now',
+                              'hidden': False, 'isDefault': True,
+                              'supportedReasoningEfforts': [{'reasoningEffort': 'low'}],
+                              'defaultReasoningEffort': 'low'}], 'nextCursor': None}
+        return original(method, params)
+    connection.request = request
+    return service, connection, record
+
+
+def test_a_retired_model_can_change_permissions_and_still_send(tmp_path):
+    # The check in a temporary thread asked the catalog about the chat's own
+    # model, which latched the chat with no way out (#467).
+    service, connection, record = _retired_model_chat(tmp_path)
+    try:
+        change = service.prepare_policy(record, 'workspace-write', 'on-request')
+        service.finish_policy(change, True)
+        assert not service.snapshot(record.cli_session_id).problem
+        assert service.send(change.record(), 'Hello') is not None
+        assert [p for m, p in connection.calls if m == 'turn/start'][-1]['model'] == 'gpt-default'
+    finally:
+        service.close()
+
+
+def test_a_retired_model_recovers_with_stop_after_a_permission_change_fails_to_save(tmp_path):
+    # Change permission, Stop, send: Stop's recheck starts a temporary thread too.
+    service, connection, record = _retired_model_chat(tmp_path)
+    try:
+        change = service.prepare_policy(record, 'workspace-write', 'on-request')
+        service.finish_policy(change, False)
+        assert 'Use Stop' in service.snapshot(record.cli_session_id).problem
+        assert service.recover(record) == 'permissions'
+        assert not service.snapshot(record.cli_session_id).problem
+        assert service.send(record, 'Hello') is not None
+    finally:
+        service.close()
+
+
+def test_a_retired_model_can_change_mode(tmp_path):
+    service, connection, record = _retired_model_chat(tmp_path)
+    original = connection.request
+
+    def request(method, params):
+        if method == 'collaborationMode/list':
+            return {'data': [{'mode': 'plan'}, {'mode': 'default'}]}
+        return original(method, params)
+    connection.request = request
+    try:
+        change = service.prepare_mode(record, 'plan')
+        service.finish_policy(change, True)
+        assert change.record().provider_options['collaboration'] == 'plan'
+        assert service.ready(change.record())
+    finally:
+        service.close()
+
+
+def test_choosing_a_retired_model_is_still_refused_and_the_chat_keeps_sending(tmp_path):
+    # The exemption is for a chat staying on its model, not moving to one.
+    service, connection, record = _retired_model_chat(tmp_path)
+    try:
+        with pytest.raises(ValueError, match='no longer available'):
+            service.prepare_settings(record, 'gpt-gone', None)
+        with pytest.raises(ValueError, match='no longer available'):
+            service.prepare_settings(record, 'gpt-default', 'high')
+        assert not service.snapshot(record.cli_session_id).problem
+        assert service.ready(record)
+    finally:
+        service.close()
+
+
 # -- native controls beside a running turn (#467) --------------------------------------
 
 
@@ -769,15 +847,15 @@ def test_a_failed_setting_change_leaves_the_chat_sending(prepare, arguments, fai
         service.close()
 
 
-@pytest.mark.parametrize('code', [-32600, -32601])
-def test_choosing_a_mode_codex_has_no_list_for_says_to_update(code):
+@pytest.mark.parametrize('code,unknown', [(-32600, True), (-32601, True), (-32601, False)])
+def test_choosing_a_mode_codex_has_no_list_for_says_to_update(code, unknown):
     from thechatplace.codex_diagnostics import safe_reason
     service, connection, _ = runtime()
     original = connection.request
 
     def request(method, params):
         if method == 'collaborationMode/list':
-            raise _refused(code)
+            raise _refused(code, unknown)
         return original(method, params)
     connection.request = request
     try:
@@ -791,13 +869,15 @@ def test_choosing_a_mode_codex_has_no_list_for_says_to_update(code):
         service.close()
 
 
-def test_collaboration_list_failing_some_other_way_is_not_called_unsupported():
+@pytest.mark.parametrize('code', [-32603, -32600])
+def test_collaboration_list_failing_some_other_way_is_not_called_unsupported(code):
+    # -32600 is also what a known method says when it refuses a request.
     connection = LifecycleConnection()
     original = connection.request
 
     def request(method, params):
         if method == 'collaborationMode/list':
-            raise _refused(-32603)
+            raise _refused(code)
         return original(method, params)
     connection.request = request
     with pytest.raises(CodexRpcError) as failed:
@@ -839,7 +919,7 @@ def _saved(options):
                                         'approval_policy': 'on-request', **options})
 
 
-@pytest.mark.parametrize('answer', [_refused(-32601), _refused(-32600), {'data': []}])
+@pytest.mark.parametrize('answer', [_refused(-32601), _refused(-32600, True), {'data': []}])
 def test_a_saved_plan_mode_does_not_stop_a_chat_opening_on_a_codex_without_it(answer):
     service, connection, updates = runtime()
     original = connection.request

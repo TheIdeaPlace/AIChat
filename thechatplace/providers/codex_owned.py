@@ -120,7 +120,7 @@ class CodexOwnedThreads:
             sandbox=options.get('sandbox', 'read-only'),
             approval_policy=options.get('approval_policy', 'on-request'),
             approvals_reviewer=options.get('approvals_reviewer', 'user'),
-            mcp_servers=options.get('mcp_servers', ()))
+            mcp_servers=options.get('mcp_servers', ()), allow_retired=True)
         if checked.cwd != record.cwd:
             raise CodexRpcError('Saved Codex workspace scope could not be verified')
         self.verify_loaded(proof, empty=empty)
@@ -132,7 +132,9 @@ class CodexOwnedThreads:
         try:
             presets = self.connection.request('collaborationMode/list', {})
         except CodexRpcError as error:
-            if getattr(error, 'rpc_code', None) in (-32600, -32601):
+            # Only "no such method" means no Plan. Any other invalid request is
+            # a real failure, as in feature(), and must not hide a saved mode.
+            if getattr(error, 'rpc_code', None) == -32601 or getattr(error, 'unknown_method', False):
                 raise CodexFeatureError('unsupported') from None
             raise
         if not isinstance(presets.get('data'), list) or not any(
@@ -141,7 +143,8 @@ class CodexOwnedThreads:
 
     def _create(self, method, cwd, title, *, native_id=None, ephemeral=False, model=None, effort=None,
                 sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',
-                last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=(), collaboration=None):
+                last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=(), collaboration=None,
+                allow_retired=False):
         from .codex_tools import server_names
         mcp_servers = server_names(mcp_servers)
         if collaboration not in (None, 'default', 'plan'):
@@ -185,9 +188,12 @@ class CodexOwnedThreads:
         if (model is not None and method != "thread/resume") or effort is not None:
             choice = next((choice for choice in read_models(self.connection) if choice.model == model), None)
             # The catalog hides retired models. A saved chat on one can still
-            # open, and Codex's own answer is checked below; only then can it
-            # move to another model (#467).
-            retired = choice is None and method == 'thread/resume'
+            # open, and Codex's own answer is checked below. Trying the chat's
+            # own model in a temporary thread, for a permission or mode change
+            # or Stop's recheck, is the same chat staying where it is, so it
+            # counts too; otherwise the failed check locks the chat with Stop
+            # refused the same way. Only choosing a model needs the catalog (#467).
+            retired = choice is None and (method == 'thread/resume' or allow_retired)
             if not retired and (choice is None or (effort is not None and effort not in choice.efforts)):
                 raise ValueError("Codex model or reasoning effort is no longer available")
         params = {"cwd": cwd, "modelProvider": "openai", "sandbox": policy.sandbox,
@@ -264,10 +270,11 @@ class CodexOwnedThreads:
         return proof
 
     def start(self, cwd, title, *, ephemeral=False, model=None, effort=None,
-              sandbox='read-only', approval_policy='on-request', approvals_reviewer='user', mcp_servers=(), collaboration=None):
+              sandbox='read-only', approval_policy='on-request', approvals_reviewer='user', mcp_servers=(), collaboration=None,
+              allow_retired=False):
         return self._create("thread/start", cwd, title, ephemeral=ephemeral, model=model, effort=effort,
                             sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer,
-                            mcp_servers=mcp_servers, collaboration=collaboration)
+                            mcp_servers=mcp_servers, collaboration=collaboration, allow_retired=allow_retired)
 
     def fork(self, source: SessionInfo, title, *, ephemeral=False, model=None, effort=None,
              sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',
