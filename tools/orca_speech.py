@@ -626,6 +626,9 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
         results.append({"step": step.name, "keys": step.keys, "spoken": said, "heard": spoken,
                          "missing": missing, "refused": refused,
                          "passed": not missing and not refused})
+        # As it goes: a job that runs out of time keeps no report at the end.
+        print(f"{index + 1}/{len(steps)} {'ok' if results[-1]['passed'] else 'FAIL'} "
+              f"{step.name}: {' | '.join(said)[:200] or '(nothing)'}", flush=True)
     return results
 
 

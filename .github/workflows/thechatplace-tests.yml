@@ -95,7 +95,8 @@ jobs:
       - name: ATK names, with an accessibility bus
         run: tools/linux_a11y_session.sh .venv/bin/python -m pytest -v tests/test_linux.py
       - name: What Orca says
-        run: tools/orca_speech.sh --json orca-speech.json
+        # Inside the job's 30 minutes, so a run that sticks still shows its log.
+        run: timeout 20m tools/orca_speech.sh --json orca-speech.json
       - name: Every control Orca reaches has a name
         if: always()
         run: |
