@@ -74,11 +74,11 @@ class CodexExtras:
         dialog = AskAsideDialog(self, info.title, ask, provider='Codex',
             say=lambda text, failed=False: self._say(text if failed else
                 announce.reply_text('Ask Aside', text, self.speech.announce)),
-            copy=self._copy_text, feedback=self._feedback)
+            copy=self._copy_text, feedback=self._feedback, history=self._aside_history(info))
         try:
             dialog.ShowModal()
         finally:
-            dialog.stop()
+            dialog.settle()
             dialog.Destroy()
         if focus and wx.Window.FindFocus() is not focus:
             focus.SetFocus()

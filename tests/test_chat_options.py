@@ -617,3 +617,41 @@ def test_properties_list_the_chat_options(tmp_path):
                                           OwnSession("aaaa-1111", "T", str(tmp_path)))
     assert {"Agent: none", "Output style: your setting",
             "Instructions for this chat: none"} <= set(plain)
+
+
+# -- earlier questions go with a new one (#468) --------------------------------------------
+
+
+def _answered(question, answer, **changes):
+    from thechatplace.aside import AsideItem
+    return AsideItem(question, answer=answer, asking=False, **changes)
+
+
+def test_a_first_question_goes_as_it_is():
+    from thechatplace.aside import with_earlier
+    assert with_earlier("Which file?", []) == "Which file?"
+
+
+def test_a_follow_up_carries_the_earlier_answers_oldest_first():
+    from thechatplace.aside import with_earlier
+    sent = with_earlier("What did you mean?", [_answered("One?", "First."),
+                                               _answered("Two?", "Second.")])
+    assert sent.index("One?") < sent.index("Second.") < sent.index("What did you mean?")
+    assert sent.endswith("The question to answer now:\nWhat did you mean?")
+    assert "aren't part of the chat" in sent
+
+
+def test_only_answered_questions_go_along():
+    from thechatplace.aside import AsideItem, with_earlier
+    items = [_answered("Stopped one?", "Stopped.", failed=True), AsideItem("Still going?"),
+             _answered("Empty?", "")]
+    assert with_earlier("Now?", items) == "Now?"
+
+
+def test_earlier_questions_stay_inside_codexs_message_limit():
+    from thechatplace.aside import EARLIER_QUESTIONS, with_earlier
+    items = [_answered(f"Question {n}?", "x" * 9000) for n in range(EARLIER_QUESTIONS + 10)]
+    sent = with_earlier("Now?", items)
+    assert len(sent) < 32000
+    assert "Question 29?" in sent and "Question 0?" not in sent  # the newest are the ones kept
+    assert "x" * 4001 not in sent

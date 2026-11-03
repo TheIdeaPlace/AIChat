@@ -70,6 +70,12 @@ Codex offer different built-in commands; they aren't expected to have identical 
    the entries, and press Enter. Expect: the corresponding answer opens for reading, and the
    repeated question's row finishes with its own answer. A question that starts with a slash is
    just a question here, not a command.
+   Ask a follow-up that needs the last answer, such as "what did you mean by that?". Expect: it
+   understands. Close the dialog and press **Ctrl+Shift+Y** again. Expect: you hear how many earlier
+   questions are in the list, focus is on **Your question**, and the newest answer is in **Answer**.
+   Open Ask Aside on another chat. Expect: its own list, not this one's. Back on the first, press
+   **Clear List** (**Alt+R**). Expect: "Cleared" with the count, focus on **Your question**, and
+   "No questions yet" in the list. Quit and restart the app. Expect: no earlier questions.
 5. While an answer is still coming, press Escape. Expect: it stops the side question. Ask another
    question to check the dialog is usable again; after it finishes, Escape closes the dialog.
 6. Read the source chat. Expect: none of the side questions or answers were added. Its files

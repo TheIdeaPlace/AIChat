@@ -416,6 +416,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: the first read after that, not one already under way (#410).
         self._history_reads = 0
         self._attachments: Dict[str, List[str]] = {}  # per session, for its next message
+        self._aside_histories: Dict[tuple, list] = {}  # Ask Aside's, while the app is open
         # Search (#21): text the session list is filtered by, and the last
         # text looked for in the messages.
         self._session_filter = ""
@@ -1624,6 +1625,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         for per_session in (self._attachments, self._drafts, self._queued,
                             self._pending, self._denials):
             per_session.pop(info.cli_session_id, None)
+        self._aside_histories.pop((info.provider, info.cli_session_id), None)
         self._leave_list(info, refocus=was_loaded)
         if failed is not None:
             wx.MessageBox(f"{info.title} is gone from The Chat Place, but its files "
@@ -5146,6 +5148,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                     self._said_problems):
                     if session_id in per_session:
                         per_session[reported] = per_session.pop(session_id)
+                if ("claude", session_id) in self._aside_histories:
+                    self._aside_histories[("claude", reported)] = self._aside_histories.pop(
+                        ("claude", session_id))
                 if (self._open is not None and self._open.provider == "claude"
                         and self._open.cli_session_id == session_id):
                     self._open.cli_session_id = reported

@@ -1268,7 +1268,10 @@ available for Cowork chats, kept copies or Copilot chats.
 - The answer appears in the **Answer** box (Alt+W), focus moves there to read it by line, and it's
   read out as a reply is, by your announcement level.
 - Ask as many questions as you like. **Questions and answers** (Alt+N) lists them, newest last;
-  arrowing shows each one in the Answer box, and Enter takes you there.
+  arrowing shows each one in the Answer box, and Enter takes you there. Each new question is
+  sent with the earlier answers, so you can ask a follow-up such as "what did you mean by that?".
+- A chat's questions stay listed when you close the dialog and come back, until you quit The Chat
+  Place. They're kept in memory only, never saved. **Clear List** (Alt+R) removes them.
 - **Copy Answer** (Alt+C) copies the selected answer.
 - While the provider is answering, Ask becomes **Stop** (Alt+S), and Escape stops it too. Otherwise
   Escape, or Close, closes the dialog.

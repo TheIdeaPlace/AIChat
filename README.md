@@ -398,7 +398,9 @@ too).
   and press Ctrl+Enter or **Ask**; you hear "Asking Claude." The answer appears in the
   **Answer** box (Alt+W), read by line, focus moves there, and it's read out as a reply is, by
   your announcement level. Ask again as often as you like: **Questions and answers** (Alt+N)
-  lists each one, newest last; arrowing shows each in the Answer box and Enter goes there.
+  lists each one, newest last; arrowing shows each in the Answer box and Enter goes there. Each
+  new question is sent with the earlier answers, so follow-ups work, and a chat's questions stay
+  listed until you quit the app (in memory only) or choose **Clear List** (Alt+R).
   **Copy Answer** (Alt+C) copies the selected answer. While Claude is answering, Ask becomes
   **Stop**, and Escape stops it; otherwise Escape closes. Claude answers in a copy of the
   conversation that is never saved, with the same model as the chat, and can read files in its

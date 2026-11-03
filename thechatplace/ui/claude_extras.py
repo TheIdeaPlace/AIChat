@@ -81,6 +81,16 @@ class ClaudeExtras:
         except RuntimeError:  # the pool is shut down: the window is closing
             pass
 
+    def _aside_history(self, info) -> list:
+        """This chat's Ask Aside questions, for as long as the app is open: in
+        memory only, as an aside is throwaway, but closing the dialog
+        shouldn't lose an answer you've just had. Claude Code's /btw keeps
+        them about as long. Codex's chats use it too."""
+        from ..aside import KEPT_QUESTIONS
+        history = self._aside_histories.setdefault((info.provider, info.cli_session_id), [])
+        del history[:-KEPT_QUESTIONS]
+        return history
+
     # -- File, Chat Options
 
     def on_chat_options(self):
@@ -208,11 +218,11 @@ class ClaudeExtras:
                 self._say(text)
         returning_to = wx.Window.FindFocus()
         dialog = AskAsideDialog(self, info.title, ask, say=say, copy=self._copy_text,
-                                feedback=self._feedback)
+                                feedback=self._feedback, history=self._aside_history(info))
         try:
             dialog.ShowModal()
         finally:
-            dialog.stop()
+            dialog.settle()
             dialog.Destroy()
         _give_focus_back(returning_to)
 

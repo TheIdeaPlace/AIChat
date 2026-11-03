@@ -950,3 +950,110 @@ def test_ask_asides_list_says_none_yet_until_a_question_is_asked(frame, env, mon
     assert seen["before"] == [ASIDE_NONE_YET]
     assert "answer" not in seen
     assert seen["after"] == ["Q: Which file? A: asking…"]
+
+
+# -- a chat's questions stay while the app is open (#468) -----------------------------------
+
+
+class _Asked:
+    def __init__(self):
+        self.cancelled = False
+
+    def cancel(self):
+        self.cancelled = True
+
+
+def _aside_dialog(frame, history, sent=None):
+    from thechatplace.ui.dialogs import AskAsideDialog
+    said = []
+    answerers = []
+
+    def ask(question, on_event):
+        if sent is not None:
+            sent.append(question)
+        answerers.append(on_event)
+        return _Asked()
+    dialog = AskAsideDialog(frame, "Mine", ask, feedback=said.append, history=history)
+    return dialog, answerers, said
+
+
+def _ask_and_answer(dialog, answerers, question, answer):
+    from thechatplace.aside import AsideEvent
+    dialog.question.SetValue(question)
+    dialog.on_ask()
+    answerers[-1](AsideEvent("done", answer))
+
+
+def test_coming_back_finds_the_chats_questions_and_the_next_carries_them(frame):
+    history, sent = [], []
+    dialog, answerers, _said = _aside_dialog(frame, history, sent)
+    try:
+        _ask_and_answer(dialog, answerers, "Which file?", "uploader.py")
+    finally:
+        dialog.settle()
+        dialog.Destroy()
+    assert sent == ["Which file?"]
+    dialog, answerers, said = _aside_dialog(frame, history, sent)
+    try:
+        assert list(dialog.history.GetStrings()) == [history[0].row()]
+        assert dialog.history.GetSelection() == 0
+        assert "uploader.py" in dialog.answer.GetValue()
+        assert dialog.clear_btn.IsEnabled()
+        assert pump(lambda: said)
+        assert said == ["1 earlier question in the list."]
+        _ask_and_answer(dialog, answerers, "Why that one?", "It flushes.")
+        assert "uploader.py" in sent[-1] and sent[-1].endswith("Why that one?")
+        assert dialog.history.GetCount() == 2 and len(history) == 2
+        assert history[1].question == "Why that one?"  # the row shows what you typed
+    finally:
+        dialog.settle()
+        dialog.Destroy()
+
+
+def test_a_question_running_as_the_dialog_closes_is_marked_stopped(frame):
+    history = []
+    dialog, _answerers, _said = _aside_dialog(frame, history)
+    try:
+        dialog.question.SetValue("Slow one?")
+        dialog.on_ask()
+        runner = dialog._runner
+        assert history[0].asking and not dialog.clear_btn.IsEnabled()
+    finally:
+        dialog.settle()
+        dialog.Destroy()
+    assert runner.cancelled
+    assert not history[0].asking and history[0].failed and history[0].answer == "Stopped."
+    assert "asking" not in history[0].row()
+
+
+def test_clear_list_empties_the_chats_questions(frame):
+    from thechatplace.ui.dialogs import ASIDE_NONE_YET
+    history = []
+    dialog, answerers, said = _aside_dialog(frame, history)
+    try:
+        assert not dialog.clear_btn.IsEnabled()
+        _ask_and_answer(dialog, answerers, "Which file?", "uploader.py")
+        _ask_and_answer(dialog, answerers, "Why?", "It flushes.")
+        assert dialog.clear_btn.IsEnabled()
+        dialog.on_clear()
+        assert history == []  # the window's own list, for next time
+        assert list(dialog.history.GetStrings()) == [ASIDE_NONE_YET]
+        assert said[-1] == "Cleared 2 questions."
+        assert not dialog.clear_btn.IsEnabled()
+        assert "uploader.py" not in dialog.answer.GetValue()
+    finally:
+        dialog.settle()
+        dialog.Destroy()
+
+
+def test_each_chat_has_its_own_questions(frame):
+    from types import SimpleNamespace
+    from thechatplace.aside import AsideItem, KEPT_QUESTIONS
+    claude = SimpleNamespace(provider="claude", cli_session_id="same")
+    codex = SimpleNamespace(provider="codex", cli_session_id="same")
+    frame._aside_history(claude).append(AsideItem("Mine?"))
+    assert frame._aside_history(codex) == []
+    assert len(frame._aside_history(claude)) == 1
+    frame._aside_history(claude).extend(AsideItem(str(n)) for n in range(KEPT_QUESTIONS + 5))
+    assert len(frame._aside_history(claude)) == KEPT_QUESTIONS
+    assert frame._aside_history(claude)[-1].question == str(KEPT_QUESTIONS + 4)

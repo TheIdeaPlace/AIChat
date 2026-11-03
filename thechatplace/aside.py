@@ -387,13 +387,46 @@ class _Cancelled(Exception):
 _PLAN_NAMES = {"Claude": "Claude plan", "Codex": "ChatGPT plan"}
 
 
+#: How much of the earlier questions goes with a new one: Claude Code's /btw
+#: sends its newest 20. The characters stay well inside Codex's 32,000 for a
+#: message, leaving room for the question itself.
+EARLIER_QUESTIONS = 20
+EARLIER_ANSWER_CHARS = 4000
+EARLIER_CHARS = 20000
+#: How many questions a chat keeps while the app is open.
+KEPT_QUESTIONS = 50
+
+
+def with_earlier(question: str, items) -> str:
+    """What's sent for ``question``. Each aside is a new copy of the chat, which
+    has never seen the asides before it, so "what did you mean by that?" needs
+    them sent along. The newest that fit, oldest first, and only ones answered."""
+    answered = [item for item in items if not item.asking and not item.failed and item.answer]
+    earlier, used = [], 0
+    for item in reversed(answered[-EARLIER_QUESTIONS:]):
+        answer = item.answer
+        if len(answer) > EARLIER_ANSWER_CHARS:
+            answer = answer[:EARLIER_ANSWER_CHARS].rstrip() + "…"
+        block = f"Question: {item.question}\nAnswer: {answer}"
+        if used + len(block) > EARLIER_CHARS:
+            break
+        earlier.insert(0, block)
+        used += len(block)
+    if not earlier:
+        return question
+    return ("Earlier side questions about this chat, with your answers. They aren't part of "
+            "the chat itself.\n\n" + "\n\n".join(earlier)
+            + "\n\nThe question to answer now:\n" + question)
+
+
 def aside_intro(provider: str = "Claude") -> str:
     """What the Answer box says before anything is asked."""
     plan = _PLAN_NAMES.get(provider, f"{provider} plan")
     return (f"Ask a question about this chat, such as which file {provider} changed or what a "
             f"reply meant. The question and its answer aren't added to the chat, and {provider} "
-            "can read files to answer but can't change anything. Each question uses your "
-            f"{plan}, as a message does.")
+            "can read files to answer but can't change anything. Your questions stay listed "
+            f"for this chat until you quit The Chat Place. Each question uses your {plan}, "
+            "as a message does.")
 
 
 def _astral(text: str) -> int:

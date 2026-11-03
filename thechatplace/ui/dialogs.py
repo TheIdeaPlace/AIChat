@@ -5966,9 +5966,12 @@ class AskAsideDialog(wx.Dialog):
     ``ask(question, on_event)`` starts one question and returns something
     with ``cancel()``, or a string saying why it couldn't; ``on_event(event)``
     (an ``aside.AsideEvent``) is then called on the UI thread. ``say(text)``
-    speaks an answer (the answer to a key press), ``copy(text)`` copies."""
+    speaks an answer (the answer to a key press), ``copy(text)`` copies.
+    ``history`` is the chat's list of ``aside.AsideItem``, kept by the window
+    while the app is open, so closing and coming back finds them; the dialog
+    adds to it and clears it in place."""
 
-    def __init__(self, parent, chat_title: str, ask, say=None, copy=None, feedback=None, provider='Claude'):
+    def __init__(self, parent, chat_title: str, ask, say=None, copy=None, feedback=None, provider='Claude', history=None):
         super().__init__(parent, title=f"Ask Aside about {chat_title}",
                          size=dialog_size(parent, 680, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
@@ -5977,7 +5980,7 @@ class AskAsideDialog(wx.Dialog):
         self._say = say or (lambda text, failed=False: None)
         self._copy = copy or (lambda text: True)
         self._feedback = feedback or (lambda text: None)
-        self.items = []
+        self.items = [] if history is None else history
         self._runner = None
         self._asking = None  # the AsideItem being answered
         self._closed = False
@@ -6015,6 +6018,8 @@ class AskAsideDialog(wx.Dialog):
         buttons = wx.BoxSizer(wx.HORIZONTAL)
         self.copy_btn = wx.Button(self, label="&Copy Answer")
         buttons.Add(self.copy_btn, 0, wx.RIGHT, 6)
+        self.clear_btn = wx.Button(self, label="Clea&r List")
+        buttons.Add(self.clear_btn, 0, wx.RIGHT, 6)
         close = wx.Button(self, wx.ID_CANCEL, "Close")
         buttons.Add(close, 0)
         sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
@@ -6023,16 +6028,57 @@ class AskAsideDialog(wx.Dialog):
         self.SetEscapeId(wx.ID_NONE)
         self.ask_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_ask())
         self.copy_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_copy())
+        self.clear_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_clear())
         close.Bind(wx.EVT_BUTTON, lambda e: self.on_close(stop_first=False))
         self.Bind(wx.EVT_CLOSE, lambda e: self.on_close(stop_first=False))
         self.history.Bind(wx.EVT_LISTBOX, lambda e: self._show_selected())
         self.history.Bind(wx.EVT_KEY_DOWN, self._on_history_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
-        wx.CallAfter(lambda: self and self.question.SetFocus())
+        kept = len(self.items)
+        if kept:
+            # Coming back to this chat's questions, on the newest.
+            self.history.Set([item.row() for item in self.items])
+            self.history.SetSelection(kept - 1)
+            self._show_selected()
+        self._update_clear()
+
+        def arrive():
+            if self:
+                self.question.SetFocus()
+                if kept:
+                    self._feedback(f"{kept} earlier question{'s' if kept != 1 else ''} in the "
+                                   "list.")
+        wx.CallAfter(arrive)
 
     @property
     def asking(self) -> bool:
         return self._asking is not None
+
+    def _update_clear(self):
+        self.clear_btn.Enable(bool(self.items) and not self.asking)
+
+    def on_clear(self):
+        """Clear List: this chat's questions go, here and for later ones."""
+        from ..aside import aside_intro
+        if self.asking or not self.items:
+            return
+        count = len(self.items)
+        self.items.clear()
+        self.history.Set([ASIDE_NONE_YET])
+        self.history.SetSelection(0)
+        self.answer.ChangeValue(aside_intro(self.provider))
+        self.question.SetFocus()  # before the button it's on turns off
+        self._update_clear()
+        self._feedback(f"Cleared {count} question{'s' if count != 1 else ''}.")
+
+    def settle(self):
+        """As the dialog goes: stop what's being answered, and mark it so. Its
+        answer can't reach a closed dialog, so its row would say "asking…" for
+        good when the list came back."""
+        self.stop()
+        for item in self.items:
+            if item.asking:
+                item.asking, item.failed, item.answer = False, True, "Stopped."
 
     def _on_key(self, event):
         code = event.GetKeyCode()
@@ -6099,7 +6145,7 @@ class AskAsideDialog(wx.Dialog):
 
     def on_ask(self):
         """Ask (Ctrl+Enter), or Stop while a question is being answered."""
-        from ..aside import AsideItem
+        from ..aside import AsideItem, with_earlier
         if self.asking:
             self.stop()
             return
@@ -6109,7 +6155,8 @@ class AskAsideDialog(wx.Dialog):
             self.question.SetFocus()
             return
         item = AsideItem(question, provider=self.provider)
-        started = self._ask(question, lambda event: self._event(item, event))
+        started = self._ask(with_earlier(question, self.items),
+                            lambda event: self._event(item, event))
         if isinstance(started, str) or started is None:
             self._feedback(started or f"Couldn't ask {self.provider}.")
             return
@@ -6123,6 +6170,7 @@ class AskAsideDialog(wx.Dialog):
         self.question.ChangeValue("")
         self.ask_btn.SetLabel("&Stop")
         set_accessible_name(self.ask_btn, "Stop")
+        self._update_clear()
         self._feedback(f"Asking {self.provider}.")
 
     def _event(self, item, event):
@@ -6147,6 +6195,7 @@ class AskAsideDialog(wx.Dialog):
             self._asking, self._runner = None, None
             self.ask_btn.SetLabel("&Ask")
             set_accessible_name(self.ask_btn, "Ask")
+            self._update_clear()
         index = self.items.index(item)
         self.history.SetSelection(index)
         self._refresh_row(item)
