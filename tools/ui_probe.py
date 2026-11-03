@@ -1432,7 +1432,9 @@ def d_ask_aside(frame, env, provider='Claude'):
 
     class Asked:
         def cancel(self):
-            pass
+            # As the real runner does, so Escape in the Orca steps stops the
+            # answer that's still coming, and the next one can close it.
+            runners[-1](AsideEvent("failed", "Stopped."))
 
     def ask(question, on_event):
         runners.append(on_event)

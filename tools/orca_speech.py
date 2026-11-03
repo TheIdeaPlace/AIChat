@@ -211,6 +211,9 @@ STEPS = [
     Step('Codex commands closed', ['Escape'], expect=['Fix the flaky upload test']),
     Step('Codex temporary side question', [], trigger='codex-aside',
          expect=['Ask Aside about Visual probe', 'Your question']),
+    # The probe's second question is still being answered: the first Escape
+    # stops it and stays, as the guide says, and the next closes the dialog.
+    Step('Codex side question stopped', ['Escape'], expect_dbus=['Stopped asking']),
     Step('Codex side question closed', ['Escape'], expect=['Fix the flaky upload test']),
     # Copilot's Auto (#426), last, as the Copilot chat replaces the session
     # list's discovery (copilot_chat below): a chat of the app's own in agent
