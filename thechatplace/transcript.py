@@ -478,7 +478,7 @@ class TranscriptParser:
                            turn=self.transcript.turns,
                            uuid=_chain_id(record.get("uuid")),
                            parent_uuid=_chain_id(record.get("parentUuid")))
-        if kind == ASSISTANT:
+        if kind in (ASSISTANT, THINKING):
             item.assistant_name = self.assistant_name
         elif kind == USER and self.user_name:
             item.speaker = self.user_name

@@ -13,10 +13,15 @@ Two things can go back, separately or together:
   its first turn, when you press Send, and a first turn that never got going
   makes it again the same way.
 * **The files.** ``claude -p --resume <id> --rewind-files <message uuid>``
-  puts back the files Claude changed with its edit tools since that message,
-  from the checkpoints Claude Code keeps when ``claude_cli.CHECKPOINT_VAR`` is
-  on (The Chat Place's own turns, from this release). It opens the session,
-  so only The Chat Place's own chats can do it.
+  puts back every file Claude Code has a checkpoint for in that chat, not only
+  those edited since the message, from the checkpoints it keeps when
+  ``claude_cli.CHECKPOINT_VAR`` is on (The Chat Place's own turns, from this
+  release). Measured with 2.1.316: a file Claude edited in turn 1 and you
+  edited by hand afterwards went back to Claude's turn 1 contents on rewinding
+  to turn 3, even when nothing changed after turn 1; a file created since the
+  message was deleted; a file Claude never touched was left alone. So What
+  Happens has to warn about all of that. It opens the session, so only The
+  Chat Place's own chats can do it.
 
 This module is the part without wx: where to cut, what each choice will do in
 words, and running the files rewind and saying how it went.
@@ -24,13 +29,14 @@ words, and running the files rewind and saying how it went.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Collection, Iterable, List, Optional
 
 from . import platform_paths
-from .changes import FileEdit, by_file
+from .changes import FileChanges, FileEdit, by_file
 from .claude_cli import (CHECKPOINT_VAR, ResumeRefused, _decode, build_rewind_files_command,
                          child_environment)
 from .transcript import USER, ChatMessage, Transcript
@@ -49,6 +55,40 @@ REWIND_TIMEOUT = 120.0
 #: How many changed files are named before "and N more".
 NAMED_FILES = 8
 
+#: What putting the files back does, whatever the message (see the top).
+FILES_WARNING = (
+    "Every file Claude changed with its edit tools anywhere in this chat goes back to how it "
+    "was just before your message. That replaces what's in it now, including any edits you "
+    "made yourself afterwards. Files Claude created since your message are removed. This "
+    "can't be undone.")
+_COMMANDS_NOTE = "Changes made by commands it ran (a build, a script) are never put back."
+#: Said whenever a restore didn't finish cleanly: it may have got part way.
+MAY_BE_PARTLY_DONE = "Some files may already have gone back; check them before carrying on."
+
+
+def _file_key(path: str) -> str:
+    return os.path.normcase(os.path.normpath(path))
+
+
+def _files(edits: Iterable[FileEdit]) -> List[FileChanges]:
+    """Each file once, whoever changed it, in the order first changed."""
+    return by_file([replace(edit, by="") for edit in edits])
+
+
+def _names(files: List[FileChanges]) -> str:
+    """"a.py, b.py, and 4 more". Two files called the same keep their folder,
+    so they don't read as one file said twice."""
+    parts = [re.split(r"[\\/]", f.path.rstrip("\\/")) for f in files]
+    bases = [part[-1] or f.path for part, f in zip(parts, files)]
+    names = [("/".join(part[-2:]) if bases.count(base) > 1 else base)
+             for part, base in zip(parts, bases)]
+    more = f", and {len(names) - NAMED_FILES} more" if len(names) > NAMED_FILES else ""
+    return ", ".join(names[:NAMED_FILES]) + more
+
+
+def _count(files: list, one: str, many: str) -> str:
+    return f"{len(files)} {one if len(files) == 1 else many}"
+
 
 def first_line(message: ChatMessage, limit: int = 80) -> str:
     return message.first_line(limit)
@@ -65,10 +105,17 @@ class RewindPlan:
     cut: str
     #: Files Claude changed with its edit tools from this message on.
     edits: List[FileEdit] = field(default_factory=list)
+    #: Files it changed before this message, in turns with checkpoints:
+    #: --rewind-files puts those back too (see the top of this module).
+    earlier_edits: List[FileEdit] = field(default_factory=list)
     #: Files its subagents changed from this message on (#468). Claude Code
     #: doesn't put these back: checked with 2.1.296, a file a subagent
-    #: wrote stayed as it left it after --rewind-files.
+    #: wrote stayed as it left it after --rewind-files. One Claude changed
+    #: too has a checkpoint, so the subagent's changes in it do go back.
     subagent_edits: List[FileEdit] = field(default_factory=list)
+    #: False until the window's first read of the subagents has finished:
+    #: ``subagent_edits`` can't be trusted to be all of them yet.
+    subagents_known: bool = True
     #: Why the files can't be put back, or "" when they can.
     files_problem: str = ""
     #: Why the conversation can't be branched, or "" when it can.
@@ -84,7 +131,9 @@ class RewindPlan:
 
     def default_choice(self) -> str:
         if self.files_possible and self.conversation_possible:
-            return BOTH
+            # With nothing edited since the message, putting files back could
+            # only overwrite later changes, such as your own: not a default.
+            return BOTH if self.edits else CONVERSATION
         return FILES if self.files_possible else CONVERSATION
 
     def allowed(self, choice: str) -> bool:
@@ -94,28 +143,63 @@ class RewindPlan:
             return self.files_possible
         return self.conversation_possible
 
+    @property
+    def file_count(self) -> int:
+        """How many files putting the files back can change."""
+        return len(_files(self.edits + self.earlier_edits))
+
     def changed_files_text(self) -> str:
-        files = by_file(self.edits)
-        if not files:
-            return ("Claude hasn't changed any files with its edit tools since this message. "
-                    "Changes made by commands it ran (a build, a script) are never put back.")
-        names = [os.path.basename(f.path.rstrip("\\/")) or f.path for f in files[:NAMED_FILES]]
-        more = f", and {len(files) - NAMED_FILES} more" if len(files) > NAMED_FILES else ""
-        count = len(files)
-        return (f"Claude changed {count} file{'s' if count != 1 else ''} since this message: "
-                f"{', '.join(names)}{more}. Changes made by commands it ran (a build, a "
-                "script) are never put back.")
+        """The files that go back, each named once, by what happens to it."""
+        since = _files(self.edits)
+        earlier = _files(self.earlier_edits)
+        had_before = {_file_key(f.path) for f in earlier}
+        created = [f for f in since if f.created and _file_key(f.path) not in had_before]
+        changed = [f for f in since if f not in created]
+        seen_since = {_file_key(f.path) for f in since}
+        earlier = [f for f in earlier if _file_key(f.path) not in seen_since]
+        if not since and not earlier:
+            return ("Claude hasn't changed any files with its edit tools in this chat, so none "
+                    f"go back. {_COMMANDS_NOTE}")
+        lines = []
+        if changed:
+            lines.append(f"Claude changed {_count(changed, 'file', 'files')} since this message: "
+                         f"{_names(changed)}.")
+        if created:
+            removed = "which is removed" if len(created) == 1 else "which are removed"
+            lines.append(f"Claude created {_count(created, 'file', 'files')} since this message, "
+                         f"{removed}: {_names(created)}.")
+        if earlier:
+            also = "which goes back too" if len(earlier) == 1 else "which go back too"
+            lines.append(f"Claude changed {_count(earlier, 'file', 'files')} earlier in this "
+                         f"chat, {also}: {_names(earlier)}.")
+        if not since:
+            lines.append("Its edit tools have changed nothing since this message, so this only "
+                         "undoes changes made some other way, such as your own edits.")
+        lines.append(_COMMANDS_NOTE)
+        return " ".join(lines)
 
     def subagent_files_text(self) -> str:
-        """The files subagents changed, which stay as they are, or ""."""
-        files = by_file(self.subagent_edits)
-        if not files:
-            return ""
-        names = [os.path.basename(f.path.rstrip("\\/")) or f.path for f in files[:NAMED_FILES]]
-        more = f", and {len(files) - NAMED_FILES} more" if len(files) > NAMED_FILES else ""
-        count = len(files)
-        return (f"{count} file{'s' if count != 1 else ''} changed by subagents stay as they are, "
-                f"since Claude Code doesn't put those back: {', '.join(names)}{more}.")
+        """What happens to the files subagents changed, each named once, or
+        "". One Claude changed too has a checkpoint and goes back, so it's
+        never also said to stay."""
+        if not self.subagents_known:
+            return ("Which files subagents changed isn't known yet, as their conversations are "
+                    "still being read. A file only a subagent changed stays as it is, since "
+                    "Claude Code doesn't put those back.")
+        files = _files(self.subagent_edits)
+        claudes = {_file_key(e.path) for e in self.edits + self.earlier_edits}
+        stay = [f for f in files if _file_key(f.path) not in claudes]
+        also = [f for f in files if _file_key(f.path) in claudes]
+        said = []
+        if stay:
+            what = ("1 file changed by a subagent stays as it is" if len(stay) == 1
+                    else f"{len(stay)} files changed by subagents stay as they are")
+            said.append(f"{what}, since Claude Code doesn't put those back: {_names(stay)}.")
+        if also:
+            which = "that file" if len(also) == 1 else "those files"
+            said.append(f"Subagents' changes in {_names(also)} go back too, as Claude changed "
+                        f"{which} as well.")
+        return " ".join(said)
 
     def describe(self, choice: str) -> str:
         """What ``choice`` will do, in words, for the dialog's read-only box."""
@@ -135,8 +219,9 @@ class RewindPlan:
             if self.files_problem:
                 parts.append(self.files_problem)
             else:
-                parts.append("The files go back to how they were just before your message. "
-                             + self.changed_files_text())
+                if self.file_count:
+                    parts.append(FILES_WARNING)
+                parts.append(self.changed_files_text())
                 if self.subagent_files_text():
                     parts.append(self.subagent_files_text())
                 if choice == FILES:
@@ -192,12 +277,19 @@ def rewindable(message: Optional[ChatMessage]) -> bool:
 def plan_rewind(chat_title: str, transcript: Transcript, message: ChatMessage, *,
                 can_rewind_files: bool, files_reason: str = "",
                 conversation_reason: str = "",
-                subagent_edits: Iterable[FileEdit] = ()) -> RewindPlan:
+                subagent_edits: Iterable[FileEdit] = (),
+                subagents_known: bool = True) -> RewindPlan:
     """What Rewind to Here can do for ``message``. ``can_rewind_files``:
     the chat is one of The Chat Place's own and no turn is running in it
     (``files_reason`` says why not); ``conversation_reason`` says why the
-    conversation can't be branched ("" when it can)."""
+    conversation can't be branched ("" when it can). ``subagents_known``:
+    the window has finished reading the subagents once."""
     edits = [e for e in transcript.edits if e.turn >= message.turn > 0]
+    # Earlier edits go back too, but only from the first turn with a
+    # checkpoint: Claude Code has no copy of a file before that.
+    first_kept = min((m.turn for m in transcript.messages if m.uuid in transcript.checkpoints),
+                     default=message.turn)
+    earlier = [e for e in transcript.edits if first_kept <= e.turn < message.turn]
     if not can_rewind_files:
         files_problem = files_reason or "The files can't be put back for this chat."
     elif message.uuid not in transcript.checkpoints:
@@ -208,8 +300,9 @@ def plan_rewind(chat_title: str, transcript: Transcript, message: ChatMessage, *
     else:
         files_problem = ""
     return RewindPlan(chat_title=chat_title, message=message, cut=message.parent_uuid,
-                      edits=edits, files_problem=files_problem,
+                      edits=edits, earlier_edits=earlier, files_problem=files_problem,
                       subagent_edits=[e for e in subagent_edits if e.turn >= message.turn > 0],
+                      subagents_known=subagents_known,
                       conversation_problem=conversation_reason)
 
 
@@ -256,7 +349,8 @@ def result_from_output(returncode: Optional[int], stdout: str, stderr: str,
     if not reason:
         reason = (f"it stopped with exit code {returncode}" if returncode is not None
                   else "it didn't finish")
-    return RewindResult(False, f"Claude Code couldn't restore the files: {reason}.")
+    return RewindResult(False, f"Claude Code couldn't restore the files: {reason}. "
+                               f"{MAY_BE_PARTLY_DONE}")
 
 
 def _reason(text: str) -> str:
@@ -315,12 +409,13 @@ def run_rewind_files(executable: str, session_id: str, message: ChatMessage, cwd
         timer.start()
         out, err = process.communicate()
     except OSError as exc:
-        return RewindResult(False, f"Claude Code couldn't restore the files: {exc}.")
+        return RewindResult(False, f"Claude Code couldn't restore the files: {exc}. "
+                                   f"{MAY_BE_PARTLY_DONE}")
     finally:
         timer.cancel()
         tree.close()
     if timed_out:
         return RewindResult(False, "Claude Code couldn't restore the files: it took too long "
-                                   "and was stopped.")
+                                   f"and was stopped. {MAY_BE_PARTLY_DONE}")
     return result_from_output(process.returncode, _decode(out or b""), _decode(err or b""),
                               chat_title, message, file_count)

@@ -1567,6 +1567,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info.cli_session_id in self._runners:
             self._feedback("A turn is running in that session. Stop it first.")
             return
+        if info.cli_session_id in self._rewinding_files:
+            # Claude Code has the transcript open, reading its checkpoints.
+            self._feedback(f"The files in {info.title} are being put back. Wait for that to "
+                           "finish first.")
+            return
         if info.state == WORKING:
             # Resumed in a terminal: that claude is still writing it.
             self._feedback(f"{info.title} is working outside The Chat Place. Let it "
@@ -2736,7 +2741,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     reader.refresh()
                     transcript = reader.transcript
                 if info.provider == "claude" and path:
-                    subagent_count = subagents.count(path, copied_from)  # #468
+                    subagent_count = subagents.count(path, copied_from, transcript)  # #468
             except Exception as exc:  # noqa: BLE001 - say what can be said without it
                 transcript, error = None, str(exc) or type(exc).__name__
             wx.CallAfter(self._session_properties_read, info, transcript, path, size, error,
@@ -8000,6 +8005,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if answer != wx.YES:
                 event.Veto()
                 return
+        # Closing cancels one still queued and can cut a running one short, so
+        # the folder could be left half restored with nothing said (#468).
+        if self._rewinding_files and event.CanVeto() and wx.MessageBox(
+                "Rewind to Here is still putting files back. Quit anyway? It may not finish, "
+                "so some files may go back and others not; check them before carrying on.",
+                f"Quit {APP_NAME}", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+            event.Veto()
+            return
         export_job = getattr(self, "_export_many_job", None)
         if export_job is not None and not export_job.get("listing"):
             if event.CanVeto() and wx.MessageBox(

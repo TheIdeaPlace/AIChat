@@ -62,8 +62,12 @@ class RewindChats:
             # A branch not sent to yet, say: nothing of its own to go back to.
             self._feedback(f"{info.title} has no messages yet.")
             return None
-        if not self._chat_loaded or self._reader is None:
+        if not self._chat_loaded:
             self._feedback(f"{info.title} is still loading.")
+            return None
+        if self._reader is None:
+            # Loaded, and found to have no transcript on this computer.
+            self._feedback(f"{info.title} has no history to go back to.")
             return None
         return info, self._selected_message()
 
@@ -159,8 +163,18 @@ class RewindChats:
         plan = rewind.plan_rewind(info.title, self._reader.transcript, message,
                                   can_rewind_files=self._can_rewind_files(info),
                                   files_reason=self._files_reason(info),
-                                  subagent_edits=self._subagent_edits())
+                                  subagent_edits=self._subagent_edits(),
+                                  subagents_known=self._subagents_known())
         focus = wx.Window.FindFocus()
+
+        def focus_back():
+            # Back where Ctrl+Shift+Z was pressed: the message, or the reply
+            # box. Only if Windows hasn't put it back already: setting it
+            # again had a screen reader say the message twice (#468).
+            target = focus if focus else self.chat_list
+            if wx.Window.FindFocus() is not target:
+                target.SetFocus()
+
         dialog = RewindDialog(self, plan)
         try:
             chosen = dialog.ShowModal() == wx.ID_OK and dialog.choice
@@ -168,21 +182,19 @@ class RewindChats:
         finally:
             dialog.Destroy()
         if not chosen:
-            # Back where Ctrl+Shift+Z was pressed: the message, or the reply
-            # box. Only if Windows hasn't put it back already: setting it
-            # again had a screen reader say the message twice (#468).
-            target = focus if focus else self.chat_list
-            if wx.Window.FindFocus() is not target:
-                target.SetFocus()
+            focus_back()
             return
-        file_count = len({os.path.normcase(e.path) for e in plan.edits})
+        file_count = plan.file_count
         if choice == rewind.FILES:
+            # No new chat to go to, whether or not it could start.
             self._start_rewind_files(info, message, file_count)
+            focus_back()
             return
         # The new chat first: if it can't be made, the files stay as they are.
         text, pictures = rewind.draft_text(message)
         own = self._make_branch(info, plan.cut, rewind.rewound_title(info.title), text)
         if own is None:
+            focus_back()
             return
         said = (f"Rewound to before your message in {own.title}. Your message is in the "
                 "reply box to change and send.")
@@ -299,7 +311,7 @@ class RewindChats:
                 result = future.result()
             except Exception as exc:  # noqa: BLE001 - always say how it went
                 result = rewind.RewindResult(False, f"Claude Code couldn't restore the files: "
-                                                    f"{exc}.")
+                                                    f"{exc}. {rewind.MAY_BE_PARTLY_DONE}")
             wx.CallAfter(self._rewind_files_done, session_id, result)
 
         self._pool.submit(work).add_done_callback(done)
