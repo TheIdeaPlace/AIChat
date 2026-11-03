@@ -237,7 +237,10 @@ class NewSessionDialog(wx.Dialog):
 
         grid.Add(wx.StaticText(self, label="&Folder:"), 0, wx.ALIGN_CENTER_VERTICAL)
         if continue_from:
-            self.folder = wx.TextCtrl(self, value=default_folder, style=wx.TE_READONLY)
+            # Multi-line, though it looks like a one-line box: Tab went straight
+            # past a one-line read-only box. Made one line tall below, once
+            # there's a Title box to match.
+            self.folder = _read_only_text(self, default_folder, "Folder")
         else:
             # Typed, or one of the recent folders (Up and Down, or Alt+Down).
             recent = [f for f in recent if f]
@@ -247,43 +250,55 @@ class NewSessionDialog(wx.Dialog):
                 # Chosen, not just typed in: otherwise the first Down Arrow
                 # chooses the folder that's already there.
                 self.folder.SetSelection(0)
-        set_accessible_name(self.folder, "Folder")
+            set_accessible_name(self.folder, "Folder")
         grid.Add(self.folder, 1, wx.EXPAND)
         # The buttons on a row of their own under the box, which then has
         # the width the other fields have: beside it, they left it a third
         # narrower, showing only the end of a path (#178). Tab still goes
         # from the box to them, as they're made in that order.
-        browse = wx.Button(self, label="&Browse...")
+        self.browse_btn = wx.Button(self, label="&Browse...")
         self.github_btn = wx.Button(self, label="From &GitHub...")
-        browse.Show(not continue_from)
-        self.github_btn.Show(not continue_from)
+        # Disabled as well as hidden: on Windows a hidden button still answers
+        # its Alt key, so continuing, Alt+B changed a folder the copy ignores
+        # and Alt+G offered to clone, then left the focus on a hidden button.
+        for button in (self.browse_btn, self.github_btn):
+            button.Show(not continue_from)
+            button.Enable(not continue_from)
         if not continue_from:
             folder_buttons = wx.BoxSizer(wx.HORIZONTAL)
-            folder_buttons.Add(browse, 0, wx.RIGHT, 6)
+            folder_buttons.Add(self.browse_btn, 0, wx.RIGHT, 6)
             folder_buttons.Add(self.github_btn, 0)
             grid.Add((0, 0))
             grid.Add(folder_buttons, 0)
 
-        self.work_in_label = wx.StaticText(self, label="Work &in:")
+        # No access key on these two when continuing: a hidden label still
+        # takes its Alt key, which moved the focus on to Title.
+        self.work_in_label = wx.StaticText(self, label="Work in:" if continue_from
+                                           else "Work &in:")
         grid.Add(self.work_in_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.work_in = wx.Choice(self, choices=["The folder as it is", "A new worktree"])
         self.work_in.SetSelection(WORK_IN_FOLDER)
         set_accessible_name(self.work_in, "Work in")
         grid.Add(self.work_in, 1, wx.EXPAND)
 
-        self.branch_label = wx.StaticText(self, label="B&ranch (choose one, or type a new name):")
+        self.branch_label = wx.StaticText(
+            self, label=("Branch" if continue_from else "B&ranch")
+            + " (choose one, or type a new name):")
         grid.Add(self.branch_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.branch = wx.ComboBox(self, style=wx.CB_DROPDOWN)
         set_accessible_name(self.branch, "Branch (choose one, or type a new name)")
         grid.Add(self.branch, 1, wx.EXPAND)
         for control in (self.work_in_label, self.work_in, self.branch_label, self.branch):
             control.Show(not continue_from)
+            control.Enable(not continue_from)
 
         grid.Add(wx.StaticText(self, label="&Title:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.title_text = wx.TextCtrl(self, value=f"{continue_from} (continued)"
                                       if continue_from else title_text)
         set_accessible_name(self.title_text, "Title (optional)")
         grid.Add(self.title_text, 1, wx.EXPAND)
+        if continue_from:
+            self.folder.SetMinSize((-1, self.title_text.GetBestSize().height))
 
         grid.Add(wx.StaticText(self, label="Mo&del:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.model = wx.Choice(self, choices=[label for _v, label in MODELS])
@@ -357,7 +372,7 @@ class NewSessionDialog(wx.Dialog):
         self.Layout()
         self._fit_note()
 
-        browse.Bind(wx.EVT_BUTTON, self._on_browse)
+        self.browse_btn.Bind(wx.EVT_BUTTON, self._on_browse)
         self.chat_options_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_chat_options())
         self.github_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_github())
         ok.Bind(wx.EVT_BUTTON, self._on_ok)
@@ -763,6 +778,9 @@ class NewSessionDialog(wx.Dialog):
         self._control_provider = provider
         claude = provider == "claude"
         if self.chat_options_btn.IsShown() != claude:
+            # Disabled too: hidden, Alt+H still opened Claude's Chat Options
+            # for another provider's chat, and left the focus on the button.
+            self.chat_options_btn.Enable(claude)
             self.chat_options_btn.Show(claude)
             self.chat_options_summary.Show(claude)
             self._chat_options_spacer.Show(claude)

@@ -86,6 +86,81 @@ def test_new_session_has_chat_options_for_claude_only(frame, folder):
         dialog.Destroy()
 
 
+@pytest.mark.parametrize("provider", ["claude", "codex", "copilot"])
+def test_continue_here_hidden_controls_dont_answer_their_keys(frame, folder, provider):
+    # On Windows a hidden control still answers its Alt key: Alt+B and Alt+G
+    # opened the folder chooser and From GitHub on a dialog whose folder is
+    # fixed, and for Codex and Copilot Alt+H opened Claude's Chat Options.
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, continue_from="Desk", providers=(provider,),
+                              provider=provider)
+    try:
+        for control in (dialog.browse_btn, dialog.github_btn, dialog.work_in_label,
+                        dialog.work_in, dialog.branch_label, dialog.branch):
+            assert not control.IsShown() and not control.IsEnabled()
+        claude = provider == "claude"
+        assert dialog.chat_options_btn.IsShown() == claude
+        assert dialog.chat_options_btn.IsEnabled() == claude
+        # A hidden label moves the focus on with its key: it has none to take.
+        assert dialog.work_in_label.GetLabel() == "Work in:"
+        assert dialog.branch_label.GetLabel() == "Branch (choose one, or type a new name):"
+    finally:
+        dialog.Destroy()
+
+
+def test_new_session_disables_chat_options_along_with_hiding_it(frame, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, providers=("claude", "codex", "copilot"),
+                              provider="claude")
+    try:
+        for control in (dialog.browse_btn, dialog.github_btn, dialog.work_in):
+            assert control.IsShown() and control.IsEnabled()
+        assert dialog.work_in_label.GetLabel() == "Work &in:"
+        assert dialog.branch_label.GetLabel().startswith("B&ranch")
+        assert dialog.chat_options_btn.IsEnabled()
+        for index, provider in [(1, "codex"), (2, "copilot"), (0, "claude"), (2, "copilot")]:
+            dialog.provider_choice.SetSelection(index)
+            dialog._on_provider()
+            claude = provider == "claude"
+            assert dialog.chat_options_btn.IsShown() == claude
+            assert dialog.chat_options_btn.IsEnabled() == claude
+            # These stay whichever provider it is.
+            assert dialog.browse_btn.IsEnabled() and dialog.github_btn.IsEnabled()
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("provider", ["codex", "copilot"])
+def test_new_session_opened_on_another_provider_has_chat_options_disabled(frame, folder, provider):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, providers=("claude", "codex", "copilot"),
+                              provider=provider)
+    try:
+        assert not dialog.chat_options_btn.IsShown()
+        assert not dialog.chat_options_btn.IsEnabled()
+    finally:
+        dialog.Destroy()
+
+
+def test_continue_heres_folder_box_is_a_tab_stop_one_line_tall(frame, folder):
+    # Tab went straight past a one-line read-only box; a multi-line one is
+    # stopped on, as the app's other read-only boxes are.
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, continue_from="Desk")
+    try:
+        box = dialog.folder
+        assert box.IsMultiLine() and not box.IsEditable()
+        assert box.GetValue() == folder and box.GetName() == "Folder"
+        assert box.GetMinSize().height == dialog.title_text.GetBestSize().height
+    finally:
+        dialog.Destroy()
+    dialog = NewSessionDialog(frame, folder)
+    try:
+        assert isinstance(dialog.folder, wx.ComboBox) and dialog.folder.IsEditable()
+    finally:
+        dialog.Destroy()
+
+
 def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, tmp_path):
     from thechatplace.ui.dialogs import ChatOptionsDialog
     said = []
