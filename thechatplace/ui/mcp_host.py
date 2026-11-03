@@ -7,7 +7,9 @@ process stays while the dialog is open, because a server's own sign-in
 (OAuth) waits on it for the browser to come back, and ends when it closes.
 
 Turning a server off is kept with the chat (``OwnSession.disabled_mcp``) and
-given to each later turn, so only The Chat Place's own chats can do it.
+given to each later turn, so only The Chat Place's own chats can do it. The
+idle process gets the same list, so the tools a chat turns off aren't started
+just to show the list, and the chat's session tools, as its turns have them.
 """
 from __future__ import annotations
 
@@ -22,7 +24,8 @@ NOTE = ("Connected tools are the MCP servers and claude.ai connectors Claude can
         "chat's folder: from your Claude Code settings, the project, plugins and claude.ai. "
         "Add or remove them in Claude Code or on claude.ai. Turning one off for this chat keeps "
         "it out of this chat's turns from the next one; Claude Code's own settings and other "
-        "chats are left alone.")
+        "chats are left alone. Reading this list starts the tools that are on; a tool turned off "
+        "for this chat isn't started.")
 
 NOTE_READ_ONLY = ("Connected tools are the MCP servers and claude.ai connectors Claude can use "
                   "in this chat's folder. This chat isn't one The Chat Place started, so tools "
@@ -45,6 +48,12 @@ class ClaudeConnectedTools:
         self._lock = threading.Lock()
         self._closed = False
         self._servers = []
+        #: What the idle process was started without.
+        self._denied = []
+        # Worked out here, on the UI thread, as a turn's is. Only a chat that
+        # has them lists them: a desktop chat's turns aren't run here.
+        self._mcp_config = (frame._session_tools_config(self.record.cli_session_id)
+                            if self.record is not None else None)
 
     def note(self) -> str:
         return NOTE if self.can_turn_off else NOTE_READ_ONLY
@@ -61,12 +70,29 @@ class ClaudeConnectedTools:
             if self._closed:
                 raise McpError("The dialog has closed.")
             if self._session is None or self._session.closed:
-                # First use, or the last one ended (MAX_LIFETIME).
+                # First use, or the last one ended (MAX_LIFETIME, or it died).
                 lookup = platform_paths.find_claude()
                 if not lookup.path:
                     raise McpError(lookup.problem or "Claude Code isn't installed.")
-                self._session = claude_mcp.open_session(lookup.path, self.cwd)
+                if self._session is not None:
+                    # One that died by itself still holds its job: any server
+                    # it started is ended by this.
+                    self._session.close()
+                self._denied = self._disabled()
+                self._session = claude_mcp.open_session(lookup.path, self.cwd,
+                                                        disabled=self._denied,
+                                                        mcp_config=self._mcp_config)
+                self._session.on_expired = self._on_expired
             return self._session
+
+    def _on_expired(self, names):
+        """A server's sign-in was still waiting when its process ended (on
+        the timer's thread)."""
+        wx.CallAfter(self._say_expired, names)
+
+    def _say_expired(self, names):
+        if not self._closed and not self.frame._gone():
+            self.frame._feedback(claude_mcp.expired_text(names))
 
     def _work(self, action, done):
         """Run ``action`` on a worker; ``done(result, error)`` on the UI thread."""
@@ -80,7 +106,9 @@ class ClaudeConnectedTools:
             wx.CallAfter(finish, result, error)
 
         def finish(result, error):
-            if not self.frame._gone():
+            # Closed meanwhile, the answer is for nobody: above all, a sign-in
+            # must not open a browser after the dialog that asked has gone.
+            if not self._closed and not self.frame._gone():
                 done(result, error)
         # A thread of its own, not the window's small pool: a load can wait
         # 15 seconds for connectors and a reconnect a minute, and the pool
@@ -112,13 +140,16 @@ class ClaudeConnectedTools:
                 return
             try:
                 platform_paths.open_url(answer.url)
-            except OSError as exc:
+            except (OSError, ValueError) as exc:
+                # ValueError: os.startfile on a character it can't take.
                 done(None, f"Couldn't open your browser ({exc}). The page is {answer.url}")
                 return
             if answer.callback_expected:
                 done(f"Your browser opened the sign-in page for {server.label}. Sign in there, "
                      "then come back and press Refresh. Keep this dialog open until you've "
-                     "finished: Claude Code is waiting for the browser to come back to it.", "")
+                     "finished: Claude Code waits up to "
+                     f"{claude_mcp.lifetime_minutes()} minutes for the browser to come back "
+                     "to it.", "")
             else:
                 done(f"Your browser opened claude.ai to sign in to {server.label}. Sign in "
                      "there, then come back and press Refresh. The next turn of every chat "
@@ -151,12 +182,22 @@ class ClaudeConnectedTools:
         when = "from the next turn" if running else "from this chat's next turn"
         self.frame._feedback(f"{server.label} is off for this chat {when}." if off
                              else f"{server.label} is on again for this chat {when}.")
+        if not off and server.name in self._denied:
+            # This process was started without it, so it can say nothing about
+            # it: a new one, which starts it, says how it's doing.
+            self._end_session()
+            self.load(done)
+            return
         done(self._rows(), "")
 
-    def close(self):
+    def _end_session(self):
         """End the idle Claude Code (on a worker: it may take a moment)."""
         with self._lock:
-            self._closed = True
             session, self._session = self._session, None
         if session is not None:
             threading.Thread(target=session.close, daemon=True).start()
+
+    def close(self):
+        with self._lock:
+            self._closed = True
+        self._end_session()

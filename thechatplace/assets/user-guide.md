@@ -1638,10 +1638,15 @@ What each provider offers:
   the tool's message, to read by line. A form follows, one labelled box per thing it asks for:
   a text box for words and numbers, a check box for yes or no, a list to choose one from, and
   check boxes to choose several; "(required)" marks the ones it needs. **Send** checks what you
-  entered and says what's missing or wrong, then sends it; **Decline** refuses. When the tool
-  asks you to open a web page instead, the message shows the page's address, and
-  **Open in Browser** opens it; finish there and the tool carries on. Decline is the default there, so
-  Enter never opens a page by itself, and The Chat Place opens only web addresses.
+  entered and says what's missing or wrong, then sends it; **Decline** refuses. Enter sends only
+  from inside the form or on Send, so pressing it in the message does nothing. A form The Chat
+  Place can't show, such as one with fields inside fields or too many to go through, says so and
+  has only **Decline** and **Answer Later**. When the tool asks you to open a web page instead,
+  Answer opens on the **Address** box, above the tool's message: its first line says where the
+  page really is ("Opens example.com"), then the whole address. **Open in Browser** opens it;
+  finish there and the tool carries on. Decline is the default there, so Enter never opens a page
+  by itself. The Chat Place opens only plain web addresses: https, or http to this computer, with
+  no name or password before the host and no hidden characters, and a host in plain letters.
 
 ### Review or change permissions
 
@@ -1796,21 +1801,24 @@ connected tools...". Then each tool is one row, read in full:
 - "claude.ai Microsoft Learn: connected, claude.ai connector, 3 tools"
 - "claude.ai Morningstar: needs sign-in, claude.ai connector"
 - "github: failed: Connection closed, your settings"
-- "notes (from the probe-tools plugin): off for this chat, a plugin"
+- "notes (from the probe-tools plugin): off for this chat"
 
 Where it comes from is one of: your settings, your settings for this folder, this project (its
 `.mcp.json`), a plugin, a claude.ai connector, or your organization.
-**The Chat Place's session tools** are listed too: they're The Chat Place's own (see "Session
-commands in Claude chats").
+For a chat started here, **The Chat Place's session tools** are listed too: they're The Chat
+Place's own (see "Session commands in Claude chats").
 **Details** (Alt+D) says more about the row you're on, such as the names of its tools or why it
-failed. Asking costs nothing: no message is sent.
+failed. Asking costs nothing: no message is sent. It does start the tools that are on, for as
+long as the dialog is open; a tool turned off for the chat isn't started.
 
 ### Sign in, reconnect or turn one off
 
 - **Sign In** (Alt+S) opens the sign-in page in your browser. For a claude.ai connector that's
   claude.ai, and once you've signed in, every chat's next turn can use it. A server with its own
-  sign-in waits for your browser to come back to it, so keep Connected Tools open until you've
-  finished. Then press **Refresh** (Alt+F).
+  sign-in waits up to 15 minutes for your browser to come back to it, so keep Connected Tools
+  open until you've finished; past that, you're told it expired and can press Sign In again.
+  Then press **Refresh** (Alt+F), which stays on the same row and says the result, for example
+  "3 connected tools, 1 needs sign-in".
 - **Reconnect** (Alt+R) tries a tool that failed again, and says how it's doing now.
 - **Turn Off for This Chat** (Alt+O), or Delete in the list, keeps the tool out of this chat's
   turns from the next one; the row then says "off for this chat", and the button becomes
@@ -1843,6 +1851,9 @@ about the selected server.
   **Refresh** and **Read Status** reread status. The Chat Place leaves your global Codex settings alone.
 - A connected tool's question that The Chat Place can't display is declined with a notice.
   Claude's connected-tool forms aren't available for Codex yet.
+
+For a Codex chat started elsewhere, the list shows which servers are configured for its folder,
+without how each is doing, and tools can't be changed for it here.
 
 ## Organizing your chats
 

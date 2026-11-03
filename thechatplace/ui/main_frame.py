@@ -4114,14 +4114,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             host = CodexConnectedTools(self, info)
             focus = wx.Window.FindFocus()
             try:
-                self._modal(ConnectedToolsDialog(self, info.title, host))
+                self._modal(ConnectedToolsDialog(self, info.title, host, feedback=self._feedback))
             finally:
                 host.close()
             if focus and wx.Window.FindFocus() is not focus:
                 focus.SetFocus()
             return
         if info.provider != "claude":
-            self._feedback(f"Connected Tools is for Claude chats for now. {info.title} is a "
+            self._feedback(f"Connected Tools is for Claude and Codex chats. {info.title} is a "
                            f"{provider_name(info.provider)} chat.")
             return
         if not info.cwd or not os.path.isdir(info.cwd):
@@ -4135,7 +4135,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         returning_to = wx.Window.FindFocus()
         host = ClaudeConnectedTools(self, info)
         try:
-            self._modal(ConnectedToolsDialog(self, info.title, host))
+            self._modal(ConnectedToolsDialog(self, info.title, host, feedback=self._feedback))
         finally:
             host.close()  # the idle Claude Code ends with the dialog
         # Only if Windows hasn't put it back already: setting it again had a
@@ -4464,7 +4464,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 and response.get("action") == "accept" and is_web_url(request.url)):
             try:
                 platform_paths.open_url(request.url)
-            except OSError as exc:
+            except (OSError, ValueError) as exc:
+                # The answer has gone, so this still has to say so and carry on.
                 said = (f"Couldn't open your browser ({exc}). The page is {request.url}")
         if response.get("behavior") == "allow" or response.get("action") == "accept":
             # An approval with more still waiting doesn't count until

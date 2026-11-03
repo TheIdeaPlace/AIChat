@@ -5029,11 +5029,13 @@ class ConnectedToolsDialog(wx.Dialog):
 
     LOADING = "Reading this chat's connected tools..."
 
-    def __init__(self, parent, title: str, host):
+    def __init__(self, parent, title: str, host, feedback=None):
         super().__init__(parent, title=f"Connected Tools: {title}",
                          size=dialog_size(parent, 700, 540),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.host = host
+        host.dialog = self
+        self._feedback = feedback or (lambda text: None)
         self.rows = []
         self.loaded = False
         self.load_error = ""
@@ -5065,7 +5067,7 @@ class ConnectedToolsDialog(wx.Dialog):
         self.sign_in_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_sign_in())
         self.reconnect_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_reconnect())
         self.toggle_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_toggle())
-        self.refresh_btn.Bind(wx.EVT_BUTTON, lambda e: self.reload())
+        self.refresh_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_refresh())
         self.list.Bind(wx.EVT_LISTBOX, lambda e: self._show_selected())
         self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
@@ -5116,7 +5118,7 @@ class ConnectedToolsDialog(wx.Dialog):
         self.details.SetInsertionPoint(0)
 
     def _fill(self, rows, select: int = 0):
-        self.rows = list(rows)
+        self.rows = list(rows or [])
         self.loaded = True
         self.load_error = ""
         if self.rows:
@@ -5140,7 +5142,13 @@ class ConnectedToolsDialog(wx.Dialog):
         refresh_list_item(self.list)
         self._show_selected()
 
-    def reload(self, select: int = 0):
+    def on_refresh(self):
+        """Read the list again, staying on the same row and saying how it
+        came out: focus stays on the button, so nothing else would."""
+        self.reload(self.list.GetSelection(), announce=True)
+
+    def reload(self, select: int = 0, announce: bool = False):
+        from ..claude_mcp import tools_summary
         if self.busy:
             self._tell(self.busy, back_to=self.refresh_btn)
             return
@@ -5159,6 +5167,8 @@ class ConnectedToolsDialog(wx.Dialog):
                 self._failed(error)
             else:
                 self._fill(rows, select)
+            if announce:
+                self._feedback(self.load_error or tools_summary(self.rows))
         self.host.load(done)
 
     # -- keys -------------------------------------------------------------------
@@ -5196,11 +5206,18 @@ class ConnectedToolsDialog(wx.Dialog):
             self._tell(f"Select a connected tool to {action} first.", back_to=back_to)
         return server
 
+    def _off_text(self, server) -> str:
+        hint = getattr(self.host, 'turn_on_hint', "Turn it on first.")
+        return f"{server.label} is off for this chat. {hint}"
+
     def on_sign_in(self):
         server = self._server_for("sign in to", self.sign_in_btn)
         if server is None:
             return
-        if server.missing or server.is_session_tools:
+        if server.missing:
+            self._tell(self._off_text(server), back_to=self.sign_in_btn)
+            return
+        if server.is_session_tools:
             self._tell(f"{server.label} has nothing to sign in to.", back_to=self.sign_in_btn)
             return
         if server.status == "connected":
@@ -5224,8 +5241,7 @@ class ConnectedToolsDialog(wx.Dialog):
         if server is None:
             return
         if server.off_for_chat or server.missing:
-            self._tell(f"{server.label} is off for this chat. Turn it on first.",
-                       back_to=self.reconnect_btn)
+            self._tell(self._off_text(server), back_to=self.reconnect_btn)
             return
         index = self.list.GetSelection()
         self.busy = f"Still reconnecting {server.label}. Try again in a moment."
@@ -5254,15 +5270,18 @@ class ConnectedToolsDialog(wx.Dialog):
             self._tell("Tools can be turned off only for chats The Chat Place started.",
                        back_to=self.toggle_btn)
             return
-        if server.is_session_tools:
+        if not getattr(server, "can_be_denied", True):
             self._tell(f"{server.label} can't be turned off here.", back_to=self.toggle_btn)
             return
         index = self.list.GetSelection()
         focus = wx.Window.FindFocus()
+        # Turning one on again can need the list read afresh.
+        self.busy = "Still changing that tool. Try again in a moment."
 
         def done(rows, error):
             if not self._alive():
                 return
+            self.busy = ""
             if error:
                 self._tell(error, wx.ICON_WARNING, back_to=self.toggle_btn)
                 return
@@ -5280,28 +5299,45 @@ class ElicitationDialog(wx.Dialog):
     has one labelled control per thing it asks for, in the server's order:
     a text box for text and numbers, a check box for yes or no, a list to
     choose one from, and check boxes to choose several. Send checks what's
-    needed and sends it; Decline refuses. A page to open has Open in Browser
-    instead of the form. Answer Later (Escape) leaves it waiting.
+    needed and sends it; Decline refuses. Enter sends only from inside the
+    form or on Send: a stray Enter in the message must not send what the
+    server filled in for you. A form that can't be shown has only Decline.
+
+    A page to open has Open in Browser instead of the form, and opens on an
+    Address box above the message. That box is The Chat Place's words about
+    where the page really is, so a message can't get in first or pose as them.
+    Answer Later (Escape) leaves it waiting.
     """
 
     def __init__(self, parent, session_title: str, request):
         from ..claude_mcp import is_web_url
-        # A page to open is two lines and a button: no room kept for a form.
+        problem = request.form_problem()
+        # A page to open is a few lines and a button: no room kept for a form.
         super().__init__(parent, title=f"{request.server_label} asks: {session_title}",
-                         size=dialog_size(parent, 680, 320 if request.is_url else 540),
+                         size=dialog_size(parent, 680, 380 if request.is_url or problem else 540),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.request = request
         self.action = ""
         self.content = None
         self.fields = request.fields()
         self._controls = {}  # key -> control, or [(value, check box)] for several
+        # The room a form's words have: labels and descriptions wrap to it,
+        # as the form only scrolls up and down.
+        self._wrap_width = self.GetClientSize().width - dip_width(self, 60)
         outer = wx.BoxSizer(wx.VERTICAL)
-        outer.Add(wx.StaticText(self, label="&Message:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-        detail = request.detail()
         self.can_open = request.is_url and is_web_url(request.url)
-        if request.is_url and not self.can_open:
-            detail += "\n\nThis isn't a web page's address, so The Chat Place won't open it."
-        self.message_text = _read_only_text(self, detail, "Message", min_height=110)
+        self.address_text = self.note_text = None
+        if request.is_url:
+            outer.Add(wx.StaticText(self, label="&Address:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+            self.address_text = _read_only_text(self, request.address_text(), "Address",
+                                                min_height=60)
+            outer.Add(self.address_text, 0, wx.EXPAND | wx.ALL, 8)
+        elif problem:
+            outer.Add(wx.StaticText(self, label="&Note:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+            self.note_text = _read_only_text(self, problem, "Note", min_height=60)
+            outer.Add(self.note_text, 0, wx.EXPAND | wx.ALL, 8)
+        outer.Add(wx.StaticText(self, label="&Message:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        self.message_text = _read_only_text(self, request.detail(), "Message", min_height=110)
         outer.Add(self.message_text, 0 if self.fields else 1, wx.EXPAND | wx.ALL, 8)
         self.form_panel = None
         sizer = None
@@ -5317,17 +5353,20 @@ class ElicitationDialog(wx.Dialog):
         if request.is_url:
             self.send_btn = wx.Button(self, label="&Open in Browser")
             self.send_btn.Enable(self.can_open)
+        elif problem:
+            self.send_btn = None
         else:
             self.send_btn = wx.Button(self, label="&Send")
         self.decline_btn = wx.Button(self, label="&Decline")
         later = wx.Button(self, wx.ID_CANCEL, "Answer &Later")
         for button in (self.send_btn, self.decline_btn):
-            row.Add(button, 0, wx.RIGHT, 6)
+            if button is not None:
+                row.Add(button, 0, wx.RIGHT, 6)
         row.Add(later, 0)
-        # A form's Enter sends (what's needed is checked first); a page to
-        # open needs its button pressed, so a stray Enter never opens a
-        # server's link.
-        (self.decline_btn if request.is_url else self.send_btn).SetDefault()
+        # A form's Enter sends, from inside the form (_on_key; what's needed
+        # is checked first); a page to open needs its button pressed, so a
+        # stray Enter never opens a server's link.
+        (self.decline_btn if request.is_url or problem else self.send_btn).SetDefault()
         outer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(outer)
         if self.form_panel is not None:
@@ -5339,7 +5378,8 @@ class ElicitationDialog(wx.Dialog):
             self.Layout()
             self.form_panel.FitInside()
         self.SetEscapeId(wx.ID_CANCEL)
-        self.send_btn.Bind(wx.EVT_BUTTON, self._on_send)
+        if self.send_btn is not None:
+            self.send_btn.Bind(wx.EVT_BUTTON, self._on_send)
         self.decline_btn.Bind(wx.EVT_BUTTON, self._on_decline)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         # Set as it starts, before it's shown, as the question dialog does.
@@ -5349,39 +5389,57 @@ class ElicitationDialog(wx.Dialog):
         name = f.name() + (f": {f.description}" if f.description else "")
         # A server's own words: an "&" is shown, not taken as an access key.
         label = (f.label + (" (required)" if f.required else "")).replace("&", "&&")
-        description = f.description.replace("&", "&&")
+        box_width = self._wrap_width - _check_box_glyph(self)
+
+        def words(text):
+            return wx.StaticText(panel, label=_wrapped(panel, text, self._wrap_width)
+                                 .replace("&", "&&"))
+        plain_label = f.label + (" (required)" if f.required else "")
         if f.kind == "boolean":
-            control = wx.CheckBox(panel, label=label)
+            control = wx.CheckBox(panel, label=_wrapped(panel, plain_label, box_width)
+                                  .replace("&", "&&"))
             control.SetValue(f.default is True)
             set_accessible_name(control, name)
             sizer.Add(control, 0, wx.ALL, 6)
             if f.description:
-                sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 24)
+                sizer.Add(words(f.description), 0, wx.LEFT | wx.RIGHT, 24)
                 # A gap after it, so it reads with its own control (#468).
                 sizer.AddSpacer(6)
             self._controls[f.key] = control
             return
-        # The label just before its control, the description after it:
-        # Windows names a list from the text just before it.
-        sizer.Add(wx.StaticText(panel, label=label + ":"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         if f.kind == "multi":
+            # A group, as the question dialog's: the boxes are its siblings
+            # and inside its rectangle, which is how JAWS and NVDA find a
+            # group's label when Tab moves in. wx logs that they "should be"
+            # its children. The first box's name says the rest: a screen
+            # reader that doesn't read the group still hears it as you arrive.
             boxes = []
             chosen = f.default if isinstance(f.default, list) else []
-            for value, text in f.choices:
-                box = wx.CheckBox(panel, label=text.replace("&", "&&"))
-                box.SetValue(value in chosen)
-                set_accessible_name(box, f"{f.label}: {text}")
-                sizer.Add(box, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
-                boxes.append((value, box))
-            if f.description:
-                sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT, 6)
+            with wx.LogNull():
+                group = wx.StaticBoxSizer(wx.VERTICAL, panel, label)
+                for value, text in f.choices:
+                    box = wx.CheckBox(panel, label=_wrapped(panel, text, box_width)
+                                      .replace("&", "&&"))
+                    box.SetValue(value in chosen)
+                    set_accessible_name(box, f"{name}: {text}" if not boxes
+                                        else f"{f.label}: {text}")
+                    group.Add(box, 0, wx.ALL, 4)
+                    boxes.append((value, box))
+                if f.description:
+                    group.Add(words(f.description), 0, wx.ALL, 4)
+                sizer.Add(group, 0, wx.EXPAND | wx.ALL, 6)
             self._controls[f.key] = boxes
             return
+        # The label just before its control, the description after it:
+        # Windows names a list from the text just before it.
+        sizer.Add(words(plain_label + ":"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         if f.kind == "choice":
             # A list, not radio buttons: Tab reaches it with nothing chosen
             # (#428), and "(none)" leaves an optional one unanswered.
             texts = ([] if f.required else ["(none)"]) + [text for _v, text in f.choices]
             control = wx.Choice(panel, choices=texts)
+            # A long choice mustn't widen the form past the dialog.
+            control.SetMinSize((min(control.GetBestSize().width, self._wrap_width), -1))
             values = [v for v, _t in f.choices]
             if f.default in values:
                 control.SetSelection(values.index(f.default) + (0 if f.required else 1))
@@ -5394,7 +5452,7 @@ class ElicitationDialog(wx.Dialog):
         set_accessible_name(control, name)
         sizer.Add(control, 0, wx.EXPAND | wx.ALL, 6)
         if f.description:
-            sizer.Add(wx.StaticText(panel, label=description), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+            sizer.Add(words(f.description), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         self._controls[f.key] = control
 
     def values(self) -> dict:
@@ -5420,10 +5478,30 @@ class ElicitationDialog(wx.Dialog):
 
     def _on_init_dialog(self, event):
         event.Skip()
-        self.message_text.SetFocus()
+        (self.address_text or self.note_text or self.message_text).SetFocus()
+
+    def _focus(self):
+        return wx.Window.FindFocus()
+
+    def _enter_may_send(self, focus) -> bool:
+        """Whether Enter may reach the default button with ``focus`` where it
+        is. It may not from the Message box, where the dialog opens: Answer
+        then Enter would send whatever the server filled in, even a "yes,
+        delete it" it had already ticked. A page's default is Decline, and
+        has no such worry."""
+        if self.request.is_url or self.send_btn is None or isinstance(focus, wx.Button):
+            return True
+        while focus is not None:
+            if focus is self.form_panel:
+                return True
+            focus = focus.GetParent()
+        return False
 
     def _on_key(self, event):
         if press_focused_button_on_a_mac(event):
+            return
+        if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+                and not self._enter_may_send(self._focus())):
             return
         event.Skip()
 

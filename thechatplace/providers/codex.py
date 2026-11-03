@@ -591,10 +591,10 @@ class CodexProvider:
     def connected_tools(self, session):
         self._check(session)
         from .codex_tools import inventory
-        connection, allowed = self.connection, ()
         if session.is_own and self.runtime is not None:
             connection, allowed = self.runtime.tools_context(session.cli_session_id)
-        return inventory(connection, session, allowed)
+            return inventory(connection, session, allowed)
+        return inventory(self.connection, session, read_only=True)
 
     def copy_with_tools(self, source, title, names):
         self._check(source)

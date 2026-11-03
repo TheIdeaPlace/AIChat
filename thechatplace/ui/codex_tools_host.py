@@ -1,11 +1,25 @@
 """Adapt Codex's thread-scoped tool configuration to the shared dialog."""
 import wx
 
+NOTE_READ_ONLY = ("Codex MCP servers configured for this folder. This chat wasn't started in The "
+                  "Chat Place, so tools can't be changed for it here, and how each server is "
+                  "doing isn't shown. Add servers and sign in using Codex CLI.")
+
+#: When Codex's failure has no words fit to show (safe_reason gave none).
+COULD_NOT_SAY = 'Codex could not say.'
+
 
 class CodexConnectedTools:
     provider_name = 'Codex'
     reconnect_label = 'Read St&atus'
     can_turn_off = True
+    # Reading the status of a tool that's off means having it on, which for
+    # Codex makes a copy: there's no turning it on in this chat (#468).
+    turn_on_hint = ('Copy with Tool On makes a new copy of this chat with it on, '
+                    'where you can read its status. This chat stays as it is.')
+    #: The Connected Tools dialog, once it's open: it's the window in use, and
+    #: a box parented on the window it disabled would come up behind it.
+    dialog = None
 
     def __init__(self, frame, info):
         self.frame, self.info = frame, info
@@ -15,6 +29,8 @@ class CodexConnectedTools:
         self.busy = False
 
     def note(self):
+        if not self.can_turn_off:
+            return NOTE_READ_ONLY
         return ('Codex MCP servers configured for this folder. Apps and plugins remain unavailable. '
                 'Changing a tool creates a new read-only copy of this chat with that selection; '
                 'the original chat is kept. Enabled tools may read or change external services, '
@@ -22,12 +38,17 @@ class CodexConnectedTools:
                 'Server questions that TCP cannot display are declined.')
 
     def toggle_label(self, server):
+        if not self.can_turn_off:
+            return 'Turn &Off for This Chat'  # says why not when pressed
         return 'Copy with Tool &On' if server and server.off_for_chat else 'Copy with Tool &Off'
 
     def load(self, done):
         def finished(rows, error):
             if not self.closed:
-                done(None if error else rows, rows if error else '')
+                if error:
+                    done(None, rows or COULD_NOT_SAY)
+                else:
+                    done(rows or [], '')
         self.frame._codex_work(lambda: self.frame.sessions.connected_tools(self.info), finished)
 
     def sign_in(self, server, done):
@@ -52,7 +73,8 @@ class CodexConnectedTools:
                    'services outside the folder sandbox. Only enable a server you trust.' if not off else
                    'Create a new copy with ' + server.name + ' turned off?')
         if wx.MessageBox(consent, 'Copy Codex Chat with Connected Tools',
-                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self.frame) != wx.YES:
+                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                         self.dialog or self.frame) != wx.YES:
             self.load(done)
             return
         source = self.info
