@@ -5336,8 +5336,9 @@ class ElicitationDialog(wx.Dialog):
     needed and sends it; Decline refuses. Enter sends only from inside the
     form or on Send: a stray Enter in the message must not send what the
     server filled in for you, so it says where to go instead. With nothing to
-    fill in there's nothing to protect, and Enter presses Send from the message
-    too. A form that can't be shown has only Decline.
+    fill in it's the same, as Send is then the whole answer: "Delete the
+    production table?" with no fields is confirmed by sending. A form that
+    can't be shown has only Decline.
 
     A page to open has Open in Browser instead of the form, and opens on an
     Address box above the message. That box is The Chat Place's words about
@@ -5541,11 +5542,10 @@ class ElicitationDialog(wx.Dialog):
         """Whether Enter may reach the default button with ``focus`` where it
         is. It may not from the Message box, where the dialog opens: Answer
         then Enter would send whatever the server filled in, even a "yes,
-        delete it" it had already ticked. A page's default is Decline, and
-        has no such worry; nor has a form with no fields, which has no
-        answers to send but the one you'd be choosing."""
-        if (self.request.is_url or self.send_btn is None or not self.fields
-                or isinstance(focus, wx.Button)):
+        delete it" it had already ticked. A form with no fields is no
+        different: sending it is that yes. A page's default is Decline, and
+        has no such worry."""
+        if self.request.is_url or self.send_btn is None or isinstance(focus, wx.Button):
             return True
         while focus is not None:
             if focus is self.form_panel:
@@ -5558,11 +5558,12 @@ class ElicitationDialog(wx.Dialog):
             focus is box for box in (self.address_text, self.note_text, self.message_text))
 
     def _where_to_go(self) -> str:
-        """What Enter in a read-only box says, for a page or a form that can't
-        be shown, where it mustn't do anything else."""
+        """What Enter says where it mustn't do anything else."""
         if self.request.is_url and self.can_open:
             return "Tab to Open in Browser, or to Decline."
-        return "Tab to Decline."
+        if self.request.is_url or self.send_btn is None:
+            return "Tab to Decline."
+        return "Tab to the form, or to Send." if self.fields else "Tab to Send, or to Decline."
 
     def _on_key(self, event):
         # Not on a Mac, which has no access keys: Option and a letter types.
@@ -5581,11 +5582,8 @@ class ElicitationDialog(wx.Dialog):
             if self._in_read_only_box(focus) and (self.request.is_url or self.send_btn is None):
                 self._feedback(self._where_to_go())
                 return
-            if self._in_read_only_box(focus) and not self.fields:
-                self._on_send()
-                return
             if not self._enter_may_send(focus):
-                self._feedback("Tab to the form, or to Send.")
+                self._feedback(self._where_to_go())
                 return
         event.Skip()
 

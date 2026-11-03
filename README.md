@@ -526,9 +526,9 @@ Copilot chats don't have these yet.
     its box, and each has an Alt key of its own), with **Send**, which checks
     what you entered and says what's missing or wrong first, and **Decline**. Enter sends from
     inside the form or on Send. In the message it says "Tab to the form, or to Send", so a
-    stray Enter can't send what the server filled in; with nothing to fill in, it sends from
-    there too. A form The Chat Place can't show
-    (fields inside fields, or too many fields or choices) says so, with only **Decline** and
+    stray Enter can't send what the server filled in; with nothing to fill in, it says "Tab to
+    Send, or to Decline", as sending is then your whole answer. A form The Chat Place can't show
+    (fields inside fields, too many fields or choices, or no proper list of fields) says so, with only **Decline** and
     **Answer Later**; Enter in its boxes says "Tab to Decline". When it asks you to open a web page
     instead, Answer opens on an **Address**
     box above the message, with the host on its own line ("Opens example.com") and then the whole

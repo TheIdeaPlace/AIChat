@@ -710,10 +710,9 @@ def test_enter_in_the_message_says_where_to_go(frame, env, monkeypatch):
     assert runner.responses == [("e1", {"action": "decline"})]
 
 
-def test_a_form_with_nothing_to_fill_in_sends_from_the_message(frame, env, monkeypatch):
-    # No answers filled in for you to protect: Enter is plainly the answer. It
-    # presses Send from the key's own handler, as the read-only box beneath it
-    # keeps Enter for itself and the default button never hears it.
+def test_a_form_with_nothing_to_fill_in_doesnt_send_from_the_message(frame, env, monkeypatch):
+    # "Delete the production table?" with no fields: accept is the yes, so
+    # Answer then a stray Enter must not confirm it (#468).
     from thechatplace.claude_mcp import ACCEPT
     from thechatplace.ui.dialogs import ElicitationDialog
     said = []
@@ -724,9 +723,31 @@ def test_a_form_with_nothing_to_fill_in_sends_from_the_message(frame, env, monke
     dialog.EndModal = ended.append
     try:
         assert dialog.fields == [] and dialog.send_btn is not None
+        assert dialog.form_panel is None
         assert not _enter(dialog, monkeypatch, dialog.message_text)
+        assert not _enter(dialog, monkeypatch, None)
+        assert ended == [] and dialog.action == ""
+        assert said == ["Tab to Send, or to Decline."] * 2
+        # Send is the next stop after the message, with no form in between.
+        children = [c for c in dialog.GetChildren() if c.IsEnabled() and c.AcceptsFocus()]
+        assert children[children.index(dialog.message_text) + 1] is dialog.send_btn
+        # On Send, Enter is Send's own: Windows then presses it.
+        assert _enter(dialog, monkeypatch, dialog.send_btn)
+        dialog._on_send()
         assert ended == [wx.ID_OK] and dialog.action == ACCEPT and dialog.content == {}
-        assert said == []
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("schema", [
+    None, {}, {"type": "object"}, {"type": "object", "properties": {"a": "x"}}])
+def test_a_schema_that_isnt_one_has_only_decline_and_later(frame, env, schema):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    dialog = ElicitationDialog(frame, "Tools probe",
+                               elicitation_from("e", {**FORM, "requested_schema": schema}))
+    try:
+        assert dialog.send_btn is None and dialog.form_panel is None
+        assert "not a list of fields" in dialog.note_text.GetValue()
     finally:
         dialog.Destroy()
 

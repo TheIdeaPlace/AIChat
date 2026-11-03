@@ -191,7 +191,8 @@ For Claude:
    Expect: nothing is sent, and you hear "Tab to the form, or to Send". Tab into the form and check
    that the questions, choices and focused field are named, that a number says its limits, and that
    each field's Alt key goes to it. Fill it in and press Enter, or Send.
-   With nothing to fill in, Enter on the message sends.
+   With nothing to fill in, Enter on the message sends nothing and you hear "Tab to Send, or to
+   Decline"; Send is one Tab away.
 5. If it asks you to open a web page, **Ctrl+Shift+A** opens on an **Address** box above the message,
    with "Opens" and the host on its first line and then the whole address. Press Enter there and in
    the message. Expect: nothing opens, and you hear "Tab to Open in Browser, or to Decline". **Open

@@ -786,16 +786,22 @@ def form_problem(schema) -> str:
     """Why this form can't be answered here, as a sentence, or "". Sending
     what a box happens to hold would give the server something it didn't ask
     for (a nested object as a string), and leaving a required part out would
-    send it nothing, so such a form can only be declined or left for later."""
-    if not isinstance(schema, dict):
-        return ""
+    send it nothing, so such a form can only be declined or left for later.
+
+    With no fields, Send's accept is the whole answer, so an empty form has to
+    mean it: ``"properties": {}`` is a server asking only for a yes, as MCP's
+    schema requires that key. No schema, or one with no such key, or fields
+    none of which can be read, is a request gone wrong, and a yes to that would
+    be a yes to who knows what (#468)."""
     too_long = ("This form is too long for The Chat Place to show, so you can only decline it "
                 "or answer later.")
 
     def cant(label) -> str:
         return (f"This form asks for something The Chat Place can't show "
                 f"({_visible(str(label))[:80]}), so you can only decline it or answer later.")
-    props = schema.get("properties", {})
+    if not isinstance(schema, dict) or "properties" not in schema:
+        return cant("not a list of fields")
+    props = schema["properties"]
     if schema.get("type") not in (None, "object") or not isinstance(props, dict):
         return cant("not a list of fields")
     if len(props) > MAX_FORM_FIELDS:
@@ -809,6 +815,8 @@ def form_problem(schema) -> str:
             return too_long
         if _cant_show(prop, key in required):
             return cant((prop.get("title") if isinstance(prop, dict) else None) or key)
+    if props and not form_fields(schema):
+        return cant("not a list of fields")
     return ""
 
 

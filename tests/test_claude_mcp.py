@@ -820,9 +820,13 @@ def test_how_many_to_choose_is_checked():
     ({"required": ["x"], "properties": {"x": "not a property"}}, "x"),
     ({"required": ["gone"], "properties": {}}, "gone"),
     ({"required": [7], "properties": {}}, "7"),
-    # Not a list of fields at all.
+    # Not a list of fields at all, whose only answer would be a yes to nothing.
     ({"type": "array"}, "not a list of fields"),
-    ({"properties": []}, "not a list of fields")])
+    ({"properties": []}, "not a list of fields"),
+    ({}, "not a list of fields"),
+    ({"type": "object"}, "not a list of fields"),
+    ({"properties": {"weird": "not a property"}}, "not a list of fields"),
+    ({"type": "object", "properties": {"a": "x"}}, "not a list of fields")])
 def test_a_form_that_cant_be_shown_says_so_and_has_no_fields(schema, named):
     problem = claude_mcp.form_problem(schema)
     assert f"({named})" in problem and "can only decline it or answer later" in problem
@@ -830,10 +834,21 @@ def test_a_form_that_cant_be_shown_says_so_and_has_no_fields(schema, named):
     assert request.form_problem() == problem and request.fields() == []
 
 
+def test_no_schema_at_all_is_a_form_that_cant_be_shown():
+    assert "not a list of fields" in claude_mcp.form_problem(None)
+    for odd in (None, "x", 5, []):
+        request = elicitation_from("e", {**FORM_REQUEST, "requested_schema": odd})
+        assert "not a list of fields" in request.form_problem() and request.fields() == []
+    missing = {k: v for k, v in FORM_REQUEST.items() if k != "requested_schema"}
+    assert "not a list of fields" in elicitation_from("e", missing).form_problem()
+
+
 @pytest.mark.parametrize("schema", [
-    {}, {"type": "object"}, {"type": "object", "properties": {}},
+    # Deliberately empty: "properties" is there, with nothing in it.
+    {"type": "object", "properties": {}}, {"properties": {}},
     FORM_REQUEST["requested_schema"],
-    {"properties": {"weird": "not a property"}},  # optional: left out, as before
+    # One that can't be read among others that can: left out, as before.
+    {"properties": {"weird": "not a property", "name": {"type": "string"}}},
     {"properties": {"x": {"oneOf": [{"const": "a"}, {"const": "b"}]}}},
     {"required": ["x"], "properties": {"x": {"type": "array", "minItems": 1,
                                              "items": {"enum": ["a"]}}}}])
