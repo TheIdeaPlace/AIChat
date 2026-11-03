@@ -243,7 +243,15 @@ class SubagentChatDialog(wx.Dialog):
             return
         event.Skip()
 
+    def Destroy(self):
+        # Before the window goes, not from its destroy event. Under GTK that
+        # event comes too late, or from a wrapper that isn't this object, so
+        # the timer outlived the window and its next tick crashed the app
+        # (the Orca check on #512).
+        self.timer.Stop()
+        return super().Destroy()
+
     def _on_destroy(self, event):
-        if event.GetEventObject() is self:
+        if event.GetId() == self.GetId():
             self.timer.Stop()
         event.Skip()

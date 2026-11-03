@@ -763,7 +763,8 @@ def test_choosing_several_is_a_group_and_its_first_box_says_the_rest(frame, env)
         first, second = [box for _value, box in dialog._controls["extras"]]
         assert first.GetName() == "Extras, required: What to add: Breakfast"
         assert second.GetName() == "Extras: Parking"
-        groups = [c for c in dialog.form_panel.GetChildren() if isinstance(c, wx.StaticBox)]
+        # By wx's class name: a wrapper from GetChildren isn't always a StaticBox.
+        groups = [c for c in dialog.form_panel.GetChildren() if c.GetClassName() == "wxStaticBox"]
         assert [g.GetLabel() for g in groups] == ["Extras (required)"]
         # Siblings of the box, not its children: see QuestionDialog.
         assert first.GetParent() is dialog.form_panel

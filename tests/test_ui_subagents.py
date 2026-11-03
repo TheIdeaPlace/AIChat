@@ -455,3 +455,20 @@ def test_enter_in_lists_opens_a_subagent_and_goes_from_kinds_to_the_list(frame, 
     frame.on_subagents()
     assert steps == {"list": True}
     assert opened == ["Subagent code-reviewer, in Quiet one"]
+
+
+def test_closing_a_conversation_stops_its_timer_first(frame, env):
+    # Its next tick reached a window that had gone, which crashed the app on
+    # Linux (the Orca check on #512).
+    from thechatplace.ui.subagent_chat import SubagentChatDialog
+    from types import SimpleNamespace
+    from thechatplace import subagents
+    reader = SimpleNamespace(transcript=SimpleNamespace(messages=[]), refresh=lambda: False)
+    sub = subagents.Subagent(agent_id="a1", name="code-reviewer", status=subagents.DONE)
+    dialog = SubagentChatDialog(frame, sub, "Chat", reader, read_message=lambda *a: None,
+                                copy=lambda *a: None, feedback=lambda *a: None,
+                                latest=lambda: None, show_activity=False, whole_in_list=False)
+    assert dialog.timer.IsRunning()
+    timer = dialog.timer
+    dialog.Destroy()
+    assert not timer.IsRunning()
