@@ -1728,6 +1728,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Rewind to Here with Conversation and files chosen: the warning in What Happens"
+  },
+  "whole-chat": {
+   "kind": "dialog",
+   "png": "whole-chat-hc-aquatic-100.png",
+   "json": "whole-chat-hc-aquatic-100.json",
+   "title": "Whole chat: Fix the flaky upload test",
+   "class": "FormattedMessageDialog",
+   "size": [
+    820,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A whole chat as one page, on the selected message"
   }
  },
  "seconds": 280.2

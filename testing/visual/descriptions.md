@@ -200,6 +200,12 @@ This is a 720 by 520 dialog titled "Message: Claude" (it was "Message from Claud
 
 **What looks off:** The line lengths are uneven: the first paragraph wraps early, around 430 pixels, while the long paragraph uses the full width. Nothing else.
 
+## whole-chat: View, Read Whole Chat as a Page: every message on one page, on the selected one (#538)
+
+This uses the same 820 by 620 frame as the other formatted pages, titled "Whole chat: Fix the flaky upload test", with "Read as Plain Text" and "Close" at the bottom right. The page has already scrolled to the selected message, not its top: the scroll bar's thumb is in the middle of its track, and the first line in view, right against the top edge, is that message's large bold heading, "Claude, 07:00", in a thin rounded focus ring as wide as the text column. Below it is the same message as message-formatted: a smaller bold "What changed", a paragraph, the two-item list, the grey code block, the three-column table, then the paragraph with the blue link, whose third line is cut by the page's bottom edge as it scrolls.
+
+**What looks off:** Nothing. The ring is #101010 on white (19:1) in light mode and #8EE3F0 on #202020 (11:1) in High Contrast Aquatic, where the page text is white on #202020 (16.3:1) and the link #75E9FC (11.5:1). The buttons look small beside the page text, as on every formatted page.
+
 ## settings: Settings
 
 The light-100 picture is 680 by 833 (#438), 179 pixels taller than the preceding

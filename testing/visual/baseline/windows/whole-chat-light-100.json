@@ -1,0 +1,77 @@
+{
+ "title": "Whole chat: Fix the flaky upload test",
+ "class": "FormattedMessageDialog",
+ "size": [
+  820,
+  620
+ ],
+ "client": [
+  804,
+  581
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "WebViewEdge",
+   "name": "wxWebView",
+   "label": "",
+   "rect": [
+    6,
+    6,
+    796,
+    534
+   ],
+   "best": [
+    100,
+    80
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Read as &Plain Text",
+   "rect": [
+    600,
+    550,
+    115,
+    23
+   ],
+   "best": [
+    115,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Close",
+   "rect": [
+    721,
+    550,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
