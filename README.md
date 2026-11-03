@@ -1817,15 +1817,22 @@ you press Stop, so ask Claude to start long-running servers in a terminal of you
 **File, Stop Background Task** ends one of them and keeps the turn: it's available while the
 loaded Claude chat has background work, lists each piece with how long it has run ("Windows
 build, running 3 minutes"), asks Yes or No (No first) naming the one chosen, and says "Stopped
-Windows build." It sends Claude Code's `stop_task` with the task's id from
-`background_tasks_changed`; checked with Claude Code 2.1.296, the task ends at once and the rest
-keep running. If it was the last and Claude had already answered, the turn ends as it would when
-the work finished.
+Windows build." If the work finishes while you're choosing or answering, nothing is sent and it
+says "Windows build has already finished." It sends Claude Code's `stop_task` with the task's id
+from `background_tasks_changed`; checked with Claude Code 2.1.296, the task ends at once and the
+rest keep running. If it was the last and Claude had already answered, the turn ends as it would
+when the work finished.
 
 While a turn runs, Claude Code's own reports are said too. A request it retries (`api_retry`)
-goes on the status bar each time and is said, without cutting off the screen reader, on the
-first retry of a turn and then at most every 30 seconds: "Claude is retrying: the service is
-overloaded. Attempt 2 of 10, next in 8 seconds." A move to the fallback model
+goes on the status bar each time and is said, without cutting off the screen reader, once per
+turn for each reason: "Claude is retrying: the service is overloaded. Attempt 2 of 10, next in 8
+seconds." Claude Code also repeats these about every 30 seconds while a background agent waits on
+a rate limit, so once Claude has answered, Turn Status doesn't count them as the turn retrying. A
+permission mode Claude Code changes by itself is said without cutting off the screen reader: plan
+mode, or one that asks more often, is kept with the chat. One that lets Claude do more without
+asking, such as a change over Remote Control, applies to that turn only, and later turns start in
+the mode you chose: "Claude Code switched to auto mode for this turn. Later turns start in manual
+mode." A move to the fallback model
 (`model_fallback`) is said: "Claude switched to Sonnet 5.5 because Opus 5.5 was overloaded." A
 fallback, or any reply, on Fable that wasn't chosen stops the turn as at its start. A saved
 memory (`memory_saved`) is said at the Full announcement level ("Claude saved a memory: build

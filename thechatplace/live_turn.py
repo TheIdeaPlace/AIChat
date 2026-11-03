@@ -11,13 +11,9 @@ them; claude_cli.py's parser hands them on as plain dicts.
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 
-from .claude_cli import describe_elapsed, model_spoken
-
-#: After the first retry of a turn is said, later ones are said at most this
-#: often (seconds); the status bar has every one.
-RETRY_SPEAK_GAP = 30.0
+from .claude_cli import describe_elapsed, mode_label, model_spoken
 
 #: api_retry's ``error`` values (Claude Code's error kinds), in words.
 _RETRY_REASONS = {
@@ -28,11 +24,11 @@ _RETRY_REASONS = {
     "oauth_org_not_allowed": "your organization isn't allowed",
     "account_on_hold": "your account is on hold",
     "verification_required": "your account needs verifying",
-    "billing_error": "of a billing problem",
+    "billing_error": "there's a billing problem",
     "invalid_request": "the request was refused",
     "model_not_found": "the model wasn't found",
     "max_output_tokens": "the reply was too long",
-    "cloud_credential_error": "of a credentials problem",
+    "cloud_credential_error": "there's a credentials problem",
 }
 
 
@@ -49,21 +45,22 @@ def retry_reason(data: dict) -> str:
     return "it couldn't reach the service"
 
 
-def _seconds(milliseconds) -> str:
-    seconds = max(0, round((milliseconds if type(milliseconds) is int else 0) / 1000))
-    return "1 second" if seconds == 1 else f"{seconds} seconds"
-
-
 def retry_text(data: dict) -> str:
     """"Claude is retrying: the service is overloaded. Attempt 2 of 10, next
     in 8 seconds." Counted as Claude Code's own terminal counts them
-    ("attempt 2/10")."""
+    ("attempt 2/10"). A rate limit's wait can be hours, so it's said as a time;
+    with no wait to speak of, it's left out."""
     attempt = data.get("attempt") if type(data.get("attempt")) is int else 0
     most = data.get("max_retries") if type(data.get("max_retries")) is int else 0
+    delay = data.get("retry_delay_ms") if type(data.get("retry_delay_ms")) is int else 0
+    seconds = round(delay / 1000)
+    wait = describe_elapsed(seconds) if seconds > 0 else ""
     text = f"Claude is retrying: {retry_reason(data)}."
     if attempt > 0:
         text += f" Attempt {attempt}" + (f" of {most}" if most > 0 else "")
-        text += f", next in {_seconds(data.get('retry_delay_ms'))}."
+        text += f", next in {wait}." if wait else "."
+    elif wait:
+        text += f" Next in {wait}."
     return text
 
 
@@ -81,24 +78,50 @@ def retry_status_text(data: Optional[dict]) -> str:
 
 
 class RetryThrottle:
-    """When a retry is spoken (#468): the first of each turn, then at most
-    every ``gap`` seconds, so a long run of retries doesn't talk over
-    everything. ``key`` is the turn's chat."""
+    """When a retry is spoken (#468): once per turn for each reason. Claude
+    Code repeats ``api_retry`` about every 30 seconds while a subagent waits on
+    a rate limit, which can go on for hours, and the status bar has the latest
+    anyway. Each reason only once, rather than whenever it
+    changes, so a service going back and forth between two errors stops being
+    said too. ``key`` is the turn's chat."""
 
-    def __init__(self, gap: float = RETRY_SPEAK_GAP) -> None:
-        self.gap = gap
-        self._last: Dict[str, float] = {}
+    def __init__(self) -> None:
+        self._said: Dict[str, Set[str]] = {}
 
-    def should_speak(self, key: str, now: float) -> bool:
-        last = self._last.get(key)
-        if last is not None and now - last < self.gap:
+    def should_speak(self, key: str, reason: str) -> bool:
+        said = self._said.setdefault(key, set())
+        if reason in said:
             return False
-        self._last[key] = now
+        said.add(reason)
         return True
 
     def turn_ended(self, key: str) -> None:
         """The next turn's first retry is said again."""
-        self._last.pop(key, None)
+        self._said.pop(key, None)
+
+
+#: The permission modes, from what lets Claude do least without asking to what
+#: lets it do most.
+_MODE_WIDTH = {"plan": 0, "manual": 1, "acceptEdits": 2, "auto": 3}
+
+
+def mode_change(saved: str, mode: str, before_plan: str = "") -> Tuple[str, str]:
+    """Claude Code reports ``mode``, which isn't the chat's ``saved`` mode, so
+    it didn't come from a choice in this app: those are saved before they
+    reach Claude Code (#468). ``before_plan`` is the mode the chat had if
+    Claude put it in plan mode itself. Returns the mode to save ("" for none)
+    and what to say.
+
+    Planning, or asking more often, is safe to keep. A mode that lets Claude
+    do more without asking, such as one set over Remote Control, holds for this
+    turn only: later turns don't take on more than you chose here."""
+    chose = before_plan if saved == "plan" and before_plan else saved
+    if mode == "plan" or _MODE_WIDTH.get(mode, 0) <= _MODE_WIDTH.get(chose, -1):
+        return mode, f"Claude Code switched to {mode_label(mode)} mode."
+    # Out of the plan mode Claude chose for itself, back to what you chose.
+    keep = chose if saved == "plan" and before_plan else ""
+    return keep, (f"Claude Code switched to {mode_label(mode)} mode for this turn. "
+                  f"Later turns start in {mode_label(chose)} mode.")
 
 
 #: model_fallback's ``trigger``, as what happened to the first model.
@@ -157,6 +180,13 @@ def background_choice(entry: dict, now: float) -> str:
     if isinstance(since, (int, float)):
         return f"{description}, running {describe_elapsed(now - since)}"
     return description
+
+
+def already_finished_text(description: str) -> str:
+    """The task ended while Stop Background Task was asking which, or Yes or
+    No, so nothing is sent: "stopped" would be wrong for work that completed."""
+    name = "The task" if description == "the task" else description
+    return f"{name} has already finished."
 
 
 def stop_result_text(description: str, ok: bool, still_running: bool, error: str = "") -> str:

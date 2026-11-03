@@ -11,14 +11,12 @@ breakdown in Usage and Context.
 """
 from __future__ import annotations
 
-import time
 from typing import Callable, Dict, List, Optional
 
 import wx
 
 from .. import live_turn
-from ..claude_cli import (PERMISSION_MODE_VALUES, TURN_ENDED, mode_label,
-                          normalize_permission_mode)
+from ..claude_cli import PERMISSION_MODE_VALUES, TURN_ENDED, normalize_permission_mode
 from ..speech import ANNOUNCE_FULL
 
 
@@ -68,12 +66,12 @@ class LiveTurns:
             self._retry_throttle_for().turn_ended(session_id)
             return False
         if kind == "mode":
-            self._claude_changed_mode(session_id, title, event.text)
+            self._claude_changed_mode(session_id, title, event.text, is_open_now)
             return True
         if kind == "retry":
             text = live_turn.retry_text(data)
             said = text if is_open_now else f"{title}: {text}"
-            if self._retry_throttle_for().should_speak(session_id, time.monotonic()):
+            if self._retry_throttle_for().should_speak(session_id, live_turn.retry_reason(data)):
                 self._say(said, interrupt=False)  # news, not over what's being read
             else:
                 self._status(said)
@@ -102,25 +100,30 @@ class LiveTurns:
             self._retry_throttle = live_turn.RetryThrottle()
         return self._retry_throttle
 
-    def _claude_changed_mode(self, session_id: str, title: str, mode: str) -> None:
+    def _claude_changed_mode(self, session_id: str, title: str, mode: str,
+                             is_open_now: bool = True) -> None:
         """Claude Code says the chat's permission mode changed: a live Change
-        Permission Mode (already kept), approving a plan (kept too), or
-        Claude entering plan mode itself. Kept with the chat, so the next
-        turn starts in it and Chat Permissions and the heading say it."""
+        Permission Mode or approving a plan (both saved already, and said), or
+        something this app didn't choose, such as Claude entering plan mode
+        itself or a change over Remote Control. That's said, and
+        ``live_turn.mode_change`` decides if it's kept with the chat, for the
+        next turn, Chat Permissions and the heading."""
         own = self.store.get(session_id)
         if own is None or mode not in PERMISSION_MODE_VALUES:
             return
         now = normalize_permission_mode(own.permission_mode)
+        before_plan = self._mode_before_plan.get(session_id, "")
         if mode != "plan":
             self._forget_mode_before_plan(session_id)  # out of plan mode
         if now == mode:
             return
         if mode == "plan":
             self._mode_before_plan = {**self._mode_before_plan, session_id: now}
-        if not self._store_write(self.store.update, session_id, permission_mode=mode):
+        keep, text = live_turn.mode_change(now, mode, before_plan)
+        if keep and not self._store_write(self.store.update, session_id, permission_mode=keep):
             return
         self._update_heading()
-        self._status(f"{title}: Claude Code switched to {mode_label(mode)} mode.")
+        self._say(text if is_open_now else f"{title}: {text}", interrupt=False)
 
     def _forget_mode_before_plan(self, session_id: str) -> None:
         """The chat left plan mode, or you chose its mode yourself."""
@@ -168,9 +171,22 @@ class LiveTurns:
             return
         entry = entries[index]
         description = " ".join(str(entry.get("description") or "the task").split())
+
+        def still_running():
+            # Claude Code answers stop_task with success even for a task it
+            # no longer has, so that would be said as stopping work that
+            # completed. Either question can stay open while it finishes.
+            return any(e.get("task_id") == entry["task_id"]
+                       for e in runner.background_entries)
+        if not still_running():
+            self._feedback(live_turn.already_finished_text(description))
+            return
         if wx.MessageBox(f"Stop {description}? Claude Code ends it at once; the turn and any "
                          "other background work carry on.", "Stop Background Task",
                          wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+            return
+        if not still_running():
+            self._feedback(live_turn.already_finished_text(description))
             return
         session_id = info.cli_session_id
 

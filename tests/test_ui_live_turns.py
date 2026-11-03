@@ -3,6 +3,8 @@ and Change Permission Mode now, Stop Background Task, retries, fallbacks,
 memories, Claude's own mode changes and the context breakdown.
 
 These tests construct windows: run in the VM or CI only."""
+from types import SimpleNamespace
+
 import pytest
 
 wx = pytest.importorskip("wx")
@@ -70,6 +72,8 @@ def test_claude_entering_plan_mode_itself_is_kept_and_approval_offers_the_old_mo
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="plan"))
     assert frame.store.get("own-1").permission_mode == "plan"
     assert frame.session_heading.GetLabel().endswith("plan mode.")
+    # Said, not just on the status bar.
+    assert env["feedback"][-1] == "Claude Code switched to plan mode."
     assert "switched to plan mode" in frame._status_latest
     assert frame._mode_to_offer_after_plan("own-1", "plan") == "auto"
     # The same mode again (our own change echoed back) changes nothing.
@@ -80,6 +84,56 @@ def test_claude_entering_plan_mode_itself_is_kept_and_approval_offers_the_old_mo
     frame._on_turn_event({"id": "own-1"}, "Hub probe",
                          TurnEvent("mode", text="bypassPermissions"))
     assert frame.store.get("own-1").permission_mode == "plan"
+
+
+def test_a_wider_mode_changed_elsewhere_applies_to_this_turn_only(frame, env):
+    """Manual to auto over Remote Control: said, and the chat stays manual."""
+    _running(frame)
+    frame.store.update("own-1", permission_mode="manual")
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="auto"))
+    assert frame.store.get("own-1").permission_mode == "manual"
+    assert env["feedback"][-1] == ("Claude Code switched to auto mode for this turn. "
+                                 "Later turns start in manual mode.")
+
+
+def test_a_narrower_mode_changed_elsewhere_is_kept_and_said(frame, env):
+    _running(frame)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="manual"))
+    assert frame.store.get("own-1").permission_mode == "manual"
+    assert env["feedback"][-1] == "Claude Code switched to manual mode."
+
+
+def test_a_mode_change_in_a_chat_not_loaded_names_the_chat(frame, env):
+    _running(frame)
+    frame._open = None
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="plan"))
+    assert env["feedback"][-1] == "Hub probe: Claude Code switched to plan mode."
+
+
+def test_leaving_claudes_own_plan_for_more_goes_back_to_the_mode_you_chose(frame, env):
+    _running(frame)
+    frame.store.update("own-1", permission_mode="manual")
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="plan"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="auto"))
+    assert frame.store.get("own-1").permission_mode == "manual"
+    assert frame._mode_to_offer_after_plan("own-1", "plan") == ""
+
+
+def test_approving_a_plan_saves_its_mode_and_its_echo_says_nothing_more(frame, env):
+    """The approval's mode is saved as it's sent, even one wider than the chat
+    had, so the status that follows is no change, and doesn't undo it."""
+    _running(frame)
+    frame.store.update("own-1", permission_mode="manual")
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="plan"))
+    request = SimpleNamespace(request_id="r1", is_plan=True)
+    frame._apply_answer("own-1", request, {"behavior": "allow"}, "Plan approved.",
+                        {"permission_mode": "auto"})
+    assert frame.store.get("own-1").permission_mode == "auto"
+    spoken = list(env["feedback"])
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="auto"))
+    assert frame.store.get("own-1").permission_mode == "auto"
+    assert env["feedback"] == spoken
+    assert frame._mode_to_offer_after_plan("own-1", "plan") == ""
 
 
 def test_stop_background_task_lists_confirms_and_stops_one(frame, env, monkeypatch):
@@ -105,6 +159,42 @@ def test_stop_background_task_lists_confirms_and_stops_one(frame, env, monkeypat
     assert pump(lambda: env["feedback"][-1] == "Stopped Windows build.")
     frame._update_send_state()
     assert frame.stop_background_item.IsEnabled()  # Watch CI is still running
+
+
+def _two_tasks(runner):
+    runner.background_entries = [
+        {"task_id": "b1", "description": "Windows build", "since": 0.0},
+        {"task_id": "b2", "description": "Watch CI", "since": 60.0}]
+
+
+def test_a_task_that_ends_while_the_list_is_open_isnt_stopped(frame, env, monkeypatch):
+    runner = _running(frame)
+    _two_tasks(runner)
+    boxes = len(env["boxes"])
+
+    def choose(*a, **k):
+        runner.background_entries = runner.background_entries[1:]
+        return 0
+    monkeypatch.setattr(frame, "_choose", choose)
+    frame.on_stop_background_task()
+    assert runner.controls == []
+    assert len(env["boxes"]) == boxes  # no Yes or No about work that's over
+    assert env["feedback"][-1] == "Windows build has already finished."
+
+
+def test_a_task_that_ends_while_yes_or_no_is_open_isnt_stopped(frame, env, monkeypatch):
+    runner = _running(frame)
+    _two_tasks(runner)
+    monkeypatch.setattr(frame, "_choose", lambda *a, **k: 0)
+
+    def box(*a, **k):
+        runner.background_entries = runner.background_entries[1:]
+        return wx.YES
+    monkeypatch.setattr(wx, "MessageBox", box)
+    frame.on_stop_background_task()
+    assert runner.controls == []
+    assert env["feedback"][-1] == "Windows build has already finished."
+    assert "Stopped Windows build." not in env["feedback"]
 
 
 def test_stop_background_task_no_stops_nothing(frame, env, monkeypatch):
@@ -133,11 +223,31 @@ def test_a_retry_is_said_once_then_kept_on_the_status_bar(frame, env):
     text = "Claude is retrying: the service is overloaded. Attempt 2 of 10, next in 8 seconds."
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("retry", data=retry))
     assert frame._last_announcement == text
-    spoken = len(env["spoken"])
+    spoken = len(env["feedback"])
     later = {**retry, "attempt": 3}
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("retry", data=later))
-    assert len(env["spoken"]) == spoken  # within 30 seconds: status bar only
+    assert len(env["feedback"]) == spoken  # the same reason: status bar only
     assert "Attempt 3 of 10" in frame._status_latest
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("retry", data={**retry, "error": "rate_limit"}))
+    assert len(env["feedback"]) == spoken + 1  # a new reason is said
+
+
+def test_a_heartbeat_retry_while_a_background_agent_waits_is_said_once(frame, env):
+    """Every 30 seconds for hours while a subagent waits on a rate limit."""
+    runner = _running(frame)
+    runner.waiting_on_background = True
+    runner.background_tasks = ["Research"]
+    retry = {"attempt": 1, "max_retries": 10, "retry_delay_ms": 5400000,
+             "error_status": 429, "error": "rate_limit"}
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("retry", data=retry))
+    spoken = len(env["feedback"])
+    assert env["feedback"][-1].endswith("Attempt 1 of 10, next in 1 hour 30 minutes.")
+    for delay in (5370000, 5340000, 5310000):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                             TurnEvent("retry", data={**retry, "retry_delay_ms": delay}))
+    assert len(env["feedback"]) == spoken
+    assert "next in 1 hour 28 minutes" in frame._status_latest
 
 
 def test_turn_status_says_claude_is_retrying(frame, env):
@@ -146,7 +256,8 @@ def test_turn_status_says_claude_is_retrying(frame, env):
                     "error_status": 529}
     frame.on_turn_status()
     assert env["feedback"][-1].endswith(
-        "Claude is retrying: the service is overloaded, attempt 2 of 10.")
+        "last starting. Claude is retrying: the service is overloaded, attempt 2 of 10.")
+    assert env["feedback"][-1].count("retrying") == 1
 
 
 def test_fallback_and_memory_are_said(frame, env):
