@@ -277,13 +277,26 @@ def test_continuing_has_no_alt_key_for_branch(frame, folder):
 def test_continue_heres_folder_box_is_a_tab_stop_one_line_tall(frame, folder):
     # Tab went straight past a one-line read-only box; a multi-line one is
     # stopped on, as the app's other read-only boxes are.
+    import os
     from thechatplace.ui.dialogs import NewSessionDialog
+    # A short path, which fits on one line. A long one, like the test's own
+    # folder, grows to show all of it: see the next check.
+    dialog = NewSessionDialog(frame, os.path.abspath(os.sep), continue_from="Desk")
+    try:
+        assert dialog.folder.GetMinSize().height == dialog.title_text.GetBestSize().height
+    finally:
+        dialog.Destroy()
+    long_path = os.path.join(folder, *["a folder with a long name"] * 12)
+    dialog = NewSessionDialog(frame, long_path, continue_from="Desk")
+    try:
+        assert dialog.folder.GetMinSize().height > dialog.title_text.GetBestSize().height
+    finally:
+        dialog.Destroy()
     dialog = NewSessionDialog(frame, folder, continue_from="Desk")
     try:
         box = dialog.folder
         assert box.IsMultiLine() and not box.IsEditable()
         assert box.GetValue() == folder and box.GetName() == "Folder"
-        assert box.GetMinSize().height == dialog.title_text.GetBestSize().height
         # No scroll arrows crammed into the one line.
         assert box.HasFlag(wx.TE_NO_VSCROLL) and box.AcceptsFocusFromKeyboard()
     finally:
