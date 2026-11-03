@@ -36,6 +36,8 @@ class SubagentsHost:
     _subagents_pending = False
     #: The subagent whose conversation is open: it says its own ending.
     _subagent_open_id: Optional[str] = None
+    #: A conversation is being read to open it: Enter again doesn't read another.
+    _subagent_opening = False
 
     def _reset_subagents(self) -> None:
         """Another chat was loaded, or none."""
@@ -118,26 +120,52 @@ class SubagentsHost:
         """The files the loaded chat's subagents changed (#468)."""
         return subagents.edits_of(self._chat_subagents)
 
+    def _subagents_known(self) -> bool:
+        """The first read of the loaded chat's subagents has finished."""
+        return self._subagent_statuses is not None
+
     def _subagents_in_turn(self, turn: int) -> List[subagents.Subagent]:
         return subagents.in_turn(self._chat_subagents, turn) if turn else []
 
     def _latest_subagent(self, agent_id: str) -> Optional[subagents.Subagent]:
         return next((s for s in self._chat_subagents if s.agent_id == agent_id), None)
 
-    def _open_subagent(self, sub: subagents.Subagent, parent=None) -> None:
-        """Show a subagent's conversation over ``parent`` (Lists). Read once
-        here; a running one is then kept up by the dialog."""
+    def _open_subagent(self, sub: subagents.Subagent, parent=None, closed=None) -> None:
+        """Show a subagent's conversation over ``parent`` (Lists). It's read
+        once on the pool, as a chat's is, since one can be large; the dialog
+        opens when that's done, and keeps a running one up itself. ``closed``
+        is called once it has closed."""
         info = self._open
-        if info is None or sub.path is None:
+        if info is None or sub.path is None or self._subagent_opening:
             return
-        try:
-            if os.path.getsize(sub.path) > LARGE_CONVERSATION:
-                self._feedback(f"Reading {sub.name}'s conversation…")
-            with wx.BusyCursor():
+        generation = self._open_generation
+
+        def work():
+            reader, problem = None, None
+            try:
+                if os.path.getsize(sub.path) > LARGE_CONVERSATION:
+                    wx.CallAfter(self._feedback, f"Reading {sub.name}'s conversation…")
                 reader = subagents.open_conversation(sub.path, sub.agent_type)
                 reader.refresh()
-        except Exception as exc:  # noqa: BLE001
-            self._feedback(f"Couldn't read {sub.name}'s conversation: {exc}")
+            except Exception as exc:  # noqa: BLE001 - said in the window
+                problem = exc
+            wx.CallAfter(self._subagent_read, generation, info, sub, parent, closed, reader,
+                         problem)
+
+        self._subagent_opening = True
+        try:
+            self._pool.submit(work)
+        except RuntimeError:  # the pool is shut down: the window is closing
+            self._subagent_opening = False
+
+    def _subagent_read(self, generation, info, sub, parent, closed, reader, problem) -> None:
+        self._subagent_opening = False
+        if self._gone() or self._closing:
+            return
+        if generation != self._open_generation or (parent is not None and not parent):
+            return  # another chat was loaded, or Lists closed, while it read
+        if problem is not None:
+            self._feedback(f"Couldn't read {sub.name}'s conversation: {problem}")
             return
         dialog = SubagentChatDialog(
             parent or self, self._latest_subagent(sub.agent_id) or sub, info.title, reader,
@@ -151,6 +179,8 @@ class SubagentsHost:
         finally:
             self._subagent_open_id = None
             dialog.Destroy()
+        if closed is not None:
+            closed()
 
     def _show_subagent_chat(self, dialog) -> int:
         """Show a subagent's conversation modally. Tests replace this."""

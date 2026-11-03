@@ -3,16 +3,17 @@ transcript, pairing them, their status and their file changes. Windowless;
 every record is synthetic (tests/records.py)."""
 import json
 import os
+from datetime import datetime, timezone
 
 from records import (agent_call, agent_completed, agent_launched, assistant_block, handback,
                      handback_attachment, lines, sidechain, task_notification, text_block,
-                     tool_result, tool_use_block, user_text)
+                     thinking_block, tool_result, tool_use_block, user_text)
 from thechatplace import lists, platform_paths, properties, subagents
 from thechatplace.changes import FileEdit, by_file, file_text
 from thechatplace.sessions import SessionInfo
 from thechatplace.subagents import DONE, FAILED, RUNNING, STOPPED, SubagentTracker
 from thechatplace.transcript import (AGENT_COMPLETED, AGENT_FAILED, AGENT_LAUNCHED, AGENT_STOPPED,
-                                     ASSISTANT, TOOL, USER, TranscriptParser, parse_lines)
+                                     ASSISTANT, THINKING, TOOL, USER, TranscriptParser, parse_lines)
 
 
 def _at(minute, second=0):
@@ -153,6 +154,14 @@ def test_a_subagent_transcript_reads_as_claude_asking_and_the_subagent_answering
     assert transcript.ended
 
 
+def test_a_subagents_thinking_is_labelled_with_its_name():
+    parser = TranscriptParser(sidechain=True, assistant_name="code-reviewer", user_name="Claude")
+    parser.feed(lines(*[sidechain(r, "a1") for r in [
+        user_text("Review."), assistant_block(thinking_block("Where to start?"), "s1")]]))
+    [thought] = [m for m in parser.transcript.messages if m.kind == THINKING]
+    assert thought.label == "code-reviewer, thinking"
+
+
 def test_a_hand_back_is_the_subagents_last_reply():
     parser = TranscriptParser(sidechain=True, assistant_name="Explore", user_name="Claude")
     parser.feed(lines(*[sidechain(r, "a1") for r in [
@@ -287,6 +296,61 @@ def test_a_running_subagent_is_read_as_it_grows(tmp_path):
     assert tracker.files["a1"]._reader is None  # let go once it stopped growing
 
 
+# -- sent on with SendMessage after it finished --------------------------------------------
+
+
+def _finished_then_written(tmp_path, records, finished_ago_ms=60_000):
+    """A subagent the parent heard finish ``finished_ago_ms`` before its file
+    was last written. The tracker and the time to ask it at, a moment later."""
+    parent = tmp_path / "sess.jsonl"
+    path = _subagent(parent, "a1", records, agentType="Explore", toolUseId="toolu_1")
+    written = os.stat(path).st_mtime_ns // 1_000_000
+    stamp = datetime.fromtimestamp((written - finished_ago_ms) / 1000, timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    calls = [user_text("go"), agent_call("toolu_1", "Explore", "Look", "Look."),
+             agent_completed("toolu_1", "a1", "First report.", timestamp=stamp)]
+    tracker = SubagentTracker(parent)
+    tracker.refresh()
+    return tracker, parse_lines(lines(*calls)), written + 1000
+
+
+def test_a_finished_subagent_written_to_since_was_sent_on_and_is_running(tmp_path):
+    records = _review()[:-1] + [user_text("One more thing.")]  # not ended: at work again
+    tracker, transcript, now = _finished_then_written(tmp_path, records)
+    [sub] = tracker.subagents(transcript, live=False, now_ms=now)
+    assert (sub.status, sub.finished, sub.report) == (RUNNING, "", "")
+    # Long quiet since: the parent's word stands again.
+    [sub] = tracker.subagents(transcript, live=False, now_ms=now + subagents.RECENT_MS)
+    assert (sub.status, sub.report) == (DONE, "First report.")
+
+
+def test_a_sent_on_subagent_that_ended_its_turn_again_is_done_with_its_latest_reply(tmp_path):
+    tracker, transcript, now = _finished_then_written(tmp_path, _review())
+    [sub] = tracker.subagents(transcript, live=False, now_ms=now)
+    assert (sub.status, sub.report) == (DONE, "Two problems found.")
+    assert sub.finished == _at(4)
+
+
+def test_writes_just_after_the_parent_heard_arent_counted_as_sent_on(tmp_path):
+    # Claude Code can write its last records as the parent's result goes in.
+    records = _review()[:-1]
+    tracker, transcript, now = _finished_then_written(
+        tmp_path, records, finished_ago_ms=subagents.SENT_ON_AFTER_MS // 2)
+    [sub] = tracker.subagents(transcript, live=False, now_ms=now)
+    assert (sub.status, sub.report) == (DONE, "First report.")
+
+
+def test_a_copy_doesnt_take_writes_to_its_sources_subagent_as_its_own(tmp_path):
+    source, copy = tmp_path / "source.jsonl", tmp_path / "copy.jsonl"
+    _subagent(source, "a1", _review()[:-1], agentType="Explore", toolUseId="toolu_1")
+    calls = [user_text("go"), agent_call("toolu_1", "Explore", "Look", "Look."),
+             agent_completed("toolu_1", "a1", "First report.", timestamp=_at(4))]
+    tracker = SubagentTracker(copy, [source])
+    tracker.refresh()
+    [sub] = tracker.subagents(parse_lines(lines(*calls)), live=False)
+    assert (sub.status, sub.report) == (DONE, "First report.")
+
+
 def test_bad_lines_are_counted_never_raised(tmp_path):
     parent = tmp_path / "sess.jsonl"
     _write(parent, [user_text("go")])
@@ -411,20 +475,74 @@ def test_count_is_zero_without_a_folder(tmp_path):
 # -- copies of a chat (#468) ------------------------------------------------------------------
 
 
+def _ids(found):
+    return sorted(sub.agent_id for sub in found)
+
+
 def test_a_copy_reads_the_subagents_of_the_chat_it_was_copied_from(tmp_path):
     """A branch's or Continue Here copy's history has its source's Agent
-    calls; their transcripts stay beside the source, and are found there."""
+    calls; their transcripts stay beside the source, and are found there.
+    One from after the copy's cut isn't in its history, so isn't its."""
     source = tmp_path / "source.jsonl"
     copy = tmp_path / "copy.jsonl"
+    target = str(tmp_path / "after_the_cut.py")
     _write(source, [user_text("Go.")])
-    _write(copy, [user_text("Go.")])
-    _subagent(source, "a1", _review("a1"))
-    _subagent(copy, "a2", _review("a2"))
+    calls = [user_text("Go."), agent_call("toolu_a1", "Explore", "Look", "Look."),
+             agent_completed("toolu_a1", "a1", "Found.", "Explore")]
+    _write(copy, calls)
+    _subagent(source, "a1", _review("a1"), agentType="Explore", toolUseId="toolu_a1")
+    _subagent(source, "later", _review("later", edit=target), agentType="Plan",
+              toolUseId="toolu_later")
+    _subagent(copy, "a2", _review("a2"))  # the copy's own: no call needed
+    transcript = parse_lines(lines(*calls))
     tracker = SubagentTracker(copy, [source])
     tracker.refresh()
-    assert sorted(tracker.files) == ["a1", "a2"]
-    assert subagents.count(copy, [source]) == 2
+    found = tracker.subagents(transcript, live=False)
+    assert _ids(found) == ["a1", "a2"]
+    assert subagents.edits_of(found) == []  # Changed Files: nothing from "later"
+    assert subagents.count(copy, [source], transcript) == 2
+    assert subagents.count(copy, [source]) == 1
     assert subagents.count(copy) == 1
+    # What it left out isn't kept in memory either.
+    tracker.refresh()
+    tracker.subagents(transcript, live=False)
+    assert tracker.files["later"]._reader is None
+
+
+def test_a_copy_finds_a_source_subagent_by_agent_id_without_a_meta_file(tmp_path):
+    source, copy = tmp_path / "source.jsonl", tmp_path / "copy.jsonl"
+    calls = [user_text("Go."), agent_call("toolu_a1", "Explore", "Look", "Look."),
+             agent_completed("toolu_a1", "a1", "Found.", "Explore")]
+    _subagent(source, "a1", _review("a1"))
+    _subagent(source, "other", _review("other"))
+    transcript = parse_lines(lines(*calls))
+    tracker = SubagentTracker(copy, [source])
+    tracker.refresh()
+    assert _ids(tracker.subagents(transcript, live=False)) == ["a1"]
+    assert subagents.count(copy, [source], transcript) == 1
+
+
+def test_a_copy_keeps_what_a_source_subagent_it_called_started(tmp_path):
+    # Its own call is only in its starter's transcript.
+    source, copy = tmp_path / "source.jsonl", tmp_path / "copy.jsonl"
+    calls = [user_text("Go."), agent_call("toolu_a1", "Plan", "Plan", "Plan.")]
+    _subagent(source, "a1", _review("a1"), agentType="Plan", toolUseId="toolu_a1")
+    _subagent(source, "a2", _review("a2"), agentType="Explore", toolUseId="toolu_in",
+              parentAgentId="a1")
+    _subagent(source, "a3", _review("a3"), agentType="Explore", toolUseId="toolu_in2",
+              parentAgentId="a2")
+    _subagent(source, "b1", _review("b1"), toolUseId="toolu_no")
+    _subagent(source, "b2", _review("b2"), toolUseId="toolu_no2", parentAgentId="b1")
+    # A loop in a hand-edited meta file can't run forever, and isn't kept.
+    _subagent(source, "c1", _review("c1"), toolUseId="toolu_c1", parentAgentId="c2")
+    _subagent(source, "c2", _review("c2"), toolUseId="toolu_c2", parentAgentId="c1")
+    transcript = parse_lines(lines(*calls))
+    tracker = SubagentTracker(copy, [source])
+    tracker.refresh()
+    found = tracker.subagents(transcript, live=False)
+    assert _ids(found) == ["a1", "a2", "a3"]
+    assert {sub.turn for sub in found} == {1}
+    assert subagents.count(copy, [source], transcript) == 3
 
 
 def test_source_transcripts_follow_copies_of_copies(tmp_path, monkeypatch):

@@ -399,6 +399,131 @@ def test_cancelling_puts_focus_back_only_if_it_isnt_there(frame, env, fake_runne
     assert focused == ["messages"]
 
 
+def _focus_moved_by_the_dialog(frame, monkeypatch, choice):
+    """The dialog answered with ``choice``, leaving focus in the reply box as
+    it closes. What's asked to take focus on the messages list."""
+    from thechatplace.ui import dialogs
+    where = [frame.chat_list]
+
+    class Answers(dialogs.RewindDialog):
+        def ShowModal(self):
+            self.what.SetSelection([c for c, _l in rewind.CHOICES].index(choice))
+            self._go()
+            where[0] = frame.reply_text
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.rewind_chats.RewindDialog", Answers)
+    focused = []
+    monkeypatch.setattr(frame.chat_list, "SetFocus", lambda: focused.append("messages"))
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: where[0]))
+    return focused, where
+
+
+def test_files_only_puts_focus_back(frame, env, fake_runner, monkeypatch):
+    own_chat(frame, env)
+    choose(frame, USER, 1)
+    focused, _where = _focus_moved_by_the_dialog(frame, monkeypatch, rewind.FILES)
+    calls = stub_files(monkeypatch)
+    frame.on_rewind_to_here()
+    assert focused == ["messages"]
+    assert pump(lambda: calls)
+
+
+def test_files_only_refused_puts_focus_back(frame, env, fake_runner, monkeypatch):
+    own_chat(frame, env)
+    choose(frame, USER, 1)
+    focused, _where = _focus_moved_by_the_dialog(frame, monkeypatch, rewind.FILES)
+    monkeypatch.setattr(frame, "_start_rewind_files", lambda *a, **k: False)
+    frame.on_rewind_to_here()
+    assert focused == ["messages"]
+
+
+def test_a_new_chat_that_cant_be_made_puts_focus_back(frame, env, fake_runner, monkeypatch):
+    own_chat(frame, env)
+    choose(frame, USER, 1)
+    focused, _where = _focus_moved_by_the_dialog(frame, monkeypatch, rewind.BOTH)
+    monkeypatch.setattr(frame, "_make_branch", lambda *a, **k: None)
+    frame.on_rewind_to_here()
+    assert focused == ["messages"]
+
+
+def test_focus_already_back_isnt_set_again_after_files_only(frame, env, fake_runner, monkeypatch):
+    # Setting it again would have a screen reader say the message twice.
+    own_chat(frame, env)
+    choose(frame, USER, 1)
+    from thechatplace.ui import dialogs
+
+    class Answers(dialogs.RewindDialog):
+        def ShowModal(self):
+            self.what.SetSelection(2)
+            self._go()
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.rewind_chats.RewindDialog", Answers)
+    focused = []
+    monkeypatch.setattr(frame.chat_list, "SetFocus", lambda: focused.append("messages"))
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    calls = stub_files(monkeypatch)
+    frame.on_rewind_to_here()
+    assert focused == []
+    assert pump(lambda: calls)
+
+
+def test_a_loaded_chat_with_no_transcript_has_no_history_to_go_back_to(frame, env, fake_runner):
+    own_chat(frame, env)
+    frame._reader = None
+    frame.on_rewind_to_here()
+    assert env["feedback"][-1] == "Fixes has no history to go back to."
+    frame._chat_loaded = False
+    frame.on_rewind_to_here()
+    assert env["feedback"][-1] == "Fixes is still loading."
+
+
+def test_what_happens_says_subagents_arent_known_until_theyre_read(frame, env, fake_runner,
+                                                                   monkeypatch):
+    own_chat(frame, env)
+    choose(frame, USER, 1)
+    assert pump(lambda: frame._subagent_statuses is not None)
+    seen = answer_dialog(monkeypatch, rewind.FILES)  # stays in this chat
+    calls = stub_files(monkeypatch)
+    frame.on_rewind_to_here()
+    assert "isn't known yet" not in seen["happens"]
+    assert pump(lambda: calls and "own-rw" not in frame._rewinding_files)
+    frame._subagent_statuses = None  # the first read hasn't finished
+    frame.on_rewind_to_here()
+    assert "isn't known yet" in seen["happens"]
+    assert pump(lambda: len(calls) == 2 and "own-rw" not in frame._rewinding_files)
+
+
+def test_a_chat_cant_be_deleted_while_its_files_go_back(frame, env, fake_runner, monkeypatch):
+    own_chat(frame, env)
+    frame._rewinding_files.add("own-rw")
+    try:
+        before = list(env["boxes"])
+        frame.on_delete_permanently()
+        assert env["feedback"][-1] == ("The files in Fixes are being put back. Wait for that to "
+                                       "finish first.")
+        assert env["boxes"] == before  # not even asked
+        assert frame.store.get("own-rw") is not None
+    finally:
+        frame._rewinding_files.discard("own-rw")
+
+
+def test_quitting_while_files_go_back_warns(frame, env, fake_runner, monkeypatch):
+    own_chat(frame, env)
+    frame._rewinding_files.add("own-rw")
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.NO)
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    assert event.GetVeto() and not frame._closing
+    assert "still putting files back. Quit anyway?" in asked[-1]
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    assert not event.GetVeto() and frame._closing
+
+
 # -- the lock is the folder's: a turn can't start in any chat there (#468) --------------------
 
 

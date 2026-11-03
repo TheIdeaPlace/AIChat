@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Collection, Dict, Iterable, List, Optional, Set
 
 from . import platform_paths
 from .changes import FileEdit, summary_text
@@ -54,6 +54,9 @@ GIVER = "Claude"
 #: recently, is taken to be at work even when its session looks idle: one
 #: run in the background goes on after the parent's turn has ended.
 RECENT_MS = 10 * 60_000
+#: How long after the parent heard it finished a subagent's file may still be
+#: written with nothing more going on: a later write is it being sent on.
+SENT_ON_AFTER_MS = 10_000
 
 _FILE = re.compile(r"^agent-([A-Za-z0-9_-]+)\.jsonl$")
 _NOTE_TO_STATUS = {AGENT_COMPLETED: DONE, AGENT_FAILED: FAILED, AGENT_STOPPED: STOPPED}
@@ -170,9 +173,11 @@ def open_conversation(path: Path, agent_type: str = "") -> TranscriptReader:
 class SubagentFile:
     """One subagent's transcript and meta file, summed up as they grow."""
 
-    def __init__(self, path: Path, agent_id: str) -> None:
+    def __init__(self, path: Path, agent_id: str, from_source: bool = False) -> None:
         self.path = Path(path)
         self.agent_id = agent_id
+        #: It's in the folder of a chat this one was copied from (#468).
+        self.from_source = from_source
         self.meta: dict = {}
         self._reader: Optional[TranscriptReader] = None
         self._stamp = None
@@ -249,7 +254,10 @@ class SubagentTracker:
         #: The subagents folders of the chats this one was copied from
         #: (Continue Here, Rewind to Here, Branch from Here, #468): the
         #: copy's history has their Agent calls, but their transcripts stay
-        #: beside the source's. Read first, so the copy's own win.
+        #: beside the source's. Read first, so the copy's own win. A source's
+        #: folder has every subagent it ever ran, though, and the copy's
+        #: history ends at its cut: ``subagents`` keeps only those the copy's
+        #: own transcript called.
         self.folders = [platform_paths.subagents_dir(p) for p in sources] + [self.folder]
         self.files: Dict[str, SubagentFile] = {}
 
@@ -257,6 +265,7 @@ class SubagentTracker:
         """Find new subagents and read what the running ones added. True if
         anything changed."""
         found: Dict[str, Path] = {}
+        from_source: Dict[str, bool] = {}
         for folder in self.folders:
             try:
                 with os.scandir(folder) as entries:
@@ -264,6 +273,7 @@ class SubagentTracker:
                         match = _FILE.match(entry.name)
                         if match and entry.is_file():
                             found[match.group(1)] = Path(entry.path)
+                            from_source[match.group(1)] = folder != self.folder
             except OSError:
                 continue
         changed = False
@@ -272,8 +282,8 @@ class SubagentTracker:
             changed = True
         for agent_id, path in found.items():
             sub = self.files.get(agent_id)
-            if sub is None:
-                sub = self.files[agent_id] = SubagentFile(path, agent_id)
+            if sub is None or sub.path != path:
+                sub = self.files[agent_id] = SubagentFile(path, agent_id, from_source[agent_id])
             changed = sub.refresh() or changed
         return changed
 
@@ -286,12 +296,38 @@ class SubagentTracker:
         again, and is read on rather than from the start each time)."""
         calls = list(transcript.agents) if transcript is not None else []
         notes = dict(transcript.agent_notes) if transcript is not None else {}
-        found = pair(self.files.values(), calls, notes, live, now_ms)
+        kept = called_in({a: f.meta for a, f in self.files.items()},
+                         {a for a, f in self.files.items() if not f.from_source}, calls)
+        found = pair([f for a, f in self.files.items() if a in kept], calls, notes, live, now_ms)
         for sub in found:
             sub_file = self.files.get(sub.agent_id)
             if sub.finished_status and sub_file is not None and not sub_file.grew:
                 sub_file.release()
+        for agent_id, sub_file in self.files.items():
+            if agent_id not in kept and not sub_file.grew:
+                sub_file.release()  # after the copy's cut: nothing here reads it
         return found
+
+
+def called_in(metas: Dict[str, dict], own: Collection[str], calls: List[AgentCall]) -> Set[str]:
+    """Which subagents belong to a chat, of those in ``metas`` (agent id to
+    its meta file), plus ``own``, from the chat's own folder, whatever they
+    are: any whose Agent call is in the chat's transcript, by the call's tool
+    id or the agent id; and one started by a subagent kept for either reason,
+    whose own call is only in its starter's transcript."""
+    tools = {c.tool_id for c in calls if c.tool_id}
+    agents = {c.agent_id for c in calls if c.agent_id}
+    kept = set(own) | {agent_id for agent_id, meta in metas.items()
+                       if agent_id in agents or _text(meta.get("toolUseId")) in tools}
+    for agent_id in metas:
+        seen = {agent_id}
+        parent = _text(metas[agent_id].get("parentAgentId"))
+        while parent and parent not in seen and parent not in kept and parent in metas:
+            seen.add(parent)
+            parent = _text(metas[parent].get("parentAgentId"))
+        if parent in kept:
+            kept.add(agent_id)
+    return kept
 
 
 def pair(files: Iterable[SubagentFile], calls: List[AgentCall],
@@ -331,7 +367,10 @@ def pair(files: Iterable[SubagentFile], calls: List[AgentCall],
         recent = bool(sub_file.modified_ms) and now - sub_file.modified_ms < RECENT_MS
         _settle(sub, call, note, live or recent, stopped_by_you=meta.get("stoppedByUser") is True,
                 handback=sub_file.handback, ended=sub_file.ended,
-                last_time=sub_file.last_time, last_reply=sub_file.last_reply)
+                last_time=sub_file.last_time, last_reply=sub_file.last_reply,
+                # A source's file says nothing about this chat: it may be the
+                # source that sent it on.
+                written_ms=(0 if sub_file.from_source or not recent else sub_file.modified_ms))
         found.append(sub)
     # One started by a subagent belongs to the turn its starter did. Its
     # edits count in that turn, marked with who made them.
@@ -359,18 +398,27 @@ def pair(files: Iterable[SubagentFile], calls: List[AgentCall],
 
 def _settle(sub: Subagent, call: Optional[AgentCall], note: Optional[AgentNote], live: bool,
             stopped_by_you: bool = False, handback: str = "", ended: bool = False,
-            last_time: str = "", last_reply: str = "") -> None:
+            last_time: str = "", last_reply: str = "", written_ms: int = 0) -> None:
     """Its status, report and finishing time, from the best evidence: what
     the parent was told (its Agent result, or a notification), then you
     stopping it, then its own hand-back or a last reply that ended its turn.
     Failing all of those it's running while the session works or its
     transcript was written lately (``live``), and otherwise counted as
-    stopped."""
+    stopped. ``written_ms``: when its file was written, if that was lately;
+    written after the parent heard it finished, it was sent on with
+    SendMessage, and the parent's word is out of date until it reports again."""
     status, finished, report = "", "", ""
     if call is not None and call.status in _NOTE_TO_STATUS:
         status, finished, report = _NOTE_TO_STATUS[call.status], call.finished_at, call.report
     elif note is not None and note.status in _NOTE_TO_STATUS:
         status, finished, report = _NOTE_TO_STATUS[note.status], note.timestamp, note.report
+    if (status == DONE and not stopped_by_you and _ms(finished)
+            and written_ms > _ms(finished) + SENT_ON_AFTER_MS):
+        # What it handed back before is old news too, so this comes first.
+        sub.status = DONE if ended else RUNNING
+        sub.finished = last_time if ended else ""
+        sub.report = last_reply if ended else ""
+        return
     if not status and stopped_by_you:
         status, finished = STOPPED, last_time
     if not status and handback:
@@ -391,20 +439,27 @@ def _settle(sub: Subagent, call: Optional[AgentCall], note: Optional[AgentNote],
                   or (last_reply if status != RUNNING else ""))
 
 
-def count(transcript_path, sources: Iterable = ()) -> int:
+def count(transcript_path, sources: Iterable = (), transcript: Optional[Transcript] = None) -> int:
     """How many subagents' transcripts a session has (Properties, #468),
-    counting those of the chats it was copied from (``sources``), as Lists
-    does."""
+    counting those of the chats it was copied from (``sources``) that
+    ``transcript``, the session's own, called, as Lists does."""
     if transcript_path is None:
         return 0
-    ids = set()
-    for path in [*sources, transcript_path]:
-        try:
-            with os.scandir(platform_paths.subagents_dir(path)) as entries:
-                ids.update(m.group(1) for m in map(_FILE.match, (e.name for e in entries)) if m)
-        except OSError:
-            continue
-    return len(ids)
+    own = set(_ids_in(platform_paths.subagents_dir(transcript_path)))
+    metas = {}
+    for path in sources:
+        for agent_id, file in _ids_in(platform_paths.subagents_dir(path)).items():
+            metas[agent_id] = read_meta(file)
+    return len(called_in(metas, own, list(transcript.agents) if transcript is not None else []))
+
+
+def _ids_in(folder: Path) -> Dict[str, Path]:
+    """The subagent transcripts in a folder, by agent id."""
+    try:
+        with os.scandir(folder) as entries:
+            return {m.group(1): Path(e.path) for e in entries for m in [_FILE.match(e.name)] if m}
+    except OSError:
+        return {}
 
 
 def source_transcripts(store, info, limit: int = 8) -> List[Path]:

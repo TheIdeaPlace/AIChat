@@ -3,6 +3,7 @@ conversation, their edits in Changed Files, the messages menu and the
 announcement when one ends. These tests construct windows: run them in the
 VM or CI only."""
 import json
+import os
 
 import pytest
 
@@ -56,6 +57,10 @@ def _session_with_subagent(frame, env, edit_path=None):
     (folder / "agent-a1.jsonl").write_text(
         "\n".join(lines(*[sidechain(r, "a1") for r in _reviewer_records(edit_path)])) + "\n",
         encoding="utf-8")
+    # Written when the made-up records say, not after the parent heard it
+    # finish: that would be it being sent on again.
+    written = subagents._ms(_at(4)) / 1000
+    os.utime(folder / "agent-a1.jsonl", (written, written))
     (folder / "agent-a1.meta.json").write_text(json.dumps({
         "agentType": "code-reviewer", "description": "Review the branch",
         "toolUseId": "toolu_ag1", "spawnDepth": 1}), encoding="utf-8")
@@ -81,7 +86,12 @@ def test_lists_subagents_and_reading_one(frame, env, monkeypatch):
         opened["copied"] = copied
         return wx.ID_CANCEL
     monkeypatch.setattr(frame, "_show_subagent_chat", show_chat)
-    seen = _lists_dialog(frame, monkeypatch, lambda page: page.activate())
+
+    def act(page):
+        page.activate()
+        # Read in the background, and opened over Lists once it's read.
+        assert pump(lambda: opened)
+    seen = _lists_dialog(frame, monkeypatch, act)
     frame.on_subagents()
     assert (seen["category"], seen["scope"]) == ("subagents", "chat")
     assert seen["label"] == "&List: Subagents (1):"
@@ -164,6 +174,7 @@ def test_a_subagent_ending_is_said_at_the_full_level_only(frame, env, monkeypatc
 
 
 def test_a_running_subagents_conversation_grows_without_moving_you(frame, env, tmp_path):
+    from thechatplace.ui import subagent_chat
     from thechatplace.ui.subagent_chat import SubagentChatDialog
     path = tmp_path / "agent-a1.jsonl"
     records = [sidechain(r, "a1") for r in _reviewer_records(finished=False)]
@@ -191,7 +202,8 @@ def test_a_running_subagents_conversation_grows_without_moving_you(frame, env, t
                                           status=subagents.DONE)
         dialog.refresh()
         assert said == ["Subagent Explore finished."]
-        assert not dialog.timer.IsRunning()
+        # Still read, slowly: Claude can send it on with SendMessage.
+        assert dialog.timer.GetInterval() == subagent_chat.FINISHED_REFRESH_MS
         assert dialog.list.GetName() == "Explore's conversation, done"
         # Ctrl+T in the dialog: tool activity here only.
         event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
@@ -205,7 +217,153 @@ def test_a_running_subagents_conversation_grows_without_moving_you(frame, env, t
         dialog.Destroy()
 
 
+def _conversation_dialog(frame, tmp_path, records, status=subagents.DONE, latest=None):
+    from thechatplace.ui.subagent_chat import SubagentChatDialog
+    path = tmp_path / "agent-a1.jsonl"
+    path.write_text("\n".join(lines(*[sidechain(r, "a1") for r in records])) + "\n",
+                    encoding="utf-8")
+    reader = subagents.open_conversation(path, "Explore")
+    reader.refresh()
+    sub = subagents.Subagent("a1", path=path, agent_type="Explore", status=status)
+    said = []
+    dialog = SubagentChatDialog(frame, sub, "Quiet one", reader,
+                                read_message=lambda m, parent: None, copy=lambda t: True,
+                                feedback=said.append, latest=latest)
+    return dialog, path, said
+
+
+def test_a_finished_subagent_sent_on_again_updates_and_says_when_it_ends(frame, env, tmp_path):
+    from thechatplace.ui import subagent_chat
+    state = {}
+    dialog, path, said = _conversation_dialog(frame, tmp_path, _reviewer_records(),
+                                              latest=lambda: state.get("sub"))
+    try:
+        assert dialog.timer.IsRunning()
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(sidechain(user_text("One more thing."), "a1")) + "\n")
+        assert dialog.refresh()  # a tick of the slow timer
+        assert list(dialog.list.GetStrings())[-1] == "Claude: One more thing."
+        state["sub"] = subagents.Subagent("a1", path=path, agent_type="Explore",
+                                          status=subagents.RUNNING)
+        dialog.refresh()
+        assert dialog.timer.GetInterval() == subagent_chat.REFRESH_MS
+        assert dialog.list.GetName() == "Explore's conversation, running"
+        state["sub"] = subagents.Subagent("a1", path=path, agent_type="Explore",
+                                          status=subagents.DONE)
+        dialog.refresh()
+        assert said == ["Subagent Explore finished."]
+        assert dialog.timer.GetInterval() == subagent_chat.FINISHED_REFRESH_MS
+    finally:
+        dialog.Destroy()
+
+
+def test_hiding_tool_activity_on_a_tool_row_stays_near_it(frame, env, tmp_path):
+    records = _reviewer_records() + [assistant_block(text_block("And another thing."), "s4",
+                                                     timestamp=_at(5))]
+    dialog, _path, _said = _conversation_dialog(frame, tmp_path, records)
+    try:
+        dialog.set_activity(True)
+        rows = list(dialog.list.GetStrings())
+        tool_row = rows.index("Tool: Bash: git diff main")
+        dialog.list.SetSelection(tool_row)
+        dialog.set_activity(False)
+        # The message before it, your place kept, not the last row.
+        assert dialog.selected().text == "Review the branch against main."
+        # A row still shown stays selected, either way.
+        dialog.list.SetSelection(1)
+        chosen = dialog.selected()
+        dialog.set_activity(True)
+        assert dialog.selected() is chosen
+    finally:
+        dialog.Destroy()
+
+
+def test_hiding_tool_activity_with_nothing_before_the_row_goes_to_the_first(frame, env, tmp_path):
+    records = [assistant_block(tool_use_block("Bash", {"command": "ls"}, "tb0"), "s0",
+                               timestamp=_at(0)),
+               user_text("Review the branch against main.", timestamp=_at(1)),
+               assistant_block(text_block("Done."), "s9", timestamp=_at(2))]
+    dialog, _path, _said = _conversation_dialog(frame, tmp_path, records)
+    try:
+        dialog.set_activity(True)
+        dialog.list.SetSelection(0)
+        dialog.set_activity(False)
+        assert dialog.list.GetSelection() == 0
+    finally:
+        dialog.Destroy()
+
+
+def test_return_presses_the_focused_button_on_a_mac(frame, env, tmp_path, monkeypatch):
+    from thechatplace.ui import subagent_chat
+    dialog, _path, _said = _conversation_dialog(frame, tmp_path, _reviewer_records())
+    try:
+        pressed = []
+        monkeypatch.setattr(subagent_chat, "press_focused_button_on_a_mac",
+                            lambda event: pressed.append(event) or True)
+
+        class Key(wx.KeyEvent):
+            skipped = False
+
+            def Skip(self, skip=True):
+                self.skipped = True
+        event = Key(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_RETURN)
+        dialog._on_char_hook(event)
+        assert pressed == [event] and not event.skipped
+    finally:
+        dialog.Destroy()
+
+
+def test_a_conversation_is_read_in_the_background_and_opened_after(frame, env, monkeypatch):
+    import threading
+    _session_with_subagent(frame, env)
+    sub = frame._chat_subagents[0]
+    release, threads, opened, closed = threading.Event(), [], [], []
+    real = subagents.open_conversation
+
+    def held(path, agent_type=""):
+        threads.append(threading.current_thread())
+        release.wait(20)
+        return real(path, agent_type)
+    monkeypatch.setattr(subagents, "open_conversation", held)
+    monkeypatch.setattr(frame, "_show_subagent_chat",
+                        lambda d: opened.append(d.GetTitle()) or wx.ID_CANCEL)
+    frame._open_subagent(sub, None, lambda: closed.append(True))
+    # Back here at once, with nothing open, and the window isn't held up.
+    assert opened == [] and frame._subagent_opening
+    assert pump(lambda: threads)
+    assert threads[0] is not threading.current_thread()
+    frame._open_subagent(sub)  # Enter again doesn't read it twice
+    release.set()
+    assert pump(lambda: opened)
+    assert opened == ["Subagent code-reviewer, in Quiet one"] and closed == [True]
+    assert not frame._subagent_opening and len(threads) == 1
+
+
+def test_a_conversation_that_cant_be_read_is_said(frame, env, monkeypatch):
+    _session_with_subagent(frame, env)
+
+    def broken(path, agent_type=""):
+        raise OSError("no such file")
+    monkeypatch.setattr(subagents, "open_conversation", broken)
+    frame._open_subagent(frame._chat_subagents[0])
+    assert pump(lambda: any("Couldn't read code-reviewer's conversation" in f
+                            for f in env["feedback"]))
+    assert not frame._subagent_opening
+
+
+def test_a_conversation_read_after_loading_another_chat_isnt_opened(frame, env, monkeypatch):
+    _session_with_subagent(frame, env)
+    opened = []
+    monkeypatch.setattr(frame, "_show_subagent_chat", lambda d: opened.append(d) or wx.ID_CANCEL)
+    frame._open_subagent(frame._chat_subagents[0])
+    frame._open_generation += 1
+    assert pump(lambda: not frame._subagent_opening)
+    assert opened == []
+
+
 def test_enter_reads_a_message_over_the_dialog(frame, env, tmp_path):
+    from thechatplace.ui import subagent_chat
     from thechatplace.ui.subagent_chat import SubagentChatDialog
     path = tmp_path / "agent-a1.jsonl"
     path.write_text("\n".join(lines(*[sidechain(r, "a1") for r in _reviewer_records()])) + "\n",
@@ -217,7 +375,7 @@ def test_enter_reads_a_message_over_the_dialog(frame, env, tmp_path):
                                 "Quiet one", reader, read_message=lambda m, p: read.append((m.text, p)),
                                 copy=lambda t: True, feedback=lambda t: None)
     try:
-        assert not dialog.timer.IsRunning()  # finished: nothing to keep reading
+        assert dialog.timer.GetInterval() == subagent_chat.FINISHED_REFRESH_MS
         event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
         event.SetKeyCode(wx.WXK_RETURN)
         dialog._on_list_key(event)
@@ -292,6 +450,7 @@ def test_enter_in_lists_opens_a_subagent_and_goes_from_kinds_to_the_list(frame, 
         enter()
         focus[0] = page.list
         enter()
+        assert pump(lambda: opened)  # read in the background first
     _lists_dialog(frame, monkeypatch, act)
     frame.on_subagents()
     assert steps == {"list": True}

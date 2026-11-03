@@ -1369,12 +1369,13 @@ went back from is always kept as it was, in the list.
 - **Rewind to Here** (Ctrl+Shift+Z; on a Mac, Cmd+Shift+Z in the messages list, as elsewhere it's Redo; File, Rewind to Here, or Rewind to Here on a message's menu)
   works on one of your own messages: select it in the messages list first. It asks what to take
   back to how it was just before that message:
-  - **Conversation and files** (chosen to begin with when the files can go back),
-  - **Conversation only**,
+  - **Conversation and files** (chosen to begin with when the files can go back and Claude has
+    changed files since that message),
+  - **Conversation only** (chosen to begin with when it hasn't, or the files can't go back),
   - **Files only**.
 
-  **What happens** (Alt+H) says what the choice will do, naming the files Claude changed since
-  that message. Press Rewind (Enter) to go ahead, or Escape to change nothing.
+  **What happens** (Alt+H) says what the choice will do, naming the files. Press Rewind (Enter)
+  to go ahead, or Escape to change nothing.
 
   Going back in the conversation makes a new chat of your own, "<title> (rewound)", in the
   same folder. Its conversation is the original's up to just before your message, and your
@@ -1385,11 +1386,15 @@ went back from is always kept as it was, in the list.
   chat on this computer, including desktop app and terminal sessions, since the original isn't
   changed.
 
-  Going back in the files puts back the files Claude changed with its edit tools since your
-  message; you hear "Files in Fixes restored to how they were before your message …: 2 files",
-  or why they couldn't be. Changes made by commands Claude ran (a build, a script) aren't put
-  back, and nor are files a subagent changed: Claude Code doesn't restore those, and What Happens
-  names them. It works only in Claude chats started here, and only for messages sent with this
+  Going back in the files puts every file Claude changed with its edit tools anywhere in the
+  chat, not only since your message, back to how it was just before that message. That replaces
+  what's in it now, including any edits you made yourself afterwards, and it can't be undone.
+  Files Claude created since your message are removed. You hear "Files in Fixes restored to how
+  they were before your message …: 2 files", or why they couldn't be; if it fails or takes too
+  long, some files may already have gone back, so check them before carrying on. Changes made by
+  commands Claude ran (a build, a script) aren't put back, and nor are files only a subagent
+  changed: Claude Code doesn't restore those, and What Happens names them. A subagent's changes
+  in a file Claude changed too do go back. It works only in Claude chats started here, and only for messages sent with this
   version or later, which keep the copies it needs; for other chats and older messages the
   choice says "(unavailable)", and What Happens says why. It isn't available while Claude is
   working in the chat, and the chat waits for it to finish before it sends anything.

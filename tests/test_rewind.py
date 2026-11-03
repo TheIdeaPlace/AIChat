@@ -10,6 +10,7 @@ import pytest
 
 from thechatplace import claude_cli as cli
 from thechatplace import rewind
+from thechatplace.changes import FileEdit
 from thechatplace.own_store import OwnSession, OwnSessionStore
 from thechatplace.transcript import ASSISTANT, USER, ChatMessage, parse_lines
 
@@ -140,7 +141,8 @@ def test_many_files_are_counted_not_all_named():
                                                               "structuredPatch": []})]
     tr = parse_lines(lines(*chained(*records)))
     plan = rewind.plan_rewind("Lots", tr, tr.messages[0], can_rewind_files=True)
-    assert "Claude changed 12 files" in plan.changed_files_text()
+    assert "Claude created 12 files since this message, which are removed" in \
+        plan.changed_files_text()
     assert "and 4 more" in plan.changed_files_text()
 
 
@@ -183,7 +185,8 @@ def test_success_says_how_many_files():
 def test_failures_say_why_in_plain_words(stderr, said):
     result = rewind.result_from_output(1, "", WARNING + stderr, "Fixes", message(), 1)
     assert not result.ok
-    assert result.text == f"Claude Code couldn't restore the files: {said}."
+    assert result.text == (f"Claude Code couldn't restore the files: {said}. "
+                           "Some files may already have gone back; check them before carrying on.")
 
 
 def test_run_refuses_a_chat_that_is_not_ours_before_starting_anything(tmp_path):
@@ -236,7 +239,8 @@ def test_run_reports_the_clis_refusal(tmp_path, monkeypatch):
                                      {"aaaa-1111"}, set(), env=env)
     assert not result.ok
     assert result.text == ("Claude Code couldn't restore the files: it doesn't know "
-                           "that message in this chat.")
+                           "that message in this chat. Some files may already have gone back; "
+                           "check them before carrying on.")
 
 
 def test_run_stops_a_claude_that_hangs(tmp_path, monkeypatch):
@@ -247,6 +251,8 @@ def test_run_stops_a_claude_that_hangs(tmp_path, monkeypatch):
     result = rewind.run_rewind_files("claude", "aaaa-1111", msg, str(tmp_path), "Mine", 1,
                                      {"aaaa-1111"}, set(), timeout=1.0)
     assert not result.ok and "took too long" in result.text
+    # Stopped part way: what's on disk can't be assumed either way.
+    assert "Some files may already have gone back" in result.text
 
 
 # -- the branch's record ----------------------------------------------------------------------
@@ -304,15 +310,132 @@ def test_pictures_are_left_out_of_the_draft_and_counted():
     assert rewind.draft_text(message("Plain")) == ("Plain", 0)
 
 
+# -- what putting the files back really does (measured with 2.1.316) --------------------------
+
+
+def write_turn(n, path, *, kind="update", checkpoint=True):
+    """One turn: your message, and Claude writing ``path``."""
+    said = user_text(f"Turn {n}", uuid=f"u-{n}")
+    use = assistant_block(tool_use_block("Write", {"file_path": path, "content": "x"}, f"t{n}"),
+                          f"m{n}")
+    result = tool_result(f"t{n}", "ok", toolUseResult={
+        "type": kind, "filePath": path, "content": "x", "structuredPatch": []})
+    return ([said] + ([snapshot(said["uuid"])] if checkpoint else []) + [use, result])
+
+
+def quiet_turn(n, checkpoint=True):
+    """A turn that changes no files."""
+    said = user_text(f"Turn {n}", uuid=f"u-{n}")
+    return ([said] + ([snapshot(said["uuid"])] if checkpoint else [])
+            + [assistant_block(text_block("Nothing to change."), f"m{n}")])
+
+
+def plan_at(turn, *turns, **options):
+    tr = parse_lines(lines(*[record for records in turns for record in records]))
+    message = next(m for m in tr.messages if m.kind == USER and m.text == f"Turn {turn}")
+    return rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True, **options)
+
+
+def test_what_happens_warns_about_every_file_your_edits_and_no_undo():
+    plan = plan_at(2, write_turn(1, "old.py"), write_turn(2, "new.py", kind="create"),
+                   write_turn(3, "both.py"))
+    text = plan.describe(rewind.FILES)
+    assert "anywhere in this chat" in text
+    assert "just before your message" in text
+    assert "any edits you made yourself afterwards" in text
+    assert "created since your message are removed" in text
+    assert "can't be undone" in text
+    assert "Claude changed 1 file since this message: both.py." in text
+    assert "Claude created 1 file since this message, which is removed: new.py." in text
+    assert "Claude changed 1 file earlier in this chat, which goes back too: old.py." in text
+    assert "never put back" in text
+    assert plan.default_choice() == rewind.BOTH
+    assert plan.file_count == 3
+    # The conversation alone touches no files, and doesn't warn that it does.
+    assert "can't be undone" not in plan.describe(rewind.CONVERSATION)
+
+
+def test_earlier_edits_are_said_when_nothing_changed_since_and_files_arent_the_default():
+    plan = plan_at(3, write_turn(1, "a.py"), quiet_turn(2), quiet_turn(3))
+    text = plan.describe(rewind.BOTH)
+    assert "Claude hasn't changed any files" not in text
+    assert "Claude changed 1 file earlier in this chat, which goes back too: a.py." in text
+    assert "only undoes changes made some other way, such as your own edits" in text
+    assert plan.default_choice() == rewind.CONVERSATION
+    assert plan.allowed(rewind.BOTH) and plan.allowed(rewind.FILES)  # still there to choose
+
+
+def test_a_chat_with_no_edits_says_so_without_the_warning():
+    plan = plan_at(1, quiet_turn(1), quiet_turn(2))
+    text = plan.describe(rewind.FILES)
+    assert "Claude hasn't changed any files with its edit tools in this chat" in text
+    assert "can't be undone" not in text
+    assert plan.default_choice() == rewind.CONVERSATION and plan.file_count == 0
+
+
+def test_a_file_changed_before_and_since_is_named_once_and_not_as_created():
+    plan = plan_at(2, write_turn(1, "a.py", kind="create"), write_turn(2, "a.py", kind="create"))
+    text = plan.changed_files_text()
+    assert "Claude changed 1 file since this message: a.py." in text
+    assert "created" not in text and "earlier" not in text
+    assert plan.file_count == 1
+
+
+def test_a_file_edited_before_the_first_checkpoint_isnt_said_to_go_back():
+    # Claude Code has no copy of it: turn 1 ran without checkpoints.
+    plan = plan_at(3, write_turn(1, "untracked.py", checkpoint=False), write_turn(2, "kept.py"),
+                   write_turn(3, "new.py"))
+    text = plan.changed_files_text()
+    assert "kept.py" in text and "new.py" in text and "untracked.py" not in text
+
+
+def test_two_files_called_the_same_keep_their_folders():
+    plan = plan_at(1, write_turn(1, "src/foo.py"), write_turn(2, "tests/foo.py"))
+    assert "Claude changed 2 files since this message: src/foo.py, tests/foo.py." in \
+        plan.changed_files_text()
+
+
+def subagent_plan(claude_paths, subagent_edits, earlier=()):
+    return rewind.RewindPlan(
+        chat_title="Fixes", message=ChatMessage(kind=USER, text="Go", turn=2), cut="c1",
+        edits=[FileEdit(path=p, tool="Write", turn=2) for p in claude_paths],
+        earlier_edits=[FileEdit(path=p, tool="Write", turn=1) for p in earlier],
+        subagent_edits=[FileEdit(path=p, tool="Write", turn=2, by=by) for by, p in subagent_edits])
+
+
 def test_files_a_subagent_changed_are_said_to_stay():
     """Claude Code doesn't put back what a subagent wrote (checked with
     2.1.296), so What Happens names those files as staying (#468)."""
-    from thechatplace.changes import FileEdit
-    plan = rewind.RewindPlan(chat_title="Fixes", message=ChatMessage(kind=USER, text="Go", turn=2),
-                             cut="c1",
-                             subagent_edits=[FileEdit(path="src/b.txt", tool="Write", turn=2,
-                                                      by="code-reviewer")])
+    plan = subagent_plan([], [("code-reviewer", "src/b.txt")])
     said = plan.describe(rewind.FILES)
-    assert "1 file changed by subagents stay as they are" in said and "b.txt" in said
+    assert "1 file changed by a subagent stays as it is" in said and "b.txt" in said
     assert rewind.RewindPlan(chat_title="Fixes", message=ChatMessage(kind=USER, text="Go"),
                              cut="c1").subagent_files_text() == ""
+
+
+def test_a_file_is_never_said_to_both_go_back_and_stay():
+    # Today's wrong words: "3 files ... foo.py, bar.py, bar.py".
+    plan = subagent_plan(["foo.py"], [("code-reviewer", "foo.py"), ("code-reviewer", "bar.py"),
+                                      ("Explore", "./bar.py")])
+    said = plan.subagent_files_text()
+    assert said == ("1 file changed by a subagent stays as it is, since Claude Code doesn't put "
+                    "those back: bar.py. Subagents' changes in foo.py go back too, as Claude "
+                    "changed that file as well.")
+    assert said in plan.describe(rewind.BOTH)
+
+
+def test_a_subagents_change_in_a_file_claude_changed_earlier_goes_back_too():
+    # Every file with a checkpoint goes back, whichever turn Claude changed it.
+    plan = subagent_plan([], [("Explore", "a.py"), ("Explore", "b.py")], earlier=["a.py", "b.py"])
+    assert plan.subagent_files_text() == ("Subagents' changes in a.py, b.py go back too, as Claude "
+                                          "changed those files as well.")
+
+
+def test_before_the_first_read_subagents_files_are_said_not_to_be_known_yet():
+    records, *_ = two_turns()
+    tr = parse_lines(lines(*records))
+    message = [m for m in tr.messages if m.kind == USER][1]
+    plan = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True, subagents_known=False)
+    assert "isn't known yet" in plan.describe(rewind.FILES)
+    assert "isn't known yet" in plan.describe(rewind.BOTH)
+    assert "isn't known yet" not in plan.describe(rewind.CONVERSATION)

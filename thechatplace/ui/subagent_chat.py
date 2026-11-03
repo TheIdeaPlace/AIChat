@@ -6,8 +6,8 @@ Each row is who spoke and the first line ("Claude: Review the branch…",
 the whole message on arriving at it, as in the main messages list (#11).
 Enter reads a message in full, Ctrl+C copies it, the Applications key
 offers both, and Ctrl+T shows or hides tool activity. While the subagent is
-still working its new messages arrive at the end without moving you, and
-its ending is said. It's read-only: a subagent's transcript is Claude
+still working, or sent on again later, its new messages arrive at the end
+without moving you, and its ending is said. It's read-only: a subagent's transcript is Claude
 Code's, and never written to. Escape closes it, back where you were.
 """
 from __future__ import annotations
@@ -22,10 +22,14 @@ from ..transcript import ChatMessage, TranscriptReader
 from ..ui_text import key_name
 from .a11y import (refresh_list_item, set_accessible_name, set_list_items_accessible,
                    set_voiceover_menu)
+from .dialogs import press_focused_button_on_a_mac
 from .sizes import dialog_size
 
 #: How often a running subagent's conversation is read again.
 REFRESH_MS = 1000
+#: And a finished one's: Claude can send it on with SendMessage at any time,
+#: and its conversation should show that without reopening it.
+FINISHED_REFRESH_MS = 5000
 
 
 class SubagentChatDialog(wx.Dialog):
@@ -80,8 +84,7 @@ class SubagentChatDialog(wx.Dialog):
         self.Bind(wx.EVT_TIMER, lambda e: self.refresh(), self.timer)
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         self._fill(newest=True)
-        if subagent.status == RUNNING:
-            self.timer.Start(REFRESH_MS)
+        self.timer.Start(REFRESH_MS if subagent.status == RUNNING else FINISHED_REFRESH_MS)
         wx.CallAfter(lambda: self and self.list.SetFocus())
 
     # -- the list ------------------------------------------------------------
@@ -162,13 +165,26 @@ class SubagentChatDialog(wx.Dialog):
         message = self.selected()
         self._keys = []  # a new set of rows
         self._fill()
-        if message is not None and message.key in [m.key for m in self._shown]:
-            self.list.SetSelection([m.key for m in self._shown].index(message.key))
+        if message is not None and self._shown:
+            self.list.SetSelection(self._row_for(message))
             refresh_list_item(self.list)
         self.feedback("Showing tool activity." if show else "Hiding tool activity.")
 
+    def _row_for(self, message: ChatMessage) -> int:
+        """``message``'s row, or if it's hidden (a tool row, with tool
+        activity turned off) that of the nearest message shown before it,
+        so you stay where you were rather than land on the last row."""
+        rows = {m.key: i for i, m in enumerate(self._shown)}
+        messages = self.reader.transcript.messages
+        at = next((i for i, m in enumerate(messages) if m is message), len(messages))
+        for candidate in [message, *reversed(messages[:at])]:
+            if candidate.key in rows:
+                return rows[candidate.key]
+        return 0
+
     def refresh(self) -> bool:
-        """Read what a running subagent added, and notice it ending."""
+        """Read what the subagent added, and notice it ending or being sent
+        on again."""
         try:
             changed = self.reader.refresh()
         except Exception:  # noqa: BLE001 - a bad read waits for the next tick
@@ -182,10 +198,10 @@ class SubagentChatDialog(wx.Dialog):
             set_accessible_name(self.list, self._list_name())
             refresh_list_item(self.list)
             if was_running and latest.status != RUNNING:
-                self.timer.Stop()
+                self.timer.Start(FINISHED_REFRESH_MS)
                 self.feedback(latest.ended_text())
-            elif latest.status == RUNNING and not self.timer.IsRunning():
-                self.timer.Start(REFRESH_MS)  # sent on again: keep reading
+            elif latest.status == RUNNING:
+                self.timer.Start(REFRESH_MS)  # sent on again
         return changed
 
     def _show_menu(self):
@@ -222,6 +238,8 @@ class SubagentChatDialog(wx.Dialog):
             # Here, not only in the list's own key handler: Windows gives a
             # list box's Enter to the dialog first, so it did nothing (#468).
             self.read_selected()
+            return
+        if press_focused_button_on_a_mac(event):
             return
         event.Skip()
 

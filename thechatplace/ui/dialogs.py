@@ -4253,16 +4253,19 @@ class ListsPage(wx.Panel):
         if self.owner.open_subagent is None:
             return
         chosen = item.subagent.agent_id
-        self.owner.open_subagent(item.subagent, self.owner)
-        if not self:
-            return
-        # It may have finished meanwhile: its row says how it stands now.
-        self.owner.rebuild(self.category)
-        rows = [i.subagent.agent_id if i.subagent else None for i in self.shown]
-        if chosen in rows:
-            self.list.SetSelection(rows.index(chosen))
-            self.show_selected()
-        self.list.SetFocus()
+
+        def closed():
+            if not self:
+                return
+            # It may have finished meanwhile: its row says how it stands now.
+            self.owner.rebuild(self.category)
+            rows = [i.subagent.agent_id if i.subagent else None for i in self.shown]
+            if chosen in rows:
+                self.list.SetSelection(rows.index(chosen))
+                self.show_selected()
+            self.list.SetFocus()
+        # It opens once read, in the background (#468), so this returns first.
+        self.owner.open_subagent(item.subagent, self.owner, closed)
 
     def open_selected(self):
         item = self.selected()
@@ -4335,8 +4338,8 @@ class ListsDialog(wx.Dialog):
     "Show items from" chooses this message or the whole chat.
     ``build(category, scope)`` gives a kind's ``lists.ListItem`` list. A link
     chosen with Open is in ``chosen_link`` once the dialog has closed.
-    ``open_subagent(subagent, parent)`` shows a subagent's conversation over
-    the dialog (#468).
+    ``open_subagent(subagent, parent, closed)`` shows a subagent's conversation
+    over the dialog once it's read, then calls ``closed`` (#468).
     """
 
     def __init__(self, parent, title: str, build, copy, feedback,
