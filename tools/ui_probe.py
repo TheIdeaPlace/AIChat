@@ -1093,7 +1093,7 @@ def d_whole_chat(frame, env):
     _select_message(frame, "What changed")
     messages = frame._visible_messages()
     start = messages.index(frame._selected_message())
-    title = "Whole chat: Fix the flaky upload test"
+    title = "Full chat: Fix the flaky upload test"
     return lambda: frame._open_whole_chat(title, messages, start,
                                           export.reading_page(title, messages))
 

@@ -151,8 +151,8 @@ def test_chat_row_names_the_ai_folder_and_day():
 
 
 def test_the_reading_page_has_a_heading_per_message_and_theirs_under_it():
-    page = export.reading_page("Whole chat: Build fix", MESSAGES)
-    assert "<h1>Whole chat: Build fix</h1>" in page
+    page = export.reading_page("Full chat: Build fix", MESSAGES)
+    assert "<h1>Full chat: Build fix</h1>" in page
     assert '<h2 id="m1">You</h2>' in page and '<h2 id="m2">Claude</h2>' in page
     assert "<h3>Plan</h3>" in page  # the reply's own "# Plan"
     assert "<h1>Plan" not in page and "<main>" not in page and "aria-labelledby" not in page

@@ -696,7 +696,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._item(view, "S&ession List Columns...", lambda e: self.on_session_columns())
         view.AppendSeparator()
         self._item(view, "Read &Full Message", lambda e: self.on_read_message())
-        self._item(view, "Read &Whole Chat as a Page\tCtrl+Shift+W",
+        self._item(view, "Read Full Cha&t as a Page\tCtrl+Shift+W",
                    lambda e: self.on_read_whole_chat())
         self._item(view, "F&ind...\tCtrl+F", lambda e: self.on_find())
         self._item(view, "Find &Next\tF3", lambda e: self.find_again(True))
@@ -2496,7 +2496,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._modal(ShortcutsDialog(self))
 
     def on_read_whole_chat(self, _event=None):
-        """View, Read Whole Chat as a Page (Ctrl+Shift+W, #538): every message in
+        """View, Read Full Chat as a Page (Ctrl+Shift+W, #538): every message in
         the list, as one page to move through by heading, on the selected one. A
         snapshot: reopen it for later messages. Built off the window's thread, as
         a long chat with tool activity on measured 3 seconds."""
@@ -2508,7 +2508,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback("The messages are still loading.")
             return
         if self._whole_chat_building:
-            self._feedback("Still preparing the whole chat.")
+            self._feedback("Still preparing the full chat.")
             return
         messages = [m for m in self._visible_messages() if m.kind not in TAIL_KINDS]
         if not messages:
@@ -2516,7 +2516,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         selected = self._selected_message()
         start = next((i for i, m in enumerate(messages) if m is selected), len(messages) - 1)
-        title = f"Whole chat: {info.title}"
+        title = f"Full chat: {info.title}"
         key, mark = info.key, self._codex_mark()
 
         def work():
@@ -2527,7 +2527,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             wx.CallAfter(self._whole_chat_ready, key, mark, title, messages, start, page, problem)
 
         self._whole_chat_building = True
-        self._feedback("Preparing the whole chat.")
+        self._feedback("Preparing the full chat.")
         try:
             self._pool.submit(work)
         except RuntimeError:  # the pool is shut down: the window is closing
@@ -2540,12 +2540,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._status("")  # "Preparing" is over, one way or another
         if self._open is None or self._open.key != key:
             # By chat, not generation: a turn ending in the same chat bumps that.
-            self._feedback("Another chat was opened, so the whole chat didn't open.")
+            self._feedback("Another chat was opened, so the full chat didn't open.")
             return
         if problem is not None:
-            self._feedback(f"Couldn't prepare the whole chat: {problem}")
+            self._feedback(f"Couldn't prepare the full chat: {problem}")
             return
-        if self._codex_may_open(mark, "The whole chat is"):
+        if self._codex_may_open(mark, "The full chat is"):
             self._open_whole_chat(title, messages, start, page)
 
     def _open_whole_chat(self, title, messages, start, page):
@@ -2553,7 +2553,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         # Plain text on request, or no web view: on the same message.
         text, tail = export.reading_text(messages, start)
-        self._modal(MessageDialog(self, "Whole chat", text, title=title, start_tail=tail))
+        self._modal(MessageDialog(self, "Full chat", text, title=title, start_tail=tail))
 
     def _show_page(self, title: str, page: str, parent=None, start_at: str = "") -> bool:
         """Show ``page`` in the formatted view. False when it can't be shown,

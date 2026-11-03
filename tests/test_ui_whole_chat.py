@@ -1,4 +1,4 @@
-"""View, Read Whole Chat as a Page (#538). These tests construct windows: run
+"""View, Read Full Chat as a Page (#538). These tests construct windows: run
 them in the VM or CI only."""
 import pytest
 
@@ -34,11 +34,11 @@ def test_opens_on_the_selected_message_after_building_off_the_window(frame, env,
     index = len(visible) - 1
     frame.chat_list.SetSelection(index)
     frame.on_read_whole_chat()
-    assert "Preparing the whole chat." in env["feedback"]
+    assert "Preparing the full chat." in env["feedback"]
     assert shown == []  # not on the window's thread
     assert pump(lambda: shown)
     title, page, start_at = shown[0]
-    assert title.startswith("Whole chat: ")
+    assert title.startswith("Full chat: ")
     assert start_at == f"m{index + 1}" and f'id="{start_at}"' in page
     assert "<h4>Result</h4>" in page
 
@@ -51,7 +51,7 @@ def test_read_as_plain_text_gives_the_whole_chat_in_a_text_box(frame, env, monke
     monkeypatch.setattr(frame, "_modal", lambda dialog: plain.append(dialog))
     frame.on_read_whole_chat()
     assert pump(lambda: plain)
-    assert plain[0].GetTitle().startswith("Whole chat: ")
+    assert plain[0].GetTitle().startswith("Full chat: ")
     assert "Exported" not in plain[0].text.GetValue()
     assert "A reply" in plain[0].text.GetValue()
     assert plain[0].text.GetInsertionPoint() > 0  # on the selected message, the last here
@@ -69,7 +69,7 @@ def test_a_second_press_while_building_says_so(frame, env, monkeypatch):
     shown = _viewer(monkeypatch, wx.ID_CANCEL)
     frame.on_read_whole_chat()
     frame.on_read_whole_chat()
-    assert "Still preparing the whole chat." in env["feedback"]
+    assert "Still preparing the full chat." in env["feedback"]
     assert pump(lambda: shown) and len(shown) == 1
 
 
