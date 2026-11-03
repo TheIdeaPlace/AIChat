@@ -82,7 +82,7 @@ def smoke_test(out_path: str) -> int:
         report['codex_features'] = True
         from .providers.codex_permissions import CodexPermissionStore  # noqa: F401
         report["codex_permissions"] = True
-        from .providers.copilot import CopilotProvider  # noqa: F401 - reads files only
+        from .providers.copilot import CopilotProvider  # noqa: F401 - no process on import
         report["copilot_reader"] = True
         from .providers.copilot_runtime import CopilotChatRuntime  # noqa: F401 - no process on import
         report["copilot_execution"] = True
@@ -266,6 +266,15 @@ def hand_link_to_running_copy(link: str) -> bool:
         return False
 
 
+def _remove_leftover_restore_files():
+    """What an earlier restore couldn't delete from the temp folder (#494)."""
+    try:
+        from .backup_reader import remove_leftover_scratch
+        remove_leftover_scratch(older_than=0)
+    except Exception:  # noqa: BLE001 - it tries again at the next start
+        pass
+
+
 def main(argv: Optional[list] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["--session-tools-mcp"]:
@@ -341,6 +350,8 @@ def main(argv: Optional[list] = None) -> int:
             wx.MessageBox(key_name("The Chat Place is already running. Switch to it with Alt+Tab."),
                           APP_TITLE, wx.OK | wx.ICON_INFORMATION)
         return 0
+    threading.Thread(target=_remove_leftover_restore_files, name="restore-leftovers",
+                     daemon=True).start()
     frame = MainFrame()
     app.frame = frame
     frame.Centre()

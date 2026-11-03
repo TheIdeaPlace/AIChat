@@ -1,0 +1,124 @@
+{
+ "title": "Usage and Context",
+ "class": "UsageDialog",
+ "size": [
+  640,
+  360
+ ],
+ "client": [
+  624,
+  321
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Usage and context:",
+   "rect": [
+    8,
+    8,
+    101,
+    16
+   ],
+   "best": [
+    101,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Usage and context",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    608,
+    258
+   ],
+   "best": [
+    592,
+    94
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Context 50% full: 64,000 of 128,000 tokens.",
+    "Premium requests used in this chat: 3.",
+    "Copilot account usage is shared across your chats.",
+    "Chat messages: 2% used (3 of 200); 98% remaining; reset time not reported.",
+    "Premium requests: 100% used (350 of 300); 0% remaining; 50 past the allowance; reset time not reported.",
+    "Completions: unlimited."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    379,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &All",
+   "rect": [
+    460,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    541,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

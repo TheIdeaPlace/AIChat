@@ -9,10 +9,14 @@ is the one place that knows them, and it is written the way transcript.py is:
 unknown event types are skipped, a line that won't parse is counted, never
 raised, and a log is read incrementally as it grows.
 
-This adapter only reads files. It never starts ``copilot``, so it can't
-resume a session, send a prompt or spend a premium request.
+This adapter reads files, so it can't resume a session or send a prompt. The
+one exception is account usage: Usage and Context starts ``copilot`` briefly to
+ask for the quota report (copilot_usage), which opens no chat and sends no
+prompt.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from collections import OrderedDict
 from datetime import datetime
@@ -30,6 +34,7 @@ from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, TERMINAL, WORKING, S
 from ..transcript import (ASSISTANT, CARRIED, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT,
                           USER, ChatMessage, Transcript, split_jsonl)
 from ..ui_text import last_message_line
+from . import copilot_usage
 from .base import SessionCapabilities, Snapshot
 
 PROVIDER_ID = "copilot"
@@ -42,6 +47,12 @@ EVENTS_FILE = "events.jsonl"
 #: nothing while it runs. It stays working, so a real finish is still
 #: announced; only the detail changes.
 STALE_TURN_SECONDS = 10 * 60
+#: Account quota is shared across chats and doesn't need a separate process
+#: for every Copilot member in an agent conversation.
+ACCOUNT_USAGE_CACHE_SECONDS = 60
+#: A failure is kept only long enough to save those members each waiting for
+#: it: someone who has just signed in, as it tells them to, should be believed.
+ACCOUNT_USAGE_FAILURE_CACHE_SECONDS = 5
 #: After this long with nothing written, a reply is taken to have been left
 #: behind (Copilot closed mid-reply never writes its end): its status is
 #: unknown rather than working for ever.
@@ -197,6 +208,18 @@ def _tool_output(data: dict) -> str:
             if _text(result.get(key)):
                 return result[key]
     return ""
+
+
+#: Said when Allow for This Chat allowed a command once but couldn't keep it.
+NOT_KEPT = ("Answer sent to Copilot, but the command couldn't be kept for this chat: The "
+            "Chat Place couldn't save it. Copilot will ask about it again.")
+
+
+@dataclass(frozen=True)
+class AllowedNotKept:
+    """Allow for This Chat's answer went to Copilot, but the command isn't
+    kept: ``said`` is what the window says instead of "kept"."""
+    said: str
 
 
 class CopilotParser:
@@ -548,21 +571,28 @@ class CopilotProvider:
                  on_update=lambda state: None, runtime=None):
         self._sessions_dir = sessions_dir
         #: Runs the chats The Chat Place owns (copilot_runtime), if execution
-        #: is on; without it, Copilot chats are read only. Built lazily: it
-        #: starts no process until a chat is created or opened.
+        #: is on; without it, Copilot chats are read only. Built lazily: no
+        #: process starts until a chat is created or usage is requested.
         self.runtime = runtime
         #: Chats once listed from their own log: if that goes, they aren't
         #: listed again from the runtime alone.
         self._listed_before: set = set()
         if execution and runtime is None:
             from .copilot_runtime import CopilotChatRuntime
-            self.runtime = CopilotChatRuntime(on_update, sessions_dir=sessions_dir)
+            from . import copilot_auto_store, copilot_folder
+            self.runtime = CopilotChatRuntime(
+                on_update, sessions_dir=sessions_dir,
+                rules=lambda: copilot_folder.read_rules(copilot_auto_store.rules_file()),
+                auto_ended=lambda native_id: copilot_auto_store.save_auto(native_id, False))
         # native id -> _Entry, so an unchanged session isn't re-read on every
         # refresh of the list, and a changed log is read once for its state,
         # title and last message together.
         self._entries: dict = {}
         self._last_messages: "OrderedDict[tuple, tuple]" = OrderedDict()
         self._lock = threading.Lock()
+        self._account_usage: Optional[Tuple[str, ...]] = None
+        self._account_usage_until = 0.0
+        self._account_usage_lock = threading.Lock()
 
     @property
     def sessions_dir(self) -> Path:
@@ -745,8 +775,8 @@ class CopilotProvider:
         owned = self.runtime is not None and session.is_own
         # Changed Files is read from the log, so every Copilot chat has it,
         # read-only ones too; reading it never starts Copilot.
-        # Usage (#369) is read from the log and the runtime's state, so it
-        # never starts Copilot either.
+        # Usage (#369) is read from the log and the runtime's state; only its
+        # account lines start Copilot, briefly, and open no chat.
         # Continue Here copies a chat started elsewhere into a new one of
         # this app's own (#352); one started here is simply replied to.
         fork = self.runtime is not None and not session.is_own
@@ -802,6 +832,85 @@ class CopilotProvider:
         return OwnSession(native_id, title, cwd, provider=PROVIDER_ID, started=True,
                           created_ms=int(time.time() * 1000))
 
+    def set_auto_owned(self, record, on: bool) -> None:
+        """Auto (copilot_folder), on or off, kept for the next time the chat
+        is opened. Turned off at once, saved or not; turned on only once
+        Copilot is in agent mode (set_auto refuses otherwise)."""
+        from . import copilot_auto_store
+        self.runtime.set_auto(record.cli_session_id, on)
+        self._say_mode_problem(record.cli_session_id,
+                               copilot_auto_store.save_auto(record.cli_session_id, on))
+
+    # -- Allow for This Chat (#426), in Chat Permissions' shapes ----------------
+
+    def chat_rule_candidate_owned(self, record, request):
+        """What Allow for This Chat would keep for a waiting command, or None
+        when it can't be kept (Copilot then asks each time)."""
+        from .copilot_auto_store import Kept
+        command = self.runtime.chat_candidate(record.cli_session_id, request.request_id)
+        return Kept(command) if command else None
+
+    def allow_for_chat_owned(self, record, request):
+        """Keep a waiting command for this chat, then allow it once. If the
+        answer can't go to Copilot, the command isn't kept."""
+        from . import copilot_auto_store
+        from .copilot_runtime import ALLOW_ONCE, CopilotChatError
+        native_id = record.cli_session_id
+        command = self.runtime.chat_candidate(native_id, request.request_id)
+        if not command:
+            raise CopilotChatError("This command can't be kept for the chat; open Answer again.")
+        kept, problem = copilot_auto_store.add(native_id, command)
+        # Kept only once it's saved: one kept in memory alone would be
+        # answered but missing from Chat Permissions, so it couldn't be seen
+        # or removed (Kelly's review of 58c5f03). It's still allowed once.
+        saved = problem not in (copilot_auto_store.NOT_SAVED, copilot_auto_store.UNREADABLE)
+        if saved:
+            # What the file now keeps, so one trimmed from it (past MAX_KEPT,
+            # or set aside unreadable) isn't still allowed unseen.
+            self.runtime.keep_allowed(native_id, {k.command for k in kept} | {command})
+        try:
+            self.runtime.answer(native_id, request.request_id, ALLOW_ONCE)
+        except Exception:
+            if saved:
+                copilot_auto_store.remove(native_id, command)
+                self.runtime.keep_allowed(native_id,
+                                          self.runtime.allowed_here(native_id) - {command})
+            raise
+        if not saved:
+            return AllowedNotKept(NOT_KEPT)
+        self._say_mode_problem(native_id, problem)
+        return problem or None
+
+    def restart_warning_owned(self, record) -> str:
+        """What Restart Copilot would end, to warn about first, or ""."""
+        return self.runtime.restart_warning(record.cli_session_id)
+
+    def restart_owned(self, record) -> bool:
+        """Restart Copilot: every chat's, as they share its one process.
+        Waits for it to close, so call it off the UI thread."""
+        return self.runtime.restart()
+
+    def chat_rules_owned(self, record):
+        from . import copilot_auto_store
+        _auto, kept, _problem = copilot_auto_store.load(record.cli_session_id)
+        return kept
+
+    def remove_chat_rule_owned(self, record, rule_id):
+        """Stop keeping one command (rule_id), or all (None). The runtime
+        forgets it first, so nothing is answered from it meanwhile."""
+        from . import copilot_auto_store
+        native_id = record.cli_session_id
+        _auto, before, _problem = copilot_auto_store.load(native_id)
+        if rule_id is not None and not any(k.command == rule_id for k in before):
+            raise ValueError("That command is no longer kept.")
+        self.runtime.keep_allowed(native_id, [k.command for k in before
+                                              if rule_id is not None and k.command != rule_id])
+        kept, problem = copilot_auto_store.remove(native_id, rule_id)
+        if problem == copilot_auto_store.NOT_SAVED:
+            raise ValueError(problem)
+        self._say_mode_problem(native_id, problem)  # saved, but the old file was set aside
+        return kept
+
     def set_mode_owned(self, record, mode: str) -> str:
         """Change Permission Mode: agent or plan. The mode Copilot reports
         afterwards, which is kept for the next time the chat is opened only
@@ -823,10 +932,35 @@ class CopilotProvider:
     def prepare_owned(self, record) -> None:
         """Open a chat from the window's own record of it (the only place
         the runtime is told a chat is the app's), in the folder recorded."""
-        self.runtime.adopt(record.cli_session_id)
-        mode, problem = chosen_mode(record.cli_session_id)
-        self.runtime.prepare(record.cli_session_id, record.cwd, mode=mode)
-        self._say_mode_problem(record.cli_session_id, problem)
+        from . import copilot_auto_store
+        from .copilot_runtime import AGENT_MODE, CopilotChatError
+        native_id = record.cli_session_id
+        self.runtime.adopt(native_id)
+        mode, problem = chosen_mode(native_id)
+        # The commands allowed for it, before it can ask anything.
+        auto, kept, kept_problem = copilot_auto_store.load(native_id)
+        self.runtime.keep_allowed(native_id, [k.command for k in kept])
+        self.runtime.prepare(native_id, record.cwd, mode=mode)
+        self._say_mode_problem(native_id, problem or kept_problem)
+        # Auto, if it was chosen and the chat is in agent mode again.
+        if auto and mode in ("", AGENT_MODE):
+            try:
+                self.runtime.set_auto(native_id, True)
+            except CopilotChatError as exc:
+                # Not left on to come back by itself another time it opens
+                # in agent mode (Claude's review of Auto).
+                # And not left on in memory, where the same chat reopened would
+                # keep it while saying it can't be in Auto.
+                self.runtime.set_auto(native_id, False)
+                copilot_auto_store.save_auto(native_id, False)
+                self._say_mode_problem(native_id, str(exc))
+        else:
+            # Off in the store, or the store couldn't be read: a chat reopened
+            # after Restart Copilot is the same _Chat, and mustn't keep answering
+            # while it says Copilot asks before it acts.
+            state = self.runtime.snapshot(native_id)
+            if getattr(state, "auto", False):
+                self.runtime.set_auto(native_id, False)
         self._remember_models()
 
     def set_model_owned(self, record, model: str) -> None:
@@ -901,8 +1035,7 @@ class CopilotProvider:
     def usage_lines(self, session: SessionInfo) -> List[str]:
         """Usage and Context (Ctrl+Shift+U, #369): how full the context is,
         as Copilot last said in a turn run here, and the premium requests
-        the chat has used, from its log. Copilot doesn't say what's left of
-        the plan's allowance, so nothing here can warn about a limit."""
+        the chat has used, from its log, plus the account's quota report."""
         self._check(session)
         state = self.runtime.snapshot(session.cli_session_id) if self.runtime is not None else None
         if state is not None and state.context_size > 0:
@@ -923,9 +1056,23 @@ class CopilotProvider:
             lines.append("Premium requests used in this chat: none recorded yet.")
         else:
             lines.append(f"Premium requests used in this chat: {used:,g}.")
-        lines.append("Copilot doesn't say how many premium requests your plan has left; "
-                     "GitHub's Copilot settings show that.")
+        lines.extend(self._account_usage_lines())
         return lines
+
+    def _account_usage_lines(self) -> List[str]:
+        with self._account_usage_lock:
+            if self._account_usage is None or time.monotonic() >= self._account_usage_until:
+                keep = ACCOUNT_USAGE_CACHE_SECONDS
+                try:
+                    found = copilot_usage.read_usage_lines()
+                except Exception:  # noqa: BLE001 - the chat's own lines still show
+                    keep = ACCOUNT_USAGE_FAILURE_CACHE_SECONDS
+                    found = ["Copilot account usage is shared across your chats, but isn't "
+                             "available. Check Copilot CLI sign-in and connection, and update "
+                             "the CLI if needed."]
+                self._account_usage = tuple(found)
+                self._account_usage_until = time.monotonic() + keep
+            return list(self._account_usage)
 
     def last_reply(self, session: SessionInfo) -> str:
         self._check(session)

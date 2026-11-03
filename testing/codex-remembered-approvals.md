@@ -1,8 +1,7 @@
 # Test remembered Codex approvals (#307)
 
-The candidate is on `codex/native-command-approvals`. It has not been merged or
-released. Close the installed copy before starting the test copy: The Chat Place deliberately
-allows one instance at a time. The candidate uses The Chat Place's normal session store;
+Released in 0.2.0. To try a build from source, close the installed copy first: The Chat Place deliberately
+allows one instance at a time. It uses The Chat Place's normal session store;
 only its own new `provider-permissions/codex` files hold remembered approvals.
 No Codex/Claude settings, native rules or transcript files are edited by The Chat Place.
 

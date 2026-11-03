@@ -2,11 +2,11 @@
  "title": "Change Permission Mode",
  "class": "SingleChoiceDialog",
  "size": [
-  479,
+  647,
   189
  ],
  "client": [
-  463,
+  631,
   150
  ],
  "dpi": [
@@ -18,15 +18,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Mode for Plan the synthetic probe project's long refactor, now plan mode:",
+   "label": "Mode for Plan the synthetic probe project's long refactor, now Auto:",
    "rect": [
     15,
     15,
-    392,
+    361,
     16
    ],
    "best": [
-    392,
+    361,
     16
    ],
    "depth": 0,
@@ -41,11 +41,11 @@
    "rect": [
     17,
     48,
-    433,
+    601,
     49
    ],
    "best": [
-    433,
+    601,
     49
    ],
    "depth": 0,
@@ -54,16 +54,17 @@
    "problems": [],
    "items": [
     "Agent: asks before running commands or changing files",
-    "Plan: plans first and doesn't edit your files; asks before anything else (now)"
+    "Plan: plans first and doesn't edit your files; asks before anything else",
+    "Auto: reads, and changes files, in the chat's folder without asking; asks before running anything else (now)"
    ],
-   "selection": 1
+   "selection": 2
   },
   {
    "class": "Button",
    "name": "button",
    "label": "OK",
    "rect": [
-    291,
+    459,
     117,
     75,
     23
@@ -82,7 +83,7 @@
    "name": "button",
    "label": "Cancel",
    "rect": [
-    374,
+    542,
     117,
     75,
     23
@@ -103,7 +104,7 @@
    "rect": [
     11,
     106,
-    443,
+    611,
     2
    ],
    "best": [

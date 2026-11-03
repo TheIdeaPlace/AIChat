@@ -246,3 +246,28 @@ def test_store_loads_an_unknown_effort_as_the_default(tmp_path, stored):
     path = tmp_path / "sessions.json"
     path.write_text(json.dumps({"sessions": [entry]}), encoding="utf-8")
     assert OwnSessionStore(path).get("id-1").effort == ""
+
+
+def test_git_names_diff_program_reads_what_git_config_lists(monkeypatch, tmp_path):
+    """#426: git diff is answered in Auto only when no git config names a
+    diff program; Git for Windows' own astextplain setting doesn't count."""
+    import subprocess
+    from types import SimpleNamespace
+    monkeypatch.setattr(platform_paths, "find_tool", lambda name: "git")
+    answers = {}
+
+    def run(argv, **kwargs):
+        code, out = answers["now"]
+        return SimpleNamespace(returncode=code, stdout=out)
+    monkeypatch.setattr(subprocess, "run", run)
+    cases = [((1, b""), False),
+             ((0, b"diff.astextplain.textconv astextplain\n"), False),
+             ((0, b"diff.astextplain.textconv astextplain\ndiff.x.command evil\n"), True),
+             ((0, b"diff.external evil\n"), True),
+             ((128, b""), None)]
+    for index, (reply, expected) in enumerate(cases):
+        answers["now"] = reply
+        folder = str(tmp_path / str(index))  # a new folder each time: nothing cached
+        assert platform_paths.git_names_diff_program(folder) is expected, reply
+    monkeypatch.setattr(platform_paths, "find_tool", lambda name: None)
+    assert platform_paths.git_names_diff_program(str(tmp_path / "none")) is None

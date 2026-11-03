@@ -1154,6 +1154,132 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Claude asks about text it wrote just before, with an option's preview"
+  },
+  "chat-permissions-copilot": {
+   "kind": "dialog",
+   "png": "chat-permissions-copilot-light-150.png",
+   "json": "chat-permissions-copilot-light-150.json",
+   "title": "Chat Permissions: Copilot preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    1020,
+    780
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Chat Permissions: a Copilot chat in Auto, with commands kept"
+  },
+  "chat-permissions-copilot-moved": {
+   "kind": "dialog",
+   "png": "chat-permissions-copilot-moved-light-150.png",
+   "json": "chat-permissions-copilot-moved-light-150.json",
+   "title": "Chat Permissions: Copilot preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    1020,
+    780
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Chat Permissions: commands ask until Restart Copilot"
+  },
+  "copilot-permission": {
+   "kind": "dialog",
+   "png": "copilot-permission-light-150.png",
+   "json": "copilot-permission-light-150.json",
+   "title": "Copilot needs permission: Copilot preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    1050,
+    810
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot asks to run a command, once"
+  },
+  "copilot-permission-keep": {
+   "kind": "dialog",
+   "png": "copilot-permission-keep-light-150.png",
+   "json": "copilot-permission-keep-light-150.json",
+   "title": "Copilot needs permission: Copilot preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    1050,
+    810
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot asks to run a command it can keep for the chat"
+  },
+  "copilot-change-mode": {
+   "kind": "dialog",
+   "png": "copilot-change-mode-light-150.png",
+   "json": "copilot-change-mode-light-150.json",
+   "title": "Change Permission Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    967,
+    290
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Permission Mode for an owned Copilot chat in plan mode"
+  },
+  "main-copilot-auto": {
+   "kind": "window",
+   "png": "main-copilot-auto-light-150.png",
+   "json": "main-copilot-auto-light-150.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A Copilot chat in Auto, with a program still running"
+  },
+  "main-copilot-owned": {
+   "kind": "window",
+   "png": "main-copilot-owned-light-150.png",
+   "json": "main-copilot-owned-light-150.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A Copilot chat started here: reply box, queued message and context"
+  },
+  "copilot-files": {
+   "kind": "dialog",
+   "png": "copilot-files-light-150.png",
+   "json": "copilot-files-light-150.json",
+   "title": "Copilot needs permission: Copilot preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    1050,
+    810
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot asks to create a file, with its diff"
+  },
+  "new-session-copilot": {
+   "kind": "dialog",
+   "png": "new-session-copilot-light-150.png",
+   "json": "new-session-copilot-light-150.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    1020,
+    930
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session for Copilot, choosing from the models it offered"
   }
  },
  "seconds": 93.2

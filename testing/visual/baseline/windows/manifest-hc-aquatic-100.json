@@ -2,7 +2,7 @@
  "tag": "hc-aquatic-100",
  "platform": "win32",
  "os": "Windows-11-10.0.26300-SP0",
- "wx": "4.3.1 msw (phoenix) wxWidgets 3.3.3",
+ "wx": "4.3.2 msw (phoenix) wxWidgets 3.3.4",
  "python": "3.12.10",
  "dpi_awareness": "per-monitor aware",
  "appearance": {
@@ -20,6 +20,7 @@
   1000,
   720
  ],
+ "complete": true,
  "surfaces": {
   "main-start": {
    "kind": "window",
@@ -1344,7 +1345,7 @@
    "title": "Change Permission Mode",
    "class": "SingleChoiceDialog",
    "size": [
-    479,
+    647,
     189
    ],
    "capture": "PrintWindow",
@@ -1476,7 +1477,119 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Ask Aside: questions about a chat, one answered"
+  },
+  "main-copilot-auto": {
+   "kind": "window",
+   "png": "main-copilot-auto-hc-aquatic-100.png",
+   "json": "main-copilot-auto-hc-aquatic-100.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A Copilot chat in Auto, with a program still running"
+  },
+  "copilot-permission-keep": {
+   "kind": "dialog",
+   "png": "copilot-permission-keep-hc-aquatic-100.png",
+   "json": "copilot-permission-keep-hc-aquatic-100.json",
+   "title": "Copilot needs permission: Copilot preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot asks to run a command it can keep for the chat"
+  },
+  "chat-permissions-copilot-moved": {
+   "kind": "dialog",
+   "png": "chat-permissions-copilot-moved-hc-aquatic-100.png",
+   "json": "chat-permissions-copilot-moved-hc-aquatic-100.json",
+   "title": "Chat Permissions: Copilot preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Chat Permissions: commands ask until Restart Copilot"
+  },
+  "chat-permissions-copilot": {
+   "kind": "dialog",
+   "png": "chat-permissions-copilot-hc-aquatic-100.png",
+   "json": "chat-permissions-copilot-hc-aquatic-100.json",
+   "title": "Chat Permissions: Copilot preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Chat Permissions: a Copilot chat in Auto, with commands kept"
+  },
+  "usage-copilot": {
+   "kind": "dialog",
+   "png": "usage-copilot-hc-aquatic-100.png",
+   "json": "usage-copilot-hc-aquatic-100.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot account allowances and reset reports"
+  },
+  "restore-chooser": {
+   "kind": "dialog",
+   "png": "restore-chooser-hc-aquatic-100.png",
+   "json": "restore-chooser-hc-aquatic-100.json",
+   "title": "Restore from Backup",
+   "class": "RestoreChooserDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Restore from Backup, choosing chats"
+  },
+  "export-chats": {
+   "kind": "dialog",
+   "png": "export-chats-hc-aquatic-100.png",
+   "json": "export-chats-hc-aquatic-100.json",
+   "title": "Export Chats",
+   "class": "ExportChatsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Export Chats, choosing chats and a format"
+  },
+  "backup-schedule": {
+   "kind": "dialog",
+   "png": "backup-schedule-hc-aquatic-100.png",
+   "json": "backup-schedule-hc-aquatic-100.json",
+   "title": "Backup Schedule",
+   "class": "BackupScheduleDialog",
+   "size": [
+    620,
+    500
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Backup Schedule, daily, after a failure"
   }
  },
- "seconds": 91.6
+ "seconds": 280.2
 }

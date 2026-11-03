@@ -33,10 +33,26 @@ leave manual Answer available.
 Local native Codex 0.163.0 on Windows passed ten credential-free scenarios:
 branch/add/commit, repeated add and commit, local push twice, copy isolation,
 restart and removal. The output is in the task's temporary folder. The workflow
-also runs Windows/macOS against 0.162.1 and 0.163.0. Authenticated HTTPS push and
+now runs on Windows, macOS and Linux against the versions in its matrix (it started with
+0.162.1 and 0.163.0). Authenticated HTTPS push and
 screen-reader listening remain explicit hand tests; the local remote probe does
 not establish those outcomes. VM screenshots and complete-suite results are
 recorded with the candidate's validation report.
+
+## Which shells can be remembered (November 2026, #478)
+
+The shell is Codex's own choice: on 0.163.0, a model-supplied `shell` value didn't change
+the path in the request or the program that ran. A rule binds that exact path. Trusted paths
+are ones ordinary programs can't replace: System32, Program Files, `/bin`, `/usr/bin`.
+
+The Microsoft Store alias is the one exception, because `%LOCALAPPDATA%\Microsoft\WindowsApps`
+is the user's own. A normal chat's sandbox can't write there, and it's only trusted when the
+file really is an app execution alias, so a plain program dropped in its place asks. A
+program already outside the sandbox gains nothing from replacing it: it has the user's
+authority, and could edit the rule store just as easily.
+
+User-installed shells (Homebrew, dotnet tools, Scoop) stay untrusted until someone reports
+one in real use, and then fall under this same reasoning. Follow-ups are filed as issues.
 
 ## Review follow-up, 21 October 2026
 

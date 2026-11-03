@@ -15,6 +15,10 @@ updates:
       # version. vpk is pinned in release-thechatplace.yml, which Dependabot can't see, so move
       # both together by hand.
       - dependency-name: velopack
+      # Linux builds and tests on the distribution's wxPython (PyPI has no Linux wheels), so
+      # the floor follows the oldest distribution supported (Ubuntu 24.04), not PyPI's latest:
+      # a higher floor makes pip build wxPython from source there and fails (#328).
+      - dependency-name: wxpython
 
   - package-ecosystem: github-actions
     directory: /

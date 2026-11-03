@@ -27,6 +27,7 @@ the list has terminal sessions and The Chat Place's own.
 """
 from __future__ import annotations
 
+import functools
 import json
 import ntpath
 import os
@@ -192,6 +193,58 @@ def _copilot_policy_values(winreg, hive, hive_name) -> list:
 
 #: The most read of any one Copilot settings or hook file.
 COPILOT_SETTINGS_BYTES = 2 * 1024 * 1024
+
+
+@functools.lru_cache(maxsize=None)
+def _known_folder(guid_text: str) -> Optional[str]:
+    """A Windows known folder where the shell says it is (OneDrive or an
+    organisation's folder redirection moves Documents, AppData and Startup),
+    or None. Asked once per run: the copilot_folder check asks for each path."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    import uuid
+    try:
+        raw = uuid.UUID(guid_text).bytes_le
+        guid = (ctypes.c_byte * 16).from_buffer_copy(raw)
+        path = ctypes.c_wchar_p()
+        shell32 = ctypes.WinDLL("shell32")
+        ole32 = ctypes.WinDLL("ole32")
+        shell32.SHGetKnownFolderPath.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_wchar_p)]
+        ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+        if shell32.SHGetKnownFolderPath(ctypes.byref(guid), 0, None, ctypes.byref(path)) != 0:
+            return None
+        found = path.value
+        ole32.CoTaskMemFree(path)
+        return found or None
+    except (OSError, AttributeError, ValueError, ctypes.ArgumentError):
+        return None
+
+
+#: FOLDERID_Documents, RoamingAppData, LocalAppData and Startup.
+_DOCUMENTS = "FDD39AD0-238F-46AF-ADB4-6C85480369C7"
+_SETTINGS_FOLDERS = ("3EB685DB-65F9-4CF6-A03A-E3EF65729F3D",
+                     "F1B32785-6FBA-4FCF-9D55-7B8E7F157091",
+                     "B97D20BB-F46A-4C97-BA10-5E3608430854")
+
+
+def documents_dirs() -> List[str]:
+    """The Documents folder, where PowerShell keeps its profiles: on Windows
+    the one the shell reports (OneDrive moves it, Claude's review of #426) as
+    well as the home folder's own."""
+    found = [os.path.join(os.path.expanduser("~"), "Documents")]
+    real = _known_folder(_DOCUMENTS)
+    return found + [real] if real else found
+
+
+def settings_dirs() -> List[str]:
+    """Where Windows keeps a person's settings and startup programs, as the
+    shell reports them: AppData (Roaming and Local) and the Startup folder,
+    wherever folder redirection put them (Kelly's review of 58c5f03). Empty
+    elsewhere: the home folder's own places are listed in copilot_folder."""
+    return [path for path in map(_known_folder, _SETTINGS_FOLDERS) if path]
 
 
 def copilot_sessions_dir() -> Path:
@@ -404,13 +457,31 @@ def codex_approval_shell(executable: str) -> str:
     """Only known native shell wrappers can be remembered (#307)."""
     if sys.platform == 'win32':
         trusted = [_windows_program('System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')]
-        if os.environ.get('ProgramFiles'):
-            trusted.append(ntpath.join(os.environ['ProgramFiles'], 'PowerShell', '7', 'pwsh.exe'))
+        program_files = os.environ.get('ProgramFiles') or ''
+        if ntpath.isabs(program_files):
+            trusted += [ntpath.join(program_files, 'PowerShell', '7', 'pwsh.exe'),
+                        ntpath.join(program_files, 'PowerShell', '7-preview', 'pwsh.exe')]
         if ntpath.normcase(executable) in {ntpath.normcase(p) for p in trusted}:
             return 'powershell'
-    elif executable in ('/bin/bash', '/bin/zsh', '/bin/sh'):
+        # PowerShell from the Microsoft Store: Codex reports its app alias, so
+        # without this nothing could be remembered on such a PC. The folder is
+        # the user's own, unlike those above, so the file must be the real alias.
+        local = os.environ.get('LOCALAPPDATA') or ''
+        if ntpath.isabs(local):
+            store = ntpath.join(local, 'Microsoft', 'WindowsApps', 'pwsh.exe')
+            if ntpath.normcase(executable) == ntpath.normcase(store) and _is_store_alias(store):
+                return 'powershell'
+    elif executable in ('/bin/bash', '/bin/zsh', '/bin/sh', '/usr/bin/bash', '/usr/bin/zsh', '/usr/bin/sh'):
         return 'posix'
     return ''
+
+
+def _is_store_alias(path: str) -> bool:
+    """A Microsoft Store app alias, not a program dropped in its place."""
+    try:
+        return os.lstat(path).st_reparse_tag == stat.IO_REPARSE_TAG_APPEXECLINK
+    except (OSError, AttributeError):
+        return False
 
 
 def codex_approval_folder(cwd: str, chat_folder: str) -> str:
@@ -1343,6 +1414,13 @@ class ProcessTree:
         except OSError:
             pass
 
+    def members(self) -> frozenset:
+        """The processes running in this tree now, as far as can be told: the
+        job's on Windows, otherwise only the one started."""
+        own = frozenset() if self._pid is None else frozenset((self._pid,))
+        job = self._job
+        return own | _job_process_ids(job) if job is not None else own
+
     def close(self) -> None:
         """Close the job. KILL_ON_JOB_CLOSE ends anything still in it."""
         if self._job is not None:
@@ -1372,6 +1450,9 @@ def _kernel32():
     k.AssignProcessToJobObject.restype = wintypes.BOOL
     k.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
     k.TerminateJobObject.restype = wintypes.BOOL
+    k.QueryInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                            wintypes.DWORD, wintypes.LPVOID]
+    k.QueryInformationJobObject.restype = wintypes.BOOL
     k.CloseHandle.argtypes = [wintypes.HANDLE]
     k.CloseHandle.restype = wintypes.BOOL
     _K32 = k
@@ -1427,6 +1508,25 @@ def _create_kill_on_close_job():
         _close_handle(job)
         return None
     return job
+
+
+def _job_process_ids(job, rooms=(1024, 65536)) -> frozenset:
+    """The process ids in a job (none if Windows won't say). A big build's
+    processes count too, so a list too small for them is tried once larger."""
+    import ctypes
+    from ctypes import wintypes
+
+    for room in rooms:
+        class PROCESS_ID_LIST(ctypes.Structure):
+            _fields_ = [("NumberOfAssignedProcesses", wintypes.DWORD),
+                        ("NumberOfProcessIdsInList", wintypes.DWORD),
+                        ("ProcessIdList", ctypes.c_size_t * room)]
+
+        found = PROCESS_ID_LIST()
+        if _kernel32().QueryInformationJobObject(job, 3, ctypes.byref(found),  # BasicProcessIdList
+                                                 ctypes.sizeof(found), None):
+            return frozenset(found.ProcessIdList[:found.NumberOfProcessIdsInList])
+    return frozenset()
 
 
 def _assign_to_job(job, process_handle: int) -> bool:
@@ -1511,6 +1611,124 @@ def bring_last_popup_forward(hwnd: int) -> bool:
     return bool(found) and bool(user32.SetForegroundWindow(found[0]))
 
 
+#: How long a check waits for git. These run on the thread reading Copilot's
+#: messages, so every chat waits too: a hung git mustn't hold them up for
+#: long, and the request asks, saying so (Kelly's review of 5d378b4).
+GIT_CHECK_SECONDS = 5
+#: git_names_diff_program's answers, by folder: (when, answer). It's asked
+#: for each git diff Copilot wants to run, so it's kept a little while.
+_DIFF_PROGRAM_SEEN: dict = {}
+#: Settings git itself puts in its own config, as git config lists them.
+_GIT_OWN_DIFF_PROGRAMS = frozenset({"diff.astextplain.textconv astextplain"})
+
+
+def git_names_diff_program(folder: str) -> Optional[bool]:
+    """Whether any git config that applies in ``folder`` (yours too, not
+    only the repository's) names a program for showing differences:
+    diff.external, or a diff driver's command or textconv. A repository's
+    .gitattributes can choose such a driver for its files, and git diff then
+    runs it (Copilot's review of Auto, #426). None if git can't say."""
+    import subprocess
+    import time
+
+    seen = _DIFF_PROGRAM_SEEN.get(folder)
+    if seen and time.monotonic() - seen[0] < 30:
+        return seen[1]
+    git = find_tool("git")
+    answer: Optional[bool] = None
+    if git:
+        try:
+            done = subprocess.run(
+                [git, "config", "--get-regexp", r"^diff\.(external|.+\.(command|textconv))$"],
+                cwd=folder, capture_output=True, timeout=GIT_CHECK_SECONDS,
+                env=copilot_child_environment(), creationflags=hidden_window_flags())
+            # git config says 1, with nothing written, when nothing matches.
+            # Git for Windows' own setting, which runs a script it ships for
+            # .doc and .pdf files, doesn't count.
+            named = [line.strip() for line in done.stdout.decode("utf-8", "replace").splitlines()
+                     if line.strip() and line.strip() not in _GIT_OWN_DIFF_PROGRAMS]
+            if done.returncode == 0:
+                answer = bool(named)
+            elif done.returncode == 1 and not done.stdout.strip():
+                answer = False
+        except (OSError, subprocess.SubprocessError, ValueError):
+            answer = None
+    _DIFF_PROGRAM_SEEN[folder] = (time.monotonic(), answer)
+    return answer
+
+
+class GitUnanswered(Exception):
+    """git couldn't answer a check: ``kind`` is GIT_MISSING, GIT_TIMED_OUT or
+    GIT_FAILED, which copilot_folder turns into the reason it gives."""
+
+    def __init__(self, kind: str):
+        super().__init__(kind)
+        self.kind = kind
+
+
+GIT_MISSING, GIT_TIMED_OUT, GIT_FAILED = "missing", "timed out", "failed"
+GIT_TOO_OLD = "too old"
+
+
+def _git_output(args: List[str], folder: str) -> bytes:
+    """What ``git args`` writes, run from ``folder`` with the environment
+    Copilot's own shell gets, so the answer is about what its git will do
+    (copilot_child_environment). Raises GitUnanswered for anything else."""
+    import subprocess
+
+    git = find_tool("git")
+    if not git:
+        raise GitUnanswered(GIT_MISSING)
+    try:
+        done = subprocess.run([git, *args], cwd=folder, capture_output=True,
+                              timeout=GIT_CHECK_SECONDS, env=copilot_child_environment(),
+                              creationflags=hidden_window_flags())
+    except subprocess.TimeoutExpired:
+        raise GitUnanswered(GIT_TIMED_OUT) from None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        raise GitUnanswered(GIT_FAILED) from None
+    if done.returncode != 0:
+        raise GitUnanswered(GIT_FAILED)
+    return done.stdout
+
+
+def git_where(folder: str) -> tuple:
+    """(top of the working tree, git folder, common git folder, hooks folder)
+    as git itself sees them from ``folder``. Asking runs nothing of the
+    repository's. Git before 2.31 echoes --path-format as a line of its own
+    (GIT_TOO_OLD), and a path with a line break gives too many lines:
+    GitUnanswered, as anything unexpected is."""
+    lines = _git_output(["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir",
+                         "--git-common-dir", "--git-path", "hooks"],
+                        folder).decode("utf-8", "replace").split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    if lines and lines[0] == "--path-format=absolute":
+        raise GitUnanswered(GIT_TOO_OLD)
+    if len(lines) != 4 or not all(lines):
+        raise GitUnanswered(GIT_FAILED)
+    return tuple(lines)
+
+
+def git_settings(folder: str) -> List[tuple]:
+    """(scope, origin, name, value) of every setting git uses from ``folder``,
+    included files followed, as git itself reads them: ``git config --list
+    --show-scope --show-origin -z`` writes scope, NUL, origin, NUL, name, line
+    break, value, NUL, and a path isn't quoted. Asking runs nothing of the
+    repository's. Anything else is GitUnanswered."""
+    output = _git_output(["config", "--list", "--show-scope", "--show-origin", "-z"], folder)
+    pieces = output.decode("utf-8", "replace").split("\0")
+    if pieces and pieces[-1] == "":
+        pieces.pop()
+    if len(pieces) % 3:
+        raise GitUnanswered(GIT_FAILED)
+    settings = []
+    for scope, origin, setting in zip(pieces[0::3], pieces[1::3], pieces[2::3]):
+        name, _, value = setting.partition("\n")
+        settings.append((scope, origin, name, value))
+    return settings
+
+
 def high_contrast() -> Optional[bool]:
     """Whether Windows' High Contrast is on, for bug reports (#464); None
     where there's no such setting or it can't be read."""
@@ -1531,6 +1749,15 @@ def high_contrast() -> Optional[bool]:
     except (OSError, AttributeError):
         return None
     return bool(value.dwFlags & 1)
+
+
+def git_has_submodules(folder: str) -> bool:
+    """Whether the index of the repository at ``folder`` holds a submodule
+    (a gitlink, mode 160000), however it got there: git status and diff go
+    into one and run its own config. Raises GitUnanswered if git can't say.
+    Asked with fsmonitor off, so asking runs nothing of the repository's."""
+    output = _git_output(["-c", "core.fsmonitor=", "ls-files", "--stage", "-z"], folder)
+    return any(entry.startswith(b"160000 ") for entry in output.split(b"\0"))
 
 
 def hidden_window_flags() -> int:
@@ -2112,17 +2339,30 @@ def copilot_native_candidates() -> List[Path]:
             Path("/home/linuxbrew/.linuxbrew/bin/copilot"), Path("/usr/bin/copilot")]
 
 
+def is_copilot_launcher(path) -> bool:
+    """VS Code's ``copilot`` command, which isn't Copilot: it finds Copilot
+    (or offers to install it) and keeps running with it as a child (#463)."""
+    return "copilot-shim" in (part.lower() for part in Path(path).parts)
+
+
 def find_copilot(which=None, native_candidates=None) -> Optional[str]:
     """The native Copilot CLI, or None. The same check as Codex's: a real
-    executable, never a script (#352)."""
+    executable, never a script (#352). VS Code's launcher passes that check,
+    so it's used only if there's nothing else (#463)."""
     import shutil
 
-    found = (which or shutil.which)("copilot")
+    found = [(which or shutil.which)("copilot")]
+    if found[0] and is_copilot_launcher(found[0]) and which is None:
+        # It hides any real Copilot later on the PATH.
+        folders = os.environ.get("PATH", "").split(os.pathsep)
+        found.append(shutil.which("copilot", path=os.pathsep.join(
+            folder for folder in folders if not is_copilot_launcher(folder))))
     if native_candidates is None:
         native_candidates = copilot_native_candidates()
-    for candidate in ([found] if found else []) + list(native_candidates):
-        if _native_codex(str(candidate)):
-            return str(candidate)
+    candidates = [str(candidate) for candidate in [*found, *native_candidates] if candidate]
+    for candidate in sorted(candidates, key=is_copilot_launcher):  # stable: only the launcher moves
+        if _native_codex(candidate):
+            return candidate
     return None
 
 
@@ -2148,9 +2388,47 @@ def copilot_child_environment(environ=None) -> dict:
     whose answers are still GitHub Copilot's, as each turn's billing check
     confirms."""
     source = os.environ if environ is None else environ
-    return {key: value for key, value in source.items()
+    kept = {key: value for key, value in source.items()
             if key.upper() not in COPILOT_OVERRIDE_VARS
-            and not key.upper().startswith(COPILOT_OVERRIDE_PREFIXES)}
+            and not key.upper().startswith(COPILOT_OVERRIDE_PREFIXES)
+            and key.upper() not in GIT_REPOSITORY_VARS}
+    return _with_git_settings(kept)
+
+
+#: What makes git use a repository other than the one it finds from where it
+#: runs (``git rev-parse --local-env-vars``, but for GIT_CONFIG_COUNT, which
+#: is kept and added to). Left by whatever started The Chat Place, say a git
+#: hook, they'd send Copilot's git somewhere the checks never looked.
+GIT_REPOSITORY_VARS = frozenset({
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+    "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE", "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR"})
+#: Settings given to every git Copilot's shell runs, a second layer under
+#: copilot_folder's checks, for anything they miss (Kelly's review of 5d378b4:
+#: the escapes of three reviews all came through git's own settings).
+#: core.fsmonitor=false stops a repository's fsmonitor program running on git
+#: status; safe.bareRepository=explicit stops git treating a folder inside
+#: the project as a repository of its own unless told to with --git-dir. Both
+#: confirmed with real git 2.50, and real Copilot CLI 1.0.105 passes them on to the
+#: commands it runs (dev-notes/copilot-cli-probe.md). Nothing relies on this.
+_GIT_SETTINGS_FOR_COPILOT = (("core.fsmonitor", "false"), ("safe.bareRepository", "explicit"))
+
+
+def _with_git_settings(environment: dict) -> dict:
+    """``environment`` with _GIT_SETTINGS_FOR_COPILOT added after any
+    GIT_CONFIG_COUNT settings it already holds: git uses the last one given.
+    A count git couldn't read makes every git fail, so it's replaced."""
+    try:
+        count = max(int(environment.get("GIT_CONFIG_COUNT", "0")), 0)
+    except ValueError:
+        count = 0
+    for key, value in _GIT_SETTINGS_FOR_COPILOT:
+        environment[f"GIT_CONFIG_KEY_{count}"] = key
+        environment[f"GIT_CONFIG_VALUE_{count}"] = value
+        count += 1
+    environment["GIT_CONFIG_COUNT"] = str(count)
+    return environment
 
 
 #: What start_copilot_acp says when there's no Copilot CLI to start: safe
@@ -2172,6 +2450,28 @@ def start_copilot_acp(executable: Optional[str] = None,
                                env=copilot_child_environment(), cwd=cwd or None,
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+    owned = CodexServerProcess(process, tree)
+    try:
+        tree.attach(process)
+    except Exception:
+        owned.close()
+        raise
+    return owned
+
+
+def start_copilot_sdk(executable: Optional[str] = None) -> CodexServerProcess:
+    """Start Copilot CLI's SDK server for read-only account usage queries."""
+    import subprocess
+
+    executable = executable or find_copilot()
+    if not executable or not _native_codex(executable):
+        raise OSError(COPILOT_MISSING)
+    tree = ProcessTree()
+    process = subprocess.Popen(
+        [executable, "--headless", "--no-auto-update", "--stdio", "--log-level", "error",
+         "--disable-client-telemetry"],
+        env=copilot_child_environment(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, **tree.popen_kwargs())
     owned = CodexServerProcess(process, tree)
     try:
         tree.attach(process)

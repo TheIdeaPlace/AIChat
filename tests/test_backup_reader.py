@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import sqlite3
+import sys
 import zipfile
 
 import pytest
@@ -250,3 +251,247 @@ def test_file_import_does_not_consult_live_provider_or_tcp_folders(monkeypatch):
     with zipped, BackupReader(zipped,manifest) as reader:
         for session in reader.sessions():
             assert reader.read(session).messages
+
+
+def _closing_reader(temporary, root, codex=None):
+    from thechatplace import backup_reader
+    reader = object.__new__(backup_reader.BackupReader)
+    reader._closed, reader._codex, reader._temporary = False, codex, temporary
+    reader.root, reader.left_behind = root, False
+    return reader
+
+
+def test_a_scratch_folder_that_wont_go_at_once_doesnt_fail_the_restore(tmp_path, monkeypatch):
+    """Codex can still be writing to its scratch profile as it dies, and
+    Windows says the folder isn't empty (WinError 145): the chats are saved."""
+    from thechatplace import backup_reader
+    monkeypatch.setattr(backup_reader, '_SCRATCH_WAIT', 0)
+    tries = []
+
+    class Stubborn:
+        def __init__(self, fails):
+            self.fails = fails
+
+        def cleanup(self):
+            tries.append(1)
+            if len(tries) <= self.fails:
+                raise OSError(145, 'The directory is not empty')
+
+    root = tmp_path / 'busy'
+    root.mkdir()
+    removed = []
+
+    def stays_for_three(folder):
+        removed.append(folder)
+        if len(removed) >= 3:
+            root.rmdir()
+    monkeypatch.setattr(backup_reader, '_remove_tree', stays_for_three)
+    reader = _closing_reader(Stubborn(10 ** 6), root)
+    reader.close()
+    assert len(tries) == 3 and not reader.left_behind
+    monkeypatch.undo()
+    monkeypatch.setattr(backup_reader, '_SCRATCH_WAIT', 0)
+    tries.clear()
+    root = tmp_path / 'scratch'
+    (root / 'chats').mkdir(parents=True)
+    (root / 'chats' / 'one.jsonl').write_text('{}')
+    reader = _closing_reader(Stubborn(10 ** 6), root)
+    reader.close()  # never raises, however long it refuses
+    assert len(tries) == 1  # the long-form delete got it, with no waiting
+    assert not root.exists() and not reader.left_behind
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason="only Windows refuses a file in use")
+def test_a_file_in_use_keeps_only_itself_and_the_restore_says_so(tmp_path, monkeypatch):
+    """A real temporary folder: cleanup stops at the first error, which would
+    leave the chats that sort after it."""
+    import tempfile
+    from pathlib import Path
+    from thechatplace import backup_reader
+    monkeypatch.setattr(backup_reader, '_SCRATCH_WAIT', 0)
+    monkeypatch.setattr(backup_reader, '_SCRATCH_TRIES', 2)
+    monkeypatch.setattr(backup_reader.tempfile, 'gettempdir', lambda: str(tmp_path))
+    temporary = tempfile.TemporaryDirectory(prefix=backup_reader._SCRATCH_PREFIX, dir=tmp_path)
+    root = Path(temporary.name)
+    held, chat = root / 'a' / 'held', root / 'z' / 'sessions' / 'c.jsonl'
+    held.parent.mkdir()
+    chat.parent.mkdir(parents=True)
+    chat.write_text('{}')
+    reader = _closing_reader(temporary, root)
+    with open(held, 'w', encoding='utf-8'):
+        reader.close()
+    assert reader.left_behind and held.exists() and not chat.exists()
+    backup_reader.remove_leftover_scratch(older_than=0)  # as the app's next start does
+    assert not root.exists()
+
+
+def test_a_failure_closing_codex_doesnt_fail_a_restore_whose_chats_are_saved(tmp_path):
+    """It would throw away the outcome, and with it the groups and hidden state
+    that a second restore wouldn't give chats already here."""
+    removed = []
+
+    class Codex:
+        def close(self):
+            raise RuntimeError('Codex process cleanup failed')
+
+    temporary = type('T', (), {'cleanup': lambda self: removed.append(1)})()
+    _closing_reader(temporary, tmp_path / 'gone', Codex()).close()
+    assert removed
+
+
+def test_old_scratch_copies_go_and_a_running_restores_stays(tmp_path, monkeypatch):
+    import os
+    import stat
+    import time
+    from thechatplace import backup_reader
+    monkeypatch.setattr(backup_reader.tempfile, 'gettempdir', lambda: str(tmp_path))
+    old, new, other = (tmp_path / 'tcp-restore-reader-old', tmp_path / 'tcp-restore-reader-new',
+                       tmp_path / 'something-else')
+    for folder in (old, new, other):
+        (folder / 'chats').mkdir(parents=True)
+        (folder / 'chats' / 'one.jsonl').write_text('{}')
+    # Git's packs, from a plugin clone, are read-only.
+    pack = old / 'chats' / 'pack'
+    pack.write_text('x')
+    pack.chmod(stat.S_IREAD)
+    long_ago = time.time() - 2 * backup_reader._SCRATCH_STALE_SECONDS
+    os.utime(old, (long_ago, long_ago))
+    os.utime(other, (long_ago, long_ago))
+    backup_reader.remove_leftover_scratch()
+    assert not old.exists() and new.exists() and other.exists()
+    backup_reader.remove_leftover_scratch(older_than=0)
+    assert not new.exists() and other.exists()
+
+
+def test_reading_a_backups_codex_chats_turns_off_its_plugins(tmp_path):
+    """The scratch Codex fetched plugins into its profile, online, during a
+    restore, and that's what raced deleting it."""
+    from thechatplace.providers.codex_archive import CodexArchive
+    archive = CodexArchive(tmp_path, {}, connection_factory=lambda start: None)
+    settings = (archive.profile / 'config.toml').read_text(encoding='utf-8')
+    assert '[features]' in settings and 'plugins = false' in settings and 'apps = false' in settings
+
+
+def test_a_restore_says_when_some_of_the_backups_files_stayed():
+    from thechatplace.imported_store import RestoreOutcome, restore_summary
+    outcome = RestoreOutcome({"added": 1}, left_behind="C:/temp/x")
+    assert "couldn't be deleted from C:/temp/x" in restore_summary(outcome)
+    assert "deleted" not in restore_summary(RestoreOutcome({"added": 1}))
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason="Windows' 260-character limit")
+def test_a_path_too_long_for_a_plain_delete_still_goes(tmp_path, monkeypatch):
+    """Found in the VM: a plugin Codex fetched into the scratch profile had
+    paths of 260 to 275 characters, and retrying could never remove them."""
+    import os
+    from thechatplace import backup_reader, platform_paths
+    monkeypatch.setattr(backup_reader, '_SCRATCH_WAIT', 0)
+    monkeypatch.setattr(backup_reader.tempfile, 'gettempdir', lambda: str(tmp_path))
+    root = tmp_path / (backup_reader._SCRATCH_PREFIX + 'long')
+    deep = str(platform_paths.long_path(root / '/'.join(['d' * 40] * 8)))
+    os.makedirs(deep)
+    with open(os.path.join(deep, 'file.md'), 'w', encoding='utf-8') as out:
+        out.write('x')
+    assert len(deep) > 300
+    backup_reader.remove_leftover_scratch(older_than=0)
+    assert not root.exists()
+
+
+def _archive_with(path, name, content):
+    entry = {'path': name, 'size': len(content), 'sha256': hashlib.sha256(content).hexdigest()}
+    with zipfile.ZipFile(path, 'w') as archive:
+        archive.writestr(name, content)
+    return {'format': 'thechatplace-backup', 'format_version': 1,
+            'computer': {'id': 'source', 'name': 'Source'}, 'files': [entry], 'providers': []}
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason="Windows' 260-character limit")
+def test_a_real_backups_long_claude_project_path_is_restored_and_removed(tmp_path):
+    """Kelly's real backup: Claude names a project's folder after its whole path,
+    which took one file to 282 characters and failed every restore."""
+    import os
+    from thechatplace.backup_reader import BackupReader
+    from thechatplace.transcript import ASSISTANT
+    project = 'C--Users-kelly-' + '-'.join(['scratch-workspaces-e2e89692'] * 7)
+    native = '11111111-2222-3333-4444-555555555555'
+    name = f'claude/home/projects/{project}/{native}.jsonl'
+    line = {'type': 'assistant', 'uuid': 'a1', 'sessionId': native, 'cwd': 'C:/work',
+            'timestamp': '2026-11-01T00:00:00.000Z',
+            'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': 'Synthetic reply'}]}}
+    content = (json.dumps(line) + '\n').encode()
+    manifest = _archive_with(tmp_path / 'b.zip', name, content)
+    with zipfile.ZipFile(tmp_path / 'b.zip') as archive, BackupReader(archive, manifest) as reader:
+        root = reader.root
+        path = root.joinpath(*name.split('/'))
+        # CI's runners have long paths turned on, where a plain path works too,
+        # and most PCs don't: so the form is checked as well as the reading.
+        assert str(root).startswith('\\\\?\\') and not str(reader.plain_root).startswith('\\\\')
+        assert len(str(path)) > 260 and path.read_bytes() == content
+        assert [s.native_id for s in reader.sessions()] == [native]
+    assert not os.path.lexists(root)
+
+
+def test_codex_gets_the_plain_folder_and_the_outcome_says_the_plain_one(tmp_path, monkeypatch):
+    from thechatplace import backup as backup_module, backup_reader, imported_store
+    from thechatplace.providers import codex_archive
+    name = 'codex/home/sessions/rollout.jsonl'
+    manifest = _archive_with(tmp_path / 'b.zip', name, b'{}\n')
+    given = []
+
+    class Archive:
+        notes = []
+
+        def __init__(self, root, _manifest):
+            given.append(root)
+
+        def sessions(self):
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(codex_archive, 'CodexArchive', Archive)
+    with zipfile.ZipFile(tmp_path / 'b.zip') as archive, backup_reader.BackupReader(archive, manifest) as reader:
+        reader.sessions()
+        assert given == [reader.plain_root] and not str(given[0]).startswith('\\\\')
+
+    monkeypatch.setattr(backup_reader.BackupReader, '_remove_scratch',
+                        lambda self: setattr(self, 'left_behind', True))
+    monkeypatch.setattr(backup_module, 'opened', _opened_as_is)
+    outcome = imported_store.restore_backup(tmp_path / 'b.zip', manifest, None, confirm=lambda *a: True,
+                                            store=imported_store.ImportedStore(tmp_path / 'store'))
+    assert outcome.left_behind and not outcome.left_behind.startswith('\\\\')
+
+
+def _opened_as_is(path, _passphrase, _cancelled=None):
+    from contextlib import nullcontext
+    return nullcontext(path)
+
+
+def _scratch_link(target, link):
+    import os
+    import subprocess
+    if os.name == 'nt':
+        subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(target)], check=True,
+                       capture_output=True)
+    else:
+        os.symlink(target, link)
+
+
+def test_a_link_named_like_a_leftover_is_left_and_what_it_points_at_survives(tmp_path, monkeypatch):
+    """A review reproduced this: a junction with the name had its target deleted,
+    at every start of the app. Anyone can make one in a shared temp folder."""
+    from thechatplace import backup_reader
+    temp = tmp_path / 'temp'
+    temp.mkdir()
+    precious = tmp_path / 'precious'
+    precious.mkdir()
+    (precious / 'keep.txt').write_text('keep', encoding='utf-8')
+    link = temp / (backup_reader._SCRATCH_PREFIX + 'planted')
+    _scratch_link(precious, link)
+    real = temp / (backup_reader._SCRATCH_PREFIX + 'real')
+    real.mkdir()
+    monkeypatch.setattr(backup_reader.tempfile, 'gettempdir', lambda: str(temp))
+    backup_reader.remove_leftover_scratch(older_than=0)
+    assert (precious / 'keep.txt').read_text(encoding='utf-8') == 'keep'
+    assert not real.exists()

@@ -273,6 +273,37 @@ allowed. Both times the turn's `tool.execution_complete` with `fileEdits` was al
 So the window's "Changed N files" (#401) and an agent conversation's hand-off list (#369), both
 read at the turn's end, see the turn's files then, not a turn late. Both test chats were deleted.
 
+
+## Commands' previews, background runs and ends (probed 2026-10-31 and 2026-11-01, Copilot CLI 1.0.105, #426)
+
+For Auto and your rules (#426), which answer some permission requests for you: what Copilot says
+about a shell command before and after it runs. Each probe refused or allowed only harmless
+commands (ping, Write-Output) in a scratch folder, then deleted its sessions.
+
+- **The request leaves out how a command runs.** `session/request_permission`'s `rawInput` holds
+  only `command` and `commands` (now plain strings, not `{identifier, readOnly}` objects as in
+  1.0.103), and its title is the model's own description. The `tool_call` update Copilot sends
+  just before it, with the same `toolCallId`, has the full input: `mode` (`sync` or `async`),
+  `detach`, `initial_wait` and `description`. A foreground command's preview may leave `mode`
+  out or say `sync`. The update always comes first, on the same reader thread.
+- **A normal end:** the last `tool_call_update` is `status: completed`, its text ends
+  `<shellId: N completed with exit code X>`, and `rawOutput.contents` holds
+  `{"type":"shell_exit","shellId":"N","exitCode":X}`. Only the structured `shell_exit` is
+  trusted: a program can print the text.
+- **Moved to the background:** a sync command still running when `initial_wait` (30 seconds at
+  least) runs out is reported `status: completed` too, with text ending `<command with shellId: N
+  is still running after 30 seconds...>` and no `shell_exit`. An async one says
+  `<command started in background with shellId: N>`. Its real end comes later in the same turn,
+  as a different tool call (`read_powershell`, a UUID `toolCallId`, `rawInput.shellId: N`, no
+  permission asked) whose update carries the `shell_exit` for N. Copilot holds the turn open
+  until then. shellIds are counted per Copilot process.
+- **Stopped:** `stop_powershell` (`rawInput.shellId: N`, no permission asked) completes with
+  `<command with id: N stopped>` and no `shell_exit`, and the program ran on to its own end. A
+  `session/cancel` (Stop) mid-command sends nothing more for that call, and the program ran on
+  too. Neither is an end: The Chat Place keeps such a program as running until Copilot is next
+  started. Copilot runs in a kill-on-close job on Windows (platform_paths.start_copilot_acp), so
+  closing it ends what it started.
+
 ## Next, in rough order
 
 Ideas from the first listening test, kept here so they aren't lost:
@@ -283,5 +314,68 @@ Ideas from the first listening test, kept here so they aren't lost:
    `copilot --acp`, with `session/request_permission` shown as the app's permission dialog and
    a billing guard (`isByok` false, premium requests reported). First check the items under
    "Still to check" above.
-3. **Upstream:** an issue proposing Copilot support, then this reading slice as its first PR,
+3. **Account usage:** Usage and Context reads the quota with `copilot --headless --stdio`,
+   `connect` then `account.getQuota`. CLI 1.0.105's `schemas/api.schema.json` marks both
+   experimental, and `connect` internal, so check them when the CLI moves on.
+4. **Upstream:** an issue proposing Copilot support, then this reading slice as its first PR,
    following the slice-by-slice pattern used for Codex (#184).
+
+## Which git hooks a read or git add fires (git 2.50, for Kelly's review of f42c582)
+
+Every hook in githooks(5) installed, each logging its own name, then each command run in a new real
+repository. Only reads and `git add` are answered for you, so this is all `copilot_folder` needs
+(`_INDEX_WRITTEN_BY`). `post-index-change` fires when git writes the index back, which status and
+diff do on a stale one (a repository just unzipped has one). `git --no-optional-locks status`
+doesn't fire it.
+
+| Command | Hooks that fired |
+| --- | --- |
+| status, diff, add | post-index-change |
+| diff --cached, log, log -p, show, blame, branch (listing), ls-files, rev-parse | none |
+| describe, rev-list, merge-base, remote (listing), stash list | none, and nothing in .git written |
+
+Also: only a `.sample` fires nothing. On Windows a file with the hook's name runs with no executable
+bit. `fsmonitor-watchman` runs only when `core.fsmonitor` names it, which asks. In a linked worktree
+the hooks are the repository's, in its common folder, as `git rev-parse --git-path hooks` says; a
+`git-lfs` in the repository's folder isn't run for its filter, which goes by PATH.
+
+## What breaks reading quotes in PowerShell (PowerShell 5.1 and 7)
+
+`npm --% ' | New-Item x | npm --% '` runs `New-Item`: after `--%` single quotes aren't strings, and
+`|` still splits. With `foo` a `.cmd`, `foo 'g&h'` runs `h`, because cmd.exe reads the command line
+again; `foo 'c:\x\" & echo x>y & rem'` also ran `echo` in 7. And 5.1 builds a native program's
+command line by wrapping a word with a space in double quotes without escaping what's inside, so
+`git log 'HEAD" --output x -- " y' a.txt` reaches git as separate options, and a word ending in a
+backslash escapes its closing quote. So a rule can't hold quotes or `%`, and Auto's git takes no
+quoted word or one ending in a backslash.
+
+## Real sessions for 0.4 (Copilot CLI 1.0.105, Windows on arm64, 2 November 2026)
+
+Five prompts (two of them cut short by mistakes in the script), through the app's real `CopilotChatRuntime`, in throwaway repositories under a scratch
+folder with `GIT_CONFIG_GLOBAL` set, every raw request logged. Scripts: `real_copilot*.py` in
+Kelly's `scratchix426`, not in the repository.
+
+- **Which PowerShell:** PowerShell 7 where it's installed (7.6.9, from the Microsoft Store here;
+  `$PSVersionTable`, `Get-Process -Id $PID`). 5.1 wasn't seen, but this PC has 7, so a PC with only
+  5.1 is untested. Auto's refusal of quoted words before git stays.
+- **Environment:** what the app sets when it starts `copilot --acp` reaches the commands.
+  `git config --show-scope --get-regexp` showed `command core.fsmonitor false` and
+  `command safe.barerepository explicit`, so the second layer is live.
+- **Quoted commands match their preview:** `tool_call`'s `rawInput.command` and the permission
+  request's `rawInput.command` were the same, letter for letter, including `echo "two words"` and a
+  `git commit -m "..."`.
+- **Exit shapes match the fake:** `rawOutput.contents` holds `{"type": "shell_exit", "shellId",
+  "exitCode", "cwd"}` for each command, with a failing `cmd /c exit 3` reporting 3. Nothing stayed
+  "running" at the end of a turn.
+- **Every command gets a new shell in the chat's folder.** `shellId` counts up, `$PID` differs
+  between two commands in a row, `$env:X` and `Set-Alias` are gone by the next command, and after
+  `cd src` the next command ran in the chat's folder and `shell_exit` reported that folder. The
+  module's tracking of where the shell may be is therefore more careful than this version needs. It
+  stays, since nothing promises this, and `after_allowed_by_hand` errs the same way (#491).
+- **Prompts, one ordinary request** ("add a function, check with git, run the test, stage, commit"),
+  with Auto and rules for `node --version` and `git add .`: 7 asks, 1 answered (the file edit). The
+  first command Copilot wrote was `git status --short; if (Test-Path 'src.py') { ... } else { ... }`.
+  Allowing that by hand counts as possibly moving the shell, so 3 of the other 6 asked only because
+  of that, each saying so, until Restart Copilot. Without it the count would be 4, all ones that
+  should ask (the first command, a test script, a delete, `git add`/`git commit` chained). This
+  is the first thing #491 should look at.

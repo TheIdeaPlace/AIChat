@@ -113,7 +113,7 @@ from .claude_extras import ClaudeExtras
 from ..aside import AsideRunner  # noqa: F401 - tests stand in for it here
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
-from .permission_hosts import ClaudePermissions, CodexPermissions
+from .permission_hosts import ClaudePermissions, CodexPermissions, CopilotPermissions
 from .mcp_host import ClaudeConnectedTools
 from ..claude_mcp import (ElicitationRequest, elicitation_response, init_servers,
                           is_web_url, problems_text)
@@ -1954,6 +1954,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             from ..providers.copilot_runtime import PLAN_MODE
             if getattr(runtime_state, "mode", "") == PLAN_MODE:
                 kind += ", plan mode"
+            # Auto is said wherever the chat is read (#426).
+            if getattr(runtime_state, "auto", False):
+                kind += ", Auto"
         state = state_with_detail(info.state, info.detail)
         self.session_heading.set_text(f"{end_sentence(f'{info.title}, {info.repo}, {state}')} {kind}.")
         self._update_messages_label()
@@ -3400,16 +3403,22 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not self._require_capability("usage", self._open):
             return
         if self._open is not None and self._open.provider in RUNTIME_PROVIDERS:
+            name = provider_name(self._open.provider)
             if getattr(self, '_codex_usage_busy', False):
+                self._feedback(f'Still reading {name} usage.')
                 return
             info = self._open
             self._codex_usage_busy = True
+            # It can take a few seconds: Copilot's starts Copilot CLI.
+            reading = f'Reading {name} usage.'
+            self._status(reading)
             def done(lines, error):
                 self._codex_usage_busy = False
+                if self._status_latest == announce.status_text(reading):
+                    self._status('')
                 if self._open is None or self._open.key != info.key:
                     return
                 if error:
-                    name = provider_name(info.provider)
                     self._feedback(f'Could not read {name} usage. Check {name} sign-in and try again.')
                 else:
                     self._modal(UsageDialog(self, lines, self._copy_usage))
@@ -4051,29 +4060,26 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_chat_permissions(self):
         """File, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission
-        mode, and the rules kept with a chat started here, to read and remove.
-        Codex chats keep none yet: each request still asks (#307)."""
+        mode, and the rules kept with a chat started here, to read and remove:
+        Claude's tool rules, Codex's remembered approvals, and the commands
+        allowed for a Copilot chat (#426)."""
         info = self._selected_session()
         if info is None:
             self._feedback("No session selected.")
             return
-        if info.is_own and info.provider == "copilot":
-            self._feedback(f"{info.title} keeps no permissions: Copilot asks before each command "
-                           "or file change, and each answer is for that one request. Change "
-                           f"Permission Mode ({key_name('Ctrl+Shift+O')}) switches it between agent and plan "
-                           "mode.")
-            return
-        if not info.is_own or info.provider not in ("claude", "codex"):
+        if not info.is_own or info.provider not in ("claude", "codex", "copilot"):
             where = "terminal" if info.is_terminal else "desktop app"
             self._feedback(f"{info.title} is {kind_name(info)}: it's read-only here, so it keeps "
                            f"no permissions in The Chat Place. Its {where} decides what it may do.")
             return
-        if info.provider == "codex":
-            record = self.store.get(info.cli_session_id, provider="codex")
+        if info.provider in ("codex", "copilot"):
+            record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is None:
-                self._feedback("This Codex chat is no longer in The Chat Place.")
+                self._feedback(f"This {provider_name(info.provider)} chat is no longer in The "
+                               "Chat Place.")
                 return
-            host = CodexPermissions(self, info, record)
+            host = (CodexPermissions if info.provider == "codex" else CopilotPermissions)(
+                self, info, record)
         else:
             if self.store.get(info.cli_session_id) is None:
                 self._feedback("This chat is no longer in The Chat Place.")
@@ -6459,8 +6465,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             percent = f", {done * 100 // total}% done" if total else ""
             kind = ("A restore" if running.get("restore") else
                     "A scheduled backup" if running.get("scheduled") else "A backup")
-            if wx.MessageBox(f"{kind} is running{percent}. Stop it?", "Back Up Now",
-                             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES:
+            answer = wx.MessageBox(f"{kind} is running{percent}. Stop it?", "Back Up Now",
+                                   wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
+            # It may have finished while the question was open.
+            if answer == wx.YES and self._backup_job is running:
                 running["cancel"] = True
                 self._feedback("Stopping the restore." if running.get("restore")
                                else "Stopping the backup.")
@@ -7765,11 +7773,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def on_about(self, _event=None):
         wx.MessageBox(
             f"{APP_NAME} version {__version__}\n\nA home for your AI chats: keyboard and "
-            "screen reader friendly, with Claude and Codex in one session list. "
+            "screen reader friendly, with Claude, Codex and GitHub Copilot in one session list. "
             "Replies use your sign-in with the selected provider.\n\n"
             "An independent project by Kelly Ford, not made, sponsored or endorsed by "
-            "Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; "
-            "ChatGPT and Codex are OpenAI products.\n\n"
+            "Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; "
+            "ChatGPT and Codex are OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.\n\n"
             "Questions and bug reports: support@theideaplace.net",
             f"About {APP_NAME}", wx.OK | wx.ICON_INFORMATION, self)
 

@@ -61,6 +61,17 @@ def _fresh_last_messages(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_copilot_usage(monkeypatch):
+    """Usage and Context starts Copilot CLI to ask for the account's quota, so
+    no test does it with the real CLI and sign-in; one that wants a report
+    patches this itself."""
+    from thechatplace.providers import copilot_usage
+    def refuse(*_args, **_kwargs):
+        raise copilot_usage.CopilotUsageError("not in tests")
+    monkeypatch.setattr(copilot_usage, "read_usage_lines", refuse)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_terminal_sessions(monkeypatch, tmp_path):
     """No test lists the terminal sessions (#158) of the computer it runs
     on; one that wants some points ``hub.terminal_projects_dir`` at its own."""

@@ -10,11 +10,75 @@ from thechatplace.providers.codex_permissions import candidate, matches, CodexPe
 from thechatplace.providers.codex_requests import COMMAND, decode_request
 from thechatplace.providers.codex_rpc import CodexApprovalNotSent, CodexRememberedApprovalError
 
+from markers import windows_paths  # noqa: E402
+
 
 def request(folder, command='git commit -m first', prefix=('git', 'commit'), **extra):
     return decode_request(1, COMMAND, dict(threadId='owned-1', turnId='turn', itemId='item',
         command=command, cwd=str(folder), environmentId='local',
         proposedExecpolicyAmendment=list(prefix), availableDecisions=['accept', 'decline', 'cancel'], **extra))
+
+
+@windows_paths
+def test_store_powershell_can_be_remembered_but_only_at_its_own_path(tmp_path, monkeypatch):
+    # As real Codex sends it on a PC whose PowerShell came from the Microsoft Store.
+    from thechatplace import platform_paths
+    monkeypatch.setenv('LOCALAPPDATA', r'C:\Users\someone\AppData\Local')
+    monkeypatch.setenv('ProgramFiles', r'C:\Program Files')
+    monkeypatch.setattr(platform_paths, '_is_store_alias', lambda path: True)
+    def wrapped(executable, script):
+        return '"' + executable.replace('\\', '\\\\') + f'" -NoProfile -Command \'{script}\''
+    store = r'C:\Users\someone\AppData\Local\Microsoft\WindowsApps\pwsh.exe'
+    rule = candidate(request(tmp_path, wrapped(store, 'git commit -m first')), str(tmp_path))
+    assert rule is not None and rule.shell[0] == 'powershell'
+    assert matches(rule, request(tmp_path, wrapped(store, 'git commit -m second')), str(tmp_path))
+    assert matches(rule, request(tmp_path, wrapped(store.upper(), 'git commit -m second')), str(tmp_path))
+    # The shell is part of the rule: the same command under another PowerShell asks.
+    program_files = r'C:\Program Files\PowerShell\7\pwsh.exe'
+    assert not matches(rule, request(tmp_path, wrapped(program_files, 'git commit -m second')), str(tmp_path))
+    assert candidate(request(tmp_path, wrapped(store, 'git commit -m x; calc')), str(tmp_path)) is None
+    for other in (r'C:\Users\someone\AppData\Local\Temp\pwsh.exe',
+                  r'C:\Users\other\AppData\Local\Microsoft\WindowsApps\pwsh.exe',
+                  r'C:\Users\someone\AppData\Local\Microsoft\WindowsApps\..\pwsh.exe', 'pwsh.exe'):
+        assert candidate(request(tmp_path, wrapped(other, 'git commit -m first')), str(tmp_path)) is None
+    monkeypatch.setenv('LOCALAPPDATA', '.')
+    assert platform_paths.codex_approval_shell(r'.\Microsoft\WindowsApps\pwsh.exe') == ''
+    monkeypatch.delenv('LOCALAPPDATA')
+    assert candidate(request(tmp_path, wrapped(store, 'git commit -m first')), str(tmp_path)) is None
+
+
+@windows_paths
+def test_a_file_dropped_in_the_store_folder_is_not_the_store_alias(tmp_path, monkeypatch):
+    # That folder is the user's own, so a chat started under it could write there.
+    from thechatplace import platform_paths
+    folder = tmp_path / 'Microsoft' / 'WindowsApps'
+    folder.mkdir(parents=True)
+    planted = folder / 'pwsh.exe'
+    planted.write_bytes(b'not PowerShell')
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
+    assert platform_paths.codex_approval_shell(str(planted)) == ''
+
+
+@windows_paths
+def test_installed_powershells_are_recognised(monkeypatch):
+    from thechatplace import platform_paths
+    monkeypatch.setenv('SystemRoot', r'C:\Windows')
+    monkeypatch.setenv('ProgramFiles', r'C:\Program Files')
+    for shell in (r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
+                  r'C:\Program Files\PowerShell\7\pwsh.exe',
+                  r'C:\Program Files\PowerShell\7-preview\pwsh.exe'):
+        assert platform_paths.codex_approval_shell(shell) == 'powershell'
+    monkeypatch.setenv('ProgramFiles', 'relative')
+    assert platform_paths.codex_approval_shell(r'relative\PowerShell\7\pwsh.exe') == ''
+
+
+def test_system_shells_are_recognised_and_user_installed_ones_ask(monkeypatch):
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths.sys, 'platform', 'linux')
+    for shell in ('/bin/bash', '/bin/zsh', '/bin/sh', '/usr/bin/bash', '/usr/bin/zsh', '/usr/bin/sh'):
+        assert platform_paths.codex_approval_shell(shell) == 'posix'
+    for shell in ('/opt/homebrew/bin/zsh', '/usr/local/bin/bash', '/tmp/bash', 'bash'):
+        assert platform_paths.codex_approval_shell(shell) == ''
 
 
 def test_native_wrappers_match_and_unsupported_shell_shapes_ask(tmp_path, monkeypatch):
@@ -427,5 +491,73 @@ def test_mode_change_revokes_rules_even_if_native_policy_check_fails(tmp_path, m
         with pytest.raises(RuntimeError):
             service.prepare_policy(record, 'read-only', 'on-request')
         assert service.permission_store.load(record.cli_session_id) == ()
+    finally:
+        service.close()
+
+
+def test_the_window_hears_of_a_kept_approval(tmp_path):
+    """Found with real Codex: a kept approval's notice is named by a number,
+    which the check for review notices took for text. The exception ended the
+    listener and the turn hung. prepared_runtime replaces _notify, so this needs
+    the real one."""
+    service, connection, record, proof, executor, req = prepared_runtime(tmp_path)
+    try:
+        service.allow_for_chat(record, req)
+        executor.current = [replace(req, request_id=2, command='git commit -m second', proposed_prefix=())]
+        assert service._auto_answer(proof, executor)
+        heard = []
+        service._on_update = heard.append
+        del service._notify  # back to the class's own
+        service._notify(record.cli_session_id)
+        assert heard[-1].permission_notices[0][:2] == ('turn', 2)
+    finally:
+        service.close()
+
+
+def test_a_failure_saving_doesnt_stop_the_window_hearing(tmp_path, monkeypatch):
+    """Saving is only for showing later. A message taken from the queue must
+    still come back to the window, or it's lost."""
+    from thechatplace.providers import codex_runtime
+    service, connection, record, proof, executor, req = prepared_runtime(tmp_path)
+    try:
+        heard, failures = [], []
+        monkeypatch.setattr(codex_runtime, 'record_failure', failures.append)
+
+        def broken(*_args):
+            raise TypeError('not a save problem it expected')
+        monkeypatch.setattr(service, '_save_for_later', broken)
+        service._on_update = heard.append
+        del service._notify
+        service._notify(record.cli_session_id, unsent=('waiting message',))
+        assert heard and heard[-1].unsent == ('waiting message',)
+        assert len(failures) == 1
+    finally:
+        service.close()
+
+
+def test_a_failure_with_one_chat_doesnt_end_the_listener(tmp_path, monkeypatch):
+    """One listener serves every chat on a connection: it goes on, and the next
+    chat is still heard."""
+    from thechatplace.providers import codex_runtime
+    service, connection, record, proof, executor, req = prepared_runtime(tmp_path)
+    try:
+        failures, heard = [], []
+        monkeypatch.setattr(codex_runtime, 'record_failure', failures.append)
+        other = SimpleNamespace(native_id='other', connection=proof.connection)
+        service._proofs = {proof.native_id: proof, 'other': other}
+        calls = []
+
+        def listen_to(native_id, _proof, _executor, _changed):
+            calls.append(native_id)
+            if native_id == proof.native_id and calls.count(native_id) == 1:
+                raise RuntimeError('cannot start a new thread')
+            heard.append(native_id)
+            if len(heard) >= 2:
+                service._stop.set()
+        monkeypatch.setattr(service, '_listen_to', listen_to)
+        drained = SimpleNamespace(drain=lambda: {proof.native_id, 'other'})
+        service._stop.clear()
+        service._listen(proof.connection, drained)
+        assert 'other' in heard and len(failures) == 1
     finally:
         service.close()

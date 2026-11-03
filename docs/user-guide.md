@@ -2,11 +2,11 @@
 
 This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M), rather than Windows Alt menu sequences.
+VO+M). The Alt keys listed beside a dialog's settings work on Windows and Linux only.
 
 The Chat Place is a keyboard and screen reader friendly home for your AI chats. Claude, Codex
 and GitHub Copilot CLI chats share one list: read, find and export conversations, hear replies,
-and send messages in chats started here. **Provider** is which AI a chat uses; **Kind** is where
+send messages in chats started here, and back them up and restore them. **Provider** is which AI a chat uses; **Kind** is where
 the chat started, such as the Claude desktop app, a terminal or The Chat Place. More providers,
 including Ollama, are planned. Not every feature works for every provider yet: "What works for
 each provider" has a table, and each part of this guide says when something is for one provider.
@@ -19,8 +19,8 @@ heading, so your screen reader's heading keys move between them. For every key i
 Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guide uses.
 
 The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
-Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
-OpenAI products.
+Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
+OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.
 
 ## Before you start
 
@@ -33,7 +33,8 @@ You need:
 - For GitHub Copilot CLI chats (a preview): the native GitHub Copilot CLI, signed in with
   `copilot login` to a GitHub account that has Copilot, and **Include GitHub Copilot CLI chats**
   turned on in Settings. On Windows, install it with `winget install GitHub.Copilot`; on a Mac,
-  with `brew install copilot-cli` or GitHub's install script. An npm install isn't used. Help,
+  with `brew install copilot-cli`; on a Mac or Linux, with GitHub's install script
+  (`curl -fsSL https://gh.io/copilot-install | bash`). An npm install isn't used. Help,
   **Copilot Sign-in** says whether it's installed and signed in.
 - For Claude chats: Claude Code, installed with its native installer and signed in to your
   Claude subscription. This is the `claude` command, using the same sign-in as the Claude
@@ -99,7 +100,7 @@ recorded; whether that sign-in still works is only known once a Copilot chat sen
 
 ## Your first chat
 
-1. Install The Chat Place, and Claude Code or Codex, and sign in, as in "Before you start".
+1. Install The Chat Place, and Claude Code, Codex or Copilot CLI, and sign in, as in "Before you start".
 2. Start The Chat Place. You're in the session list, which lists the chats already on your
    computer.
 3. Press **Ctrl+N** (File, New Session). If more than one provider is available, choose one in
@@ -144,14 +145,14 @@ read-status-bar key reads all the parts at once.
     - **How full the context is**, such as "Context 62% full": it opens Usage and Context.
     - **How many chats need you**, such as "2 sessions need you": it selects the first one in the
       session list.
-    - **An available update**, such as "Update available: 0.3.1": it offers to install it.
+    - **An available update**, such as "Update available: 0.4.1": it offers to install it.
 
 ### On a Mac
 
 This guide gives the Windows keys. On a Mac:
 
 - Ctrl is the Command key: Command+N for a new chat, Command+Enter to send, and so on.
-- Menus are in the menu bar, which VoiceOver reaches with VO+M, rather than with Alt. Where this
+- Menus are in the menu bar, which VoiceOver reaches with VO+M. Where this
   guide says View, Show Sessions, that's the View menu's Show Sessions. Settings is in the app
   menu, The Chat Place.
 - A context menu, the Applications key on Windows, is VO+Shift+M.
@@ -675,7 +676,7 @@ the original's, followed by "(continued)". The original chat isn't changed, and 
 the copy doesn't appear in it. Continue Here works for Claude desktop app and terminal chats, for
 Codex chats and for Copilot chats; not for Cowork chats. A Copilot copy is a little different:
 Copilot can't copy a chat, so your first message goes with the conversation so far, as text (see
-"Starting a Copilot chat").
+"Continuing a Copilot chat here").
 
 ### Following a chat as it works
 
@@ -704,6 +705,8 @@ doesn't name, is an "other app session" or an "external session".
 | **Command-line session** | Codex run as a command | in Codex | no | yes |
 | **Other app session** or **external session** | Another app | in that app | no | Codex and Copilot |
 | **Chat Place session** | The Chat Place (File, New Session) | here, in the reply box | no | not needed |
+| **Imported chat** | Restored from a backup | nowhere: read-only | no | no |
+| **Kept chat (read-only)** | A Claude chat whose transcript Claude Code deleted | nowhere: read-only | no | no |
 | **Agent conversation** | The Chat Place (File, New Agent Conversation) | here, in the reply box | no | no |
 
 ## What works for each provider
@@ -719,10 +722,10 @@ whether the chat was started here:
 | Steer a running turn (Ctrl+Alt+Enter) | yes | yes | no: queue it instead |
 | Answer requests (Ctrl+Shift+A) | permissions, questions and plans | permissions and questions | permissions |
 | Change Model or Change Effort later | yes | yes, when idle | Change Model only |
-| Change Permission Mode | yes | yes | agent or plan mode |
+| Change Permission Mode | yes | yes | agent mode, plan mode or Auto |
 | Chat Options: agent, instructions, output style, more folders | yes | no | no |
 | Ask Aside (Ctrl+Shift+Y) | yes, but not Cowork chats | yes, including chats started elsewhere | no |
-| Chat Permissions | yes | yes | no |
+| Chat Permissions | yes | yes | chats started here |
 | Continue Here | desktop app and terminal chats | yes | yes, with the conversation as text |
 | Rewind to Here and Branch from Here | yes; files only in chats started here | conversation only, in a copy | no |
 | Commands and skills (Ctrl+/) | yes | enabled skills and chat controls | no |
@@ -732,7 +735,7 @@ whether the chat was started here:
 | Changed Files in Lists | yes | yes | yes |
 | Commands and Decisions in Lists | yes | no | no |
 | Tasks in Lists | yes | chats started here | no |
-| Usage and Context | yes | yes | context and premium requests used |
+| Usage and Context | yes | yes | context, premium requests used and account allowances |
 | Delete Session Permanently | yes | no | no |
 | Copy Session Link | yes | no | no |
 | Remote Control and Other Machines | yes | no | no |
@@ -901,8 +904,8 @@ answering wait their turn, and Stop (Ctrl+Period) cancels the answer and puts an
 messages back in the message box, unsent.
 
 Copilot asks before it runs a command or changes a file. You hear that the chat needs you, and
-Answer (Ctrl+Shift+A) shows the whole command or change, with **Allow Once** and **Deny**. Deny
-is the default button, and nothing is ever allowed for later. A command or change too long to
+Answer (Ctrl+Shift+A) shows the whole command or change, with **Allow Once**, **Allow for This Chat** when it's offered, and
+**Deny**, the default button. A command or change too long to
 show in full can only be denied: ask Copilot to do it in smaller steps.
 
 The Chat Place won't send to Copilot:
@@ -916,7 +919,9 @@ The Chat Place won't send to Copilot:
 - with a message that starts with `/`, because some of Copilot's commands turn off its
   questions.
 
-**Plan mode.** A Copilot chat started here is in Copilot's agent mode or its plan mode. In plan
+### Copilot plan mode
+
+A Copilot chat started here is in Copilot's agent mode or its plan mode. In plan
 mode Copilot works out a plan and doesn't edit your files (it keeps the plan in its own session
 folder); it still asks before anything that needs your permission. Choose the mode in New Session or Continue Here (Permission mode),
 or switch a chat with **Change Permission Mode** (Ctrl+Shift+O), as Shift+Tab does in Copilot
@@ -927,6 +932,8 @@ mode with Change Permission Mode; either choice, the one it's in now too, then l
 chat started for an agent conversation starts in agent mode. When Copilot says to switch out of
 plan mode to make the change, that's Change Permission Mode, then Agent. Copilot's autopilot mode, which stops
 it asking, is never offered, and a chat Copilot puts in it isn't sent to.
+
+### Continuing a Copilot chat here
 
 A Copilot chat started in Copilot CLI or another app can be carried on here with
 **Continue Here** (Ctrl+Shift+N). Copilot can't copy a chat, so the copy is a new Copilot chat of The Chat
@@ -939,7 +946,159 @@ refused and kept, so you can shorten it. In the copy's messages the history is o
 "Earlier conversation", just before your first message; Enter reads it in full. Model
 and Permission mode offer the same choices as in New Session. The original chat isn't changed.
 
-Chat Permissions isn't available for Copilot chats yet. A Copilot chat started here can be in an agent conversation, and Send Reply to Another
+### Fewer questions: Auto, your rules and Allow for This Chat
+
+Copilot asks before every
+command and every file change, even one that only reads, such as Get-Item. Three things let The
+Chat Place answer some of those for you, as Allow Once, in a chat started here that's in agent
+mode. Each one answered goes on the status bar, in full ("allowed for you: Command: Get-Item
+notes.txt", with "(your rule)" or "(allowed for this chat)" when one of those allowed it), and
+anything else still asks. Nothing is answered for you in a chat whose folder is a whole drive,
+your home folder or a folder holding it, the temp folder, a network path (`\\server\share`,
+`\\?\C:\...`; a mapped drive letter is fine), or inside one of the places below; nor anything in
+your home folder's settings and secrets (`.ssh`, `.copilot`, `.claude`, AppData and the Startup
+folder, wherever Windows keeps them, and the like) or your PowerShell profiles, even with
+Documents in OneDrive. No file change for you makes a file named `HEAD` (which would make a
+folder a git repository) or a git or git-lfs program of its own (`git.cmd`).
+
+- **Auto**, the third choice in Change Permission Mode (Ctrl+Shift+O), after a warning (No is the
+  default). Copilot may read, list and search inside the chat's folder and its subfolders
+  (Get-ChildItem, Get-Item, Get-Content, Select-String, Test-Path, Select-Object, Sort-Object and a
+  few more; on a Mac or Linux, ls, cat, echo and pwd), change to a folder inside it (cd,
+  Set-Location; on a Mac or Linux, `cd ./name` or a full path, since a plain `cd name` may follow
+  CDPATH elsewhere), read git, and make its own file changes inside the folder. It never deletes,
+  moves, copies or writes through a command, never deletes a file through a file change, and never
+  changes anything in `.git` or another git repository's own folder, `.githooks`, `.github`,
+  `.copilot`, `.claude`, `.codex`, `.vscode`, `.idea`, `.husky` or `.devcontainer`, or `.mcp.json`,
+  `.envrc`, `.gitmodules`, `.gitattributes`, `.pre-commit-config.yaml` or a lefthook settings file,
+  whose files can make a program run. A Claude Code worktree (`.claude\worktrees\...`) is an ordinary
+  folder. The chat's heading ends "Auto", and Auto is kept for the chat, so it's on again when the
+  chat is opened again, until you choose Agent or Plan. If Copilot switches to plan mode, Auto ends
+  and the chat says so.
+- **Your rules**, in `%APPDATA%\TheChatPlace\copilot-rules.json` (on a Mac,
+  `~/Library/Application Support/TheChatPlace/copilot-rules.json`; on Linux,
+  `~/.config/TheChatPlace/copilot-rules.json`), a file you write yourself, used in every Copilot
+  chat started here that's in agent mode, with Auto or without. For example,
+  `{"allow": ["npm test", "npm run build"], "ask": ["git push *"]}`.
+  An "allow" rule is one whole command, exactly as it will run: `npm test` doesn't cover
+  `npm test --watch`. It can't hold a `*`, quotes, `%` or punctuation the shell acts on, such as
+  `=`, `>`, `|`, a comma or brackets. `Bash(npm test)` and `shell(npm test)`,
+  as Claude Code and Copilot CLI write them, work too. After a rule's command, `2>&1` and a pipe to
+  a command that sorts, selects or formats (on a Mac or Linux, only `cat`) may follow
+  (`npm test 2>&1 | Select-Object -Last 20`), and nothing else. "ask" always asks, even when Auto or another rule would allow the command. It
+  matches the start of each command, so "git push" covers "git push origin main" (and
+  "git --no-pager push"), "Remove-Item" covers its aliases, such as ri and del, and it may end
+  in `*`. A rule never allows a command that could move Copilot's shell or run a script in it
+  (pushd, `.\build.ps1`, source), a shell or something that starts other programs (powershell, cmd,
+  bash, Start-Process), or a program git ships other than git (scalar, git-upload-pack). The file is read again for each request, so a change counts at
+  once. If the file can't be read, has a key other than "allow" and "ask", or has an "ask" rule that can't
+  be read, every command asks until it's fixed, so a typo doesn't turn an "always ask" off (the chat
+  says so; a file change in Auto is still answered). An
+  "allow" rule that can't be used is left out: Chat Permissions lists it and says why, and a command
+  it names says so when it asks.
+- **git in every Copilot chat started here:** Copilot starts with git's filesystem monitor off and
+  without bare repositories being found by themselves (`core.fsmonitor=false`,
+  `safe.bareRepository=explicit`), so a repository can't run a program through them. Git in a very
+  large repository can be slower in these chats.
+- **Allow for This Chat**, a button in Answer (Ctrl+Shift+A) when Copilot asks to run a command.
+  It allows that command and keeps it for the chat: the next time Copilot asks to run exactly the
+  same command, letter for letter, it isn't asked again. It's offered only for a command whose
+  every path stays inside the folder, and not for a shell or git itself unless it only reads, and Chat Permissions lists what's kept, to remove.
+
+**git.** Auto, a rule or a kept command only reads with git: status, log, diff, show, blame,
+ls-files, rev-parse, describe, rev-list, merge-base, branch and remote with no name, and stash
+list, with common options such as `--oneline` and `--stat`. A rule may also name `git add` with
+paths. Everything else, git commit, push, pull, fetch, merge and rebase included, always asks. A
+word in quotes, or ending in a backslash, asks.
+
+Git itself is asked where it is and what it's set to, and it's answered only when:
+
+- the chat's folder is the top of a repository, or a linked worktree of one (as `git worktree
+  add` makes), and any subfolder Copilot's shell may be in is the same repository;
+- the repository has no submodules and borrows no objects from another;
+- its own settings are only ordinary ones (the remote's address, branches, line endings, your name,
+  how git shows things, what `git lfs install` writes and the like; anything else, such as a program
+  for git to run, asks and says so);
+- none of your git settings files is inside the folder, and your global and system settings name
+  no program by a relative path (`tools/x`, `./x`), which a file in the folder could stand in for.
+  Otherwise your own git settings are yours, including your own hooks folder outside the project;
+- no folder on your PATH is inside the chat's folder, where a program there could stand in for git
+  (this goes for your rules and kept commands too);
+- none of your git settings names a filter program other than git-lfs's, which a repository can
+  choose;
+- git diff, show, log, blame, `git status -v` and `git stash list` also ask if any of your git
+  settings name a program for showing differences, which a repository can choose too.
+
+A repository's hooks run programs, so git asks when one is there that the command can fire. Git
+status, git diff and git add can fire `post-index-change`, so they ask in a repository that has
+one, and say so. Other hooks don't make these commands ask, so a repository with `pre-commit` or
+`pre-push`, husky or lefthook, or git-lfs's hooks leaves them alone. A hooks folder Auto can't
+change (`.husky`, `.githooks`) is fine; one it could change asks.
+
+**After Auto changes a file, your rules and kept commands ask once.** A program you've allowed,
+such as `npm test` or `python build.py`, runs what's in the folder (settings such as `.npmrc` or
+`conftest.py` can make it run anything), so once Auto has let Copilot change a file, the next
+command your rules or Allow for This Chat would allow asks you first, and the chat says why.
+Allowing such a command yourself, once Copilot asks after that change, lets them be answered again
+until Auto changes another file (allowing some other command doesn't). A chat opened again asks
+once too, saying so. Every chat in the same folder, or in a folder inside it or holding it, shares
+this, and a chat opened later in such a folder starts out asking once too.
+
+**While a program runs.** While a program your rules, a kept command or you allowed may still be
+running, Auto's file changes in its folder ask, and the chat says why, until Copilot reports the
+program's end. Stopping it with Stop doesn't end the program, so then it's until you use Restart
+Copilot. A command Copilot will run in the background, or doesn't describe before asking, always
+asks. While a program allowed here runs in the background, later commands ask too.
+
+### How Copilot commands are checked
+
+Whichever allows it, every part of a command (split at `|`, `;`, `&&`)
+must be allowed, every path in it must stay inside the folder, and anything the check can't follow
+asks: other folders and drives (a full path elsewhere, `..`, `~`, `\\server`, `HKLM:`), recursion
+(-Recurse, -r) and following links, wildcards (`*`, `?`), making links, variables such as
+`$env:USERPROFILE`, brackets, redirection other than `2>&1`, `--%`, comments, characters other than
+plain ASCII (such as smart quotes), and anything that runs code (`&`, `iex`, scripts). After a
+pipe, a command may only sort, select or format what comes in. After a command a rule or Allow for
+This Chat allowed, only a pipe may follow (`npm test; Get-Content x` asks). This is a strict reading
+of what the command says, not a lock. A command you allow can run what's in the folder: `npm test`
+runs the folder's own scripts, which Copilot may have changed first, so allow only programs you'd
+let run on whatever's there. When a request that Auto, a rule or a kept command would answer asks
+anyway, the chat says why.
+
+**Where Copilot's shell is.** The Chat Place doesn't count on Copilot's shell going back to the
+chat's folder between commands. Changes of folder inside the chat's folder are followed, so paths
+are checked from wherever the shell may be, in a command you allow by hand too. Once you allow by hand a command that may have moved it somewhere not followed
+(cd .., `cd $HOME`, a script, iex, anything in `{ }` or `$( )`, or one of PowerShell's own commands
+that doesn't only read or change files), commands in that chat ask again
+until you use Restart Copilot; file changes, which name their full path, are still allowed in Auto.
+Commands that only start another program don't count, so `git commit -m "fix(parser): x"` and
+`npm test 2>&1 | Select-Object -Last 20` leave things as they were. On Windows a program named by
+its path counts only if it's there as named, with `.exe`, `.cmd` or `.bat`, and no `.ps1` of the
+same name beside it, since PowerShell could otherwise run a script.
+
+### Restart Copilot, Chat Permissions and agent conversations
+
+**Restart Copilot** (Alt+S), a button in File, Chat Permissions (Ctrl+Shift+H) for a Copilot chat,
+is the way out of all that without closing The Chat Place. It stops Copilot and what Copilot
+started, for every chat, as they share one Copilot, and commands stop asking because of a shell
+that may have moved or a program that never ended. If another Copilot chat is running a turn or a
+program, or this chat a turn, it warns you first, saying how many, with No the default. Copilot
+starts again, afresh in each chat's own folder, when a chat needs it: at once for the chat that's
+open. Your rules and kept commands ask once after that, as in any chat opened again.
+
+Auto, your rules and kept commands rely on Copilot asking about every command: commands your own Copilot settings
+already allow never come to The Chat Place at all. None of them is offered on a computer where
+your organisation has installed GitHub Copilot policy (in `C:\ProgramData\GitHub\Copilot\policy.d`,
+the registry's `Software\Policies\GitHub\Copilot`, or `/etc/github-copilot/policy.d`): there
+each request asks. Use Auto only in a folder that's backed up or under version control, and not
+with files you haven't checked: instructions hidden in a file Copilot reads could steer what it
+changes there.
+
+**Chat Permissions** (Ctrl+Shift+H) for a Copilot chat started here shows its mode, with Change,
+the commands allowed for it, to remove, your rules, and what was answered for you since Copilot
+started, newest first.
+
+A Copilot chat started here can be in an agent conversation, and Send Reply to Another
 Chat can send a reply into it.
 
 ## Starting a chat and replying
@@ -979,7 +1138,9 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
       The Chat Place stops it before anything is sent, and says why.
     - Codex: Configured Codex model (your Codex settings), or one of the models Codex offers. The
       list loads in the background; if it can't be loaded, the configured model is still there.
-    - Copilot: Copilot's configured model, which can't be changed here.
+      For which model suits which task, see [Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md).
+    - Copilot: the models Copilot offered your last Copilot chat here, each with its premium
+      requests; before your first, only its configured model. File, Change Model changes it later.
 - **Effort:** how hard the AI thinks.
     - Claude: Default (your Claude Code setting), Low, Medium, High, Extra high or Max. Models that
       don't support effort levels ignore it. File, Change Effort changes it later, from the next
@@ -993,7 +1154,7 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
     - Codex: read-only, or able to edit files in this folder (the default for a new chat), each
       with you reviewing requests or with **automatic approval review** (see "Permissions and
       questions").
-    - Copilot: always asks before running commands or changing files.
+    - Copilot: agent mode or plan mode. See "Copilot plan mode".
 - **Chat Options** (Alt+H), for Claude: an agent to run the chat as, instructions for this chat,
   an output style, and more folders Claude may work in. See "Chat options" below.
 - **About permissions:** a note on what the choices mean for the chosen provider.
@@ -1029,8 +1190,9 @@ In a Copilot chat started here, **Change Model** lists the models Copilot offers
 the premium requests a message costs, and you hear the change, such as "Fix the build now uses GPT
 Mini (0.33x), from its next turn." The chat must be open in Copilot first: select it and wait
 until it's ready. Once it is, the chat's heading says the model Copilot reports for it, such as
-"on GPT Mini (0.33x)". Change Effort and Change Permission Mode don't apply: effort is Copilot's
-own, and Copilot always asks before it acts.
+"on GPT Mini (0.33x)". Change Effort doesn't apply: effort is Copilot's own. Change Permission
+Mode switches between agent mode, plan mode and Auto (see "Copilot plan mode" and "Fewer questions:
+Auto, your rules and Allow for This Chat").
 
 For a Codex chat started here, **Change Permission Mode** switches between read-only and editing
 files in its folder, with you or automatic approval review checking requests. Finish or stop the
@@ -1042,8 +1204,8 @@ try Change Permission Mode again. Nothing is sent while it checks. **Change Mode
 saved settings apply from the next message. Codex's native Plan mode is separate: use `/plan`
 in Insert Command or Skill (Ctrl+/) to choose Plan or Default without changing permissions.
 
-Chats started elsewhere are set in the app or terminal where they run; these items change nothing
-for them here.
+Chats started elsewhere are set in the app or terminal where they run, so for them these items
+say so and change nothing.
 
 ### Chat options: agent, instructions, output style and more folders
 
@@ -1319,7 +1481,7 @@ It's Send Reply to Another Chat done for you, turn after turn.
   Codex offers four choices: read-only or edits in its folder, each with human or automatic
   approval review. Templates keep human review unless you explicitly choose automatic review.
   Copilot has one, "Asks you before it changes files or runs commands": it asks you about each
-  edit and command, whatever the template, so a reviewer told not to edit files is trusting
+  edit and command that your rules, Auto or a kept command doesn't answer, whatever the template, so a reviewer told not to edit files is trusting
   Copilot to keep to its role, and you to refuse if it asks.
   **Folder for new chats** is where they work.
 - **Hand-offs:** approve each one, or automatic (offered once it's on in Settings), with a
@@ -1362,8 +1524,9 @@ reply is set aside, and you hear so.
   Settings, then choose Automatic in New Agent Conversation, or for a conversation with
   **File, Agent Conversation Hand-offs**, which can also make it say only when it stops or needs
   you. If Claude or Codex is near a usage limit, you're asked first: every exchange uses both
-  subscriptions. Copilot doesn't say how much of your plan is left, so it can't be checked:
-  each of a Copilot agent's turns uses premium requests. Replies go across by themselves until the turn limit (6 exchanges unless you
+  subscriptions. Copilot's account allowance is shown in Usage and Context, but automatic
+  hand-offs don't check it: check it before enabling them, since each Copilot turn uses premium
+  requests. Replies go across by themselves until the turn limit (6 exchanges unless you
   choose another). Approving what an agent asks, such as running its tests, doesn't stop it.
   It pauses when you refused something during a turn, or a request went unanswered: you hear
   why, and the last reply waits for Ctrl+Shift+E. It stops when a turn fails, and you hear
@@ -1385,11 +1548,11 @@ when it answers, not when the work finishes.
 handed on isn't passed on, a message that hadn't gone yet comes back to the reply box, and your
 next message goes to the agent you stopped.
 **Ctrl+Shift+T** says what each agent is doing, how far the count has got, and who your next
-message goes to. **Ctrl+Shift+U** lists each agent's context and each provider's limits, and,
-for a Copilot agent, the premium requests its chat has used.
+message goes to. **Ctrl+Shift+U** lists each agent's context and each provider's limits,
+including Copilot account allowances and each Copilot chat's premium requests used.
 
 **Safety:** questions and requests needing human approval come to you through **Ctrl+Shift+A**.
-Codex uses the approval reviewer selected for its chat; Copilot always asks you. A message from one agent goes to the
+Codex uses the approval reviewer selected for its chat; Copilot asks you, apart from what its rules, Auto or a kept command answer. A message from one agent goes to the
 other only as a message, labelled as another agent's words; it can never answer a question or
 approve anything. Each agent is told to take instructions only from you. Every message uses
 that agent's own subscription, so
@@ -1446,9 +1609,10 @@ What each provider offers:
   below).
 - **Codex, a question:** the question shows which provider is asking, and a secret answer stays
   hidden as you type it. The Question box starts with what Codex wrote in this turn before
-  asking, as for Claude. Copilot's questions work the same way.
-- **Copilot:** the whole command or change, with **Allow Once** and **Deny**, the default.
-  Nothing is allowed for later.
+  asking, as for Claude.
+- **Copilot:** the whole command or change, with **Allow Once**, **Deny**, the default, and
+  **Allow for This Chat** for a command it can keep (see "Fewer questions: Auto, your rules and
+  Allow for This Chat").
 - **A connected tool asks (Claude):** one of Claude's connected tools (see "Connected tools")
   can ask you for something while it works, such as details for a booking. You hear, for
   example, "Plan trip needs you. Trip planner asks: Where would you like to go?". Answer opens on
@@ -1462,12 +1626,12 @@ What each provider offers:
 
 ### Review or change permissions
 
-- **File, Chat Permissions** (Ctrl+Shift+H) shows what a Claude or Codex chat started here may do
+- **File, Chat Permissions** (Ctrl+Shift+H) shows what a Claude, Codex or Copilot chat started here may do
   without asking, working or idle, and lets you remove what you allowed for that chat.
 - **File, Change Permission Mode** (Ctrl+Shift+O), or **Change** in Chat Permissions, changes a
   chat's permission mode (see "Changing a chat's model, effort or permission mode").
 
-Desktop app, terminal and Copilot chats have no Chat Permissions here. The Chat Place never
+Desktop app and terminal chats have no Chat Permissions here. The Chat Place never
 changes Claude Code's or Codex's own settings files.
 
 ### For a Claude chat
@@ -1563,9 +1727,11 @@ approval.
 
 **Allow for This Chat** remembers a Git command for this chat and its exact working folder:
 ordinary uses of `git status`, `switch`, `add`, `commit`, `push`, `fetch`, `diff` and `log`. It
-isn't offered for a command with force or delete options, unknown options, several commands
+isn't offered for a command run through a shell The Chat Place doesn't recognise, or one with force or delete options, unknown options, several commands
 joined together, shell expansions, another working folder, or extra access listed separately:
 those still ask. The button appears only when the request can be remembered.
+Codex usually proposes the whole command, so what's kept is often that exact command: a commit with
+another message asks again, and a commit message of several words isn't offered the button yet.
 
 A remembered approval is as powerful as **Allow Once**. The command may run outside the sandbox,
 reach other files and the network, and run Git hooks or other programs Git is set up to run. The
@@ -1752,7 +1918,8 @@ makes a Chat Place group of the same name, which is shown together with the desk
 - **Shift+Delete** deletes a Claude chat started here permanently, conversation and all, after
   you confirm (No is the default; on a Mac, Fn+Shift+Delete). Stop or finish its turn first.
   Codex and Copilot chats can't be deleted here yet, and chats started elsewhere can
-  only be hidden; delete those where they were started.
+  only be hidden; delete those where they were started. A restored or kept chat can be deleted:
+  that deletes only The Chat Place's copy.
 - **Shift+Delete on an agent conversation's row** deletes the conversation, not its chats: they
   come back to the list with everything said in them. A chat that's in a conversation can't be
   deleted until the conversation is.
@@ -1802,7 +1969,7 @@ the announcement is enough and no notification is shown.
 Press **Ctrl+Comma** (File, Settings; on a Mac, Command+Comma, in the app menu, The Chat Place).
 Each setting applies to every chat, unless it says otherwise below. **OK** saves them and you
 hear "Settings saved."; they count straight away unless it says otherwise. **Cancel** or Escape
-leaves everything as it was, except Clear Recent Folders. On Windows, the Alt key after each
+leaves everything as it was, except Clear Recent Folders. On Windows and Linux, the Alt key after each
 setting moves straight to it.
 
 - **Announcements:** Full, Summary or Silent (see "Announcements and notifications"). You start
@@ -1813,7 +1980,7 @@ setting moves straight to it.
   Summary, its first sentence; at Silent, nothing. On at first.
 - **Reading messages:**
     - **Open full messages as a formatted page** (Alt+P): Enter on a message opens the formatted
-      page. Off, it opens the plain text box. On at first.
+      page. Off, it opens the plain text box. On at first (off on Linux).
     - **Read the whole message on each item in the messages list** (Alt+W): off, you hear only
       each message's first line. On at first. This works on Windows only: on a Mac, VoiceOver reads
       each line as it's shown.
@@ -1825,7 +1992,7 @@ setting moves straight to it.
   reader uses its own voice and rate, and the note beside the rate says so.
 - **Speech problem** (Windows): shown only when the last announcement couldn't be spoken, saying
   why.
-- **Windows notifications** (Alt+N; on a Mac, **Notifications**): "When your sessions finish a
+- **Windows notifications** (Alt+N; on a Mac and on Linux, **Notifications**): "When your sessions finish a
   turn, or any session needs you" (the default), "Only when a session needs you", or "Off".
 - **Mark changed lines with** (Alt+H): how Changed Files starts each line of a change.
     - **Words**, the default: "Added: x", "Removed: x", "Unchanged: x".
@@ -1851,11 +2018,13 @@ setting moves straight to it.
 - **Include Codex chats (restart required)** (Alt+X): on once Codex is found. Restart The Chat
   Place for a change to count; you hear that when you press OK.
 - **Include GitHub Copilot CLI chats (preview; restart required)** (Alt+I): shown only once
-  Copilot CLI is installed or has saved a session on this computer. Off at first. Restart for a
+  Copilot CLI is installed or has saved a session on your computer. Off at first. Restart for a
   change to count.
 - **Let agent conversations hand replies across automatically** (Alt+G): off at first. With it
   on, each agent conversation can choose automatic hand-offs.
 - **Tell me when an update has been installed, with a link to what's new** (Alt+T). On at first.
+- **History retention and kept copies** (Alt+Y): how long each AI keeps chats, and what The Chat
+  Place has kept. **Open Claude's retention settings** opens Claude's settings file in your editor.
 
 ## Usage and context
 
@@ -1877,9 +2046,13 @@ status bar's context button opens it too.
   reports them, that line says "not reported on this connection yet". The Chat Place never fills
   them in with Claude's figures.
 - **In a Copilot chat:** how full its context is, once Copilot has answered in it since The
-  Chat Place started ("Context: not known until Copilot answers here" before that), and how
-  many premium requests the chat has used, from Copilot's own log. Copilot doesn't say how many
-  your plan has left: GitHub's Copilot settings show that. Reading it never starts Copilot.
+  Chat Place started ("Context: not known until Copilot answers here" before that), how many
+  premium requests the chat has used, from its log, and the account's chat-message,
+  premium-request and completion allowances, and when each resets if Copilot says. The account
+  report is shared across Copilot chats.
+  To get it, The Chat Place runs Copilot CLI briefly in the background; that starts no chat and
+  uses no request.
+  If the CLI can't provide it, Usage and Context says so.
 - **In an agent conversation:** each agent's context and each provider's limits.
 
 In Codex chats started here, The Chat Place also warns you, without cutting off what's being
@@ -1923,12 +2096,12 @@ nothing is ever replaced. Export Chats works in the background, and the status b
 it has got. To stop it, choose **Export Chats** again. When it's done, a message says how many
 chats were exported and where, and lists any that couldn't be.
 
-A backup (below) is the complete copy, for restoring on this or another computer. Exported chats
+A backup (below) is the complete copy, for restoring on the same computer or another. Exported chats
 are for reading, sharing or keeping as ordinary files.
 
 ## Backing up your chats
 
-Your chats with Claude, Codex and Copilot are kept on this computer, not in your account.
+Your chats with Claude, Codex and Copilot are kept on the computer where you use them, not in your account.
 Signing in on a new computer doesn't bring them back, and neither does reinstalling.
 **File, Back Up Now** saves them in one file you can keep somewhere else.
 
@@ -1970,7 +2143,7 @@ It holds:
 It leaves out sign-ins (you sign in again on a new computer), caches, logs, and plugins you can
 reinstall.
 
-**Encrypt it if it's leaving this computer.** Conversations can include file contents, command
+**Encrypt it if it's leaving your computer.** Conversations can include file contents, command
 output and anything pasted into them. With a passphrase, everything in the backup is encrypted
 (AES-256), the names of its files and folders too. The passphrase isn't kept anywhere:
 **if you forget it, nobody can open the backup.** Without one, keep the backup somewhere private.
@@ -1992,9 +2165,9 @@ was made, and what's wrong if it isn't.
    or Every week.
 2. In **Folder for the backups**, type a folder or choose **Browse**. Another drive, a USB stick or
    a cloud folder is best. A folder inside one the backup copies is refused.
-3. **Backups to keep** is how many of this computer's backups to keep in that folder (5 unless you
+3. **Backups to keep** is how many of the backups made by that computer to keep in that folder (5 unless you
    change it). Older ones are deleted, but only after a new backup has been made and checked.
-   Only backups this computer made are counted: scheduled ones, and unencrypted ones made by
+   Only that computer's backups are counted: scheduled ones, and unencrypted ones made by
    hand. Other computers' backups and anything else in the folder are never touched.
 4. To encrypt them, check **Encrypt them with a passphrase kept on this computer** (Alt+E).
    When you save, you type a passphrase twice. **Change Passphrase** (Alt+P) changes it later;
@@ -2016,14 +2189,14 @@ it's kept where the system protects it: on Windows, tied to your Windows sign-in
 your login keychain; on Linux, in your keyring through secret-tool (without secret-tool,
 scheduled backups can't be encrypted). It's never in plain text in The Chat Place's files, or
 in a backup. A
-backup that leaves this computer needs the passphrase to open, but anyone signed in as you
+backup that leaves your computer needs the passphrase to open, but anyone signed in as you
 here could make or open one. If you forget it, the backups can't be opened anywhere else.
 Turning encryption off forgets the kept passphrase.
 
 ### Restoring from a backup
 
-**File, Restore from Backup** brings the chats in a backup back into the session list, on this
-computer or a new one.
+**File, Restore from Backup** brings the chats in a backup back into the session list, on the
+same computer or a new one.
 
 1. Choose **File, Restore from Backup**, then the backup's zip file.
 2. It's checked first. An encrypted backup asks for its passphrase, and a damaged one is said
@@ -2069,7 +2242,7 @@ grows. When Claude Code deletes a chat's transcript, the chat stays in the list 
 stays in the view it was in before, such as Terminal Sessions or Chat Place Sessions. A chat
 deleted before its first copy was made can't be recovered.
 
-**Settings** (Ctrl+Comma) shows how long each AI keeps chats. **History** (Alt+Y) is that
+**Settings** (Ctrl+Comma) shows how long each AI keeps chats. **History retention and kept copies** (Alt+Y) is that
 report, and the button after it opens Claude's settings file in your editor; The Chat Place
 never changes it.
 
@@ -2080,7 +2253,7 @@ chat out of the list without deleting it, hide it.
 The copies are in `kept-history/claude` in The Chat Place's folder, aren't encrypted and never
 expire. If Claude rewrites a transcript, the earlier copy is kept too. Back Up Now includes the
 copies of chats whose transcript Claude has deleted, so a backup isn't twice the size of your
-Claude history. The copies are on this computer's disk: keep a backup elsewhere for a lost
+Claude history. The copies are on your computer's disk: keep a backup elsewhere for a lost
 computer.
 
 
@@ -2264,7 +2437,7 @@ Chat Place again. To remove them too, delete these folders, the main things it l
 - The Chat Place's own folder: `%APPDATA%\TheChatPlace` on Windows,
   `~/Library/Application Support/TheChatPlace` on a Mac, `~/.config/TheChatPlace` on Linux. It holds its records of the chats started
   here, your settings, groups, names, hidden chats, saved prompts, pasted pictures, agent
-  conversations, remembered Codex approvals and its logs.
+  conversations, remembered approvals, kept and restored copies of your chats, and its logs.
 - On Windows, the formatted page's WebView2 profile, `%LOCALAPPDATA%\TheChatPlace WebView2`.
 - Its speech folder: `%TEMP%\thechatplace-speak` on Windows, `$TMPDIR/thechatplace-speak` on a
   Mac, `$XDG_RUNTIME_DIR/thechatplace-speak` on Linux (emptied when you log out; without a
@@ -2279,7 +2452,7 @@ Chat Place again. To remove them too, delete these folders, the main things it l
   chats you started here. Claude Code keeps them in the `.claude` folder in your home folder,
   Codex in `.codex`, and Copilot CLI in `.copilot`. Claude Code, Codex and Copilot CLI themselves
   stay installed, and so does the Claude desktop app.
-- Exports you saved, repositories cloned with From GitHub, and worktrees made with A new
+- Backups and exports you saved, repositories cloned with From GitHub, and worktrees made with A new
   worktree (in the repository's `.claude/worktrees` folder). Delete them yourself if you no longer
   want them.
 
@@ -2296,8 +2469,9 @@ Escape in the list clears it. F5 refreshes the list at once. Only supported loca
 listed, not the desktop app's ordinary chats.
 
 **An old chat's messages are gone.** Claude Code deletes old conversations after a while (its
-`cleanupPeriodDays` setting). The chat can still be listed, and the messages list says its
-conversation is no longer there.
+`cleanupPeriodDays` setting), but The Chat Place keeps a copy of each Claude chat it lists (see
+"Chats Claude has deleted"). Only a chat deleted before its first copy was made has lost its
+messages: it can still be listed, and the messages list says its conversation is no longer there.
 
 ### Sending and replies
 
@@ -2395,7 +2569,8 @@ hasn't found a native Copilot CLI: install it as below. New Session checks again
 
 **Starting a Copilot chat says to install GitHub Copilot CLI.** The Chat Place uses only the
 native Copilot CLI: on Windows from winget (`winget install GitHub.Copilot`), on a Mac from
-Homebrew (`brew install copilot-cli`), or from GitHub's install script. A copy installed with
+Homebrew (`brew install copilot-cli`), or on a Mac or Linux from GitHub's install script
+(`curl -fsSL https://gh.io/copilot-install | bash`). A copy installed with
 npm (`npm install -g @github/copilot`) is never used. Install the native one, then restart.
 
 **Copilot CLI in a terminal says the requested model is not supported.** This is in Copilot
@@ -2438,7 +2613,7 @@ support@theideaplace.net.
   Each provider keeps its own conversations: when you send a message, the provider saves it as
   usual.
 - The Chat Place keeps its own settings and records on Windows in `%APPDATA%\TheChatPlace`, on a
-  Mac in `~/Library/Application Support/TheChatPlace`.
+  Mac in `~/Library/Application Support/TheChatPlace`, and on Linux in `~/.config/TheChatPlace`.
 - It also writes a few things of its own elsewhere:
     - its speech files and `speech.log`, in `%TEMP%\thechatplace-speak` on Windows,
       `$TMPDIR/thechatplace-speak` on a Mac and `$XDG_RUNTIME_DIR/thechatplace-speak` on Linux;
@@ -2446,10 +2621,11 @@ support@theideaplace.net.
       `%LOCALAPPDATA%\TheChatPlace WebView2`;
     - on Windows, the installed copy sets up `thechatplace://` links for your Windows account
       each time it starts (see "Links to chats").
-- Otherwise it writes only when you ask it to: an export goes where you save it, From GitHub
+- Otherwise it writes only when you ask it to, apart from the desktop entry a Linux AppImage adds
+  at its first start: an export goes where you save it, From GitHub
   clones into your GitHub folder, A new worktree is made in the repository's `.claude\worktrees`
   folder, and Shift+Delete deletes a Claude chat's conversation file.
-- Copilot CLI keeps its chats in `%USERPROFILE%\.copilot\session-state` (on a Mac,
+- Copilot CLI keeps its chats in `%USERPROFILE%\.copilot\session-state` (on a Mac or Linux,
   `~/.copilot/session-state`), or under `COPILOT_HOME` if you've set it. The Chat Place only
   reads them.
 - The desktop app's file formats aren't documented, so a desktop app update could change what The
@@ -2471,7 +2647,8 @@ support@theideaplace.net.
 - **Provider:** which AI a chat uses: Claude, Codex or GitHub Copilot CLI.
 - **Queued message:** a message you sent while the AI was working, waiting to go when the turn
   ends.
-- **Read-only:** a chat you can read here but reply to only where it was started.
+- **Read-only:** a chat you can read here but reply to only where it was started, or, for a restored
+  or kept chat, nowhere.
 - **Status unavailable:** The Chat Place can't check what a chat is doing right now.
 - **Tool activity:** what the AI does between messages: the commands it runs, the files it reads
   and changes, and what came back. Show Tool Activity (Ctrl+T) shows it.

@@ -401,6 +401,8 @@ class RestoreOutcome:
     # The window applies these; a worker never writes the window's stores.
     groups: Dict[str, List[str]] = field(default_factory=dict)
     hidden: List[str] = field(default_factory=list)
+    #: A folder holding what couldn't be deleted of the backup's extracted copy.
+    left_behind: str = ""
 
 
 def _backup_metadata(reader, sessions):
@@ -450,13 +452,13 @@ def restore_backup(path, manifest: dict, passphrase: Optional[str], *, confirm,
     keep those as imported chats. Returns the counts, the reader's notes and
     the backup's groups and hidden state for them, or None if none were
     chosen.
-    The decrypted copy and any provider reader live only inside this call."""
+    The decrypted copy and any provider reader live only inside this call,
+    unless Windows won't let part of the copy go: then the outcome says where."""
     import zipfile
     from . import backup
     from .backup_reader import BackupReader
     store = store or ImportedStore()
-    with backup.opened(path, passphrase, cancelled) as plain, zipfile.ZipFile(plain) as archive, \
-            BackupReader(archive, manifest, cancelled=cancelled) as reader:
+    def restore(reader):
         sessions = reader.sessions()
         counts: Dict[str, int] = {}
         for session in sessions:
@@ -490,6 +492,13 @@ def restore_backup(path, manifest: dict, passphrase: Optional[str], *, confirm,
         groups, hidden = _backup_metadata(reader, added)
         return RestoreOutcome(counts, list(reader.notes), groups, hidden)
 
+    with backup.opened(path, passphrase, cancelled) as plain, zipfile.ZipFile(plain) as archive, \
+            BackupReader(archive, manifest, cancelled=cancelled) as reader:
+        outcome = restore(reader)
+    if outcome is not None and reader.left_behind:
+        outcome.left_behind = str(reader.plain_root)  # said aloud: no \\?\ prefix
+    return outcome
+
 
 def restore_summary(outcome) -> str:
     """What's said when a restore finishes."""
@@ -511,9 +520,12 @@ def restore_summary(outcome) -> str:
         parts.append(f"{counts['unchanged']} already here")
     if counts.get("failed"):
         parts.append(f"{counts['failed']} couldn't be read")
+    left = getattr(outcome, "left_behind", "")
+    left = (f" Some of the backup's files couldn't be deleted from {left}. The Chat Place tries "
+            "again when it next starts." if left else "")
     if not parts:
         if notes:
-            return "Nothing could be restored. " + notes_text(notes)
-        return "The backup has no chats to restore."
+            return "Nothing could be restored. " + notes_text(notes) + left
+        return "The backup has no chats to restore." + left
     return ("Restore finished: " + ", ".join(parts) + ". They're in the session list, "
-            "marked as imported.")
+            "marked as imported." + left)

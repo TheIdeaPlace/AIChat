@@ -440,7 +440,7 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "Turn on Remote &Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)",
+   "label": "T&urn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)",
    "rect": [
     10,
     410,
@@ -497,7 +497,7 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "Include GitHub C&opilot CLI chats (preview; restart required)",
+   "label": "&Include GitHub Copilot CLI chats (preview; restart required)",
    "rect": [
     10,
     530,
