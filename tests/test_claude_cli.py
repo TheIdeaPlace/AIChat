@@ -1721,7 +1721,7 @@ def test_work_brought_back_by_a_background_command_stays_without_a_ceiling(tmp_p
     gate, carry_on, held = threading.Event(), threading.Event(), threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": []}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == []:
             held.set()
     events, box, process = _background_turn(tmp_path, [
         RUNNING, INIT, _tasks("Windows build"), STARTED, IDLE, RUNNING, gate, _tasks(),
@@ -1744,7 +1744,7 @@ def test_a_second_agent_finishing_doesnt_cut_off_claudes_follow_up(tmp_path):
     seen = threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": []}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == []:
             seen.set()
     events, box, process = _background_turn(tmp_path, [
         RUNNING, INIT, _tasks("One", "Two"), STARTED, gate, _tasks("Two"),
@@ -1770,7 +1770,7 @@ def test_turn_status_doesnt_name_agents_while_claude_answers_a_send_now(tmp_path
     gate, listed, carry_on = threading.Event(), threading.Event(), threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": ["Two"]}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == ["Two"]:
             box["activity"] = box["runner"].last_activity
             listed.set()
     events, box, _ = _background_turn(tmp_path, [
@@ -1870,7 +1870,7 @@ def test_turn_status_doesnt_name_agents_while_claude_carries_on(tmp_path):
     gate, listed = threading.Event(), threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": ["Two"]}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == ["Two"]:
             box["activity"] = box["runner"].last_activity
             listed.set()
     events, box, _ = _background_turn(tmp_path, [
@@ -1940,7 +1940,7 @@ def test_the_agent_finishing_starts_no_ceiling_for_a_send_now(tmp_path):
     gate, carry_on, held = threading.Event(), threading.Event(), threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": []}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == []:
             held.set()
     events, box, process = _background_turn(tmp_path, [
         RUNNING, INIT, _tasks("Implement the fixes"), STARTED, gate, _tasks(), carry_on,
