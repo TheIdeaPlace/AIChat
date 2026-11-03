@@ -48,9 +48,11 @@ class CodexExtras:
         (on_insert_command says the same for Claude), so it doesn't if focus
         has moved, the reply box has changed or another dialog is up.
         ``over`` is the dialog it opens from, which isn't another (Lists, for
-        a subagent's conversation)."""
+        a subagent's conversation). There, moving about in that dialog doesn't
+        count: it's still where you asked from."""
         focus, text = mark
-        if (wx.Window.FindFocus() is focus and self.reply_text.GetValue() == text
+        if ((over is not None or wx.Window.FindFocus() is focus)
+                and self.reply_text.GetValue() == text
                 and not any(isinstance(window, wx.Dialog) and window.IsModal()
                             and window is not over for window in wx.GetTopLevelWindows())):
             return True
