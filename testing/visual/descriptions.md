@@ -822,10 +822,16 @@ preserved-source copy and that files stay as they are. Rewind and Cancel are
 aligned at the bottom right, with generous space above them.
 
 **codex-aside:** The shared 680 by 600 Ask Aside dialog has a question box, Stop,
-two history rows, a large Answer box, then Copy Answer and Close. The selected
-history row is long and scrolls horizontally; its complete answer is readable
-below. The question has the insertion caret. The Claude **ask-aside** regression
-capture has the same layout. Claude **connected-tools** retains Reconnect and
+two history rows, a large Answer box, then Copy Answer, Clear List and Close in a
+row at the bottom right, each whole, with Clear List 75 by 23 pixels between the
+other two. Clear List is greyed in this picture, as a question is being answered:
+its text measures 3.6:1 on its button in Light and 6.7:1 in High Contrast Aquatic,
+Windows' own colours for a turned-off button. Copy Answer and Close measure 20.6:1
+in Light and 16.3:1 in High Contrast Aquatic. With nothing asked, which the probe
+doesn't photograph (seen in a screenshot of the keyboard walk), the Answer box's
+intro takes four lines at the top of the box, whole. The selected history row is long and scrolls horizontally; its
+complete answer is readable below. The question has the insertion caret. The Claude
+**ask-aside** regression capture has the same layout. Claude **connected-tools** retains Reconnect and
 Turn Off for This Chat in its unchanged layout. Since #468 its Details paragraph
 ends "Reading this list starts the tools that are on; a tool turned off for this
 chat isn't started.", one line longer, and still shows whole above the box's edge.

@@ -138,7 +138,7 @@
   {
    "class": "TextCtrl",
    "name": "Answer",
-   "label": "Ask a question about this chat, such as which file Codex changed or what a reply meant. The question and its answer aren't added to the chat, and Codex can read files to answer but can't change anything. Each question uses your ChatGPT plan, as a message does.",
+   "label": "Ask a question about this chat, such as which file Codex changed or what a reply meant. The question and its answer aren't added to the chat, and Codex can read files to answer but can't change anything. Your questions stay listed for this chat until you quit The Chat Place. Each question uses your ChatGPT plan, as a message does.",
    "rect": [
     12,
     273,
@@ -160,7 +160,7 @@
    "name": "button",
    "label": "&Copy Answer",
    "rect": [
-    482,
+    401,
     528,
     91,
     23
@@ -172,6 +172,25 @@
    "depth": 0,
    "parent": -1,
    "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Clea&r List",
+   "rect": [
+    498,
+    528,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
    "problems": []
   },
   {
