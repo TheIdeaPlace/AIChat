@@ -468,7 +468,10 @@ def test_a_sign_in_that_finished_isnt_said_to_have_expired(tmp_path):
     ("https://", False), ("https:///x", False), ("https:x", False), ("https://:443/", False),
     ("https://example.com:notaport/", False), ("https://example.com:99999/", False),
     ("https://[nonsense]/", False), ("https://[::1/", False), ("https://exa%6Dple.com/", False),
-    ("https://-bad-.example/", False), ("https://a..b/", False)])
+    ("https://-bad-.example/", False), ("https://a..b/", False),
+    # urlsplit takes the brackets as the whole host of these; a browser may not.
+    ("http://evil.example[::1]/", False), ("https://bank.example[::1]/login", False),
+    ("http://evil.example[::1]:80/path", False), ("http://[::1]evil.example/", False)])
 def test_is_web_url(url, ok):
     assert claude_mcp.is_web_url(url) is ok
 
@@ -707,6 +710,54 @@ def test_a_number_that_may_be_null_is_a_number():
     assert form_content(fields, {"n": "2.5", "s": "x"}) == ({"n": 2.5, "s": "x"}, "")
     assert form_content(fields, {"n": "", "s": ""}) == ({}, "")
     assert claude_mcp.form_problem({"properties": {"n": {"type": ["number", "null"]}}}) == ""
+
+
+@pytest.mark.parametrize("word", ["anyOf", "oneOf"])
+def test_a_type_or_null_is_that_type(word):
+    # What the MCP Python SDK makes for Optional[str] and Optional[int].
+    schema = {"required": ["must"], "properties": {
+        "s": {"title": "Note", word: [{"type": "string", "maxLength": 3}, {"type": "null"}],
+              "default": None},
+        "n": {word: [{"type": "null"}, {"type": "integer", "minimum": 2}]},
+        "must": {word: [{"type": "string"}, {"type": "null"}]}}}
+    assert claude_mcp.form_problem(schema) == ""
+    fields = form_fields(schema)
+    assert [(f.key, f.kind, f.label) for f in fields] == [
+        ("s", "text", "Note"), ("n", "integer", "n"), ("must", "text", "must")]
+    assert fields[0].max_length == 3 and fields[1].minimum == 2 and fields[2].required
+    assert form_content(fields, {"s": "", "n": "", "must": "x"}) == ({"must": "x"}, "")
+    assert form_content(fields, {"s": "ab", "n": "4", "must": "x"}) == (
+        {"s": "ab", "n": 4, "must": "x"}, "")
+    assert "n" in form_content(fields, {"n": "1", "must": "x"})[1]
+
+
+@pytest.mark.parametrize("word", ["anyOf", "oneOf"])
+def test_a_null_option_in_a_choice_list_isnt_a_choice(word):
+    schema = {"properties": {
+        "pick": {word: [{"const": "a", "title": "A"}, {"const": "b"}, {"type": "null"}]},
+        "one": {word: [{"const": "a"}, {"type": "null"}]},
+        "literal": {word: [{"enum": ["x", "y"], "type": "string"}, {"type": "null"}]},
+        "many": {"type": "array", "items": {word: [{"const": "p"}, {"const": "q"},
+                                                   {"type": "null"}]}},
+        "maybe_many": {word: [{"type": "array", "items": {"enum": ["r"]}}, {"type": "null"}]}}}
+    assert claude_mcp.form_problem(schema) == ""
+    fields = {f.key: f for f in form_fields(schema)}
+    assert fields["pick"].kind == "choice"
+    assert fields["pick"].choices == [("a", "A"), ("b", "b")]
+    assert fields["one"].kind == "choice" and fields["one"].choices == [("a", "a")]
+    assert fields["literal"].kind == "choice"
+    assert [c[0] for c in fields["literal"].choices] == ["x", "y"]
+    assert fields["many"].kind == "multi" and [c[0] for c in fields["many"].choices] == ["p", "q"]
+    assert fields["maybe_many"].kind == "multi" and fields["maybe_many"].choices == [("r", "r")]
+
+
+@pytest.mark.parametrize("prop", [
+    {"anyOf": [{"type": "null"}]},  # only "nothing": there's no way to answer
+    {"anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}]},
+    {"anyOf": [{"type": "object", "properties": {}}, {"type": "null"}]},
+    {"oneOf": [{"const": "a"}, {"type": "string"}, {"type": "null"}]}])
+def test_a_null_option_doesnt_make_an_unshowable_field_showable(prop):
+    assert "can't show" in claude_mcp.form_problem({"properties": {"x": prop}})
 
 
 def test_how_many_to_choose_is_checked():

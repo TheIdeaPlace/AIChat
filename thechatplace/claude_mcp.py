@@ -365,6 +365,11 @@ def web_url_host(url) -> str:
     if parts.scheme not in ("http", "https") or "@" in parts.netloc or len(host) > 253:
         return ""
     if "[" in parts.netloc:
+        # urlsplit takes just the bracketed part as the host of
+        # http://evil.example[::1]/, which a browser reads differently, so the
+        # brackets must be the whole host, with nothing before or after but a port.
+        if not re.fullmatch(r"\[[^\]]+\](:\d+)?", parts.netloc):
+            return ""
         try:
             ipaddress.IPv6Address(host)
         except ValueError:
@@ -677,11 +682,35 @@ def _whole(value) -> Optional[int]:
     return value if type(value) is int else None
 
 
+def _is_null(option) -> bool:
+    return isinstance(option, dict) and option.get("type") == "null"
+
+
+def _without_null(prop):
+    """``prop`` with a "this, or nothing" wrapper taken off. An optional value
+    from the MCP Python SDK arrives as ``{"anyOf": [{"type": "string"},
+    {"type": "null"}]}``: the same as a plain string that may be left empty,
+    which an optional box already answers, so it mustn't leave you only Decline.
+    Its other words (a title, a minimum) can be on either level. A list of
+    choices isn't a wrapper: _choices reads those, and its nulls are skipped."""
+    if not isinstance(prop, dict) or "type" in prop or ("anyOf" in prop and "oneOf" in prop):
+        return prop
+    options = prop.get("anyOf") if "anyOf" in prop else prop.get("oneOf")
+    if not isinstance(options, list):
+        return prop
+    others = [option for option in options if not _is_null(option)]
+    if (len(others) != 1 or not isinstance(others[0], dict) or "const" in others[0]
+            or not ("type" in others[0] or "enum" in others[0])):
+        return prop
+    outer = {word: value for word, value in prop.items() if word not in ("anyOf", "oneOf")}
+    return {**others[0], **outer}
+
+
 def _type_of(prop: dict):
     """The one type a property's value has. ``["number", "null"]`` is a number
     that may be left empty, which is how an optional box already answers. A
     type of several kinds is returned whole, and isn't one a box can ask for."""
-    kind = prop.get("type")
+    kind = _without_null(prop).get("type")
     if isinstance(kind, list):
         others = [k for k in kind if k != "null"]
         return others[0] if len(others) == 1 else kind
@@ -697,19 +726,25 @@ def _lists_every_option(prop: dict) -> bool:
     if "oneOf" not in prop and "anyOf" not in prop:
         return True
     options = prop.get("oneOf") or prop.get("anyOf")
-    return isinstance(options, list) and bool(options) and len(_choices(prop)) == len(options)
+    if not isinstance(options, list):
+        return False
+    # "Or nothing" isn't a choice to show: leaving it empty already says that.
+    others = [option for option in options if not _is_null(option)]
+    return bool(others) and len(_choices(prop)) == len(others)
 
 
 def _options_of(prop: dict) -> dict:
     """The part of a property that lists its choices: its items, for an array."""
+    prop = _without_null(prop)
     items = prop.get("items")
-    return items if _type_of(prop) == "array" and isinstance(items, dict) else prop
+    return _without_null(items) if _type_of(prop) == "array" and isinstance(items, dict) else prop
 
 
 def _cant_show(prop, is_required: bool) -> bool:
     """True when no control here could give a valid answer for ``prop``."""
     if not isinstance(prop, dict):
         return is_required
+    prop = _without_null(prop)
     kind = _type_of(prop)
     if kind not in (None, "string", "number", "integer", "boolean", "array"):
         return True  # a nested object, or a mix of types
@@ -766,12 +801,13 @@ def form_fields(schema) -> List[FormField]:
     for key, prop in props.items():
         if not isinstance(key, str) or not isinstance(prop, dict):
             continue
+        prop = _without_null(prop)
         kind_name = _type_of(prop)
         label = str(prop.get("title") or key)
         common = dict(key=key, label=label, description=str(prop.get("description") or ""),
                       required=key in required, default=prop.get("default"))
         if kind_name == "array":
-            items = prop.get("items") if isinstance(prop.get("items"), dict) else {}
+            items = _options_of(prop) if isinstance(prop.get("items"), dict) else {}
             fields_.append(FormField(kind="multi", choices=_choices(items),
                                      min_items=_whole(prop.get("minItems")),
                                      max_items=_whole(prop.get("maxItems")), **common))
