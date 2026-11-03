@@ -268,7 +268,8 @@ class RewindChats:
     def _turn_running_in(self, cwd: str) -> bool:
         """Any chat of the app's own working in this folder, whichever AI."""
         key = _folder_key(cwd) if cwd else ""
-        for record in self.store.all():
+        # provider=None: on its own, all() is Claude's chats only.
+        for record in self.store.all(provider=None):
             if _folder_key(record.cwd) != key:
                 continue
             if record.provider == "claude":
