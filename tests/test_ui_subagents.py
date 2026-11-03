@@ -371,14 +371,14 @@ def test_a_dialog_it_opens_from_doesnt_count_as_another(frame, env, monkeypatch)
         def IsModal(self):
             return True
     up = Up(frame)
-    monkeypatch.setattr(wx, "GetTopLevelWindows", lambda: [frame, up])
     try:
-        mark = frame._codex_mark()
-        assert frame._codex_may_open(mark, "It's", over=up)
-        assert not frame._codex_may_open(mark, "It's")
+        with monkeypatch.context() as patch:
+            patch.setattr(wx, "GetTopLevelWindows", lambda: [frame, up])
+            mark = frame._codex_mark()
+            assert frame._codex_may_open(mark, "It's", over=up)
+            assert not frame._codex_may_open(mark, "It's")
         assert "It's ready, but you've moved on" in env["feedback"][-1]
     finally:
-        monkeypatch.undo()
         up.Destroy()
 
 

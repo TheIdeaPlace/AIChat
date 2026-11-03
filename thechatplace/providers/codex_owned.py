@@ -186,14 +186,17 @@ class CodexOwnedThreads:
             # first, even after restarting TCP; never overwrite unfinished work.
             self._verify_idle(native_id)
         if (model is not None and method != "thread/resume") or effort is not None:
-            choice = next((choice for choice in read_models(self.connection) if choice.model == model), None)
+            models = read_models(self.connection)
+            choice = next((choice for choice in models if choice.model == model), None)
             # The catalog hides retired models. A saved chat on one can still
             # open, and Codex's own answer is checked below. Trying the chat's
             # own model in a temporary thread, for a permission or mode change
             # or Stop's recheck, is the same chat staying where it is, so it
             # counts too; otherwise the failed check locks the chat with Stop
             # refused the same way. Only choosing a model needs the catalog (#467).
-            retired = choice is None and (method == 'thread/resume' or allow_retired)
+            # A catalog with nothing in it hasn't retired a model, though: it
+            # can't vouch for anything, so a grant recheck still refuses (#184).
+            retired = choice is None and (method == 'thread/resume' or (allow_retired and bool(models)))
             if not retired and (choice is None or (effort is not None and effort not in choice.efforts)):
                 raise ValueError("Codex model or reasoning effort is no longer available")
         params = {"cwd": cwd, "modelProvider": "openai", "sandbox": policy.sandbox,
