@@ -1199,7 +1199,6 @@ class AsideFake:
         if method == 'thread/fork':
             result = response('aside-copy')
             result['thread']['ephemeral'] = True
-    result['approvalPolicy'] = 'never'
             result['approvalPolicy'] = 'never'
             return result
         if method == 'turn/start':
