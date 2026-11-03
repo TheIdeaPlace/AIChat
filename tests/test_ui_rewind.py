@@ -83,9 +83,10 @@ def answer_dialog(monkeypatch, choice=None):
             seen["title"] = self.GetTitle()
             seen["default"] = self.selected()
             seen["labels"] = [self.what.GetString(i) for i in range(self.what.GetCount())]
-            seen["happens"] = self.happens.GetValue()
             if choice is not None:
                 self.what.SetSelection([c for c, _l in rewind.CHOICES].index(choice))
+                self._describe()
+            seen["happens"] = self.happens.GetValue()
             self._go()
             return wx.ID_OK if self.choice else wx.ID_CANCEL
     monkeypatch.setattr("thechatplace.ui.rewind_chats.RewindDialog", Answers)
@@ -107,11 +108,12 @@ def test_rewind_both_restores_files_and_branches_before_the_message(frame, env, 
                                                                     monkeypatch):
     folder, parts = own_chat(frame, env)
     choose(frame, USER, 1)
-    seen = answer_dialog(monkeypatch)
+    seen = answer_dialog(monkeypatch, rewind.BOTH)
     calls = stub_files(monkeypatch)
     frame.on_rewind_to_here()
     assert seen["title"] == "Rewind Fixes to before your message: Change a.txt to two"
-    assert seen["default"] == rewind.BOTH
+    # Conversation only until an arrow press chooses more (#468).
+    assert seen["default"] == rewind.CONVERSATION
     assert "a.txt" in seen["happens"] and "Fixes is kept as it is" in seen["happens"]
     # The new chat: unstarted, cut just before the message, settings carried.
     own = frame.store.get(frame._open.cli_session_id)
@@ -142,6 +144,20 @@ def test_rewind_both_restores_files_and_branches_before_the_message(frame, env, 
     again = fake_runner.instances[-1].command
     assert again[again.index("--resume-session-at") + 1] == "sys-1"
     assert again[again.index("--session-id") + 1] == own.cli_session_id
+
+
+def test_enter_on_rewind_as_it_opens_leaves_the_files_alone(frame, env, fake_runner, monkeypatch):
+    # Rewind is the default button, and files can't be put back again (#468).
+    own_chat(frame, env)
+    choose(frame, USER, 1)
+    seen = answer_dialog(monkeypatch)
+    calls = stub_files(monkeypatch)
+    frame.on_rewind_to_here()
+    assert seen["default"] == rewind.CONVERSATION
+    assert seen["labels"] == ["Conversation and files", "Conversation only", "Files only"]
+    assert frame.store.get(frame._open.cli_session_id).title == "Fixes (rewound)"
+    pump(lambda: False, timeout=0.3)
+    assert calls == [] and not any("Putting the files" in f for f in env["feedback"])
 
 
 def test_rewind_files_only_keeps_the_conversation(frame, env, fake_runner, monkeypatch):
@@ -545,7 +561,7 @@ def _held_files(monkeypatch):
 def test_the_new_chat_cant_send_while_its_files_go_back(frame, env, fake_runner, monkeypatch):
     folder, _parts = own_chat(frame, env)
     choose(frame, USER, 1)
-    answer_dialog(monkeypatch)
+    answer_dialog(monkeypatch, rewind.BOTH)
     release = _held_files(monkeypatch)
     try:
         frame.on_rewind_to_here()
@@ -570,7 +586,7 @@ def test_another_chat_in_the_folder_cant_send_while_files_go_back(frame, env, fa
     folder, _parts = own_chat(frame, env)
     frame.store.add(OwnSession("own-other", "Other", str(folder), last_activity_ms=now_ms()))
     choose(frame, USER, 1)
-    answer_dialog(monkeypatch)
+    answer_dialog(monkeypatch, rewind.BOTH)
     release = _held_files(monkeypatch)
     try:
         frame.on_rewind_to_here()
@@ -587,7 +603,7 @@ def test_a_chat_in_another_folder_isnt_held_up(frame, env, fake_runner, monkeypa
     elsewhere.mkdir()
     frame.store.add(OwnSession("own-away", "Away", str(elsewhere), last_activity_ms=now_ms()))
     choose(frame, USER, 1)
-    answer_dialog(monkeypatch)
+    answer_dialog(monkeypatch, rewind.BOTH)
     release = _held_files(monkeypatch)
     try:
         frame.on_rewind_to_here()
@@ -630,7 +646,7 @@ def test_new_session_waits_for_files_going_back_and_keeps_your_message(frame, en
     # It started its turn without the check _send_now makes (#468).
     folder, _parts = own_chat(frame, env)
     choose(frame, USER, 1)
-    answer_dialog(monkeypatch)
+    answer_dialog(monkeypatch, rewind.BOTH)
     release = _held_files(monkeypatch)
     copied = _copied(env, monkeypatch, frame)
     _new_session_filled(monkeypatch, folder)
@@ -656,7 +672,7 @@ def test_new_session_in_another_folder_isnt_held_up(frame, env, fake_runner, mon
     elsewhere = env["tmp"] / "elsewhere"
     elsewhere.mkdir()
     choose(frame, USER, 1)
-    answer_dialog(monkeypatch)
+    answer_dialog(monkeypatch, rewind.BOTH)
     release = _held_files(monkeypatch)
     _new_session_filled(monkeypatch, elsewhere)
     try:

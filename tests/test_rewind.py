@@ -92,7 +92,10 @@ def test_plan_for_the_second_message_names_the_files_and_keeps_the_original():
     message = [m for m in tr.messages if m.kind == USER][1]
     plan = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True)
     assert plan.cut == turn_end["uuid"]
-    assert plan.default_choice() == rewind.BOTH
+    # The files can go back, and Claude changed one, but that takes an arrow
+    # press: Enter must not start what can't be undone (#468).
+    assert plan.default_choice() == rewind.CONVERSATION
+    assert plan.allowed(rewind.BOTH) and plan.allowed(rewind.FILES)
     text = plan.describe(rewind.BOTH)
     assert "Fixes (rewound)" in text and "Change a.txt to two" in text
     assert "Fixes is kept as it is" in text
@@ -373,7 +376,7 @@ def test_what_happens_warns_about_every_file_your_edits_and_no_undo():
     assert "Claude created 1 file since this message, which is removed: new.py." in text
     assert "Claude changed 1 file earlier in this chat, which goes back too: old.py." in text
     assert "never put back" in text
-    assert plan.default_choice() == rewind.BOTH
+    assert plan.default_choice() == rewind.CONVERSATION
     assert plan.file_count == 3
     # The conversation alone touches no files, and doesn't warn that it does.
     assert "can't be undone" not in plan.describe(rewind.CONVERSATION)
@@ -463,3 +466,15 @@ def test_before_the_first_read_subagents_files_are_said_not_to_be_known_yet():
     assert "isn't known yet" in plan.describe(rewind.FILES)
     assert "isn't known yet" in plan.describe(rewind.BOTH)
     assert "isn't known yet" not in plan.describe(rewind.CONVERSATION)
+
+
+def test_files_are_chosen_first_only_when_the_conversation_cant_go_back():
+    records, *_ = two_turns()
+    tr = parse_lines(lines(*records))
+    message = [m for m in tr.messages if m.kind == USER][1]
+    plan = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True,
+                              conversation_reason="It can't be branched.")
+    assert plan.default_choice() == rewind.FILES
+    neither = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=False,
+                                 conversation_reason="It can't be branched.")
+    assert neither.default_choice() == rewind.CONVERSATION

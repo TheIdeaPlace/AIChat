@@ -86,5 +86,5 @@ def test_a_forms_label_shows_its_own_ampersand_and_marks_its_key():
     assert mark_access_key("Bed & breakfast", "r") == "Bed && b&reakfast"
     assert mark_access_key("Pick & choose", "") == "Pick && choose"
     # Across a line break, where wrapping put one.
-    assert mark_access_key("Long\nname", "n") == "Long\n&name"
+    assert mark_access_key("Long\nword", "w") == "Long\n&word"
     assert mark_access_key("ſ only", "s") == "ſ only"

@@ -102,17 +102,16 @@ Create a short chat with at least two user messages and replies before testing.
 5. For Claude, select a user message that led to an edit of `rewind-example.txt`. For this test,
    ask Claude explicitly to use its Edit or Write tool, without a command or subagent. Confirm
    that in Show Tool Activity (**Ctrl+T**), and note the file's before and after contents.
-6. Open Rewind on that user message. Expect: **Conversation and files** chosen to begin with, as
-   Claude changed a file since that message. What happens names the files and warns that each goes
-   back to the last version Claude Code saved, that hand edits since Claude last changed it are
-   lost, and that it can't be undone. Try **Files only**. Expect: the file returns to its earlier
+6. Open Rewind on that user message. Expect: **Conversation only** chosen to begin with, though
+   Claude changed a file since that message. Arrow to **Files only**. Expect: What happens names
+   the files and warns that each goes back to the last version Claude Code saved, that hand edits
+   since Claude last changed it are lost, and that it can't be undone. Press Rewind. Expect: the file returns to its earlier
    contents, the conversation stays, and you hear "Files in" the chat's name "restored to the
    versions saved before your message". Make a fresh edit and try **Conversation and files** as well.
 7. Hand edits are lost even from before the message. Have Claude edit `rewind-example.txt`, then
    edit it yourself and save. Send a message that changes no files, then another. Rewind to that
-   last message. Expect: **Conversation only** chosen to begin with, as nothing changed since it,
-   and What happens saying Claude changed the file earlier in the chat, which goes back too. Choose
-   **Files only**. Expect: the file has Claude's contents and your hand edit is gone. A file
+   last message, and choose **Files only**. Expect: What happens says Claude changed the file
+   earlier in the chat, which goes back too. Press Rewind. Expect: the file has Claude's contents and your hand edit is gone. A file
    created since the message is removed, and a file Claude never touched stays.
 8. With a Codex chat in the same folder waiting on an approval, open Rewind in a Claude chat there.
    Expect: the file choices say "(unavailable)", and What happens says another chat is working in

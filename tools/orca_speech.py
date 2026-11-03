@@ -106,7 +106,7 @@ STEPS = [
          refuse=["unlabeled", "unlabelled"]),
     Step("rewind, what happens", ["Tab"], expect=["What happens"]),
     Step("rewind, back to the chosen option", ["shift+Tab"],
-         expect=["Conversation and files"]),
+         expect=["Conversation only"]),
     Step("rewind closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     Step("settings", ["ctrl+comma"], expect=["Settings", "Announcements", "Full"],

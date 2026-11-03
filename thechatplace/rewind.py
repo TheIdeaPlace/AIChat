@@ -141,11 +141,12 @@ class RewindPlan:
         return not self.conversation_problem
 
     def default_choice(self) -> str:
-        if self.files_possible and self.conversation_possible:
-            # With nothing edited since the message, putting files back could
-            # only overwrite later changes, such as your own: not a default.
-            return BOTH if self.edits else CONVERSATION
-        return FILES if self.files_possible else CONVERSATION
+        """The conversation alone wherever it can go back. It changes nothing,
+        and Rewind is the default button: Enter on files or both would start
+        what the dialog says can't be undone. Files take an arrow press."""
+        if self.conversation_possible or not self.files_possible:
+            return CONVERSATION
+        return FILES
 
     def allowed(self, choice: str) -> bool:
         if choice == BOTH:

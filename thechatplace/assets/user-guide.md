@@ -1394,9 +1394,8 @@ went back from is always kept as it was, in the list.
 - **Rewind to Here** (Ctrl+Shift+Z; on a Mac, Cmd+Shift+Z in the messages list, as elsewhere it's Redo; File, Rewind to Here, or Rewind to Here on a message's menu)
   works on one of your own messages: select it in the messages list first. It asks what to take
   back:
-  - **Conversation and files** (chosen to begin with when the files can go back and Claude has
-    changed files since that message),
-  - **Conversation only** (chosen to begin with when it hasn't, or the files can't go back),
+  - **Conversation and files**,
+  - **Conversation only**, chosen to begin with, as it changes no files,
   - **Files only**.
 
   **What happens** (Alt+H) says what the choice will do, naming the files. Press Rewind (Enter)
