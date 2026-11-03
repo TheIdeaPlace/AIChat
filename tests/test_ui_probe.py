@@ -72,6 +72,28 @@ def test_each_surface_opens_what_it_says_on_made_up_data(name, opened, tmp_path,
         ui_probe.close_frame(frame)
 
 
+def test_the_rewind_files_surface_shows_the_warning(tmp_path, monkeypatch, app):
+    # Conversation and files chosen, which the plain rewind surface doesn't
+    # show, and the dialog's real words about it (#468).
+    from thechatplace import rewind
+    seen = {}
+
+    def record(self):
+        seen.update(happens=self.happens.GetValue(), chosen=self.selected())
+        return wx.ID_CANCEL
+    monkeypatch.setattr(wx.Dialog, "ShowModal", record)
+    env = ui_probe.build_world(tmp_path, monkeypatch.setattr, formatted_view=False)
+    frame = ui_probe.build_frame(env)
+    try:
+        ui_probe.SURFACES["rewind-files"][1](frame, env)()
+        assert seen["chosen"] == rewind.BOTH
+        assert rewind.FILES_WARNING in seen["happens"]
+    finally:
+        ui_probe.close_frame(frame)
+    from thechatplace.ui import dialogs, rewind_chats
+    assert rewind_chats.RewindDialog is dialogs.RewindDialog  # no other surface is changed
+
+
 def test_surfaces_start_from_fresh_data(opened, tmp_path, monkeypatch):
     # The working surface leaves a turn running and messages queued; the
     # next surface's window and data are new, so none of that shows there.

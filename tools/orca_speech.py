@@ -151,6 +151,9 @@ STEPS = [
     Step("Tab to a list", ["Tab"], expect=["Budget"]),
     # Each field has an access key of its own (#468).
     Step("Alt+C goes back to City", ["alt+c"], expect=["City"]),
+    # A check box's key moves to it and doesn't tick it (#468).
+    Step("Alt+B goes to the check box, leaving it unticked", ["alt+b"],
+         expect=["Bringing pets", "not checked"]),
     Step("tool answered later, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # View, Connected Tools (#468), the View menu's last item: Up from the top.

@@ -523,7 +523,7 @@ Copilot chats don't have these yet.
     opens on its message, read-only, then a form with one labelled control per thing it asks for
     (a text box for text and numbers, a check box for yes or no, a list to choose one from, check
     boxes to choose several; "(required)" marks the ones it needs, a number's limits are said with
-    its box, and each has an Alt key of its own), with **Send**, which checks
+    its box, and each has an Alt key of its own, which moves to it without changing it), with **Send**, which checks
     what you entered and says what's missing or wrong first, and **Decline**. Enter sends from
     inside the form or on Send. In the message it says "Tab to the form, or to Send", so a
     stray Enter can't send what the server filled in; with nothing to fill in, it says "Tab to

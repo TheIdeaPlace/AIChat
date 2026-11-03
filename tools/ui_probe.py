@@ -2060,6 +2060,31 @@ def d_rewind(frame, env):
     return frame.on_rewind_to_here
 
 
+def d_rewind_files(frame, env):
+    """Rewind to Here with Conversation and files chosen, an arrow press away
+    from how it opens: What Happens has the warning that it can't be undone,
+    the words most worth a look (#468). The dialog is made inside
+    on_rewind_to_here, so it's chosen as it's made."""
+    from thechatplace import rewind
+    from thechatplace.ui import rewind_chats
+    from thechatplace.ui.dialogs import RewindDialog
+    d_rewind(frame, env)
+
+    def choosing(parent, plan, **options):
+        dialog = RewindDialog(parent, plan, **options)
+        dialog.what.SetSelection([value for value, _label in rewind.CHOICES].index(rewind.BOTH))
+        dialog._describe()
+        return dialog
+
+    def opener():
+        rewind_chats.RewindDialog = choosing
+        try:
+            frame.on_rewind_to_here()
+        finally:
+            rewind_chats.RewindDialog = RewindDialog
+    return opener
+
+
 def d_rename(frame, env):
     _select(frame, "Visual probe")
     return frame.on_rename
@@ -2224,6 +2249,8 @@ SURFACES = {
     "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "rewind": ("dialog", d_rewind, "Rewind to Here on your first message: Conversation only chosen"),
+    "rewind-files": ("dialog", d_rewind_files,
+                     "Rewind to Here with Conversation and files chosen: the warning in What Happens"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
                                          "new Codex chat"),
     "agent-new-three": ("dialog", d_agent_new_three, "New Agent Conversation with the Builder "
@@ -2338,6 +2365,7 @@ DIALOG_CLASSES = {
     "backup-schedule": "BackupScheduleDialog",
     "relay": "RelayDialog",
     "rewind": "RewindDialog",
+    "rewind-files": "RewindDialog",
     "agent-new": "AgentConversationDialog",
     "agent-new-three": "AgentConversationDialog",
     "agent-new-copilot": "AgentConversationDialog",

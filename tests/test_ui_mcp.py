@@ -936,7 +936,7 @@ def test_alt_goes_to_a_choose_several_fields_first_box(frame, env, monkeypatch):
     moved = []
     first = dialog._controls["extras"][0][1]
     monkeypatch.setattr(first, "SetFocus", lambda: moved.append(True))
-    assert dialog._group_keys == {ord("E"): first}
+    assert dialog._group_keys[ord("E")] is first
 
     def press(key, alt=True):
         event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
@@ -956,6 +956,33 @@ def test_alt_goes_to_a_choose_several_fields_first_box(frame, env, monkeypatch):
         dialog.Destroy()
 
 
+def test_alt_on_a_check_box_moves_to_it_and_leaves_it_as_it_was(frame, env, monkeypatch):
+    # Windows ticks a check box on its Alt key as well as moving to it, so one
+    # a server had ticked could be turned off just by going to it (#468).
+    from thechatplace.ui.dialogs import ElicitationDialog
+    schema = {"type": "object", "properties": {
+        "pets": {"type": "boolean", "title": "Bringing pets", "default": True}}}
+    dialog = ElicitationDialog(frame, "Tools probe",
+                               elicitation_from("e", {**FORM, "requested_schema": schema}))
+    box = dialog.control_for("pets")
+    moved = []
+    monkeypatch.setattr(box, "SetFocus", lambda: moved.append(True))
+    try:
+        assert box.GetLabel() == "&Bringing pets"  # still shown as its key
+        assert dialog._group_keys == {ord("B"): box}
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(ord("B"))
+        event.SetAltDown(True)
+        dialog._on_key(event)
+        if sys.platform == "darwin":
+            assert event.GetSkipped() and not moved  # Option and a letter types
+        else:
+            assert not event.GetSkipped() and moved == [True]
+        assert box.GetValue() is True
+    finally:
+        dialog.Destroy()
+
+
 def test_a_forms_boxes_sit_under_their_labels_and_line_up(frame, env):
     from thechatplace.ui.dialogs import ElicitationDialog
     dialog = ElicitationDialog(frame, "Tools probe", elicitation_from("e", FORM))
@@ -967,6 +994,31 @@ def test_a_forms_boxes_sit_under_their_labels_and_line_up(frame, env):
         assert field_x == dialog.message_text.GetPosition().x
         item = dialog.GetSizer().GetItem(dialog.message_text)
         assert item.GetFlag() & wx.TOP == 0
+        # A field's box likewise: 8 pixels above it was four times the Message's.
+        assert panel.GetSizer().GetItem(city).GetFlag() & wx.TOP == 0
+    finally:
+        dialog.Destroy()
+
+
+def test_a_forms_wrapped_words_reach_the_boxes_right_edge(frame, env):
+    # They stopped 45 to 70 pixels short of it.
+    from thechatplace.ui.dialogs import ElicitationDialog
+    schema = {"properties": {
+        "one": {"type": "string", "title": LONG},
+        "two": {"type": "string", "title": "Two"}}}
+    dialog = ElicitationDialog(frame, "Tools probe",
+                               elicitation_from("e", {**FORM, "requested_schema": schema}))
+    try:
+        dialog.Layout()
+        box_right = (dialog.control_for("two").GetPosition().x
+                     + dialog.control_for("two").GetSize().width)
+        label = next(c for c in dialog.form_panel.GetChildren()
+                     if c.GetClassName() == "wxStaticText" and "\n" in c.GetLabel())
+        # Within a word and a scroll bar's width of it, and never past it.
+        right = label.GetPosition().x + label.GetBestSize().width
+        room = max(wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, dialog), 0)
+        assert right <= box_right
+        assert dialog._wrap_width == dialog.GetClientSize().width - 16 - room
     finally:
         dialog.Destroy()
 

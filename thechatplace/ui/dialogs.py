@@ -570,6 +570,16 @@ class NewSessionDialog(wx.Dialog):
         event.Skip()
         wx.CallAfter(lambda: self and self.refresh_repo())
 
+    def _sync_access_keys(self):
+        """A label's Alt key only while its control is on (#515). A turned-off
+        control can't take focus, so Windows gave its key to the next one that
+        could: under Copilot, Alt+E and Alt+D went to Permission mode. A screen
+        reader also reported the key, from the label before the control."""
+        for label, control, text in self._keyed_labels:
+            wanted = text if control.IsEnabled() else text.replace("&", "")
+            if label.GetLabel() != wanted:
+                label.SetLabel(wanted)
+
     def _on_cancel(self, event):
         if self._making:
             # The worktree is half made: let git finish, then Start or
@@ -607,16 +617,6 @@ class NewSessionDialog(wx.Dialog):
         self.branch.Set(info.branches if info else [])
         self.branch.ChangeValue(typed)
         if info and info.branch:
-    def _sync_access_keys(self):
-        """A label's Alt key only while its control is on (#515). A turned-off
-        control can't take focus, so Windows gave its key to the next one that
-        could: under Copilot, Alt+E and Alt+D went to Permission mode. A screen
-        reader also reported the key, from the label before the control."""
-        for label, control, text in self._keyed_labels:
-            wanted = text if control.IsEnabled() else text.replace("&", "")
-            if label.GetLabel() != wanted:
-                label.SetLabel(wanted)
-
             here = f"The folder as it is, on {info.branch}"
         elif info:
             here = "The folder as it is"
@@ -634,6 +634,7 @@ class NewSessionDialog(wx.Dialog):
         worktree = self.work_in.GetSelection() == WORK_IN_WORKTREE
         self.branch.Enable(worktree)
         self.branch_label.Enable(worktree)
+        self._sync_access_keys()
 
     # -- choosing the folder
 
@@ -671,7 +672,6 @@ class NewSessionDialog(wx.Dialog):
 
     def _warn(self, text: str, control):
         wx.MessageBox(text, self.GetTitle(), wx.OK | wx.ICON_WARNING, self)
-        self._sync_access_keys()
         control.SetFocus()
 
     def _on_ok(self, _event):
@@ -835,6 +835,7 @@ class NewSessionDialog(wx.Dialog):
                 control.Enable()
             self.note.SetValue((CONTINUE_NOTE + "\n\n" + PERMISSION_NOTE) if self.continuing else PERMISSION_NOTE)
         self._control_provider = provider
+        self._sync_access_keys()
         claude = provider == "claude"
         if self.chat_options_btn.IsShown() != claude:
             # Disabled too: hidden, Alt+H still opened Claude's Chat Options
@@ -872,7 +873,6 @@ class NewSessionDialog(wx.Dialog):
                 self.Layout()
                 said = self.chat_options_summary.GetLabel()
                 self._feedback("Chat options: " + (said if said != "None chosen" else "none")
-        self._sync_access_keys()
                                + ".")
         finally:
             dialog.Destroy()
@@ -905,6 +905,7 @@ class NewSessionDialog(wx.Dialog):
         self.effort_choice.Set(["Configured Codex effort"] + [codex_effort_label(value) for value in efforts])
         self.effort_choice.SetSelection(0)
         self.effort_choice.Enable(bool(efforts))
+        self._sync_access_keys()
 
     def _saved_rules_note(self):
         from ..ui_text import codex_saved_rules_text
@@ -942,7 +943,6 @@ class NewSessionDialog(wx.Dialog):
                 self._feedback("Codex model choices are available." if self._codex_models else
                                "Codex model choices are unavailable. Configured defaults remain available.")
 
-        self._sync_access_keys()
 
 class GitHubRepoDialog(wx.Dialog):
     """New Session, From GitHub (#154): your repositories from ``gh repo
@@ -5433,8 +5433,11 @@ class ElicitationDialog(wx.Dialog):
         self.fields = request.fields()
         self._controls = {}  # key -> control, or [(value, check box)] for several
         # The room a form's words have: labels and descriptions wrap to it,
-        # as the form only scrolls up and down.
-        self._wrap_width = self.GetClientSize().width - dip_width(self, 60)
+        # as the form only scrolls up and down. To the boxes' right edge, 8
+        # pixels in from each side (the panel's 2 and a field's 6), keeping a
+        # scroll bar's width in case the form needs one.
+        self._wrap_width = (self.GetClientSize().width - 16
+                            - max(wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self), 0))
         outer = wx.BoxSizer(wx.VERTICAL)
         self.can_open = request.is_url and is_web_url(request.url)
         self.address_text = self.note_text = None
@@ -5513,11 +5516,13 @@ class ElicitationDialog(wx.Dialog):
         # The key comes from the field's own name, never "(required)".
         key = choose_access_key(f.label, self._keys_taken)
         plain_label = f.label + (" (required)" if f.required else "")
-        box_width = self._wrap_width - _check_box_glyph(self)
+        glyph = _check_box_glyph(self)
+        box_width = self._wrap_width - glyph
+        # A choose-several group's frame, and its 4 around each thing in it.
+        in_group = self._wrap_width - dip_width(self, 12) - 8
 
-        def words(text):
-            return wx.StaticText(panel, label=_wrapped(panel, text, self._wrap_width)
-                                 .replace("&", "&&"))
+        def words(text, width=self._wrap_width):
+            return wx.StaticText(panel, label=_wrapped(panel, text, width).replace("&", "&&"))
         if f.kind == "boolean":
             control = wx.CheckBox(panel, label=mark_access_key(
                 _wrapped(panel, plain_label, box_width), key))
@@ -5525,10 +5530,17 @@ class ElicitationDialog(wx.Dialog):
             set_accessible_name(control, name)
             sizer.Add(control, 0, wx.ALL, 6)
             if f.description:
-                sizer.Add(words(f.description), 0, wx.LEFT | wx.RIGHT, 24)
+                # Indented to the box's words, and ending where the boxes do.
+                sizer.Add(words(f.description, self._wrap_width - 18), 0, wx.LEFT, 24)
                 # A gap after it, so it reads with its own control (#468).
                 sizer.AddSpacer(6)
             self._controls[f.key] = control
+            if key:
+                # Through _on_key, as Windows ticks a check box on its Alt key
+                # as well as moving to it: seen with real keys, Alt+B went
+                # unticked, ticked, unticked. A box a server ticked for you
+                # could be turned off just by going to it.
+                self._group_keys[ord(key.upper())] = control
             return
         if f.kind == "multi":
             # A group, as the question dialog's: the boxes are its siblings
@@ -5541,7 +5553,7 @@ class ElicitationDialog(wx.Dialog):
             with wx.LogNull():
                 group = wx.StaticBoxSizer(wx.VERTICAL, panel, mark_access_key(plain_label, key))
                 for value, text in f.choices:
-                    box = wx.CheckBox(panel, label=_wrapped(panel, text, box_width)
+                    box = wx.CheckBox(panel, label=_wrapped(panel, text, in_group - glyph)
                                       .replace("&", "&&"))
                     box.SetValue(value in chosen)
                     set_accessible_name(box, f"{name}: {text}" if not boxes
@@ -5549,7 +5561,7 @@ class ElicitationDialog(wx.Dialog):
                     group.Add(box, 0, wx.ALL, 4)
                     boxes.append((value, box))
                 if f.description:
-                    group.Add(words(f.description), 0, wx.ALL, 4)
+                    group.Add(words(f.description, in_group), 0, wx.ALL, 4)
                 sizer.Add(group, 0, wx.EXPAND | wx.ALL, 6)
             self._controls[f.key] = boxes
             if key and boxes:
@@ -5578,7 +5590,8 @@ class ElicitationDialog(wx.Dialog):
             if isinstance(f.default, (str, int, float)) and not isinstance(f.default, bool):
                 control.ChangeValue(str(f.default))
         set_accessible_name(control, name)
-        sizer.Add(control, 0, wx.EXPAND | wx.ALL, 6)
+        # No gap above: a box sits right under its label, as the Message box does.
+        sizer.Add(control, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         if f.help_text():
             sizer.Add(words(f.help_text()), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         self._controls[f.key] = control

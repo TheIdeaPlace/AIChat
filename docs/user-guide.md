@@ -1652,12 +1652,14 @@ What each provider offers:
   the tool's message, to read by line. A form follows, one labelled box per thing it asks for:
   a text box for words and numbers, a check box for yes or no, a list to choose one from, and
   check boxes to choose several; "(required)" marks the ones it needs, a number's limits are
-  said with its box, and each has an Alt key of its own. **Send** checks what you
+  said with its box, and each has an Alt key of its own, which moves to it without changing it.
+  **Send** checks what you
   entered and says what's missing or wrong, then sends it; **Decline** refuses. Enter sends
   from inside the form or on Send. In the message it says "Tab to the form, or to Send", so a
-  stray Enter can't send what the server filled in; with nothing to fill in, it sends from there
-  too. A form The Chat
-  Place can't show, such as one with fields inside fields or too many to go through, says so and
+  stray Enter can't send what the server filled in; with nothing to fill in, it says "Tab to Send,
+  or to Decline", as sending is then your whole answer. A form The Chat
+  Place can't show, such as one with fields inside fields, too many to go through or no proper
+  list of fields, says so and
   has only **Decline** and **Answer Later**; Enter in its boxes says "Tab to Decline". When the
   tool asks you to open a web page instead,
   Answer opens on the **Address** box, above the tool's message: its first line says where the
