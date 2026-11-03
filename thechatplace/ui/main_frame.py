@@ -4061,8 +4061,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._forget_mode_before_plan(own.cli_session_id)  # your choice now (#468)
         self._update_heading()
         # A running turn switches too, if Claude Code takes it (#468).
-        self._live_change(info, own,
-                          lambda runner, done: runner.set_permission_mode(mode, done),
+        self._live_change(info, own, self._change_mode_now(own.cli_session_id, mode),
                           f"Permission mode for {info.title}: {mode_label(mode)}, now and for "
                           "later turns.",
                           f"Permission mode for {info.title}: {mode_label(mode)}, "
@@ -4434,7 +4433,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """A connected tool asking for input (#468): a form to fill in, or a
         web page to open. Opening the page is the answer it asks for; the
         tool carries on once it's done there."""
-        dialog = ElicitationDialog(self, title, request)
+        dialog = ElicitationDialog(self, title, request, feedback=self._feedback)
         try:
             if dialog.ShowModal() != wx.ID_OK or not dialog.action:
                 return None

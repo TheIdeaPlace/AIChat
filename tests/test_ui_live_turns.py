@@ -67,6 +67,41 @@ def test_change_permission_mode_during_a_turn_applies_now(frame, env, monkeypatc
     assert frame.session_heading.GetLabel().endswith("accept edits mode.")
 
 
+def test_quick_mode_choices_arent_overwritten_by_their_own_statuses(frame, env, monkeypatch):
+    """Manual, accept edits, auto in quick succession: accept edits' status
+    arrived with auto saved, looked narrower and overwrote it, and auto's own
+    status then looked wider and wasn't kept (#468)."""
+    runner = _running(frame)
+    frame.store.update("own-1", permission_mode="manual")
+    names = dict(PERMISSION_MODES)
+    for mode in ("acceptEdits", "auto"):
+        _chooser(monkeypatch, frame, names[mode])
+        frame.on_change_permission_mode()
+    assert [c[1] for c in runner.controls] == ["acceptEdits", "auto"]
+    assert frame.store.get("own-1").permission_mode == "auto"
+    for mode in ("acceptEdits", "auto"):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text=mode))
+        assert frame.store.get("own-1").permission_mode == "auto"
+    assert not any("switched" in said for said in env["feedback"])
+    # A change that isn't an echo of yours still counts, and is said.
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="manual"))
+    assert frame.store.get("own-1").permission_mode == "manual"
+    assert env["feedback"][-1] == "Claude Code switched to manual mode."
+
+
+def test_a_refused_mode_choice_isnt_waited_for(frame, env, monkeypatch):
+    _running(frame, ok=False, error="no")
+    frame.store.update("own-1", permission_mode="manual")
+    _chooser(monkeypatch, frame, dict(PERMISSION_MODES)["acceptEdits"])
+    frame.on_change_permission_mode()
+    assert pump(lambda: "own-1" in frame._chosen_modes_for()._waiting
+                and not frame._chosen_modes_for()._waiting["own-1"])
+    # So the same mode set from elsewhere later is a change from elsewhere.
+    frame.store.update("own-1", permission_mode="manual")
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="acceptEdits"))
+    assert any("accept edits mode for this turn" in said for said in env["feedback"])
+
+
 def test_claude_entering_plan_mode_itself_is_kept_and_approval_offers_the_old_mode(frame, env):
     _running(frame)
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="plan"))

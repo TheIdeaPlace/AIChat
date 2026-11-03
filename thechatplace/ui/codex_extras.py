@@ -42,15 +42,17 @@ class CodexExtras:
         _codex_may_open once Codex has answered."""
         return wx.Window.FindFocus(), self.reply_text.GetValue()
 
-    def _codex_may_open(self, mark, what):
+    def _codex_may_open(self, mark, what, over=None):
         """Whether a picker or dialog may open now that Codex has answered.
         Opening one a moment later would take keys you were typing elsewhere
         (on_insert_command says the same for Claude), so it doesn't if focus
-        has moved, the reply box has changed or another dialog is up."""
+        has moved, the reply box has changed or another dialog is up.
+        ``over`` is the dialog it opens from, which isn't another (Lists, for
+        a subagent's conversation)."""
         focus, text = mark
         if (wx.Window.FindFocus() is focus and self.reply_text.GetValue() == text
                 and not any(isinstance(window, wx.Dialog) and window.IsModal()
-                            for window in wx.GetTopLevelWindows())):
+                            and window is not over for window in wx.GetTopLevelWindows())):
             return True
         self._feedback(f"{what} ready, but you've moved on, so nothing opened. Choose it again "
                        'when you want it.')

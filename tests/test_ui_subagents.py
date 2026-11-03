@@ -333,11 +333,53 @@ def test_a_conversation_is_read_in_the_background_and_opened_after(frame, env, m
     assert opened == [] and frame._subagent_opening
     assert pump(lambda: threads)
     assert threads[0] is not threading.current_thread()
-    frame._open_subagent(sub)  # Enter again doesn't read it twice
+    frame._open_subagent(sub)  # Enter again doesn't read it twice, and says so
+    assert env["feedback"][-1] == "Still reading that subagent's conversation."
     release.set()
     assert pump(lambda: opened)
     assert opened == ["Subagent code-reviewer, in Quiet one"] and closed == [True]
     assert not frame._subagent_opening and len(threads) == 1
+
+
+def test_a_conversation_read_after_youve_moved_on_doesnt_open(frame, env, monkeypatch):
+    # Opening a moment later would take the keys you were pressing (#468).
+    import threading
+    _session_with_subagent(frame, env)
+    sub = frame._chat_subagents[0]
+    release, opened = threading.Event(), []
+    real = subagents.open_conversation
+
+    def held(path, agent_type=""):
+        release.wait(20)
+        return real(path, agent_type)
+    monkeypatch.setattr(subagents, "open_conversation", held)
+    monkeypatch.setattr(frame, "_show_subagent_chat",
+                        lambda d: opened.append(d.GetTitle()) or wx.ID_CANCEL)
+    frame._open_subagent(sub)
+    frame.reply_text.SetValue("typing something else")
+    release.set()
+    assert pump(lambda: not frame._subagent_opening)
+    assert opened == []
+    assert any("code-reviewer's conversation is ready, but you've moved on" in f
+               for f in env["feedback"])
+
+
+def test_a_dialog_it_opens_from_doesnt_count_as_another(frame, env, monkeypatch):
+    # Lists is modal while a subagent's conversation is read for it. Any other
+    # dialog that's up means you've moved on.
+    class Up(wx.Dialog):
+        def IsModal(self):
+            return True
+    up = Up(frame)
+    monkeypatch.setattr(wx, "GetTopLevelWindows", lambda: [frame, up])
+    try:
+        mark = frame._codex_mark()
+        assert frame._codex_may_open(mark, "It's", over=up)
+        assert not frame._codex_may_open(mark, "It's")
+        assert "It's ready, but you've moved on" in env["feedback"][-1]
+    finally:
+        monkeypatch.undo()
+        up.Destroy()
 
 
 def test_a_conversation_that_cant_be_read_is_said(frame, env, monkeypatch):

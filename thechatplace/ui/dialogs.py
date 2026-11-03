@@ -5214,6 +5214,9 @@ class ConnectedToolsDialog(wx.Dialog):
         server = self._server_for("sign in to", self.sign_in_btn)
         if server is None:
             return
+        if server.missing and not server.off_for_chat:  # Codex: selected, then removed
+            self._tell(server.text(), back_to=self.sign_in_btn)
+            return
         if server.missing:
             self._tell(self._off_text(server), back_to=self.sign_in_btn)
             return
@@ -5304,7 +5307,9 @@ class ElicitationDialog(wx.Dialog):
     choose one from, and check boxes to choose several. Send checks what's
     needed and sends it; Decline refuses. Enter sends only from inside the
     form or on Send: a stray Enter in the message must not send what the
-    server filled in for you. A form that can't be shown has only Decline.
+    server filled in for you, so it says where to go instead. With nothing to
+    fill in there's nothing to protect, and Enter sends from the message too.
+    A form that can't be shown has only Decline.
 
     A page to open has Open in Browser instead of the form, and opens on an
     Address box above the message. That box is The Chat Place's words about
@@ -5312,7 +5317,7 @@ class ElicitationDialog(wx.Dialog):
     Answer Later (Escape) leaves it waiting.
     """
 
-    def __init__(self, parent, session_title: str, request):
+    def __init__(self, parent, session_title: str, request, feedback=None):
         from ..claude_mcp import is_web_url
         problem = request.form_problem()
         # A page to open is a few lines and a button: no room kept for a form.
@@ -5320,6 +5325,7 @@ class ElicitationDialog(wx.Dialog):
                          size=dialog_size(parent, 680, 380 if request.is_url or problem else 540),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.request = request
+        self._feedback = feedback or (lambda text: None)
         self.action = ""
         self.content = None
         self.fields = request.fields()
@@ -5491,8 +5497,10 @@ class ElicitationDialog(wx.Dialog):
         is. It may not from the Message box, where the dialog opens: Answer
         then Enter would send whatever the server filled in, even a "yes,
         delete it" it had already ticked. A page's default is Decline, and
-        has no such worry."""
-        if self.request.is_url or self.send_btn is None or isinstance(focus, wx.Button):
+        has no such worry; nor has a form with no fields, which has no
+        answers to send but the one you'd be choosing."""
+        if (self.request.is_url or self.send_btn is None or not self.fields
+                or isinstance(focus, wx.Button)):
             return True
         while focus is not None:
             if focus is self.form_panel:
@@ -5505,6 +5513,8 @@ class ElicitationDialog(wx.Dialog):
             return
         if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
                 and not self._enter_may_send(self._focus())):
+            # A key that does nothing and says nothing sounds like a broken one.
+            self._feedback("Tab to the form, or to Send.")
             return
         event.Skip()
 

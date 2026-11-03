@@ -401,6 +401,21 @@ def test_sign_in_on_a_connected_tool_says_so(frame, env, monkeypatch):
     assert env["opened"] == []
 
 
+def test_sign_in_on_a_removed_codex_tool_says_its_removed(frame, env, monkeypatch):
+    # Off for this chat isn't what happened to it, and turning it on wouldn't help.
+    from thechatplace.providers.codex_tools import CodexTool
+    select(frame, "Tools probe")
+    removed = CodexTool("gone", "", off_for_chat=False, missing=True)
+
+    def drive(dialog):
+        monkeypatch.setattr(dialog, "_selected", lambda: removed)
+        dialog.on_sign_in()
+    _connected_tools(frame, monkeypatch, drive)
+    assert env["boxes"][-1] == removed.text()
+    assert "off for this chat" not in env["boxes"][-1]
+    assert ("sign_in", "gone") not in env["mcp"]["calls"]
+
+
 def test_reconnect_reads_it_again(frame, env, monkeypatch):
     select(frame, "Tools probe")
 
@@ -672,6 +687,38 @@ def test_enter_in_the_message_doesnt_send_what_the_server_filled_in(frame, env, 
         monkeypatch.setattr(dialog, "_focus", lambda: dialog.message_text)
         dialog._on_key(other)
         assert other.GetSkipped()  # Tab still moves on
+    finally:
+        dialog.Destroy()
+
+
+def test_enter_in_the_message_says_where_to_go(frame, env, monkeypatch):
+    # A key that did nothing and said nothing (#468).
+    runner = _asked(frame, elicitation_from("e1", FORM))
+
+    def drive(dialog):
+        count = len(env["feedback"])
+        assert not _enter(dialog, monkeypatch, dialog.message_text)
+        assert env["feedback"][count:] == ["Tab to the form, or to Send."]
+        # Nothing to say from where Enter works.
+        assert _enter(dialog, monkeypatch, dialog.send_btn)
+        assert len(env["feedback"]) == count + 1
+        dialog._on_decline()
+    _answer_with(monkeypatch, drive)
+    frame.on_answer()
+    assert runner.responses == [("e1", {"action": "decline"})]
+
+
+def test_a_form_with_nothing_to_fill_in_sends_from_the_message(frame, env, monkeypatch):
+    # No answers filled in for you to protect: Enter is plainly the answer.
+    from thechatplace.ui.dialogs import ElicitationDialog
+    said = []
+    dialog = ElicitationDialog(frame, "Tools probe",
+                               elicitation_from("e", {**FORM, "requested_schema": {
+                                   "type": "object", "properties": {}}}), feedback=said.append)
+    try:
+        assert dialog.fields == [] and dialog.send_btn is not None
+        assert _enter(dialog, monkeypatch, dialog.message_text)
+        assert said == []
     finally:
         dialog.Destroy()
 

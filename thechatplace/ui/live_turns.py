@@ -29,6 +29,7 @@ class LiveTurns:
     #: approving the plan offers that mode again rather than accept edits.
     _mode_before_plan: Dict[str, str] = {}
     _retry_throttle: Optional[live_turn.RetryThrottle] = None
+    _chosen_modes: Optional[live_turn.ChosenModes] = None
 
     # -- Change Model and Change Permission Mode, now -----------------------
 
@@ -64,6 +65,7 @@ class LiveTurns:
         data = event.data or {}
         if kind in ("finished", "failed"):
             self._retry_throttle_for().turn_ended(session_id)
+            self._chosen_modes_for().turn_ended(session_id)
             return False
         if kind == "mode":
             self._claude_changed_mode(session_id, title, event.text, is_open_now)
@@ -100,6 +102,28 @@ class LiveTurns:
             self._retry_throttle = live_turn.RetryThrottle()
         return self._retry_throttle
 
+    def _chosen_modes_for(self) -> live_turn.ChosenModes:
+        if self._chosen_modes is None:
+            self._chosen_modes = live_turn.ChosenModes()
+        return self._chosen_modes
+
+    def _change_mode_now(self, session_id: str, mode: str) -> Callable:
+        """The ``send`` for _live_change that sets a running turn's mode, noting
+        the choice so its status isn't taken for a change from elsewhere."""
+        chosen = self._chosen_modes_for()
+
+        def send(runner, on_done):
+            def answered(ok, response, error):
+                if not ok:
+                    wx.CallAfter(chosen.refused, session_id, mode)
+                on_done(ok, response, error)
+            chosen.chose(session_id, mode)
+            if runner.set_permission_mode(mode, answered):
+                return True
+            chosen.refused(session_id, mode)
+            return False
+        return send
+
     def _claude_changed_mode(self, session_id: str, title: str, mode: str,
                              is_open_now: bool = True) -> None:
         """Claude Code says the chat's permission mode changed: a live Change
@@ -115,7 +139,7 @@ class LiveTurns:
         before_plan = self._mode_before_plan.get(session_id, "")
         if mode != "plan":
             self._forget_mode_before_plan(session_id)  # out of plan mode
-        if now == mode:
+        if self._chosen_modes_for().is_echo(session_id, mode) or now == mode:
             return
         if mode == "plan":
             self._mode_before_plan = {**self._mode_before_plan, session_id: now}

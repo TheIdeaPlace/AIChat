@@ -653,6 +653,38 @@ def test_what_is_kept_and_said_when_claude_code_changes_the_mode(saved, mode, be
     assert live_turn.mode_change(saved, mode, before_plan) == (keep, said)
 
 
+def test_a_status_for_a_mode_chosen_here_is_an_echo_in_order():
+    chosen = live_turn.ChosenModes()
+    chosen.chose("a", "acceptEdits")
+    chosen.chose("a", "auto")
+    assert not chosen.is_echo("b", "auto")  # another chat's
+    assert not chosen.is_echo("a", "manual")  # not chosen here
+    assert chosen.is_echo("a", "acceptEdits")
+    assert not chosen.is_echo("a", "acceptEdits")  # once only: the next is real
+    assert chosen.is_echo("a", "auto")
+    assert not chosen.is_echo("a", "auto")
+
+
+def test_a_status_passes_over_choices_before_it():
+    # Claude Code can report only the last of two quick changes.
+    chosen = live_turn.ChosenModes()
+    chosen.chose("a", "acceptEdits")
+    chosen.chose("a", "auto")
+    assert chosen.is_echo("a", "auto")
+    assert not chosen.is_echo("a", "acceptEdits")
+
+
+def test_a_refused_choice_and_a_turn_ending_arent_waited_for():
+    chosen = live_turn.ChosenModes()
+    chosen.chose("a", "auto")
+    chosen.refused("a", "auto")
+    assert not chosen.is_echo("a", "auto")
+    chosen.refused("a", "auto")  # and again does nothing
+    chosen.chose("a", "plan")
+    chosen.turn_ended("a")
+    assert not chosen.is_echo("a", "plan")
+
+
 def test_a_saved_mode_the_app_doesnt_know_never_takes_on_a_change():
     assert live_turn.mode_change("somethingNew", "manual")[0] == ""
 

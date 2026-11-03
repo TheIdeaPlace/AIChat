@@ -105,6 +105,39 @@ class RetryThrottle:
 _MODE_WIDTH = {"plan": 0, "manual": 1, "acceptEdits": 2, "auto": 3}
 
 
+class ChosenModes:
+    """The modes you chose in this app that a running turn hasn't reported back
+    yet. Each choice is saved at once and Claude Code's status follows, so after
+    manual, accept edits, auto in quick succession the status for accept edits
+    arrives with auto saved. Taken as a change from elsewhere, it would look
+    narrower and overwrite auto, and auto's own status would then look wider and
+    not be kept. ``key`` is the turn's chat."""
+
+    def __init__(self) -> None:
+        self._waiting: Dict[str, List[str]] = {}
+
+    def chose(self, key: str, mode: str) -> None:
+        self._waiting.setdefault(key, []).append(mode)
+
+    def refused(self, key: str, mode: str) -> None:
+        """No status will come for this one."""
+        waiting = self._waiting.get(key, [])
+        if mode in waiting:
+            waiting.remove(mode)
+
+    def is_echo(self, key: str, mode: str) -> bool:
+        """True if a status for ``mode`` reports a choice made here. Statuses
+        come in order, so any choice before it has had its turn."""
+        waiting = self._waiting.get(key, [])
+        if mode not in waiting:
+            return False
+        del waiting[:waiting.index(mode) + 1]
+        return True
+
+    def turn_ended(self, key: str) -> None:
+        self._waiting.pop(key, None)
+
+
 def mode_change(saved: str, mode: str, before_plan: str = "") -> Tuple[str, str]:
     """Claude Code reports ``mode``, which isn't the chat's ``saved`` mode, so
     it didn't come from a choice in this app: those are saved before they

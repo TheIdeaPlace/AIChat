@@ -136,9 +136,14 @@ class SubagentsHost:
         opens when that's done, and keeps a running one up itself. ``closed``
         is called once it has closed."""
         info = self._open
-        if info is None or sub.path is None or self._subagent_opening:
+        if info is None or sub.path is None:
+            return
+        if self._subagent_opening:
+            # Said, so a second Enter on a large one doesn't sound ignored.
+            self._feedback("Still reading that subagent's conversation.")
             return
         generation = self._open_generation
+        mark = self._codex_mark()
 
         def work():
             reader, problem = None, None
@@ -150,7 +155,7 @@ class SubagentsHost:
             except Exception as exc:  # noqa: BLE001 - said in the window
                 problem = exc
             wx.CallAfter(self._subagent_read, generation, info, sub, parent, closed, reader,
-                         problem)
+                         problem, mark)
 
         self._subagent_opening = True
         try:
@@ -158,7 +163,8 @@ class SubagentsHost:
         except RuntimeError:  # the pool is shut down: the window is closing
             self._subagent_opening = False
 
-    def _subagent_read(self, generation, info, sub, parent, closed, reader, problem) -> None:
+    def _subagent_read(self, generation, info, sub, parent, closed, reader, problem,
+                       mark) -> None:
         self._subagent_opening = False
         if self._gone() or self._closing:
             return
@@ -166,6 +172,10 @@ class SubagentsHost:
             return  # another chat was loaded, or Lists closed, while it read
         if problem is not None:
             self._feedback(f"Couldn't read {sub.name}'s conversation: {problem}")
+            return
+        # A large one takes a moment, and opening it after you've moved on
+        # would take the keys you were pressing, as a Codex picker's would.
+        if not self._codex_may_open(mark, f"{sub.name}'s conversation is", over=parent):
             return
         dialog = SubagentChatDialog(
             parent or self, self._latest_subagent(sub.agent_id) or sub, info.title, reader,

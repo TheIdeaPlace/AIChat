@@ -522,8 +522,10 @@ Copilot chats don't have these yet.
     opens on its message, read-only, then a form with one labelled control per thing it asks for
     (a text box for text and numbers, a check box for yes or no, a list to choose one from, check
     boxes to choose several; "(required)" marks the ones it needs), with **Send**, which checks
-    what you entered and says what's missing or wrong first, and **Decline**. Enter sends only
-    from inside the form or on Send, never from the message. A form The Chat Place can't show
+    what you entered and says what's missing or wrong first, and **Decline**. Enter sends from
+    inside the form or on Send. In the message it says "Tab to the form, or to Send", so a
+    stray Enter can't send what the server filled in; with nothing to fill in, it sends from
+    there too. A form The Chat Place can't show
     (fields inside fields, or too many fields or choices) says so, with only **Decline** and
     **Answer Later**. When it asks you to open a web page instead, Answer opens on an **Address**
     box above the message, with the host on its own line ("Opens example.com") and then the whole
