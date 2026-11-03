@@ -3,11 +3,11 @@
  "class": "ElicitationDialog",
  "size": [
   680,
-  534
+  522
  ],
  "client": [
   664,
-  495
+  483
  ],
  "dpi": [
   96,
@@ -62,10 +62,10 @@
     2,
     144,
     660,
-    310
+    298
    ],
    "best": [
-    626,
+    638,
     16
    ],
    "depth": 0,
@@ -98,7 +98,7 @@
    "label": "",
    "rect": [
     10,
-    174,
+    168,
     648,
     23
    ],
@@ -115,15 +115,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Which city to plan for, written the way the local tourist office writes it, so that the hotels, trains and restaurants\nwe look up are all in the right place",
+   "label": "Which city to plan for, written the way the local tourist office writes it, so that the hotels, trains and restaurants we\nlook up are all in the right place",
    "rect": [
     8,
-    201,
-    580,
+    195,
+    598,
     31
    ],
    "best": [
-    580,
+    598,
     31
    ],
    "depth": 1,
@@ -137,7 +137,7 @@
    "label": "&Nights (required):",
    "rect": [
     8,
-    244,
+    238,
     94,
     16
    ],
@@ -156,7 +156,7 @@
    "label": "",
    "rect": [
     10,
-    268,
+    256,
     648,
     23
    ],
@@ -176,7 +176,7 @@
    "label": "Between 1 and 14",
    "rect": [
     8,
-    295,
+    283,
     93,
     16
    ],
@@ -192,15 +192,15 @@
   {
    "class": "CheckBox",
    "name": "Bringing pets, which some places charge extra for and a few don't allow at all, even when their own website says they're welcome",
-   "label": "&Bringing pets, which some places charge extra for and a few don't allow at all, even when their own website\nsays they're welcome",
+   "label": "&Bringing pets, which some places charge extra for and a few don't allow at all, even when their own website says\nthey're welcome",
    "rect": [
     8,
-    323,
-    601,
+    311,
+    626,
     30
    ],
    "best": [
-    601,
+    626,
     30
    ],
    "depth": 1,
@@ -214,7 +214,7 @@
    "label": "&Extras",
    "rect": [
     8,
-    365,
+    353,
     648,
     83
    ],
@@ -233,7 +233,7 @@
    "label": "Breakfast each morning, served in your room or downstairs, for everyone staying with you, and for anyone\nwho joins you later on",
    "rect": [
     17,
-    386,
+    374,
     596,
     30
    ],
@@ -252,7 +252,7 @@
    "label": "Parking",
    "rect": [
     17,
-    424,
+    412,
     62,
     15
    ],
@@ -271,7 +271,7 @@
    "label": "&Send",
    "rect": [
     405,
-    464,
+    452,
     75,
     23
    ],
@@ -290,7 +290,7 @@
    "label": "&Decline",
    "rect": [
     486,
-    464,
+    452,
     75,
     23
    ],
@@ -309,7 +309,7 @@
    "label": "Answer &Later",
    "rect": [
     567,
-    464,
+    452,
     89,
     23
    ],

@@ -45,7 +45,7 @@
     23
    ],
    "best": [
-    127,
+    110,
     83
    ],
    "depth": 0,
@@ -96,7 +96,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Mo&del:",
+   "label": "Model:",
    "rect": [
     10,
     75,
@@ -135,7 +135,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Effort:",
+   "label": "Effort:",
    "rect": [
     10,
     106,

@@ -1611,7 +1611,7 @@
    "class": "ElicitationDialog",
    "size": [
     680,
-    534
+    522
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1714,6 +1714,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Rewind to Here on your first message: Conversation only chosen"
+  },
+  "rewind-files": {
+   "kind": "dialog",
+   "png": "rewind-files-light-100.png",
+   "json": "rewind-files-light-100.json",
+   "title": "Rewind Visual probe to before your message: Make the uploader flush before it signals.",
+   "class": "RewindDialog",
+   "size": [
+    640,
+    460
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Rewind to Here with Conversation and files chosen: the warning in What Happens"
   }
  },
  "seconds": 278.6

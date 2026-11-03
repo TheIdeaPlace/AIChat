@@ -128,7 +128,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "A new chat, Visual probe (rewound), starts with no history, as your message was the first, and your message (\"Make the uploader flush before it signals.\") goes in its reply box to change and send. Visual probe is kept as it is, in the list."
+   "value": "A new chat, Visual probe (rewound), starts with no history, as your message was the first, and your message (\"Make the uploader flush before it signals.\") goes in its reply box to change and send. Visual probe is kept as it is, in the list.\n\nThe files stay as they are. Claude changed 1 file since this message: uploader.py. Choose Conversation and files or Files only to put them back."
   },
   {
    "class": "Button",

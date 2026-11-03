@@ -172,7 +172,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "B&ranch (choose one, or type a new name):",
+   "label": "Branch (choose one, or type a new name):",
    "rect": [
     10,
     137,
@@ -249,7 +249,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Mo&del:",
+   "label": "Model:",
    "rect": [
     10,
     199,
@@ -288,7 +288,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Effort:",
+   "label": "Effort:",
    "rect": [
     10,
     230,
