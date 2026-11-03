@@ -8,6 +8,7 @@ A read-only copy of the conversation that is never saved::
     claude -p --resume <chat> --fork-session --no-session-persistence
               --tools Read,Grep,Glob --strict-mcp-config
               --permission-mode manual --permission-prompts none
+              --disable-slash-commands
 
 Checked with Claude Code 2.1.296 and real Haiku runs:
 
@@ -28,6 +29,12 @@ Checked with Claude Code 2.1.296 and real Haiku runs:
   with no ``--mcp-config`` leaves out MCP servers and claude.ai connectors,
   which would otherwise load (and some of which can change things). Nothing
   asks: ``--permission-prompts none`` refuses anything that would.
+* ``--disable-slash-commands`` makes a question that starts with a slash just
+  a question. Without it (Claude Code 2.1.316), "/marker", with a project
+  command of that name holding a ``!`` shell line, didn't run the line but did
+  come back with no text at all.
+* An aside doesn't appear under the source's id in ``~/.claude/sessions``, so
+  asking doesn't make the source chat look busy.
 
 Claude Code's own ``side_question`` control request needs a turn's process
 running, and every turn here is its own process, so it would only work
@@ -50,7 +57,7 @@ from typing import Callable, Collection, Dict, List, Optional
 from . import platform_paths
 from .claude_cli import (INIT_ANSWER_WAIT, ResumeRefused, StreamParser, api_key_problem,
                          child_environment, exit_message, fable_problem, initialize_line,
-                         is_safe_model, message_line, resolved_model, _decode)
+                         is_safe_dir, is_safe_model, message_line, resolved_model, _decode)
 
 #: The tools an aside may use: it can look at files, never change anything.
 ASIDE_TOOLS = "Read,Grep,Glob"
@@ -64,9 +71,12 @@ COWORK_REFUSED = ("Ask Aside isn't available for Cowork sessions: their conversa
 
 
 def build_aside_command(executable: str, source_id: str, model: str = "",
-                        cowork_ids: Collection[str] = ()) -> List[str]:
+                        cowork_ids: Collection[str] = (),
+                        allowed_dirs: Collection[str] = ()) -> List[str]:
     """The command that asks a side question about session ``source_id``.
-    Never a plain ``--resume``: always a fork that isn't saved."""
+    Never a plain ``--resume``: always a fork that isn't saved. ``allowed_dirs``
+    are the chat's More Folders, so a question about a file in one can be
+    answered; the tools here can still only read them."""
     if not platform_paths.is_safe_id(source_id) or source_id.startswith("local_"):
         raise ResumeRefused("That is not a session id Claude Code can read from.")
     if source_id in cowork_ids:
@@ -78,11 +88,17 @@ def build_aside_command(executable: str, source_id: str, model: str = "",
                # No hooks: a project's Stop or UserPromptSubmit hook ran on
                # every aside (checked: it wrote its file), and could change
                # things in a folder that's read-only here.
-               "--settings", ASIDE_SETTINGS]
+               "--settings", ASIDE_SETTINGS,
+               # A question that starts with a slash is just a question.
+               "--disable-slash-commands"]
     if model:
         if not is_safe_model(model):
             raise ValueError(f"Not a valid model name: {model!r}")
         command += ["--model", model]
+    dirs = [folder for folder in allowed_dirs if is_safe_dir(folder)]
+    if dirs:
+        # Its values run to the next flag: --resume, below.
+        command += ["--add-dir", *dirs]
     return command + ["--resume", source_id, "--fork-session", "--no-session-persistence"]
 
 
@@ -109,6 +125,25 @@ def _plain_problem(returncode, detail: str) -> str:
     if "No conversation found" in (detail or ""):
         return _MISSING
     return exit_message(returncode, detail).replace("the turn", "the question")
+
+
+#: A turn's words for what a Fable or API-key check did, and an aside's. A chat
+#: from the desktop app or a terminal has no File, Change Model to go to.
+_ASIDE_WORDS = (
+    ("didn't send your message", "didn't ask your question"),
+    ("stopped the turn when it moved to Fable", "stopped answering when it moved to Fable"),
+    ("stopped the turn as soon as it started", "stopped the question as soon as it started"),
+    ("stopped the turn before anything was sent", "stopped the question before it was answered"),
+    ("Choose another model with File, Change Model, then send again.",
+     "Choose another model with Claude Code's model setting, or with File, Change Model for "
+     "a chat started here, then ask again."),
+)
+
+
+def _in_aside_words(problem: str) -> str:
+    for turn_words, aside_words in _ASIDE_WORDS:
+        problem = problem.replace(turn_words, aside_words)
+    return problem
 
 
 class AsideRunner:
@@ -247,8 +282,7 @@ class AsideRunner:
                         problem = fable_problem(
                             resolved_model(self.parser.resolved_models, chosen), chosen)
                         if problem:
-                            final = AsideEvent("failed", problem.replace(
-                                "didn't send your message", "didn't ask your question"))
+                            final = AsideEvent("failed", _in_aside_words(problem))
                             fallback.cancel()
                             with self._lock:
                                 self._sent = True  # and never
@@ -260,7 +294,7 @@ class AsideRunner:
                         problem = (api_key_problem(self.parser.api_key_source)
                                    or fable_problem(self.parser.model, chosen, sent=True))
                         if problem:
-                            final = AsideEvent("failed", problem)
+                            final = AsideEvent("failed", _in_aside_words(problem))
                             self._kill()
                             break
                     elif event.kind == "fallback" or event.kind in ("text", "tool"):
@@ -271,9 +305,7 @@ class AsideRunner:
                                     if event.kind == "fallback" else self.parser.reply_model)
                         problem = fable_problem(moved_to, chosen, midway=True)
                         if problem:
-                            final = AsideEvent("failed", problem.replace(
-                                "stopped the turn when it moved to Fable",
-                                "stopped answering when it moved to Fable"))
+                            final = AsideEvent("failed", _in_aside_words(problem))
                             self._kill()
                             break
                     elif event.kind == "finished":
@@ -351,7 +383,55 @@ class _Cancelled(Exception):
     pass
 
 
-@dataclass
+#: What each provider's questions use, as the guide says.
+_PLAN_NAMES = {"Claude": "Claude plan", "Codex": "ChatGPT plan"}
+
+
+def aside_intro(provider: str = "Claude") -> str:
+    """What the Answer box says before anything is asked."""
+    plan = _PLAN_NAMES.get(provider, f"{provider} plan")
+    return (f"Ask a question about this chat, such as which file {provider} changed or what a "
+            f"reply meant. The question and its answer aren't added to the chat, and {provider} "
+            "can read files to answer but can't change anything. Each question uses your "
+            f"{plan}, as a message does.")
+
+
+def _astral(text: str) -> int:
+    """Characters a UTF-16 text box counts as two places, such as an emoji."""
+    return sum(1 for character in text if ord(character) > 0xFFFF)
+
+
+#: How a text box may count: places for a line break, and whether a character
+#: outside the 16-bit range takes two. GTK counts characters; a Windows rich
+#: text box and a Mac count UTF-16 units; a Windows box may count \r\n as two.
+_COUNTINGS = ((1, False), (1, True), (2, True))
+
+
+def answer_start(box_text: str, answer: str, last_position: int) -> int:
+    """The caret position of ``answer``, which ends ``box_text``, in a text box
+    whose last position is ``last_position``; 0 if the box holds something else.
+
+    Worked out from the end, since a line number from the start doesn't work:
+    on Windows ``XYToPosition`` counts displayed lines, so a question that wraps
+    put the caret in the question. How the box counts is read from the box."""
+    box_text = box_text.replace("\r\n", "\n")
+    answer = answer.replace("\r\n", "\n")
+    if not box_text.endswith(answer):
+        return 0
+
+    def places(text: str, line_break: int, wide: bool) -> int:
+        return (len(text) + (line_break - 1) * text.count("\n")
+                + (_astral(text) if wide else 0))
+    for line_break, wide in _COUNTINGS:
+        if places(box_text, line_break, wide) == last_position:
+            return max(last_position - places(answer, line_break, wide), 0)
+    return max(last_position - len(answer), 0)
+
+
+# Not compared by value (#468): the dialog finds an item's row with
+# ``items.index``, and asking the same question twice with the same result
+# would otherwise find the first and leave the new row on "asking..." for good.
+@dataclass(eq=False)
 class AsideItem:
     """One question asked in the dialog, and its answer once it comes."""
 
@@ -359,6 +439,8 @@ class AsideItem:
     answer: str = ""
     failed: bool = False
     asking: bool = True
+    #: Who's answering, as the dialog names it: Claude or Codex.
+    provider: str = "Claude"
 
     def row(self, limit: int = 160) -> str:
         """The row the dialog's list shows: question, then the answer's start."""
@@ -372,12 +454,12 @@ class AsideItem:
         text = f"Q: {question} A: {answer}"
         return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
+    def shown_answer(self) -> str:
+        """The answer as the Answer box shows it, or what's there until it comes."""
+        if self.asking:
+            return self.answer or f"Asking {self.provider}…"
+        return "Not answered. " + self.answer if self.failed else self.answer
+
     def full(self) -> str:
         """The question and answer in full, for the Answer box (read by line)."""
-        if self.asking:
-            answer = self.answer or "Asking Claude…"
-        elif self.failed:
-            answer = "Not answered. " + self.answer
-        else:
-            answer = self.answer
-        return f"Question: {self.question}\n\nAnswer:\n{answer}"
+        return f"Question: {self.question}\n\nAnswer:\n{self.shown_answer()}"

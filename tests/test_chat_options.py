@@ -2,6 +2,7 @@
 their refusals, what's kept with a chat, and the aside runner on a fake
 Claude Code."""
 import json
+import os
 import sys
 import threading
 from pathlib import Path
@@ -9,8 +10,8 @@ from pathlib import Path
 import pytest
 
 from thechatplace import chat_options as co
-from thechatplace.aside import (ASIDE_TOOLS, AsideItem, AsideRunner, COWORK_REFUSED,
-                                build_aside_command)
+from thechatplace.aside import (ASIDE_TOOLS, AsideItem, AsideRunner, COWORK_REFUSED, answer_start,
+                                aside_intro, build_aside_command)
 from thechatplace.chat_options import ChatOptions, choices_from_init
 from thechatplace.claude_cli import (ResumeRefused, build_fork_command, build_new_command,
                                      build_resume_command, child_environment)
@@ -65,6 +66,48 @@ def test_values_that_could_not_come_from_the_dialog_are_refused(options):
         options.flags()
     with pytest.raises(ValueError):
         build_resume_command(EXE, "aaaa-1111", "auto", {"aaaa-1111"}, set(), options=options)
+
+
+@pytest.mark.parametrize("space", [" ", "\n", "\t"])
+def test_instructions_cut_at_a_space_can_still_be_passed(space):
+    # The 8000th character is blank: cut there, the text used to end in it,
+    # fail is_safe_instructions, and stop every turn of the chat being built.
+    text = "x" * (co.MAX_INSTRUCTIONS - 1) + space + "y" * 50
+    kept = co.clean_instructions(text)
+    assert kept == "x" * (co.MAX_INSTRUCTIONS - 1)
+    assert co.is_safe_instructions(kept)
+    assert ChatOptions(instructions=kept).flags() == ["--append-system-prompt=" + kept]
+    assert build_new_command(EXE, "aaaa-1111", "", "auto", options=ChatOptions(instructions=kept))
+
+
+def test_a_chat_with_instructions_cut_at_a_space_survives_the_store(tmp_path):
+    path = tmp_path / "sessions.json"
+    text = "x" * (co.MAX_INSTRUCTIONS - 1) + " " + "y" * 50
+    path.write_text(json.dumps({"version": 1, "sessions": [
+        {"cli_session_id": "aaaa-1111", "title": "Long", "cwd": str(tmp_path),
+         "instructions": text}]}), encoding="utf-8")
+    own = OwnSessionStore(path).get("aaaa-1111")
+    assert own.instructions == "x" * (co.MAX_INSTRUCTIONS - 1)
+    assert own.chat_options().flags()
+
+
+def test_instructions_too_long_are_said_at_ok_not_cut():
+    assert co.instructions_problem("x" * co.MAX_INSTRUCTIONS) == ""
+    # What's kept is what counts: blank edges don't, and a line break is one.
+    assert co.instructions_problem("  " + "x" * co.MAX_INSTRUCTIONS + "\r\n") == ""
+    problem = co.instructions_problem("x" * (co.MAX_INSTRUCTIONS + 1))
+    assert problem.startswith("Those instructions are 8,001 characters")
+    assert "limit is 8,000" in problem
+
+
+def test_a_whole_drive_is_refused_as_that(tmp_path):
+    drive = os.path.abspath(os.sep)
+    assert co.folder_problem(drive) == ("A whole drive can't be added. "
+                                        "Choose a folder inside it.")
+    missing = str(tmp_path / "gone")
+    assert co.folder_problem(missing) == "That folder can't be added: choose an existing folder."
+    assert co.folder_problem("") == "That folder can't be added: choose an existing folder."
+    assert co.folder_problem(str(tmp_path)) == ""
 
 
 def test_plugin_agents_and_styles_with_spaces_are_fine():
@@ -139,6 +182,43 @@ def test_agent_label_is_cut_short():
     assert len(agent.label()) <= 90 and agent.label().endswith("…")
 
 
+def test_agent_label_says_when_it_has_its_own_model():
+    assert co.Agent("wide", "Looks wide.", "sonnet").label() == (
+        "wide (uses its own model, sonnet): Looks wide.")
+    assert co.Agent("wide", "", "sonnet").label() == "wide (uses its own model, sonnet)"
+    # The model before the description, so a long description can't cut it off.
+    cut = co.Agent("wide", "Very long. " * 30, "sonnet").label()
+    assert cut.startswith("wide (uses its own model, sonnet): Very long.")
+    assert len(cut) <= 90
+    # "inherit" is what an agent says with no model of its own.
+    for model in ("", "inherit", "Inherit"):
+        agent = co.Agent("wide", "Looks wide.", model)
+        assert agent.own_model == "" and agent.label() == "wide: Looks wide."
+
+
+@pytest.mark.parametrize("model", ["fable", "claude-fable-5", "Fable", "sonnet[1m]",
+                                   "claude-opus-5-5[1M]"])
+def test_an_agent_whose_model_can_bill_credits_is_refused(model):
+    problem = co.agent_problem(co.Agent("wide", "", model), "opus")
+    assert problem.startswith(f"The agent wide uses its own model, {model},")
+    assert "usage credits" in problem and "Choose another agent" in problem
+    assert co.agent_problem(co.Agent("wide", "", model), "") == problem
+
+
+def test_an_agent_on_the_model_the_chat_chose_is_fine():
+    assert co.agent_problem(co.Agent("wide", "", "fable"), "fable") == ""
+    assert co.agent_problem(co.Agent("wide", "", "claude-fable-5"), "claude-fable-5-20260101") == ""
+    # Fable chosen doesn't cover 1M context, or the other way about.
+    assert co.agent_problem(co.Agent("wide", "", "sonnet[1m]"), "fable")
+    assert co.agent_problem(co.Agent("wide", "", "fable[1m]"), "fable")
+
+
+@pytest.mark.parametrize("agent", [None, co.Agent("wide"), co.Agent("wide", "", "inherit"),
+                                   co.Agent("wide", "", "sonnet"), co.Agent("wide", "", "haiku")])
+def test_other_agents_are_fine(agent):
+    assert co.agent_problem(agent, "opus") == ""
+
+
 def test_initialize_answer_kept_and_choices_fetched_without_a_turn(tmp_path):
     from test_claude_cli import FakeProcess, ev
     body = {"commands": [{"name": "mine"}],
@@ -200,6 +280,22 @@ def test_a_release_that_doesnt_know_the_fields_still_reads_the_chat(tmp_path):
     assert old is not None and old.model == "opus"
 
 
+def test_a_release_that_doesnt_know_the_fields_drops_them_when_it_saves(tmp_path):
+    # Accepted (#468): stepping back to a release from before these options and
+    # changing a chat there loses that chat's agent, instructions and style. The
+    # chat itself is kept, and its next turns run without them, as they did in
+    # that release. This says so on purpose; it isn't a promise to keep them.
+    import legacy_016_own_store as legacy
+    path = tmp_path / "sessions.json"
+    OwnSessionStore(path).add(OwnSession("aaaa-1111", "T", str(tmp_path), model="opus",
+                                         agent="code-reviewer", instructions="x",
+                                         output_style="Concise"))
+    legacy.OwnSessionStore(path).update("aaaa-1111", title="Renamed there")
+    own = OwnSessionStore(path).get("aaaa-1111")
+    assert own.title == "Renamed there" and own.model == "opus"
+    assert own.chat_options() == ChatOptions()
+
+
 def test_another_providers_record_never_carries_claude_options(tmp_path):
     from thechatplace.own_store import _session_from_dict
     record = _session_from_dict({"cli_session_id": "c-1", "title": "C", "cwd": str(tmp_path),
@@ -227,6 +323,32 @@ def test_aside_is_a_fork_that_is_never_saved_and_can_only_read():
     assert "--model" not in build_aside_command(EXE, "dddd-2222")
 
 
+def test_a_question_starting_with_a_slash_is_just_a_question():
+    # Checked with Claude Code 2.1.316: "/marker" came back with no text.
+    command = build_aside_command(EXE, "dddd-2222")
+    assert "--disable-slash-commands" in command
+    assert command.index("--disable-slash-commands") < command.index("--resume")
+
+
+def test_aside_can_read_the_chats_more_folders():
+    folder = "C:\\Other" if sys.platform == "win32" else "/tmp/other"
+    second = "C:\\Second" if sys.platform == "win32" else "/tmp/second"
+    command = build_aside_command(EXE, "dddd-2222", allowed_dirs=[folder, second])
+    start = command.index("--add-dir")
+    # Its values run to the next flag, which is --resume.
+    assert command[start:start + 4] == ["--add-dir", folder, second, "--resume"]
+    assert command[-4:] == ["--resume", "dddd-2222", "--fork-session",
+                            "--no-session-persistence"]
+    # Read-only all the same.
+    assert command[command.index("--tools") + 1] == "Read,Grep,Glob"
+    assert "--add-dir" not in build_aside_command(EXE, "dddd-2222")
+
+
+@pytest.mark.parametrize("unsafe", ["-p", "C:\\", "/", "relative", "a\nb"])
+def test_aside_never_gives_a_folder_that_isnt_one_specific_folder(unsafe):
+    assert "--add-dir" not in build_aside_command(EXE, "dddd-2222", allowed_dirs=[unsafe])
+
+
 def test_aside_refusals():
     with pytest.raises(ResumeRefused):
         build_aside_command(EXE, "local_abc")
@@ -247,6 +369,56 @@ def test_aside_rows_and_full_text():
     assert item.full() == "Question: Which   file?\n\nAnswer:\nmain.py\nonly"
     item.failed, item.answer = True, "Stopped."
     assert item.row().endswith("A: not answered: Stopped.")
+
+
+def test_the_same_question_with_the_same_result_is_its_own_row():
+    # The dialog finds a row with items.index: the first equal item would leave
+    # the new row on "asking..." for good.
+    first, second = AsideItem("Which file?"), AsideItem("Which file?")
+    first.answer, first.asking = "main.py", False
+    second.answer, second.asking = "main.py", False
+    items = [first, second]
+    assert items.index(second) == 1 and first != second
+
+
+def test_aside_text_names_who_is_answering():
+    assert AsideItem("q").shown_answer() == "Asking Claude…"
+    assert AsideItem("q", provider="Codex").shown_answer() == "Asking Codex…"
+    assert AsideItem("q", provider="Codex").full() == "Question: q\n\nAnswer:\nAsking Codex…"
+
+
+def test_aside_intro_says_the_right_plan():
+    assert "your Claude plan" in aside_intro("Claude")
+    codex = aside_intro("Codex")
+    assert "your ChatGPT plan" in codex and "Codex plan" not in codex
+    assert "which file Codex changed" in codex and "Claude" not in codex
+
+
+def _boxes(text):
+    """(line break places, wide) as each kind of text box counts ``text``."""
+    wide = sum(1 for c in text if ord(c) > 0xFFFF)
+    breaks = text.count("\n")
+    return [len(text), len(text) + wide, len(text) + wide + breaks]
+
+
+@pytest.mark.parametrize("question", [
+    "Short?", "A long one that wraps. " * 40, "Two\nlines?", "\nAnswer:\nin the question?"])
+@pytest.mark.parametrize("answer", ["main.py", "Line one\nLine two\n\nLine four", "Yes \U0001F600"])
+def test_the_caret_goes_to_the_answer_however_the_box_counts(question, answer):
+    text = f"Question: {question}\n\nAnswer:\n{answer}"
+    head = text[:-len(answer)]
+    for last, start in zip(_boxes(text), _boxes(head)):
+        assert answer_start(text, answer, last) == start
+
+
+def test_the_caret_stays_at_the_top_if_the_box_holds_something_else():
+    assert answer_start("Ask a question about this chat.", "main.py", 31) == 0
+    assert answer_start("", "main.py", 0) == 0
+
+
+def test_an_unknown_counting_still_gives_a_place_in_the_box():
+    assert answer_start("Question: q\n\nAnswer:\nmain.py", "main.py", 500) == 493
+    assert answer_start("main.py", "main.py", 3) == 0
 
 
 # -- Ask Aside: a fake Claude Code ----------------------------------------------------------
@@ -314,6 +486,9 @@ def test_aside_stops_if_claude_code_would_use_an_api_key(tmp_path):
     runner.join(10)
     assert events[-1].kind == "failed" and "API key" in events[-1].text
     assert process.killed
+    # An aside's words: it isn't a turn.
+    assert "stopped the question before it was answered" in events[-1].text
+    assert "the turn" not in events[-1].text
 
 
 def test_aside_in_a_missing_folder_fails_without_starting(tmp_path):
@@ -338,6 +513,9 @@ def test_aside_stops_before_asking_if_fable_would_answer(tmp_path):
     runner.join(10)
     assert events[-1].kind == "failed" and "Fable" in events[-1].text
     assert "didn't ask your question" in events[-1].text
+    # File, Change Model does nothing for a desktop or terminal chat.
+    assert "Claude Code's model setting" in events[-1].text and "ask again" in events[-1].text
+    assert "send again" not in events[-1].text
     sent = [json.loads(line) for line in (process.written or process.stdin.getvalue())
             .decode("utf-8").splitlines()]
     assert [m["type"] for m in sent] == ["control_request"]  # the question never went
@@ -377,6 +555,24 @@ def test_aside_stops_if_a_reply_comes_from_fable(tmp_path):
                  "content": [{"type": "text", "text": "billed"}]}),
         ev(type="result", subtype="success", result="billed", session_id="s"))
     assert events[-1].kind == "failed" and "Fable" in events[-1].text
+
+
+def test_aside_stopped_as_soon_as_it_starts_on_fable_says_so_in_its_own_words(tmp_path):
+    from test_claude_cli import FakeProcess, ev
+    answer = ev(type="control_response", response={
+        "subtype": "success", "request_id": cli.INIT_REQUEST_ID, "response": {}})
+    init = ev(type="system", subtype="init", session_id="s", model="claude-fable-5",
+              apiKeySource="none")
+    process = FakeProcess([answer, init])
+    events = []
+    runner = AsideRunner([EXE, "--resume", "x"], str(tmp_path), "q", events.append,
+                         popen=lambda c, **k: process)
+    runner.start()
+    runner.join(10)
+    text = events[-1].text
+    assert events[-1].kind == "failed"
+    assert "stopped the question as soon as it started" in text
+    assert "the turn" not in text and "send again" not in text
 
 
 def test_aside_carries_on_when_the_model_doesnt_change(tmp_path):

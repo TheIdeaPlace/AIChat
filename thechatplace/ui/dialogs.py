@@ -786,7 +786,7 @@ class NewSessionDialog(wx.Dialog):
         dialog = ChatOptionsDialog(self, self.title_text.GetValue().strip(), folder,
                                    options=self._chat_options, folders=self._chat_folders,
                                    load_choices=self._load_chat_choices,
-                                   feedback=self._feedback)
+                                   feedback=self._feedback, model=self.values()[4])
         try:
             if dialog.ShowModal() == wx.ID_OK:
                 self._chat_options = dialog.options()
@@ -5464,10 +5464,13 @@ class ChatOptionsDialog(wx.Dialog):
     The agents and styles are the folder's, from Claude Code (``choices``, a
     ``chat_options.ChatChoices``); when they aren't known yet,
     ``load_choices(folder, done)`` gets them and calls ``done(choices)`` on
-    the UI thread (None if Claude Code couldn't say)."""
+    the UI thread (None if Claude Code couldn't say), and maybe again with
+    fresher ones. ``model`` is the chat's own, which an agent's is measured
+    against."""
 
     def __init__(self, parent, chat_title: str, folder: str, options=None, folders=(),
-                 choices=None, load_choices=None, existing: bool = False, feedback=None):
+                 choices=None, load_choices=None, existing: bool = False, feedback=None,
+                 model: str = ""):
         from ..chat_options import ChatOptions
         super().__init__(parent, title=f"Chat Options: {chat_title}" if chat_title
                          else "Chat Options", size=dialog_size(parent, 620, 600),
@@ -5475,6 +5478,7 @@ class ChatOptionsDialog(wx.Dialog):
         self._folder = folder
         self._options = options or ChatOptions()
         self._choices = choices
+        self._chat_model = model
         self._feedback = feedback or (lambda text: None)
         self._agent_values = [""]
         self._style_values = [""]
@@ -5496,11 +5500,8 @@ class ChatOptionsDialog(wx.Dialog):
         self.instructions = wx.TextCtrl(self, value=self._options.instructions,
                                         style=wx.TE_MULTILINE | wx.TE_RICH2)
         set_accessible_name(self.instructions, "Instructions for this chat")
-        from ..chat_options import MAX_INSTRUCTIONS
-        if not gtk_a11y.IS_LINUX:
-            # As kept, so nothing is cut silently. GTK's multi-line box has
-            # no limit (wx asserts); there, OK says if they were shortened.
-            self.instructions.SetMaxLength(MAX_INSTRUCTIONS)
+        # No SetMaxLength: on Windows it silently drops the end of a long
+        # paste, and GTK's multi-line box has none. OK says they're too long.
         self.instructions.SetMinSize(dip(self, -1, 110))
         sizer.Add(self.instructions, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -5510,7 +5511,11 @@ class ChatOptionsDialog(wx.Dialog):
         self._folders = list(folders)
         self.folders = wx.ListBox(self, choices=self._folders or [NO_MORE_FOLDERS],
                                   style=wx.LB_SINGLE)
+        # The hint needs an accessible of its own: SetName doesn't reach JAWS
+        # and NVDA for a list box.
         set_accessible_name(self.folders, "More folders, Delete removes one")
+        set_list_items_accessible(self.folders, lambda: "More folders, Delete removes one",
+                                  lambda index: None)
         self.folders.SetMinSize(dip(self, -1, 70))
         self.folders.SetSelection(0)
         sizer.Add(self.folders, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -5529,6 +5534,7 @@ class ChatOptionsDialog(wx.Dialog):
         buttons = wx.StdDialogButtonSizer()
         ok = wx.Button(self, wx.ID_OK)
         ok.SetDefault()
+        ok.Bind(wx.EVT_BUTTON, lambda e: self.on_ok())
         buttons.AddButton(ok)
         buttons.AddButton(wx.Button(self, wx.ID_CANCEL))
         buttons.Realize()
@@ -5541,10 +5547,10 @@ class ChatOptionsDialog(wx.Dialog):
         self.remove_folder_btn.Bind(wx.EVT_BUTTON, lambda e: self.remove_folder())
         self.folders.Bind(wx.EVT_KEY_DOWN, self._on_folders_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
-        if choices is None and load_choices is not None:
+        if load_choices is not None:
             if folder and os.path.isdir(folder):
                 wx.CallAfter(load_choices, folder, self._choices_loaded)
-            else:
+            elif choices is None:
                 wx.CallAfter(self._feedback, "Choose an existing folder first to see its "
                                              "agents and output styles.")
         wx.CallAfter(lambda: self and self.agent.SetFocus())
@@ -5586,14 +5592,19 @@ class ChatOptionsDialog(wx.Dialog):
     def _choices_loaded(self, choices):
         if not self or self.IsBeingDeleted():
             return
+        known = self._choices
         if choices is None:
-            self._feedback("Couldn't get this folder's agents and output styles from Claude "
-                           "Code.")
+            if known is None:
+                self._feedback("Couldn't get this folder's agents and output styles from "
+                               "Claude Code.")
             return
+        if choices == known:
+            return  # the refresh found nothing new: nothing to say or redraw
         self._choices = choices
         self._fill_choices()
         if self.IsShown():
-            self._feedback("This folder's agents and output styles are ready.")
+            self._feedback("This folder's agents and output styles are ready." if known is None
+                           else "This folder's agents and output styles were updated.")
 
     # -- more folders
 
@@ -5615,10 +5626,11 @@ class ChatOptionsDialog(wx.Dialog):
 
     def add_folder(self, folder: str) -> bool:
         """Add ``folder`` to More Folders; False (and said why) if it can't be."""
-        from ..claude_cli import is_safe_dir
+        from ..chat_options import folder_problem
         folder = os.path.abspath(folder) if folder else folder
-        if not folder or not is_safe_dir(folder) or not os.path.isdir(folder):
-            self._feedback("That folder can't be added: choose an existing folder.")
+        problem = folder_problem(folder)
+        if problem:
+            self._feedback(problem)
             return False
         same = workplaces.folder_key
         if self._folder and same(folder) == same(self._folder):
@@ -5657,18 +5669,32 @@ class ChatOptionsDialog(wx.Dialog):
     def _on_key(self, event):
         if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
                 and event.ControlDown() and not event.AltDown()):
-            _end_modal(self, wx.ID_OK)
+            self.on_ok()
             return
         if press_focused_button_on_a_mac(event):
             return
         event.Skip()
 
+    def on_ok(self):
+        """OK and Ctrl+Enter: closes, unless the choices can't be kept, when it
+        stays open on the control at fault and says why. Focus first, so that
+        reading the control doesn't cut off the reason."""
+        from ..chat_options import agent_problem, instructions_problem
+        name = self._agent_values[max(0, self.agent.GetSelection())]
+        agents = self._choices.agents if self._choices is not None else ()
+        agent = next((a for a in agents if a.name == name), None)
+        for problem, control in ((agent_problem(agent, self._chat_model), self.agent),
+                                 (instructions_problem(self.instructions.GetValue()),
+                                  self.instructions)):
+            if problem:
+                control.SetFocus()
+                self._feedback(problem)
+                return
+        _end_modal(self, wx.ID_OK)
+
     def options(self):
         """The ``chat_options.ChatOptions`` chosen (without ``fresh``)."""
-        from ..chat_options import MAX_INSTRUCTIONS, ChatOptions, clean_instructions
-        if len(self.instructions.GetValue().strip()) > MAX_INSTRUCTIONS:
-            self._feedback(f"Instructions are kept to their first {MAX_INSTRUCTIONS:,} "
-                           "characters.")
+        from ..chat_options import ChatOptions, clean_instructions
         agent = self._agent_values[max(0, self.agent.GetSelection())]
         style = self._style_values[max(0, self.style.GetSelection())]
         return ChatOptions(agent, clean_instructions(self.instructions.GetValue()), style)
@@ -5682,12 +5708,6 @@ STREAM_EVERY = 0.75
 
 #: The questions list's one row before anything is asked.
 ASIDE_NONE_YET = "No questions yet."
-
-#: What the Answer box says before anything is asked.
-ASIDE_INTRO = (
-    "Ask a question about this chat, such as which file Claude changed or what a reply meant. "
-    "The question and its answer aren't added to the chat, and Claude can read files to answer "
-    "but can't change anything. Each question uses your Claude plan, as a message does.")
 
 
 class AskAsideDialog(wx.Dialog):
@@ -5730,12 +5750,17 @@ class AskAsideDialog(wx.Dialog):
         # the empty list as "unknown" (#468).
         self.history = wx.ListBox(self, choices=[ASIDE_NONE_YET], style=wx.LB_SINGLE)
         self.history.SetSelection(0)
+        # The hint needs an accessible of its own: SetName doesn't reach JAWS
+        # and NVDA for a list box.
         set_accessible_name(self.history, "Questions and answers, Enter reads one")
+        set_list_items_accessible(self.history, lambda: "Questions and answers, Enter reads one",
+                                  lambda index: None)
         self.history.SetMinSize(dip(self, -1, 90))
         sizer.Add(self.history, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         sizer.Add(wx.StaticText(self, label="Ans&wer:"), 0, wx.LEFT | wx.TOP, 10)
-        self.answer = _read_only_text(self, ASIDE_INTRO.replace('Claude', provider), "Answer", min_height=150)
+        from ..aside import aside_intro
+        self.answer = _read_only_text(self, aside_intro(provider), "Answer", min_height=150)
         sizer.Add(self.answer, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         buttons = wx.BoxSizer(wx.HORIZONTAL)
@@ -5767,7 +5792,7 @@ class AskAsideDialog(wx.Dialog):
             if self.asking:
                 # Not Stop: a next question typed while the answer comes
                 # would otherwise cancel it, and be lost.
-                self._feedback("Claude is still answering. Escape stops it.")
+                self._feedback(f"{self.provider} is still answering. Escape stops it.")
                 return
             self.on_ask()
             return
@@ -5807,15 +5832,13 @@ class AskAsideDialog(wx.Dialog):
 
     def _focus_answer(self):
         """To the Answer box, on its answer's first line (after the question)."""
+        from ..aside import answer_start
         self.answer.SetFocus()
-        text = self.answer.GetValue()
-        start = text.find("\nAnswer:\n")
-        position = start + len("\nAnswer:\n") if start >= 0 else 0
-        # Windows counts a line break as two places in a rich text box.
-        position = self.answer.XYToPosition(0, text[:position].count("\n")) \
-            if start >= 0 else 0
-        self.answer.SetInsertionPoint(max(position, 0))
-        self.answer.ShowPosition(max(position, 0))
+        item = self._selected()
+        position = 0 if item is None else answer_start(
+            self.answer.GetValue(), item.shown_answer(), self.answer.GetLastPosition())
+        self.answer.SetInsertionPoint(position)
+        self.answer.ShowPosition(position)
 
     def _refresh_row(self, item, streaming: bool = False):
         index = self.items.index(item)
@@ -5836,7 +5859,7 @@ class AskAsideDialog(wx.Dialog):
             self._feedback("Type a question first.")
             self.question.SetFocus()
             return
-        item = AsideItem(question)
+        item = AsideItem(question, provider=self.provider)
         started = self._ask(question, lambda event: self._event(item, event))
         if isinstance(started, str) or started is None:
             self._feedback(started or f"Couldn't ask {self.provider}.")

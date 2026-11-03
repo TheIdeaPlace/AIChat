@@ -2943,8 +2943,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not info.is_own and not conversation and not imported:
             # Heard as unavailable for a Cowork session (#91), whose button is hidden.
             add("Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here, not info.cowork)
-        if info.provider == "claude" and info.source != "kept":
-            add("Ask &Aside...\tCtrl+Shift+Y", self.on_ask_aside, not info.cowork)
+        # By the session's own capability, so Codex's chats have it too (#468).
+        # A Claude chat without it (Cowork) is listed, heard as unavailable.
+        try:
+            aside = self.sessions.capabilities(info).aside
+        except ValueError:
+            aside = False
+        if info.source != "kept" and (aside or info.provider == "claude"):
+            add("Ask &Aside...\tCtrl+Shift+Y", self.on_ask_aside, aside)
         add("Re&name Session...\tF2", self.on_rename)
         add("&Remote Control...", self.on_remote_control, not conversation and not imported)
         menu.AppendSeparator()
@@ -4578,8 +4584,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
             return
         session_id = new_session_id()
-        command = build_new_command(exe, session_id, title, mode, model, effort=effort,
-                                    allowed_dirs=more_folders, options=chat_options)
+        try:
+            command = build_new_command(exe, session_id, title, mode, model, effort=effort,
+                                        allowed_dirs=more_folders, options=chat_options)
+        except (ResumeRefused, ValueError) as exc:
+            # The dialog has gone, with the first message you typed in it.
+            self._relay_kept(message, f"No chat was started: {exc} Your message wasn't sent.")
+            return
         own = OwnSession(cli_session_id=session_id, title=title, cwd=folder,
                          permission_mode=mode, started=False, model=model, effort=effort,
                          **_options_fields(chat_options, more_folders))

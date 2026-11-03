@@ -9,6 +9,7 @@ from thechatplace.aside import AsideEvent  # noqa: E402
 from thechatplace.chat_options import ChatOptions  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
 
+from markers import msaa  # noqa: E402
 from records import assistant_block, text_block, user_text  # noqa: E402
 import fake_env  # noqa: E402
 from fake_env import FakeRunner, add_desktop, add_transcript, now_ms, pump  # noqa: E402
@@ -96,7 +97,8 @@ def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, 
         assert dialog.agent.GetStringSelection() == "gone-agent"
         assert pump(lambda: dialog.agent.GetCount() > 2)
         assert list(dialog.agent.GetStrings()) == [
-            "None (Claude Code's default)", "code-reviewer: Independent review of a change.",
+            "None (Claude Code's default)",
+            "code-reviewer (uses its own model, opus): Independent review of a change.",
             "Explore: Read-only search agent.", "gone-agent (not found in this folder)"]
         assert dialog.agent.GetStringSelection() == "gone-agent (not found in this folder)"
         assert list(dialog.style.GetStrings()) == [
@@ -123,6 +125,217 @@ def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, 
         assert said[-1] == "No more folders." and dialog.chosen_folders() == []
     finally:
         dialog.Destroy()
+
+
+def _agent_dialog(frame, folder, said, agents, model=""):
+    from thechatplace.chat_options import choices_from_init
+    from thechatplace.ui.dialogs import ChatOptionsDialog
+    return ChatOptionsDialog(frame, "Mine", folder, feedback=said.append, model=model,
+                             choices=choices_from_init({"agents": agents}))
+
+
+def test_ok_refuses_an_agent_whose_model_can_bill_credits(frame, folder):
+    said = []
+    dialog = _agent_dialog(frame, folder, said, [{"name": "wide", "model": "fable"},
+                                                 {"name": "calm", "model": "sonnet"}])
+    try:
+        assert dialog.agent.GetString(1) == "wide (uses its own model, fable)"
+        dialog.SetReturnCode(wx.ID_CANCEL)
+        dialog.agent.SetSelection(1)
+        dialog.on_ok()
+        assert dialog.GetReturnCode() == wx.ID_CANCEL  # stays open
+        assert said[-1].startswith("The agent wide uses its own model, fable")
+        dialog.agent.SetSelection(2)
+        dialog.on_ok()
+        assert dialog.GetReturnCode() == wx.ID_OK
+    finally:
+        dialog.Destroy()
+
+
+def test_ok_keeps_an_agent_on_the_model_the_chat_chose(frame, folder):
+    said = []
+    dialog = _agent_dialog(frame, folder, said, [{"name": "wide", "model": "fable"}],
+                           model="fable")
+    try:
+        dialog.agent.SetSelection(1)
+        dialog.on_ok()
+        assert dialog.GetReturnCode() == wx.ID_OK and not said
+    finally:
+        dialog.Destroy()
+
+
+def test_new_session_gives_chat_options_its_model(frame, folder, monkeypatch):
+    from thechatplace.ui import dialogs
+    from thechatplace.ui.dialogs import NewSessionDialog
+    seen = {}
+
+    class Opens(dialogs.ChatOptionsDialog):
+        def __init__(self, *args, **kwargs):
+            seen.update(kwargs)
+            super().__init__(*args, **kwargs)
+
+        def ShowModal(self):
+            return wx.ID_CANCEL
+    monkeypatch.setattr(dialogs, "ChatOptionsDialog", Opens)
+    dialog = NewSessionDialog(frame, folder, providers=("claude",), provider="claude")
+    try:
+        dialog.on_chat_options()
+        assert seen["model"] == dialog.values()[4]
+    finally:
+        dialog.Destroy()
+
+
+def test_long_instructions_stay_whole_and_ok_says_they_are_too_long(frame, folder):
+    from thechatplace.chat_options import MAX_INSTRUCTIONS
+    from thechatplace.ui.dialogs import ChatOptionsDialog
+    said = []
+    dialog = ChatOptionsDialog(frame, "Mine", folder, feedback=said.append)
+    try:
+        dialog.SetReturnCode(wx.ID_CANCEL)
+        pasted = "x" * (MAX_INSTRUCTIONS + 500)
+        dialog.instructions.SetValue(pasted)
+        assert dialog.instructions.GetValue() == pasted  # nothing dropped
+        dialog.on_ok()
+        assert dialog.GetReturnCode() == wx.ID_CANCEL
+        assert said[-1].startswith("Those instructions are 8,500 characters")
+        dialog.instructions.SetValue("x" * MAX_INSTRUCTIONS)
+        dialog.on_ok()
+        assert dialog.GetReturnCode() == wx.ID_OK
+    finally:
+        dialog.Destroy()
+
+
+def test_ctrl_enter_is_refused_as_ok_is(frame, folder):
+    said = []
+    dialog = _agent_dialog(frame, folder, said, [{"name": "wide", "model": "sonnet[1m]"}])
+    try:
+        dialog.SetReturnCode(wx.ID_CANCEL)
+        dialog.agent.SetSelection(1)
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_RETURN)
+        event.SetControlDown(True)
+        dialog._on_key(event)
+        assert dialog.GetReturnCode() == wx.ID_CANCEL and "sonnet[1m]" in said[-1]
+    finally:
+        dialog.Destroy()
+
+
+def test_a_whole_drive_is_refused_with_that_reason(frame, folder):
+    import os
+    from thechatplace.ui.dialogs import ChatOptionsDialog
+    said = []
+    dialog = ChatOptionsDialog(frame, "Mine", folder, feedback=said.append)
+    try:
+        assert not dialog.add_folder(os.path.abspath(os.sep))
+        assert said[-1] == "A whole drive can't be added. Choose a folder inside it."
+        assert dialog.chosen_folders() == []
+    finally:
+        dialog.Destroy()
+
+
+def test_kept_choices_show_at_once_and_are_refreshed(frame, env, folder, monkeypatch):
+    from thechatplace.chat_options import choices_from_init
+    from thechatplace.ui import claude_extras, main_frame
+    from thechatplace.ui.dialogs import ChatOptionsDialog
+    old = choices_from_init({"agents": [{"name": "old-one"}]})
+    frame._chat_choices_cache()[claude_extras._folder_key(folder)] = old
+    said = []
+    monkeypatch.setattr(ChatOptionsDialog, "IsShown", lambda self: True)
+    dialog = ChatOptionsDialog(frame, "Mine", folder, choices=old, feedback=said.append,
+                               load_choices=frame._load_chat_choices)
+    try:
+        assert "old-one" in dialog.agent.GetStrings()
+        assert pump(lambda: any(s.startswith("Explore") for s in dialog.agent.GetStrings()))
+        assert said[-1] == "This folder's agents and output styles were updated."
+        assert frame._chat_choices_cache()[claude_extras._folder_key(folder)].agent_names() == [
+            "code-reviewer", "Explore"]
+        # Nothing new, or Claude Code can't say: the list stands, and nothing's said.
+        said.clear()
+        kept = list(dialog.agent.GetStrings())
+        frame._load_chat_choices(folder, dialog._choices_loaded)
+        pump(lambda: False, timeout=0.3)
+        monkeypatch.setattr(main_frame, "fetch_chat_choices", lambda exe, cwd: None)
+        frame._load_chat_choices(folder, dialog._choices_loaded)
+        pump(lambda: False, timeout=0.3)
+        assert said == [] and list(dialog.agent.GetStrings()) == kept
+    finally:
+        dialog.Destroy()
+
+
+def test_the_first_answer_to_a_chats_choices_still_says_ready_or_why_not(frame, env, folder,
+                                                                         monkeypatch):
+    from thechatplace.ui import main_frame
+    from thechatplace.ui.dialogs import ChatOptionsDialog
+    said = []
+    monkeypatch.setattr(ChatOptionsDialog, "IsShown", lambda self: True)
+    monkeypatch.setattr(main_frame, "fetch_chat_choices", lambda exe, cwd: None)
+    dialog = ChatOptionsDialog(frame, "Mine", folder, feedback=said.append,
+                               load_choices=frame._load_chat_choices)
+    try:
+        assert pump(lambda: bool(said))
+        assert said[-1].startswith("Couldn't get this folder's agents")
+    finally:
+        dialog.Destroy()
+
+
+def test_focus_is_given_back_only_if_it_isnt_there_already(monkeypatch):
+    # Setting it again had a screen reader say the row twice (#468).
+    from thechatplace.ui.claude_extras import _give_focus_back
+
+    class Spot:
+        calls = 0
+
+        def SetFocus(self):
+            self.calls += 1
+    spot = Spot()
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: spot))
+    _give_focus_back(spot)
+    assert spot.calls == 0
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: None))
+    _give_focus_back(spot)
+    assert spot.calls == 1
+    _give_focus_back(None)  # there was nowhere to go back to
+
+
+@msaa
+def test_list_hints_reach_jaws_and_nvda(frame, folder):
+    from thechatplace.ui.dialogs import AskAsideDialog, ChatOptionsDialog
+    options = ChatOptionsDialog(frame, "Mine", folder)
+    aside = AskAsideDialog(frame, "Mine", lambda question, on_event: None)
+    try:
+        assert options.folders.GetAccessible().GetName(0) == (
+            wx.ACC_OK, "More folders, Delete removes one")
+        assert aside.history.GetAccessible().GetName(0) == (
+            wx.ACC_OK, "Questions and answers, Enter reads one")
+        # A row is still read as itself.
+        assert options.folders.GetAccessible().GetName(1)[1] == ""
+    finally:
+        options.Destroy()
+        aside.Destroy()
+
+
+def test_new_session_keeps_the_typed_message_if_the_command_cant_be_built(frame, env, folder,
+                                                                          monkeypatch):
+    from thechatplace.ui import main_frame
+    copied = []
+    monkeypatch.setattr(type(frame), "_copy_text", lambda self, text: copied.append(text) or True)
+
+    class Fills(main_frame.NewSessionDialog):
+        def ShowModal(self):
+            self.set_folder(folder)
+            self.message.SetValue("My long first message")
+            return wx.ID_OK
+
+    def refuse(*args, **kwargs):
+        raise ValueError("Those instructions can't be passed to Claude Code.")
+    monkeypatch.setattr(main_frame, "NewSessionDialog", Fills)
+    monkeypatch.setattr(main_frame, "build_new_command", refuse)
+    before = len(frame.store.all())
+    frame.on_new_session()
+    assert copied == ["My long first message"]
+    assert "No chat was started: Those instructions" in env["feedback"][-1]
+    assert "copied to the clipboard" in env["feedback"][-1]
+    assert len(frame.store.all()) == before and FakeRunner.instances == []
 
 
 def test_new_session_starts_with_its_chat_options(frame, env, folder, tmp_path, monkeypatch):
@@ -300,6 +513,100 @@ def test_ask_aside_asks_a_read_only_copy_and_says_the_answer(frame, env, folder,
     assert env["spoken"][-1] == "Answer. main.py, line 4."
     assert copied == ["main.py, line 4."]
     assert FakeRunner.instances == []  # no turn of the chat's own
+
+
+def test_the_same_question_twice_finishes_its_own_row(frame, env, monkeypatch):
+    def steps(dialog):
+        for row in (0, 1):
+            dialog.question.SetValue("Which file?")
+            dialog.on_ask()
+            FakeAside.instances[-1].on_event(AsideEvent("done", "main.py"))
+            assert pump(lambda: not dialog.asking)
+            assert dialog.history.GetSelection() == row
+        assert list(dialog.history.GetStrings()) == ["Q: Which file? A: main.py"] * 2
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+
+
+def test_a_wrapped_question_leaves_the_caret_on_the_answer(frame, env, monkeypatch):
+    # On Windows XYToPosition counts displayed lines, which put it in the question.
+    answer = "First line of the answer.\nSecond line."
+
+    def steps(dialog):
+        dialog.question.SetValue("Why did this happen when it did? " * 30)
+        dialog.on_ask()
+        FakeAside.instances[-1].on_event(AsideEvent("done", answer))
+        assert pump(lambda: not dialog.asking)
+        box = dialog.answer
+        assert box.GetRange(box.GetInsertionPoint(), box.GetLastPosition()) == answer
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+
+
+def test_ask_aside_can_read_the_chats_more_folders(frame, tmp_path, monkeypatch):
+    frame.store.update("own-1", allowed_dirs=[str(tmp_path)])
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, lambda d: (d.question.SetValue("q"), d.on_ask()))
+    command = FakeAside.instances[-1].command
+    assert command[command.index("--add-dir") + 1] == str(tmp_path)
+    assert command[command.index("--tools") + 1] == "Read,Grep,Glob"
+
+
+def test_a_desktop_chat_has_no_more_folders_to_give_an_aside(frame, monkeypatch):
+    select(frame, "Desktop one")
+    _drive_aside(frame, monkeypatch, lambda d: (d.question.SetValue("q"), d.on_ask()))
+    assert "--add-dir" not in FakeAside.instances[-1].command
+
+
+def test_ask_aside_names_codex_and_its_plan(frame, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import AskAsideDialog
+    said = []
+    dialog = AskAsideDialog(frame, "Codex example",
+                            lambda question, on_event: SimpleNamespace(cancel=lambda: None),
+                            provider="Codex", feedback=said.append)
+    try:
+        assert "your ChatGPT plan" in dialog.answer.GetValue()
+        assert "Codex plan" not in dialog.answer.GetValue()
+        dialog.question.SetValue("Which file?")
+        dialog.on_ask()
+        assert dialog.answer.GetValue().endswith("Asking Codex…")
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_RETURN)
+        event.SetControlDown(True)
+        dialog._on_key(event)
+        assert said[-1] == "Codex is still answering. Escape stops it."
+    finally:
+        dialog.stop()
+        dialog.Destroy()
+
+
+def _aside_on_the_menu(frame):
+    menu, _actions = frame._session_menu()
+    try:
+        items = [item for item in menu.GetMenuItems() if "Aside" in item.GetItemLabel()]
+        return [item.IsEnabled() for item in items]
+    finally:
+        menu.Destroy()
+
+
+def test_the_lists_menu_offers_ask_aside_by_the_chats_capability(frame, monkeypatch):
+    import dataclasses
+    from thechatplace.providers.base import SessionCapabilities
+    select(frame, "Mine")
+    assert _aside_on_the_menu(frame) == [True]
+    codex = dataclasses.replace(frame._selected_session(), provider="codex")
+    monkeypatch.setattr(frame, "_selected_session", lambda: codex)
+    monkeypatch.setattr(frame.sessions, "capabilities",
+                        lambda info: SessionCapabilities(aside=True))
+    assert _aside_on_the_menu(frame) == [True]
+    monkeypatch.setattr(frame.sessions, "capabilities",
+                        lambda info: SessionCapabilities(aside=False))
+    assert _aside_on_the_menu(frame) == []
+    # A Claude chat that can't (Cowork) is listed, heard as unavailable.
+    claude = dataclasses.replace(codex, provider="claude")
+    monkeypatch.setattr(frame, "_selected_session", lambda: claude)
+    assert _aside_on_the_menu(frame) == [False]
 
 
 def test_enter_on_a_question_reads_its_answer_from_the_dialogs_key_hook(frame, env,

@@ -154,6 +154,20 @@ STEPS = [
     Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # File, Chat Options (#468), opened by the trigger: the item has no access
+    # key. It opens on Agent, and Tab goes through every control in turn. The
+    # list has no folders yet, so its one row says so. Add Folder's picker
+    # comes back to Add Folder, as there's no folder to go to in the list.
+    Step("Chat Options", [], trigger="chat-options", expect=["Chat Options: Visual probe", "Agent"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Chat Options, output style", ["Tab"], expect=["Output style"]),
+    Step("Chat Options, instructions", ["Tab"], expect=["Instructions for this chat"]),
+    Step("Chat Options, more folders", ["Tab"], expect=["No more folders"]),
+    Step("Chat Options, Add Folder", ["Tab"], expect=["Add Folder"]),
+    Step("Add Folder's picker", ["space"], expect=["Choose a folder Claude may also work in"]),
+    Step("picker closed, back on Add Folder", ["Escape"], expect=["Add Folder"]),
+    Step("Chat Options closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     # Back Up Now (#433, #435): the folder question, and Escape back out.
     Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
     Step("folder question closed, back in the messages", ["Escape"],
@@ -364,6 +378,13 @@ def stop_background_task(frame) -> None:
     wx.CallAfter(frame.on_stop_background_task)
 
 
+def chat_options(frame) -> None:
+    """File, Chat Options on the probe's own session, open by then (#468). After
+    the timer's call, as the dialog is modal."""
+    import wx
+    wx.CallAfter(frame.on_chat_options)
+
+
 def _codex_dialog(name, frame, env) -> None:
     """Opens one of the probe's Codex dialogs (#467)."""
     import ui_probe
@@ -448,6 +469,7 @@ TRIGGERS = {
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),
+    "chat-options": lambda frame, env: chat_options(frame),
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "copilot": copilot_chat,

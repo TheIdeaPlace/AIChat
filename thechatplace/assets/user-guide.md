@@ -1215,19 +1215,25 @@ Continue Here, or for a Claude chat started here, with **File, Chat Options**. T
 
 - **Agent** (Alt+A): None (Claude Code's default), or one of the agents Claude Code knows for the
   chat's folder, such as your code-reviewer, each with the start of its description. The chat
-  then runs as that agent, with its instructions and tools.
+  then runs as that agent, with its instructions and tools. An agent with a model of its own uses
+  that model whatever the chat's is, and the list says so, such as "code-reviewer (uses its own
+  model, opus)"; the chat's heading still names the chat's model. OK refuses, and says why, an
+  agent whose own model can bill usage credits: a 1M context model, or Fable unless the chat is
+  on Fable too.
 - **Output style** (Alt+S): your setting (named, such as "Your setting (Proactive)"), or one of
   the styles Claude Code offers, yours included. It changes how Claude writes its replies.
 - **Instructions for this chat** (Alt+I): anything Claude should always do in this chat, such as
   "Answer in British English" or "Never change the tests". Enter starts a new line. They're added
-  to Claude's own instructions for every message.
-- **More folders** (Alt+F): folders Claude may also work in. **Add Folder** (Alt+D) chooses one;
-  **Remove** (Alt+R), or Delete in the list, takes one off. They show in Chat Permissions as
-  "Work in the folder …", where you can also take one back.
+  to Claude's own instructions for every message. The limit is 8,000 characters, and OK says if
+  they're longer.
+- **More folders** (Alt+F): folders Claude may also work in. **Add Folder** (Alt+D) chooses one,
+  though not a whole drive; **Remove** (Alt+R), or Delete in the list, takes one off. They show in
+  Chat Permissions as "Work in the folder …", where you can also take one back.
 - **About these options** (Alt+B): what each one does.
 
-The agents and styles are the folder's own, asked of Claude Code in the background, which costs
-nothing; you hear when they're ready. Press **OK** (or Ctrl+Enter) to keep your choices. In New
+The agents and styles are the folder's own, asked of Claude Code in the background each time the
+dialog opens, which costs nothing. The ones last known show until the answer comes, and you hear
+when they're ready or if they changed. Press **OK** (or Ctrl+Enter) to keep your choices. In New
 Session, what you chose follows the button and you hear it, such as "Chat options: agent
 code-reviewer, instructions."
 
@@ -1256,9 +1262,10 @@ available for Cowork chats, kept copies or Copilot chats.
 - While the provider is answering, Ask becomes **Stop** (Alt+S), and Escape stops it too. Otherwise
   Escape, or Close, closes the dialog.
 
-Nothing is added to the chat, and nothing in its folder changes: Claude answers in a copy of the
-conversation that's never saved, with the chat's model, and can only read files (no commands,
-edits, hooks or connected tools). Each question uses your Claude plan, as a message does.
+Nothing is added to the chat, and nothing in its folders changes: Claude answers in a copy of the
+conversation that's never saved, with the chat's model, and can only read files, in the chat's
+folder and its More folders (no commands, skills, edits, hooks or connected tools, so a question
+starting with a slash is just a question). Each question uses your Claude plan, as a message does.
 
 For Codex, each question uses a temporary read-only copy in a separate Codex process and your
 ChatGPT plan. Commands, connected tools, hooks, memories, Goals and delegation are disabled in
