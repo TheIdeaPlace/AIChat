@@ -216,21 +216,25 @@ class RewindPlan:
     def files_staying_text(self) -> str:
         """Conversation only, when Claude's edits could go back: the dialog
         opens on it, so it says what it leaves behind, and how to take it back
-        too, rather than saying nothing about the files (#468)."""
+        too, rather than saying nothing about the files (#468). Only a file
+        changed since the message can be taken back: one changed earlier goes
+        back to Claude's own version, so the file choices would keep Claude's
+        change and lose only your own edits. Offering it would mislead."""
         since = _files(self.edits)
         seen_since = {_file_key(f.path) for f in since}
         earlier = [f for f in _files(self.earlier_edits) if _file_key(f.path) not in seen_since]
         said = ["The files stay as they are."]
         if since:
+            # Conversation and Files is unavailable when the conversation can't go.
+            choices = ("Conversation and files or Files only" if self.conversation_possible
+                       else "Files only")
             said.append(f"Claude changed {_count(since, 'file', 'files')} since this message: "
-                        f"{_names(since)}.")
+                        f"{_names(since)}. Choose {choices} to put "
+                        f"{'it' if len(since) == 1 else 'them'} back.")
         if earlier:
             said.append(f"Claude changed {_count(earlier, 'file', 'files')} earlier in this chat: "
-                        f"{_names(earlier)}.")
-        # Conversation and Files is unavailable when the conversation can't go.
-        choices = ("Conversation and files or Files only" if self.conversation_possible
-                   else "Files only")
-        said.append(f"Choose {choices} to put them back.")
+                        f"{_names(earlier)}. Putting files back wouldn't undo that: it would only "
+                        "replace any edits you've made there yourself.")
         return " ".join(said)
 
     def describe(self, choice: str) -> str:

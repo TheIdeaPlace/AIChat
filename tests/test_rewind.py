@@ -112,7 +112,7 @@ def test_conversation_only_says_what_stays_and_how_to_put_it_back():
     plan = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True)
     said = plan.describe(rewind.CONVERSATION)
     assert ("The files stay as they are. Claude changed 1 file since this message: a.txt. "
-            "Choose Conversation and files or Files only to put them back.") in said
+            "Choose Conversation and files or Files only to put it back.") in said
     assert rewind.FILES_WARNING not in said
     assert "The files stay as they are" not in plan.describe(rewind.BOTH)
     assert "The files stay as they are" not in plan.describe(rewind.FILES)
@@ -125,13 +125,18 @@ def test_conversation_only_with_no_edits_says_nothing_about_files():
 
 def test_conversation_only_names_files_changed_earlier_once():
     # They go back too, with a checkpoint, so they're said; one changed both
-    # earlier and since is said once.
+    # earlier and since is said once. Only what changed since can be undone:
+    # an earlier file goes back to Claude's own version, so it isn't offered.
     plan = subagent_plan(["a.py"], [], earlier=["a.py", "b.py"])
     said = plan.describe(rewind.CONVERSATION)
     assert "Claude changed 1 file since this message: a.py." in said
+    assert "to put it back." in said
     assert "Claude changed 1 file earlier in this chat: b.py." in said
+    assert "wouldn't undo that" in said
     only_earlier = subagent_plan([], [], earlier=["b.py"]).describe(rewind.CONVERSATION)
     assert "since this message" not in only_earlier and "b.py" in only_earlier
+    assert "put them back" not in only_earlier and "put it back" not in only_earlier
+    assert "only replace any edits you've made there yourself" in only_earlier
 
 
 def test_conversation_only_doesnt_offer_a_choice_it_cant_do():
@@ -141,7 +146,7 @@ def test_conversation_only_doesnt_offer_a_choice_it_cant_do():
     plan = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True,
                               conversation_reason="It can't be branched.")
     said = plan.describe(rewind.CONVERSATION)
-    assert "Choose Files only to put them back." in said
+    assert "Choose Files only to put it back." in said
     assert "Conversation and files" not in said
 
 

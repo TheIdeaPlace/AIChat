@@ -456,8 +456,9 @@ went back from is always kept as it was, in the list.
   - **Conversation only**, chosen to begin with, as it changes no files,
   - **Files only**.
 
-  **What happens** (Alt+H) says what the choice will do, naming the files. Press Rewind (Enter)
-  to go ahead, or Escape to change nothing.
+  **What happens** (Alt+H) says what the choice will do, naming the files. Enter in that box
+  only says where to go, so nothing starts by accident: Tab to Rewind and press Enter to go ahead,
+  or press Escape to change nothing.
 
   Going back in the conversation makes a new chat of your own, "<title> (rewound)", in the
   same folder. Its conversation is the original's up to just before your message, and your

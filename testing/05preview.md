@@ -90,10 +90,10 @@ Create a short chat with at least two user messages and replies before testing.
    Claude's copy ends at the selected message. Codex's copy includes the whole native turn
    containing that message, so later messages in the same turn can be included too.
 2. Return to the original and select your second user message. Press **Ctrl+Shift+Z**.
-   In **Rewind to Here**, read **What happens** (**Alt+H**). First press Escape. Expect: focus
-   returns to the selected message and no copy is made. Press Enter in **What happens**. Expect:
-   you hear "Tab to Rewind, or to Cancel", and nothing starts. Reopen it and choose **Conversation
-   only**, then Rewind.
+   In **Rewind to Here**, read **What happens** (**Alt+H**). Press Enter there. Expect: you hear
+   "Tab to Rewind, or to Cancel", and nothing starts. Press Escape. Expect: focus returns to the
+   selected message and no copy is made. Press Ctrl+Shift+Z again, choose **Conversation only**,
+   then Rewind.
 3. Expect: a new "(rewound)" chat ending before that user message, with the message in its reply
    box ready to edit and send. The original conversation and files are kept.
 4. For Codex, listen for **Conversation only** selected, and file choices unavailable. Its new
