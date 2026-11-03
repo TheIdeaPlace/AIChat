@@ -1269,9 +1269,10 @@ available for Cowork chats, kept copies or Copilot chats.
   read out as a reply is, by your announcement level.
 - Ask as many questions as you like. **Questions and answers** (Alt+N) lists them, newest last;
   arrowing shows each one in the Answer box, and Enter takes you there. Each new question is
-  sent with the earlier answers, so you can ask a follow-up such as "what did you mean by that?".
-- A chat's questions stay listed when you close the dialog and come back, until you quit The Chat
-  Place. They're kept in memory only, never saved. **Clear List** (Alt+R) removes them.
+  sent with the newest 20 earlier answers, a long one shortened, so you can ask a follow-up such
+  as "what did you mean by that?".
+- A chat's newest 50 questions stay listed when you close the dialog and come back, until you
+  quit The Chat Place. They're kept in memory only, never saved. **Clear List** (Alt+R) removes them.
 - **Copy Answer** (Alt+C) copies the selected answer.
 - While the provider is answering, Ask becomes **Stop** (Alt+S), and Escape stops it too. Otherwise
   Escape, or Close, closes the dialog.
@@ -1818,7 +1819,8 @@ Tools yet.
 **"3 tools" on a row** means that server or connector offers three separate things the AI can use,
 such as searching or fetching a page. **Details** (Alt+D) lists their names, as the server gives
 them; The Chat Place doesn't say what each one does. The count is only known once it's connected.
-The AI decides when to use them as it works, and asks first if your permissions say to.
+The AI decides when to use them as it works. In a Claude chat, you're asked first if your
+permissions say to.
 
 ### Claude's connected tools
 

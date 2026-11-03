@@ -90,3 +90,11 @@ def test_a_failure_reading_the_config_still_reaches_the_host():
             raise CodexRpcError("Codex request failed")
     with pytest.raises(CodexRpcError):
         inventory(Refuses(), INFO, read_only=True)
+
+
+def test_a_row_gives_no_count_until_its_tools_are_known():
+    from thechatplace.providers.codex_tools import CodexTool
+    assert " tool" not in CodexTool("off", "connected", (), True).text().replace("MCP server", "")
+    assert "0 tools" not in CodexTool("signin", "needs-auth", (), False).text()
+    assert "1 tool" in CodexTool("one", "connected", ("find",), False).text()
+    assert "0 tools" in CodexTool("none", "connected", (), False).text()

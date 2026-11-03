@@ -6145,7 +6145,7 @@ class AskAsideDialog(wx.Dialog):
 
     def on_ask(self):
         """Ask (Ctrl+Enter), or Stop while a question is being answered."""
-        from ..aside import AsideItem, with_earlier
+        from ..aside import AsideItem, question_problem, with_earlier
         if self.asking:
             self.stop()
             return
@@ -6153,6 +6153,11 @@ class AskAsideDialog(wx.Dialog):
         if not question:
             self._feedback("Type a question first.")
             self.question.SetFocus()
+            return
+        problem = question_problem(question, self.provider)
+        if problem:
+            self.question.SetFocus()
+            self._feedback(problem)
             return
         item = AsideItem(question, provider=self.provider)
         started = self._ask(with_earlier(question, self.items),
@@ -6170,6 +6175,8 @@ class AskAsideDialog(wx.Dialog):
         self.question.ChangeValue("")
         self.ask_btn.SetLabel("&Stop")
         set_accessible_name(self.ask_btn, "Stop")
+        if wx.Window.FindFocus() is self.clear_btn:
+            self.question.SetFocus()  # Ctrl+Enter works from anywhere: it's about to turn off
         self._update_clear()
         self._feedback(f"Asking {self.provider}.")
 

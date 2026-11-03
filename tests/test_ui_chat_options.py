@@ -1057,3 +1057,34 @@ def test_each_chat_has_its_own_questions(frame):
     frame._aside_history(claude).extend(AsideItem(str(n)) for n in range(KEPT_QUESTIONS + 5))
     assert len(frame._aside_history(claude)) == KEPT_QUESTIONS
     assert frame._aside_history(claude)[-1].question == str(KEPT_QUESTIONS + 4)
+
+
+def test_asking_from_clear_list_moves_focus_off_it_first(frame, monkeypatch):
+    # Ctrl+Enter works from anywhere, and Clear List turns off while asking.
+    history = []
+    dialog, answerers, _said = _aside_dialog(frame, history)
+    moved = []
+    try:
+        _ask_and_answer(dialog, answerers, "One?", "First.")
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.clear_btn))
+        monkeypatch.setattr(dialog.question, "SetFocus", lambda: moved.append(True))
+        dialog.question.SetValue("Two?")
+        dialog.on_ask()
+        assert moved and not dialog.clear_btn.IsEnabled()
+    finally:
+        dialog.settle()
+        dialog.Destroy()
+
+
+def test_a_codex_question_too_long_stays_in_the_box_and_says_why(frame):
+    from thechatplace.ui.dialogs import AskAsideDialog
+    said, asked = [], []
+    dialog = AskAsideDialog(frame, "Mine", lambda q, e: asked.append(q), feedback=said.append,
+                            provider="Codex")
+    try:
+        dialog.question.SetValue("q" * 32001)
+        dialog.on_ask()
+        assert asked == [] and "at most 32,000" in said[-1]
+        assert len(dialog.question.GetValue()) == 32001 and not dialog.items
+    finally:
+        dialog.Destroy()

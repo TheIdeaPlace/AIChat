@@ -40,8 +40,10 @@ class CodexTool:
         # sign-in line goes by it, for either provider.
         state = 'off for this chat' if self.off_for_chat else STATUS_WORDS.get(self.status, self.status)
         count = len(self.tools)
-        return (f'{self.name}: {state}, configured Codex MCP server, '
-                f'{count} tool' + ('' if count == 1 else 's'))
+        # "0 tools" for one that's off or needs signing in sounds like it offers
+        # nothing, when it's only that nobody knows yet.
+        said = f', {count} tool' + ('' if count == 1 else 's') if count or self.status == 'connected' and not self.off_for_chat else ''
+        return f'{self.name}: {state}, configured Codex MCP server{said}'
 
 
 def inventory(connection, info, allowed=(), *, read_only=False, status_optional=False):

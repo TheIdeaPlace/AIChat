@@ -1335,9 +1335,10 @@ available for Cowork chats, kept copies or Copilot chats.</p>
   read out as a reply is, by your announcement level.</li>
 <li>Ask as many questions as you like. <strong>Questions and answers</strong> (Alt+N) lists them, newest last;
   arrowing shows each one in the Answer box, and Enter takes you there. Each new question is
-  sent with the earlier answers, so you can ask a follow-up such as "what did you mean by that?".</li>
-<li>A chat's questions stay listed when you close the dialog and come back, until you quit The Chat
-  Place. They're kept in memory only, never saved. <strong>Clear List</strong> (Alt+R) removes them.</li>
+  sent with the newest 20 earlier answers, a long one shortened, so you can ask a follow-up such
+  as "what did you mean by that?".</li>
+<li>A chat's newest 50 questions stay listed when you close the dialog and come back, until you
+  quit The Chat Place. They're kept in memory only, never saved. <strong>Clear List</strong> (Alt+R) removes them.</li>
 <li><strong>Copy Answer</strong> (Alt+C) copies the selected answer.</li>
 <li>While the provider is answering, Ask becomes <strong>Stop</strong> (Alt+S), and Escape stops it too. Otherwise
   Escape, or Close, closes the dialog.</li>
@@ -1842,7 +1843,8 @@ Tools yet.</p>
 <p><strong>"3 tools" on a row</strong> means that server or connector offers three separate things the AI can use,
 such as searching or fetching a page. <strong>Details</strong> (Alt+D) lists their names, as the server gives
 them; The Chat Place doesn't say what each one does. The count is only known once it's connected.
-The AI decides when to use them as it works, and asks first if your permissions say to.</p>
+The AI decides when to use them as it works. In a Claude chat, you're asked first if your
+permissions say to.</p>
 <h3>Claude's connected tools</h3>
 <p>Claude can use tools from outside Claude Code: MCP servers from your Claude Code settings, the
 project or plugins, and the connectors you've added on claude.ai. A connector that needs signing
