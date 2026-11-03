@@ -1526,18 +1526,27 @@ def _elicitation(request):
 
 def d_elicitation_form(frame, env):
     """A connected tool asks for input with a form (#468), shaped as Claude
-    Code 2.1.296 sent it."""
+    Code 2.1.296 sent it. A long title, description and option, each about a
+    line and a half, show how they wrap. The form is made to fit without a
+    scroll bar, so all of that is in the picture (tests/test_layout.py checks):
+    the Budget list, which doesn't wrap, made way for them."""
     _waiting(frame, _elicitation({
         "subtype": "elicitation", "mcp_server_name": "trip-planner",
         "message": "Where would you like to go, and for how long?", "mode": "form",
         "requested_schema": {"type": "object", "required": ["city", "nights"], "properties": {
-            "city": {"type": "string", "title": "City", "description": "Which city to plan for"},
+            "city": {"type": "string", "title": "City",
+                     "description": "Which city to plan for, written the way the local tourist "
+                                    "office writes it, so that the hotels, trains and restaurants "
+                                    "we look up are all in the right place"},
             "nights": {"type": "integer", "title": "Nights", "minimum": 1, "maximum": 14},
-            "pets": {"type": "boolean", "title": "Bringing pets", "default": False},
-            "budget": {"type": "string", "title": "Budget", "enum": ["low", "medium", "high"],
-                       "enumNames": ["Low", "Medium", "High"]},
-            "extras": {"type": "array", "title": "Extras",
-                       "items": {"enum": ["breakfast", "parking"]}}}}}))
+            "pets": {"type": "boolean", "default": False,
+                     "title": "Bringing pets, which some places charge extra for and a few don't "
+                              "allow at all, even when their own website says they're welcome"},
+            "extras": {"type": "array", "title": "Extras", "items": {
+                "enum": ["breakfast", "parking"],
+                "enumNames": ["Breakfast each morning, served in your room or downstairs, for "
+                              "everyone staying with you, and for anyone who joins you later on",
+                              "Parking"]}}}}}))
     return frame.on_answer
 
 
@@ -2043,7 +2052,8 @@ def d_relay(frame, env):
 
 def d_rewind(frame, env):
     """Rewind to Here (#468) on the probe's own first message, with a file
-    checkpoint: the conversation and the uploader.py change can go back."""
+    checkpoint: the conversation and the uploader.py change can go back, and
+    it opens on Conversation only."""
     _open(frame, "Visual probe")
     _select_message(frame, "Make the uploader flush")
     frame.chat_list.SetFocus()
@@ -2213,7 +2223,7 @@ SURFACES = {
     "export-chats": ("dialog", d_export_chats, "Export Chats, choosing chats and a format"),
     "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
-    "rewind": ("dialog", d_rewind, "Rewind to Here on your first message: conversation and files"),
+    "rewind": ("dialog", d_rewind, "Rewind to Here on your first message: Conversation only chosen"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
                                          "new Codex chat"),
     "agent-new-three": ("dialog", d_agent_new_three, "New Agent Conversation with the Builder "
