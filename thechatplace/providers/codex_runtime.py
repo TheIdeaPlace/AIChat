@@ -330,7 +330,7 @@ class CodexChatRuntime:
             # This also works before the owned chat has any saved history.
             checked = lifecycle.start(policy.workspace_root or record.cwd, record.title, ephemeral=True,
                 model=proof.model if model is _KEEP else model,
-                effort=proof.effort if effort is _KEEP else effort, sandbox=policy.sandbox,
+                effort=proof.saved_effort if effort is _KEEP else effort, sandbox=policy.sandbox,
                 approval_policy=policy.approval, approvals_reviewer=policy.reviewer,
                 mcp_servers=proof.mcp_servers,
                 collaboration=proof.collaboration if collaboration is _KEEP else collaboration)
@@ -345,7 +345,8 @@ class CodexChatRuntime:
                     raise CodexRpcError('Codex model effort could not be verified')
                 checked = replace(checked, effort=choice.default_effort)
             updated = replace(proof, cwd=checked.cwd, policy=checked.policy,
-                              model=checked.model, effort=checked.effort, collaboration=checked.collaboration)
+                              model=checked.model, effort=checked.effort, saved_effort=checked.saved_effort,
+                              collaboration=checked.collaboration)
             change = PreparedCodexPolicy(updated, proof, saved_record, problem)
             with self._lock:
                 if self._stop.is_set():
@@ -382,8 +383,8 @@ class CodexChatRuntime:
             verified = (not self._stop.is_set() and change.previous.connection.owns_runtime(change.previous)
                         and self._problems.get(native_id) == change.problem)
             if saved and verified:
-                if (change.proof.model, change.proof.effort, change.proof.policy, change.proof.collaboration) != (
-                        change.previous.model, change.previous.effort, change.previous.policy, change.previous.collaboration):
+                if (change.proof.model, change.proof.effort, change.proof.saved_effort, change.proof.policy, change.proof.collaboration) != (
+                        change.previous.model, change.previous.effort, change.previous.saved_effort, change.previous.policy, change.previous.collaboration):
                     self._settings_pending.add(native_id)
                 change.proof.connection._accept_owned_thread(change.proof)
                 self._proofs[native_id] = change.proof

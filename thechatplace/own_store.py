@@ -129,6 +129,30 @@ PROVIDERS = ("claude", "codex", "copilot")
 #: Providers kept in a companion file of their own, never in
 #: provider-sessions.json (see the module docstring).
 SEPARATE_PROVIDERS = ("copilot",)
+#: Codex settings newer than 0.4 (#467). On disk they sit beside
+#: ``provider_options`` as ``provider_extras``, because 0.4 refuses all of
+#: provider-sessions.json over a provider option it doesn't know, and then
+#: saves nothing. It ignores a field it doesn't know. In memory they're
+#: ordinary provider options.
+CODEX_EXTRAS = ("collaboration", "mcp_servers")
+
+
+def _valid_codex_extra(name: str, value) -> bool:
+    if name == "collaboration":
+        return value in ("default", "plan")
+    return (isinstance(value, list) and len(value) <= 100
+            and len(set(map(str, value))) == len(value)
+            and all(is_safe_server_name(n) and n.strip() for n in value))
+
+
+def _stored_record(session: "OwnSession") -> dict:
+    """A foreign session as it's written to its file."""
+    item = asdict(session)
+    extras = {name: item["provider_options"].pop(name) for name in CODEX_EXTRAS
+              if name in item["provider_options"]}
+    if extras:
+        item["provider_extras"] = extras
+    return item
 
 
 def _session_from_dict(item: dict) -> Optional[OwnSession]:
@@ -154,7 +178,8 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             # Claude permission modes. Runtime model support needs validation.
             allowed = {"model", "effort", "sandbox", "approval_policy", "workspace_root", "approvals_reviewer"}
             if (provider in ("claude", "copilot") and options
-                    or any(k not in allowed or not isinstance(v, str)
+                    or any(not _valid_codex_extra(k, v) if k in CODEX_EXTRAS
+                           else k not in allowed or not isinstance(v, str)
                            for k, v in options.items())):
                 return None
             values[name] = dict(options)
@@ -195,6 +220,14 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
         else:
             ok = True
         values[name] = value if ok else _DEFAULTS[name]
+    extras = item.get("provider_extras")
+    if provider == "codex" and isinstance(extras, dict):
+        # A hand edit that isn't valid is dropped, which only leaves the chat
+        # in Default mode with no extra tools, rather than refusing the file.
+        kept_extras = {k: extras[k] for k in CODEX_EXTRAS
+                       if k in extras and _valid_codex_extra(k, extras[k])}
+        if kept_extras:
+            values["provider_options"] = {**values.get("provider_options", {}), **kept_extras}
     # Only a model the picker offers: anything else (a hand edit, or a model
     # that bills usage credits) would fail or cost extra on every turn.
     if values.get("model") not in MODEL_LABELS:
@@ -413,7 +446,7 @@ class OwnSessionStore:
             raise OSError(f"Changes cannot be saved: {self.load_error}")
         if self._needs_backup and self.path.exists():
             self.migration_backup = platform_paths.backup_session_store(self.path)
-        foreign = {"version": 2, "sessions": [asdict(s) for s in self._sessions.values()
+        foreign = {"version": 2, "sessions": [_stored_record(s) for s in self._sessions.values()
                                                 if s.provider not in ("claude", *SEPARATE_PROVIDERS)]}
         # Each separate provider's file first, as the provider file goes
         # before the legacy one: put back as it was if the rest fails.

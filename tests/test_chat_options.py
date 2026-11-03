@@ -343,6 +343,52 @@ def test_aside_stops_before_asking_if_fable_would_answer(tmp_path):
     assert [m["type"] for m in sent] == ["control_request"]  # the question never went
 
 
+def _aside_with(tmp_path, *lines_out, command=()):
+    from test_claude_cli import FakeProcess, ev
+    answer = ev(type="control_response", response={
+        "subtype": "success", "request_id": cli.INIT_REQUEST_ID,
+        "response": {"models": [{"value": "default", "resolvedModel": "claude-sonnet-5-5"}]}})
+    init = ev(type="system", subtype="init", session_id="s", model="claude-sonnet-5-5",
+              apiKeySource="none")
+    process = FakeProcess([answer, init, *lines_out])
+    events = []
+    runner = AsideRunner([EXE, "--resume", "x", *command], str(tmp_path), "q", events.append,
+                         popen=lambda c, **k: process)
+    runner.start()
+    runner.join(10)
+    return events
+
+
+def test_aside_stops_if_a_fallback_moves_it_to_fable(tmp_path):
+    from test_claude_cli import ev
+    events = _aside_with(tmp_path, ev(
+        type="system", subtype="model_fallback", original_model="claude-sonnet-5-5",
+        fallback_model="claude-fable-5", session_id="s"),
+        ev(type="result", subtype="success", result="billed", session_id="s"))
+    assert events[-1].kind == "failed" and "Fable" in events[-1].text
+    assert "stopped answering" in events[-1].text and "billed" not in events[-1].text
+
+
+def test_aside_stops_if_a_reply_comes_from_fable(tmp_path):
+    from test_claude_cli import ev
+    events = _aside_with(tmp_path, ev(
+        type="assistant", session_id="s", parent_tool_use_id=None,
+        message={"model": "claude-fable-5", "role": "assistant",
+                 "content": [{"type": "text", "text": "billed"}]}),
+        ev(type="result", subtype="success", result="billed", session_id="s"))
+    assert events[-1].kind == "failed" and "Fable" in events[-1].text
+
+
+def test_aside_carries_on_when_the_model_doesnt_change(tmp_path):
+    from test_claude_cli import ev
+    events = _aside_with(tmp_path, ev(
+        type="assistant", session_id="s", parent_tool_use_id=None,
+        message={"model": "claude-sonnet-5-5", "role": "assistant",
+                 "content": [{"type": "text", "text": "fine"}]}),
+        ev(type="result", subtype="success", result="fine", session_id="s"))
+    assert events[-1].kind == "done" and events[-1].text == "fine"
+
+
 # -- which chats have them ------------------------------------------------------------------
 
 

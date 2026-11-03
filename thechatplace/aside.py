@@ -263,6 +263,19 @@ class AsideRunner:
                             final = AsideEvent("failed", problem)
                             self._kill()
                             break
+                    elif event.kind == "fallback" or event.kind in ("text", "tool"):
+                        # As a turn does (#468): a fallback gets no new
+                        # system/init, and some plans bill Fable to usage
+                        # credits without asking.
+                        moved_to = ((event.data or {}).get("fallback_model", "")
+                                    if event.kind == "fallback" else self.parser.reply_model)
+                        problem = fable_problem(moved_to, chosen, midway=True)
+                        if problem:
+                            final = AsideEvent("failed", problem.replace(
+                                "stopped the turn when it moved to Fable",
+                                "stopped answering when it moved to Fable"))
+                            self._kill()
+                            break
                     elif event.kind == "finished":
                         if event.is_error:
                             final = AsideEvent("failed", _missing_or(

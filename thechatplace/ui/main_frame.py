@@ -4899,9 +4899,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return False
 
         session_id = info.cli_session_id
-        if session_id in self._rewinding_files:
+        if session_id in self._rewinding_files or self._files_going_back_in(info.cwd):
             # Rewind to Here is putting files back (#468): a turn now would
-            # change them under it.
+            # change them under it, or have its edits overwritten.
             self._feedback("Still putting the files back. Send again in a moment.")
             return False
         runner = self._runners.get(session_id)
@@ -4961,11 +4961,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Start a turn with ``message``. Returns why it can't, or None once
         sent; the caller decides how to say it (a dialog when Kelly pressed
         Send, speech for a queued message going out on its own)."""
-        if session_id in self._rewinding_files:
+        own = self.store.get(session_id)
+        if session_id in self._rewinding_files or (own is not None
+                                                   and self._files_going_back_in(own.cwd)):
             # Every way a turn starts (Other Machines, a queued message) waits
             # for Rewind to Here's files (#468).
-            return ("Rewind to Here is still putting this chat's files back. Send again in "
-                    "a moment.")
+            return ("Rewind to Here is still putting files back in this chat's folder. Send "
+                    "again in a moment.")
         # Read fresh, not from the list's snapshot: up to 5 seconds old, it
         # still shows The Chat Place's own just-finished turn as busy.
         live = hub.load_live_status().get(session_id)

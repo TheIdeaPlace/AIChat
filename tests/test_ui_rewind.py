@@ -397,3 +397,87 @@ def test_cancelling_puts_focus_back_only_if_it_isnt_there(frame, env, fake_runne
     after[0] = frame.reply_text
     frame.on_rewind_to_here()
     assert focused == ["messages"]
+
+
+# -- the lock is the folder's: a turn can't start in any chat there (#468) --------------------
+
+
+def _held_files(monkeypatch):
+    """The restore, held until the test lets it finish."""
+    import threading
+    release = threading.Event()
+
+    def run(executable, session_id, message, cwd, title, count, own_ids, desktop_ids):
+        release.wait(20)
+        return rewind.RewindResult(True, f"Files in {title} restored: {count} file.")
+    monkeypatch.setattr(rewind, "run_rewind_files", run)
+    return release
+
+
+def test_the_new_chat_cant_send_while_its_files_go_back(frame, env, fake_runner, monkeypatch):
+    folder, _parts = own_chat(frame, env)
+    choose(frame, USER, 1)
+    answer_dialog(monkeypatch)
+    release = _held_files(monkeypatch)
+    try:
+        frame.on_rewind_to_here()
+        own = frame.store.get(frame._open.cli_session_id)
+        assert own.cli_session_id != "own-rw"
+        assert frame._files_going_back_in(str(folder))
+        frame.on_send()
+        assert fake_runner.instances == []
+        assert frame.reply_text.GetValue() == "Change a.txt to two"  # kept to send later
+        assert any("Still putting the files back" in f for f in env["feedback"])
+        # Every other way a turn starts is refused too, and says why.
+        assert "putting files back" in frame._send_now(own.cli_session_id, "Queued")
+    finally:
+        release.set()
+    assert pump(lambda: not frame._files_going_back_in(str(folder)))
+    frame.on_send()
+    assert fake_runner.instances
+
+
+def test_another_chat_in_the_folder_cant_send_while_files_go_back(frame, env, fake_runner,
+                                                                  monkeypatch):
+    folder, _parts = own_chat(frame, env)
+    frame.store.add(OwnSession("own-other", "Other", str(folder), last_activity_ms=now_ms()))
+    choose(frame, USER, 1)
+    answer_dialog(monkeypatch)
+    release = _held_files(monkeypatch)
+    try:
+        frame.on_rewind_to_here()
+        assert "putting files back" in frame._send_now("own-other", "Hello")
+        assert fake_runner.instances == []
+    finally:
+        release.set()
+    assert pump(lambda: not frame._files_going_back_in(str(folder)))
+
+
+def test_a_chat_in_another_folder_isnt_held_up(frame, env, fake_runner, monkeypatch):
+    folder, _parts = own_chat(frame, env)
+    elsewhere = env["tmp"] / "elsewhere"
+    elsewhere.mkdir()
+    frame.store.add(OwnSession("own-away", "Away", str(elsewhere), last_activity_ms=now_ms()))
+    choose(frame, USER, 1)
+    answer_dialog(monkeypatch)
+    release = _held_files(monkeypatch)
+    try:
+        frame.on_rewind_to_here()
+        assert frame._files_going_back_in(str(folder))
+        assert not frame._files_going_back_in(str(elsewhere))
+    finally:
+        release.set()
+    assert pump(lambda: not frame._files_going_back_in(str(folder)))
+
+
+def test_files_arent_offered_while_another_chat_works_in_the_folder(frame, env, fake_runner,
+                                                                    monkeypatch):
+    folder, _parts = own_chat(frame, env)
+    frame.store.add(OwnSession("own-other", "Other", str(folder), last_activity_ms=now_ms()))
+    frame._runners["own-other"] = object()
+    try:
+        info = frame._open
+        assert not frame._can_rewind_files(info)
+        assert "Another chat is working in this folder" in frame._files_reason(info)
+    finally:
+        del frame._runners["own-other"]

@@ -34,6 +34,10 @@ class CodexOwnedThread:
     policy: CodexPolicy = field(default_factory=CodexPolicy)
     mcp_servers: tuple = ()
     collaboration: str | None = None
+    #: The effort the chat asked for, which is what's saved. ``effort`` is what
+    #: Codex reports it's using, pinned on each turn. Keeping them apart stops a
+    #: chat that follows its configured effort from looking changed (#467).
+    saved_effort: str | None = None
 
     def record(self):
         # Return a fresh record: persisted/mutable UI metadata cannot change
@@ -45,8 +49,8 @@ class CodexOwnedThread:
             options['approvals_reviewer'] = self.policy.reviewer
         if self.policy.workspace_root:
             options['workspace_root'] = self.policy.workspace_root
-        if self.effort is not None:
-            options["effort"] = self.effort
+        if self.saved_effort is not None:
+            options["effort"] = self.saved_effort
         if self.mcp_servers:
             options['mcp_servers'] = list(self.mcp_servers)
         if self.collaboration is not None:
@@ -116,6 +120,7 @@ class CodexOwnedThreads:
             raise CodexRpcError('Saved Codex workspace scope could not be verified')
         self.verify_loaded(proof, empty=empty)
         return replace(proof, cwd=checked.cwd, model=checked.model, effort=checked.effort,
+                       saved_effort=checked.saved_effort,
                        policy=checked.policy, title=record.title)
 
     def _create(self, method, cwd, title, *, native_id=None, ephemeral=False, model=None, effort=None,
@@ -159,7 +164,11 @@ class CodexOwnedThreads:
             self._verify_idle(native_id)
         if (model is not None and method != "thread/resume") or effort is not None:
             choice = next((choice for choice in read_models(self.connection) if choice.model == model), None)
-            if choice is None or (effort is not None and effort not in choice.efforts):
+            # The catalog hides retired models. A saved chat on one can still
+            # open, and Codex's own answer is checked below; only then can it
+            # move to another model (#467).
+            retired = choice is None and method == 'thread/resume'
+            if not retired and (choice is None or (effort is not None and effort not in choice.efforts)):
                 raise ValueError("Codex model or reasoning effort is no longer available")
         params = {"cwd": cwd, "modelProvider": "openai", "sandbox": policy.sandbox,
                   "approvalPolicy": policy.approval, "config": {
@@ -227,7 +236,8 @@ class CodexOwnedThreads:
         created = thread.get("createdAt")
         created_ms = created * 1000 if type(created) is int and created >= 0 else 0
         proof = CodexOwnedThread(actual_id, policy.workspace_root or result["cwd"], result["model"], title,
-                                 created_ms, self.connection, ephemeral, effective_effort, policy, mcp_servers, collaboration)
+                                 created_ms, self.connection, ephemeral, effective_effort, policy, mcp_servers, collaboration,
+                                 saved_effort=effort)
         accept = getattr(self.connection, "_accept_owned_thread", None)
         if callable(accept) and not ephemeral:
             accept(proof)

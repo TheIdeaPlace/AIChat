@@ -509,6 +509,10 @@ class CodexChats(CodexExtras):
             self._update_send_state()
             if on_result is not None:
                 on_result(queued, error)
+        if self._files_going_back_in(record.cwd):
+            # Rewind to Here's lock is the folder's, whichever AI asks (#468).
+            done('Still putting files back in this folder. Send again in a moment.', True)
+            return
         self._codex_work(lambda: self.sessions.owned_action('send', record, text), done)
 
     def _steer_codex_owned(self, record, text, index=None):

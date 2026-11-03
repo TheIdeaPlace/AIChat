@@ -224,7 +224,8 @@ def test_effective_configured_effort_is_pinned_instead_of_inheriting_old_effort(
     result['reasoningEffort'] = 'medium'
     proof = CodexOwnedThreads(LifecycleConnection(result)).start('/workspace', 'Configured')
     assert proof.effort == 'medium'
-    assert proof.record().provider_options['effort'] == 'medium'
+    # What's reported is pinned on each turn; only a chosen effort is saved.
+    assert 'effort' not in proof.record().provider_options
 
 
 def test_aside_declines_all_questions_and_approvals_without_waiting():
@@ -388,3 +389,147 @@ def test_native_compaction_turn_events_arrive_before_the_rpc_acknowledgment():
         assert service.snapshot(record.cli_session_id).outcome == 'inProgress'
     finally:
         service.close()
+
+
+# -- through the real store (#467): these passed against fakes while no real chat could save ---
+
+
+def _store(tmp_path):
+    from thechatplace.own_store import OwnSessionStore
+    return OwnSessionStore(tmp_path / 'sessions.json')
+
+
+def _on_disk(tmp_path):
+    import json
+    return json.loads((tmp_path / 'provider-sessions.json').read_text(encoding='utf-8'))['sessions'][0]
+
+
+def test_plan_mode_and_tools_survive_a_real_save_and_reload(tmp_path):
+    from thechatplace.own_store import OwnSession
+    options = {'model': 'gpt-default', 'sandbox': 'read-only', 'approval_policy': 'on-request',
+               'collaboration': 'plan', 'mcp_servers': ['docs', 'build reports']}
+    store = _store(tmp_path)
+    store.add(OwnSession('owned', 'Planning', '/workspace', provider='codex', provider_options=options))
+    again = _store(tmp_path).get('owned', provider='codex')
+    assert again.provider_options == options
+    store.update('owned', provider='codex', provider_options={**options, 'collaboration': 'default'})
+    assert _store(tmp_path).get('owned', provider='codex').provider_options['collaboration'] == 'default'
+
+
+def test_an_older_release_can_still_read_the_file(tmp_path):
+    # 0.4 refuses all of provider-sessions.json, and then saves nothing, over a
+    # provider option it doesn't know. These are the only ones it knows.
+    from thechatplace.own_store import OwnSession
+    store = _store(tmp_path)
+    store.add(OwnSession('owned', 'Planning', '/workspace', provider='codex', provider_options={
+        'model': 'gpt-default', 'collaboration': 'plan', 'mcp_servers': ['docs']}))
+    item = _on_disk(tmp_path)
+    assert set(item['provider_options']) <= {'model', 'effort', 'sandbox', 'approval_policy',
+                                             'workspace_root', 'approvals_reviewer'}
+    assert all(isinstance(v, str) for v in item['provider_options'].values())
+    assert item['provider_extras'] == {'collaboration': 'plan', 'mcp_servers': ['docs']}
+
+
+def test_a_chat_without_the_new_settings_is_stored_as_before(tmp_path):
+    from thechatplace.own_store import OwnSession
+    _store(tmp_path).add(OwnSession('owned', 'Plain', '/workspace', provider='codex',
+                                    provider_options={'model': 'gpt-default'}))
+    assert 'provider_extras' not in _on_disk(tmp_path)
+
+
+@pytest.mark.parametrize('extras', [{'collaboration': 'everything'}, {'mcp_servers': 'docs'},
+                                    {'mcp_servers': ['a\nb']}, {'mcp_servers': ['a', 'a']},
+                                    {'unknown': 'x'}, 'not a dict'])
+def test_a_hand_edit_of_the_new_settings_is_dropped_not_refused(tmp_path, extras):
+    import json
+    (tmp_path / 'provider-sessions.json').write_text(json.dumps({'version': 2, 'sessions': [{
+        'cli_session_id': 'owned', 'title': 'T', 'cwd': '/workspace', 'provider': 'codex',
+        'provider_options': {'model': 'gpt-default'}, 'provider_extras': extras}]}), encoding='utf-8')
+    store = _store(tmp_path)
+    assert not store.load_error
+    assert store.get('owned', provider='codex').provider_options == {'model': 'gpt-default'}
+
+
+def _with_modes(connection):
+    original = connection.request
+
+    def request(method, params):
+        if method == 'collaborationMode/list':
+            return {'data': [{'name': 'Plan', 'mode': 'plan'}, {'name': 'Default', 'mode': 'default'}]}
+        return original(method, params)
+    connection.request = request
+
+
+def test_plan_mode_goes_all_the_way_through_the_store_and_a_reopen(tmp_path):
+    service, connection, _ = runtime()
+    _with_modes(connection)
+    store = _store(tmp_path)
+    try:
+        record = service.create('/workspace', 'Planning')
+        store.add(record)
+        change = service.prepare_mode(store.get(record.cli_session_id, provider='codex'), 'plan')
+        store.update(record.cli_session_id, provider='codex',
+                     provider_options=change.record().provider_options)
+        service.finish_policy(change, True)
+        saved = _store(tmp_path).get(record.cli_session_id, provider='codex')
+        assert saved.provider_options['collaboration'] == 'plan'
+        service.send(saved, 'Plan first')
+        params = [p for m, p in connection.calls if m == 'turn/start'][-1]
+        assert params['collaborationMode']['mode'] == 'plan'
+    finally:
+        service.close()
+
+
+def test_a_chat_following_its_configured_effort_can_still_change_permissions():
+    # A chat saved by 0.4 has no effort, and Codex reports the configured one.
+    # Saving what Codex reports made the record and the proof disagree, which
+    # locked the chat, with Stop refused the same way.
+    from thechatplace.own_store import OwnSession
+    service, connection, _ = runtime()
+    original = connection.request
+
+    def request(method, params):
+        answer = original(method, params)
+        if method in ('thread/resume', 'thread/start') and isinstance(answer, dict):
+            answer = {**answer, 'reasoningEffort': 'high'}
+        return answer
+    connection.request = request
+    try:
+        record = service.create('/workspace', 'Older')
+        assert 'effort' not in record.provider_options
+        proof = service._proofs[record.cli_session_id]
+        assert proof.effort == 'high' and proof.record().provider_options == record.provider_options
+        service._require_saved_policy(OwnSession(record.cli_session_id, 'Older', '/workspace',
+            provider='codex', provider_options=dict(record.provider_options)), proof.record())
+        change = service.prepare_policy(record, 'read-only', 'on-request')
+        assert 'effort' not in change.record().provider_options
+        service.finish_policy(change, True)
+        assert service.send(change.record(), 'Hello') is not None
+        assert [p for m, p in connection.calls if m == 'turn/start'][-1]['effort'] == 'high'
+    finally:
+        service.close()
+
+
+def test_a_chat_on_a_retired_model_still_opens():
+    from thechatplace.own_store import OwnSession
+    connection = LifecycleConnection(response('owned'))
+    original = connection.request
+
+    def request(method, params):
+        if method == 'model/list':
+            return {'data': [{'id': 'gpt-now', 'model': 'gpt-now', 'displayName': 'Now',
+                              'hidden': False, 'isDefault': True,
+                              'supportedReasoningEfforts': [{'reasoningEffort': 'low'}],
+                              'defaultReasoningEffort': 'low'}], 'nextCursor': None}
+        answer = original(method, params)
+        return {**answer, 'reasoningEffort': 'high'} if method == 'thread/resume' else answer
+    connection.request = request
+    record = OwnSession('owned', 'Older', '/workspace', provider='codex',
+                        provider_options={'model': 'gpt-default', 'effort': 'high'})
+    proof = CodexOwnedThreads(connection).resume(record)
+    assert proof.record().provider_options['effort'] == 'high'
+    # A model still listed keeps its check on the effort.
+    gone = OwnSession('owned', 'Older', '/workspace', provider='codex',
+                      provider_options={'model': 'gpt-now', 'effort': 'high'})
+    with pytest.raises(ValueError):
+        CodexOwnedThreads(connection).resume(gone)

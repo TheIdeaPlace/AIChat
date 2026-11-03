@@ -20,9 +20,14 @@ from .. import hub, platform_paths, rewind
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, ResumeRefused, build_fork_command,
                           new_session_id)
 from ..own_store import OwnSession
-from ..sessions import SessionInfo
+from ..sessions import WORKING, SessionInfo
 from ..transcript import ASSISTANT, USER, ChatMessage
 from .dialogs import RewindDialog
+
+
+def _folder_key(cwd: str) -> str:
+    return os.path.normcase(os.path.abspath(cwd)) if cwd else ""
+
 
 #: The kinds of message Branch from Here cuts after: yours, and Claude's
 #: replies. A tool call or its result would leave the copy's history ending
@@ -194,7 +199,9 @@ class RewindChats:
         except ValueError:
             supported = False
         return (supported and info.cli_session_id not in self._runners
-                and info.cli_session_id not in self._rewinding_files)
+                and info.cli_session_id not in self._rewinding_files
+                and not self._files_going_back_in(info.cwd)
+                and not self._turn_running_in(info.cwd))
 
     def _files_reason(self, info: SessionInfo) -> str:
         if info.cli_session_id in self._runners:
@@ -202,6 +209,11 @@ class RewindChats:
                     "putting its files back.")
         if info.cli_session_id in self._rewinding_files:
             return "The files in this chat are already being put back."
+        if self._files_going_back_in(info.cwd):
+            return "Files in this chat's folder are already being put back."
+        if self._turn_running_in(info.cwd):
+            return ("Another chat is working in this folder. Stop it, or wait for it to finish, "
+                    "before putting files back.")
         if info.is_terminal:
             where = "a terminal session"
         elif info.is_own:
@@ -218,6 +230,34 @@ class RewindChats:
             self._rewinding_files_set = set()
         return self._rewinding_files_set
 
+    @property
+    def _rewinding_folders(self) -> dict:
+        """Chat id to its folder, while that chat's files go back. The lock is
+        the folder's: Conversation and Files has a new chat open there by
+        then, and any turn in the folder would change files under the restore,
+        or have its edits overwritten (#468)."""
+        if not hasattr(self, "_rewinding_folders_map"):
+            self._rewinding_folders_map = {}
+        return self._rewinding_folders_map
+
+    def _files_going_back_in(self, cwd: str) -> bool:
+        return bool(cwd) and _folder_key(cwd) in self._rewinding_folders.values()
+
+    def _turn_running_in(self, cwd: str) -> bool:
+        """Any chat of the app's own working in this folder, whichever AI."""
+        key = _folder_key(cwd) if cwd else ""
+        for record in self.store.all():
+            if _folder_key(record.cwd) != key:
+                continue
+            if record.provider == "claude":
+                if record.cli_session_id in self._runners:
+                    return True
+            else:
+                state = self._codex_states.get(record.to_info().key)
+                if getattr(state, "state", "") == WORKING:
+                    return True
+        return False
+
     def _start_rewind_files(self, info: SessionInfo, message: ChatMessage, file_count: int,
                             quiet: bool = False) -> bool:
         """Start putting the files back. True once started; False once it's
@@ -227,6 +267,11 @@ class RewindChats:
             # A turn may have started while the dialog was open (a hand-off).
             self._feedback(f"{info.title} is busy, so its files weren't put back. Try again "
                            "once it has finished.")
+            return False
+        if self._files_going_back_in(info.cwd) or self._turn_running_in(info.cwd):
+            # A hand-off, or a turn started in another chat, since the dialog.
+            self._feedback(f"Another chat is busy in {info.title}'s folder, so its files weren't "
+                           "put back. Try again once it has finished.")
             return False
         live = hub.load_live_status().get(session_id)
         if live is not None and live.status == "busy":
@@ -240,6 +285,7 @@ class RewindChats:
         own_ids = {s.cli_session_id for s in self.store.all()}
         desktop_ids = set(self._snapshot.desktop_cli_ids)
         self._rewinding_files.add(session_id)
+        self._rewinding_folders[session_id] = _folder_key(info.cwd)
         self._update_send_state()
         if not quiet:
             self._feedback(f"Putting the files in {info.title} back.")
@@ -263,6 +309,7 @@ class RewindChats:
         if self._gone():
             return
         self._rewinding_files.discard(session_id)
+        self._rewinding_folders.pop(session_id, None)
         self._update_send_state()
         self._feedback(result.text)
         if not result.ok:
