@@ -880,7 +880,7 @@ def test_the_form_is_labelled_for_a_screen_reader(frame, env):
         assert dialog.control_for("budget").GetStrings() == ["(none)", "Low", "Medium", "High"]
         assert dialog.control_for("budget").GetSelection() == 0
         shown = [c.GetLabel() for c in dialog.form_panel.GetChildren()
-                 if isinstance(c, wx.StaticText)]
+                 if c.GetClassName() == "wxStaticText"]
         assert "Between 1 and 14" in shown
     finally:
         dialog.Destroy()
