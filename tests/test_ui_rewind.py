@@ -1,6 +1,7 @@
 """Rewind to Here and Branch from Here (#468) in the window. These tests
 construct windows: run them in the VM or CI only."""
 import dataclasses
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,7 +14,9 @@ from records import (assistant_block, lines, other, text_block, tool_result,  # 
 from thechatplace import rewind  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession  # noqa: E402
+from thechatplace.sessions import NEEDS_YOU, WORKING  # noqa: E402
 from thechatplace.transcript import ASSISTANT, USER  # noqa: E402
+from thechatplace.ui import rewind_chats  # noqa: E402
 
 
 def chained(*records):
@@ -593,6 +596,143 @@ def test_a_chat_in_another_folder_isnt_held_up(frame, env, fake_runner, monkeypa
     finally:
         release.set()
     assert pump(lambda: not frame._files_going_back_in(str(folder)))
+
+
+def _new_session_filled(monkeypatch, folder, message="Start the thing"):
+    from thechatplace.ui import main_frame
+
+    class Filled:
+        def __init__(self, parent, root, **kwargs):
+            pass
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def values(self):
+            return (str(folder), "New work", "auto", message, "")
+
+        def effort(self):
+            return ""
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(main_frame, "NewSessionDialog", Filled)
+
+
+def _copied(env, monkeypatch, frame):
+    copied = []
+    monkeypatch.setattr(frame, "_copy_text", lambda text: copied.append(text) or True)
+    return copied
+
+
+def test_new_session_waits_for_files_going_back_and_keeps_your_message(frame, env, fake_runner,
+                                                                       monkeypatch):
+    # It started its turn without the check _send_now makes (#468).
+    folder, _parts = own_chat(frame, env)
+    choose(frame, USER, 1)
+    answer_dialog(monkeypatch)
+    release = _held_files(monkeypatch)
+    copied = _copied(env, monkeypatch, frame)
+    _new_session_filled(monkeypatch, folder)
+    try:
+        frame.on_rewind_to_here()
+        before = [s.cli_session_id for s in frame.store.all()]
+        frame.on_new_session()
+        assert fake_runner.instances == []
+        assert [s.cli_session_id for s in frame.store.all()] == before  # no chat saved
+        assert copied == ["Start the thing"]
+        said = env["feedback"][-1]
+        assert "still putting files back" in said and "no chat was started" in said
+        assert "wasn't sent" in said and "copied to the clipboard" in said
+    finally:
+        release.set()
+    assert pump(lambda: not frame._files_going_back_in(str(folder)))
+    frame.on_new_session()
+    assert fake_runner.instances[-1].prompt == "Start the thing"
+
+
+def test_new_session_in_another_folder_isnt_held_up(frame, env, fake_runner, monkeypatch):
+    folder, _parts = own_chat(frame, env)
+    elsewhere = env["tmp"] / "elsewhere"
+    elsewhere.mkdir()
+    choose(frame, USER, 1)
+    answer_dialog(monkeypatch)
+    release = _held_files(monkeypatch)
+    _new_session_filled(monkeypatch, elsewhere)
+    try:
+        frame.on_rewind_to_here()
+        frame.on_new_session()
+        assert fake_runner.instances[-1].cwd == str(elsewhere)
+    finally:
+        release.set()
+    assert pump(lambda: not frame._files_going_back_in(str(folder)))
+
+
+def test_continue_here_waits_for_files_going_back_and_keeps_your_message(frame, env, fake_runner,
+                                                                         monkeypatch):
+    from thechatplace.ui import dialogs
+    folder = env["tmp"] / "repo"
+    folder.mkdir()
+    add_desktop(env, "local_c", "cli-c", "Desktop work", cwd=str(folder))
+    add_transcript(env, str(folder), "cli-c", [user_text("Earlier question")])
+    frame.refresh_sessions(force=True, resort=True)
+    settle(frame)
+    select(frame, "Desktop work")
+    frame.on_open_session()
+
+    class Fills(dialogs.NewSessionDialog):
+        def ShowModal(self):
+            self.message.SetValue("Carry on from here")
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.main_frame.NewSessionDialog", Fills)
+    copied = _copied(env, monkeypatch, frame)
+    held = frame._rewinding_folders
+    held["another-chat"] = rewind_chats._folder_key(str(folder))
+    before = [s.cli_session_id for s in frame.store.all()]
+    frame.on_continue_here()
+    assert fake_runner.instances == []
+    assert [s.cli_session_id for s in frame.store.all()] == before
+    assert copied == ["Carry on from here"]
+    assert "no copy was made" in env["feedback"][-1]
+    del held["another-chat"]
+    frame.on_continue_here()
+    assert fake_runner.instances[-1].prompt == "Carry on from here"
+
+
+def test_a_codex_new_chat_keeps_its_message_while_files_go_back(frame, env, monkeypatch):
+    # The New Session path for Codex and Copilot: the chat exists, nothing runs,
+    # and the message comes back to its reply box, by way of _send_codex_owned.
+    folder = env["tmp"] / "work"
+    folder.mkdir(exist_ok=True)
+    frame._rewinding_folders["another-chat"] = rewind_chats._folder_key(str(folder))
+    record = OwnSession("codex-new", "Codex new", str(folder), provider="codex", started=True)
+    actions = []
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a, **k: actions.append(a))
+    try:
+        frame._send_codex_owned(record, "Start the thing")
+        assert actions == []
+        assert frame._codex_drafts[record.to_info().key] == "Start the thing"
+        assert "Still putting files back" in env["feedback"][-1]
+    finally:
+        del frame._rewinding_folders["another-chat"]
+
+
+@pytest.mark.parametrize("state,outcome", [(NEEDS_YOU, "inProgress"), (WORKING, "inProgress")])
+def test_files_arent_offered_while_a_codex_turn_is_in_progress(frame, env, fake_runner, state,
+                                                               outcome):
+    # A Codex turn on an approval says Needs You, and edits files once answered.
+    folder, _parts = own_chat(frame, env)
+    record = OwnSession("codex-other", "Other", str(folder), provider="codex")
+    frame.store.add(record)
+    frame._codex_states[record.to_info().key] = SimpleNamespace(state=state, outcome=outcome)
+    try:
+        info = frame._open
+        assert frame._turn_running_in(str(folder))
+        assert not frame._can_rewind_files(info)
+        assert "Another chat is working in this folder" in frame._files_reason(info)
+    finally:
+        del frame._codex_states[record.to_info().key]
+    assert not frame._turn_running_in(str(folder))
 
 
 def test_files_arent_offered_while_another_chat_works_in_the_folder(frame, env, fake_runner,

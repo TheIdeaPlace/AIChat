@@ -20,7 +20,7 @@ from .. import hub, platform_paths, rewind
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, ResumeRefused, build_fork_command,
                           new_session_id)
 from ..own_store import OwnSession
-from ..sessions import WORKING, SessionInfo
+from ..sessions import SessionInfo
 from ..transcript import ASSISTANT, USER, ChatMessage
 from .dialogs import RewindDialog
 
@@ -255,6 +255,16 @@ class RewindChats:
     def _files_going_back_in(self, cwd: str) -> bool:
         return bool(cwd) and _folder_key(cwd) in self._rewinding_folders.values()
 
+    def _keep_for_files_going_back(self, folder: str, message: str, nothing_made: str) -> bool:
+        """True, with ``message`` kept and said, when a chat can't start in
+        ``folder`` because files are going back there. For the paths with no
+        chat to hold the message yet: _send_now refuses into a chat that exists."""
+        if not self._files_going_back_in(folder):
+            return False
+        self._relay_kept(message, f"Rewind to Here is still putting files back in that folder, "
+                                  f"so {nothing_made} Your message wasn't sent.")
+        return True
+
     def _turn_running_in(self, cwd: str) -> bool:
         """Any chat of the app's own working in this folder, whichever AI."""
         key = _folder_key(cwd) if cwd else ""
@@ -265,8 +275,7 @@ class RewindChats:
                 if record.cli_session_id in self._runners:
                     return True
             else:
-                state = self._codex_states.get(record.to_info().key)
-                if getattr(state, "state", "") == WORKING:
+                if rewind.turn_in_progress(self._codex_states.get(record.to_info().key)):
                     return True
         return False
 

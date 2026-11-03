@@ -5,6 +5,7 @@ back through a (fake) ``claude --rewind-files``."""
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +13,7 @@ from thechatplace import claude_cli as cli
 from thechatplace import rewind
 from thechatplace.changes import FileEdit
 from thechatplace.own_store import OwnSession, OwnSessionStore
+from thechatplace.sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, WORKING
 from thechatplace.transcript import ASSISTANT, USER, ChatMessage, parse_lines
 
 from records import (assistant_block, lines, other, text_block, tool_result, tool_use_block,
@@ -161,11 +163,28 @@ def message(text="Change a.txt to two"):
 WARNING = "Permission allow rule (..\\settings.json): Bash(x *) has a wildcard.\n"
 
 
+@pytest.mark.parametrize("state,outcome,running", [
+    (WORKING, "inProgress", True),
+    # A Codex or Copilot turn waiting on your answer: it edits files once answered.
+    (NEEDS_YOU, "inProgress", True),
+    (NEEDS_YOU, "", True),
+    # A lost connection: its turn may still be running.
+    (STATUS_UNAVAILABLE, "inProgress", True),
+    (IDLE, "completed", False), (IDLE, "", False), (STATUS_UNAVAILABLE, "failed", False)])
+def test_a_turn_in_progress_includes_one_waiting_on_you(state, outcome, running):
+    held = SimpleNamespace(state=state, outcome=outcome)
+    assert rewind.turn_in_progress(held) is running
+
+
+def test_no_state_is_no_turn_in_progress():
+    assert rewind.turn_in_progress(None) is False
+
+
 def test_success_says_how_many_files():
     result = rewind.result_from_output(
         0, "Files rewound to state at message abc\n", WARNING, "Fixes", message(), 3)
     assert result.ok
-    assert result.text == ("Files in Fixes restored to how they were before your message "
+    assert result.text == ("Files in Fixes restored to the versions saved before your message "
                            "\"Change a.txt to two\": 3 files.")
 
 
@@ -341,9 +360,14 @@ def test_what_happens_warns_about_every_file_your_edits_and_no_undo():
                    write_turn(3, "both.py"))
     text = plan.describe(rewind.FILES)
     assert "anywhere in this chat" in text
-    assert "just before your message" in text
-    assert "any edits you made yourself afterwards" in text
+    # Measured with 2.1.316: a hand edit made before this message is lost too,
+    # as the file goes back to Claude's last saved version, not to that moment.
+    assert "the last version Claude Code saved before your message" in text
+    assert "how it was just before" not in text
+    assert "edited by hand since Claude last changed that file is lost" in text
+    assert "even edits from before this message" in text
     assert "created since your message are removed" in text
+    assert "files Claude never touched stay as they are" in text
     assert "can't be undone" in text
     assert "Claude changed 1 file since this message: both.py." in text
     assert "Claude created 1 file since this message, which is removed: new.py." in text

@@ -4919,8 +4919,8 @@ class ExportChatsDialog(ChatChooserDialog):
 
 
 class RewindDialog(wx.Dialog):
-    """Rewind to Here (#468): what to take back to how it was just before
-    one of your messages, the conversation, the files or both, with what
+    """Rewind to Here (#468): what to take back to before one of your
+    messages, the conversation, the files or both, with what
     that will do in words. ``plan`` is a ``rewind.RewindPlan``; ``choice``
     holds what was chosen once Rewind is pressed.
 

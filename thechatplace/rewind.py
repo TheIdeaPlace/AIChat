@@ -39,6 +39,7 @@ from . import platform_paths
 from .changes import FileChanges, FileEdit, by_file
 from .claude_cli import (CHECKPOINT_VAR, ResumeRefused, _decode, build_rewind_files_command,
                          child_environment)
+from .sessions import NEEDS_YOU, WORKING
 from .transcript import USER, ChatMessage, Transcript
 
 #: What Rewind to Here can put back.
@@ -57,13 +58,23 @@ NAMED_FILES = 8
 
 #: What putting the files back does, whatever the message (see the top).
 FILES_WARNING = (
-    "Every file Claude changed with its edit tools anywhere in this chat goes back to how it "
-    "was just before your message. That replaces what's in it now, including any edits you "
-    "made yourself afterwards. Files Claude created since your message are removed. This "
-    "can't be undone.")
+    "Every file Claude changed with its edit tools anywhere in this chat goes back to the last "
+    "version Claude Code saved before your message, which is usually Claude's own. Anything you "
+    "edited by hand since Claude last changed that file is lost, even edits from before this "
+    "message. Files Claude created since your message are removed, and files Claude never "
+    "touched stay as they are. This can't be undone.")
 _COMMANDS_NOTE = "Changes made by commands it ran (a build, a script) are never put back."
 #: Said whenever a restore didn't finish cleanly: it may have got part way.
 MAY_BE_PARTLY_DONE = "Some files may already have gone back; check them before carrying on."
+
+
+def turn_in_progress(state) -> bool:
+    """Whether a Codex or Copilot chat's state has a turn under way. One waiting
+    on an approval says Needs You, not Working, and edits files once it's
+    answered, during a restore if that had started. One whose connection is in
+    doubt says neither, but its turn may still be running, so outcome counts too."""
+    return (getattr(state, "state", "") in (WORKING, NEEDS_YOU)
+            or getattr(state, "outcome", "") == "inProgress")
 
 
 def _file_key(path: str) -> str:
@@ -332,7 +343,7 @@ def result_from_output(returncode: Optional[int], stdout: str, stderr: str,
     if returncode == 0 and _REWOUND in stdout:
         files = (f": {file_count} file{'s' if file_count != 1 else ''}" if file_count
                  else "")
-        return RewindResult(True, f"Files in {chat_title} restored to how they were before "
+        return RewindResult(True, f"Files in {chat_title} restored to the versions saved before "
                                   f"your message \"{said}\"{files}.")
     reason = _reason(stderr) or _reason(stdout)
     if "not enabled" in reason.lower():

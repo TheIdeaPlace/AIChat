@@ -402,7 +402,7 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
 def build_rewind_files_command(executable: str, session_id: str, message_uuid: str,
                                own_ids: Collection[str],
                                desktop_ids: Collection[str]) -> List[str]:
-    """Command that puts the files Claude changed back to how they were just
+    """Command that puts the files Claude changed back to the versions saved
     before one of your messages (Rewind to Here, #468). No turn runs: Claude
     Code restores the files from its checkpoints, says "Files rewound to
     state at message <uuid>" and exits (checked with Claude Code 2.1.296).

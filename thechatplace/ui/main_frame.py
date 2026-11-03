@@ -4590,6 +4590,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
             return
+        # Codex and Copilot are checked as they send (_send_codex_owned), and
+        # keep the message in the new chat's reply box. This starts its turn here.
+        if self._keep_for_files_going_back(folder, message, "no chat was started."):
+            return
         session_id = new_session_id()
         try:
             command = build_new_command(exe, session_id, title, mode, model, effort=effort,
@@ -4812,6 +4816,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
         finally:
             dialog.Destroy()
+        if self._keep_for_files_going_back(info.cwd, message, "no copy was made."):
+            return
         new_id = new_session_id()
         try:
             command = build_fork_command(
@@ -4983,8 +4989,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         own = self.store.get(session_id)
         if session_id in self._rewinding_files or (own is not None
                                                    and self._files_going_back_in(own.cwd)):
-            # Every way a turn starts (Other Machines, a queued message) waits
-            # for Rewind to Here's files (#468).
+            # Every way a turn starts into an existing chat (Other Machines, a
+            # queued message) waits for Rewind to Here's files (#468). New
+            # Session and Continue Here check before making their chat.
             return ("Rewind to Here is still putting files back in this chat's folder. Send "
                     "again in a moment.")
         # Read fresh, not from the list's snapshot: up to 5 seconds old, it
