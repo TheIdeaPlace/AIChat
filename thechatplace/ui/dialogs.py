@@ -1738,7 +1738,8 @@ class FormattedMessageDialog(wx.Dialog):
             except OSError as exc:
                 # Passed in, it would be a blank page where Escape doesn't work.
                 self.Destroy()
-                raise RuntimeError(f"Couldn't show the formatted page: {exc}") from exc
+                raise RuntimeError("Couldn't show the formatted page: "
+                                   f"{exc.strerror or exc}") from exc
             self._page_file = path
             self.view.LoadURL(path.as_uri())
             return
@@ -1754,6 +1755,8 @@ class FormattedMessageDialog(wx.Dialog):
         return super().Destroy()
 
     def _on_loaded(self, _event):
+        if not self or self.IsBeingDeleted():
+            return  # the page file couldn't be written, and the view's still finishing
         if not self._loaded:
             self._loaded = True
             # Into the page, so the screen reader starts reading it.
@@ -1761,7 +1764,9 @@ class FormattedMessageDialog(wx.Dialog):
             gtk_a11y.focus_web_view(self.view)  # Linux: past wx's wrapper, into the page
             from ..rendering import go_to_script
             script = go_to_script(self._start_at)
-            if script:
+            # Windows only: wx waits for its answer, and WebKit may never give one
+            # under the page's rules. The user script does it there.
+            if script and sys.platform == "win32":
                 try:
                     self.view.RunScript(script)
                 except Exception:  # noqa: BLE001 - it's still open, at the top
