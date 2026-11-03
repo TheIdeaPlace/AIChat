@@ -1199,6 +1199,7 @@ class AsideFake:
         if method == 'thread/fork':
             result = response('aside-copy')
             result['thread']['ephemeral'] = True
+    result['approvalPolicy'] = 'never'
             result['approvalPolicy'] = 'never'
             return result
         if method == 'turn/start':
@@ -1278,3 +1279,27 @@ def test_aside_refuses_anything_but_its_own_read_only_ephemeral_fork(change):
                             policy=CodexPolicy('read-only', 'never'))
     connection.accept_aside(good)
     assert connection.owns_runtime(good)
+
+
+def test_an_ephemeral_fork_asks_codex_to_leave_the_turns_out():
+    # Real Codex 0.163 refuses it otherwise, for any paginated thread, so Ask
+    # Aside failed on every new chat ("requires `excludeTurns: true`").
+    from thechatplace.sessions import OWN, SessionInfo
+    result = response('aside')
+    result['thread']['ephemeral'] = True
+    result['approvalPolicy'] = 'never'
+    connection = LifecycleConnection(result, config={})
+    info = SessionInfo(OWN, 'codex:source', 'Source', '/workspace', 'source', provider='codex')
+    CodexOwnedThreads(connection).fork(info, 'Ask Aside', ephemeral=True, sandbox='read-only',
+                                       approval_policy='never', passive=True)
+    params = [p for m, p in connection.calls if m == 'thread/fork'][-1]
+    assert params['excludeTurns'] is True and params['ephemeral'] is True
+
+
+def test_a_kept_fork_keeps_its_turns_in_the_reply():
+    from thechatplace.sessions import OWN, SessionInfo
+    connection = LifecycleConnection(response('copy'))
+    info = SessionInfo(OWN, 'codex:source', 'Source', '/workspace', 'source', provider='codex')
+    CodexOwnedThreads(connection).fork(info, 'Copy')
+    assert 'excludeTurns' not in [p for m, p in connection.calls if m == 'thread/fork'][-1]
+

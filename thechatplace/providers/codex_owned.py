@@ -224,6 +224,12 @@ class CodexOwnedThreads:
             params["config"]["model_reasoning_effort"] = effort
         if method != "thread/resume":
             params["ephemeral"] = ephemeral
+        if method == "thread/fork" and ephemeral:
+            # Codex refuses an ephemeral fork of a paginated thread without
+            # this ("requires `excludeTurns: true`", 0.163), which every Ask
+            # Aside on a new chat is. It only leaves the turns out of the
+            # reply: nothing here reads them, and the copy still has them.
+            params["excludeTurns"] = True
         try:
             result = self.connection.request(method, params)
         except CodexRpcError as error:
