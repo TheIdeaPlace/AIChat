@@ -211,7 +211,7 @@ STEPS = [
     Step("Stop Background Task closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # The page's plain text here: serve has no web view. Built off the window's thread.
-    Step("Read Full Chat", ["alt+v", "t"], expect=["Full chat: Visual probe"]),
+    Step("Read Full Chat", ["alt+v", "w"], expect=["Full chat: Visual probe"]),
     Step("full chat closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Subagents (#468): "Fix the flaky upload test" has two, a code-reviewer

@@ -696,7 +696,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._item(view, "S&ession List Columns...", lambda e: self.on_session_columns())
         view.AppendSeparator()
         self._item(view, "Read &Full Message", lambda e: self.on_read_message())
-        self._item(view, "Read Full Cha&t as a Page\tCtrl+Shift+W",
+        self._item(view, "Read Full Chat as a &Web Page\tCtrl+Shift+W",
                    lambda e: self.on_read_whole_chat())
         self._item(view, "F&ind...\tCtrl+F", lambda e: self.on_find())
         self._item(view, "Find &Next\tF3", lambda e: self.find_again(True))
@@ -2496,7 +2496,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._modal(ShortcutsDialog(self))
 
     def on_read_whole_chat(self, _event=None):
-        """View, Read Full Chat as a Page (Ctrl+Shift+W, #538): every message in
+        """View, Read Full Chat as a Web Page (Ctrl+Shift+W, #538): every message in
         the list, as one page to move through by heading, on the selected one. A
         snapshot: reopen it for later messages. Built off the window's thread, as
         a long chat with tool activity on measured 3 seconds."""

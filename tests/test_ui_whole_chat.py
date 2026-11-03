@@ -1,4 +1,4 @@
-"""View, Read Full Chat as a Page (#538). These tests construct windows: run
+"""View, Read Full Chat as a Web Page (#538). These tests construct windows: run
 them in the VM or CI only."""
 import pytest
 
