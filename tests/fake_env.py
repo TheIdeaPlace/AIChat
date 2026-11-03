@@ -180,8 +180,9 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     class FakeMcpSession:
         closed = False
 
-        def __init__(self, exe, cwd):
+        def __init__(self, exe, cwd, disabled=(), mcp_config=None):
             mcp["calls"].append(("open", cwd))
+            mcp["opened_with"] = {"disabled": list(disabled), "mcp_config": mcp_config}
 
         def _check(self):
             if mcp["error"]:

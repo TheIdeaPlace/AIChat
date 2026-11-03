@@ -85,7 +85,7 @@ def test_with_chat_settings_marks_turned_off_tools_and_keeps_missing_ones():
     rows = with_chat_settings(parse_servers(STATUS), ["github", "gone-server", "\x00bad"])
     texts = [r.text() for r in rows]
     assert "github: off for this chat, your settings" in texts
-    assert "gone-server: off for this chat, no longer set up in Claude Code" in texts
+    assert "gone-server: off for this chat" in texts
     assert not any("bad" in t for t in texts)
     # The Chat Place's own tools come last.
     assert rows[-1].is_session_tools
@@ -341,12 +341,177 @@ def test_a_claude_that_exits_at_once_ends_the_wait(tmp_path):
         session.close()
 
 
+def test_a_process_that_dies_by_itself_counts_as_closed_and_close_still_tears_it_down(tmp_path):
+    """Every action used to fail until the 15-minute timer, as closed stayed
+    False once the process had gone (#468)."""
+    def popen(command, **kwargs):
+        return subprocess.Popen([sys.executable, "-c", "pass"], **kwargs)
+    session = McpSession("claude.exe", str(tmp_path), popen=popen)
+    session._process.wait(timeout=30)
+    assert session.closed
+    with pytest.raises(McpError, match="stopped"):
+        session.request("mcp_status")
+    ended = []
+    real = session._tree.close
+    session._tree.close = lambda: (ended.append(True), real())
+    session.close()
+    assert ended == [True]  # the job, and any server left in it
+    assert not session._timer.is_alive() or session._timer.finished.is_set()
+
+
+def test_the_idle_process_is_started_as_the_chats_turns_are(tmp_path):
+    """The chat's turned-off tools aren't started, and its session tools are
+    there to be listed (#468)."""
+    seen = {}
+
+    def popen(command, **kwargs):
+        seen["command"] = command
+        raise OSError("stop")
+    with pytest.raises(McpError):
+        McpSession("claude.exe", str(tmp_path), popen=popen, disabled=["github", "ccd_session_mgmt"],
+                   mcp_config='{"mcpServers":{}}')
+    command = seen["command"]
+    assert command[-4:-2] == settings_args(["github"])
+    # Last, as in a turn: it takes several values.
+    assert command[-2:] == ["--mcp-config", '{"mcpServers":{}}']
+
+
+def test_a_turned_off_tool_reads_as_off_when_claude_code_doesnt_list_it():
+    rows = with_chat_settings([McpServer("docs", "connected")], ["github"])
+    assert [r.text() for r in rows] == ["docs: connected, Claude Code", "github: off for this chat"]
+    assert rows[1].missing and rows[1].off_for_chat
+
+
+def test_a_sign_in_still_waiting_is_said_to_have_expired(tmp_path):
+    script = tmp_path / "fake_idle.py"
+    script.write_text(FAKE_IDLE, encoding="utf-8")
+
+    def popen(command, **kwargs):
+        return subprocess.Popen([sys.executable, str(script)], **kwargs)
+    session = McpSession("claude.exe", str(tmp_path), popen=popen)
+    session._lifetime = 0.3  # from when the sign-in starts waiting
+    heard = []
+    expired = threading.Event()
+    session.on_expired = lambda names: (heard.extend(names), expired.set())
+    try:
+        assert session.sign_in("own-oauth").callback_expected
+        assert expired.wait(15)
+        assert heard == ["own-oauth"] and session.closed
+    finally:
+        session.close()
+    assert claude_mcp.expired_text(heard) == (
+        "The sign-in for own-oauth expired after 15 minutes. If you didn't finish, press Sign In "
+        "to start again.")
+
+
+def test_nothing_is_said_when_no_sign_in_is_waiting_or_it_was_closed_first(tmp_path):
+    script = tmp_path / "fake_idle.py"
+    script.write_text(FAKE_IDLE, encoding="utf-8")
+
+    def popen(command, **kwargs):
+        return subprocess.Popen([sys.executable, str(script)], **kwargs)
+    heard = []
+    plain = McpSession("claude.exe", str(tmp_path), popen=popen)
+    plain.on_expired = heard.append
+    plain.sign_in("claude.ai Docs")  # nothing waits on a connector's sign-in
+    plain._expire()
+    closed_first = McpSession("claude.exe", str(tmp_path), popen=popen)
+    closed_first.on_expired = heard.append
+    closed_first.sign_in("own-oauth")
+    closed_first.close()
+    closed_first._expire()
+    assert heard == []
+
+
+def test_a_sign_in_that_finished_isnt_said_to_have_expired(tmp_path):
+    script = tmp_path / "fake_idle.py"
+    script.write_text(FAKE_IDLE, encoding="utf-8")
+
+    def popen(command, **kwargs):
+        return subprocess.Popen([sys.executable, str(script)], **kwargs)
+    session = McpSession("claude.exe", str(tmp_path), popen=popen)
+    heard = []
+    session.on_expired = heard.append
+    try:
+        session.sign_in("claude.ai Docs")
+        session._callbacks.add("claude.ai Docs")
+        session.status(wait=5, poll=0.01)  # the fake says connected on its third asking
+        session._expire()
+    finally:
+        session.close()
+    assert heard == []
+
+
 @pytest.mark.parametrize("url,ok", [
     ("https://claude.ai/x", True), ("http://localhost:3000/cb", True),
+    ("HTTPS://Claude.AI/x?a=b%20c#d", True), ("http://127.0.0.1:8080/cb", True),
+    ("http://[::1]:8080/cb", True), ("https://[2001:db8::1]/x", True),
+    ("https://xn--80ak6aa92e.com/", True),  # the look-alike in the form that shows it
+    ("https://auth.example.com/authorize?redirect=https://x@y/", True),
     ("file:///C:/x.exe", False), ("javascript:alert(1)", False), ("claude://x", False),
-    ("https://a b", False), ("https://x\n", False), ("", False), (None, False)])
+    ("https://a b", False), ("https://x\n", False), ("", False), (None, False), (5, False),
+    # A name or password before the host: it goes to the host after the @.
+    ("https://good.example@evil.example/", False), ("https://user:pw@evil.example/", False),
+    ("https://good.example%40evil.example/", False),
+    # Browsers end the host at a backslash.
+    ("https://good.example\\@evil.example/", False), ("https://evil.example\\.good.example/", False),
+    # Characters that hide what it says.
+    ("https://evil.example/\u202egro.doog", False), ("https://evil\u202e.example/", False),
+    ("https://evil.example/\x00.good.example", False), ("https://evil.example/\u200b", False),
+    ("https://evil.example/\t", False), ("\thttps://evil.example/", False),
+    # Plain http only to this computer.
+    ("http://x", False), ("http://example.com/", False), ("http://localhost.evil.example/", False),
+    ("http://localhost@evil.example/", False),
+    # Other alphabets' letters in the host, which can look like a familiar one.
+    ("https://\u0430\u0440\u0440\u04cf\u0435.com/", False), ("https://exa\uff4dple.com/", False),
+    # No host, or nonsense where it goes.
+    ("https://", False), ("https:///x", False), ("https:x", False), ("https://:443/", False),
+    ("https://example.com:notaport/", False), ("https://example.com:99999/", False),
+    ("https://[nonsense]/", False), ("https://[::1/", False), ("https://exa%6Dple.com/", False),
+    ("https://-bad-.example/", False), ("https://a..b/", False)])
 def test_is_web_url(url, ok):
     assert claude_mcp.is_web_url(url) is ok
+
+
+def test_web_url_host_names_where_it_really_goes():
+    assert claude_mcp.web_url_host("https://Accounts.Example.COM:8443/x") == "accounts.example.com"
+    assert claude_mcp.web_url_host("https://good.example@evil.example/") == ""
+
+
+def test_tools_summary_says_the_list_in_a_line():
+    rows = parse_servers({"mcpServers": [
+        {"name": "a", "status": "connected"}, {"name": "b", "status": "needs-auth"},
+        {"name": "c", "status": "connected"}]})
+    assert claude_mcp.tools_summary(rows) == "3 connected tools, 1 needs sign-in"
+    rows += parse_servers({"mcpServers": [{"name": "d", "status": "needs-auth"},
+                                          {"name": "e", "status": "failed"}]})
+    rows[0].off_for_chat = True
+    assert claude_mcp.tools_summary(rows) == ("5 connected tools, 2 need sign-in, 1 failed, "
+                                              "1 off for this chat")
+    assert claude_mcp.tools_summary(rows[:1]) == "1 connected tool, 1 off for this chat"
+    assert claude_mcp.tools_summary([]) == "No connected tools."
+
+
+def test_only_the_source_the_app_gives_makes_it_the_chat_places_own():
+    """Any server can call itself that (#468)."""
+    own = {"name": "ccd_session_mgmt", "status": "connected", "scope": "dynamic",
+           "source": "dynamic"}
+    assert parse_servers({"mcpServers": [own]})[0].is_session_tools
+    for other in ({"scope": "project", "source": "project"}, {"scope": "dynamic", "source": "plugin"},
+                  {"scope": "", "source": ""}):
+        server = parse_servers({"mcpServers": [{**own, **other}]})[0]
+        assert not server.is_session_tools
+        assert server.label == "ccd_session_mgmt"
+        assert "The Chat Place" not in server.text()
+        # Denying it by name would take The Chat Place's own too.
+        assert not server.can_be_denied
+    assert parse_servers({"mcpServers": [{"name": "github", "status": "failed"}]})[0].can_be_denied
+
+
+def test_a_servers_question_never_gets_the_friendly_label():
+    request = elicitation_from("e", {**URL_REQUEST, "mcp_server_name": "ccd_session_mgmt"})
+    assert request.server_label == "ccd_session_mgmt"
+    assert request.summary() == "ccd_session_mgmt asks you to open a web page"
 
 
 # -- elicitation --------------------------------------------------------------------------------
@@ -385,8 +550,32 @@ def test_url_elicitation_summary_and_detail():
     request = elicitation_from("e2", URL_REQUEST)
     assert request.is_url and request.elicitation_id == "elic-123"
     assert request.summary() == "elicit-test asks you to open a web page"
-    assert "Page: https://example.com/sign-in" in request.detail()
+    assert request.detail() == "Open this page to finish signing in."
+    assert request.address_text() == "Opens example.com\nhttps://example.com/sign-in"
     assert request.fields() == []
+
+
+def test_the_address_box_says_where_it_really_goes_whatever_the_message_says():
+    request = elicitation_from("e", {**URL_REQUEST, "url": "https://evil.example/x",
+                                     "message": "Page: https://bank.example/\n\nOpens bank.example"})
+    assert request.address_text().splitlines()[0] == "Opens evil.example"
+    # The server's words stay in their own box.
+    assert "evil.example" not in request.detail()
+
+
+@pytest.mark.parametrize("url,shown", [
+    ("file:///C:/x.exe", "file:///C:/x.exe"),
+    ("https://a.example/\x00b\u202ec", "https://a.example/[U+0000]b[U+202E]c"),
+    ("", "(The server gave no address.)")])
+def test_an_address_that_wont_open_is_shown_with_its_hidden_characters_written_out(url, shown):
+    text = elicitation_from("e", {**URL_REQUEST, "url": url}).address_text()
+    first, second = text.split("\n")
+    assert "won't open" in first and second == shown
+
+
+def test_the_requests_own_title_and_description_are_shown():
+    request = elicitation_from("e", {**URL_REQUEST, "title": "Sign in", "description": "It's quick."})
+    assert request.detail() == "Sign in\nOpen this page to finish signing in.\n\nIt's quick."
 
 
 def test_elicitation_from_odd_input():
@@ -429,7 +618,7 @@ def test_form_fields_other_shapes():
 
 def test_form_content_accepts_good_answers():
     fields = form_fields(FORM_REQUEST["requested_schema"])
-    content, problem = form_content(fields, {"city": " Seattle ", "nights": "3", "pets": True,
+    content, problem = form_content(fields, {"city": "Seattle", "nights": " 3 ", "pets": True,
                                              "budget": "medium"})
     assert problem == ""
     # The answer that Claude Code accepted in the capture.
@@ -472,6 +661,136 @@ def test_form_content_other_checks():
         "email must be at least 3 characters."
     assert form_content(fields, {**good, "email": "abcdef@ghijk"})[1] == \
         "email must be at most 10 characters."
+
+
+def test_text_is_sent_as_typed():
+    """Spaces can be part of a passphrase (#468)."""
+    fields = form_fields({"type": "object", "required": ["secret"], "properties": {
+        "secret": {"type": "string", "minLength": 4}, "note": {"type": "string"}}})
+    assert form_content(fields, {"secret": " a b ", "note": " "}) == ({"secret": " a b "}, "")
+    assert form_content(fields, {"secret": "    "})[1] == "secret is required."
+
+
+@pytest.mark.parametrize("prop,value,sent,problem", [
+    ({"format": "date"}, "2026-11-02", "2026-11-02", ""),
+    ({"format": "date"}, " 2026-11-02 ", "2026-11-02", ""),
+    ({"format": "date"}, "2026-13-02", None, "must be a date"),
+    ({"format": "date"}, "20261102", None, "must be a date"),
+    ({"format": "date"}, "tomorrow", None, "must be a date"),
+    ({"format": "date-time"}, "2026-11-02T14:30:00Z", "2026-11-02T14:30:00Z", ""),
+    ({"format": "date-time"}, "2026-11-02T14:30:00.5+01:00", "2026-11-02T14:30:00.5+01:00", ""),
+    ({"format": "date-time"}, "2026-11-02", None, "must be a date and time"),
+    ({"format": "date-time"}, "2026-11-02T25:00:00Z", None, "must be a date and time"),
+    ({"format": "uri"}, "https://example.com/x", "https://example.com/x", ""),
+    ({"format": "uri"}, "mailto:a@b.c", "mailto:a@b.c", ""),
+    ({"format": "uri"}, "example.com", None, "must be a full address"),
+    ({"format": "uri"}, "https://a b", None, "must be a full address")])
+def test_formats_are_checked(prop, value, sent, problem):
+    fields = form_fields({"properties": {"x": {"type": "string", **prop}}})
+    content, said = form_content(fields, {"x": value})
+    if problem:
+        assert problem in said and content == {}
+    else:
+        assert said == "" and content == {"x": sent}
+
+
+def test_a_minimum_says_what_it_is_rather_than_rounding_it():
+    fields = form_fields({"properties": {"n": {"type": "integer", "minimum": 1.5}}})
+    assert form_content(fields, {"n": "1"})[1] == "n must be at least 1.5."
+    assert form_content(fields, {"n": "2"}) == ({"n": 2}, "")
+
+
+def test_a_number_that_may_be_null_is_a_number():
+    fields = form_fields({"properties": {"n": {"type": ["number", "null"], "maximum": 5},
+                                         "s": {"type": ["null", "string"]}}})
+    assert [(f.key, f.kind) for f in fields] == [("n", "number"), ("s", "text")]
+    assert form_content(fields, {"n": "2.5", "s": "x"}) == ({"n": 2.5, "s": "x"}, "")
+    assert form_content(fields, {"n": "", "s": ""}) == ({}, "")
+    assert claude_mcp.form_problem({"properties": {"n": {"type": ["number", "null"]}}}) == ""
+
+
+def test_how_many_to_choose_is_checked():
+    fields = form_fields({"required": ["tags"], "properties": {
+        "tags": {"type": "array", "minItems": 2, "maxItems": 3, "items": {"enum": list("abcd")}},
+        "more": {"type": "array", "minItems": 2, "items": {"enum": list("xyz")}}}})
+    assert fields[0].min_items == 2 and fields[0].max_items == 3
+    good = {"tags": ["a", "b"]}
+    assert form_content(fields, good) == ({"tags": ["a", "b"]}, "")
+    assert form_content(fields, {"tags": []})[1] == "Choose at least 2 for tags."
+    assert form_content(fields, {"tags": ["a"]})[1] == "Choose at least 2 for tags."
+    assert form_content(fields, {"tags": list("abcd")})[1] == "Choose at most 3 for tags."
+    # An optional one left empty isn't answered, so its minimum doesn't apply.
+    assert form_content(fields, {**good, "more": ["x"]})[1] == "Choose at least 2 for more."
+    # A required one that may be empty is answered with nothing chosen.
+    none_ok = form_fields({"required": ["t"], "properties": {
+        "t": {"type": "array", "minItems": 0, "items": {"enum": ["a"]}}}})
+    assert form_content(none_ok, {"t": []}) == ({"t": []}, "")
+
+
+@pytest.mark.parametrize("schema,named", [
+    ({"properties": {"trip": {"type": "object", "title": "Trip", "properties": {}}}}, "Trip"),
+    ({"properties": {"x": {"properties": {"y": {"type": "string"}}}}}, "x"),
+    ({"properties": {"x": {"type": ["string", "number"]}}}, "x"),
+    ({"properties": {"x": {"type": "something"}}}, "x"),
+    ({"properties": {"x": {"$ref": "#/defs/y"}}}, "x"),
+    ({"properties": {"x": {"anyOf": [{"type": "string"}, {"type": "number"}]}}}, "x"),
+    ({"properties": {"x": {"oneOf": [{"const": 1}, {"type": "number"}]}}}, "x"),
+    ({"properties": {"x": {"type": "string", "enum": []}}}, "x"),
+    # An array with nothing to choose from: no boxes, so it can't be finished.
+    ({"required": ["x"], "properties": {"x": {"type": "array", "items": {"type": "string"}}}}, "x"),
+    ({"properties": {"x": {"type": "array"}}}, "x"),
+    ({"properties": {"x": {"type": "array", "items": {"type": "object"}}}}, "x"),
+    # More needed than there are to choose, or a range nothing fits.
+    ({"required": ["x"], "properties": {"x": {"type": "array", "minItems": 3,
+                                              "items": {"enum": ["a"]}}}}, "x"),
+    ({"properties": {"x": {"type": "array", "minItems": 3, "maxItems": 1,
+                           "items": {"enum": ["a"]}}}}, "x"),
+    # Required, but no way to answer it.
+    ({"required": ["x"], "properties": {"x": "not a property"}}, "x"),
+    ({"required": ["gone"], "properties": {}}, "gone"),
+    ({"required": [7], "properties": {}}, "7"),
+    # Not a list of fields at all.
+    ({"type": "array"}, "not a list of fields"),
+    ({"properties": []}, "not a list of fields")])
+def test_a_form_that_cant_be_shown_says_so_and_has_no_fields(schema, named):
+    problem = claude_mcp.form_problem(schema)
+    assert f"({named})" in problem and "can only decline it or answer later" in problem
+    request = elicitation_from("e", {**FORM_REQUEST, "requested_schema": schema})
+    assert request.form_problem() == problem and request.fields() == []
+
+
+@pytest.mark.parametrize("schema", [
+    {}, {"type": "object"}, {"type": "object", "properties": {}},
+    FORM_REQUEST["requested_schema"],
+    {"properties": {"weird": "not a property"}},  # optional: left out, as before
+    {"properties": {"x": {"oneOf": [{"const": "a"}, {"const": "b"}]}}},
+    {"required": ["x"], "properties": {"x": {"type": "array", "minItems": 1,
+                                             "items": {"enum": ["a"]}}}}])
+def test_a_form_that_can_be_shown_has_no_problem(schema):
+    assert claude_mcp.form_problem(schema) == ""
+
+
+def test_a_url_request_has_no_form_problem():
+    request = elicitation_from("e", {**URL_REQUEST, "requested_schema": {"type": "array"}})
+    assert request.form_problem() == ""
+
+
+def test_too_long_a_form_can_only_be_declined():
+    many = {f"f{i}": {"type": "string"} for i in range(claude_mcp.MAX_FORM_FIELDS)}
+    assert claude_mcp.form_problem({"properties": many}) == ""
+    assert "too long" in claude_mcp.form_problem({"properties": {**many, "one": {"type": "string"}}})
+    fits = {"enum": list(range(claude_mcp.MAX_FORM_CHOICES))}
+    over = {"enum": list(range(claude_mcp.MAX_FORM_CHOICES + 1))}
+    assert claude_mcp.form_problem({"properties": {"x": fits}}) == ""
+    assert "too long" in claude_mcp.form_problem({"properties": {"x": over}})
+    assert "too long" in claude_mcp.form_problem(
+        {"properties": {"x": {"type": "array", "items": over}}})
+
+
+def test_a_forms_problem_cant_bring_hidden_characters_with_it():
+    problem = claude_mcp.form_problem({"properties": {
+        "x": {"type": "object", "title": "a\u202eb\x00c"}}})
+    assert "a[U+202E]b[U+0000]c" in problem
 
 
 def test_elicitation_responses():

@@ -20,23 +20,37 @@ class CodexTool:
     missing: bool = False
     is_session_tools: bool = False
     error: str = ''
+    #: A chat started elsewhere: only that it's configured is known.
+    read_only: bool = False
 
     @property
     def label(self):
         return self.name
 
     def text(self):
+        if self.read_only:
+            return f'{self.name}: {self.status}, configured Codex MCP server'
         state = 'off for this chat' if self.off_for_chat else self.status
         return f'{self.name}: {state}, configured Codex MCP server, {len(self.tools)} tools'
 
 
-def inventory(connection, info, allowed=()):
+def inventory(connection, info, allowed=(), read_only=False):
+    """The configured servers. ``read_only``: a chat this connection hasn't
+    loaded, which is every chat started elsewhere. Codex 0.163 fails
+    mcpServerStatus/list for such a thread ("Codex request failed"), and off
+    or on means nothing for it here, so the rows come from the config alone."""
     from .codex_rpc import CodexTurnRejected, codex_tool_overrides
     allowed = server_names(allowed)
     result = connection.request('config/read', {'cwd': info.cwd, 'includeLayers': False})
     config = result.get('config')
     if not isinstance(config, dict):
         raise CodexTurnRejected('mcp_tools')
+    if read_only:
+        names = config.get('mcp_servers') or {}
+        if not isinstance(names, dict):
+            raise CodexTurnRejected('mcp_tools')
+        return [CodexTool(name, 'configured', off_for_chat=False, read_only=True)
+                for name in server_names(list(names))]
     codex_tool_overrides(config, allowed)
     names = config.get('mcp_servers') or {}
     result = connection.request('mcpServerStatus/list', {

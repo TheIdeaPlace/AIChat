@@ -7,12 +7,13 @@ wx = pytest.importorskip("wx")
 
 from thechatplace import platform_paths  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
-from thechatplace.claude_mcp import elicitation_from  # noqa: E402
+from thechatplace.claude_mcp import McpServer, elicitation_from  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
 from thechatplace.ui_text import key_name  # noqa: E402
 
 import fake_env  # noqa: E402
 from fake_env import FakeRunner, add_desktop, now_ms, pump  # noqa: E402
+from markers import msaa  # noqa: E402
 
 
 @pytest.fixture
@@ -127,13 +128,186 @@ def test_turn_on_again(frame, env, monkeypatch):
         rows = list(dialog.list.GetStrings())
         dialog.list.SetSelection(2)
         dialog.on_toggle()
+        # A new idle process: the old one was started without it.
+        assert dialog.busy
+        assert pump(lambda: not dialog.busy, timeout=10)
         return rows, list(dialog.list.GetStrings())
     before, after = _connected_tools(frame, monkeypatch, drive)
     assert before[2] == "github: off for this chat, your settings"
-    assert before[-1] == "gone-server: off for this chat, no longer set up in Claude Code"
+    assert before[-1] == "gone-server: off for this chat"
     assert after[2] == "github: failed: Connection closed, your settings"
     assert frame.store.get("own-1").disabled_mcp == ["gone-server"]
     assert env["feedback"][-1] == "github is on again for this chat from this chat's next turn."
+    assert env["mcp"]["opened_with"]["disabled"] == ["gone-server"]
+    assert pump(lambda: env["mcp"]["closed"] == 2)
+
+
+def test_opening_the_list_doesnt_start_tools_the_chat_turned_off(frame, env, monkeypatch):
+    frame.store.update("own-1", disabled_mcp=["github"])
+    select(frame, "Tools probe")
+    _connected_tools(frame, monkeypatch, lambda dialog: None)
+    assert env["mcp"]["opened_with"]["disabled"] == ["github"]
+
+
+def test_a_tool_turned_off_while_open_needs_no_new_process(frame, env, monkeypatch):
+    select(frame, "Tools probe")
+
+    def drive(dialog):
+        dialog.list.SetSelection(2)
+        dialog.on_toggle()
+        assert not dialog.busy
+    _connected_tools(frame, monkeypatch, drive)
+    assert [call for call in env["mcp"]["calls"] if call[0] == "open"] == [("open", env["folder"])]
+
+
+def test_a_chat_started_here_lists_its_session_tools_and_a_desktop_chat_doesnt(frame, env, monkeypatch):
+    select(frame, "Tools probe")
+    _connected_tools(frame, monkeypatch, lambda dialog: None)
+    assert "ccd_session_mgmt" in env["mcp"]["opened_with"]["mcp_config"]
+    assert '"--self", "own-1"' in env["mcp"]["opened_with"]["mcp_config"]
+    select(frame, "Desktop one")
+    _connected_tools(frame, monkeypatch, lambda dialog: None)
+    assert env["mcp"]["opened_with"] == {"disabled": [], "mcp_config": None}
+
+
+def test_a_server_only_named_like_the_session_tools_cant_be_turned_off(frame, env, monkeypatch):
+    """Denying goes by name, which would take the real ones too (#468)."""
+    env["mcp"]["servers"] = [{"name": "ccd_session_mgmt", "status": "connected", "scope": "project",
+                              "source": "project"}]
+    select(frame, "Tools probe")
+
+    def drive(dialog):
+        assert "The Chat Place" not in dialog.list.GetString(0)
+        dialog.on_toggle()
+    _connected_tools(frame, monkeypatch, drive)
+    assert env["boxes"][-1] == "ccd_session_mgmt can't be turned off here."
+    assert frame.store.get("own-1").disabled_mcp == []
+
+
+def test_refresh_stays_on_the_row_and_says_the_result(frame, env, monkeypatch):
+    select(frame, "Tools probe")
+
+    def drive(dialog):
+        count = len(env["feedback"])
+        dialog.list.SetSelection(2)
+        dialog.on_refresh()
+        assert pump(lambda: not dialog.busy, timeout=10)
+        assert dialog.list.GetSelection() == 2
+        assert len(env["feedback"]) == count + 1
+        assert env["feedback"][-1] == "4 connected tools, 1 needs sign-in, 1 failed"
+        env["mcp"]["error"] = "Claude Code said no."
+        dialog.on_refresh()
+        assert pump(lambda: not dialog.busy, timeout=10)
+        assert env["feedback"][-1] == "Couldn't read the connected tools. Claude Code said no."
+    _connected_tools(frame, monkeypatch, drive)
+
+
+def test_opening_the_dialog_says_nothing_of_its_own(frame, env, monkeypatch):
+    select(frame, "Tools probe")
+    count = len(env["feedback"])
+    _connected_tools(frame, monkeypatch, lambda dialog: None)
+    assert len(env["feedback"]) == count
+
+
+def test_a_list_that_comes_back_as_nothing_doesnt_stick_on_reading(frame):
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = SimpleNamespace(load=lambda done: done(None, ""), note=lambda: "A note.",
+                           can_turn_off=False)
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        assert dialog.loaded and not dialog.busy
+        assert "has no connected tools" in dialog.list.GetString(0)
+    finally:
+        dialog.Destroy()
+
+
+def _codex_frame(record=None, work=None):
+    from types import SimpleNamespace
+    return SimpleNamespace(store=SimpleNamespace(get=lambda *a, **k: record),
+                           sessions=SimpleNamespace(connected_tools=lambda info: []),
+                           _codex_work=work or (lambda action, done: done(action(), False)))
+
+
+def _codex_info(is_own=False):
+    from types import SimpleNamespace
+    return SimpleNamespace(cli_session_id="c-1", is_own=is_own, title="Chat")
+
+
+@pytest.mark.parametrize("reason,said", [(None, "Codex could not say."), ("Codex is busy.", "Codex is busy.")])
+def test_codex_failure_with_no_words_still_ends_the_wait(frame, reason, said):
+    """_codex_work gives (None, True) when it has no words for a failure, which
+    left the list on "Reading..." for good (#468)."""
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(_codex_frame(work=lambda action, done: done(reason, True)), _codex_info())
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        assert dialog.load_error == f"Couldn't read the connected tools. {said}"
+        assert dialog.list.GetString(0) == dialog.load_error and not dialog.busy
+    finally:
+        dialog.Destroy()
+
+
+def test_a_codex_chat_from_elsewhere_reads_as_read_only(frame, env):
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(_codex_frame(), _codex_info())
+    host.load = lambda done: done([CodexTool("notes", "configured", off_for_chat=False,
+                                             read_only=True)], "")
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        assert dialog.list.GetString(0) == "notes: configured, configured Codex MCP server"
+        details = dialog.details.GetValue()
+        assert "can't be changed for it here" in details and "off for this chat" not in details
+        assert dialog.toggle_btn.GetLabel() == "Turn &Off for This Chat"
+        dialog.on_toggle()
+        assert env["boxes"][-1] == "Tools can be turned off only for chats The Chat Place started."
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_read_status_on_an_off_tool_says_a_copy_is_how(frame, env):
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(_codex_frame(), _codex_info())
+    host.load = lambda done: done([CodexTool("notes", "off")], "")
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        dialog.on_reconnect()
+        assert "Copy with Tool On makes a new copy" in env["boxes"][-1]
+        assert "Turn it on first" not in env["boxes"][-1]
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_consent_is_parented_on_the_dialog_not_the_disabled_window(frame, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    record = SimpleNamespace(cli_session_id="c-1", provider_options={})
+    host = CodexConnectedTools(_codex_frame(record), _codex_info(is_own=True))
+    host.load = lambda done: done([CodexTool("notes", "off")], "")
+    parents = []
+    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: parents.append(a[3]) or wx.NO)
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        dialog.on_toggle()
+        assert parents == [dialog]
+    finally:
+        dialog.Destroy()
+
+
+def test_a_copilot_chat_hears_which_chats_have_connected_tools(frame, env, monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(frame, "_selected_session",
+                        lambda: SimpleNamespace(provider="copilot", title="Chat"))
+    frame.on_connected_tools()
+    assert env["feedback"][-1] == ("Connected Tools is for Claude and Codex chats. Chat is a "
+                                   "Copilot chat.")
 
 
 def test_a_desktop_chat_can_be_read_but_not_changed(frame, env, monkeypatch):
@@ -162,6 +336,58 @@ def test_sign_in_opens_the_page_and_says_what_to_do(frame, env, monkeypatch):
     assert env["boxes"][-1].startswith(
         "Your browser opened claude.ai to sign in to claude.ai Morningstar. Sign in there, "
         "then come back and press Refresh.")
+
+
+def _host(frame):
+    from thechatplace.ui.mcp_host import ClaudeConnectedTools
+    return ClaudeConnectedTools(frame, frame._selected_session())
+
+
+def test_closing_during_sign_in_never_opens_the_browser(frame, env):
+    select(frame, "Tools probe")
+    host = _host(frame)
+    answers = []
+    server = McpServer("claude.ai Morningstar", "needs-auth")
+    host.sign_in(server, lambda *a: answers.append(a))
+    host.close()
+    pump(lambda: False, timeout=0.5)
+    assert env["opened"] == [] and answers == []
+
+
+def test_an_address_the_system_refuses_is_said_and_the_dialog_is_not_left_busy(frame, env, monkeypatch):
+    def refuses(url):
+        raise ValueError("embedded null character")
+    monkeypatch.setattr(platform_paths, "open_url", refuses)
+    select(frame, "Tools probe")
+
+    def drive(dialog):
+        dialog.list.SetSelection(1)
+        dialog.on_sign_in()
+        assert pump(lambda: not dialog.busy, timeout=10)
+    _connected_tools(frame, monkeypatch, drive)
+    assert "Couldn't start signing in" in env["boxes"][-1]
+    assert "embedded null character" in env["boxes"][-1]
+
+
+def test_an_expired_sign_in_is_said_while_the_dialog_is_open(frame, env):
+    select(frame, "Tools probe")
+    host = _host(frame)
+    host._say_expired(["own-oauth"])
+    assert env["feedback"][-1].startswith("The sign-in for own-oauth expired after 15 minutes.")
+    count = len(env["feedback"])
+    host.close()
+    host._say_expired(["own-oauth"])
+    assert len(env["feedback"]) == count
+
+
+def test_a_session_that_died_is_replaced_and_closed(frame, env):
+    select(frame, "Tools probe")
+    host = _host(frame)
+    first = host._open()
+    first.closed = True
+    assert host._open() is not first
+    assert env["mcp"]["closed"] == 1
+    host.close()
 
 
 def test_sign_in_on_a_connected_tool_says_so(frame, env, monkeypatch):
@@ -348,7 +574,9 @@ def test_a_page_is_opened_and_that_is_the_answer(frame, env, monkeypatch):
 
     def drive(dialog):
         assert dialog.send_btn.GetLabel() == "&Open in Browser"
-        assert "Page: https://example.com/sign-in" in dialog.message_text.GetValue()
+        assert dialog.address_text.GetValue() == ("Opens example.com\n"
+                                                  "https://example.com/sign-in")
+        assert "example.com" not in dialog.message_text.GetValue()
         dialog._on_send()
     _answer_with(monkeypatch, drive)
     frame.on_answer()
@@ -362,11 +590,197 @@ def test_a_page_that_isnt_a_web_address_is_never_opened(frame, env, monkeypatch)
 
     def drive(dialog):
         assert not dialog.send_btn.IsEnabled()
-        assert "won't open it" in dialog.message_text.GetValue()
+        assert "won't open this" in dialog.address_text.GetValue()
         dialog._on_send()  # does nothing
     _answer_with(monkeypatch, drive)
     frame.on_answer()
     assert env["opened"] == [] and not hasattr(runner, "responses")
+
+
+@pytest.mark.parametrize("url", [
+    "https://good.example@evil.example/", "http://example.com/", "https://evil.example/\x00",
+    "https://evil.example/\u202e"])
+def test_an_address_that_hides_where_it_goes_is_never_opened(frame, env, monkeypatch, url):
+    runner = _asked(frame, elicitation_from("e3", {**PAGE, "url": url}))
+
+    def drive(dialog):
+        assert not dialog.send_btn.IsEnabled()
+        assert "\x00" not in dialog.address_text.GetValue()
+        dialog._on_send()
+    _answer_with(monkeypatch, drive)
+    frame.on_answer()
+    assert env["opened"] == [] and not hasattr(runner, "responses")
+
+
+def test_a_message_cant_get_ahead_of_the_address_or_pose_as_it(frame, env):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    request = elicitation_from("e", {**PAGE, "url": "https://evil.example/",
+                                     "message": "Opens bank.example\nPage: https://bank.example/"})
+    dialog = ElicitationDialog(frame, "Tools probe", request)
+    try:
+        assert dialog.address_text.GetValue().splitlines()[0] == "Opens evil.example"
+        assert "evil.example" not in dialog.message_text.GetValue()
+        assert dialog.address_text.GetPosition().y < dialog.message_text.GetPosition().y
+        assert dialog.address_text.GetName() == "Address"
+    finally:
+        dialog.Destroy()
+
+
+def test_refused_system_open_after_the_answer_went_is_said_and_carries_on(frame, env, monkeypatch):
+    runner = _asked(frame, elicitation_from("e2", PAGE))
+
+    def refuses(url):
+        raise ValueError("embedded null character")
+    monkeypatch.setattr(platform_paths, "open_url", refuses)
+    _answer_with(monkeypatch, lambda dialog: dialog._on_send())
+    frame.on_answer()
+    assert runner.responses == [("e2", {"action": "accept"})]
+    assert env["feedback"][-1].startswith("Couldn't open your browser")
+    assert frame._pending["own-1"] == []
+
+
+def _enter(dialog, monkeypatch, focus):
+    """Whether Enter, pressed with ``focus``, goes on to the default button."""
+    monkeypatch.setattr(dialog, "_focus", lambda: focus)
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(wx.WXK_RETURN)
+    dialog._on_key(event)
+    return event.GetSkipped()
+
+
+def test_enter_in_the_message_doesnt_send_what_the_server_filled_in(frame, env, monkeypatch):
+    """Answer then Enter used to send a form untouched, even a ticked "yes,
+    delete it" (#468)."""
+    from thechatplace.ui.dialogs import ElicitationDialog
+    schema = {"type": "object", "properties": {
+        "confirm_delete": {"type": "boolean", "default": True},
+        "why": {"type": "string"}, "what": {"type": "string", "enum": ["a", "b"]}}}
+    dialog = ElicitationDialog(frame, "Tools probe",
+                               elicitation_from("e", {**FORM, "requested_schema": schema}))
+    try:
+        assert not _enter(dialog, monkeypatch, dialog.message_text)
+        assert not _enter(dialog, monkeypatch, None)
+        # From inside the form, and on a button, Enter does what it usually does.
+        for control in (dialog.control_for("why"), dialog.control_for("confirm_delete"),
+                        dialog.control_for("what"), dialog.send_btn, dialog.decline_btn):
+            assert _enter(dialog, monkeypatch, control)
+        other = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        other.SetKeyCode(wx.WXK_TAB)
+        monkeypatch.setattr(dialog, "_focus", lambda: dialog.message_text)
+        dialog._on_key(other)
+        assert other.GetSkipped()  # Tab still moves on
+    finally:
+        dialog.Destroy()
+
+
+def test_enter_on_a_page_is_left_to_decline(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    page = ElicitationDialog(frame, "Tools probe", elicitation_from("e", PAGE))
+    try:
+        assert _enter(page, monkeypatch, page.message_text)
+    finally:
+        page.Destroy()
+
+
+def test_a_form_it_cant_show_has_only_decline_and_later(frame, env, monkeypatch):
+    schema = {"type": "object", "required": ["trip"], "properties": {
+        "trip": {"type": "object", "title": "Trip", "properties": {}}}}
+    runner = _asked(frame, elicitation_from("e1", {**FORM, "requested_schema": schema}))
+
+    def drive(dialog):
+        assert dialog.send_btn is None and dialog.fields == []
+        assert "can't show (Trip)" in dialog.note_text.GetValue()
+        assert dialog.note_text.GetName() == "Note"
+        assert dialog.form_panel is None
+        assert "Where would you like to go" in dialog.message_text.GetValue()
+        assert _enter(dialog, monkeypatch, dialog.message_text)
+        dialog._on_decline()
+    _answer_with(monkeypatch, drive)
+    frame.on_answer()
+    assert runner.responses == [("e1", {"action": "decline"})]
+
+
+def test_too_long_a_form_has_only_decline_and_later(frame, env):
+    from thechatplace.claude_mcp import MAX_FORM_FIELDS
+    from thechatplace.ui.dialogs import ElicitationDialog
+    schema = {"properties": {f"f{i}": {"type": "string"} for i in range(MAX_FORM_FIELDS + 1)}}
+    dialog = ElicitationDialog(frame, "Tools probe",
+                               elicitation_from("e", {**FORM, "requested_schema": schema}))
+    try:
+        assert dialog.send_btn is None and dialog.form_panel is None
+        assert "too long" in dialog.note_text.GetValue()
+    finally:
+        dialog.Destroy()
+
+
+LONG = ("A description long enough that it can't possibly fit on one line of the dialog, however "
+        "wide its font is, so it has to wrap rather than run off the edge of the form. " * 2)
+
+
+def test_long_labels_and_descriptions_wrap(frame, env):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    schema = {"properties": {
+        "one": {"type": "boolean", "title": LONG, "description": LONG},
+        "two": {"type": "string", "title": LONG, "description": LONG},
+        "three": {"type": "array", "title": "Three", "description": LONG,
+                  "items": {"enum": ["a"], "enumNames": [LONG]}},
+        "four": {"type": "string", "title": "Four", "enum": [LONG]}}}
+    dialog = ElicitationDialog(frame, "Tools probe",
+                               elicitation_from("e", {**FORM, "requested_schema": schema}))
+    try:
+        assert dialog.form_panel.GetScrollPixelsPerUnit()[0] == 0  # up and down only
+        assert not dialog.form_panel.HasFlag(wx.HSCROLL)
+        limit = dialog.GetClientSize().width
+        assert "\n" in dialog.control_for("one").GetLabel()
+        assert "\n" in dialog.control_for("three").GetLabel()
+        for child in dialog.form_panel.GetChildren():
+            if not isinstance(child, wx.StaticBox):
+                assert child.GetBestSize().width <= limit or isinstance(child, wx.Choice)
+        assert dialog.control_for("four").GetMinSize().width < limit
+        # What a screen reader hears isn't broken up.
+        assert dialog.control_for("one").GetName().startswith(LONG)
+    finally:
+        dialog.Destroy()
+
+
+MANY = {"subtype": "elicitation", "mcp_server_name": "elicit-test", "message": "Pick.",
+        "mode": "form", "requested_schema": {"type": "object", "required": ["extras"], "properties": {
+            "extras": {"type": "array", "title": "Extras", "description": "What to add",
+                       "items": {"enum": ["breakfast", "parking"],
+                                 "enumNames": ["Breakfast", "Parking"]}},
+            "pets": {"type": "boolean", "title": "Pets", "description": "Any at all"},
+            "size": {"type": "string", "title": "Size", "description": "How big",
+                     "enum": ["s", "l"]}}}}
+
+
+def test_choosing_several_is_a_group_and_its_first_box_says_the_rest(frame, env):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    dialog = ElicitationDialog(frame, "Tools probe", elicitation_from("e", MANY))
+    try:
+        first, second = [box for _value, box in dialog._controls["extras"]]
+        assert first.GetName() == "Extras, required: What to add: Breakfast"
+        assert second.GetName() == "Extras: Parking"
+        groups = [c for c in dialog.form_panel.GetChildren() if isinstance(c, wx.StaticBox)]
+        assert [g.GetLabel() for g in groups] == ["Extras (required)"]
+        # Siblings of the box, not its children: see QuestionDialog.
+        assert first.GetParent() is dialog.form_panel
+    finally:
+        dialog.Destroy()
+
+
+@msaa
+def test_a_forms_check_boxes_and_lists_are_named_through_msaa(frame, env):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    dialog = ElicitationDialog(frame, "Tools probe", elicitation_from("e", MANY))
+    try:
+        for control, name in (
+                (dialog.control_for("extras"), "Extras, required: What to add: Breakfast"),
+                (dialog._controls["extras"][1][1], "Extras: Parking"),
+                (dialog.control_for("pets"), "Pets: Any at all"),
+                (dialog.control_for("size"), "Size: How big")):
+            assert control.GetAccessible().GetName(0) == (wx.ACC_OK, name)
+    finally:
+        dialog.Destroy()
 
 
 def test_the_form_is_labelled_for_a_screen_reader(frame, env):

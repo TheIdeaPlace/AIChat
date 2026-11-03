@@ -49,14 +49,18 @@ stdio server's tool, in both modes, and the answers were accepted.
 """
 from __future__ import annotations
 
+import datetime
+import ipaddress
 import json
 import math
 import re
 import subprocess
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Callable, Collection, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit
 
 from . import platform_paths
 from .claude_cli import PermissionRequest, _decode, child_environment
@@ -111,10 +115,20 @@ def is_safe_server_name(name) -> bool:
     return isinstance(name, str) and 0 < len(name) <= 200 and not _CONTROL.search(name)
 
 
-def server_label(name: str) -> str:
+def is_own_tools(name: str, source: str = "", scope: str = "") -> bool:
+    """True for The Chat Place's own session tools. The name alone proves
+    nothing, since any server can call itself that; the app's own comes from
+    ``--mcp-config``, which Claude Code reports as ``dynamic``, and a plugin's
+    (scope ``dynamic`` too) has a source of its own."""
+    return name == SESSION_TOOLS_SERVER and (source or scope) == "dynamic"
+
+
+def server_label(name: str, source: str = "", scope: str = "") -> str:
     """The name to show. Claude Code names a plugin's server
-    ``plugin:<plugin>:<server>``; The Chat Place's own has a fixed name."""
-    if name == SESSION_TOOLS_SERVER:
+    ``plugin:<plugin>:<server>``; The Chat Place's own has a fixed name, used
+    only with the source that shows it's ours. A server's question says no
+    source, so it never gets the friendly label."""
+    if is_own_tools(name, source, scope):
         return "The Chat Place's session tools"
     parts = name.split(":")
     if len(parts) == 3 and parts[0] == "plugin" and parts[1] and parts[2]:
@@ -123,7 +137,7 @@ def server_label(name: str) -> str:
 
 
 def source_words(source: str, scope: str = "", name: str = "") -> str:
-    if name == SESSION_TOOLS_SERVER:
+    if is_own_tools(name, source, scope):
         return "The Chat Place"
     for key in (source, scope):
         if key in SOURCE_WORDS:
@@ -143,16 +157,24 @@ class McpServer:
     tools: List[str] = field(default_factory=list)
     #: The chat turns it off for its turns (``disabled_mcp``).
     off_for_chat: bool = False
-    #: Kept off for the chat, but Claude Code no longer lists it.
+    #: Kept off for the chat and not in Claude Code's list, which is how every
+    #: turned-off tool looks once it's kept out of the idle process (#468).
     missing: bool = False
 
     @property
     def label(self) -> str:
-        return server_label(self.name)
+        return server_label(self.name, self.source, self.scope)
 
     @property
     def is_session_tools(self) -> bool:
-        return self.name == SESSION_TOOLS_SERVER
+        return is_own_tools(self.name, self.source, self.scope)
+
+    @property
+    def can_be_denied(self) -> bool:
+        """``deniedMcpServers`` goes by name, so denying a server that shares
+        the session tools' name would take the session tools away as well:
+        ``settings_args`` leaves that name out, and the dialog says so."""
+        return self.name != SESSION_TOOLS_SERVER
 
     @property
     def is_connector(self) -> bool:
@@ -169,7 +191,7 @@ class McpServer:
     def text(self) -> str:
         """One row of the Connected Tools list, read in full."""
         if self.missing:
-            return f"{self.label}: off for this chat, no longer set up in Claude Code"
+            return f"{self.label}: off for this chat"
         parts = [self.status_words(), source_words(self.source, self.scope, self.name)]
         if self.status == "connected" and not self.off_for_chat and self.tools:
             count = len(self.tools)
@@ -201,8 +223,9 @@ def parse_servers(body) -> List[McpServer]:
 
 def with_chat_settings(servers: List[McpServer], disabled: Collection[str]) -> List[McpServer]:
     """The list as a chat sees it: those it turns off say so, and one it
-    keeps off that Claude Code no longer lists is still shown, so it can be
-    turned on again. The session tools come last, as they're The Chat
+    keeps off that Claude Code doesn't list is still shown, so it can be
+    turned on again. That's every turned-off tool in a new idle process, which
+    doesn't start them. The session tools come last, as they're The Chat
     Place's own."""
     disabled = [n for n in disabled if is_safe_server_name(n)]
     rows = []
@@ -289,10 +312,80 @@ def _and(names: List[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
+def tools_summary(rows) -> str:
+    """The list in one line, for Refresh to say: "3 connected tools, 1 needs
+    sign-in". Works for any provider's rows."""
+    if not rows:
+        return "No connected tools."
+    on = [r for r in rows if not r.off_for_chat]
+    needs = sum(r.status == "needs-auth" for r in on)
+    failed = sum(r.status == "failed" for r in on)
+    off = len(rows) - len(on)
+    parts = [f"{len(rows)} connected tool" + ("" if len(rows) == 1 else "s")]
+    if needs:
+        parts.append(f"{needs} " + ("needs" if needs == 1 else "need") + " sign-in")
+    if failed:
+        parts.append(f"{failed} failed")
+    if off:
+        parts.append(f"{off} off for this chat")
+    return ", ".join(parts)
+
+
+#: Addresses plain http may go to: nothing on the way can read or change them.
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+_HOST_LABEL = r"[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?"
+_PLAIN_HOST = re.compile(rf"{_HOST_LABEL}(?:\.{_HOST_LABEL})*\.?")
+
+
+def _hidden_character(char: str) -> bool:
+    """Control, format (a right-to-left override) and spacing characters, and
+    ones with no meaning: anything that can make an address read differently
+    from where it goes, or end it early."""
+    return unicodedata.category(char)[0] in "CZ"
+
+
+def web_url_host(url) -> str:
+    """The host a web address really goes to, or "" if it isn't one The Chat
+    Place opens. Only a web page is opened from Sign In or a server's
+    request: never a file, a program or another app's link, and never an
+    address that hides where it goes. ``https://good.example@evil.example/``
+    goes to evil.example, so no user name or password is allowed before the
+    host. Browsers end the host at a backslash where urlsplit doesn't, so
+    there are no backslashes. A host with other alphabets' letters can look
+    like a familiar one, so a host is plain letters, digits and punctuation
+    (its ``xn--`` form shows what it is)."""
+    if not isinstance(url, str) or "\\" in url or any(_hidden_character(c) for c in url):
+        return ""
+    try:
+        parts = urlsplit(url)
+        parts.port  # noqa: B018 - it raises on a port that isn't one
+    except ValueError:
+        return ""
+    host = parts.hostname or ""
+    if parts.scheme not in ("http", "https") or "@" in parts.netloc or len(host) > 253:
+        return ""
+    if "[" in parts.netloc:
+        try:
+            ipaddress.IPv6Address(host)
+        except ValueError:
+            return ""
+    elif not _PLAIN_HOST.fullmatch(host):
+        return ""
+    if parts.scheme == "http" and host not in _LOCAL_HOSTS:
+        return ""
+    return host
+
+
 def is_web_url(url) -> bool:
-    """Only a web page is opened from Sign In or a server's request: never a
-    file, a program or another app's link."""
-    return isinstance(url, str) and bool(re.fullmatch(r"https?://\S+", url, re.IGNORECASE))
+    """True for an address The Chat Place will open (``web_url_host``)."""
+    return bool(web_url_host(url))
+
+
+def _visible(text: str) -> str:
+    """``text`` with its hidden characters written out, for showing something
+    that won't be opened. A NUL would otherwise end the box's text early."""
+    return "".join(f"[U+{ord(c):04X}]" if _hidden_character(c) and c != " " else c
+                   for c in text)
 
 
 @dataclass
@@ -311,15 +404,29 @@ class McpSession:
     and nothing is billed. Same safety as ``fetch_commands``: the native
     ``claude`` only, the child environment, no permission prompts, and the
     process (with any server it started) ends on ``close`` or after
-    ``MAX_LIFETIME``. Create and use it off the UI thread."""
+    ``MAX_LIFETIME``. Create and use it off the UI thread.
+
+    ``disabled`` keeps a chat's turned-off servers out of it, so looking at
+    the list doesn't start them. ``mcp_config`` is the ``--mcp-config`` the
+    chat's turns get, so the session tools are listed as they are for a turn.
+    Set ``on_expired`` to hear which sign-ins were still waiting when
+    ``MAX_LIFETIME`` ended the process."""
 
     def __init__(self, executable: str, cwd: str,
                  popen: Callable[..., subprocess.Popen] = subprocess.Popen,
-                 lifetime: float = MAX_LIFETIME) -> None:
+                 lifetime: float = MAX_LIFETIME, disabled: Collection[str] = (),
+                 mcp_config: Optional[str] = None) -> None:
         if not cwd:
             raise McpError("This chat has no folder.")
         command = [executable, "-p", "--input-format", "stream-json", "--output-format",
-                   "stream-json", "--verbose", "--permission-prompts", "none"]
+                   "stream-json", "--verbose", "--permission-prompts", "none",
+                   *settings_args(disabled)]
+        if mcp_config:
+            # Last: --mcp-config takes several values, as in a turn.
+            command += ["--mcp-config", mcp_config]
+        self.on_expired: Optional[Callable[[List[str]], None]] = None
+        self._lifetime = lifetime
+        self._callbacks: set = set()
         self._tree = platform_paths.ProcessTree()
         self._lock = threading.Lock()
         self._answers: Dict[str, dict] = {}
@@ -334,12 +441,34 @@ class McpSession:
             self._tree.attach(self._process)
         except OSError as exc:
             raise McpError(f"Couldn't start Claude Code: {exc}") from exc
-        self._timer = threading.Timer(lifetime, self.close)
-        self._timer.daemon = True
-        self._timer.start()
+        self._start_timer()
         threading.Thread(target=self._read, name="claude-mcp", daemon=True).start()
         self._write({"type": "control_request", "request_id": "init",
                      "request": {"subtype": "initialize", "hooks": None}})
+
+    def _start_timer(self) -> None:
+        self._timer = threading.Timer(self._lifetime, self._expire)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def _expire(self) -> None:
+        """``MAX_LIFETIME`` is up. A browser coming back after this finds
+        nobody waiting, so whoever asked hears the sign-in has expired."""
+        with self._lock:
+            pending = [] if self._closed else sorted(self._callbacks)
+        self.close()
+        if pending and self.on_expired is not None:
+            self.on_expired(pending)
+
+    def _expect_callback(self, name: str) -> None:
+        """A sign-in is waiting on this process: it gets the whole of
+        ``MAX_LIFETIME`` from now, however long the dialog was already open."""
+        with self._lock:
+            if self._closed:
+                return
+            self._callbacks.add(name)
+            self._timer.cancel()
+            self._start_timer()
 
     def _write(self, obj: dict) -> None:
         try:
@@ -375,14 +504,16 @@ class McpSession:
 
     @property
     def closed(self) -> bool:
-        """Closed, or ended by ``MAX_LIFETIME``: a new one is needed."""
-        return self._closed
+        """Closed, ended by ``MAX_LIFETIME`` or died by itself: a new one is
+        needed. ``close()`` is still wanted after it dies by itself, to end
+        the job and any server it left behind."""
+        return self._closed or self._process.poll() is not None
 
     def request(self, subtype: str, timeout: float = REQUEST_WAIT, **fields) -> dict:
         """Send one control request; its answer's body, or McpError with
         Claude Code's reason."""
         with self._lock:
-            if self._closed:
+            if self.closed:
                 raise McpError("Claude Code has stopped.")
             self._counter += 1
             request_id = f"tcp-mcp-{self._counter}"
@@ -412,6 +543,8 @@ class McpSession:
         end = clock() + wait
         while True:
             servers = parse_servers(self.request("mcp_status"))
+            with self._lock:
+                self._callbacks -= {s.name for s in servers if s.status == "connected"}
             if not any(s.status == "pending" for s in servers) or clock() >= end:
                 return servers
             sleep(poll)
@@ -423,7 +556,10 @@ class McpSession:
             return SignIn("")  # signed in already, nothing to do
         if not is_web_url(url):
             raise McpError("Claude Code didn't give a web page to sign in on.")
-        return SignIn(url, bool(body.get("callbackExpected")))
+        expected = bool(body.get("callbackExpected"))
+        if expected:
+            self._expect_callback(name)
+        return SignIn(url, expected)
 
     def reconnect(self, name: str) -> None:
         self.request("mcp_reconnect", serverName=name, timeout=60.0)
@@ -458,9 +594,20 @@ def _refusal(subtype: str, error: str) -> str:
     return error
 
 
-def open_session(executable: str, cwd: str) -> McpSession:
+def open_session(executable: str, cwd: str, disabled: Collection[str] = (),
+                 mcp_config: Optional[str] = None) -> McpSession:
     """The session the window uses (tests put a fake here)."""
-    return McpSession(executable, cwd)
+    return McpSession(executable, cwd, disabled=disabled, mcp_config=mcp_config)
+
+
+def lifetime_minutes() -> int:
+    return int(MAX_LIFETIME // 60)
+
+
+def expired_text(names: Collection[str]) -> str:
+    """What to say when ``MAX_LIFETIME`` ends a sign-in still waiting."""
+    return (f"The sign-in for {_and([server_label(n) for n in names])} expired after "
+            f"{lifetime_minutes()} minutes. If you didn't finish, press Sign In to start again.")
 
 
 # ---------------------------------------------------------------------------
@@ -471,6 +618,11 @@ def open_session(executable: str, cwd: str) -> McpSession:
 ELICITATION = "MCP elicitation"
 
 ACCEPT, DECLINE, CANCEL = "accept", "decline", "cancel"
+
+#: The most a form may ask: past these it isn't one a person can answer by
+#: keyboard, and building it would hold the window up.
+MAX_FORM_FIELDS = 40
+MAX_FORM_CHOICES = 100
 
 
 @dataclass
@@ -492,6 +644,8 @@ class FormField:
     min_length: Optional[int] = None
     max_length: Optional[int] = None
     format: str = ""
+    min_items: Optional[int] = None
+    max_items: Optional[int] = None
 
     def name(self) -> str:
         """The control's name for a screen reader: label, then "required"."""
@@ -518,9 +672,92 @@ def _number(value) -> Optional[float]:
         else None
 
 
+def _whole(value) -> Optional[int]:
+    """A count from a schema; ``True`` is an int to Python but not a count."""
+    return value if type(value) is int else None
+
+
+def _type_of(prop: dict):
+    """The one type a property's value has. ``["number", "null"]`` is a number
+    that may be left empty, which is how an optional box already answers. A
+    type of several kinds is returned whole, and isn't one a box can ask for."""
+    kind = prop.get("type")
+    if isinstance(kind, list):
+        others = [k for k in kind if k != "null"]
+        return others[0] if len(others) == 1 else kind
+    return kind
+
+
+def _lists_every_option(prop: dict) -> bool:
+    """False for an ``enum`` or ``oneOf`` that doesn't name each value it
+    allows: one with no values, or with a type in place of a value, can't be
+    shown as a list. True with none of them, where there's no list to show."""
+    if "enum" in prop:
+        return bool(_choices(prop))
+    if "oneOf" not in prop and "anyOf" not in prop:
+        return True
+    options = prop.get("oneOf") or prop.get("anyOf")
+    return isinstance(options, list) and bool(options) and len(_choices(prop)) == len(options)
+
+
+def _options_of(prop: dict) -> dict:
+    """The part of a property that lists its choices: its items, for an array."""
+    items = prop.get("items")
+    return items if _type_of(prop) == "array" and isinstance(items, dict) else prop
+
+
+def _cant_show(prop, is_required: bool) -> bool:
+    """True when no control here could give a valid answer for ``prop``."""
+    if not isinstance(prop, dict):
+        return is_required
+    kind = _type_of(prop)
+    if kind not in (None, "string", "number", "integer", "boolean", "array"):
+        return True  # a nested object, or a mix of types
+    if any(word in prop for word in ("properties", "allOf", "$ref", "not", "if")):
+        return True
+    if kind == "array":
+        choices = _choices(_options_of(prop)) if isinstance(prop.get("items"), dict) else []
+        least, most = _whole(prop.get("minItems")), _whole(prop.get("maxItems"))
+        return (not choices or not _lists_every_option(_options_of(prop))
+                or (is_required and least is not None and least > len(choices))
+                or (least is not None and most is not None and least > most))
+    return not _lists_every_option(prop)
+
+
+def form_problem(schema) -> str:
+    """Why this form can't be answered here, as a sentence, or "". Sending
+    what a box happens to hold would give the server something it didn't ask
+    for (a nested object as a string), and leaving a required part out would
+    send it nothing, so such a form can only be declined or left for later."""
+    if not isinstance(schema, dict):
+        return ""
+    too_long = ("This form is too long for The Chat Place to show, so you can only decline it "
+                "or answer later.")
+
+    def cant(label) -> str:
+        return (f"This form asks for something The Chat Place can't show "
+                f"({_visible(str(label))[:80]}), so you can only decline it or answer later.")
+    props = schema.get("properties", {})
+    if schema.get("type") not in (None, "object") or not isinstance(props, dict):
+        return cant("not a list of fields")
+    if len(props) > MAX_FORM_FIELDS:
+        return too_long
+    required = schema.get("required") if isinstance(schema.get("required"), list) else []
+    for key in required:
+        if not isinstance(key, str) or key not in props:
+            return cant(key)
+    for key, prop in props.items():
+        if isinstance(prop, dict) and len(_choices(_options_of(prop))) > MAX_FORM_CHOICES:
+            return too_long
+        if _cant_show(prop, key in required):
+            return cant((prop.get("title") if isinstance(prop, dict) else None) or key)
+    return ""
+
+
 def form_fields(schema) -> List[FormField]:
     """The fields of a requested schema (a flat object of simple values, as
-    MCP allows), in the server's order."""
+    MCP allows), in the server's order. ``form_problem`` says first whether
+    the schema is one these can answer."""
     props = schema.get("properties") if isinstance(schema, dict) else None
     if not isinstance(props, dict):
         return []
@@ -529,13 +766,15 @@ def form_fields(schema) -> List[FormField]:
     for key, prop in props.items():
         if not isinstance(key, str) or not isinstance(prop, dict):
             continue
-        kind_name = prop.get("type")
+        kind_name = _type_of(prop)
         label = str(prop.get("title") or key)
         common = dict(key=key, label=label, description=str(prop.get("description") or ""),
                       required=key in required, default=prop.get("default"))
         if kind_name == "array":
             items = prop.get("items") if isinstance(prop.get("items"), dict) else {}
-            fields_.append(FormField(kind="multi", choices=_choices(items), **common))
+            fields_.append(FormField(kind="multi", choices=_choices(items),
+                                     min_items=_whole(prop.get("minItems")),
+                                     max_items=_whole(prop.get("maxItems")), **common))
         elif _choices(prop):
             fields_.append(FormField(kind="choice", choices=_choices(prop), **common))
         elif kind_name == "boolean":
@@ -544,17 +783,15 @@ def form_fields(schema) -> List[FormField]:
             fields_.append(FormField(kind=kind_name, minimum=_number(prop.get("minimum")),
                                      maximum=_number(prop.get("maximum")), **common))
         else:
-            lengths = {k: prop.get(k) if type(prop.get(k)) is int else None
-                       for k in ("minLength", "maxLength")}
-            fields_.append(FormField(kind="text", min_length=lengths["minLength"],
-                                     max_length=lengths["maxLength"],
+            fields_.append(FormField(kind="text", min_length=_whole(prop.get("minLength")),
+                                     max_length=_whole(prop.get("maxLength")),
                                      format=str(prop.get("format") or ""), **common))
     return fields_
 
 
 def _bounds(f: FormField) -> str:
     def show(n):
-        return str(int(n)) if f.kind == "integer" or float(n).is_integer() else str(n)
+        return str(int(n)) if float(n).is_integer() else str(n)
     if f.minimum is not None and f.maximum is not None:
         return f"between {show(f.minimum)} and {show(f.maximum)}"
     if f.minimum is not None:
@@ -588,9 +825,15 @@ def _check_one(f: FormField, value, content: dict) -> str:
         return ""
     if f.kind == "multi":
         chosen = [v for v in value or [] if v in [c[0] for c in f.choices]]
-        if f.required and not chosen:
-            return f"Choose at least one for {f.label}."
-        if chosen:
+        if f.required and not chosen and f.min_items != 0:
+            return f"Choose at least {f.min_items or 'one'} for {f.label}."
+        # Left empty, an optional one isn't answered at all, so its limits
+        # don't come into it.
+        if chosen and f.min_items is not None and len(chosen) < f.min_items:
+            return f"Choose at least {f.min_items} for {f.label}."
+        if f.max_items is not None and len(chosen) > f.max_items:
+            return f"Choose at most {f.max_items} for {f.label}."
+        if chosen or f.required:
             content[f.key] = chosen
         return ""
     if f.kind == "choice":
@@ -599,14 +842,15 @@ def _check_one(f: FormField, value, content: dict) -> str:
         elif f.required:
             return f"Choose one for {f.label}."
         return ""
-    text = str(value or "").strip()
-    if not text:
+    # As typed: spaces can be part of a passphrase. All spaces is still empty.
+    text = str(value or "")
+    if not text.strip():
         if f.required:
             return f"{f.label} is required."
         return ""
     if f.kind in ("number", "integer"):
         try:
-            number = int(text) if f.kind == "integer" else float(text)
+            number = int(text.strip()) if f.kind == "integer" else float(text.strip())
         except ValueError:
             whole = "a whole number" if f.kind == "integer" else "a number"
             return f"{f.label} must be {whole}."
@@ -617,14 +861,46 @@ def _check_one(f: FormField, value, content: dict) -> str:
             return f"{f.label} must be {_bounds(f)}."
         content[f.key] = number
         return ""
+    if f.format:
+        # A checked format has no room for spaces around it, and a copied
+        # address often brings some.
+        text = text.strip()
     if f.min_length is not None and len(text) < f.min_length:
         return f"{f.label} must be at least {f.min_length} characters."
     if f.max_length is not None and len(text) > f.max_length:
         return f"{f.label} must be at most {f.max_length} characters."
     if f.format == "email" and not re.fullmatch(r"[^@\s]+@[^@\s]+", text):
         return f"{f.label} must be an email address."
+    if f.format == "date" and not _is_date(text):
+        return f"{f.label} must be a date written as year-month-day, such as 2026-11-02."
+    if f.format == "date-time" and not _is_date_time(text):
+        return f"{f.label} must be a date and time, such as 2026-11-02T14:30:00Z."
+    if f.format == "uri" and not re.fullmatch(r"[A-Za-z][A-Za-z0-9+.-]*:\S+", text):
+        return f"{f.label} must be a full address, such as https://example.com."
     content[f.key] = text
     return ""
+
+
+def _is_date(text: str) -> bool:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return False
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_date_time(text: str) -> bool:
+    """RFC 3339, the form MCP's ``date-time`` means: with a zone."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})", text):
+        return False
+    plain = re.sub(r"\.\d+", "", text).upper().replace("Z", "+00:00")
+    try:
+        datetime.datetime.fromisoformat(plain)
+    except ValueError:
+        return False
+    return True
 
 
 def elicitation_response(action: str, content: Optional[dict] = None) -> dict:
@@ -659,8 +935,12 @@ class ElicitationRequest(PermissionRequest):
     def server_label(self) -> str:
         return server_label(self.server) if self.server else "A connected tool"
 
+    def form_problem(self) -> str:
+        """Why this form can't be answered here, or "" (``form_problem``)."""
+        return "" if self.is_url else form_problem(self.schema)
+
     def fields(self) -> List[FormField]:
-        return [] if self.is_url else form_fields(self.schema)
+        return [] if self.is_url or self.form_problem() else form_fields(self.schema)
 
     def summary(self) -> str:
         if self.is_url:
@@ -672,11 +952,23 @@ class ElicitationRequest(PermissionRequest):
             else f"{self.server_label} asks you for information"
 
     def detail(self) -> str:
+        """The server's own words. A page's address is never among them
+        (``address_text``): whatever comes after a message reads as more of
+        it, and a message can carry a made-up address of its own."""
         lines = [self.title] if self.title else []
         lines.append(self.message or "(The server gave no message.)")
-        if self.is_url:
-            lines += ["", f"Page: {self.url}"]
+        if self.description:
+            lines += ["", self.description]
         return "\n".join(lines)
+
+    def address_text(self) -> str:
+        """What the Address box says, from The Chat Place and not the server:
+        where the page really is, on a line of its own, then the address."""
+        host = web_url_host(self.url)
+        if host:
+            return f"Opens {host}\n{self.url}"
+        return ("The Chat Place won't open this: it isn't a plain web page's address.\n"
+                + (_visible(self.url) or "(The server gave no address.)"))
 
     def allow_for_session_label(self) -> str:
         return ""

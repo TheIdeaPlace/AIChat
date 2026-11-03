@@ -143,6 +143,9 @@ STEPS = [
     Step("a connected tool asks", [], trigger="elicitation", expect=["needs you"]),
     Step("answer the tool", ["ctrl+shift+a"], expect=["Message", "Where would you like to go"]),
     Step("Tab to the form", ["Tab"], expect=["City", "required"]),
+    # What a form's check box and list are called has to reach Orca (#468).
+    Step("Tab to a check box", ["Tab"], expect=["Bringing pets", "check box"]),
+    Step("Tab to a list", ["Tab"], expect=["Budget"]),
     Step("tool answered later, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # View, Connected Tools (#468), the View menu's last item: Up from the top.
@@ -333,7 +336,8 @@ ELICITATION = {
     "message": "Where would you like to go, and for how long?", "mode": "form",
     "requested_schema": {"type": "object", "required": ["city"], "properties": {
         "city": {"type": "string", "title": "City"},
-        "pets": {"type": "boolean", "title": "Bringing pets"}}}}
+        "pets": {"type": "boolean", "title": "Bringing pets"},
+        "budget": {"type": "string", "title": "Budget", "enum": ["low", "high"]}}}}
 
 
 def ask_elicitation(frame) -> None:

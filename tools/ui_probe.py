@@ -1550,6 +1550,18 @@ def d_elicitation_url(frame, env):
     return frame.on_answer
 
 
+def d_elicitation_cant_show(frame, env):
+    """A connected tool's form with a part no control here can answer (#468):
+    only Decline and Answer Later."""
+    _waiting(frame, _elicitation({
+        "subtype": "elicitation", "mcp_server_name": "trip-planner",
+        "message": "Where would you like to go?", "mode": "form",
+        "requested_schema": {"type": "object", "properties": {
+            "trip": {"type": "object", "title": "Trip", "properties": {
+                "city": {"type": "string"}}}}}}))
+    return frame.on_answer
+
+
 def d_chat_permissions_empty(frame, env):
     _open(frame, "Visual probe")
     frame.store.update("own-1", allowed_tools=[], allowed_tools_at={})
@@ -2158,6 +2170,8 @@ SURFACES = {
     "elicitation-form": ("dialog", d_elicitation_form, "A connected tool asks for input: a form"),
     "elicitation-url": ("dialog", d_elicitation_url,
                         "A connected tool asks you to open a web page"),
+    "elicitation-cant-show": ("dialog", d_elicitation_cant_show,
+                              "A connected tool's form that can only be declined"),
     "question-preview": ("dialog", d_question_preview,
                          "Claude asks about text it wrote just before, with an option's preview"),
     "plan": ("dialog", d_plan, "Claude's plan to approve"),
@@ -2276,6 +2290,7 @@ DIALOG_CLASSES = {
     "connected-tools": "ConnectedToolsDialog",
     "elicitation-form": "ElicitationDialog",
     "elicitation-url": "ElicitationDialog",
+    "elicitation-cant-show": "ElicitationDialog",
     "question-preview": "QuestionDialog",
     "plan": "PlanDialog",
     "manage-groups": "ManageGroupsDialog",

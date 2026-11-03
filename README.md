@@ -506,9 +506,14 @@ Copilot chats don't have these yet.
     opens on its message, read-only, then a form with one labelled control per thing it asks for
     (a text box for text and numbers, a check box for yes or no, a list to choose one from, check
     boxes to choose several; "(required)" marks the ones it needs), with **Send**, which checks
-    what you entered and says what's missing or wrong first, and **Decline**. When it asks you to
-    open a web page instead, the message shows the address and **Open in Browser** opens it;
-    Decline is the default there, and only web addresses are opened.
+    what you entered and says what's missing or wrong first, and **Decline**. Enter sends only
+    from inside the form or on Send, never from the message. A form The Chat Place can't show
+    (fields inside fields, or too many fields or choices) says so, with only **Decline** and
+    **Answer Later**. When it asks you to open a web page instead, Answer opens on an **Address**
+    box above the message, with the host on its own line ("Opens example.com") and then the whole
+    address, and **Open in Browser** opens it. Decline is the default there. Only plain web
+    addresses are opened: https, or http to this computer, with no name or password before the
+    host and no hidden characters, and a host in plain letters.
 
   Escape in any of them answers later; nothing is approved or refused by waiting. "Allow for
   This Chat" lasts for the chat, not just the turn: The Chat Place keeps the rule with the
@@ -546,19 +551,21 @@ Copilot chats don't have these yet.
 
 - **View, Connected Tools (MCP)** (#468; the View menu's last item, Alt+V then Up) lists the
   tools a Claude chat can use in its folder: MCP servers from your Claude Code settings, the
-  project's `.mcp.json` and plugins, the connectors you've added on claude.ai, and The Chat
-  Place's own session tools. One row each, read in full: "claude.ai Microsoft Learn: connected,
+  project's `.mcp.json` and plugins, the connectors you've added on claude.ai, and, for a chat
+  started here, The Chat Place's own session tools. One row each, read in full: "claude.ai Microsoft Learn: connected,
   claude.ai connector, 3 tools", "claude.ai Morningstar: needs sign-in, claude.ai connector",
   "github: failed: Connection closed, your settings", or "… : off for this chat". It says
   "Reading this chat's connected tools..." while Claude Code is asked; a tool still connecting
   is asked about again for a few seconds. **Details** (Alt+D) says more about the row you're on:
   its tools' names, or why it failed. Asking runs `claude -p` in the chat's folder with no
-  message, so nothing is billed, and that process ends when the dialog closes.
+  message, so nothing is billed, and that process ends when the dialog closes or after 15
+  minutes. It starts the tools that are on; a tool turned off for the chat isn't started.
 - **Sign In** (Alt+S) opens the sign-in page in your browser: claude.ai for a connector, after
   which every chat's next turn can use it, or the server's own page for one with its own
-  sign-in, which waits for the browser to come back, so keep the dialog open until you've
-  finished. **Refresh** (Alt+F) reads the list again. **Reconnect** (Alt+R) tries a failed tool
-  again.
+  sign-in, which waits up to 15 minutes for the browser to come back, so keep the dialog open
+  until you've finished; past that you're told it expired. **Refresh** (Alt+F) reads the list
+  again, stays on the same row and says the result ("3 connected tools, 1 needs sign-in").
+  **Reconnect** (Alt+R) tries a failed tool again.
 - **Turn Off for This Chat** (Alt+O, or Delete in the list) keeps a tool out of this chat's turns
   from the next one, and **Turn On for This Chat** brings it back. It's kept with the chat and
   given to each turn as `--settings` with `deniedMcpServers`, which Claude Code applies to that
@@ -703,7 +710,8 @@ a thread. Enabled MCP tools can read or change external services outside the fol
 only enable servers you trust. TCP verifies the selected servers before each turn, persists
 the selection with the copy, and disables unselected servers. Apps and plugins remain off.
 Global Codex configuration stays unchanged. Add servers and sign in through Codex CLI;
-Sign In explains this, and Refresh and Read Status reread status. Codex MCP questions that TCP
+Sign In explains this, and Refresh and Read Status reread status. For a Codex chat started
+elsewhere the list shows only which servers are configured, read-only. Codex MCP questions that TCP
 cannot display are declined with a notice. Claude's connected-tool forms remain available
 for Claude chats.
 

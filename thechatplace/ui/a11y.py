@@ -29,8 +29,8 @@ class _NamedAccessible(wx.Accessible):
 def set_accessible_name(control: wx.Window, label: str) -> None:
     """Name a control for JAWS and NVDA.
 
-    ``SetName`` covers most controls. Text controls also get a wx.Accessible,
-    because their name does not otherwise reach MSAA. List boxes don't get
+    ``SetName`` doesn't reach MSAA. Text controls, check boxes and choice
+    lists also get a wx.Accessible, so their name does. List boxes don't get
     one here: the messages list has its own (``set_list_items_accessible``),
     which keeps the list's name and its rows' text.
 
@@ -42,8 +42,10 @@ def set_accessible_name(control: wx.Window, label: str) -> None:
     mac_a11y.set_label(control, label)
     gtk_a11y.set_label(control, label)
     # A combo box too (#154): Windows names one by the text in it, so the
-    # Folder box was read as its path rather than as Folder.
-    if not isinstance(control, (wx.TextCtrl, wx.ComboBox)):
+    # Folder box was read as its path rather than as Folder. A check box or a
+    # choice list named more fully than its visible label (#468): what a form
+    # says about being required, or its description, was otherwise lost.
+    if not isinstance(control, (wx.TextCtrl, wx.ComboBox, wx.CheckBox, wx.Choice)):
         return
     existing = getattr(control, "_hub_accessible", None)
     if existing is not None:
