@@ -301,7 +301,8 @@ class NewSessionDialog(wx.Dialog):
         if continue_from:
             self.folder.SetMinSize((-1, self.title_text.GetBestSize().height))
 
-        grid.Add(wx.StaticText(self, label="Mo&del:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.model_label = wx.StaticText(self, label="Mo&del:")
+        grid.Add(self.model_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.model = wx.Choice(self, choices=[label for _v, label in MODELS])
         set_accessible_name(self.model, "Model")
         self.model.SetSelection(0)  # Claude Code's own default
@@ -309,13 +310,15 @@ class NewSessionDialog(wx.Dialog):
         grid.Add(self.model, 1, wx.EXPAND)
 
         # Effort (#189). What it does is in the note below, with permissions.
-        grid.Add(wx.StaticText(self, label="&Effort:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.effort_label = wx.StaticText(self, label="&Effort:")
+        grid.Add(self.effort_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.effort_choice = wx.Choice(self, choices=[label for _v, label in EFFORTS])
         set_accessible_name(self.effort_choice, "Effort")
         self.effort_choice.SetSelection(0)  # Claude Code's own setting
         grid.Add(self.effort_choice, 1, wx.EXPAND)
 
-        grid.Add(wx.StaticText(self, label="Permission m&ode:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.mode_label = wx.StaticText(self, label="Permission m&ode:")
+        grid.Add(self.mode_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.mode = wx.Choice(self, choices=[label for _v, label in PERMISSION_MODES])
         set_accessible_name(self.mode, "Permission mode")
         values = [v for v, _l in PERMISSION_MODES]
@@ -386,6 +389,13 @@ class NewSessionDialog(wx.Dialog):
             self.work_in.Bind(wx.EVT_CHOICE, lambda e: self._on_work_in())
             self.refresh_repo()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        #: Each field whose control can be turned off, with its label's words.
+        self._keyed_labels = (
+            (self.branch_label, self.branch, "B&ranch (choose one, or type a new name):"),
+            (self.model_label, self.model, "Mo&del:"),
+            (self.effort_label, self.effort_choice, "&Effort:"),
+            (self.mode_label, self.mode, "Permission m&ode:"))
+        self._sync_access_keys()
         if self.provider_choice is not None:
             self.provider_choice.Bind(wx.EVT_CHOICE, self._on_provider)
         if self._provider in ("codex", "copilot"):
@@ -560,6 +570,16 @@ class NewSessionDialog(wx.Dialog):
         self.branch.Set(info.branches if info else [])
         self.branch.ChangeValue(typed)
         if info and info.branch:
+    def _sync_access_keys(self):
+        """A label's Alt key only while its control is on (#515). A turned-off
+        control can't take focus, so Windows gave its key to the next one that
+        could: under Copilot, Alt+E and Alt+D went to Permission mode. A screen
+        reader also reported the key, from the label before the control."""
+        for label, control, text in self._keyed_labels:
+            wanted = text if control.IsEnabled() else text.replace("&", "")
+            if label.GetLabel() != wanted:
+                label.SetLabel(wanted)
+
             here = f"The folder as it is, on {info.branch}"
         elif info:
             here = "The folder as it is"
@@ -614,6 +634,7 @@ class NewSessionDialog(wx.Dialog):
 
     def _warn(self, text: str, control):
         wx.MessageBox(text, self.GetTitle(), wx.OK | wx.ICON_WARNING, self)
+        self._sync_access_keys()
         control.SetFocus()
 
     def _on_ok(self, _event):
@@ -814,6 +835,7 @@ class NewSessionDialog(wx.Dialog):
                 self.Layout()
                 said = self.chat_options_summary.GetLabel()
                 self._feedback("Chat options: " + (said if said != "None chosen" else "none")
+        self._sync_access_keys()
                                + ".")
         finally:
             dialog.Destroy()
@@ -883,6 +905,7 @@ class NewSessionDialog(wx.Dialog):
                 self._feedback("Codex model choices are available." if self._codex_models else
                                "Codex model choices are unavailable. Configured defaults remain available.")
 
+        self._sync_access_keys()
 
 class GitHubRepoDialog(wx.Dialog):
     """New Session, From GitHub (#154): your repositories from ``gh repo

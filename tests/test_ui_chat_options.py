@@ -142,6 +142,96 @@ def test_new_session_opened_on_another_provider_has_chat_options_disabled(frame,
         dialog.Destroy()
 
 
+def _keys(dialog):
+    return {name: label.GetLabel() for name, label in (
+        ("model", dialog.model_label), ("effort", dialog.effort_label),
+        ("mode", dialog.mode_label), ("branch", dialog.branch_label))}
+
+
+def test_a_turned_off_setting_has_no_alt_key(frame, folder):
+    # Alt+E and Alt+D on a disabled Effort and Model moved to Permission mode,
+    # with real keys, under Copilot and under Codex while models load (#515).
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, providers=("claude", "codex", "copilot"),
+                              provider="claude")
+    try:
+        assert _keys(dialog)["model"] == "Mo&del:" and _keys(dialog)["effort"] == "&Effort:"
+        assert _keys(dialog)["mode"] == "Permission m&ode:"
+        dialog.provider_choice.SetSelection(2)  # Copilot, with no models known
+        dialog._on_provider()
+        assert not dialog.model.IsEnabled() and not dialog.effort_choice.IsEnabled()
+        assert _keys(dialog)["model"] == "Model:" and _keys(dialog)["effort"] == "Effort:"
+        assert _keys(dialog)["mode"] == "Permission m&ode:"  # agent or plan
+        dialog.provider_choice.SetSelection(1)  # Codex, models not loaded
+        dialog._on_provider()
+        assert not dialog.model.IsEnabled() and not dialog.effort_choice.IsEnabled()
+        assert _keys(dialog)["model"] == "Model:" and _keys(dialog)["effort"] == "Effort:"
+        dialog.provider_choice.SetSelection(0)  # and back
+        dialog._on_provider()
+        assert _keys(dialog)["model"] == "Mo&del:" and _keys(dialog)["effort"] == "&Effort:"
+    finally:
+        dialog.Destroy()
+
+
+def test_alt_keys_come_back_once_codexs_models_load(frame, folder):
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, providers=("codex",), provider="codex")
+    try:
+        assert _keys(dialog)["model"] == "Model:" and _keys(dialog)["effort"] == "Effort:"
+        dialog._set_codex_models([SimpleNamespace(model="m1", label="M1", efforts=("low", "high"))],
+                                 False)
+        assert _keys(dialog)["model"] == "Mo&del:"
+        assert _keys(dialog)["effort"] == "Effort:"  # the configured model has no list of its own
+        dialog.model.SetSelection(1)
+        dialog._on_codex_model()
+        assert _keys(dialog)["effort"] == "&Effort:"
+        dialog.model.SetSelection(0)
+        dialog._on_codex_model()
+        assert _keys(dialog)["effort"] == "Effort:"
+    finally:
+        dialog.Destroy()
+
+
+def test_a_copilot_with_only_one_mode_has_no_key_for_it(frame, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, providers=("copilot",), provider="copilot",
+                              copilot_plan=False)
+    try:
+        assert not dialog.mode.IsEnabled()
+        assert _keys(dialog)["mode"] == "Permission mode:"
+    finally:
+        dialog.Destroy()
+
+
+def test_branch_has_its_alt_key_only_with_a_new_worktree(frame, folder):
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder)
+    dialog._repo_known = True
+    dialog._repo = SimpleNamespace(branches=[], branch="main")
+    try:
+        dialog.work_in.SetSelection(0)  # the folder as it is
+        dialog._on_work_in()
+        assert not dialog.branch.IsEnabled()
+        assert _keys(dialog)["branch"] == "Branch (choose one, or type a new name):"
+        dialog.work_in.SetSelection(1)  # a new worktree
+        dialog._on_work_in()
+        assert _keys(dialog)["branch"] == "B&ranch (choose one, or type a new name):"
+    finally:
+        dialog.Destroy()
+
+
+def test_continuing_has_no_alt_key_for_branch(frame, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, continue_from="Desk")
+    try:
+        assert _keys(dialog)["branch"] == "Branch (choose one, or type a new name):"
+        assert dialog.work_in_label.GetLabel() == "Work in:"
+    finally:
+        dialog.Destroy()
+
+
 def test_continue_heres_folder_box_is_a_tab_stop_one_line_tall(frame, folder):
     # Tab went straight past a one-line read-only box; a multi-line one is
     # stopped on, as the app's other read-only boxes are.
