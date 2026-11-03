@@ -82,7 +82,14 @@ class SubagentChatDialog(wx.Dialog):
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, lambda e: self.refresh(), self.timer)
-        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
+        # Not a method: by this event the window itself has gone, so only the
+        # timer can be touched (when its parent takes it down without Destroy).
+        timer = self.timer
+
+        def stop_timer(event):
+            timer.Stop()
+            event.Skip()
+        self.Bind(wx.EVT_WINDOW_DESTROY, stop_timer)
         self._fill(newest=True)
         self.timer.Start(REFRESH_MS if subagent.status == RUNNING else FINISHED_REFRESH_MS)
         wx.CallAfter(lambda: self and self.list.SetFocus())
@@ -244,14 +251,8 @@ class SubagentChatDialog(wx.Dialog):
         event.Skip()
 
     def Destroy(self):
-        # Before the window goes, not from its destroy event. Under GTK that
-        # event comes too late, or from a wrapper that isn't this object, so
-        # the timer outlived the window and its next tick crashed the app
-        # (the Orca check on #512).
+        # Before the window goes. A check of the destroy event's object never
+        # matched under GTK, so the timer outlived the window and its next
+        # tick crashed the app (the Orca check on #512).
         self.timer.Stop()
         return super().Destroy()
-
-    def _on_destroy(self, event):
-        if event.GetId() == self.GetId():
-            self.timer.Stop()
-        event.Skip()

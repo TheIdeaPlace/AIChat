@@ -464,7 +464,7 @@ def test_closing_a_conversation_stops_its_timer_first(frame, env):
     from types import SimpleNamespace
     from thechatplace import subagents
     reader = SimpleNamespace(transcript=SimpleNamespace(messages=[]), refresh=lambda: False)
-    sub = subagents.Subagent(agent_id="a1", name="code-reviewer", status=subagents.DONE)
+    sub = subagents.Subagent(agent_id="a1", agent_type="code-reviewer", status=subagents.DONE)
     dialog = SubagentChatDialog(frame, sub, "Chat", reader, read_message=lambda *a: None,
                                 copy=lambda *a: None, feedback=lambda *a: None,
                                 latest=lambda: None, show_activity=False, whole_in_list=False)

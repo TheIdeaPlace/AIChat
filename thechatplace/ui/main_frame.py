@@ -4822,7 +4822,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 allowed_dirs=more_folders,
                 options=dataclasses.replace(chat_options, fresh=bool(chat_options)))
         except (ResumeRefused, ValueError) as exc:
-            wx.MessageBox(str(exc), APP_NAME, wx.OK | wx.ICON_WARNING, self)
+            # The dialog has gone, with the first message you typed in it.
+            self._relay_kept(message, f"No copy was made: {exc} Your message wasn't sent.")
             return
         own = OwnSession(cli_session_id=new_id, title=title, cwd=info.cwd,
                          permission_mode=mode, started=False, model=model, effort=effort,
