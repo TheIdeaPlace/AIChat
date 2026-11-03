@@ -192,7 +192,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "claude.ai Microsoft Learn: connected, claude.ai connector, 3 tools\n\nTools:\n  microsoft_docs_search\n  microsoft_docs_fetch\n  microsoft_code_sample_search\n\nConnected tools are the MCP servers and claude.ai connectors Claude can use in this chat's folder: from your Claude Code settings, the project, plugins and claude.ai. Add or remove them in Claude Code or on claude.ai. Turning one off for this cha"
+   "value": "claude.ai Microsoft Learn: connected, claude.ai connector, 3 tools\n\nTools:\n  microsoft_docs_search\n  microsoft_docs_fetch\n  microsoft_code_sample_search\n\nConnected tools are the MCP servers and claude.ai connectors Claude can use in this chat's folder: from your Claude Code settings, the project, plugins and claude.ai. You can't add one here: add or remove them in Claude Code or on claude.ai. Turn"
   }
  ],
  "capture": "PrintWindow"

@@ -802,8 +802,9 @@ read-only Details box fills its lower half, showing the chosen tool, its tools,
 and the copy/external-service scope. All buttons and wrapped scope text fit.
 Since #468 the first row and Details say "1 tool" (it was "1 tools"), the second
 row says "needs sign-in" (it was "needs-auth"), and the note's last sentence says
-"The Chat Place" (it was "TCP"). The note is still four lines, the last now "are
-declined." Rows are black on white (21:1), the selected row white on #0078D4
+"The Chat Place" (it was "TCP"). A row that isn't connected gives no tool count (it
+said "0 tools"). The note says to add servers "using the Codex CLI (codex mcp), not
+here", and is still four lines, the last starting "Chat Place cannot display". Rows are black on white (21:1), the selected row white on #0078D4
 (4.5:1); in High Contrast Aquatic white on #202020 (16.3:1) and dark on aqua.
 
 **codex-commands:** Search at the top, a large command/skill list below, and
@@ -834,7 +835,8 @@ complete answer is readable below. The question has the insertion caret. The Cla
 **ask-aside** regression capture has the same layout. Claude **connected-tools** retains Reconnect and
 Turn Off for This Chat in its unchanged layout. Since #468 its Details paragraph
 ends "Reading this list starts the tools that are on; a tool turned off for this
-chat isn't started.", one line longer, and still shows whole above the box's edge.
+chat isn't started.", and says "You can't add one here: add or remove them in Claude
+Code or on claude.ai." It's four lines, and still shows whole above the box's edge.
 
 All six Codex surfaces and the two Claude regression surfaces render in the
 selected system theme. No new visual defect was found.

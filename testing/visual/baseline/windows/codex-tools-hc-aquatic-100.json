@@ -45,7 +45,7 @@
     211
    ],
    "best": [
-    421,
+    380,
     170
    ],
    "depth": 0,
@@ -54,8 +54,8 @@
    "problems": [],
    "items": [
     "project-notes: connected, configured Codex MCP server, 1 tool",
-    "build-reports: needs sign-in, configured Codex MCP server, 0 tools",
-    "reference-search: off for this chat, configured Codex MCP server, 0 tools"
+    "build-reports: needs sign-in, configured Codex MCP server",
+    "reference-search: off for this chat, configured Codex MCP server"
    ],
    "selection": 0
   },
@@ -191,7 +191,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "project-notes: connected, configured Codex MCP server, 1 tool\n\nTools:\n  find_notes\n\nCodex MCP servers configured for this folder. Apps and plugins remain unavailable. Changing a tool creates a new read-only copy of this chat with that selection; the original chat is kept. Enabled tools may read or change external services, outside the folder sandbox. Add servers and sign in using Codex CLI. Server"
+   "value": "project-notes: connected, configured Codex MCP server, 1 tool\n\nTools:\n  find_notes\n\nCodex MCP servers configured for this folder. Apps and plugins remain unavailable. Changing a tool creates a new read-only copy of this chat with that selection; the original chat is kept. Enabled tools may read or change external services, outside the folder sandbox. Add servers and sign in using the Codex CLI (co"
   }
  ],
  "capture": "PrintWindow"
