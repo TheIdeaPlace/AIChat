@@ -620,7 +620,10 @@ def test_a_message_cant_get_ahead_of_the_address_or_pose_as_it(frame, env):
     try:
         assert dialog.address_text.GetValue().splitlines()[0] == "Opens evil.example"
         assert "evil.example" not in dialog.message_text.GetValue()
-        assert dialog.address_text.GetPosition().y < dialog.message_text.GetPosition().y
+        # Made first, so read first and reached first (a hidden dialog has no
+        # layout to compare).
+        children = list(dialog.GetChildren())
+        assert children.index(dialog.address_text) < children.index(dialog.message_text)
         assert dialog.address_text.GetName() == "Address"
     finally:
         dialog.Destroy()

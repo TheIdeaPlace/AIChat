@@ -294,6 +294,8 @@ QUESTION = {"questions": [{
 def serve(root: Path) -> int:
     """The app on the probe's made-up sessions, shown and focused, until it's
     closed. Its speech is real, so Orca gets the announcements."""
+    import faulthandler
+    faulthandler.enable()  # a crash in GTK or ATK says where, in app.log
     sys.path.insert(0, str(ROOT))
     sys.path.insert(0, str(ROOT / "tests"))
     sys.path.insert(0, str(HERE))
@@ -666,6 +668,10 @@ def check(args) -> int:
                                               indent=2), encoding="utf-8")
     if app.returncode not in (0, None, -15) and not args.record:
         print(f"\nThe app exited with {app.returncode}; its output is in {work / 'app.log'}")
+        # On a runner the file is gone with the job, so the end of it goes here.
+        log = (work / "app.log").read_text(encoding="utf-8", errors="replace").splitlines()
+        kept = [line for line in log if "-CRITICAL **" not in line and line.strip()]
+        print("\n".join(kept[-60:]))
     return 0 if args.record or all(r["passed"] for r in results) else 1
 
 
