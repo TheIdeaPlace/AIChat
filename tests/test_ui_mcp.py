@@ -709,25 +709,54 @@ def test_enter_in_the_message_says_where_to_go(frame, env, monkeypatch):
 
 
 def test_a_form_with_nothing_to_fill_in_sends_from_the_message(frame, env, monkeypatch):
-    # No answers filled in for you to protect: Enter is plainly the answer.
+    # No answers filled in for you to protect: Enter is plainly the answer. It
+    # presses Send from the key's own handler, as the read-only box beneath it
+    # keeps Enter for itself and the default button never hears it.
+    from thechatplace.claude_mcp import ACCEPT
     from thechatplace.ui.dialogs import ElicitationDialog
     said = []
     dialog = ElicitationDialog(frame, "Tools probe",
                                elicitation_from("e", {**FORM, "requested_schema": {
                                    "type": "object", "properties": {}}}), feedback=said.append)
+    ended = []
+    dialog.EndModal = ended.append
     try:
         assert dialog.fields == [] and dialog.send_btn is not None
-        assert _enter(dialog, monkeypatch, dialog.message_text)
+        assert not _enter(dialog, monkeypatch, dialog.message_text)
+        assert ended == [wx.ID_OK] and dialog.action == ACCEPT and dialog.content == {}
         assert said == []
     finally:
         dialog.Destroy()
 
 
-def test_enter_on_a_page_is_left_to_decline(frame, env, monkeypatch):
+def test_enter_on_a_page_says_where_to_go_and_opens_nothing(frame, env, monkeypatch):
     from thechatplace.ui.dialogs import ElicitationDialog
-    page = ElicitationDialog(frame, "Tools probe", elicitation_from("e", PAGE))
+    said = []
+    page = ElicitationDialog(frame, "Tools probe", elicitation_from("e", PAGE),
+                             feedback=said.append)
+    ended = []
+    page.EndModal = ended.append
     try:
-        assert _enter(page, monkeypatch, page.message_text)
+        for box in (page.address_text, page.message_text):
+            assert not _enter(page, monkeypatch, box)
+        assert said == ["Tab to Open in Browser, or to Decline."] * 2
+        assert ended == [] and page.action == "" and env["opened"] == []
+        # The default stays Decline, and a focused button keeps its own Enter.
+        assert page.decline_btn.GetId() == page.GetDefaultItem().GetId()
+        assert _enter(page, monkeypatch, page.decline_btn)
+    finally:
+        page.Destroy()
+
+
+def test_enter_on_a_page_that_wont_open_doesnt_offer_to_open_it(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    said = []
+    page = ElicitationDialog(frame, "Tools probe",
+                             elicitation_from("e", {**PAGE, "url": "file:///C:/x.exe"}),
+                             feedback=said.append)
+    try:
+        assert not _enter(page, monkeypatch, page.address_text)
+        assert said == ["Tab to Decline."]
     finally:
         page.Destroy()
 
@@ -743,7 +772,12 @@ def test_a_form_it_cant_show_has_only_decline_and_later(frame, env, monkeypatch)
         assert dialog.note_text.GetName() == "Note"
         assert dialog.form_panel is None
         assert "Where would you like to go" in dialog.message_text.GetValue()
-        assert _enter(dialog, monkeypatch, dialog.message_text)
+        count = len(env["feedback"])
+        for box in (dialog.note_text, dialog.message_text):
+            assert not _enter(dialog, monkeypatch, box)
+        assert env["feedback"][count:] == ["Tab to Decline."] * 2
+        assert dialog.action == ""
+        assert _enter(dialog, monkeypatch, dialog.decline_btn)
         dialog._on_decline()
     _answer_with(monkeypatch, drive)
     frame.on_answer()

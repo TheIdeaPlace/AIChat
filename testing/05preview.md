@@ -193,11 +193,13 @@ For Claude:
    that the questions, choices and focused field are named. Fill it in and press Enter, or Send.
    With nothing to fill in, Enter on the message sends.
 5. If it asks you to open a web page, **Ctrl+Shift+A** opens on an **Address** box above the message,
-   with "Opens" and the host on its first line and then the whole address. Expect: **Open in
-   Browser** opens it, and Enter away from that button declines, so a stray Enter never opens a link.
+   with "Opens" and the host on its first line and then the whole address. Press Enter there and in
+   the message. Expect: nothing opens, and you hear "Tab to Open in Browser, or to Decline". **Open
+   in Browser** opens it.
 6. A form with fields inside fields, or too many fields or choices, opens on a **Note** box saying
-   why it can't be shown, with only **Decline** and **Answer Later**. A field that may be left empty
-   isn't one of these: it's an ordinary box you can leave blank.
+   why it can't be shown, with only **Decline** and **Answer Later**. Press Enter there and in the
+   message. Expect: you hear "Tab to Decline". A field that may be left empty isn't one of these:
+   it's an ordinary box you can leave blank.
 
 Steps 4 to 6 need a server that actually asks; a tool that doesn't ask can't test them.
 

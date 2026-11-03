@@ -529,9 +529,11 @@ Copilot chats don't have these yet.
     stray Enter can't send what the server filled in; with nothing to fill in, it sends from
     there too. A form The Chat Place can't show
     (fields inside fields, or too many fields or choices) says so, with only **Decline** and
-    **Answer Later**. When it asks you to open a web page instead, Answer opens on an **Address**
+    **Answer Later**; Enter in its boxes says "Tab to Decline". When it asks you to open a web page
+    instead, Answer opens on an **Address**
     box above the message, with the host on its own line ("Opens example.com") and then the whole
-    address, and **Open in Browser** opens it. Decline is the default there. Only plain web
+    address, and **Open in Browser** opens it. Enter in either box says "Tab to Open in Browser, or
+    to Decline", so it never opens a page by itself. Only plain web
     addresses are opened: https, or http to this computer, with no name or password before the
     host and no hidden characters, and a host in plain letters.
 

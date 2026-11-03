@@ -142,6 +142,9 @@ STEPS = [
     # and Tab goes to the form's first box.
     Step("a connected tool asks", [], trigger="elicitation", expect=["needs you"]),
     Step("answer the tool", ["ctrl+shift+a"], expect=["Message", "Where would you like to go"]),
+    # Enter in the read-only box sends nothing, and says so.
+    Step("Enter in the message says where to go", ["Return"],
+         expect_dbus=["Tab to the form, or to Send"]),
     Step("Tab to the form", ["Tab"], expect=["City", "required"]),
     # What a form's check box and list are called has to reach Orca (#468).
     Step("Tab to a check box", ["Tab"], expect=["Bringing pets", "check box"]),

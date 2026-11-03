@@ -5326,12 +5326,13 @@ class ElicitationDialog(wx.Dialog):
     needed and sends it; Decline refuses. Enter sends only from inside the
     form or on Send: a stray Enter in the message must not send what the
     server filled in for you, so it says where to go instead. With nothing to
-    fill in there's nothing to protect, and Enter sends from the message too.
-    A form that can't be shown has only Decline.
+    fill in there's nothing to protect, and Enter presses Send from the message
+    too. A form that can't be shown has only Decline.
 
     A page to open has Open in Browser instead of the form, and opens on an
     Address box above the message. That box is The Chat Place's words about
     where the page really is, so a message can't get in first or pose as them.
+    Enter in a read-only box says where to go here too, and never opens a page.
     Answer Later (Escape) leaves it waiting.
     """
 
@@ -5526,14 +5527,34 @@ class ElicitationDialog(wx.Dialog):
             focus = focus.GetParent()
         return False
 
+    def _in_read_only_box(self, focus) -> bool:
+        return focus is not None and any(
+            focus is box for box in (self.address_text, self.note_text, self.message_text))
+
+    def _where_to_go(self) -> str:
+        """What Enter in a read-only box says, for a page or a form that can't
+        be shown, where it mustn't do anything else."""
+        if self.request.is_url and self.can_open:
+            return "Tab to Open in Browser, or to Decline."
+        return "Tab to Decline."
+
     def _on_key(self, event):
         if press_focused_button_on_a_mac(event):
             return
-        if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
-                and not self._enter_may_send(self._focus())):
-            # A key that does nothing and says nothing sounds like a broken one.
-            self._feedback("Tab to the form, or to Send.")
-            return
+        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            focus = self._focus()
+            # Here, not left to the default button: a read-only rich edit keeps
+            # Enter for itself, so nothing was sent and nothing was said. A
+            # key that does nothing and says nothing sounds like a broken one.
+            if self._in_read_only_box(focus) and (self.request.is_url or self.send_btn is None):
+                self._feedback(self._where_to_go())
+                return
+            if self._in_read_only_box(focus) and not self.fields:
+                self._on_send()
+                return
+            if not self._enter_may_send(focus):
+                self._feedback("Tab to the form, or to Send.")
+                return
         event.Skip()
 
     def _on_send(self, _event=None):

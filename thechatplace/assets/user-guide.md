@@ -1658,11 +1658,12 @@ What each provider offers:
   stray Enter can't send what the server filled in; with nothing to fill in, it sends from there
   too. A form The Chat
   Place can't show, such as one with fields inside fields or too many to go through, says so and
-  has only **Decline** and **Answer Later**. When the tool asks you to open a web page instead,
+  has only **Decline** and **Answer Later**; Enter in its boxes says "Tab to Decline". When the
+  tool asks you to open a web page instead,
   Answer opens on the **Address** box, above the tool's message: its first line says where the
   page really is ("Opens example.com"), then the whole address. **Open in Browser** opens it;
-  finish there and the tool carries on. Decline is the default there, so Enter never opens a page
-  by itself. The Chat Place opens only plain web addresses: https, or http to this computer, with
+  finish there and the tool carries on. Enter in either box says "Tab to Open in Browser, or to
+  Decline", so it never opens a page by itself. The Chat Place opens only plain web addresses: https, or http to this computer, with
   no name or password before the host and no hidden characters, and a host in plain letters.
 
 ### Review or change permissions
