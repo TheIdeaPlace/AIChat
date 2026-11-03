@@ -635,12 +635,20 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   `/goal clear`, `/memories on`, `/memories off` and `/background`. Send a control on its own
   first line; any draft below it stays in the reply box. These controls aren't sent as prompts.
   Compaction requires an idle chat. After changing its settings, send a normal message before
-  compacting, so Codex has applied those settings to the loaded thread.
+  compacting, so Codex has applied those settings to the loaded thread. You hear "context
+  compacted" when it's done.
+- Lists that come from Codex (models, commands and skills, terminals, the Goal) take a moment.
+  You hear that they're being fetched, and they open by themselves only if you haven't moved
+  on. If you have, you hear so and choose the command again.
 - `/plan` chooses native **Plan** or **Default** collaboration mode for later turns; the
   heading says when Plan is selected. This uses Codex's own planning preset and preserves
-  the chat's permission settings. Choose Default to carry out the plan.
+  the chat's permission settings. Choose Default to carry out the plan. If the chat is opened on
+  a version of Codex without Plan mode, you hear so and it runs in Default; Plan stays saved.
+- A model, effort or mode that can't be verified is said and changes nothing; the chat can go
+  on sending with what it had.
 - **Stop Background Task** also lists Codex's running terminals and stops just the selected
-  one. `/background` opens the same list. `/goal` reads the native Goal and usage; pause and
+  one, or says if it had already finished. It's available in any Codex chat started here, and
+  says if none are running. `/background` opens the same list. `/goal` reads the native Goal and usage; pause and
   clear are available, but starting and resuming autonomous Goals are not supported. TCP
   disables native Goal tools so follow-up turns cannot bypass its sign-in and permission checks.
   The memory commands change whether this thread uses and contributes to Codex memories.
@@ -722,8 +730,10 @@ a thread. Enabled MCP tools can read or change external services outside the fol
 only enable servers you trust. TCP verifies the selected servers before each turn, persists
 the selection with the copy, and disables unselected servers. Apps and plugins remain off.
 Global Codex configuration stays unchanged. Add servers and sign in through Codex CLI;
-Sign In explains this, and Refresh and Read Status reread status. For a Codex chat started
-elsewhere the list shows only which servers are configured, read-only. Codex MCP questions that TCP
+Sign In explains this, and Refresh and Read Status reread status. If a server a chat selected
+is later removed from Codex's configuration, turns are refused and say why; the list shows it
+first, and **Copy with Tool Off** makes a copy without it, or you can add it back. For a Codex chat
+started elsewhere the list shows only which servers are configured, read-only. Codex MCP questions that TCP
 cannot display are declined with a notice. Claude's connected-tool forms remain available
 for Claude chats.
 

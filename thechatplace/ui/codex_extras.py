@@ -2,7 +2,7 @@
 import wx
 
 from .. import rewind
-from ..providers.codex_features import turn_anchor, goal_lines, CodexFeatureError
+from ..providers.codex_features import turn_anchor, goal_lines, terminal_stopped_text, CodexFeatureError
 from ..providers.codex_input import build_input
 from ..transcript import USER, ASSISTANT
 from .dialogs import CommandPickerDialog, LinesDialog, RewindDialog, AskAsideDialog
@@ -23,7 +23,39 @@ COMMANDS = (
 )
 
 
+#: Each control's native call, and what's said while Codex is asked: these take
+#: seconds, and an unspoken wait sounds like a key that didn't work.
+CONTROLS = {
+    '/compact': ('thread/compact/start', {}, 'Asking Codex to compact this chat.'),
+    '/goal': ('thread/goal/get', {}, "Getting this chat's Codex goal."),
+    '/goal pause': ('thread/goal/set', {'status': 'paused', 'origin': 'user'}, 'Asking Codex to pause the goal.'),
+    '/goal clear': ('thread/goal/clear', {}, 'Asking Codex to clear the goal.'),
+    '/memories on': ('thread/memoryMode/set', {'mode': 'enabled'}, 'Asking Codex to turn memories on.'),
+    '/memories off': ('thread/memoryMode/set', {'mode': 'disabled'}, 'Asking Codex to turn memories off.'),
+    '/background': ('thread/backgroundTerminals/list', {}, "Getting Codex's background terminals."),
+}
+
+
 class CodexExtras:
+    def _codex_mark(self):
+        """Where the keyboard is when a picker is asked for, for
+        _codex_may_open once Codex has answered."""
+        return wx.Window.FindFocus(), self.reply_text.GetValue()
+
+    def _codex_may_open(self, mark, what):
+        """Whether a picker or dialog may open now that Codex has answered.
+        Opening one a moment later would take keys you were typing elsewhere
+        (on_insert_command says the same for Claude), so it doesn't if focus
+        has moved, the reply box has changed or another dialog is up."""
+        focus, text = mark
+        if (wx.Window.FindFocus() is focus and self.reply_text.GetValue() == text
+                and not any(isinstance(window, wx.Dialog) and window.IsModal()
+                            for window in wx.GetTopLevelWindows())):
+            return True
+        self._feedback(f"{what} ready, but you've moved on, so nothing opened. Choose it again "
+                       'when you want it.')
+        return False
+
     def _codex_ask_aside(self, info):
         if not self._require_capability('aside', info):
             return
@@ -55,6 +87,54 @@ class CodexExtras:
         record = self._codex_record(info)
         if record is None:
             return
+        if info.key in self._codex_policy_pending:
+            self._feedback("This Codex chat's settings are already being changed.")
+            return
+        current = dict(record.provider_options)
+        earlier = getattr(self._codex_states.get(info.key), 'problem', '')
+
+        def prepare(action, arguments):
+            # Pending, as for a permission change (#385): a failure is said
+            # once, by what's below, and not by the chat's update as well.
+            self._codex_policy_pending.add(info.key)
+            self._feedback(f'Verifying the Codex {what}.')
+
+            def prepared(change, failed):
+                if failed:
+                    self._codex_policy_pending.discard(info.key)
+                    self._feedback(change or f'Could not change the Codex {what}. The chat keeps its current one.')
+                    return
+                updated = change.record()
+                saved = self.store.get(record.cli_session_id, provider='codex') is record and self._store_write(self.store.update, record.cli_session_id,
+                    provider='codex', provider_options=updated.provider_options)
+                if not saved:
+                    record.provider_options = current
+
+                def finished(_result, problem):
+                    self._codex_policy_pending.discard(info.key)
+                    latched = getattr(self._codex_states.get(info.key), 'problem', '')
+                    if latched and latched != earlier:
+                        self._feedback(latched)
+                    elif problem:
+                        self._feedback(f'Could not activate the Codex {what}. Use Stop to recheck this chat.')
+                    elif not saved:
+                        self._feedback(f'Could not save the Codex {what}. The chat keeps its current one.')
+                    else:
+                        self._feedback(f'Codex {what} for {info.title} changed, from its next turn.')
+                    self._update_heading()
+                    self._update_send_state()
+                self._codex_work(lambda: self.sessions.owned_action('finish_policy', record, change, saved), finished)
+            self._codex_work(lambda: self.sessions.owned_action(action, record, *arguments), prepared)
+
+        if what == 'mode':
+            # Nothing to wait for, so this opens straight from the key press.
+            index = self._choose('Codex Collaboration Mode', 'Mode for ' + info.title + ', from its next turn:',
+                ['Default: carry out the task with this chat\'s permissions.', 'Plan: discuss and produce a plan first.'])
+            if index is not None:
+                prepare('prepare_mode', (('default', 'plan')[index],))
+            return
+        mark = self._codex_mark()
+        self._feedback("Getting Codex's models.")
 
         def loaded(models, error):
             if self.store.get(record.cli_session_id, provider='codex') is not record:
@@ -62,16 +142,10 @@ class CodexExtras:
             if error or not models:
                 self._feedback(models or 'Codex model choices are unavailable.')
                 return
-            current = dict(record.provider_options)
+            if not self._codex_may_open(mark, "Codex's models are"):
+                return
             model, effort = current.get('model'), current.get('effort')
-            action, arguments = 'prepare_settings', None
-            if what == 'mode':
-                index = self._choose('Codex Collaboration Mode', 'Mode for ' + info.title + ', from its next turn:',
-                    ['Default: carry out the task with this chat\'s permissions.', 'Plan: discuss and produce a plan first.'])
-                if index is None:
-                    return
-                action, arguments = 'prepare_mode', (('default', 'plan')[index],)
-            elif what == 'model':
+            if what == 'model':
                 index = self._choose('Change Model', f'Model for {info.title}, from its next turn:',
                     [m.label + (' (now)' if m.model == model else '') for m in models])
                 if index is None:
@@ -89,26 +163,7 @@ class CodexExtras:
                 if index is None:
                     return
                 effort = values[index]
-
-            def prepared(change, failed):
-                if failed:
-                    self._feedback(change or 'Could not verify the Codex settings.')
-                    return
-                updated = change.record()
-                saved = self.store.get(record.cli_session_id, provider='codex') is record and self._store_write(self.store.update, record.cli_session_id,
-                    provider='codex', provider_options=updated.provider_options)
-                if not saved:
-                    record.provider_options = current
-
-                def finished(_result, problem):
-                    self._feedback('Could not activate the Codex settings. Use Stop to recheck this chat.'
-                        if problem or not saved else f'Settings for {info.title} changed, from its next turn.')
-                    self._update_heading()
-                    self._update_send_state()
-                self._codex_work(lambda: self.sessions.owned_action('finish_policy', record, change, saved), finished)
-            if arguments is None:
-                arguments = (model, effort)
-            self._codex_work(lambda: self.sessions.owned_action(action, record, *arguments), prepared)
+            prepare('prepare_settings', (model, effort))
         self._load_codex_models(loaded)
 
     def _branch_codex(self, info, message, *, before=False):
@@ -153,11 +208,17 @@ class CodexExtras:
             self.reply_text.SetFocus()
             self._feedback(f'Opened {title}. The original chat and its files are kept. '
                            'Change your message and send when ready.' if before else f'Opened {title}.')
+        self._feedback(f'Creating {title}.')
         self._codex_work(lambda: self.sessions.branch(info, title, anchor, before), created)
 
     def _codex_commands(self, info, *, skills_only=False):
+        mark = self._codex_mark()
+        self._feedback('Getting the Codex skills for this folder.' if skills_only
+                       else 'Getting the Codex commands and skills for this folder.')
+
         def loaded(skills, error):
-            if self._open is None or self._open.key != info.key:
+            if skills_only and error:
+                self._feedback(skills or "Could not get this folder's Codex skills.")
                 return
             rows = [] if skills_only else [dict(name=n, description=d, builtin=True, provider='Codex') for n, d in COMMANDS]
             if not error:
@@ -165,6 +226,12 @@ class CodexExtras:
             if not rows:
                 self._feedback('No enabled Codex skills are available for this folder.')
                 return
+            if self._open is None or self._open.key != info.key:
+                return  # another chat is loaded now: a picker would fill its reply box
+            if not self._codex_may_open(mark, 'The Codex commands are'):
+                return
+            if error:
+                self._feedback("Could not get this folder's Codex skills, so only the chat controls are listed.")
             dialog = CommandPickerDialog(self, rows)
             try:
                 if dialog.ShowModal() != wx.ID_OK or dialog.chosen is None:
@@ -186,6 +253,11 @@ class CodexExtras:
     def _handle_codex_command(self, info, text):
         command, separator, draft = text.partition('\n')
         command = command.strip()
+        if command not in ('/model', '/reasoning', '/plan', '/skills') and command not in CONTROLS:
+            return False
+        # Before anything is asked of Codex, so the box is as it will stay when
+        # _codex_may_open compares it.
+        self.reply_text.SetValue(draft if separator else '')
         if command == '/model':
             self._change_codex_settings(info, 'model')
         elif command == '/reasoning':
@@ -194,42 +266,41 @@ class CodexExtras:
             self._change_codex_settings(info, 'mode')
         elif command == '/skills':
             self._codex_commands(info, skills_only=True)
-        elif command in ('/compact', '/goal', '/goal pause', '/goal clear', '/memories on', '/memories off', '/background'):
-            self._codex_control(info, command)
         else:
-            return False
-        if separator:
-            self.reply_text.SetValue(draft)
+            self._codex_control(info, command)
         return True
 
     def _codex_control(self, info, command):
         record = self._codex_record(info)
         if record is None:
             return
-        method, args = {
-            '/compact': ('thread/compact/start', {}),
-            '/goal': ('thread/goal/get', {}),
-            '/goal pause': ('thread/goal/set', {'status': 'paused', 'origin': 'user'}),
-            '/goal clear': ('thread/goal/clear', {}),
-            '/memories on': ('thread/memoryMode/set', {'mode': 'enabled'}),
-            '/memories off': ('thread/memoryMode/set', {'mode': 'disabled'}),
-            '/background': ('thread/backgroundTerminals/list', {}),
-        }[command]
+        method, args, asking = CONTROLS[command]
+        mark = self._codex_mark()
+        self._feedback(asking)
 
         def done(result, error):
             if error:
                 self._feedback(result or 'Codex could not confirm that operation.')
                 return
             if command == '/goal':
-                self._modal(LinesDialog(self, 'Codex Goal', 'Goal', goal_lines(result), self._copy_text))
+                try:
+                    lines = goal_lines(result)
+                except CodexFeatureError:
+                    self._feedback("Codex returned a goal The Chat Place can't read.")
+                else:
+                    if self._codex_may_open(mark, "This chat's Codex goal is"):
+                        self._modal(LinesDialog(self, 'Codex Goal', 'Goal', lines, self._copy_text))
             elif command == '/background':
-                self._codex_background(info, record, result)
+                self._codex_background(record, result, mark)
+            elif command == '/compact':
+                # The end of the compaction is what gets said (_on_owned_update).
+                self._status(f'{info.title}: Codex is compacting its context.')
             else:
                 self._feedback('Codex accepted ' + command[1:] + ' for ' + info.title + '.')
             self._refresh_chat()
         self._codex_work(lambda: self.sessions.owned_action('feature', record, method, args), done)
 
-    def _codex_background(self, info, record, result):
+    def _codex_background(self, record, result, mark):
         rows = result.get('data', [])
         if not isinstance(rows, list) or not rows:
             self._feedback('No background terminals are running in this Codex chat.')
@@ -238,14 +309,18 @@ class CodexExtras:
         if not rows:
             self._feedback('Codex did not return readable background terminal details.')
             return
+        if not self._codex_may_open(mark, "Codex's background terminals are"):
+            return
         index = self._choose('Stop Background Task', 'Stop which Codex terminal?',
             [str(r.get('command') or r['processId']) for r in rows])
         if index is None or wx.MessageBox('Stop the selected terminal? The Codex turn and other terminals continue.',
                 'Stop Background Task', wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
             return
+        self._feedback('Stopping the terminal.')
         self._codex_work(lambda: self.sessions.owned_action('feature', record,
             'thread/backgroundTerminals/terminate', {'processId': rows[index]['processId']}),
-            lambda result, error: self._feedback(result or 'Could not stop the terminal.' if error else 'Codex terminal stopped.'))
+            lambda result, error: self._feedback((result or 'Could not stop the terminal.')
+                                                 if error else terminal_stopped_text(result)))
 
     def _codex_message(self, info, text):
         import re

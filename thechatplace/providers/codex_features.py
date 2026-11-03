@@ -12,6 +12,8 @@ class CodexFeatureError(CodexRpcError):
         'busy': 'Wait for this Codex chat to finish, or stop its turn, before doing that.',
         'invalid': 'The selected Codex operation or its settings are not valid.',
         'history': 'The selected message no longer identifies a complete Codex turn. Reload the chat and choose it again.',
+        # Codex answered and turned it down, for a reason other than not knowing it.
+        'refused': 'Codex refused this, so nothing changed.',
         'unavailable': 'This Codex chat is not ready. Use Stop to recheck its connection first.',
         'failed': 'Codex could not confirm this operation. Check the chat before trying again.',
         'settings_pending': 'Send a normal message with this chat\'s changed settings before compacting its context.',
@@ -23,8 +25,12 @@ class CodexFeatureError(CodexRpcError):
 
 
 READ_METHODS = frozenset({'thread/goal/get', 'thread/backgroundTerminals/list'})
-ACTION_METHODS = frozenset({'thread/compact/start', 'thread/revert', 'thread/goal/set',
+ACTION_METHODS = frozenset({'thread/compact/start', 'thread/goal/set',
     'thread/goal/clear', 'thread/memoryMode/set', 'thread/backgroundTerminals/terminate'})
+#: Safe beside a running turn: Stop Background Task is meant for one. These
+#: never hold the chat, so Stop, Send and Answer aren't kept waiting on them.
+ACTIVE_SAFE_METHODS = READ_METHODS | {'thread/goal/set', 'thread/goal/clear',
+                                      'thread/backgroundTerminals/terminate'}
 
 
 def validate_action(method, params):
@@ -40,10 +46,6 @@ def validate_action(method, params):
                 or len(params['cursor']) > 4096)) or ('limit' in params and
                 (type(params['limit']) is not int or not 1 <= params['limit'] <= 100)):
             raise CodexFeatureError('invalid')
-    elif method == 'thread/revert':
-        keys.add('beforeTurnId')
-        if not is_safe_id(params.get('beforeTurnId')):
-            raise CodexFeatureError('history')
     elif method == 'thread/backgroundTerminals/terminate':
         keys.add('processId')
         if not is_safe_id(params.get('processId')):
@@ -110,4 +112,13 @@ def goal_lines(result):
     return ['Goal: ' + goal['objective'], 'Status: ' + str(goal.get('status', 'unknown')),
             'Tokens used: ' + str(goal.get('tokensUsed', 'not reported')),
             'Token budget: ' + str(goal.get('tokenBudget') or 'none'),
-            'Time used: ' + str(goal.get('timeUsedSeconds', 'not reported')) + ' seconds.']
+            'Time used: ' + (str(goal['timeUsedSeconds']) + ' seconds.'
+                             if goal.get('timeUsedSeconds') is not None else 'not reported.')]
+
+
+def terminal_stopped_text(result):
+    """What Stop Background Task says. Codex answers ``terminated: False`` for
+    a process that has already ended, which is not a stop."""
+    if isinstance(result, dict) and result.get('terminated') is False:
+        return 'That terminal had already finished.'
+    return 'Codex terminal stopped.'

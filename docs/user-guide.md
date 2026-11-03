@@ -796,16 +796,25 @@ editable.
   box. These controls are handled here rather than sent as prompts.
 - **Plan mode.** `/plan` chooses Codex's native **Plan** or **Default** mode for later turns.
   The chat's heading says when Plan is selected. Planning mode keeps the chat's permission
-  settings; choose Default when you're ready for it to carry out the plan.
-- **Compaction.** `/compact` asks Codex to shorten an idle chat's context. After changing the
-  chat's settings, send a normal message before compacting so Codex has applied those settings
-  to the loaded conversation.
+  settings; choose Default when you're ready for it to carry out the plan. If you open the chat
+  on a version of Codex without Plan mode, you hear so and it runs in Default; Plan stays saved
+  for when you update.
+- **Changing the model, effort or mode.** If Codex can't verify your choice, you hear why and
+  nothing changes: the chat keeps what it had and can go on sending.
+- **Lists from Codex.** Models, commands and skills, terminals and the Goal take a moment to
+  fetch, and you hear that they're on the way. They open by themselves only if you haven't
+  moved on; if you have, you hear so, and choose the command again when you want it.
+- **Compaction.** `/compact` asks Codex to shorten an idle chat's context, and you hear "context
+  compacted" when it's done. After changing the chat's settings, send a normal message before
+  compacting so Codex has applied those settings to the loaded conversation.
 - **Memory controls.** `/memories on` and `/memories off` choose whether this chat uses and
   contributes to Codex memories.
 - **Goal controls.** `/goal` reads the native Goal and usage; `/goal pause` pauses it and
   `/goal clear` removes it. Starting and resuming autonomous Goals aren't available here.
 - **Background work.** File, **Stop Background Task** lists running terminals and stops just
-  the selected one. `/background` opens the same list; the turn and other terminals keep going.
+  the selected one; you hear if it had already finished. It's available in any Codex chat started
+  here, and says if none are running. `/background` opens the same list; the turn and other
+  terminals keep going.
 
 Rewind to Here, Branch from Here and Ask Aside also work for Codex; see their sections below.
 Configured connected tools can be chosen in a new copy, as described under "Connected tools".
@@ -1215,19 +1224,25 @@ Continue Here, or for a Claude chat started here, with **File, Chat Options**. T
 
 - **Agent** (Alt+A): None (Claude Code's default), or one of the agents Claude Code knows for the
   chat's folder, such as your code-reviewer, each with the start of its description. The chat
-  then runs as that agent, with its instructions and tools.
+  then runs as that agent, with its instructions and tools. An agent with a model of its own uses
+  that model whatever the chat's is, and the list says so, such as "code-reviewer (uses its own
+  model, opus)"; the chat's heading still names the chat's model. OK refuses, and says why, an
+  agent whose own model can bill usage credits: a 1M context model, or Fable unless the chat is
+  on Fable too.
 - **Output style** (Alt+S): your setting (named, such as "Your setting (Proactive)"), or one of
   the styles Claude Code offers, yours included. It changes how Claude writes its replies.
 - **Instructions for this chat** (Alt+I): anything Claude should always do in this chat, such as
   "Answer in British English" or "Never change the tests". Enter starts a new line. They're added
-  to Claude's own instructions for every message.
-- **More folders** (Alt+F): folders Claude may also work in. **Add Folder** (Alt+D) chooses one;
-  **Remove** (Alt+R), or Delete in the list, takes one off. They show in Chat Permissions as
-  "Work in the folder …", where you can also take one back.
+  to Claude's own instructions for every message. The limit is 8,000 characters, and OK says if
+  they're longer.
+- **More folders** (Alt+F): folders Claude may also work in. **Add Folder** (Alt+D) chooses one,
+  though not a whole drive; **Remove** (Alt+R), or Delete in the list, takes one off. They show in
+  Chat Permissions as "Work in the folder …", where you can also take one back.
 - **About these options** (Alt+B): what each one does.
 
-The agents and styles are the folder's own, asked of Claude Code in the background, which costs
-nothing; you hear when they're ready. Press **OK** (or Ctrl+Enter) to keep your choices. In New
+The agents and styles are the folder's own, asked of Claude Code in the background each time the
+dialog opens, which costs nothing. The ones last known show until the answer comes, and you hear
+when they're ready or if they changed. Press **OK** (or Ctrl+Enter) to keep your choices. In New
 Session, what you chose follows the button and you hear it, such as "Chat options: agent
 code-reviewer, instructions."
 
@@ -1256,9 +1271,10 @@ available for Cowork chats, kept copies or Copilot chats.
 - While the provider is answering, Ask becomes **Stop** (Alt+S), and Escape stops it too. Otherwise
   Escape, or Close, closes the dialog.
 
-Nothing is added to the chat, and nothing in its folder changes: Claude answers in a copy of the
-conversation that's never saved, with the chat's model, and can only read files (no commands,
-edits, hooks or connected tools). Each question uses your Claude plan, as a message does.
+Nothing is added to the chat, and nothing in its folders changes: Claude answers in a copy of the
+conversation that's never saved, with the chat's model, and can only read files, in the chat's
+folder and its More folders (no commands, skills, edits, hooks or connected tools, so a question
+starting with a slash is just a question). Each question uses your Claude plan, as a message does.
 
 For Codex, each question uses a temporary read-only copy in a separate Codex process and your
 ChatGPT plan. Commands, connected tools, hooks, memories, Goals and delegation are disabled in
@@ -1314,16 +1330,23 @@ To end just one piece of background work and keep the turn, choose
 **File, Stop Background Task**. It's available while the loaded Claude chat has background work running. It lists each
 one with how long it has run ("Windows build, running 3 minutes"); choose one, press Enter, and
 answer Yes to stop it. You hear "Stopped Windows build." The rest keeps running. If that was the
-last of it and Claude had already answered, the turn ends as it would when the work finished.
+last of it and Claude had already answered, the turn ends as it would when the work finished. If
+it finishes while you're choosing, you hear "Windows build has already finished" and nothing else
+happens.
 
 If Claude Code can't reach Claude's service, or the service is busy, it tries again by itself.
-You hear the first retry of a turn, such as "Claude is retrying: the service is overloaded.
-Attempt 2 of 10, next in 8 seconds", and after that at most every 30 seconds; the status bar
-shows each one. If Claude Code moves a turn to another model because the first one failed, you
+You hear a retry once per turn for each reason, such as "Claude is retrying: the service is
+overloaded. Attempt 2 of 10, next in 8 seconds"; the status bar shows each one. If Claude Code moves a turn to another model because the first one failed, you
 hear that too: "Claude switched to Sonnet 5.5 because Opus 5.5 was overloaded." It goes back to
 the chat's model on the next turn. A turn that would move to Fable is still stopped. When Claude
 saves a memory, you hear "Claude saved a memory: build steps" if announcements are set to Full;
 otherwise it's on the status bar.
+
+You also hear when Claude Code changes a chat's permission mode by itself, such as when Claude
+starts planning. A change to plan mode, or to one that asks more often, stays with the chat. A mode
+that lets Claude do more without asking, such as a change over Remote Control, applies to that turn
+only:
+"Claude Code switched to auto mode for this turn. Later turns start in manual mode."
 
 **Ctrl+Shift+T** (Turn Status) says how long the AI has been working on this turn and what it last
 did, or what is still running in the background, whether Claude is retrying, and how far along
@@ -1369,12 +1392,13 @@ went back from is always kept as it was, in the list.
 - **Rewind to Here** (Ctrl+Shift+Z; on a Mac, Cmd+Shift+Z in the messages list, as elsewhere it's Redo; File, Rewind to Here, or Rewind to Here on a message's menu)
   works on one of your own messages: select it in the messages list first. It asks what to take
   back to how it was just before that message:
-  - **Conversation and files** (chosen to begin with when the files can go back),
-  - **Conversation only**,
+  - **Conversation and files** (chosen to begin with when the files can go back and Claude has
+    changed files since that message),
+  - **Conversation only** (chosen to begin with when it hasn't, or the files can't go back),
   - **Files only**.
 
-  **What happens** (Alt+H) says what the choice will do, naming the files Claude changed since
-  that message. Press Rewind (Enter) to go ahead, or Escape to change nothing.
+  **What happens** (Alt+H) says what the choice will do, naming the files. Press Rewind (Enter)
+  to go ahead, or Escape to change nothing.
 
   Going back in the conversation makes a new chat of your own, "<title> (rewound)", in the
   same folder. Its conversation is the original's up to just before your message, and your
@@ -1385,11 +1409,15 @@ went back from is always kept as it was, in the list.
   chat on this computer, including desktop app and terminal sessions, since the original isn't
   changed.
 
-  Going back in the files puts back the files Claude changed with its edit tools since your
-  message; you hear "Files in Fixes restored to how they were before your message …: 2 files",
-  or why they couldn't be. Changes made by commands Claude ran (a build, a script) aren't put
-  back, and nor are files a subagent changed: Claude Code doesn't restore those, and What Happens
-  names them. It works only in Claude chats started here, and only for messages sent with this
+  Going back in the files puts every file Claude changed with its edit tools anywhere in the
+  chat, not only since your message, back to how it was just before that message. That replaces
+  what's in it now, including any edits you made yourself afterwards, and it can't be undone.
+  Files Claude created since your message are removed. You hear "Files in Fixes restored to how
+  they were before your message …: 2 files", or why they couldn't be; if it fails or takes too
+  long, some files may already have gone back, so check them before carrying on. Changes made by
+  commands Claude ran (a build, a script) aren't put back, and nor are files only a subagent
+  changed: Claude Code doesn't restore those, and What Happens names them. A subagent's changes
+  in a file Claude changed too do go back. It works only in Claude chats started here, and only for messages sent with this
   version or later, which keep the copies it needs; for other chats and older messages the
   choice says "(unavailable)", and What Happens says why. It isn't available while Claude is
   working in the chat, and the chat waits for it to finish before it sends anything.
@@ -1619,10 +1647,15 @@ What each provider offers:
   the tool's message, to read by line. A form follows, one labelled box per thing it asks for:
   a text box for words and numbers, a check box for yes or no, a list to choose one from, and
   check boxes to choose several; "(required)" marks the ones it needs. **Send** checks what you
-  entered and says what's missing or wrong, then sends it; **Decline** refuses. When the tool
-  asks you to open a web page instead, the message shows the page's address, and
-  **Open in Browser** opens it; finish there and the tool carries on. Decline is the default there, so
-  Enter never opens a page by itself, and The Chat Place opens only web addresses.
+  entered and says what's missing or wrong, then sends it; **Decline** refuses. Enter sends only
+  from inside the form or on Send, so pressing it in the message does nothing. A form The Chat
+  Place can't show, such as one with fields inside fields or too many to go through, says so and
+  has only **Decline** and **Answer Later**. When the tool asks you to open a web page instead,
+  Answer opens on the **Address** box, above the tool's message: its first line says where the
+  page really is ("Opens example.com"), then the whole address. **Open in Browser** opens it;
+  finish there and the tool carries on. Decline is the default there, so Enter never opens a page
+  by itself. The Chat Place opens only plain web addresses: https, or http to this computer, with
+  no name or password before the host and no hidden characters, and a host in plain letters.
 
 ### Review or change permissions
 
@@ -1777,21 +1810,24 @@ connected tools...". Then each tool is one row, read in full:
 - "claude.ai Microsoft Learn: connected, claude.ai connector, 3 tools"
 - "claude.ai Morningstar: needs sign-in, claude.ai connector"
 - "github: failed: Connection closed, your settings"
-- "notes (from the probe-tools plugin): off for this chat, a plugin"
+- "notes (from the probe-tools plugin): off for this chat"
 
 Where it comes from is one of: your settings, your settings for this folder, this project (its
 `.mcp.json`), a plugin, a claude.ai connector, or your organization.
-**The Chat Place's session tools** are listed too: they're The Chat Place's own (see "Session
-commands in Claude chats").
+For a chat started here, **The Chat Place's session tools** are listed too: they're The Chat
+Place's own (see "Session commands in Claude chats").
 **Details** (Alt+D) says more about the row you're on, such as the names of its tools or why it
-failed. Asking costs nothing: no message is sent.
+failed. Asking costs nothing: no message is sent. It does start the tools that are on, for as
+long as the dialog is open; a tool turned off for the chat isn't started.
 
 ### Sign in, reconnect or turn one off
 
 - **Sign In** (Alt+S) opens the sign-in page in your browser. For a claude.ai connector that's
   claude.ai, and once you've signed in, every chat's next turn can use it. A server with its own
-  sign-in waits for your browser to come back to it, so keep Connected Tools open until you've
-  finished. Then press **Refresh** (Alt+F).
+  sign-in waits up to 15 minutes for your browser to come back to it, so keep Connected Tools
+  open until you've finished; past that, you're told it expired and can press Sign In again.
+  Then press **Refresh** (Alt+F), which stays on the same row and says the result, for example
+  "3 connected tools, 1 needs sign-in".
 - **Reconnect** (Alt+R) tries a tool that failed again, and says how it's doing now.
 - **Turn Off for This Chat** (Alt+O), or Delete in the list, keeps the tool out of this chat's
   turns from the next one; the row then says "off for this chat", and the button becomes
@@ -1822,8 +1858,14 @@ about the selected server.
   only servers you trust; the confirmation explains this access before creating a copy.
 - Add servers and sign in through Codex CLI. **Sign In** explains where to do this;
   **Refresh** and **Read Status** reread status. The Chat Place leaves your global Codex settings alone.
+- If a server the chat uses is later removed from Codex's configuration, the chat can't send and
+  says why. The server is first in this list, and **Copy with Tool Off** makes a copy without
+  it. Or add it back to Codex's `config.toml`.
 - A connected tool's question that The Chat Place can't display is declined with a notice.
   Claude's connected-tool forms aren't available for Codex yet.
+
+For a Codex chat started elsewhere, the list shows which servers are configured for its folder,
+without how each is doing, and tools can't be changed for it here.
 
 ## Organizing your chats
 

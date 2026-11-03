@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from .. import platform_paths
 from ..own_store import OwnSession
 from ..sessions import SessionInfo
+from .codex_features import CodexFeatureError
 from .codex_rpc import (check_startable, verify_codex_rule_layers, codex_tool_overrides, verify_codex_tools,
                         is_chatgpt_account, CodexRpcError, CodexTurnRejected,
                         ReadOnlyCodexConnection)
@@ -38,6 +39,9 @@ class CodexOwnedThread:
     #: Codex reports it's using, pinned on each turn. Keeping them apart stops a
     #: chat that follows its configured effort from looking changed (#467).
     saved_effort: str | None = None
+    #: A saved mode this Codex couldn't offer when the chat resumed. Its turns
+    #: run without it, in Default, but the choice stays saved for a later Codex.
+    unavailable_mode: str | None = None
 
     def record(self):
         # Return a fresh record: persisted/mutable UI metadata cannot change
@@ -53,8 +57,9 @@ class CodexOwnedThread:
             options["effort"] = self.saved_effort
         if self.mcp_servers:
             options['mcp_servers'] = list(self.mcp_servers)
-        if self.collaboration is not None:
-            options['collaboration'] = self.collaboration
+        mode = self.collaboration if self.collaboration is not None else self.unavailable_mode
+        if mode is not None:
+            options['collaboration'] = mode
         return OwnSession(self.native_id, self.title, self.cwd, provider="codex",
                           created_ms=self.created_ms, started=True,
                           provider_options=options)
@@ -123,6 +128,17 @@ class CodexOwnedThreads:
                        saved_effort=checked.saved_effort,
                        policy=checked.policy, title=record.title)
 
+    def _require_mode(self, mode):
+        try:
+            presets = self.connection.request('collaborationMode/list', {})
+        except CodexRpcError as error:
+            if getattr(error, 'rpc_code', None) in (-32600, -32601):
+                raise CodexFeatureError('unsupported') from None
+            raise
+        if not isinstance(presets.get('data'), list) or not any(
+                isinstance(p, dict) and p.get('mode') == mode for p in presets['data']):
+            raise CodexFeatureError('unsupported')
+
     def _create(self, method, cwd, title, *, native_id=None, ephemeral=False, model=None, effort=None,
                 sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',
                 last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=(), collaboration=None):
@@ -130,12 +146,16 @@ class CodexOwnedThreads:
         mcp_servers = server_names(mcp_servers)
         if collaboration not in (None, 'default', 'plan'):
             raise ValueError('Invalid Codex collaboration mode')
+        unavailable_mode = None
         if collaboration is not None:
-            presets = self.connection.request('collaborationMode/list', {})
-            if not isinstance(presets.get('data'), list) or not any(
-                    isinstance(p, dict) and p.get('mode') == collaboration for p in presets['data']):
-                from .codex_features import CodexFeatureError
-                raise CodexFeatureError('unsupported')
+            try:
+                self._require_mode(collaboration)
+            except CodexFeatureError:
+                if method != 'thread/resume':
+                    raise
+                # A saved mode must not lock a chat out on a Codex without it.
+                # Choosing a mode (thread/start) still says it isn't available.
+                collaboration, unavailable_mode = None, collaboration
         if passive and (not ephemeral or sandbox != 'read-only' or approval_policy != 'never'):
             raise ValueError('Passive Codex work requires an ephemeral read-only fork')
         if last_turn_id is not None or before_turn_id is not None:
@@ -237,7 +257,7 @@ class CodexOwnedThreads:
         created_ms = created * 1000 if type(created) is int and created >= 0 else 0
         proof = CodexOwnedThread(actual_id, policy.workspace_root or result["cwd"], result["model"], title,
                                  created_ms, self.connection, ephemeral, effective_effort, policy, mcp_servers, collaboration,
-                                 saved_effort=effort)
+                                 saved_effort=effort, unavailable_mode=unavailable_mode)
         accept = getattr(self.connection, "_accept_owned_thread", None)
         if callable(accept) and not ephemeral:
             accept(proof)

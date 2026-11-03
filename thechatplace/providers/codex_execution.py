@@ -27,6 +27,8 @@ class CodexTurnState:
     plan_received: bool = False
     changed_paths: tuple = field(default=(), repr=False)
     review_notices: tuple = field(default=(), repr=False)
+    #: A turn /compact started, which ends with no reply to announce.
+    compaction: bool = False
 
 
 class CodexExecutionConnection(CodexLifecycleConnection):
@@ -177,17 +179,23 @@ class CodexTurnExecutor:
         self._context_epochs = {}
         self._compactions = {}
         self._reconciled_turns = {}
-        self._native_starts = {}
+        self._native_starts = set()
+        self._compaction_turns = {}
 
-    def expect_native_turns(self, proof, *, recurring=False):
+    def expect_native_turns(self, proof):
         if not self.connection.owns_runtime(proof):
             raise CodexRpcError('Codex execution requires a verified owned chat')
         with self._lock:
-            self._native_starts[proof.native_id] = recurring
+            self._native_starts.add(proof.native_id)
 
     def cancel_native_turns(self, proof):
         with self._lock:
-            self._native_starts.pop(proof.native_id, None)
+            self._native_starts.discard(proof.native_id)
+
+    def note(self, native_id, text):
+        """A notice for the chat's state, until its next turn starts."""
+        with self._lock:
+            self._notices[native_id] = text
 
     def start(self, proof, text):
         if not self.connection.owns_runtime(proof):
@@ -227,7 +235,7 @@ class CodexTurnExecutor:
                 if self._broken:
                     raise CodexRpcError('Codex connection interrupted during startup')
                 self._turns[proof.native_id] = buffer
-                self._native_starts.pop(proof.native_id, None)
+                self._native_starts.discard(proof.native_id)
                 for event in self._pending_events.pop(proof.native_id):
                     self._apply_event(buffer, event)
                 if buffer.status != 'inProgress':
@@ -373,7 +381,8 @@ class CodexTurnExecutor:
                                   buffer.started_at, buffer.activity, self._notices.get(proof.native_id, ''),
                                   self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0),
                                   tuple(replace(t) for t in buffer.tasks), buffer.plan_received,
-                                  buffer.changed_paths, tuple(buffer.review_notices.items()))
+                                  buffer.changed_paths, tuple(buffer.review_notices.items()),
+                                  self._compaction_turns.get(proof.native_id) == buffer.turn_id)
 
     def answer(self, proof, request, result, *, dispatch_guard=None):
         if not self.connection.owns_runtime(proof):
@@ -484,8 +493,8 @@ class CodexTurnExecutor:
                         buffer = CodexTurnBuffer(event.thread_id, event.turn_id)
                         self._turns[event.thread_id] = buffer
                         self._busy.add(event.thread_id)
-                        if not self._native_starts[event.thread_id]:
-                            del self._native_starts[event.thread_id]
+                        self._native_starts.discard(event.thread_id)
+                        self._compaction_turns[event.thread_id] = event.turn_id
                         changed.add(event.thread_id)
                     if buffer is None and isinstance(event, CodexRequest):
                         raise CodexRpcError('Codex request has no active turn')

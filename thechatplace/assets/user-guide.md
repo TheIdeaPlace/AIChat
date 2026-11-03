@@ -796,16 +796,25 @@ editable.
   box. These controls are handled here rather than sent as prompts.
 - **Plan mode.** `/plan` chooses Codex's native **Plan** or **Default** mode for later turns.
   The chat's heading says when Plan is selected. Planning mode keeps the chat's permission
-  settings; choose Default when you're ready for it to carry out the plan.
-- **Compaction.** `/compact` asks Codex to shorten an idle chat's context. After changing the
-  chat's settings, send a normal message before compacting so Codex has applied those settings
-  to the loaded conversation.
+  settings; choose Default when you're ready for it to carry out the plan. If you open the chat
+  on a version of Codex without Plan mode, you hear so and it runs in Default; Plan stays saved
+  for when you update.
+- **Changing the model, effort or mode.** If Codex can't verify your choice, you hear why and
+  nothing changes: the chat keeps what it had and can go on sending.
+- **Lists from Codex.** Models, commands and skills, terminals and the Goal take a moment to
+  fetch, and you hear that they're on the way. They open by themselves only if you haven't
+  moved on; if you have, you hear so, and choose the command again when you want it.
+- **Compaction.** `/compact` asks Codex to shorten an idle chat's context, and you hear "context
+  compacted" when it's done. After changing the chat's settings, send a normal message before
+  compacting so Codex has applied those settings to the loaded conversation.
 - **Memory controls.** `/memories on` and `/memories off` choose whether this chat uses and
   contributes to Codex memories.
 - **Goal controls.** `/goal` reads the native Goal and usage; `/goal pause` pauses it and
   `/goal clear` removes it. Starting and resuming autonomous Goals aren't available here.
 - **Background work.** File, **Stop Background Task** lists running terminals and stops just
-  the selected one. `/background` opens the same list; the turn and other terminals keep going.
+  the selected one; you hear if it had already finished. It's available in any Codex chat started
+  here, and says if none are running. `/background` opens the same list; the turn and other
+  terminals keep going.
 
 Rewind to Here, Branch from Here and Ask Aside also work for Codex; see their sections below.
 Configured connected tools can be chosen in a new copy, as described under "Connected tools".
@@ -1849,6 +1858,9 @@ about the selected server.
   only servers you trust; the confirmation explains this access before creating a copy.
 - Add servers and sign in through Codex CLI. **Sign In** explains where to do this;
   **Refresh** and **Read Status** reread status. The Chat Place leaves your global Codex settings alone.
+- If a server the chat uses is later removed from Codex's configuration, the chat can't send and
+  says why. The server is first in this list, and **Copy with Tool Off** makes a copy without
+  it. Or add it back to Codex's `config.toml`.
 - A connected tool's question that The Chat Place can't display is declined with a notice.
   Claude's connected-tool forms aren't available for Codex yet.
 

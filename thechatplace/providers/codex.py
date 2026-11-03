@@ -588,11 +588,20 @@ class CodexProvider:
                                    'description': str(skill.get('description') or '')[:2000]})
         return skills
 
-    def connected_tools(self, session):
+    def connected_tools(self, session, selected=None):
+        """``selected``: the chat's saved tool selection, for when it isn't
+        loaded. A chat whose selected server has been removed can't reopen,
+        and this list is the way out of that, so it mustn't need it open."""
         self._check(session)
+        from .codex_features import CodexFeatureError
         from .codex_tools import inventory
         if session.is_own and self.runtime is not None:
-            connection, allowed = self.runtime.tools_context(session.cli_session_id)
+            try:
+                connection, allowed = self.runtime.tools_context(session.cli_session_id)
+            except CodexFeatureError:
+                if selected is None:
+                    raise
+                return inventory(self.connection, session, tuple(selected), status_optional=True)
             return inventory(connection, session, allowed)
         return inventory(self.connection, session, read_only=True)
 
