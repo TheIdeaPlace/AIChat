@@ -89,6 +89,35 @@ def test_quick_mode_choices_arent_overwritten_by_their_own_statuses(frame, env, 
     assert env["feedback"][-1] == "Claude Code switched to manual mode."
 
 
+def test_choosing_the_mode_the_turn_is_in_doesnt_swallow_a_later_status(frame, env, monkeypatch):
+    # No status comes for no change, so the choice waited until the turn ended,
+    # and a real status for it later looked like its echo (#468).
+    runner = _running(frame)
+    runner.permission_mode = "manual"
+    frame.store.update("own-1", permission_mode="auto")
+    _chooser(monkeypatch, frame, dict(PERMISSION_MODES)["manual"])
+    frame.on_change_permission_mode()
+    assert frame.store.get("own-1").permission_mode == "manual"
+    assert not frame._chosen_modes_for()._waiting.get("own-1")
+    # Later Claude goes to plan mode and back by itself: that's said, not
+    # taken for your choice.
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="plan"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="manual"))
+    assert frame.store.get("own-1").permission_mode == "manual"
+    assert env["feedback"][-1] == "Claude Code switched to manual mode."
+
+
+def test_a_refused_choice_of_the_same_mode_leaves_an_earlier_one_waiting(frame, env, monkeypatch):
+    runner = _running(frame, ok=False, error="no")
+    runner.permission_mode = "manual"
+    chosen = frame._chosen_modes_for()
+    chosen.chose("own-1", "auto", "manual")
+    frame.store.update("own-1", permission_mode="auto")
+    frame._change_mode_now("own-1", "auto")(runner, lambda ok, response, error: None)
+    pump(lambda: False, timeout=0.2)
+    assert chosen._waiting["own-1"] == ["auto"]
+
+
 def test_a_refused_mode_choice_isnt_waited_for(frame, env, monkeypatch):
     _running(frame, ok=False, error="no")
     frame.store.update("own-1", permission_mode="manual")

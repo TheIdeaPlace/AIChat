@@ -116,8 +116,17 @@ class ChosenModes:
     def __init__(self) -> None:
         self._waiting: Dict[str, List[str]] = {}
 
-    def chose(self, key: str, mode: str) -> None:
-        self._waiting.setdefault(key, []).append(mode)
+    def chose(self, key: str, mode: str, current: str = "") -> bool:
+        """Note ``mode`` as chosen, unless it's where the turn will already be:
+        ``current``, the mode it's in, or the last choice still to report.
+        Claude Code says nothing for no change, so it would wait until the
+        turn ended, and take in a real status for that mode later on. True if
+        it's waited for, and so is for ``refused`` to take back."""
+        waiting = self._waiting.setdefault(key, [])
+        if mode == (waiting[-1] if waiting else current):
+            return False
+        waiting.append(mode)
+        return True
 
     def refused(self, key: str, mode: str) -> None:
         """No status will come for this one."""

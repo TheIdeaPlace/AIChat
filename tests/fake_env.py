@@ -260,6 +260,7 @@ class FakeRunner:
         # the next turn, said at once); ``live_ok``/``live_error``: its answer.
         self.live, self.live_ok, self.live_error = False, True, ""
         self.controls = []
+        self.permission_mode = ""
         self.background_entries = []
         self.retry = None
         self.started_at = 0.0

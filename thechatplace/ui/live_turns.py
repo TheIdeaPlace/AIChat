@@ -113,14 +113,16 @@ class LiveTurns:
         chosen = self._chosen_modes_for()
 
         def send(runner, on_done):
+            noted = chosen.chose(session_id, mode, runner.permission_mode)
+
             def answered(ok, response, error):
-                if not ok:
+                if not ok and noted:
                     wx.CallAfter(chosen.refused, session_id, mode)
                 on_done(ok, response, error)
-            chosen.chose(session_id, mode)
             if runner.set_permission_mode(mode, answered):
                 return True
-            chosen.refused(session_id, mode)
+            if noted:
+                chosen.refused(session_id, mode)
             return False
         return send
 

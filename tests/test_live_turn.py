@@ -685,6 +685,41 @@ def test_a_refused_choice_and_a_turn_ending_arent_waited_for():
     assert not chosen.is_echo("a", "plan")
 
 
+def test_a_choice_of_the_mode_the_turn_is_in_isnt_waited_for():
+    # Claude Code says nothing for no change, so it would stay waiting and
+    # swallow a real status for that mode later on (#468).
+    chosen = live_turn.ChosenModes()
+    assert chosen.chose("a", "auto", "auto") is False
+    assert not chosen.is_echo("a", "auto")
+    assert chosen.chose("a", "auto", "") is True  # the turn's mode isn't known
+    assert chosen.is_echo("a", "auto")
+
+
+def test_quick_choices_there_and_back_are_each_waited_for():
+    # Manual, then auto and manual before either has reported: the turn's still
+    # in manual, but this manual has a status coming, after auto's.
+    chosen = live_turn.ChosenModes()
+    assert chosen.chose("a", "auto", "manual") is True
+    assert chosen.chose("a", "manual", "manual") is True
+    assert chosen.is_echo("a", "auto") and chosen.is_echo("a", "manual")
+    assert chosen.chose("a", "auto", "manual") is True
+    assert chosen.chose("a", "auto", "manual") is False  # no change from the last
+    assert chosen.is_echo("a", "auto") and not chosen.is_echo("a", "auto")
+
+
+def test_the_runner_says_which_mode_the_turn_is_in(tmp_path):
+    go = threading.Event()
+    lines_ = [RUNNING, INIT, REPLY, go,
+              '{"type":"system","subtype":"status","status":null,"permissionMode":'
+              '"acceptEdits","uuid":"0","session_id":"s1"}', RESULT, IDLE]
+    runner, _process, _timers, events, done = live_turn_run(tmp_path, lines_)
+    assert wait(lambda: any(e.kind == "text" for e in events))
+    before = runner.permission_mode
+    go.set()
+    assert done.wait(5)
+    assert before != "acceptEdits" and runner.permission_mode == "acceptEdits"
+
+
 def test_a_saved_mode_the_app_doesnt_know_never_takes_on_a_change():
     assert live_turn.mode_change("somethingNew", "manual")[0] == ""
 

@@ -1463,6 +1463,11 @@ class TurnRunner:
             on_done(ok, response, error)
         return self.control("set_model", done, model=model or "default")
 
+    @property
+    def permission_mode(self) -> str:
+        """The mode Claude Code last said the turn is in, "" if it's not known."""
+        return self._mode
+
     def set_permission_mode(self, mode: str,
                             on_done: Callable[[bool, dict, str], None]) -> bool:
         """Change the running turn's permission mode (#468). Checked with
