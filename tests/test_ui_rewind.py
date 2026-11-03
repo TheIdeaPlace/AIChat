@@ -391,6 +391,35 @@ def test_alt_w_goes_to_what_to_rewind(frame, env, monkeypatch):
         dialog.Destroy()
 
 
+def test_enter_in_what_happens_says_where_to_go(frame, env, monkeypatch):
+    from thechatplace.transcript import parse_lines
+    from thechatplace.ui.dialogs import RewindDialog
+    records, _parts = two_turns(checkpointed=False)
+    tr = parse_lines(lines(*records))
+    message = [m for m in tr.messages if m.kind == USER][1]
+    said = []
+    dialog = RewindDialog(frame, rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True),
+                          feedback=said.append)
+    ended = []
+    dialog.EndModal = ended.append
+
+    def enter(focus):
+        monkeypatch.setattr(dialog, "_focus", lambda: focus)
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_RETURN)
+        dialog._on_key(event)
+        return event.GetSkipped()
+    try:
+        assert not enter(dialog.happens)
+        assert said == ["Tab to Rewind, or to Cancel."]
+        assert ended == [] and dialog.choice == ""
+        # Elsewhere Enter goes on to Rewind, the default button, and isn't said.
+        assert enter(dialog.what)
+        assert said == ["Tab to Rewind, or to Cancel."]
+    finally:
+        dialog.Destroy()
+
+
 def test_cancelling_puts_focus_back_only_if_it_isnt_there(frame, env, fake_runner, monkeypatch):
     # Setting focus where Windows had already put it back had a screen
     # reader say the message twice (#468).

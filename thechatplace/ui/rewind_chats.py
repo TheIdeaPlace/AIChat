@@ -175,7 +175,7 @@ class RewindChats:
             if wx.Window.FindFocus() is not target:
                 target.SetFocus()
 
-        dialog = RewindDialog(self, plan)
+        dialog = RewindDialog(self, plan, feedback=self._feedback)
         try:
             chosen = dialog.ShowModal() == wx.ID_OK and dialog.choice
             choice = dialog.choice

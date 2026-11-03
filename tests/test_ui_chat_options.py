@@ -142,6 +142,48 @@ def test_new_session_opened_on_another_provider_has_chat_options_disabled(frame,
         dialog.Destroy()
 
 
+def test_continue_heres_folder_box_grows_to_show_a_long_path(frame, folder):
+    # With no scroll bar, a path that wraps needs the room to be seen in.
+    from thechatplace.ui.dialogs import NewSessionDialog
+    long_path = "C:\\" + "\\".join(["a-folder-with-a-long-name"] * 20)
+    dialog = NewSessionDialog(frame, long_path, continue_from="Desk")
+    try:
+        one_line = dialog.title_text.GetBestSize().height
+        char = dialog.folder.GetCharHeight()
+        lines_needed = dialog.folder.GetTextExtent(long_path).width // (
+            dialog.folder.GetClientSize().width)
+        assert dialog.folder.GetMinSize().height >= one_line + lines_needed * char
+        assert dialog.folder.GetValue() == long_path
+    finally:
+        dialog.Destroy()
+
+
+def test_enter_in_continue_heres_folder_box_says_where_to_go(frame, folder, monkeypatch):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    said = []
+    dialog = NewSessionDialog(frame, folder, continue_from="Desk", feedback=said.append)
+
+    def enter(focus):
+        monkeypatch.setattr(dialog, "_focus", lambda: focus)
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_RETURN)
+        dialog._on_char_hook(event)
+        return event.GetSkipped()
+    try:
+        assert not enter(dialog.folder)
+        assert said == ["Tab to Title, or on to Start."]
+        assert enter(dialog.title_text)
+        assert len(said) == 1
+    finally:
+        dialog.Destroy()
+    dialog = NewSessionDialog(frame, folder, feedback=said.append)
+    try:
+        assert enter(dialog.folder)  # New Session's box is typed in: Enter is Start's
+        assert len(said) == 1
+    finally:
+        dialog.Destroy()
+
+
 def _keys(dialog):
     return {name: label.GetLabel() for name, label in (
         ("model", dialog.model_label), ("effort", dialog.effort_label),
@@ -242,6 +284,8 @@ def test_continue_heres_folder_box_is_a_tab_stop_one_line_tall(frame, folder):
         assert box.IsMultiLine() and not box.IsEditable()
         assert box.GetValue() == folder and box.GetName() == "Folder"
         assert box.GetMinSize().height == dialog.title_text.GetBestSize().height
+        # No scroll arrows crammed into the one line.
+        assert box.HasFlag(wx.TE_NO_VSCROLL) and box.AcceptsFocusFromKeyboard()
     finally:
         dialog.Destroy()
     dialog = NewSessionDialog(frame, folder)

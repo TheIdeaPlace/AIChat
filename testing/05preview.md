@@ -91,7 +91,8 @@ Create a short chat with at least two user messages and replies before testing.
    containing that message, so later messages in the same turn can be included too.
 2. Return to the original and select your second user message. Press **Ctrl+Shift+Z**.
    In **Rewind to Here**, read **What happens** (**Alt+H**). First press Escape. Expect: focus
-   returns to the selected message and no copy is made. Reopen it and choose **Conversation
+   returns to the selected message and no copy is made. Press Enter in **What happens**. Expect:
+   you hear "Tab to Rewind, or to Cancel", and nothing starts. Reopen it and choose **Conversation
    only**, then Rewind.
 3. Expect: a new "(rewound)" chat ending before that user message, with the message in its reply
    box ready to edit and send. The original conversation and files are kept.
@@ -190,7 +191,8 @@ For Claude:
    the needs-you announcement. Expect: it opens on the read-only **Message** box. Press Enter there.
    Expect: nothing is sent, and you hear "Tab to the form, or to Send". Tab into the form and check
    that the questions, choices and focused field are named, that a number says its limits, and that
-   each field's Alt key goes to it. Fill it in and press Enter, or Send.
+   each field's Alt key goes to it. A check box's Alt key moves to it and doesn't tick it. Fill it
+   in and press Enter, or Send.
    With nothing to fill in, Enter on the message sends nothing and you hear "Tab to Send, or to
    Decline"; Send is one Tab away.
 5. If it asks you to open a web page, **Ctrl+Shift+A** opens on an **Address** box above the message,
@@ -264,6 +266,12 @@ wait for about 90 seconds, and report when both are running without waiting for 
    apply from its next message; a running turn carries on with the options it started with.
    If testing More folders, add a separate disposable folder, inspect it in Chat Permissions
    (**Ctrl+Shift+H**), then remove it and check that the grant is removed.
+6. In Continue Here, Tab to **Folder**. Expect: Tab stops there, with no scroll arrows and a box
+   filled like a button, and a long path shown in full. Press Enter there. Expect: you hear "Tab
+   to Title, or on to Start".
+7. In New Session, choose Copilot, then press **Alt+D** and **Alt+E** with Model and Effort turned
+   off. Expect: focus stays where it was, and the turned-off boxes report no Alt key. Choosing
+   Claude gives both their keys back.
 
 ## Claude: live changes, thinking and context
 

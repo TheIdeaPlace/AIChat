@@ -188,7 +188,7 @@ class CodexExtras:
         if before:
             plan = rewind.RewindPlan(info.title, message, anchor,
                 files_problem='Codex conversation branching leaves files as they are. File checkpoints are not available here.')
-            dialog = RewindDialog(self, plan)
+            dialog = RewindDialog(self, plan, feedback=self._feedback)
             try:
                 if dialog.ShowModal() != wx.ID_OK:
                     return

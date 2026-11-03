@@ -239,9 +239,15 @@ class NewSessionDialog(wx.Dialog):
         grid.Add(wx.StaticText(self, label="&Folder:"), 0, wx.ALIGN_CENTER_VERTICAL)
         if continue_from:
             # Multi-line, though it looks like a one-line box: Tab went straight
-            # past a one-line read-only box. Made one line tall below, once
-            # there's a Title box to match.
-            self.folder = _read_only_text(self, default_folder, "Folder")
+            # past a one-line read-only box. No scroll bar, whose arrows were
+            # crammed into the one line: _fit_folder makes it tall enough for
+            # the whole path instead. Filled like a button, as a white box of
+            # that shape looks like one to type in; the system's own pair of
+            # colours, so High Contrast keeps its contrast.
+            self.folder = _read_only_text(self, default_folder, "Folder",
+                                          style=wx.TE_NO_VSCROLL)
+            self.folder.SetBackgroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNFACE))
+            self.folder.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT))
         else:
             # Typed, or one of the recent folders (Up and Down, or Alt+Down).
             recent = [f for f in recent if f]
@@ -374,6 +380,7 @@ class NewSessionDialog(wx.Dialog):
         # showed only the title's end, "ad test (continued)", though the
         # whole title fits the 540-pixel box (#178).
         self.Layout()
+        self._fit_folder()
         self._fit_note()
 
         self.browse_btn.Bind(wx.EVT_BUTTON, self._on_browse)
@@ -382,13 +389,6 @@ class NewSessionDialog(wx.Dialog):
         ok.Bind(wx.EVT_BUTTON, self._on_ok)
         self.Bind(wx.EVT_BUTTON, self._on_cancel, id=wx.ID_CANCEL)
         self.start_btn = ok
-        if not continue_from:
-            self.folder.Bind(wx.EVT_COMBOBOX, lambda e: self._folder_chosen())
-            self.folder.Bind(wx.EVT_KILL_FOCUS, self._on_folder_left)
-            self.folder.Bind(wx.EVT_KEY_DOWN, self._on_folder_key)
-            self.work_in.Bind(wx.EVT_CHOICE, lambda e: self._on_work_in())
-            self.refresh_repo()
-        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         #: Each field whose control can be turned off, with its label's words.
         self._keyed_labels = (
             (self.branch_label, self.branch, "B&ranch (choose one, or type a new name):"),
@@ -396,6 +396,13 @@ class NewSessionDialog(wx.Dialog):
             (self.effort_label, self.effort_choice, "&Effort:"),
             (self.mode_label, self.mode, "Permission m&ode:"))
         self._sync_access_keys()
+        if not continue_from:
+            self.folder.Bind(wx.EVT_COMBOBOX, lambda e: self._folder_chosen())
+            self.folder.Bind(wx.EVT_KILL_FOCUS, self._on_folder_left)
+            self.folder.Bind(wx.EVT_KEY_DOWN, self._on_folder_key)
+            self.work_in.Bind(wx.EVT_CHOICE, lambda e: self._on_work_in())
+            self.refresh_repo()
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         if self.provider_choice is not None:
             self.provider_choice.Bind(wx.EVT_CHOICE, self._on_provider)
         if self._provider in ("codex", "copilot"):
@@ -412,6 +419,27 @@ class NewSessionDialog(wx.Dialog):
             # layout before showing is what puts it there.
             self.title_text.SetInsertionPoint(0)
             self.title_text.ShowPosition(0)
+
+    def _fit_folder(self):
+        """Continue Here's Folder box tall enough for its whole path, which
+        wraps: one line stays one line, but with no scroll bar a long one's end
+        would be out of sight for anyone looking. The arrow keys read it by
+        character and by wrapped line either way."""
+        if not self.continuing:
+            return
+        self.Layout()
+        # As _fit_note: a little narrower than the box draws text.
+        width = self.folder.GetClientSize().width - 10
+        if width <= 40:
+            return
+        dc = wx.ClientDC(self.folder)
+        dc.SetFont(self.folder.GetFont())
+        wide = dc.GetTextExtent(self.folder.GetValue()).width
+        if wide > width:
+            # One over: it breaks between folder names, short of the edge.
+            extra = wide // width + 1
+            self.folder.SetMinSize((-1, self.title_text.GetBestSize().height
+                                    + extra * self.folder.GetCharHeight()))
 
     def _fit_note(self):
         """The About box tall enough for its whole note at its width (#178:
@@ -466,7 +494,16 @@ class NewSessionDialog(wx.Dialog):
         if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and event.ControlDown():
             self._on_ok(None)
             return
+        if (self.continuing and event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+                and self._focus() is self.folder):
+            # A read-only box keeps Enter for itself, so Start never heard it,
+            # and a key that says nothing sounds like a broken one.
+            self._feedback("Tab to Title, or on to Start.")
+            return
         event.Skip()
+
+    def _focus(self):
+        return wx.Window.FindFocus()
 
     def _on_folder_key(self, event):
         # Delete on a recent folder (#215). On the box itself, not the
@@ -1822,9 +1859,10 @@ class WrappingText(wx.StaticText):
             self._laying_out = False
 
 
-def _read_only_text(parent, value: str, name: str, min_height: int = 160) -> wx.TextCtrl:
+def _read_only_text(parent, value: str, name: str, min_height: int = 160,
+                    style: int = 0) -> wx.TextCtrl:
     text = wx.TextCtrl(parent, value=value,
-                       style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+                       style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2 | style)
     set_accessible_name(text, name, read_only_box=True)
     text.SetMinSize(dip(parent, -1, min_height))
     text.SetInsertionPoint(0)
@@ -4980,9 +5018,10 @@ class RewindDialog(wx.Dialog):
     the dialog stays open. One is always chosen, so Tab stops on the group
     (#428)."""
 
-    def __init__(self, parent, plan):
+    def __init__(self, parent, plan, feedback=None):
         from .. import rewind
         self._plan = plan
+        self._feedback = feedback or (lambda text: None)
         self._choices = [value for value, _label in rewind.CHOICES]
         said = plan.message.first_line(60)
         super().__init__(parent, title=f"Rewind {plan.chat_title} to before your message: {said}",
@@ -5049,9 +5088,19 @@ class RewindDialog(wx.Dialog):
             # Alt+W, shown on "What to rewind", did nothing (#468).
             self.what.SetFocus()
             return
+        if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+                and self._focus() is self.happens):
+            # A read-only box keeps Enter for itself, so this was silent. It
+            # says where to go, and doesn't press Rewind: nothing that may
+            # change files should start from reading about it.
+            self._feedback("Tab to Rewind, or to Cancel.")
+            return
         if press_focused_button_on_a_mac(event):
             return
         event.Skip()
+
+    def _focus(self):
+        return wx.Window.FindFocus()
 
     def _go(self):
         choice = self.selected()
@@ -5406,8 +5455,9 @@ class ElicitationDialog(wx.Dialog):
         outer.Add(self.message_text, 0 if self.fields else 1, box_flags, 8)
         self.form_panel = None
         sizer = None
-        #: Alt+letter -> a choose-several field's first box: Windows doesn't
-        #: reliably take a group's access key, as with What to Rewind's.
+        #: Alt+letter -> a choose-several field's first box, as Windows doesn't
+        #: reliably take a group's access key (What to Rewind's too), or a
+        #: check box, as it would tick it as well: these move, and only move.
         self._group_keys = {}
         # The Message label and the buttons have these; each field then takes
         # one of its own (ui_text.choose_access_key).
