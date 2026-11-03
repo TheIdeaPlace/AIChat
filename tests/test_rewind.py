@@ -104,6 +104,47 @@ def test_plan_for_the_second_message_names_the_files_and_keeps_the_original():
     assert "files" not in plan.describe(rewind.CONVERSATION).split("reply box")[0].lower()
 
 
+def test_conversation_only_says_what_stays_and_how_to_put_it_back():
+    # The dialog opens on it, and it said nothing about Claude's edits (#468).
+    records, *_ = two_turns()
+    tr = parse_lines(lines(*records))
+    message = [m for m in tr.messages if m.kind == USER][1]
+    plan = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True)
+    said = plan.describe(rewind.CONVERSATION)
+    assert ("The files stay as they are. Claude changed 1 file since this message: a.txt. "
+            "Choose Conversation and files or Files only to put them back.") in said
+    assert rewind.FILES_WARNING not in said
+    assert "The files stay as they are" not in plan.describe(rewind.BOTH)
+    assert "The files stay as they are" not in plan.describe(rewind.FILES)
+
+
+def test_conversation_only_with_no_edits_says_nothing_about_files():
+    plan = subagent_plan([], [])
+    assert "files" not in plan.describe(rewind.CONVERSATION).split("reply box")[1].lower()
+
+
+def test_conversation_only_names_files_changed_earlier_once():
+    # They go back too, with a checkpoint, so they're said; one changed both
+    # earlier and since is said once.
+    plan = subagent_plan(["a.py"], [], earlier=["a.py", "b.py"])
+    said = plan.describe(rewind.CONVERSATION)
+    assert "Claude changed 1 file since this message: a.py." in said
+    assert "Claude changed 1 file earlier in this chat: b.py." in said
+    only_earlier = subagent_plan([], [], earlier=["b.py"]).describe(rewind.CONVERSATION)
+    assert "since this message" not in only_earlier and "b.py" in only_earlier
+
+
+def test_conversation_only_doesnt_offer_a_choice_it_cant_do():
+    records, *_ = two_turns()
+    tr = parse_lines(lines(*records))
+    message = [m for m in tr.messages if m.kind == USER][1]
+    plan = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True,
+                              conversation_reason="It can't be branched.")
+    said = plan.describe(rewind.CONVERSATION)
+    assert "Choose Files only to put them back." in said
+    assert "Conversation and files" not in said
+
+
 def test_the_first_message_starts_with_no_history():
     records, *_ = two_turns()
     tr = parse_lines(lines(*records))

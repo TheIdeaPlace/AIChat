@@ -213,6 +213,26 @@ class RewindPlan:
                         f"{which} as well.")
         return " ".join(said)
 
+    def files_staying_text(self) -> str:
+        """Conversation only, when Claude's edits could go back: the dialog
+        opens on it, so it says what it leaves behind, and how to take it back
+        too, rather than saying nothing about the files (#468)."""
+        since = _files(self.edits)
+        seen_since = {_file_key(f.path) for f in since}
+        earlier = [f for f in _files(self.earlier_edits) if _file_key(f.path) not in seen_since]
+        said = ["The files stay as they are."]
+        if since:
+            said.append(f"Claude changed {_count(since, 'file', 'files')} since this message: "
+                        f"{_names(since)}.")
+        if earlier:
+            said.append(f"Claude changed {_count(earlier, 'file', 'files')} earlier in this chat: "
+                        f"{_names(earlier)}.")
+        # Conversation and Files is unavailable when the conversation can't go.
+        choices = ("Conversation and files or Files only" if self.conversation_possible
+                   else "Files only")
+        said.append(f"Choose {choices} to put them back.")
+        return " ".join(said)
+
     def describe(self, choice: str) -> str:
         """What ``choice`` will do, in words, for the dialog's read-only box."""
         said = first_line(self.message)
@@ -242,6 +262,8 @@ class RewindPlan:
             # Conversation only, perhaps because the files can't go back:
             # say why here too, as it's what the dialog opens on.
             parts.append("The files stay as they are. " + self.files_problem)
+        elif self.file_count:
+            parts.append(self.files_staying_text())
         return "\n\n".join(parts)
 
 
