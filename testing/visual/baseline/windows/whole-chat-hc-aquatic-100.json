@@ -1,5 +1,5 @@
 {
- "title": "Whole chat: Fix the flaky upload test",
+ "title": "Full chat: Fix the flaky upload test",
  "class": "FormattedMessageDialog",
  "size": [
   820,

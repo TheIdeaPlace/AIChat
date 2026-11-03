@@ -1733,7 +1733,7 @@
    "kind": "dialog",
    "png": "whole-chat-light-100.png",
    "json": "whole-chat-light-100.json",
-   "title": "Whole chat: Fix the flaky upload test",
+   "title": "Full chat: Fix the flaky upload test",
    "class": "FormattedMessageDialog",
    "size": [
     820,
