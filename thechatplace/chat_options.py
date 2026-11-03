@@ -26,10 +26,18 @@ The agents and styles offered are the ones Claude Code lists for the folder
 in its answer to ``initialize`` (``agents``: ``[{name, description, model}]``;
 ``available_output_styles`` and ``output_style``), which The Chat Place
 already asks for, at no cost, to list slash commands (#23).
+
+An agent's own model beats the chat's. Checked with Claude Code 2.1.316: an
+agent with ``model: sonnet``, run with ``--model haiku --agent wide``, had
+system/init report haiku while its replies came from sonnet. Its
+``permissionMode: acceptEdits`` did not beat ``--permission-mode plan``. So the
+Agent list says when an agent has its own model, and one that could bill usage
+credits is refused (``agent_problem``).
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
@@ -60,17 +68,42 @@ def is_safe_style(name: str) -> bool:
                           and name == name.strip())
 
 
+def _tidied(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n").replace("\0", "").strip()
+
+
 def clean_instructions(text: str) -> str:
     """Instructions as kept: line endings made \\n, blank edges trimmed, no
-    NUL (which can't go on a command line), at most MAX_INSTRUCTIONS."""
+    NUL (which can't go on a command line), at most MAX_INSTRUCTIONS. Trimmed
+    again after the cut, which can leave a space at the end: such text then
+    failed ``is_safe_instructions``, so the chat's turns couldn't be built."""
     if not isinstance(text, str):
         return ""
-    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\0", "")
-    return text.strip()[:MAX_INSTRUCTIONS]
+    return _tidied(text)[:MAX_INSTRUCTIONS].rstrip()
 
 
 def is_safe_instructions(text: str) -> bool:
     return isinstance(text, str) and clean_instructions(text) == text
+
+
+def instructions_problem(text: str) -> str:
+    """Why OK won't keep these instructions, or "": they're never cut unsaid."""
+    length = len(_tidied(text))
+    if length <= MAX_INSTRUCTIONS:
+        return ""
+    return (f"Those instructions are {length:,} characters, and the limit is "
+            f"{MAX_INSTRUCTIONS:,}. Shorten them, then press OK again.")
+
+
+def folder_problem(folder: str) -> str:
+    """Why ``folder`` can't be one of More Folders, or ""."""
+    from .claude_cli import is_safe_dir
+    # A root is its own parent: C:\\, a share's root, or a Mac's or Linux's /.
+    if folder and os.path.isdir(folder) and os.path.dirname(folder) == folder:
+        return "A whole drive can't be added. Choose a folder inside it."
+    if not folder or not is_safe_dir(folder) or not os.path.isdir(folder):
+        return "That folder can't be added: choose an existing folder."
+    return ""
 
 
 @dataclass(frozen=True)
@@ -135,13 +168,42 @@ class Agent:
     description: str = ""
     model: str = ""
 
+    @property
+    def own_model(self) -> str:
+        """The model it always runs on, whatever the chat's is: "" for none,
+        as "inherit" means."""
+        model = " ".join(self.model.split())
+        return "" if model.lower() == "inherit" else model
+
     def label(self, limit: int = 90) -> str:
-        """For the Agent choice: its name and the start of its description."""
+        """For the Agent choice: its name, its own model if it has one, and the
+        start of its description."""
         text = self.name
+        if self.own_model:
+            text += f" (uses its own model, {self.own_model})"
         description = " ".join(self.description.split())
         if description:
             text += ": " + description
         return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+#: In a model's name, what could bill usage credits (as ``claude_cli``'s
+#: ``fable_problem`` and ``is_safe_model`` have it): some plans bill Fable, in
+#: ``-p`` turns without asking, and every subscription plan bills 1M context.
+_CREDIT_MODELS = ("fable", "[1m]")
+
+
+def agent_problem(agent: Optional[Agent], chat_model: str = "") -> str:
+    """Why a chat on ``chat_model`` can't run as ``agent``, or "". The chat
+    having chosen that model itself makes it fine."""
+    if agent is None:
+        return ""
+    model, chosen = agent.own_model.lower(), (chat_model or "").lower()
+    if not any(mark in model and mark not in chosen for mark in _CREDIT_MODELS):
+        return ""
+    return (f"The agent {agent.name} uses its own model, {agent.own_model}, whatever model the "
+            "chat is on. That model can bill usage credits, so The Chat Place won't run this "
+            "chat as that agent. Choose another agent, or change the model in that agent's file.")
 
 
 @dataclass(frozen=True)

@@ -24,6 +24,13 @@ def _folder_key(folder: str) -> str:
     return workplaces.folder_key(folder or "")
 
 
+def _give_focus_back(window) -> None:
+    """Only if Windows hasn't put it back already: setting it again had a
+    screen reader say the row twice (#468)."""
+    if window and wx.Window.FindFocus() is not window:
+        window.SetFocus()
+
+
 class ClaudeExtras:
     # -- the agents and output styles Claude Code offers in a folder
 
@@ -42,17 +49,20 @@ class ClaudeExtras:
 
     def _load_chat_choices(self, folder: str, done) -> None:
         """``done(choices)`` on the UI thread with the folder's agents and
-        styles (None if Claude Code couldn't say): kept ones at once, else
-        asked for in the background (no turn, no cost)."""
+        styles (None if Claude Code couldn't say): kept ones at once, and
+        always asked for in the background (no turn, no cost), when ``done`` is
+        called again. Kept ones alone would miss an agent added since the last
+        turn, however long ago that was."""
         from . import main_frame
         cache = self._chat_choices_cache()
         key = _folder_key(folder)
-        if key in cache:
-            wx.CallAfter(done, cache[key])
-            return
+        known = cache.get(key)
+        if known is not None:
+            wx.CallAfter(done, known)
         lookup = platform_paths.find_claude()
         if not lookup.path or not folder:
-            wx.CallAfter(done, None)
+            if known is None:
+                wx.CallAfter(done, None)
             return
 
         def work():
@@ -64,7 +74,8 @@ class ClaudeExtras:
                 return
             if choices is not None:
                 cache[key] = choices
-            done(choices)
+            if choices is not None or known is None:
+                done(choices)  # a failed refresh leaves the kept ones standing
         try:
             self._pool.submit(work)
         except RuntimeError:  # the pool is shut down: the window is closing
@@ -98,17 +109,15 @@ class ClaudeExtras:
                                    folders=list(own.allowed_dirs),
                                    choices=self._chat_choices_cache().get(_folder_key(own.cwd)),
                                    load_choices=self._load_chat_choices, existing=True,
-                                   feedback=self._feedback)
+                                   feedback=self._feedback, model=own.model)
         try:
             if dialog.ShowModal() != wx.ID_OK:
-                if returning_to:
-                    returning_to.SetFocus()
+                _give_focus_back(returning_to)
                 return
             after, folders = dialog.options(), dialog.chosen_folders()
         finally:
             dialog.Destroy()
-        if returning_to:
-            returning_to.SetFocus()
+        _give_focus_back(returning_to)
         own = self.store.get(info.cli_session_id)
         if own is None:
             self._feedback("This chat is no longer in The Chat Place.")
@@ -172,7 +181,8 @@ class ClaudeExtras:
         model = own.model if own is not None else ""
         try:
             command = build_aside_command(lookup.path, info.cli_session_id, model,
-                                          cowork_ids=self._snapshot.cowork_cli_ids)
+                                          cowork_ids=self._snapshot.cowork_cli_ids,
+                                          allowed_dirs=own.allowed_dirs if own is not None else ())
         except (ResumeRefused, ValueError) as exc:
             self._feedback(str(exc))
             return
@@ -204,8 +214,7 @@ class ClaudeExtras:
         finally:
             dialog.stop()
             dialog.Destroy()
-        if returning_to:
-            returning_to.SetFocus()
+        _give_focus_back(returning_to)
 
 
 # Kept importable from here for tests that stand in for the runner.

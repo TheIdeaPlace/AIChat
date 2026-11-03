@@ -368,10 +368,16 @@ too).
   a Claude chat started here) chooses what every message in the chat also gets: an **Agent** to
   run the chat as (None, or one of the agents Claude Code knows for the folder, such as your
   code-reviewer, listed with the start of its description), **Instructions for this chat**
-  (added to Claude's own; Enter starts a new line), an **Output style** (your setting, or one of
-  the styles Claude Code offers, yours included), and **More folders** Claude may work in
-  (Add Folder, Remove, or Delete in the list). The agents and styles are Claude Code's own for
-  the folder, asked for in the background (no turn, no cost). They're kept with the chat and
+  (added to Claude's own; Enter starts a new line; up to 8,000 characters, and OK says if they're
+  longer), an **Output style** (your setting, or one of the styles Claude Code offers, yours
+  included), and **More folders** Claude may work in (Add Folder, Remove, or Delete in the list;
+  a folder, not a whole drive). An agent with a model of its own uses that model whatever the
+  chat's is, and the Agent list says so ("code-reviewer (uses its own model, opus)"); the chat's
+  heading still names the chat's model. OK refuses, and says why, an agent whose own model can
+  bill usage credits (a 1M context model, or Fable unless the chat is on Fable too). The agents
+  and styles are Claude Code's own for the folder, asked for in the background each time the
+  dialog opens (no turn, no cost); the ones last known show until the answer comes, and you hear
+  if they changed. They're kept with the chat and
   passed to every turn (`--agent`, `--append-system-prompt`, an output style through
   `--settings`, and `--add-dir`). More folders show in Chat Permissions, as "Work in the folder
   …", where you can take one back. In New Session the button is followed by what's chosen;
@@ -394,8 +400,9 @@ too).
   **Copy Answer** (Alt+C) copies the selected answer. While Claude is answering, Ask becomes
   **Stop**, and Escape stops it; otherwise Escape closes. Claude answers in a copy of the
   conversation that is never saved, with the same model as the chat, and can read files in its
-  folder (Read, Grep and Glob only; no commands, edits, hooks or connected tools), so nothing in the
-  chat or its folder changes. Each question uses your Claude plan, as a message does.
+  folder and the chat's More folders (Read, Grep and Glob only; no commands, skills, edits, hooks
+  or connected tools, so a question starting with a slash is just a question), so nothing in the
+  chat or its folders changes. Each question uses your Claude plan, as a message does.
   Ask Aside also works for local Codex chats, including chats started elsewhere; see
   **Codex chats** below for its temporary copy and restrictions.
 - **Reply box:** for The Chat Place's own sessions, type and press Ctrl+Enter (or Send). You stay in
