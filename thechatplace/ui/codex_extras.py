@@ -42,16 +42,18 @@ class CodexExtras:
         _codex_may_open once Codex has answered."""
         return wx.Window.FindFocus(), self.reply_text.GetValue()
 
-    def _codex_may_open(self, mark, what, over=None):
+    def _codex_may_open(self, mark, what, over=None, still_on=None):
         """Whether a picker or dialog may open now that Codex has answered.
         Opening one a moment later would take keys you were typing elsewhere
         (on_insert_command says the same for Claude), so it doesn't if focus
         has moved, the reply box has changed or another dialog is up.
         ``over`` is the dialog it opens from, which isn't another (Lists, for
-        a subagent's conversation). There, moving about in that dialog doesn't
-        count: it's still where you asked from."""
+        a subagent's conversation). There, moving focus about in that dialog
+        doesn't count, so ``still_on()`` says instead whether that dialog is
+        still on what you asked for: another row is having moved on (#468)."""
         focus, text = mark
         if ((over is not None or wx.Window.FindFocus() is focus)
+                and (still_on is None or still_on())
                 and self.reply_text.GetValue() == text
                 and not any(isinstance(window, wx.Dialog) and window.IsModal()
                             and window is not over for window in wx.GetTopLevelWindows())):

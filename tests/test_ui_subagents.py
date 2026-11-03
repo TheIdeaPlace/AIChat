@@ -382,6 +382,106 @@ def test_a_dialog_it_opens_from_doesnt_count_as_another(frame, env, monkeypatch)
         up.Destroy()
 
 
+def _two_subagents(frame, tmp_path, open_subagent):
+    """Lists on two subagents, over the frame, with what opens them replaced."""
+    from thechatplace.ui.dialogs import ListsDialog
+    subs = [subagents.Subagent(agent_id, path=tmp_path / f"agent-{agent_id}.jsonl",
+                               status=subagents.DONE) for agent_id in ("a1", "a2")]
+    items = [lists.ListItem(row=sub.agent_id, detail=sub.agent_id, subagent=sub) for sub in subs]
+
+    def build(category, scope):
+        return items if category == lists.SUBAGENTS else []
+    return ListsDialog(frame, "Quiet one", build, lambda text: True, lambda text: None,
+                       category=lists.SUBAGENTS, open_subagent=open_subagent)
+
+
+def test_lists_says_when_its_moved_off_the_subagent_it_asked_for(frame, tmp_path):
+    asked = []
+    dialog = _two_subagents(frame, tmp_path, lambda *a: asked.append(a))
+    try:
+        page = dialog.current()
+        page.list.SetSelection(0)
+        page.show_selected()
+        page.read_conversation()
+        sub, parent, _closed, still_on = asked[0]
+        assert sub.agent_id == "a1" and parent is dialog and still_on()
+        page.detail.SetFocus()  # about Lists on the same row: still asking for it
+        assert still_on()
+        page.list.SetSelection(1)  # Down to the next subagent
+        page.show_selected()
+        assert not still_on()
+        page.list.SetSelection(0)  # and back
+        page.show_selected()
+        assert still_on()
+        dialog._show_kind(lists.CATEGORY_IDS.index(lists.CODE))  # another kind
+        assert not still_on()
+    finally:
+        dialog.Destroy()
+
+
+class _ModalDialog(wx.Dialog):
+    """Stands in for Lists, up while a subagent's conversation is read."""
+
+    def IsModal(self):
+        return True
+
+
+def test_a_subagent_doesnt_open_over_the_row_you_moved_to(frame, env, monkeypatch):
+    # Enter on large A, Down to B: A opened over you later, as Lists turned the
+    # focus check off. Enter on B says it's still reading, and B is asked for
+    # again once it has.
+    import threading
+    _session_with_subagent(frame, env)
+    sub = frame._chat_subagents[0]
+    release, opened, reading = threading.Event(), [], []
+    real = subagents.open_conversation
+
+    def held(path, agent_type=""):
+        reading.append(True)
+        release.wait(20)
+        return real(path, agent_type)
+    monkeypatch.setattr(subagents, "open_conversation", held)
+    monkeypatch.setattr(frame, "_show_subagent_chat",
+                        lambda d: opened.append(d.GetTitle()) or wx.ID_CANCEL)
+    on_it = [True]
+    up = _ModalDialog(frame)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(wx, "GetTopLevelWindows", lambda: [frame, up])
+            frame._open_subagent(sub, up, None, lambda: on_it[0])
+            assert pump(lambda: reading)
+            on_it[0] = False
+            frame._open_subagent(sub, up, None, lambda: True)  # Enter on B
+            assert env["feedback"][-1] == "Still reading that subagent's conversation."
+            release.set()
+            assert pump(lambda: not frame._subagent_opening)
+        assert opened == []
+        assert len(reading) == 1  # B wasn't started either
+        assert "code-reviewer's conversation is ready, but you've moved on" in env["feedback"][-1]
+    finally:
+        up.Destroy()
+
+
+def test_a_subagent_opens_when_focus_moved_within_lists_on_the_same_row(frame, env, monkeypatch):
+    # Whatever has focus by the time it's read. Compared, this failed on
+    # Windows and Linux, which is why it's the row that's compared.
+    _session_with_subagent(frame, env)
+    sub = frame._chat_subagents[0]
+    opened = []
+    monkeypatch.setattr(frame, "_show_subagent_chat",
+                        lambda d: opened.append(d.GetTitle()) or wx.ID_CANCEL)
+    up = _ModalDialog(frame)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(wx, "GetTopLevelWindows", lambda: [frame, up])
+            patch.setattr(frame, "_codex_mark",
+                          lambda: (object(), frame.reply_text.GetValue()))
+            frame._open_subagent(sub, up, None, lambda: True)
+            assert pump(lambda: opened)
+    finally:
+        up.Destroy()
+
+
 def test_a_conversation_that_cant_be_read_is_said(frame, env, monkeypatch):
     _session_with_subagent(frame, env)
 

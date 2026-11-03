@@ -247,7 +247,9 @@ wait for about 90 seconds, and report when both are running without waiting for 
    it and **Ctrl+T** shows tool activity. Escape returns to the subagent list or source chat.
    While it is working, new messages should arrive without forcing focus away from your reading.
    On a long conversation, Enter again while it's read says "Still reading that subagent's
-   conversation". If you move away during the read, it doesn't open over you, and you hear so.
+   conversation". If you move away during the read, to another subagent in the list as much as
+   out of Lists, it doesn't open over you, and you hear so. Tabbing to Details on the same subagent
+   doesn't count: it still opens.
 3. On the source turn's message menu, try **Subagent Conversations**. If you separately ask a
    subagent to edit a disposable file, Changed Files should include the change and its author.
    Codex subagent conversations aren't supplied by this preview.

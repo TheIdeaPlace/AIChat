@@ -4283,8 +4283,16 @@ class ListsPage(wx.Panel):
                 self.list.SetSelection(rows.index(chosen))
                 self.show_selected()
             self.list.SetFocus()
+
+        def still_on():
+            # The row, not the focus: moving to Details on it is still asking
+            # for it, but Down to the next one means A mustn't open over B.
+            now = self.selected() if self else None
+            return (now is not None and now.subagent is not None
+                    and now.subagent.agent_id == chosen
+                    and self.owner.category == self.category)
         # It opens once read, in the background (#468), so this returns first.
-        self.owner.open_subagent(item.subagent, self.owner, closed)
+        self.owner.open_subagent(item.subagent, self.owner, closed, still_on)
 
     def open_selected(self):
         item = self.selected()
@@ -4357,8 +4365,9 @@ class ListsDialog(wx.Dialog):
     "Show items from" chooses this message or the whole chat.
     ``build(category, scope)`` gives a kind's ``lists.ListItem`` list. A link
     chosen with Open is in ``chosen_link`` once the dialog has closed.
-    ``open_subagent(subagent, parent, closed)`` shows a subagent's conversation
-    over the dialog once it's read, then calls ``closed`` (#468).
+    ``open_subagent(subagent, parent, closed, still_on)`` shows a subagent's
+    conversation over the dialog once it's read, if ``still_on()`` says the
+    list is still on it, then calls ``closed`` (#468).
     """
 
     def __init__(self, parent, title: str, build, copy, feedback,
