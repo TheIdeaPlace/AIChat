@@ -212,8 +212,8 @@ class SessionController:
     def skills(self, session):
         return self._provider(session).skills(session)
 
-    def connected_tools(self, session):
-        return self._provider(session).connected_tools(session)
+    def connected_tools(self, session, **options):
+        return self._provider(session).connected_tools(session, **options)
 
     def copy_with_tools(self, source, title, names):
         return self._provider(source).copy_with_tools(source, title, names)

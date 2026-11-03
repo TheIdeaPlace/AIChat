@@ -1938,7 +1938,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     kind += ' on ' + own.provider_options['model']
                 if own.provider_options.get('effort'):
                     kind += ' at ' + own.provider_options['effort']
-                if own.provider_options.get('collaboration') == 'plan':
+                if (own.provider_options.get('collaboration') == 'plan' and not getattr(
+                        self._codex_states.get(info.key), 'plan_unavailable', False)):
                     kind += ', plan mode'
         elif info.remote and info.provider == "claude":
             kind += ", on Remote Control in the desktop app"
@@ -3295,7 +3296,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         info = self._open
         item = getattr(self, "stop_background_item", None)
         if item is not None:
-            item.Enable(bool(self._background_entries(info)))  # (#468)
+            item.Enable(self._can_stop_background(info))  # (#467) (#468)
         if info is not None and info.provider == AGENTS:
             self.send_btn.Enable(True)
             self.stop_btn.Enable(True)
@@ -4858,8 +4859,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 if info.provider == 'codex':
                     try:
                         message = self._codex_message(info, message)
-                    except (ValueError, OSError):
-                        self._feedback('An attachment is missing or cannot be sent. Check the attached files and try again.')
+                    except (ValueError, OSError) as error:
+                        self._feedback(str(error))  # too long, too many, or a file gone
                         return
                 self.reply_text.SetValue("")
                 self._codex_drafts.pop(info.key, None)

@@ -104,6 +104,7 @@ class CodexTurnRejected(CodexRpcError):
         'command_rules': 'The Chat Place could not check Codex saved command rules. No new turn was sent.',
         'project_rules': 'This folder supplies Codex saved command rules. Choose a folder without project rules, or move those rules out of the project before trying again. No new turn was sent.',
         'mcp_tools': 'Codex external tools could not be verified against this chat\'s selection. No new turn was sent.',
+        'mcp_server_removed': 'A connected tool this chat uses is no longer in your Codex configuration. No new turn was sent. View, Connected Tools lists it and can make a copy of this chat without it, or you can add it back to Codex\'s config.toml.',
         'input_unavailable': 'An attached image or skill is no longer available. No message was sent. Check the attachments and try again.',
         'input_size': 'This message and its attachments exceed Codex\'s request size limit. Shorten the message or remove attachments. No message was sent.',
         # Likely, not certain: Codex also falls back to read-only when managed
@@ -119,6 +120,9 @@ class CodexTurnRejected(CodexRpcError):
 
 
 _ENDED_TURNS = ('completed', 'failed', 'interrupted')
+#: How a server says it doesn't know a method. App-server's own parser answers
+#: an unknown one with -32600 and serde's "unknown variant", not -32601.
+_UNKNOWN_METHOD = re.compile(r'unknown variant|unknown method|method not found', re.IGNORECASE)
 
 
 def _token(value):
@@ -189,7 +193,7 @@ def codex_tool_overrides(config, allowed=()):
     if not isinstance(servers, dict) or any(not isinstance(v, dict) for v in servers.values()):
         raise CodexTurnRejected('mcp_tools')
     if set(allowed) - set(servers):
-        raise CodexTurnRejected('mcp_tools')
+        raise CodexTurnRejected('mcp_server_removed')
     # External services are outside the selected folder's sandbox. Disable them
     # in this thread only, including app/plugin-provided servers (#255).
     return {'mcp_servers': {name: {'enabled': name in allowed} for name in servers},
@@ -601,6 +605,10 @@ class ReadOnlyCodexConnection:
                 details = message.get("error")
                 code = details.get("code") if isinstance(details, dict) else None
                 pending.error.rpc_code = code if type(code) is int else None
+                # A yes or no from the message, which itself is never kept.
+                said = details.get("message") if isinstance(details, dict) else None
+                pending.error.unknown_method = code == -32601 or (
+                    isinstance(said, str) and _UNKNOWN_METHOD.search(said) is not None)
             elif "error" not in message and isinstance(message.get("result"), dict):
                 pending.result = message["result"]
             else:

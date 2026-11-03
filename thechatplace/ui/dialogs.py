@@ -5220,6 +5220,9 @@ class ConnectedToolsDialog(wx.Dialog):
         server = self._server_for("reconnect", self.reconnect_btn)
         if server is None:
             return
+        if server.missing and not server.off_for_chat:  # Codex: selected, then removed
+            self._tell(server.text(), back_to=self.reconnect_btn)
+            return
         if server.off_for_chat or server.missing:
             self._tell(f"{server.label} is off for this chat. Turn it on first.",
                        back_to=self.reconnect_btn)

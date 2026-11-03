@@ -835,17 +835,21 @@ class CodexChats(CodexExtras):
                               state=IDLE, unread=not loaded,
                               last_activity_ms=int(time.time() * 1000))
             reply = '\n\n'.join(text for _identity, text in state.replies)
-            text = (f'{record.title}: {name} answered.' if state.outcome == 'completed'
+            # /compact runs as a turn of its own, which answers nothing (#467).
+            compacted = getattr(state, 'compaction', False) and state.outcome == 'completed'
+            text = (f'{record.title}: context compacted.' if compacted else
+                    f'{record.title}: {name} answered.' if state.outcome == 'completed'
                     else f'{record.title}: {name} turn {state.outcome}.')
             # Use the same configured announcement level as Claude replies.
-            if reply:
+            if reply and not compacted:
                 text = announce.reply_text(record.title, reply, self.speech.announce)
             agent_quiet = getattr(self, '_agent_quiet', None)
             quiet = agent_quiet is not None and agent_quiet(provider, state.native_id)
             if not quiet:  # an agent conversation says it, by its own name (#248)
                 self._say(text, interrupt=False)
             if state.outcome != 'interrupted' and not quiet:
-                self._notify(key, f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
+                self._notify(key, f'{record.title}: context compacted' if compacted else
+                             f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
                              text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
         if unsent:

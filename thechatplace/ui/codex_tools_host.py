@@ -13,6 +13,8 @@ class CodexConnectedTools:
         self.can_turn_off = self.record is not None
         self.closed = False
         self.busy = False
+        #: Selected servers no longer configured: no copy may name them.
+        self.removed = set()
 
     def note(self):
         return ('Codex MCP servers configured for this folder. Apps and plugins remain unavailable. '
@@ -26,9 +28,13 @@ class CodexConnectedTools:
 
     def load(self, done):
         def finished(rows, error):
+            if not error:
+                self.removed = {row.name for row in rows if row.missing}
             if not self.closed:
                 done(None if error else rows, rows if error else '')
-        self.frame._codex_work(lambda: self.frame.sessions.connected_tools(self.info), finished)
+        record, info = self.record, self.info
+        selected = {} if record is None else {'selected': tuple(record.provider_options.get('mcp_servers', ()))}
+        self.frame._codex_work(lambda: self.frame.sessions.connected_tools(info, **selected), finished)
 
     def sign_in(self, server, done):
         done('Sign in to ' + server.name + ' using Codex CLI, then reopen the chat and refresh.', '')
@@ -45,18 +51,20 @@ class CodexConnectedTools:
             done(None, 'This chat is no longer in The Chat Place.')
             return
         names = list(record.provider_options.get('mcp_servers', []))
-        names = [name for name in names if name != server.name]
+        names = [name for name in names if name != server.name and name not in self.removed]
         if not off:
             names.append(server.name)
         consent = ('Enable ' + server.name + ' in a new copy? Its tools can read or change external '
                    'services outside the folder sandbox. Only enable a server you trust.' if not off else
-                   'Create a new copy with ' + server.name + ' turned off?')
+                   'Create a new copy without ' + server.name + "? It's no longer in Codex's configuration."
+                   if server.missing else 'Create a new copy with ' + server.name + ' turned off?')
         if wx.MessageBox(consent, 'Copy Codex Chat with Connected Tools',
                          wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self.frame) != wx.YES:
             self.load(done)
             return
         source = self.info
         self.busy = True
+        self.frame._feedback('Creating the Codex copy.')
         def created(copy, error):
             self.busy = False
             if error:
