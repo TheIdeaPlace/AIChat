@@ -165,10 +165,6 @@ STEPS = [
     Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # The page's plain text here: serve has no web view. Built off the window's thread.
-    Step("Read Whole Chat", ["alt+v", "w"], expect=["Whole chat: Visual probe"]),
-    Step("whole chat closed, back in the messages", ["Escape"],
-         expect=["Messages in Visual probe"]),
     # File, Chat Options (#468), opened by the trigger: the item has no access
     # key. It opens on Agent, and Tab goes through every control in turn. The
     # list has no folders yet, so its one row says so. Add Folder's picker
@@ -213,6 +209,10 @@ STEPS = [
          expect=["Stop Background Task", "Windows build, running"]),
     Step("the next task", ["Down"], expect=["Watch CI"]),
     Step("Stop Background Task closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # The page's plain text here: serve has no web view. Built off the window's thread.
+    Step("Read Whole Chat", ["alt+v", "w"], expect=["Whole chat: Visual probe"]),
+    Step("whole chat closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Subagents (#468): "Fix the flaky upload test" has two, a code-reviewer
     # that finished and an Explore at work. View, Subagents opens Lists on
