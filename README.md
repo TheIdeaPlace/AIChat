@@ -574,6 +574,10 @@ Copilot chats don't have these yet.
 
 ### Connected tools (MCP servers and claude.ai connectors)
 
+- **You can't add a connected tool from The Chat Place.** Add or remove Claude's with Claude Code
+  (`claude mcp`) or on claude.ai, and Codex's with the Codex CLI (`codex mcp`), then press Refresh.
+  "3 tools" on a row means it offers three separate things the AI can use; Details lists their
+  names, not what each one does.
 - **View, Connected Tools (MCP)** (#468; the View menu's last item, Alt+V then Up) lists the
   tools a Claude chat can use in its folder: MCP servers from your Claude Code settings, the
   project's `.mcp.json` and plugins, the connectors you've added on claude.ai, and, for a chat

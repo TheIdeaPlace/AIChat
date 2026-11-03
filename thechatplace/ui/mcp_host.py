@@ -22,7 +22,7 @@ from ..claude_mcp import McpError, McpServer, with_chat_settings
 
 NOTE = ("Connected tools are the MCP servers and claude.ai connectors Claude can use in this "
         "chat's folder: from your Claude Code settings, the project, plugins and claude.ai. "
-        "Add or remove them in Claude Code or on claude.ai. Turning one off for this chat keeps "
+        "You can't add one here: add or remove them in Claude Code or on claude.ai. Turning one off for this chat keeps "
         "it out of this chat's turns from the next one; Claude Code's own settings and other "
         "chats are left alone. Reading this list starts the tools that are on; a tool turned off "
         "for this chat isn't started.")

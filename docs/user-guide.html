@@ -1835,6 +1835,14 @@ Codex rule.</p>
 <h2 id="connected-tools">Connected tools</h2>
 <p>View, <strong>Connected Tools (MCP)</strong> works for Claude and Codex chats. Claude's controls manage a
 chat's servers and connectors; Codex's controls choose configured servers in a new copy.</p>
+<p><strong>You can't add a new tool from The Chat Place.</strong> It works with the tools already set up in each
+provider. Add or remove Claude's with Claude Code (<code>claude mcp</code>) or on claude.ai, and Codex's with
+the Codex CLI (<code>codex mcp</code>), then press <strong>Refresh</strong> (Alt+F). Copilot chats don't have Connected
+Tools yet.</p>
+<p><strong>"3 tools" on a row</strong> means that server or connector offers three separate things the AI can use,
+such as searching or fetching a page. <strong>Details</strong> (Alt+D) lists their names, as the server gives
+them; The Chat Place doesn't say what each one does. The count is only known once it's connected.
+The AI decides when to use them as it works, and asks first if your permissions say to.</p>
 <h3>Claude's connected tools</h3>
 <p>Claude can use tools from outside Claude Code: MCP servers from your Claude Code settings, the
 project or plugins, and the connectors you've added on claude.ai. A connector that needs signing
@@ -1870,7 +1878,6 @@ long as the dialog is open; a tool turned off for the chat isn't started.</p>
   <strong>Turn On for This Chat</strong>. Other chats, the desktop app and Claude Code's own settings are left alone.
   Only chats started here can do this; The Chat Place's session tools can't be turned off.</li>
 </ul>
-<p>Add or remove tools in Claude Code (<code>claude mcp</code>) or on claude.ai.</p>
 <h3>When a Claude turn starts</h3>
 <p>If a tool in the chat needs sign-in or failed to connect, The Chat Place says so when a turn
 starts, for example "Claude can't use claude.ai Morningstar: it needs sign-in. View, Connected

@@ -36,7 +36,7 @@ class CodexConnectedTools:
         return ('Codex MCP servers configured for this folder. Apps and plugins remain unavailable. '
                 'Changing a tool creates a new read-only copy of this chat with that selection; '
                 'the original chat is kept. Enabled tools may read or change external services, '
-                'outside the folder sandbox. Add servers and sign in using Codex CLI. '
+                'outside the folder sandbox. Add servers and sign in using the Codex CLI (`codex mcp`), not here. '
                 'Server questions that The Chat Place cannot display are declined.')
 
     def toggle_label(self, server):

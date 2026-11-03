@@ -1810,6 +1810,16 @@ Codex rule.
 View, **Connected Tools (MCP)** works for Claude and Codex chats. Claude's controls manage a
 chat's servers and connectors; Codex's controls choose configured servers in a new copy.
 
+**You can't add a new tool from The Chat Place.** It works with the tools already set up in each
+provider. Add or remove Claude's with Claude Code (`claude mcp`) or on claude.ai, and Codex's with
+the Codex CLI (`codex mcp`), then press **Refresh** (Alt+F). Copilot chats don't have Connected
+Tools yet.
+
+**"3 tools" on a row** means that server or connector offers three separate things the AI can use,
+such as searching or fetching a page. **Details** (Alt+D) lists their names, as the server gives
+them; The Chat Place doesn't say what each one does. The count is only known once it's connected.
+The AI decides when to use them as it works, and asks first if your permissions say to.
+
 ### Claude's connected tools
 
 Claude can use tools from outside Claude Code: MCP servers from your Claude Code settings, the
@@ -1848,8 +1858,6 @@ long as the dialog is open; a tool turned off for the chat isn't started.
   turns from the next one; the row then says "off for this chat", and the button becomes
   **Turn On for This Chat**. Other chats, the desktop app and Claude Code's own settings are left alone.
   Only chats started here can do this; The Chat Place's session tools can't be turned off.
-
-Add or remove tools in Claude Code (`claude mcp`) or on claude.ai.
 
 ### When a Claude turn starts
 
