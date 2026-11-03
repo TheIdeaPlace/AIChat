@@ -21,7 +21,8 @@ from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, fi
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
                       SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
-from ..ui_text import shortcuts_text, codex_effort_label, key_name
+from ..ui_text import (choose_access_key, codex_effort_label, key_name, mark_access_key,
+                       shortcuts_text)
 from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
@@ -1801,7 +1802,7 @@ class WrappingText(wx.StaticText):
 def _read_only_text(parent, value: str, name: str, min_height: int = 160) -> wx.TextCtrl:
     text = wx.TextCtrl(parent, value=value,
                        style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
-    set_accessible_name(text, name)
+    set_accessible_name(text, name, read_only_box=True)
     text.SetMinSize(dip(parent, -1, min_height))
     text.SetInsertionPoint(0)
     return text
@@ -4973,7 +4974,7 @@ class RewindDialog(wx.Dialog):
         # Read-only text, not a label, so it's in the Tab order and read by
         # line like the other notes.
         self.happens = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
-        set_accessible_name(self.happens, "What happens")
+        set_accessible_name(self.happens, "What happens", read_only_box=True)
         self.happens.SetMinSize(dip(self, -1, 180))
         sizer.Add(self.happens, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -5355,20 +5356,29 @@ class ElicitationDialog(wx.Dialog):
         outer = wx.BoxSizer(wx.VERTICAL)
         self.can_open = request.is_url and is_web_url(request.url)
         self.address_text = self.note_text = None
+        # A box sits right under its label, with the 2 pixels other dialogs
+        # have, not a border's 8 more.
+        box_flags = wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM
         if request.is_url:
             outer.Add(wx.StaticText(self, label="&Address:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
             self.address_text = _read_only_text(self, request.address_text(), "Address",
                                                 min_height=60)
-            outer.Add(self.address_text, 0, wx.EXPAND | wx.ALL, 8)
+            outer.Add(self.address_text, 0, box_flags, 8)
         elif problem:
             outer.Add(wx.StaticText(self, label="&Note:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
             self.note_text = _read_only_text(self, problem, "Note", min_height=60)
-            outer.Add(self.note_text, 0, wx.EXPAND | wx.ALL, 8)
+            outer.Add(self.note_text, 0, box_flags, 8)
         outer.Add(wx.StaticText(self, label="&Message:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
         self.message_text = _read_only_text(self, request.detail(), "Message", min_height=110)
-        outer.Add(self.message_text, 0 if self.fields else 1, wx.EXPAND | wx.ALL, 8)
+        outer.Add(self.message_text, 0 if self.fields else 1, box_flags, 8)
         self.form_panel = None
         sizer = None
+        #: Alt+letter -> a choose-several field's first box: Windows doesn't
+        #: reliably take a group's access key, as with What to Rewind's.
+        self._group_keys = {}
+        # The Message label and the buttons have these; each field then takes
+        # one of its own (ui_text.choose_access_key).
+        self._keys_taken = set("msdl")
         if self.fields:
             panel = self.form_panel = wx.ScrolledWindow(self, style=wx.VSCROLL)
             panel.SetScrollRate(0, 20)
@@ -5376,7 +5386,8 @@ class ElicitationDialog(wx.Dialog):
             for f in self.fields:
                 self._add_field(panel, sizer, f)
             panel.SetSizer(sizer)
-            outer.Add(panel, 1, wx.EXPAND | wx.ALL, 4)
+            # 2 here and each field's 6 line up with the Message box's 8.
+            outer.Add(panel, 1, wx.EXPAND | wx.ALL, 2)
         row = wx.BoxSizer(wx.HORIZONTAL)
         if request.is_url:
             self.send_btn = wx.Button(self, label="&Open in Browser")
@@ -5414,18 +5425,19 @@ class ElicitationDialog(wx.Dialog):
         self.Bind(wx.EVT_INIT_DIALOG, self._on_init_dialog)
 
     def _add_field(self, panel, sizer, f):
-        name = f.name() + (f": {f.description}" if f.description else "")
+        name = f.spoken_name()
         # A server's own words: an "&" is shown, not taken as an access key.
-        label = (f.label + (" (required)" if f.required else "")).replace("&", "&&")
+        # The key comes from the field's own name, never "(required)".
+        key = choose_access_key(f.label, self._keys_taken)
+        plain_label = f.label + (" (required)" if f.required else "")
         box_width = self._wrap_width - _check_box_glyph(self)
 
         def words(text):
             return wx.StaticText(panel, label=_wrapped(panel, text, self._wrap_width)
                                  .replace("&", "&&"))
-        plain_label = f.label + (" (required)" if f.required else "")
         if f.kind == "boolean":
-            control = wx.CheckBox(panel, label=_wrapped(panel, plain_label, box_width)
-                                  .replace("&", "&&"))
+            control = wx.CheckBox(panel, label=mark_access_key(
+                _wrapped(panel, plain_label, box_width), key))
             control.SetValue(f.default is True)
             set_accessible_name(control, name)
             sizer.Add(control, 0, wx.ALL, 6)
@@ -5444,7 +5456,7 @@ class ElicitationDialog(wx.Dialog):
             boxes = []
             chosen = f.default if isinstance(f.default, list) else []
             with wx.LogNull():
-                group = wx.StaticBoxSizer(wx.VERTICAL, panel, label)
+                group = wx.StaticBoxSizer(wx.VERTICAL, panel, mark_access_key(plain_label, key))
                 for value, text in f.choices:
                     box = wx.CheckBox(panel, label=_wrapped(panel, text, box_width)
                                       .replace("&", "&&"))
@@ -5457,10 +5469,15 @@ class ElicitationDialog(wx.Dialog):
                     group.Add(words(f.description), 0, wx.ALL, 4)
                 sizer.Add(group, 0, wx.EXPAND | wx.ALL, 6)
             self._controls[f.key] = boxes
+            if key and boxes:
+                self._group_keys[ord(key.upper())] = boxes[0][1]
             return
         # The label just before its control, the description after it:
-        # Windows names a list from the text just before it.
-        sizer.Add(words(plain_label + ":"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        # Windows names a list from the text just before it, and its access
+        # key goes to the control after it.
+        sizer.Add(wx.StaticText(panel, label=mark_access_key(
+            _wrapped(panel, plain_label + ":", self._wrap_width), key)),
+            0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         if f.kind == "choice":
             # A list, not radio buttons: Tab reaches it with nothing chosen
             # (#428), and "(none)" leaves an optional one unanswered.
@@ -5479,8 +5496,8 @@ class ElicitationDialog(wx.Dialog):
                 control.ChangeValue(str(f.default))
         set_accessible_name(control, name)
         sizer.Add(control, 0, wx.EXPAND | wx.ALL, 6)
-        if f.description:
-            sizer.Add(words(f.description), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        if f.help_text():
+            sizer.Add(words(f.help_text()), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         self._controls[f.key] = control
 
     def values(self) -> dict:
@@ -5539,6 +5556,12 @@ class ElicitationDialog(wx.Dialog):
         return "Tab to Decline."
 
     def _on_key(self, event):
+        # Not on a Mac, which has no access keys: Option and a letter types.
+        if (sys.platform != "darwin" and event.AltDown()
+                and not (event.ControlDown() or event.ShiftDown())
+                and event.GetKeyCode() in self._group_keys):
+            self._group_keys[event.GetKeyCode()].SetFocus()
+            return
         if press_focused_button_on_a_mac(event):
             return
         if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):

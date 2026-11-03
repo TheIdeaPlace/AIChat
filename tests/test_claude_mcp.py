@@ -604,6 +604,26 @@ def test_form_fields_from_the_schema():
     assert fields[3].choices == [("low", "Low"), ("medium", "Medium"), ("high", "High")]
 
 
+@pytest.mark.parametrize("prop, limits, help_line, spoken", [
+    ({"type": "integer", "minimum": 1, "maximum": 14}, "between 1 and 14", "Between 1 and 14",
+     "Nights: between 1 and 14"),
+    ({"type": "number", "minimum": 0.5}, "at least 0.5", "At least 0.5", "Nights: at least 0.5"),
+    ({"type": "integer", "maximum": 14}, "at most 14", "At most 14", "Nights: at most 14"),
+    ({"type": "integer", "minimum": 1, "description": "How long"}, "at least 1",
+     "How long. At least 1", "Nights: How long: at least 1"),
+    ({"type": "integer", "minimum": 1, "description": "How long?"}, "at least 1",
+     "How long? At least 1", "Nights: How long?: at least 1"),
+    ({"type": "integer", "description": "How long"}, "", "How long", "Nights: How long"),
+    ({"type": "string", "minLength": 2}, "", "", "Nights"),
+])
+def test_a_numbers_limits_are_said_before_send(prop, limits, help_line, spoken):
+    # They used to be heard only in the error after Send (#468).
+    field = form_fields({"type": "object", "properties": {"n": {"title": "Nights", **prop}}})[0]
+    assert field.limits() == limits
+    assert field.help_text() == help_line
+    assert field.spoken_name() == spoken
+
+
 def test_form_fields_other_shapes():
     fields = form_fields({"type": "object", "properties": {
         "size": {"type": "string", "oneOf": [{"const": "s", "title": "Small"},

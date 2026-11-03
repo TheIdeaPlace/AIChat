@@ -190,7 +190,8 @@ For Claude:
 4. If a connected tool asks for a form while Claude is working, press **Ctrl+Shift+A**. Listen for
    the needs-you announcement. Expect: it opens on the read-only **Message** box. Press Enter there.
    Expect: nothing is sent, and you hear "Tab to the form, or to Send". Tab into the form and check
-   that the questions, choices and focused field are named. Fill it in and press Enter, or Send.
+   that the questions, choices and focused field are named, that a number says its limits, and that
+   each field's Alt key goes to it. Fill it in and press Enter, or Send.
    With nothing to fill in, Enter on the message sends.
 5. If it asks you to open a web page, **Ctrl+Shift+A** opens on an **Address** box above the message,
    with "Opens" and the host on its first line and then the whole address. Press Enter there and in

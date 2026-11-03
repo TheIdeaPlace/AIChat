@@ -1,6 +1,8 @@
 """View, Connected Tools and connected tools' questions in the window (#468),
 on a hidden window with every outside thing faked (``fake_env``): no real
 claude, no browser, no speech."""
+import sys
+
 import pytest
 
 wx = pytest.importorskip("wx")
@@ -846,7 +848,7 @@ def test_choosing_several_is_a_group_and_its_first_box_says_the_rest(frame, env)
         assert second.GetName() == "Extras: Parking"
         # By wx's class name: a wrapper from GetChildren isn't always a StaticBox.
         groups = [c for c in dialog.form_panel.GetChildren() if c.GetClassName() == "wxStaticBox"]
-        assert [g.GetLabel() for g in groups] == ["Extras (required)"]
+        assert [g.GetLabel() for g in groups] == ["&Extras (required)"]
         # Siblings of the box, not its children: see QuestionDialog.
         assert first.GetParent() is dialog.form_panel
     finally:
@@ -873,9 +875,94 @@ def test_the_form_is_labelled_for_a_screen_reader(frame, env):
     dialog = ElicitationDialog(frame, "Tools probe", elicitation_from("e1", FORM))
     try:
         assert dialog.control_for("city").GetName() == "City, required: Which city to plan for"
-        assert dialog.control_for("nights").GetName() == "Nights, required"
-        assert dialog.control_for("pets").GetLabel() == "Bringing pets"
+        assert dialog.control_for("nights").GetName() == "Nights, required: between 1 and 14"
+        assert dialog.control_for("pets").GetLabel() == "&Bringing pets"
         assert dialog.control_for("budget").GetStrings() == ["(none)", "Low", "Medium", "High"]
         assert dialog.control_for("budget").GetSelection() == 0
+        shown = [c.GetLabel() for c in dialog.form_panel.GetChildren()
+                 if isinstance(c, wx.StaticText)]
+        assert "Between 1 and 14" in shown
+    finally:
+        dialog.Destroy()
+
+
+def test_each_field_has_its_own_access_key(frame, env):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    schema = {"type": "object", "required": ["story"], "properties": {
+        # Its first letters are the dialog's own: Send and Decline.
+        "story": {"type": "string", "title": "Send & deliver"},
+        "city": {"type": "string", "title": "City"},
+        "cats": {"type": "boolean", "title": "Cats"},
+        "size": {"type": "string", "title": "Colour", "enum": ["a"]},
+        "extras": {"type": "array", "title": "Extras", "items": {"enum": ["one", "two"]}}}}
+    dialog = ElicitationDialog(frame, "Tools probe",
+                               elicitation_from("e", {**FORM, "requested_schema": schema}))
+    try:
+        labels = [c.GetLabel() for c in dialog.form_panel.GetChildren()
+                  if c.GetClassName() in ("wxStaticText", "wxCheckBox", "wxStaticBox")]
+        assert "S&end && deliver (required):" in labels  # "(required)" gives no key
+        assert "&City:" in labels
+        assert "C&ats" in labels
+        assert "C&olour:" in labels
+        assert "E&xtras" in labels
+    finally:
+        dialog.Destroy()
+
+
+def test_alt_goes_to_a_choose_several_fields_first_box(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    dialog = ElicitationDialog(frame, "Tools probe", elicitation_from("e", MANY))
+    moved = []
+    first = dialog._controls["extras"][0][1]
+    monkeypatch.setattr(first, "SetFocus", lambda: moved.append(True))
+    assert dialog._group_keys == {ord("E"): first}
+
+    def press(key, alt=True):
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(ord(key))
+        event.SetAltDown(alt)
+        dialog._on_key(event)
+        return event.GetSkipped()
+    try:
+        assert press("Q")
+        assert press("E", alt=False)
+        assert not moved
+        if sys.platform == "darwin":
+            assert press("E") and not moved  # Option and a letter types
+        else:
+            assert not press("E") and moved
+    finally:
+        dialog.Destroy()
+
+
+def test_a_forms_boxes_sit_under_their_labels_and_line_up(frame, env):
+    from thechatplace.ui.dialogs import ElicitationDialog
+    dialog = ElicitationDialog(frame, "Tools probe", elicitation_from("e", FORM))
+    try:
+        dialog.Layout()
+        panel = dialog.form_panel
+        city = dialog.control_for("city")
+        field_x = panel.GetPosition().x + city.GetPosition().x
+        assert field_x == dialog.message_text.GetPosition().x
+        item = dialog.GetSizer().GetItem(dialog.message_text)
+        assert item.GetFlag() & wx.TOP == 0
+    finally:
+        dialog.Destroy()
+
+
+@msaa
+def test_a_read_only_boxs_text_is_not_parsed_for_a_shortcut(frame, env):
+    # "Pick & choose" read as the box having a shortcut of "Alt+ " (#468).
+    from thechatplace.ui.dialogs import ElicitationDialog
+    dialog = ElicitationDialog(frame, "Tools probe",
+                               elicitation_from("e", {**FORM, "message": "Pick & choose"}))
+    try:
+        box = dialog.message_text
+        assert "Pick & choose" in box.GetValue()
+        assert box.GetAccessible().GetKeyboardShortcut(0) == (wx.ACC_OK, "")
+        assert box.GetAccessible().GetName(0) == (wx.ACC_OK, "Message")
+        # A field beneath its label keeps Windows' own reading of its key.
+        city = dialog.control_for("city").GetAccessible()
+        assert not isinstance(city, type(box.GetAccessible()))
     finally:
         dialog.Destroy()

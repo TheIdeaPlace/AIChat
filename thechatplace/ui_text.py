@@ -282,6 +282,30 @@ def _tables_as_text(text: str) -> str:
 LAST_MESSAGE_LIMIT = 150
 
 
+def choose_access_key(label: str, taken: set) -> str:
+    """A key for a field a server named (#468), "" if every letter in ``label``
+    is taken: the first free letter or digit that starts a word, else any in
+    it, lower case. It's added to ``taken``, the keys already spoken for. Only
+    plain ones, as a key that isn't on the keyboard is no use."""
+    plain = [c.lower() for c in label if c.isascii() and c.isalnum()]
+    starts = [m.group().lower() for m in re.finditer(r"\b[A-Za-z0-9]", label)]
+    for key in starts + plain:
+        if key not in taken:
+            taken.add(key)
+            return key
+    return ""
+
+
+def mark_access_key(text: str, key: str) -> str:
+    """A server's ``text`` as a control's label: each "&" of its own shown, not
+    taken as an access key, and ``key`` marked where it first comes."""
+    text = text.replace("&", "&&")
+    for index, char in enumerate(text):
+        if key and char.isascii() and char.lower() == key:
+            return f"{text[:index]}&{text[index:]}"
+    return text
+
+
 def codex_effort_label(value: str) -> str:
     """Readable choices; the protocol value stays in the validated catalog."""
     return {'none': 'None', 'minimal': 'Minimal', 'low': 'Low', 'medium': 'Medium',

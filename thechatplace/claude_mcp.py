@@ -656,6 +656,29 @@ class FormField:
         """The control's name for a screen reader: label, then "required"."""
         return self.label + (", required" if self.required else "")
 
+    def limits(self) -> str:
+        """A number's limits, "between 1 and 14", or "". Said before Send, so
+        they aren't first heard in an error."""
+        if self.kind in ("number", "integer") and (self.minimum is not None
+                                                   or self.maximum is not None):
+            return _bounds(self)
+        return ""
+
+    def spoken_name(self) -> str:
+        """All a screen reader is told as it lands on the field."""
+        return ": ".join(part for part in (self.name(), self.description, self.limits()) if part)
+
+    def help_text(self) -> str:
+        """The line under the field: its description, then its limits."""
+        limits = self.limits()
+        if not limits:
+            return self.description
+        limits = limits[0].upper() + limits[1:]
+        said = self.description.rstrip()
+        if not said:
+            return limits
+        return f"{said}{'' if said[-1] in '.!?:' else '.'} {limits}"
+
 
 def _choices(prop: dict) -> List[Tuple[object, str]]:
     """A schema's enum, with its titles: ``enum`` with ``enumNames``, or

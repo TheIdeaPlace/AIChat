@@ -1652,7 +1652,8 @@ What each provider offers:
   example, "Plan trip needs you. Trip planner asks: Where would you like to go?". Answer opens on
   the tool's message, to read by line. A form follows, one labelled box per thing it asks for:
   a text box for words and numbers, a check box for yes or no, a list to choose one from, and
-  check boxes to choose several; "(required)" marks the ones it needs. **Send** checks what you
+  check boxes to choose several; "(required)" marks the ones it needs, a number's limits are
+  said with its box, and each has an Alt key of its own. **Send** checks what you
   entered and says what's missing or wrong, then sends it; **Decline** refuses. Enter sends
   from inside the form or on Send. In the message it says "Tab to the form, or to Send", so a
   stray Enter can't send what the server filled in; with nothing to fill in, it sends from there

@@ -149,6 +149,8 @@ STEPS = [
     # What a form's check box and list are called has to reach Orca (#468).
     Step("Tab to a check box", ["Tab"], expect=["Bringing pets", "check box"]),
     Step("Tab to a list", ["Tab"], expect=["Budget"]),
+    # Each field has an access key of its own (#468).
+    Step("Alt+C goes back to City", ["alt+c"], expect=["City"]),
     Step("tool answered later, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # View, Connected Tools (#468), the View menu's last item: Up from the top.

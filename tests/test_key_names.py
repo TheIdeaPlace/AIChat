@@ -2,7 +2,8 @@
 import ast
 from pathlib import Path
 
-from thechatplace.ui_text import key_name, shortcuts_html, shortcuts_text
+from thechatplace.ui_text import (choose_access_key, key_name, mark_access_key, shortcuts_html,
+                                  shortcuts_text)
 
 
 def test_key_names_on_each_platform():
@@ -60,3 +61,30 @@ def test_ui_shortcut_literals_are_translated_except_native_menu_accelerators():
             if not canonical:
                 failures.append(f'{path.relative_to(ui)}:{node.lineno}')
     assert failures == []
+
+
+def test_a_forms_access_keys_keep_clear_of_the_dialogs_and_each_other():
+    # Message, Send, Decline and Answer Later have m, s, d and l (#468).
+    taken = set("msdl")
+    keys = [choose_access_key(label, taken) for label in
+            ("City", "Nights", "Bringing pets", "Budget", "Size", "Message", "Ms", "1 of 2", "!")]
+    assert keys == ["c", "n", "b", "u", "i", "e", "", "1", ""]
+    assert taken == set("msdl") | {"c", "n", "b", "u", "i", "e", "1"}
+
+
+def test_a_key_is_only_a_plain_letter_or_digit():
+    assert choose_access_key("Über", set()) == "b"
+    assert choose_access_key("日本語", set()) == ""
+    # The start of a later word before a letter inside an earlier one.
+    assert choose_access_key("Bring items", {"b"}) == "i"
+    assert choose_access_key("Bring pets", {"b"}) == "p"
+
+
+def test_a_forms_label_shows_its_own_ampersand_and_marks_its_key():
+    assert mark_access_key("City", "c") == "&City"
+    assert mark_access_key("Bed & breakfast (required)", "b") == "&Bed && breakfast (required)"
+    assert mark_access_key("Bed & breakfast", "r") == "Bed && b&reakfast"
+    assert mark_access_key("Pick & choose", "") == "Pick && choose"
+    # Across a line break, where wrapping put one.
+    assert mark_access_key("Long\nname", "n") == "Long\n&name"
+    assert mark_access_key("ſ only", "s") == "ſ only"
