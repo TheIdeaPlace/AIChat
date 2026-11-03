@@ -1,38 +1,35 @@
 # The Chat Place 0.5 preview: testing guide
 
-This Windows preview contains the combined Claude (#468) and Codex (#467) feature work on
-`codex/feature-gaps`, built from commit `cec6d7be09993b30afbe0e7289ba3e805cfe90ee` on
-November 1, 2026. The app still calls itself **0.3.3**: the version has not been bumped for the
-planned 0.5.0 release. Your v04 folder remains the preview of the release being prepared on main.
+The 0.5 preview is the combined Claude (#468) and Codex (#467) feature work on the branch
+`05preview`, for the planned 0.5.0 release. Test a build made from the latest commit on that
+branch. The app reports **0.4.0** until the release commit bumps the version, so Help, About
+doesn't tell you which preview you have.
 
 ## Start here
 
 1. Close any running copy of The Chat Place.
-2. Open `TheChatPlace-windows-Portable`, then run **The Chat Place.exe**. The folder is already
-   extracted for you. If using the zip elsewhere, extract the whole zip before running it.
-   The portable copy leaves your installed program in place. Both use your normal chats and
-   settings, and only one copy can run at a time.
-3. If you want to keep a backup first, use File, **Back Up Now**, and save it outside this
+2. Run the portable build, **The Chat Place.exe**, after extracting the whole zip if it came as
+   one. A portable copy leaves your installed program in place. Both use your normal chats and
+   settings, and only one copy can run at a time. A local Windows build is unsigned, so Windows
+   may offer More info, then Run anyway. The Setup installer installs over your installed app;
+   it isn't a separate preview installation, so use the portable copy for these tests.
+3. If you want to keep a backup first, use File, **Back Up Now**, and save it outside the
    preview's folder. The guide's file tests change only the test files you choose.
-4. Use the supplied **Test files** folder as the working folder for new test chats. It includes
-   `preview-notes.txt` and `rewind-example.txt`. Use your own disposable folder if you prefer.
-   Keep the file-restoration test separate from work you want to keep.
+4. Make a disposable folder for new test chats, with two short text files in it:
+   `preview-notes.txt`, with three topics listed, and `rewind-example.txt`. Keep the
+   file-restoration test away from work you want to keep: it can lose edits (see Branch and Rewind).
 5. Check Help, **Claude Sign-in** and **Codex Sign-in**. New replies need the appropriate
    signed-in provider. Codex must be enabled in Settings; enabling it requires a restart.
-   The implementation was checked against Codex 0.163.0 and Claude Code 2.1.296. Older provider
-   versions may report that an operation is unavailable.
+   The implementation was checked against Codex 0.163.0 and Claude Code 2.1.296 and 2.1.316.
+   Older provider versions may report that an operation is unavailable.
 
-`TheChatPlace-windows-Setup.exe` is also included. It installs over the installed app; it isn't
-a separate preview installation. The build is unsigned, as local Windows builds normally are.
-Windows may offer More info, then Run anyway. Use the portable copy for these tests.
-
-The full user guide and planned 0.5.0 release notes are beside this guide. **Build information.txt**
-records this build's source and checks. None of the listening checks below has been marked as
-passed on your behalf. Each question or message uses the selected provider's plan.
+The full user guide (Help, **User Guide**) and the planned notes in `release-notes/v0.5.0.md` go
+with this guide. None of the listening checks below has been marked as passed on your behalf.
+Each question or message uses the selected provider's plan.
 
 ## A quick first pass with each provider
 
-Repeat this section in a new Claude chat, then a new Codex chat, in the Test files folder.
+Repeat this section in a new Claude chat, then a new Codex chat, in your test folder.
 
 1. Press **Ctrl+N**, choose the provider and folder, and start the chat. Send:
    "Read preview-notes.txt and summarize its three test topics. Do not change files."
@@ -69,8 +66,10 @@ Codex offer different built-in commands; they aren't expected to have identical 
    Listen for **Asking Claude** or **Asking Codex**, matching the source chat.
 3. Expect: focus moves to **Answer**, the answer is announced according to your announcement
    setting, and you can read it by line. **Copy Answer** copies the selected answer.
-4. Ask a second question. Tab to **Questions and answers**, move through both entries, and press
-   Enter. Expect: the corresponding answer opens for reading.
+4. Ask a second question, then the first one again. Tab to **Questions and answers**, move through
+   the entries, and press Enter. Expect: the corresponding answer opens for reading, and the
+   repeated question's row finishes with its own answer. A question that starts with a slash is
+   just a question here, not a command.
 5. While an answer is still coming, press Escape. Expect: it stops the side question. Ask another
    question to check the dialog is usable again; after it finishes, Escape closes the dialog.
 6. Read the source chat. Expect: none of the side questions or answers were added. Its files
@@ -91,8 +90,9 @@ Create a short chat with at least two user messages and replies before testing.
    Claude's copy ends at the selected message. Codex's copy includes the whole native turn
    containing that message, so later messages in the same turn can be included too.
 2. Return to the original and select your second user message. Press **Ctrl+Shift+Z**.
-   In **Rewind to Here**, read **What happens**. First press Escape. Expect: focus returns to the
-   selected message and no copy is made. Reopen it and choose **Conversation only**, then Rewind.
+   In **Rewind to Here**, read **What happens** (**Alt+H**). First press Escape. Expect: focus
+   returns to the selected message and no copy is made. Reopen it and choose **Conversation
+   only**, then Rewind.
 3. Expect: a new "(rewound)" chat ending before that user message, with the message in its reply
    box ready to edit and send. The original conversation and files are kept.
 4. For Codex, listen for **Conversation only** selected, and file choices unavailable. Its new
@@ -102,14 +102,29 @@ Create a short chat with at least two user messages and replies before testing.
 5. For Claude, select a user message that led to an edit of `rewind-example.txt`. For this test,
    ask Claude explicitly to use its Edit or Write tool, without a command or subagent. Confirm
    that in Show Tool Activity (**Ctrl+T**), and note the file's before and after contents.
-6. Open Rewind on that user message. Read which files it will restore. Try **Files only**.
-   Expect: the file returns to its earlier contents, the conversation stays, and the result is
-   announced. Make a fresh edit and try **Conversation and files** as well.
+6. Open Rewind on that user message. Expect: **Conversation and files** chosen to begin with, as
+   Claude changed a file since that message. What happens names the files and warns that each goes
+   back to the last version Claude Code saved, that hand edits since Claude last changed it are
+   lost, and that it can't be undone. Try **Files only**. Expect: the file returns to its earlier
+   contents, the conversation stays, and you hear "Files in" the chat's name "restored to the
+   versions saved before your message". Make a fresh edit and try **Conversation and files** as well.
+7. Hand edits are lost even from before the message. Have Claude edit `rewind-example.txt`, then
+   edit it yourself and save. Send a message that changes no files, then another. Rewind to that
+   last message. Expect: **Conversation only** chosen to begin with, as nothing changed since it,
+   and What happens saying Claude changed the file earlier in the chat, which goes back too. Choose
+   **Files only**. Expect: the file has Claude's contents and your hand edit is gone. A file
+   created since the message is removed, and a file Claude never touched stays.
+8. With a Codex chat in the same folder waiting on an approval, open Rewind in a Claude chat there.
+   Expect: the file choices say "(unavailable)", and What happens says another chat is working in
+   this folder. Answer the approval and let it finish, and they're offered again.
 
 Claude file restoration applies only to chats started here and messages sent with this preview
-or later. It doesn't restore changes made by commands or subagents. Those files should be
-identified in What happens. Older messages or chats started elsewhere may offer conversation
-rewind without file restoration. Codex Rewind never rolls files back.
+or later. It doesn't restore changes made by commands, or files only a subagent changed; What
+happens names those. A subagent's changes in a file Claude changed too do go back. Older messages
+or chats started elsewhere may offer conversation rewind without file restoration. While files go
+back, nothing in that folder sends. Claude's New Session and Continue Here make no chat and put
+your message on the clipboard, saying so; a new Codex or Copilot chat keeps it in its reply box.
+Codex Rewind never rolls files back.
 
 ## Codex: model, effort and native Plan mode
 
@@ -126,9 +141,17 @@ rewind without file restoration. Codex Rewind never rolls files back.
 5. To test draft preservation, put `/model` alone on the first line and a short unsent draft
    below it. Send. Expect: the model picker opens, and the text below stays in the reply box.
    A recognized control shouldn't appear as an ordinary prompt in the conversation.
+6. Lists from Codex take a moment, and open only if you haven't moved on. Choose **Change Model**,
+   and straight away type in the reply box or move to another control before it opens. Expect: no
+   picker over your typing, and you hear that the list is ready but you've moved on, so nothing
+   opened. Choose it again and it opens. This is hard to catch when Codex answers quickly.
 
-Codex Plan mode and its read-only/editing permission mode are separate controls. File,
-**Change Permission Mode** (**Ctrl+Shift+O**) still changes the latter when the chat is idle.
+A model, effort or mode that can't be verified is said and changes nothing; the chat can go on
+sending. A chat on a model Codex no longer lists still opens, sends, and changes its permissions
+and mode; only choosing a model needs it to be listed. If Codex has no Plan mode, a chat saved in
+Plan says so and runs in Default. Codex Plan mode and its read-only/editing permission mode are
+separate controls. File, **Change Permission Mode** (**Ctrl+Shift+O**) still changes the latter
+when the chat is idle.
 
 ## Codex: skills, compaction, memories and Goals
 
@@ -161,11 +184,22 @@ For Claude:
 2. Use **Sign In** if needed, finish in the browser and return to **Refresh**. **Reconnect**
    retries a failed connection. These steps need your real account.
 3. In a chat started here, choose **Turn Off for This Chat**, then send a request. Expect: it is
-   left out from the next turn. Turn it on again and confirm another chat's choice was unchanged.
-4. If a connected tool asks for a form or a web page while Claude is working, press
-   **Ctrl+Shift+A**. Read the request, fill in its fields or open its page, and answer. Listen for
-   the needs-you announcement and check that the questions, choices and focused field are named.
-   This requires a server that actually asks questions; a tool that doesn't ask can't test it.
+   left out from the next turn, and it isn't started by reopening this list either. Turn it on again
+   and confirm another chat's choice was unchanged. In a chat started elsewhere the list reads the
+   same, but turning a tool off says it's only for chats The Chat Place started.
+4. If a connected tool asks for a form while Claude is working, press **Ctrl+Shift+A**. Listen for
+   the needs-you announcement. Expect: it opens on the read-only **Message** box. Press Enter there.
+   Expect: nothing is sent, and you hear "Tab to the form, or to Send". Tab into the form and check
+   that the questions, choices and focused field are named. Fill it in and press Enter, or Send.
+   With nothing to fill in, Enter on the message sends.
+5. If it asks you to open a web page, **Ctrl+Shift+A** opens on an **Address** box above the message,
+   with "Opens" and the host on its first line and then the whole address. Expect: **Open in
+   Browser** opens it, and Enter away from that button declines, so a stray Enter never opens a link.
+6. A form with fields inside fields, or too many fields or choices, opens on a **Note** box saying
+   why it can't be shown, with only **Decline** and **Answer Later**. A field that may be left empty
+   isn't one of these: it's an ordinary box you can leave blank.
+
+Steps 4 to 6 need a server that actually asks; a tool that doesn't ask can't test them.
 
 For Codex:
 
@@ -180,17 +214,26 @@ For Codex:
 5. Ask the copy to use the enabled test server for a harmless read. Expect: the chosen server
    works, while unselected servers, apps and plugins remain off. Codex connected-tool questions
    that can't be displayed are declined with an explanation; Claude's forms aren't offered.
+6. Open the list on a Codex chat started elsewhere. Expect: which servers are configured, read-only,
+   with no copying or turning off.
+7. In the tools copy, remove its server from Codex's configuration, then send. Expect: the turn is
+   refused and says why. The list shows the removed server first, saying so; **Sign In** and
+   **Reconnect** on it say the same, not that it's off for this chat. **Copy with Tool Off** makes
+   a copy without it. Add the server back when you've finished.
 
 ## Stop a single background task
 
 In a disposable chat, ask the provider to start two independent background commands that each
 wait for about 90 seconds, and report when both are running without waiting for them to finish.
 
-1. Choose File, **Stop Background Task**. In Codex you can also send `/background`.
+1. Choose File, **Stop Background Task**. In Codex you can also send `/background`. It's on for any
+   Codex chat started here, and says if none are running.
 2. Expect: a list identifying the work. Cancel once to leave both running.
 3. Open it again, select one and confirm. Expect: only that task ends; the main turn and the
    other task continue. Listen for the result and check Turn Status or the task list afterward.
-4. Stop the remaining test work when finished. If no native background tasks were started,
+4. Wait for the other to finish while its list is open, then choose it. Expect: you hear it had
+   already finished, not that it was stopped.
+5. Stop the remaining test work when finished. If no native background tasks were started,
    report that rather than assuming this action stopped the main turn.
 
 ## Claude: subagents and chat options
@@ -201,13 +244,17 @@ wait for about 90 seconds, and report when both are running without waiting for 
 2. Press Enter on it. Expect: its conversation opens; Enter reads a message, **Ctrl+C** copies
    it and **Ctrl+T** shows tool activity. Escape returns to the subagent list or source chat.
    While it is working, new messages should arrive without forcing focus away from your reading.
+   On a long conversation, Enter again while it's read says "Still reading that subagent's
+   conversation". If you move away during the read, it doesn't open over you, and you hear so.
 3. On the source turn's message menu, try **Subagent Conversations**. If you separately ask a
    subagent to edit a disposable file, Changed Files should include the change and its author.
    Codex subagent conversations aren't supplied by this preview.
 4. In New Session or Continue Here, press **Alt+H** for **Chat Options**. Try instructions such
    as "End each reply with the word previewcheck", then start a chat and send a short question.
    Expect: the instructions take effect. An agent or output style can be chosen if configured;
-   None/default is valid when you haven't added any. Check Properties (**Alt+Enter**) afterward.
+   None/default is valid when you haven't added any. An agent with a model of its own is listed
+   that way ("code-reviewer (uses its own model, opus)"), and OK refuses, saying why, one whose
+   model could bill usage credits. Check Properties (**Alt+Enter**) afterward.
 5. Use File, **Chat Options** to change instructions for an existing Claude chat. Expect: they
    apply from its next message; a running turn carries on with the options it started with.
    If testing More folders, add a separate disposable folder, inspect it in Chat Permissions
@@ -218,8 +265,13 @@ wait for about 90 seconds, and report when both are running without waiting for 
 1. While a Claude turn is working, use File, **Change Model** or **Change Permission Mode**.
    Listen for **now and for later turns** when the provider accepts the live change, or an
    explicit next-turn explanation if it can't change the active turn. Check the chat heading.
-2. When Claude switches itself to Plan mode, expect the next turn to remain in Plan until you
-   approve the plan or change mode. Check that approving it uses the appropriate previous mode.
+   Change the mode twice in quick succession. Expect: the heading stays on your last choice, with
+   no "Claude Code switched" announcement for either.
+2. When Claude switches itself to Plan mode, you hear "Claude Code switched to plan mode", without
+   it cutting off what's being read. Expect the next turn to remain in Plan until you approve the
+   plan or change mode. Check that approving it uses the appropriate previous mode. A wider mode
+   set elsewhere, such as over Remote Control, is said as "for this turn. Later turns start in"
+   the mode you chose, and later turns do.
 3. Turn on **Show Tool Activity** (**Ctrl+T**). Where Claude recorded its thinking, expect it
    before the reply. No recorded thinking isn't itself an error.
 4. After a completed turn, open **Usage and Context** (**Ctrl+Shift+U**). Expect the reported
@@ -235,10 +287,8 @@ list and Ask Aside. These still need human listening. Each result, file name, pr
 request and changed state should be spoken once at the appropriate announcement level. Check
 both Tab directions and Escape, and note any focus that lands somewhere unexpected.
 
-The earlier automated and visual results are recorded in **Validation notes.md**. They include
-passing focused tests and reviewed Light and High Contrast captures. The complete suite hasn't
-had a clean final rerun; real model responses, third-party authentication and these listening
-checks still need verification. Build-specific results belong in **Build information.txt**.
+CI runs the full test suite on the branch's pull request (#468). Real model responses, third-party
+authentication and these listening checks still need verification by a person.
 
 Still outside this preview: starting/resuming autonomous Codex Goals, Codex subagent history,
 native dedicated review, apps/plugins, cloud/remote execution and multi-folder scope controls.

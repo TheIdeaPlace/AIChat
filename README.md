@@ -193,7 +193,9 @@ too).
   where Settings says so, Enter to read one in full, Ctrl+C to copy it, the Applications key for
   both, and Ctrl+T for its tool activity (there only). A subagent still working, or sent on again
   by Claude, adds its messages at the end without moving you, and "Subagent code-reviewer finished." is said when it ends;
-  Escape goes back to Lists. Read-only, for desktop app, terminal and Chat Place chats alike. With
+  Escape goes back to Lists. A long conversation takes a moment to read: Enter again says "Still
+  reading that subagent's conversation", and it opens by itself only if you haven't moved on. If
+  you have, you hear so and press Enter on it again. Read-only, for desktop app, terminal and Chat Place chats alike. With
   a Claude chat loaded, a subagent ending is also announced at the full level ("finished",
   "failed" or "stopped").
 - **Escape** in the messages or the reply box (or Backspace in the messages) goes back to the

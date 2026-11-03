@@ -400,7 +400,9 @@ so for the messages list. <strong>Enter</strong> reads a message in full, <stron
 Applications key offers both, and <strong>Ctrl+T</strong> shows or hides its tool activity (here only, not in
 the main window). While the subagent is still working, its new messages arrive at the end without
 moving you, and you hear "Subagent code-reviewer finished." when it ends. <strong>Escape</strong> goes back to
-Lists. It's read-only, for desktop app, terminal and Chat Place chats alike.</p>
+Lists. A long conversation takes a moment to read: Enter again says "Still reading that subagent's
+conversation", and it opens by itself only if you haven't moved on. If you have, you hear so and
+press Enter on it again. It's read-only, for desktop app, terminal and Chat Place chats alike.</p>
 <p>With a Claude chat loaded, a subagent finishing is also announced at the full announcement level
 ("Subagent code-reviewer finished.", or "failed" or "stopped"). Properties (Alt+Enter) on a Claude
 chat says how many subagents it has.</p>
@@ -1445,7 +1447,7 @@ went back from is always kept as it was, in the list.</p>
 <ul>
 <li><strong>Rewind to Here</strong> (Ctrl+Shift+Z; on a Mac, Cmd+Shift+Z in the messages list, as elsewhere it's Redo; File, Rewind to Here, or Rewind to Here on a message's menu)
   works on one of your own messages: select it in the messages list first. It asks what to take
-  back to how it was just before that message:</li>
+  back:</li>
 <li><strong>Conversation and files</strong> (chosen to begin with when the files can go back and Claude has
     changed files since that message),</li>
 <li><strong>Conversation only</strong> (chosen to begin with when it hasn't, or the files can't go back),</li>
@@ -1462,17 +1464,21 @@ went back from is always kept as it was, in the list.</p>
   chat on this computer, including desktop app and terminal sessions, since the original isn't
   changed.</p>
 <p>Going back in the files puts every file Claude changed with its edit tools anywhere in the
-  chat, not only since your message, back to how it was just before that message. That replaces
-  what's in it now, including any edits you made yourself afterwards, and it can't be undone.
-  Files Claude created since your message are removed. You hear "Files in Fixes restored to how
-  they were before your message …: 2 files", or why they couldn't be; if it fails or takes too
+  chat, not only since your message, back to the last version Claude Code saved before that
+  message, which is usually Claude's own. It isn't how the file looked at that moment: anything
+  you edited by hand since Claude last changed the file is lost, even edits from before this
+  message, and it can't be undone. Files Claude created since your message are removed, and files
+  Claude never touched stay as they are. You hear "Files in Fixes restored to the versions saved
+  before your message …: 2 files", or why they couldn't be; if it fails or takes too
   long, some files may already have gone back, so check them before carrying on. Changes made by
   commands Claude ran (a build, a script) aren't put back, and nor are files only a subagent
   changed: Claude Code doesn't restore those, and What Happens names them. A subagent's changes
   in a file Claude changed too do go back. It works only in Claude chats started here, and only for messages sent with this
   version or later, which keep the copies it needs; for other chats and older messages the
   choice says "(unavailable)", and What Happens says why. It isn't available while Claude is
-  working in the chat, and the chat waits for it to finish before it sends anything.
+  working in the chat, or while another chat of yours is working or waiting on you in the same
+  folder. Until the files are back, nothing in that folder sends: not this chat, and not New
+  Session or Continue Here.
 - <strong>Branch from Here</strong> (File, Branch from Here, or on a message's menu) works on any of your
   messages or Claude's replies: a new chat, "&lt;title&gt; (branch)", whose conversation ends with
   that message, opened with an empty reply box, to try another way from there. It changes no
@@ -1679,8 +1685,10 @@ Ctrl+Shift+A brings the same request back.</p>
   the tool's message, to read by line. A form follows, one labelled box per thing it asks for:
   a text box for words and numbers, a check box for yes or no, a list to choose one from, and
   check boxes to choose several; "(required)" marks the ones it needs. <strong>Send</strong> checks what you
-  entered and says what's missing or wrong, then sends it; <strong>Decline</strong> refuses. Enter sends only
-  from inside the form or on Send, so pressing it in the message does nothing. A form The Chat
+  entered and says what's missing or wrong, then sends it; <strong>Decline</strong> refuses. Enter sends
+  from inside the form or on Send. In the message it says "Tab to the form, or to Send", so a
+  stray Enter can't send what the server filled in; with nothing to fill in, it sends from there
+  too. A form The Chat
   Place can't show, such as one with fields inside fields or too many to go through, says so and
   has only <strong>Decline</strong> and <strong>Answer Later</strong>. When the tool asks you to open a web page instead,
   Answer opens on the <strong>Address</strong> box, above the tool's message: its first line says where the
