@@ -242,7 +242,7 @@ def test_while_claude_works_only_the_conversation_can_go_back(frame, env, fake_r
     stub_files(monkeypatch)
     frame.on_rewind_to_here()
     assert seen["default"] == rewind.CONVERSATION
-    assert "Claude is working in this chat" in seen["happens"]
+    assert "Claude is working or waiting on you in this chat" in seen["happens"]
 
 
 def test_rewind_a_desktop_session_branches_but_leaves_files(frame, env, fake_runner,
@@ -733,6 +733,59 @@ def test_a_codex_new_chat_keeps_its_message_while_files_go_back(frame, env, monk
         del frame._rewinding_folders["another-chat"]
 
 
+@pytest.mark.parametrize("provider", ["codex", "copilot"])
+def test_a_send_refused_while_files_go_back_leaves_box_and_attachments(frame, env, monkeypatch,
+                                                                       provider):
+    # Refused after clearing, the attachment was gone and a recovered text path
+    # was left in the box, so sending again gave Codex a path, not the image.
+    folder = env["tmp"] / "work"
+    folder.mkdir(exist_ok=True)
+    record = OwnSession(f"{provider}-send", "Send", str(folder), provider=provider)
+    frame.store.add(record)
+    info = record.to_info()
+    frame._open = info
+    monkeypatch.setattr(frame, "_can_edit", lambda _info: True)
+    monkeypatch.setattr(frame, "_still_preparing", lambda _info: False)
+    monkeypatch.setattr(frame, "_handle_codex_command", lambda _info, _text: False)
+    built, actions = [], []
+    monkeypatch.setattr(frame, "_codex_message", lambda i, text: built.append(text) or text)
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda *a, **k: actions.append(a))
+    picture = str(folder / "picture.png")
+    key = frame._attachment_key(info)
+    frame._attachments[key] = [picture]
+    frame._codex_skills = {info.key: {"lint": "skills/lint"}}
+    frame.reply_text.SetValue("Look at this")
+    frame._rewinding_folders["another-chat"] = rewind_chats._folder_key(str(folder))
+    try:
+        frame.on_send()
+        assert env["feedback"][-1] == ("Still putting files back in this folder. "
+                                       "Send again in a moment.")
+        assert frame.reply_text.GetValue() == "Look at this"
+        assert frame._attachments[key] == [picture]
+        assert frame._codex_skills[info.key] == {"lint": "skills/lint"}
+        assert built == [] and actions == []
+        assert not frame._codex_send_pending
+    finally:
+        del frame._rewinding_folders["another-chat"]
+
+
+def test_a_codex_send_on_its_way_stops_files_being_offered(frame, env, fake_runner):
+    # Accepted but not yet a turn: it starts during the restore otherwise.
+    folder, _parts = own_chat(frame, env)
+    record = OwnSession("codex-other", "Other", str(folder), provider="codex")
+    frame.store.add(record)
+    key = record.to_info().key
+    assert not frame._turn_running_in(str(folder))
+    frame._codex_send_pending[key] = 1
+    try:
+        assert frame._turn_running_in(str(folder))
+        assert not frame._can_rewind_files(frame._open)
+        assert not frame._turn_running_in(str(folder / "elsewhere"))
+    finally:
+        del frame._codex_send_pending[key]
+    assert not frame._turn_running_in(str(folder))
+
+
 @pytest.mark.parametrize("state,outcome", [(NEEDS_YOU, "inProgress"), (WORKING, "inProgress")])
 def test_files_arent_offered_while_a_codex_turn_is_in_progress(frame, env, fake_runner, state,
                                                                outcome):
@@ -745,7 +798,8 @@ def test_files_arent_offered_while_a_codex_turn_is_in_progress(frame, env, fake_
         info = frame._open
         assert frame._turn_running_in(str(folder))
         assert not frame._can_rewind_files(info)
-        assert "Another chat is working in this folder" in frame._files_reason(info)
+        assert "Another chat in this folder is working or waiting on you" in \
+            frame._files_reason(info)
     finally:
         del frame._codex_states[record.to_info().key]
     assert not frame._turn_running_in(str(folder))
@@ -759,6 +813,7 @@ def test_files_arent_offered_while_another_chat_works_in_the_folder(frame, env, 
     try:
         info = frame._open
         assert not frame._can_rewind_files(info)
-        assert "Another chat is working in this folder" in frame._files_reason(info)
+        assert "Another chat in this folder is working or waiting on you" in \
+            frame._files_reason(info)
     finally:
         del frame._runners["own-other"]

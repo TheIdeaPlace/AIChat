@@ -217,15 +217,16 @@ class RewindChats:
 
     def _files_reason(self, info: SessionInfo) -> str:
         if info.cli_session_id in self._runners:
-            return ("Claude is working in this chat. Stop it, or wait for it to finish, before "
-                    "putting its files back.")
+            # Waiting for it to finish is no use when it's waiting for you.
+            return ("Claude is working or waiting on you in this chat. Answer it, stop it or let "
+                    "it finish before putting its files back.")
         if info.cli_session_id in self._rewinding_files:
             return "The files in this chat are already being put back."
         if self._files_going_back_in(info.cwd):
             return "Files in this chat's folder are already being put back."
         if self._turn_running_in(info.cwd):
-            return ("Another chat is working in this folder. Stop it, or wait for it to finish, "
-                    "before putting files back.")
+            return ("Another chat in this folder is working or waiting on you. Answer it, stop "
+                    "it or let it finish before putting files back.")
         if info.is_terminal:
             where = "a terminal session"
         elif info.is_own:
@@ -276,7 +277,11 @@ class RewindChats:
                 if record.cli_session_id in self._runners:
                     return True
             else:
-                if rewind.turn_in_progress(self._codex_states.get(record.to_info().key)):
+                key_of = record.to_info().key
+                # A send still on its way hasn't a turn yet, but will have one
+                # as soon as it lands, in the middle of a restore (#468).
+                if (rewind.turn_in_progress(self._codex_states.get(key_of))
+                        or key_of in self._codex_send_pending):
                     return True
         return False
 

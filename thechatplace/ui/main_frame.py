@@ -4879,6 +4879,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is not None:
+                if self._files_going_back_in(record.cwd):
+                    # Here, before anything's cleared: refused later on, the
+                    # attachments went and the box had a text path instead of
+                    # the picture, so sending again gave Codex the path (#468).
+                    self._feedback('Still putting files back in this folder. Send again in a moment.')
+                    return
                 if info.provider == 'codex':
                     try:
                         message = self._codex_message(info, message)
