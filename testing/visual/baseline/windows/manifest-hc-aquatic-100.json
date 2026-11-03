@@ -20,7 +20,6 @@
   1000,
   720
  ],
- "complete": true,
  "surfaces": {
   "main-start": {
    "kind": "window",
@@ -1589,6 +1588,132 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Backup Schedule, daily, after a failure"
+  },
+  "chat-options": {
+   "kind": "dialog",
+   "png": "chat-options-hc-aquatic-100.png",
+   "json": "chat-options-hc-aquatic-100.json",
+   "title": "Chat Options: Visual probe",
+   "class": "ChatOptionsDialog",
+   "size": [
+    620,
+    600
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Options: a Claude chat's agent, instructions, style and folders"
+  },
+  "elicitation-form": {
+   "kind": "dialog",
+   "png": "elicitation-form-hc-aquatic-100.png",
+   "json": "elicitation-form-hc-aquatic-100.json",
+   "title": "trip-planner asks: Visual probe",
+   "class": "ElicitationDialog",
+   "size": [
+    680,
+    534
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A connected tool asks for input: a form"
+  },
+  "elicitation-url": {
+   "kind": "dialog",
+   "png": "elicitation-url-hc-aquatic-100.png",
+   "json": "elicitation-url-hc-aquatic-100.json",
+   "title": "notes (from the probe-tools plugin) asks: Visual probe",
+   "class": "ElicitationDialog",
+   "size": [
+    680,
+    380
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A connected tool asks you to open a web page"
+  },
+  "elicitation-cant-show": {
+   "kind": "dialog",
+   "png": "elicitation-cant-show-hc-aquatic-100.png",
+   "json": "elicitation-cant-show-hc-aquatic-100.json",
+   "title": "trip-planner asks: Visual probe",
+   "class": "ElicitationDialog",
+   "size": [
+    680,
+    380
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A connected tool's form that can only be declined"
+  },
+  "lists-subagents": {
+   "kind": "dialog",
+   "png": "lists-subagents-hc-aquatic-100.png",
+   "json": "lists-subagents-hc-aquatic-100.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Subagents: one finished subagent and one at work"
+  },
+  "subagent-chat": {
+   "kind": "dialog",
+   "png": "subagent-chat-hc-aquatic-100.png",
+   "json": "subagent-chat-hc-aquatic-100.json",
+   "title": "Subagent code-reviewer, in Fix the flaky upload test",
+   "class": "SubagentChatDialog",
+   "size": [
+    760,
+    560
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A subagent's conversation, read like a chat"
+  },
+  "usage-breakdown": {
+   "kind": "dialog",
+   "png": "usage-breakdown-hc-aquatic-100.png",
+   "json": "usage-breakdown-hc-aquatic-100.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
+   "size": [
+    751,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Usage and Context with what fills a Claude chat's context"
+  },
+  "stop-background-task": {
+   "kind": "dialog",
+   "png": "stop-background-task-hc-aquatic-100.png",
+   "json": "stop-background-task-hc-aquatic-100.json",
+   "title": "Stop Background Task",
+   "class": "SingleChoiceDialog",
+   "size": [
+    578,
+    189
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Stop Background Task: two tasks running"
+  },
+  "rewind": {
+   "kind": "dialog",
+   "png": "rewind-hc-aquatic-100.png",
+   "json": "rewind-hc-aquatic-100.json",
+   "title": "Rewind Visual probe to before your message: Make the uploader flush before it signals.",
+   "class": "RewindDialog",
+   "size": [
+    640,
+    460
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Rewind to Here on your first message: Conversation only chosen"
   }
  },
  "seconds": 280.2

@@ -1,0 +1,155 @@
+{
+ "title": "notes (from the probe-tools plugin) asks: Visual probe",
+ "class": "ElicitationDialog",
+ "size": [
+  680,
+  380
+ ],
+ "client": [
+  664,
+  341
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Address:",
+   "rect": [
+    8,
+    8,
+    46,
+    16
+   ],
+   "best": [
+    46,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Address",
+   "label": "Opens example.com\r\nhttps://example.com/sign-in?session=probe",
+   "rect": [
+    10,
+    26,
+    648,
+    60
+   ],
+   "best": [
+    127,
+    83
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Opens example.com\nhttps://example.com/sign-in?session=probe"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Message:",
+   "rect": [
+    8,
+    100,
+    50,
+    16
+   ],
+   "best": [
+    50,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Message",
+   "label": "Open this page to finish signing in.",
+   "rect": [
+    10,
+    118,
+    648,
+    178
+   ],
+   "best": [
+    127,
+    110
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Open this page to finish signing in."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Open in Browser",
+   "rect": [
+    372,
+    310,
+    108,
+    23
+   ],
+   "best": [
+    108,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Decline",
+   "rect": [
+    486,
+    310,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    567,
+    310,
+    89,
+    23
+   ],
+   "best": [
+    89,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

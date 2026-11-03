@@ -1,0 +1,173 @@
+{
+ "title": "Rewind Visual probe to before your message: Make the uploader flush before it signals.",
+ "class": "RewindDialog",
+ "size": [
+  640,
+  460
+ ],
+ "client": [
+  624,
+  421
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "RadioBox",
+   "name": "radioBox",
+   "label": "&What to rewind",
+   "rect": [
+    8,
+    8,
+    608,
+    91
+   ],
+   "best": [
+    159,
+    91
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Conversation and files",
+   "rect": [
+    18,
+    30,
+    139,
+    15
+   ],
+   "best": [
+    139,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Conversation only",
+   "rect": [
+    18,
+    52,
+    118,
+    15
+   ],
+   "best": [
+    118,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Files only",
+   "rect": [
+    18,
+    74,
+    71,
+    15
+   ],
+   "best": [
+    71,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "What &happens:",
+   "rect": [
+    8,
+    107,
+    80,
+    16
+   ],
+   "best": [
+    80,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "What happens",
+   "label": "",
+   "rect": [
+    10,
+    125,
+    608,
+    259
+   ],
+   "best": [
+    127,
+    180
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "A new chat, Visual probe (rewound), starts with no history, as your message was the first, and your message (\"Make the uploader flush before it signals.\") goes in its reply box to change and send. Visual probe is kept as it is, in the list."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Rewind",
+   "rect": [
+    460,
+    390,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    541,
+    390,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

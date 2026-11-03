@@ -45,8 +45,8 @@
     23
    ],
    "best": [
-    110,
-    23
+    127,
+    83
    ],
    "depth": 0,
    "parent": -1,
@@ -211,12 +211,50 @@
    "value": "Auto: Claude decides what is safe to run without asking"
   },
   {
+   "class": "Button",
+   "name": "button",
+   "label": "C&hat Options...",
+   "rect": [
+    114,
+    165,
+    100,
+    23
+   ],
+   "best": [
+    100,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "None chosen",
+   "rect": [
+    222,
+    168,
+    432,
+    16
+   ],
+   "best": [
+    71,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "StaticText",
    "name": "staticText",
    "label": "About &continuing:",
    "rect": [
     10,
-    167,
+    198,
     98,
     16
    ],
@@ -235,7 +273,7 @@
    "label": "This starts a Chat Place session that is a copy of this session, with its whole conversation so far, so you can carry on and reply here. The original, in the desktop app or a terminal, isn't changed, and replies here don't appear in it. The copy starts with nothing allowed beyond its permission mode.\r\n\r\nThe permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
    "rect": [
     12,
-    185,
+    216,
     644,
     132
    ],
@@ -255,7 +293,7 @@
    "label": "First &message:",
    "rect": [
     10,
-    325,
+    356,
     75,
     16
    ],
@@ -274,9 +312,9 @@
    "label": "",
    "rect": [
     12,
-    353,
+    384,
     644,
-    181
+    150
    ],
    "best": [
     127,

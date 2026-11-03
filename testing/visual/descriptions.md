@@ -5,6 +5,7 @@ Updated on 2026-10-16 for 0.1.7 (#283, #226) from light-100 and hc-aquatic-100 p
 every screen changed or added since 0.1.6: the Codex screens, Lists, Settings, Session List
 Columns, the help pages and the main window.
 Regenerate it with `tools/ui_review_prompt.md` whenever screens change.
+Updated on 2026-11-02 for 0.5 (#468) from light-100 and hc-aquatic-100 pictures of every screen changed or added: the Lists dialog's Subagents kind, Chat Options, the connected-tool forms, Rewind to Here, Stop Background Task, a subagent's conversation and what fills the context. The 0.5 pictures are from the probe run at commit 9e97c5b.
 
 **Since 0.1.6, in every main-window picture:** each session row now says which AI it is
 straight after the title ("Fix the flaky upload test, Claude, AIChat, needs you: ..."), so
@@ -24,6 +25,8 @@ The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A
 - **High Contrast Aquatic:** High Contrast Aquatic (hc-aquatic-100) repaints everything near-black (#202020) with white text (16.3:1). Buttons, text boxes, lists, dropdowns and group frames get thin white outlines, and dropdown arrows and scroll bars turn into classic square boxes. Selected rows are light aqua (#8EE3F0) with near-black text (11.2:1), and the default button (OK in Settings) is filled light aqua. The formatted message follows the theme too: near-black page, white text, white table lines and an aqua link (#75E9FC).
 - **High Contrast Desert:** High Contrast Desert (hc-desert-100) is the light version of the same thing: a cream background (#FFFAEF) everywhere with near-black text (#202020, 15.7:1) and thin black outlines. Selected rows and the default button are rust brown (#903909) with cream text (7.3:1). Its formatted message has dark grey text (#3D3D3D), dark grey table lines and a dark teal link (#1C5E75, 6.9:1). In Desert the title bars are mid-grey with pale grey title text (1.2:1), so the window titles almost vanish; the probe pictures windows while they aren't the active window, and this is how Windows draws an inactive title in that theme.
 - **150% and 175% scaling:** At 150% and 175% display scaling (light-150, light-175), the app draws itself at the screen's scaling, so the letters are as sharp as at 100% (#185 fixed this: Windows used to stretch a 100% picture, and the text was soft). Sizes grow with the scaling: the main window is 1500 by 968 at 150% and 1750 by 956 at 175%, each as big as the screen allows less a 40-pixel margin, and no window or dialog runs under the taskbar (#186). The gaps between controls are still the 100% ones, so controls sit a little closer together than at 100%.
+
+**Since 0.5 (#468), in every Lists picture:** Kinds has a seventh row, Subagents, so it is 111 tall (it was 96) and shows all seven rows with no scroll bar. Everything below it starts 15 pixels lower. The chosen kind's list is 120 tall (it was 140), about seven and a half rows, and Details 170 (it was 165). The dialog stays 820 by 660, and the gaps between controls are as before. Each Claude chat's Kinds ends "Subagents" and a count; a Codex chat's ends "Subagents, not available".
 
 ## main-start: Main window as it opens: session list, no session loaded
 
@@ -172,6 +175,7 @@ This is an 820 by 620 dialog. A web page fills almost all of it (796 by 534) ins
 The 2026-10-27 light and High Contrast Aquatic captures include Codex in the
 Changed Files shortcut's text. The opening viewport and layout are unchanged;
 the High Contrast scrollbar thumb shifts slightly with the new text length.
+The 2026-11-02 text adds Rewind to Here (Ctrl+Shift+Z), Ask Aside (Ctrl+Shift+Y), Codex to Insert a Command, Attach Files and pasting a picture, subagents to Lists, and restored or kept chats to Shift+Delete. All of it is below the first screenful, so the pictures look as before except that the scroll thumb is a little shorter.
 
 This is a smaller 620 by 520 dialog. "Shortcuts:" heads a white read-only text box 588 by 402 that fills most of the dialog. It holds the same content as plain text. It opens with a five-line paragraph about the window's three parts in Tab order, ending with Provider and Kind as default session-list columns, then section names such as "Moving around:" and "Session list:" on their own lines, and each shortcut indented two spaces, as in "Ctrl+1: Go to the session list". Long lines wrap with no hanging indent, so continuation lines start at the left margin. The text is the small standard font. A single "Close" button sits at the bottom right. The 2026-10-25 run's text adds New Agent Conversation (Ctrl+Shift+G) and the agent-conversation use of Ctrl+Shift+E (#347), What AI Knows About You with Claude or Codex (Ctrl+Shift+K, #371) and Codex's approval reviewer under Change Permission Mode (Ctrl+Shift+O, #374); all of these are below the first screenful, so the light-100 and hc-aquatic-100 pictures look as before. At 175% the first screenful now shows the longer opening paragraph, five lines, so everything below it starts two lines lower. Since the user guide review (#392), the Session list section's Ctrl+Shift+L line reads "Copy Session Link (Claude chats): ..." and wraps onto three lines at 100% (two at 150% and 175%). "Ctrl+N: New Chat Place session" is gone from that section, so Ctrl+Shift+N follows Ctrl+Shift+L directly; Ctrl+N is now listed among the shortcuts that work from anywhere, below the first screenful.
 
@@ -239,7 +243,7 @@ No new visual defect was found.
 
 ## new-session: File, New Session
 
-This is a 680 by 620 dialog laid out as a two-column form. The labels on the left are Folder, Work in, Branch, Title, Model, Effort (#189) and Permission mode. Every field starts at x=241, because the Branch label, "Branch (choose one, or type a new name):", is long. The Folder dropdown is 413 wide, as wide as the other fields, showing a long path highlighted in blue; "Browse..." and "From GitHub..." sit on their own row under it, lined up with the field (#178 moved them there from beside it). Work in shows "The folder as it is (not a git repository, so no worktree)". Branch and its field are greyed out. Effort's dropdown shows "Default (your Claude Code setting)", like Model's, and Permission mode shows "Auto: Claude decides what is safe to run without asking". Below the form, "About permissions:" heads a read-only box 72 tall, which shows its whole five-line explanation, effort included, with a scroll bar. "First message:" heads a large empty box (644 by 179) that takes under a third of the dialog. "Start" (default) and "Cancel" are at the bottom right.
+This is a 680 by 620 dialog laid out as a two-column form. The labels on the left are Folder, Work in, Branch, Title, Model, Effort (#189) and Permission mode. Every field starts at x=241, because the Branch label, "Branch (choose one, or type a new name):", is long. The Folder dropdown is 413 wide, as wide as the other fields, showing a long path highlighted in blue; "Browse..." and "From GitHub..." sit on their own row under it, lined up with the field (#178 moved them there from beside it). Work in shows "The folder as it is (not a git repository, so no worktree)". Branch and its field are greyed out. Effort's dropdown shows "Default (your Claude Code setting)", like Model's, and Permission mode shows "Auto: Claude decides what is safe to run without asking". Under Permission mode, lined up with the fields, is a "Chat Options..." button (h underlined) with "None chosen" beside it (#468). Below the form, "About permissions:" heads a read-only box 72 tall, which shows its whole four-line explanation, effort included, with a scroll bar. "First message:" heads an empty box (644 by 117) that takes about a fifth of the dialog, room for seven lines (it was 148 tall). "Start" (default) and "Cancel" are at the bottom right.
 
 **What looks off:** The label column is about 230 wide for mostly one-word labels, which leaves a wide empty gutter. A long path still shows only its end in the Folder box. The Title box is 2 pixels right of the dropdowns above and below it (243 against 241); that is how Windows draws a text box beside a dropdown (#178 leaves it).
 
@@ -251,9 +255,9 @@ This is a 720 by 520 dialog. "Search, or type owner/name:" heads a full-width se
 
 ## continue-here: Continue Here (a desktop session)
 
-This uses the same 680 by 620 frame and form style as New Session, but with a narrower label column (fields start at x=114). The rows are Folder (a read-only grey box showing a full path), Title ("Fix the flaky upload test (continued)"), Model, Effort (both "Default (your Claude Code setting)") and Permission mode ("Auto: Claude decides what is safe to run without asking"). "About continuing:" heads a 132-tall read-only box that shows both paragraphs of its note whole, the first now ending "The copy starts with nothing allowed beyond its permission mode." (#332), and "First message:" heads a large empty box 181 tall, about a third of the dialog. "Start" (default) and "Cancel" are at the bottom right.
+This uses the same 680 by 620 frame and form style as New Session, but with a narrower label column (fields start at x=114). The rows are Folder (since #468 a one-line read-only box, white like the Title box below it, showing a full path, with a scroll bar squeezed down to two small arrows at its right end; black on white, 21:1, and white on #202020, 16.3:1, with white arrows, in High Contrast Aquatic), Title ("Fix the flaky upload test (continued)"), Model, Effort (both "Default (your Claude Code setting)") and Permission mode ("Auto: Claude decides what is safe to run without asking"). Under Permission mode, lined up with the fields, is a "Chat Options..." button (h underlined) with "None chosen" beside it (#468). "About continuing:" heads a 132-tall read-only box that shows both paragraphs of its note whole, the first now ending "The copy starts with nothing allowed beyond its permission mode." (#332), and "First message:" heads a large empty box 150 tall, about a quarter of the dialog (it was 181; the new row took the rest), with the text cursor in it. "Start" (default) and "Cancel" are at the bottom right.
 
-**What looks off:** The Title box now shows the title from its start, and the About box its whole note (#178 fixed both). The fields' left edges and widths differ by 2 to 6 pixels (Folder 116 to 650, Title 116 to 656, the three dropdowns 114 to 654). Its label column also differs from New Session's, although the two dialogs look like a pair (#178).
+**What looks off:** The Title box now shows the title from its start, and the About box its whole note (#178 fixed both). The fields' left edges differ by 2 pixels (Folder and Title 116 to 656, the three dropdowns 114 to 654, Chat Options starting at 114). Folder and Title now look alike, both white, so only the small arrows tell the read-only one apart; the path fits, so the arrows have nothing to scroll to. Its label column also differs from New Session's, although the two dialogs look like a pair (#178).
 
 ## update-installed: After an update is installed
 
@@ -311,38 +315,38 @@ This is an 820 by 520 dialog titled 'The Chat Place: 6 results for "the", Find i
 
 ## code-blocks: View, Lists: a message's code blocks (#279)
 
-Code blocks, links and changed files are now kinds in one dialog, View, Lists, 820 by 660 and titled "Lists: " and the session's name ("Lists: Fix the flaky upload test"). From the top: "Show items from:" beside a small dropdown, "This message"; then "Kinds:", a white list the full width (788 by 95) with six rows, each with its count: "Code Blocks (1)" (selected in blue), "Links (1)", "Changed Files (0)", "Commands (1)", "Decisions (0)" and "Tasks (0)" (#231), all six in view. Below that the chosen kind's page, lined up with Kinds at the same left and right edges: "Filter:" over an empty one-line box, "List: Code Blocks (1):" over a white list 788 by 140 holding "Python, 4 lines: def finish(self):", selected, and "Details:" over a box 788 by 165 showing the four lines of code in a monospaced font with their indentation. "Copy" sits at the right under the page, and "Close" directly below it, the same width and right-aligned with it. In High Contrast Aquatic the dialog is near-black (#202020) with white text (16.3:1) and white outlines; the selected rows are light aqua (#8EE3F0) with dark text (#263B50 at the letters' cores, 7.9:1); the code is white.
+Code blocks, links and changed files are now kinds in one dialog, View, Lists, 820 by 660 and titled "Lists: " and the session's name ("Lists: Fix the flaky upload test"). From the top: "Show items from:" beside a small dropdown, "This message"; then "Kinds:", a white list the full width (788 by 111) with seven rows, each with its count: "Code Blocks (1)" (selected in blue), "Links (1)", "Changed Files (0)", "Commands (1)", "Decisions (0)", "Tasks (0)" (#231) and "Subagents (0)" (#468), all seven in view. Below that the chosen kind's page, lined up with Kinds at the same left and right edges: "Filter:" over an empty one-line box, "List: Code Blocks (1):" over a white list 788 by 120 holding "Python, 4 lines: def finish(self):", selected, and "Details:" over a box 788 by 170 showing the four lines of code in a monospaced font with their indentation. "Copy" sits at the right under the page, and "Close" directly below it, the same width and right-aligned with it. In High Contrast Aquatic the dialog is near-black (#202020) with white text (16.3:1) and white outlines; the selected rows are light aqua (#8EE3F0) with dark text (#263B50 at the letters' cores, 7.9:1); the code is white.
 
 **What looks off:** Close is 14 pixels further right than the page's buttons above it (#288). Most of the list is empty with one item.
 
 ## links: View, Lists: Links (#190, #279)
 
-The same Lists dialog, opened on Links with "Show items from" set to "The whole chat". "Links (1)" is selected in Kinds. "List: Links (1):" holds one row, "the issue, github.com/example/repo/issues/42. Claude, 1 message ago", selected, and Details shows "the issue" and the full address on the next line. Under the page are "Open", "Copy" and "Copy as Markdown", and "Close" below them. High Contrast Aquatic follows the theme as in code-blocks.
+The same Lists dialog, opened on Links with "Show items from" set to "The whole chat". "Links (1)" is selected in Kinds. "List: Links (1):" holds one row, "the issue, github.com/example/repo/issues/42. Claude, 1 message ago", selected, and Details shows "the issue" and the full address on the next line. Under the page are "Open", "Copy" and "Copy as Markdown", and "Close" below them. High Contrast Aquatic follows the theme as in code-blocks. Over the whole chat, Kinds now also says "Changed Files (1)" (it was 0: the made-up session's code-reviewer subagent changed a file, #468) and "Subagents (2)".
 
 **What looks off:** Nothing; the page lines up with Kinds and Close lines up with the buttons above it (#288).
 
 ## changes: View, Lists: Changed Files (#279)
 
-The Lists dialog on "Changed Files (1)", for "Visual probe". The list holds "uploader.py, 2 lines added", selected. Details is in a monospaced font: the file's full path followed by ": 2 lines", with "added." wrapped onto the next line, a blank line, "A change:", two "Added:" lines and an "Unchanged:" line. "Copy" is under the page and "Close" below it. High Contrast Aquatic follows the theme as in code-blocks.
+The Lists dialog on "Changed Files (1)", for "Visual probe". The list holds "uploader.py, 2 lines added", selected. Details is in a monospaced font: the file's full path followed by ": 2 lines", with "added." wrapped onto the next line, a blank line, "A change:", two "Added:" lines and an "Unchanged:" line. "Copy" is under the page and "Close" below it. High Contrast Aquatic follows the theme as in code-blocks. Kinds' last row is "Subagents (0)" (#468).
 
 **What looks off:** The path's line wraps before "added.". Close now lines up with Copy (#288).
 
 ## lists-commands: View, Lists: Commands (#279)
 
-The Lists dialog on "Commands (1)", for "Fix the flaky upload test", over the whole chat. "List: Commands (1):" holds "pytest tests/test_upload.py -q. done", selected, and Details, in a monospaced font, shows "Command:", the command, a blank line, "Output:" and "1 failed, 11 passed". Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
+The Lists dialog on "Commands (1)", for "Fix the flaky upload test", over the whole chat. "List: Commands (1):" holds "pytest tests/test_upload.py -q. done", selected, and Details, in a monospaced font, shows "Command:", the command, a blank line, "Output:" and "1 failed, 11 passed". Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks. Over the whole chat, Kinds now also says "Changed Files (1)" (it was 0: the made-up session's code-reviewer subagent changed a file, #468) and "Subagents (2)".
 
 **What looks off:** Nothing; Close lines up with Copy (#288).
 
 ## lists-decisions: View, Lists: Decisions (#279)
 
-The Lists dialog on "Decisions (2)", over the whole chat. The list holds two rows, newest first: "Run the slow tests too? Not answered" (selected) and "Which branch should the release use? You answered: release/0.2". Details shows "Run the slow tests too?", a blank line and "Not answered." in the standard font. Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
+The Lists dialog on "Decisions (2)", over the whole chat. The list holds two rows, newest first: "Run the slow tests too? Not answered" (selected) and "Which branch should the release use? You answered: release/0.2". Details shows "Run the slow tests too?", a blank line and "Not answered." in the standard font. Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks. Over the whole chat, Kinds now also says "Changed Files (1)" (it was 0: the made-up session's code-reviewer subagent changed a file, #468) and "Subagents (2)".
 
 **What looks off:** Nothing; Close lines up with Copy (#288).
 
 
 ## lists-tasks: View, Tasks: Claude's task list (#231)
 
-The Lists dialog opened with View, Tasks, on "Tasks (3)" over the whole chat, for "Fix the flaky upload test"; Tasks is the sixth row of Kinds, selected. "List: Tasks (3):" holds the steps in Claude's order, each its name then its state: "Find why the upload test fails. Done" (selected), "Make the retry wait for the server. In progress" and "Run the whole test suite. To do". Details shows "Find why the upload test fails", a blank line and "Done. Task 1 of 3." in the standard font. Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
+The Lists dialog opened with View, Tasks, on "Tasks (3)" over the whole chat, for "Fix the flaky upload test"; Tasks is the sixth row of Kinds, selected. "List: Tasks (3):" holds the steps in Claude's order, each its name then its state: "Find why the upload test fails. Done" (selected), "Make the retry wait for the server. In progress" and "Run the whole test suite. To do". Details shows "Find why the upload test fails", a blank line and "Done. Task 1 of 3." in the standard font. Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks. Over the whole chat, Kinds now also says "Changed Files (1)" (it was 0: the made-up session's code-reviewer subagent changed a file, #468) and "Subagents (2)".
 
 **What looks off:** Nothing.
 ## usage: View, Usage and Context
@@ -367,7 +371,7 @@ The same dialog with "Codex" in the Provider dropdown, reading a synthetic Codex
 
 ## properties: View, Properties of a session (#214)
 
-This is a 976 by 360 dialog titled "Properties of Visual probe", laid out like Usage and Context. "Properties:" heads a white list 944 by 258 with one fact per row: "Title: Visual probe" (selected), "Provider: Claude" (#255), "Kind: Chat Place session", the folder's full path, "Status: Idle", "Started" and "Last activity" with a date and "(just now)", the model of the latest reply and the model chosen, effort, permission mode, then counts: messages, your messages, Claude's replies, tool calls, links, code blocks and files changed. More rows than fit, so it has a vertical scroll bar. "Copy", "Copy All" and "Close" are at the bottom right. The probe shows a fixed date and time, so the picture is the same every run.
+This is a 976 by 360 dialog titled "Properties of Visual probe", laid out like Usage and Context. "Properties:" heads a white list 944 by 258 with one fact per row: "Title: Visual probe" (selected), "Provider: Claude" (#255), "Kind: Chat Place session", the folder's full path, "Status: Idle", "Started" and "Last activity" with a date and "(just now)", the model of the latest reply and the model chosen, effort, "Agent: none", "Output style: your setting" and "Instructions for this chat: none" (#468), permission mode, then counts: messages, your messages, Claude's replies, tool calls, links, code blocks and files changed. More rows than fit, so it has a vertical scroll bar. "Copy", "Copy All" and "Close" are at the bottom right. The probe shows a fixed date and time, so the picture is the same every run.
 
 **What looks off:** Nothing in particular: every row fits the width.
 
@@ -395,7 +399,7 @@ Light mode is black on #F0F0F0 and white, the selected folder text white on #007
 
 ## codex-continue: Continue Here from a Codex chat that may still be working
 
-A 680 by 620 dialog titled "Continue Here: Codex still working". Rows: "Folder" (a read-only grey box with the full path), "Title" ("Codex still working (continued)"), Model and Effort greyed out, and "Permission mode" ("Read-only; asks before allowing changes"). "About continuing:" heads a box that opens with "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.", a blank line, and the permissions paragraph of codex-models (with human and automatic approval review, #374), filling the box, which is 177 tall (it was 147). "First message:" heads an empty box 136 tall (it was 166). At 175% the About box is 351 tall and shows the whole text, and First message is 149 tall. "Start" (default) and "Cancel" are at the bottom right.
+A 680 by 620 dialog titled "Continue Here: Codex still working". Rows: "Folder" (a one-line read-only box with the full path, white with two small scroll arrows, as in continue-here, #468), "Title" ("Codex still working (continued)"), Model and Effort greyed out, and "Permission mode" ("Read-only; asks before allowing changes"). "About continuing:" heads a box that opens with "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.", a blank line, and the permissions paragraph of codex-models (with human and automatic approval review, #374), filling the box, which is 177 tall (it was 147). "First message:" heads an empty box 136 tall (it was 166). At 175% the About box is 351 tall and shows the whole text, and First message is 149 tall. "Start" (default) and "Cancel" are at the bottom right.
 
 **What looks off:** Nothing.
 
@@ -431,7 +435,7 @@ The same dialog as copilot-new, 680 by 620, once a Copilot chat here has listed 
 
 ## copilot-continue: Continue Here from a Copilot CLI chat that may still be working
 
-The same 680 by 620 dialog as copilot-new, titled "Continue Here: Copilot still working" (#423). It has no Provider row: "Folder" (read-only, the chat's own folder) and "Title" ("Copilot still working (continued)") come first, then "Model" (enabled, "Copilot's configured model"), "Effort" greyed out as in copilot-new (#6D6D6D on #FAFAFA, 5.0:1), and, since #424, "Permission mode" enabled on "Agent: asks before running commands or changing files" (20.6:1), with Plan as its other choice. "About continuing:" heads a read-only box, 644 by 192 (30 taller since #424), holding two paragraphs with a scroll bar: the first starts "This chat may still be working in Copilot CLI." and says the copy is a new Copilot chat of The Chat Place's own, in the same folder, whose first message carries the conversation so far (your messages and Copilot's replies, newest kept if it's long, not the commands it ran or their output), and that the original isn't changed; the second is copilot-new's paragraph about the Copilot sign-in, models, effort, permissions and hooks. Both show in full, black on white (21:1). "First message:" heads an empty box, 644 by 121 (30 shorter), and "Start" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic the text and Permission mode are white on #202020 (16.3:1), the greyed fields #A6A6A6 on #202020 (6.7:1), and Start light aqua with dark text (#202020 on #8EE3F0, 11.2:1).
+The same 680 by 620 dialog as copilot-new, titled "Continue Here: Copilot still working" (#423). It has no Provider row: "Folder" (the chat's own folder, in a one-line read-only box, white with two small scroll arrows, as in continue-here, #468) and "Title" ("Copilot still working (continued)") come first, then "Model" (enabled, "Copilot's configured model"), "Effort" greyed out as in copilot-new (#6D6D6D on #FAFAFA, 5.0:1), and, since #424, "Permission mode" enabled on "Agent: asks before running commands or changing files" (20.6:1), with Plan as its other choice. "About continuing:" heads a read-only box, 644 by 192 (30 taller since #424), holding two paragraphs with a scroll bar: the first starts "This chat may still be working in Copilot CLI." and says the copy is a new Copilot chat of The Chat Place's own, in the same folder, whose first message carries the conversation so far (your messages and Copilot's replies, newest kept if it's long, not the commands it ran or their output), and that the original isn't changed; the second is copilot-new's paragraph about the Copilot sign-in, models, effort, permissions and hooks. Both show in full, black on white (21:1). "First message:" heads an empty box, 644 by 121 (30 shorter), and "Start" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic the text and Permission mode are white on #202020 (16.3:1), the greyed fields #A6A6A6 on #202020 (6.7:1), and Start light aqua with dark text (#202020 on #8EE3F0, 11.2:1).
 
 **What looks off:** Nothing.
 
@@ -596,10 +600,11 @@ Only surfaces where a variant differs in a way worth knowing are listed. Everywh
 
 Reviewed from light-100 and hc-aquatic-100 screenshots on 2026-10-27. The 820 by
 660 dialog is titled "Lists: Codex history preview". Show items from is set to
-This message. The six-row Kinds list (788 by 96) has Changed Files (4) selected.
-Below an empty Filter box, the 788 by 140 file list shows upload.py with two lines
+This message. The seven-row Kinds list (788 by 111) has Changed Files (4) selected,
+and its last row reads "Subagents, not available" (#468).
+Below an empty Filter box, the 788 by 120 file list shows upload.py with two lines
 added and one removed, notes.txt created with one line, unused.txt deleted, and
-test_upload.py renamed. The first file is selected. Its 788 by 165 Details box
+test_upload.py renamed. The first file is selected. Its 788 by 170 Details box
 shows lines 8 to 10, with Unchanged, Removed and Added prefixes. Copy and Close
 are at the lower right. No controls are clipped or overlapping in either theme.
 
@@ -633,10 +638,11 @@ In the 2026-10-27 light and High Contrast Aquatic pictures, Kinds now says
 shows only that label changing; the task list, details and layout are unchanged.
 
 The 820 by 660 Lists dialog, titled "Lists: Codex history preview", uses the same
-layout as Claude's Tasks. A scope dropdown is above the six-row Kinds list (788 by
-96). Tasks (3) is selected. Below Filter is the 788 by 140 task list with a done
+layout as Claude's Tasks. A scope dropdown is above the seven-row Kinds list (788 by
+111), whose last row reads "Subagents, not available" (#468). Tasks (3) is selected.
+Below Filter is the 788 by 120 task list with a done
 step, an in-progress step and a to-do step. The first step is selected; the Details
-box (788 by 165) says "Find why the upload test fails" and "Done. Task 1 of 3."
+box (788 by 170) says "Find why the upload test fails" and "Done. Task 1 of 3."
 Copy and Close are at the lower right. All three task names fit on single lines.
 
 Light mode has black text on white (21:1), with white selected text on blue
@@ -654,7 +660,7 @@ There are no new clipping, overlap or theme problems in these pictures.
 The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
 (0)". The task's unavailable message, disabled Copy button and layout are unchanged.
 
-The same 820 by 660 layout. Kinds says "Tasks, not available" and the list label
+The same 820 by 660 layout. Kinds says "Tasks, not available" and, below it, "Subagents, not available" (#468), and the list label
 says "Tasks (0)". The single selected row reads "No task list. Task lists are kept
 only for Codex chats run in The Chat Place." It fits fully on one line. Details is empty,
 Copy is disabled, and Close remains enabled. High Contrast Aquatic changes the
@@ -696,8 +702,9 @@ The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
 (0)". The empty task list, details and button positions are unchanged.
 
 The same 820 by 660 dialog uses the shared empty-list wording. Kinds says
-"Tasks (0)" without an unavailable warning. The selected row in the 788 by 140
-list says "No tasks in this chat." The 788 by 165 Details box is empty. Copy is
+"Tasks (0)" without an unavailable warning, and "Subagents, not available" below it
+(#468). The selected row in the 788 by 120
+list says "No tasks in this chat." The 788 by 170 Details box is empty. Copy is
 disabled and Close is enabled. Both light and High Contrast Aquatic keep the
 same layout and colours described for lists-codex-tasks.
 
@@ -792,6 +799,11 @@ checkbox or bottom buttons. Long session and history rows scroll horizontally.
 above Sign In, Read Status, Copy with Tool Off, Refresh and Close. A large
 read-only Details box fills its lower half, showing the chosen tool, its tools,
 and the copy/external-service scope. All buttons and wrapped scope text fit.
+Since #468 the first row and Details say "1 tool" (it was "1 tools"), the second
+row says "needs sign-in" (it was "needs-auth"), and the note's last sentence says
+"The Chat Place" (it was "TCP"). The note is still four lines, the last now "are
+declined." Rows are black on white (21:1), the selected row white on #0078D4
+(4.5:1); in High Contrast Aquatic white on #202020 (16.3:1) and dark on aqua.
 
 **codex-commands:** Search at the top, a large command/skill list below, and
 Insert/Cancel at the lower right. The twelve synthetic rows include /plan,
@@ -813,7 +825,9 @@ two history rows, a large Answer box, then Copy Answer and Close. The selected
 history row is long and scrolls horizontally; its complete answer is readable
 below. The question has the insertion caret. The Claude **ask-aside** regression
 capture has the same layout. Claude **connected-tools** retains Reconnect and
-Turn Off for This Chat in its unchanged layout.
+Turn Off for This Chat in its unchanged layout. Since #468 its Details paragraph
+ends "Reading this list starts the tools that are on; a tool turned off for this
+chat isn't started.", one line longer, and still shows whole above the box's edge.
 
 All six Codex surfaces and the two Claude regression surfaces render in the
 selected system theme. No new visual defect was found.
@@ -829,3 +843,59 @@ The 666 by 513 Export Chats dialog, made from the same chooser as Restore from B
 Text is black on white (21:1), the labels black on #F0F0F0 (18.4:1), and the selected row white on #0078D4 (4.5:1). In High Contrast Desert, the heading, labels and Format box are #202020 on cream (15.7:1), rows #3D3D3D on cream (10.4:1), the selected row cream on rust brown (#FFFAEF on #903909, 7.3:1), and the default button #FFF5E3 on #903909 (7.0:1).
 
 **What looks off:** Nothing.
+
+## lists-subagents: View, Subagents: one still working, one finished (#468)
+
+The 820 by 660 Lists dialog, titled "Lists: Fix the flaky upload test", with "The whole chat" in Show items from. Kinds holds seven rows, 788 by 111, all in view, the last, "Subagents (2)", selected. Below an empty Filter box, "List: Subagents (2):" heads a list 788 by 120 with two rows: "Explore: Find where uploads signal done. Running, 1 message, 1 tool call, under a minute so far" (selected, with the focus outline) and "code-reviewer: Review the retry change. Done, 2 messages, 2 tool calls, 4 minutes". Details, 788 by 170, in the standard font, says "Explore: Find where uploads signal done", "Running, 1 message, 1 tool call, under a minute so far.", then "Prompt:" with the prompt and "Final report:" with "No report yet.", with blank lines between. Read Conversation (120 wide) and Copy sit at the right under the page, and Close below Copy, the same width and right-aligned with it.
+
+Rows and Details are black on white (21:1) and selected rows white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1) and selected rows #263B50 on aqua #8EE3F0 (7.9:1), with white outlines. Nothing is cut off or overlapping.
+
+**What looks off:** Only the existing focus mark (#181): Kinds and the list both show a selected row, and the focused row differs by a dotted outline, #FF872B on #0078D4 (1.9:1) in light, #711C0F on aqua (7.7:1) in High Contrast.
+
+## subagent-chat: A subagent's conversation, read like a chat (#468)
+
+A 760 by 560 dialog titled "Subagent code-reviewer, in Fix the flaky upload test". "Messages:" heads a white list, 728 by 458, that fills the dialog, with two rows: "Claude: Review the retry change in the uploader against main. Report anything that could make the upload test fail." and, selected, "code-reviewer: The retry waits too little: the server can take ten seconds to be ready. I raised the test's retries to three." Both fit with room to spare. Along the bottom, "Show tool activity (Ctrl+T)", unticked, at the left and Close at the right. No button is the default, as in Lists. Selected row white on #0078D4 (4.5:1); in High Contrast Aquatic #263B50 on aqua #8EE3F0 (7.9:1), other text white on #202020 (16.3:1).
+
+**What looks off:** The list is mostly empty with two messages, as it would be for a short subagent.
+
+## usage-breakdown: Usage and Context, with what fills the context (#468)
+
+The same 751 by 360 dialog as usage. "Usage and context:" heads a white list, 719 by 258, with eleven rows, all in view. The first, selected, is the context line, as in usage, whose text ends about 20 pixels short of the list's edge. Then "What fills the context, when the latest turn ended:", and on a row each, with no indent: "System prompt: 3,183 tokens", "System tools: 8,019 tokens", "MCP tools: 30,577 tokens (loaded when needed)", "Memory files: 1,279 tokens", "Skills: 9,056 tokens", "Messages: 14,431 tokens", "Autocompact buffer: 33,000 tokens (kept free for compacting)" and "Free space: 927,833 tokens". The last row is "Usage limits: not known until a Chat Place session runs a turn." Copy, Copy All and Close (the default) are at the bottom right. Selected row white on #0078D4 (4.5:1); High Contrast Aquatic rows white on #202020 (16.3:1), selected #263B50 on aqua (7.9:1), and Close filled aqua.
+
+**What looks off:** The probe's first row says 2 tokens used and that the window's size isn't known, right above a breakdown with 14,431 tokens of messages and a free space figure. That's the made-up data: the breakdown is added to a session that has run no turn here.
+
+## stop-background-task: File, Stop Background Task (#468)
+
+wx's standard single-choice dialog, 578 by 189. "Background work in Visual probe. Stop which?", then a list 532 by 49 with two rows: "Run the synthetic probe project's full Windows build and tests, running 3 minutes 10 seconds" (selected) and "Watch CI, running 1 minute 5 seconds". The long row fits, ending short of the scroll bar. A separator line, then OK (default) and Cancel at the bottom right. Selected row white on #0078D4 (4.5:1), the other black on white (21:1); in High Contrast Aquatic #263B50 on aqua (7.9:1) and white on #202020 (16.3:1), with OK filled aqua.
+
+**What looks off:** The list keeps a scroll bar though both rows fit, which is wx's own list, as in copilot-change-mode. The button that stops the task says OK.
+
+## chat-options: File, Chat Options (#468)
+
+A 620 by 600 dialog titled "Chat Options: Visual probe". At the top two rows, label on the left: "Agent:" with a dropdown, focused, reading "code-reviewer (uses its own model, opus): Independent review of a change.", which fits with about 90 pixels to spare; and "Output style:" reading "Concise". Both are 507 wide. "Instructions for this chat:" heads a text box, 584 by 187, the largest part of the dialog, with two lines. "More folders:" heads a list 584 by 70 with one selected row, a folder's full path. "Add Folder..." and "Remove" sit under it at the left. "About these options:" heads a read-only box, 584 by 90, whose four lines show whole. OK (default) and Cancel are at the bottom right. Labels are black on #F0F0F0 (18.4:1), boxes black on white, the selected row white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1), the selected row #263B50 on aqua (7.9:1), OK filled aqua, and the focused dropdown has a dotted outline, #DFDFDF on #202020 (12:1).
+
+**What looks off:** Nothing.
+
+## elicitation-form: A connected tool asks for input with a form (#468)
+
+A 680 by 534 dialog titled "trip-planner asks: Visual probe". The probe's form has long text in it, to show how it wraps. "Message:" heads a read-only box, 648 by 110, with one line, "Where would you like to go, and for how long?", and a scroll bar. Below it the form, top to bottom. "City (required):" over a text box, with its description under the box on two lines: "Which city to plan for, written the way the local tourist office writes it, so that the hotels, trains and restaurants" and "we look up are all in the right place". "Nights (required):" over a text box, with "Between 1 and 14" under the box. A check box, unticked, whose label takes two lines: "Bringing pets, which some places charge extra for and a few don't allow at all, even when their own website" and "says they're welcome". A framed group, "Extras", with two unticked check boxes: "Breakfast each morning, served in your room or downstairs, for everyone staying with you, and for anyone" and "who joins you later on", on two lines, then "Parking". The two text boxes line up with the Message box, starting at x=10 and 648 wide. C, N, B and E are underlined in City, Nights, Bringing pets and Extras, as M is in Message and S, D and L in the buttons. Send (default), Decline and Answer Later are at the bottom right. The form fits whole, with no scroll bar: the group ends 6 pixels above the form's lower edge, and every wrapped line shows whole, tails of letters included. Text is black on #F0F0F0 (18.4:1); the group's frame is pale, #DCDCDC, as in every group here. In High Contrast Aquatic the text and the frame are white on #202020 (16.3:1), and Send is filled aqua with #263B50 text (7.9:1).
+
+**What looks off:** Wrapped text stops 45 to 70 pixels short of the boxes' right edge, so the form's text looks narrower than its fields. The field labels sit 8 pixels above their boxes, and Message's only 2. Breakfast and Parking have no underlined letter of their own. The Message box is mostly empty for one line.
+
+## elicitation-url: A connected tool asks you to open a web page (#468)
+
+A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual probe". "Address:" heads a read-only box, 648 by 60, with the text cursor in it and two lines: "Opens example.com" and "https://example.com/sign-in?session=probe". "Message:" heads a second read-only box, 648 by 178, with "Open this page to finish signing in." Open in Browser, Decline (the default, outlined in blue) and Answer Later are at the bottom right. Text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), and Decline is filled aqua with #263B50 text (7.9:1).
+
+**What looks off:** The Message box is mostly empty for one line.
+
+## elicitation-cant-show: A connected tool's form that can only be declined (#468)
+
+The same 680 by 380 layout as elicitation-url, titled "trip-planner asks: Visual probe". "Note:" heads the top box, with the text cursor in it: "This form asks for something The Chat Place can't show (Trip), so you can only decline it or answer later.", on one line that fits. "Message:" heads the lower box, with "Where would you like to go?". Only Decline (the default) and Answer Later are at the bottom right. Colours are as in elicitation-url.
+
+**What looks off:** The Message box is mostly empty for one line.
+
+## rewind: Rewind to Here on your first message, with files (#468)
+
+A 640 by 460 dialog titled "Rewind Visual probe to before your message: Make the uploader flush before it signals.", which fits the title bar. A framed group, "What to rewind", 608 by 91, holds three radio buttons: "Conversation and files", "Conversation only" (chosen, with a dotted focus outline) and "Files only". "What happens:" heads a read-only box, 608 by 259, with one paragraph on three lines: the new chat, "Visual probe (rewound)", starts with no history, as your message was the first, your message goes in its reply box to change and send, and Visual probe is kept as it is, in the list. Most of the box is empty below that, with a scroll bar. Rewind (the default) and Cancel are at the bottom right. Labels are black on #F0F0F0 (18.4:1), the box black on white (21:1), and the focus outline #0F0F0F on #F0F0F0 (16.8:1). In High Contrast Aquatic text is white on #202020 (16.3:1), the group's frame is white, the focus outline #DFDFDF (12.2:1), and Rewind is filled aqua with #263B50 text (7.9:1). codex-rewind is the same dialog, as described under Codex conversation workflows.
+
+**What looks off:** The box is mostly empty for one paragraph. The text for the two choices that change files isn't in this picture, because it shows only once one of them is chosen.
