@@ -1,0 +1,382 @@
+{
+ "title": "Sounds",
+ "class": "SoundsDialog",
+ "size": [
+  980,
+  956
+ ],
+ "client": [
+  956,
+  892
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "&Play sounds",
+   "rect": [
+    10,
+    10,
+    152,
+    30
+   ],
+   "best": [
+    152,
+    30
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "M&ute all sounds",
+   "rect": [
+    10,
+    50,
+    190,
+    30
+   ],
+   "best": [
+    190,
+    30
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Volume:",
+   "rect": [
+    10,
+    93,
+    77,
+    31
+   ],
+   "best": [
+    77,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Volume",
+   "label": "",
+   "rect": [
+    168,
+    90,
+    91,
+    38
+   ],
+   "best": [
+    91,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "80%"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "St&yle:",
+   "rect": [
+    10,
+    139,
+    50,
+    31
+   ],
+   "best": [
+    50,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Style",
+   "label": "",
+   "rect": [
+    168,
+    136,
+    117,
+    38
+   ],
+   "best": [
+    117,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Glass"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Tool sounds for:",
+   "rect": [
+    10,
+    185,
+    150,
+    31
+   ],
+   "best": [
+    150,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Tool sounds for",
+   "label": "",
+   "rect": [
+    168,
+    182,
+    190,
+    38
+   ],
+   "best": [
+    190,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The loaded chat"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Other chats:",
+   "rect": [
+    10,
+    231,
+    114,
+    31
+   ],
+   "best": [
+    114,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Sounds from other chats",
+   "label": "",
+   "rect": [
+    168,
+    228,
+    297,
+    38
+   ],
+   "best": [
+    297,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Every listed chat"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Sound &events:",
+   "rect": [
+    10,
+    276,
+    131,
+    31
+   ],
+   "best": [
+    131,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Sound events",
+   "label": "",
+   "rect": [
+    12,
+    309,
+    936,
+    461
+   ],
+   "best": [
+    446,
+    304
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Tool ran: Tap",
+    "File changed: Changed",
+    "Still working: Pulse",
+    "Message sent: Sent",
+    "Message queued: Queued",
+    "Message not sent: Error",
+    "Reply finished: Arrived",
+    "Another chat finished: Elsewhere",
+    "Needs you: Attention",
+    "Turn failed: Failed",
+    "You stopped a turn: Stopped",
+    "Service trouble: Disconnected"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Sound:",
+   "rect": [
+    10,
+    783,
+    65,
+    31
+   ],
+   "best": [
+    65,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Sound",
+   "label": "",
+   "rect": [
+    83,
+    778,
+    557,
+    38
+   ],
+   "best": [
+    167,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Tap"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "P&review",
+   "rect": [
+    648,
+    778,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Choose &File...",
+   "rect": [
+    789,
+    778,
+    157,
+    42
+   ],
+   "best": [
+    157,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    662,
+    840,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    807,
+    840,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

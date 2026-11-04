@@ -1742,6 +1742,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "A whole chat as one page, on the selected message"
+  },
+  "sounds": {
+   "kind": "dialog",
+   "png": "sounds-hc-aquatic-100.png",
+   "json": "sounds-hc-aquatic-100.json",
+   "title": "Sounds",
+   "class": "SoundsDialog",
+   "size": [
+    560,
+    560
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds"
   }
  },
  "seconds": 280.2

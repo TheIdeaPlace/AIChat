@@ -176,6 +176,7 @@ isn't a letter or digit turned into `-`) was checked against every transcript on
 | `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Rewind to Here and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |
+| `thechatplace/sound_events.py`, `thechatplace/ui/sound_host.py`, `thechatplace/ui/sounds_dialog.py` | Sounds: each event's sound, what the window plays, and File, Sounds. `thechatplace/assets/sounds` holds copies of app-kit's WAVs; app-kit plays them |
 | `thechatplace/rendering.py` | A message's markdown as a safe HTML page, for the formatted view |
 | `thechatplace/speech.py`, `thechatplace/speech/` | Speech, adapted from Image Description Toolkit (ClaudeSpeak's engine scripts) |
 | `thechatplace/screen_readers.py` | Speaking through JAWS and NVDA on Windows |

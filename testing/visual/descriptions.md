@@ -226,6 +226,12 @@ reported no clipping, overlaps or controls outside the window. No new visual def
 was found at the two captured 100% variants. Higher scaling was not recaptured for
 #438; its earlier descriptions should not be read as validation of the new controls.
 
+## sounds: File, Sounds
+
+A small dialog titled "Sounds". At the top, two check boxes, "Play sounds" and "Mute all sounds". Below them, four labelled drop-down lists in a column: Volume (80%), Style (Glass), Tool sounds for (The loaded chat) and Other chats (Every listed chat). Then "Sound events:" over a list filling the middle, with 15 rows like "Tool ran: Tap", the first selected. Below it a row with "Sound:" and a wide drop-down (Tap), then Preview and Choose File buttons. OK and Cancel at the bottom right.
+
+**What looks off:** Nothing. No text is cut off at 100% or 175%, and every row fits without scrolling. High Contrast Aquatic keeps every control visible, with the selected row in its own colour.
+
 ## settings-codex: Settings with Codex automatically included
 
 The same layout, 680 by 818. The Codex check box is ticked and fits one line, moving
