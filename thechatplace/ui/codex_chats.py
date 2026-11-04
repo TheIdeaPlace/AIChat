@@ -24,9 +24,10 @@ from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
                       copilot_auto_warning, copilot_mode_name)
 from .permission_hosts import CODEX_MODES
 from .codex_extras import CodexExtras
+from .sound_host import SoundHost
 
 
-class CodexChats(CodexExtras):
+class CodexChats(SoundHost, CodexExtras):
     def _codex_task_steps(self, state, turn, messages=None):
         # Live events can arrive before the new turn is readable in history.
         # Match its native ID rather than attaching it to the previous turn.

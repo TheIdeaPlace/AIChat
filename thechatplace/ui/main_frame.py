@@ -65,7 +65,6 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, new_session_id,
                           normalize_permission_mode)
-from .sound_host import SoundHost
 from .. import sound_events
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
                    forget_last_messages)
@@ -242,7 +241,7 @@ TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 REWIND_ACCEL = "" if sys.platform == "darwin" else "\tCtrl+Shift+Z"
 
 
-class MainFrame(SoundHost, CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost,
+class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost,
                 LiveTurns, ClaudeExtras, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
