@@ -106,9 +106,9 @@ class SoundHost:
         if self._sound_working_since is None:
             self._sound_working_since = now
         if now - max(self._sound_working_since, self._sound_last_played) >= PULSE_SECONDS:
-            # Set here as well: a pulse let through or held back waits its full time again.
-            self._sound_last_played = now
             self._sound(sound_events.PULSE)
+            # Let through or held back, the next waits its full time again.
+            self._sound_last_played = now
 
     def _sound_loaded_working(self) -> bool:
         """Whether the loaded chat's turn is running, and isn't waiting for you."""

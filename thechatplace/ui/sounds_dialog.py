@@ -89,7 +89,7 @@ class SoundsDialog(wx.Dialog):
         outer.Add(wx.StaticText(self, label="Sound &events:"), 0, wx.LEFT | wx.RIGHT, 10)
         self.events = wx.ListBox(self, choices=self._rows(), style=wx.LB_SINGLE)
         set_accessible_name(self.events, "Sound events")
-        set_list_items_accessible(self.events)
+        set_list_items_accessible(self.events, lambda: "Sound events", lambda index: None)
         self.events.SetSelection(0)
         outer.Add(self.events, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -149,7 +149,7 @@ class SoundsDialog(wx.Dialog):
         self._choices[event_id] = ref
         row = self.events.GetSelection()
         self.events.SetString(row, sound_events.row_label(event_id, self._choices))
-        refresh_list_item(self.events, row)
+        refresh_list_item(self.events)  # Orca: the row changed under it
 
     def _style_id(self) -> str:
         return self._style_ids[max(self.style.GetSelection(), 0)]
