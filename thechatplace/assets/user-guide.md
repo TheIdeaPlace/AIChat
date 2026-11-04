@@ -1822,7 +1822,7 @@ chat's servers and connectors; Codex's controls choose configured servers in a n
 **You can't add a new tool from The Chat Place.** It works with the tools already set up in each
 provider. Add or remove Claude's with Claude Code (`claude mcp`) or on claude.ai, and Codex's with
 the Codex CLI (`codex mcp`), then press **Refresh** (Alt+F). Copilot chats don't have Connected
-Tools yet.
+Tools yet. Claude in Chrome isn't available in chats The Chat Place runs yet.
 
 **"3 tools" on a row** means that server or connector offers three separate things the AI can use,
 such as searching or fetching a page. **Details** (Alt+D) lists their names, as the server gives
