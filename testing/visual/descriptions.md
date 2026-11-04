@@ -230,7 +230,7 @@ was found at the two captured 100% variants. Higher scaling was not recaptured f
 
 A small dialog titled "Sounds". At the top, three check boxes, "Play sounds", "Mute all sounds" and "No Windows sound for The Chat Place's notifications". Below them, four labelled drop-down lists in a column: Volume (80%), Style (Glass), Tool sounds for (The loaded chat) and Other chats (Every listed chat). Then "Sound events:" over a list filling the middle, with 15 rows like "Tool ran: Tap", the first selected. Below it a row with "Sound:" and a wide drop-down (Tap), then Preview and Choose File buttons. OK and Cancel at the bottom right.
 
-**What looks off:** Nothing. No text is cut off at 100% or 175%, and every row fits without scrolling. High Contrast Aquatic keeps every control visible, with the selected row in its own colour.
+**What looks off:** Nothing. No text is cut off at 100% or 175%. Every row fits at 100%. At 175% the list scrolls, with its last row out of view until you move to it. High Contrast Aquatic keeps every control visible, with the selected row in its own colour.
 
 ## settings-codex: Settings with Codex automatically included
 

@@ -54,12 +54,31 @@
    "problems": []
   },
   {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "No &Windows sound for The Chat Place's notifications",
+   "rect": [
+    10,
+    90,
+    534,
+    30
+   ],
+   "best": [
+    534,
+    30
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "StaticText",
    "name": "staticText",
    "label": "&Volume:",
    "rect": [
     10,
-    93,
+    133,
     77,
     31
    ],
@@ -78,7 +97,7 @@
    "label": "",
    "rect": [
     168,
-    90,
+    130,
     91,
     38
    ],
@@ -98,7 +117,7 @@
    "label": "St&yle:",
    "rect": [
     10,
-    139,
+    179,
     50,
     31
    ],
@@ -117,7 +136,7 @@
    "label": "",
    "rect": [
     168,
-    136,
+    176,
     117,
     38
    ],
@@ -137,7 +156,7 @@
    "label": "&Tool sounds for:",
    "rect": [
     10,
-    185,
+    225,
     150,
     31
    ],
@@ -156,12 +175,12 @@
    "label": "",
    "rect": [
     168,
-    182,
-    190,
+    222,
+    220,
     38
    ],
    "best": [
-    190,
+    220,
     38
    ],
    "depth": 0,
@@ -176,7 +195,7 @@
    "label": "&Other chats:",
    "rect": [
     10,
-    231,
+    271,
     114,
     31
    ],
@@ -195,7 +214,7 @@
    "label": "",
    "rect": [
     168,
-    228,
+    268,
     297,
     38
    ],
@@ -215,7 +234,7 @@
    "label": "Sound &events:",
    "rect": [
     10,
-    276,
+    316,
     131,
     31
    ],
@@ -234,9 +253,9 @@
    "label": "",
    "rect": [
     12,
-    309,
+    349,
     936,
-    461
+    421
    ],
    "best": [
     446,

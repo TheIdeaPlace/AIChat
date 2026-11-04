@@ -1751,7 +1751,7 @@
    "class": "SoundsDialog",
    "size": [
     560,
-    560
+    590
    ],
    "capture": "PrintWindow",
    "problems": [],
