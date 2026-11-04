@@ -12,9 +12,10 @@ app (none of this is documented, so every caller treats it as best effort):
 * Desktop app session metadata:
   ``%APPDATA%\\Claude\\claude-code-sessions\\<id>\\<orgId>\\local_<id>.json``,
   or for the Microsoft Store version
-  ``%LOCALAPPDATA%\\Packages\\Claude_<id>\\LocalCache\\Roaming\\Claude\\claude-code-sessions``
+  ``%LOCALAPPDATA%\\Claude-Data\\claude_<id>\\claude-code-sessions`` (#542), or
+  before that ``%LOCALAPPDATA%\\Packages\\Claude_<id>\\LocalCache\\Roaming\\Claude\\claude-code-sessions``
 * Cowork sessions (#91): ``local-agent-mode-sessions\\<id>\\<orgId>\\local_<id>.json``
-  in the same two ``Claude`` folders. The ``local_<id>`` folder beside each is
+  in the same ``Claude`` folders. The ``local_<id>`` folder beside each is
   the session's own Claude Code home (``.claude\\projects\\...\\<cli>.jsonl``).
 * Transcripts: ``%USERPROFILE%\\.claude\\projects\\<encoded cwd>\\<cliSessionId>.jsonl``
 * Live sessions: ``%USERPROFILE%\\.claude\\sessions\\<pid>.json``
@@ -292,16 +293,22 @@ def _store_app_sessions_dirs(name: str = "claude-code-sessions") -> List[Path]:
     app (issue #183). Windows redirects a packaged app's AppData writes into
     its package folder, so ``%APPDATA%\\Claude`` doesn't exist there. Matched
     on ``Claude_*`` rather than the package id seen on Kelly's PCs
-    (``Claude_pzs8sxrjxfjjc``), in case it differs."""
+    (``Claude_pzs8sxrjxfjjc``), in case it differs.
+
+    The Store app has since moved its data out of the package, to
+    ``%LOCALAPPDATA%\\Claude-Data\\claude_<package id>`` (#542), leaving only a
+    marker file behind. Both are looked in: not every install has moved."""
     if sys.platform != "win32":
         return []
     local = os.environ.get("LOCALAPPDATA")
-    packages = Path(local) / "Packages" if local else Path.home() / "AppData" / "Local" / "Packages"
+    root = Path(local) if local else Path.home() / "AppData" / "Local"
     try:
-        return sorted(p / "LocalCache" / "Roaming" / "Claude" / name
-                      for p in packages.glob("Claude_*"))
+        moved = sorted(p / name for p in (root / "Claude-Data").glob("claude_*"))
+        packaged = sorted(p / "LocalCache" / "Roaming" / "Claude" / name
+                          for p in (root / "Packages").glob("Claude_*"))
     except OSError:
         return []
+    return [*moved, *packaged]
 
 
 def desktop_sessions_dirs() -> List[Path]:

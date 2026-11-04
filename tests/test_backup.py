@@ -18,6 +18,11 @@ def write(path: Path, text: str = "x") -> Path:
     return path
 
 
+# The real lookups, for the test of them: ``homes`` turns them off.
+_REAL_DESKTOP_DIRS = platform_paths.desktop_sessions_dirs
+_REAL_COWORK_DIRS = platform_paths.cowork_sessions_dirs
+
+
 @pytest.fixture
 def homes(tmp_path, monkeypatch):
     claude = tmp_path / "claude"
@@ -71,6 +76,22 @@ def test_claude_includes_desktop_session_folders(homes, monkeypatch):
     inv = claude_backup.inventory()
     assert "claude/desktop-code-0/o/u/local_1.json" in names(inv)
     assert any(a.root == str(code) for a in inv.areas)
+
+
+def test_backup_finds_desktop_and_cowork_sessions_in_claude_data(homes, monkeypatch):
+    # #542: the Store app's move left backups without these, and said nothing.
+    monkeypatch.setattr(platform_paths, "desktop_sessions_dirs", _REAL_DESKTOP_DIRS)
+    monkeypatch.setattr(platform_paths, "cowork_sessions_dirs", _REAL_COWORK_DIRS)
+    monkeypatch.setattr(platform_paths.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(homes["tmp"] / "Local"))
+    monkeypatch.setenv("APPDATA", str(homes["tmp"] / "Roaming"))
+    monkeypatch.setattr(platform_paths, "long_path", lambda path: path)
+    data = homes["tmp"] / "Local" / "Claude-Data" / "claude_pkg"
+    write(data / "claude-code-sessions" / "o" / "u" / "local_1.json", "{}")
+    write(data / "local-agent-mode-sessions" / "o" / "u" / "local_2.json", "{}")
+    got = names(claude_backup.inventory())
+    assert "claude/desktop-code-0/o/u/local_1.json" in got
+    assert "claude/desktop-cowork-0/o/u/local_2.json" in got
 
 
 def test_missing_claude_home_is_a_note_not_a_crash(homes):
