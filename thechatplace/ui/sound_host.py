@@ -23,6 +23,8 @@ from .sounds_dialog import SoundsDialog
 #: A long command or long thinking sends no events, so without this the silence
 #: would be just when you'd wonder whether anything is happening.
 PULSE_SECONDS = 20.0
+#: How long after Stop a turn's being interrupted counts as what you did.
+STOP_COUNTS_SECONDS = 30.0
 
 
 class SoundHost:
@@ -34,7 +36,10 @@ class SoundHost:
     #: too, including after moving to another chat that's working.
     _sound_working_since: Optional[float] = None
     _sound_working_key: Optional[str] = None
-    _sound_stops_asked: Optional[set] = None
+    #: Chat key -> when Stop was pressed.
+    _sound_stops_asked: Optional[dict] = None
+    #: How the turn counts stood when last seen: chat key -> (turn, tools, edits).
+    _sound_counts: Optional[dict] = None
 
     def _sound_player(self) -> SoundPlayer:
         if self._sound_player_made is None:
@@ -154,24 +159,33 @@ class SoundHost:
         """A provider runtime's state moved on: did it start tools, or change files? Its states
         can arrive merged, so counts are compared rather than each one looked for. One sound
         for however many: they've come together."""
-        before = previous if (previous is not None and previous.turn_id == state.turn_id) else None
+        if not state.turn_id:
+            return  # a chat that's unavailable for now: its turn's counts come back with it
         key = f"{provider}:{state.native_id}"
-        if (getattr(state, "edits_made", 0) > getattr(before, "edits_made", 0)):
+        if self._sound_counts is None:
+            self._sound_counts = {}
+        tools, edits = getattr(state, "tools_started", 0), getattr(state, "edits_made", 0)
+        turn, tools_before, edits_before = self._sound_counts.get(key, (None, 0, 0))
+        if turn != state.turn_id:
+            tools_before, edits_before = 0, 0
+        self._sound_counts[key] = (state.turn_id, tools, edits)
+        if edits > edits_before:
             self._sound(sound_events.FILE_CHANGED, key)
-        elif getattr(state, "tools_started", 0) > getattr(before, "tools_started", 0):
+        elif tools > tools_before:
             self._sound(sound_events.TOOL, key)
 
     def _sound_note_stop(self, key: str) -> None:
         """You pressed Stop, so the turn's ending as interrupted is what you did."""
         if self._sound_stops_asked is None:
-            self._sound_stops_asked = set()
-        self._sound_stops_asked.add(key)
+            self._sound_stops_asked = {}
+        self._sound_stops_asked[key] = time.monotonic()
 
     def _sound_stop_was_asked(self, key: str) -> bool:
-        asked = self._sound_stops_asked is not None and key in self._sound_stops_asked
-        if asked:
-            self._sound_stops_asked.discard(key)
-        return asked
+        """Whether this ending is the Stop you pressed. By time rather than by turn: a state can
+        arrive late, so the turn you stopped can still be reported as starting after you pressed
+        it. Long enough for a slow stop, too short to label some later turn."""
+        asked = (self._sound_stops_asked or {}).pop(key, None)
+        return asked is not None and time.monotonic() - asked < STOP_COUNTS_SECONDS
 
     def _sound_close(self) -> None:
         self._sound_closed = True
@@ -210,8 +224,7 @@ class SoundHost:
                 return
             self.speech = dialog.get_settings()
         finally:
-            dialog.stop_preview()
-            dialog.Destroy()
+            dialog.Destroy()  # which stops a preview still playing
         try:
             self.speech.save()
         except OSError as exc:

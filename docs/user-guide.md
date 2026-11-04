@@ -715,7 +715,7 @@ Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialo
 | Needs you | Attention: a repeated note, then a higher one, for a permission, a question or a plan to approve |
 | Turn failed | Failed: three notes, falling |
 | You stopped a turn | Stopped: one low damped note |
-| Service trouble | Disconnected: two low notes, falling, when Claude is retrying or moved to another model |
+| Service trouble | Disconnected: two low notes, falling, when the AI is retrying, moved to another model, or its turn ended without you stopping it |
 | Conversation compacted | Filed: two quick notes, a small step up |
 | Usage or context warning | Reminder: one high note, three times |
 | Message from another session | Matched: one bright note |

@@ -22,6 +22,9 @@ def keep_custom_sound(source: str) -> str:
     with backups, and return its name there. Raises SoundProblem or OSError, with words to show."""
     appkit_sounds.read_wav(source)
     name = Path(source).name
+    if not name.lower().endswith(".wav"):
+        # Only .wav files are offered for the other events, so it would be lost from the list.
+        raise appkit_sounds.SoundProblem("Its name has to end in .wav.")
     if not appkit_sounds.safe_file_name(name):
         raise appkit_sounds.SoundProblem("Its name can't be used for a file here. Rename it first.")
     folder = platform_paths.custom_sounds_dir()
@@ -42,6 +45,7 @@ class SoundsDialog(wx.Dialog):
         super().__init__(parent, title="Sounds", size=dialog_size(parent, 560, 560))
         self._original = speech
         self._player = player
+        self._previewed = False  # so closing doesn't make a player only to stop it
         self._choices: Dict[str, str] = dict(speech.sound_choices)
         self._events = list(sound_events.EVENTS)
         self._refs: List[str] = []
@@ -165,9 +169,12 @@ class SoundsDialog(wx.Dialog):
         if chosen is None:
             self.stop_preview()
             return
+        self._previewed = True
         self._player().preview(chosen[0], volume=self._volume() / 100, fallback=chosen[1])
 
     def stop_preview(self) -> None:
+        if not self._previewed:
+            return
         try:
             self._player().stop_preview()
         except Exception:  # noqa: BLE001 - closing a dialog must never fail on a sound

@@ -793,7 +793,6 @@ class CodexChats(SoundHost, CodexExtras):
             self._check_context()
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
                 and (previous is None or previous.turn_id != state.turn_id)):
-            self._sound_stop_was_asked(key)  # a Stop from before this turn isn't about it
             self._status(f'{record.title}: {name} is working.')
         from ..providers.copilot_runtime import MODE_PROBLEMS
         if (state.problem and (previous is None or previous.problem != state.problem)

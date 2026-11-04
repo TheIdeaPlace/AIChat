@@ -328,12 +328,27 @@ def test_a_stop_that_came_too_late_does_not_label_a_later_turn(frame, env):
     assert env["sounds"] == [se.FINISHED_ELSEWHERE, se.TROUBLE]
 
 
-def test_a_stop_from_before_a_turn_is_forgotten_when_it_starts(frame, env):
+def test_a_stop_pressed_before_the_turn_is_reported_as_started_still_counts(frame, env):
     frame._on_codex_update(CodexChatState("cdx-1", "idle", "turn0", "completed"))
     frame._sound_note_stop("codex:cdx-1")
     frame._on_codex_update(CodexChatState("cdx-1", "working", "turn1", "inProgress"))
     frame._on_codex_update(CodexChatState("cdx-1", "idle", "turn1", "interrupted"))
-    assert env["sounds"][-1] == se.TROUBLE
+    assert env["sounds"][-1] == se.STOPPED
+
+
+def test_an_old_stop_does_not_label_a_much_later_turn(frame, env):
+    frame._sound_note_stop("codex:cdx-1")
+    frame._sound_stops_asked["codex:cdx-1"] -= sound_host.STOP_COUNTS_SECONDS + 1
+    frame._on_codex_update(codex("idle", "interrupted"))
+    assert env["sounds"] == [se.TROUBLE]
+
+
+def test_a_blank_state_in_between_replays_no_tool_sounds(frame, env):
+    frame.speech.sound_tools = se.TOOLS_ALL
+    frame._on_codex_update(codex(tools_started=2))
+    frame._on_codex_update(CodexChatState("cdx-1", "unavailable"))
+    frame._on_codex_update(codex(tools_started=2))
+    assert env["sounds"] == [se.TOOL]
 
 
 def test_compaction_in_a_loaded_desktop_chat_counts_as_the_loaded_chat(frame, env):
@@ -522,7 +537,15 @@ def test_preview_of_your_own_file_can_fall_back_as_real_playback_does(frame, dia
     assert Path(env["players"][0].preview_fallback).name == "tap.wav"
 
 
-def test_preview_of_none_just_stops(dialog, env):
+def test_closing_without_a_preview_makes_no_player(frame, env, monkeypatch):
+    monkeypatch.setattr(SoundsDialog, "ShowModal", lambda self: wx.ID_CANCEL)
+    frame.on_sounds()
+    assert env["players"] == []
+
+
+def test_preview_of_none_stops_what_was_previewing(dialog, env):
+    dialog._preview()
+    env["previews"].clear()
     dialog.sound.SetStringSelection("None")
     dialog._sound_chosen()
     dialog._preview()
@@ -548,7 +571,7 @@ def test_on_sounds_saves_on_ok_and_stops_when_turned_off(frame, env, monkeypatch
     frame._sound(se.SENT)
     frame.on_sounds()
     assert frame.speech.sounds_on is False and SpeechSettings.load().sounds_on is False
-    assert "stop" in env["sound_stops"] and "stop_preview" in env["sound_stops"]
+    assert "stop" in env["sound_stops"]
 
 
 def test_on_sounds_cancel_changes_nothing(frame, env, monkeypatch):
@@ -578,6 +601,11 @@ def test_keep_custom_sound_refuses_bad_files(env, tmp_path, build):
     with pytest.raises(SoundProblem):
         keep_custom_sound(build(tmp_path))
     assert se.custom_files() == []
+
+
+def test_keep_custom_sound_refuses_another_extension(env, tmp_path):
+    with pytest.raises(SoundProblem, match=r"\.wav"):
+        keep_custom_sound(make_wav(tmp_path / "chime.bak"))
 
 
 def test_keep_custom_sound_refuses_a_device_name(env, tmp_path, monkeypatch):

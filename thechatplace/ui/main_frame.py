@@ -5464,6 +5464,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             untaken = list(getattr(runner, "steering", ()) or ()) if runner is not None else []
             if untaken:
                 unsent.extend(untaken)
+                self._sound(sound_events.NOT_SENT, self._own_key(session_id), on_its_own=True)
                 note = (f"Your steered message for {title} wasn't taken in. It's back in the "
                         "message box.")
                 self._feedback(note)
@@ -5915,6 +5916,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Attachments go as @"path", as a queued message's do.
         text, _images = attachments.build(message, attached, images_inline=False)
         if not runner.steer(text):
+            self._sound(sound_events.NOT_SENT, self._own_key(session_id))
             self._feedback(f"The turn has just ended. {key_name('Ctrl+Enter')} sends your "
                            "message.")
             return
@@ -6013,6 +6015,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback("The turn is already ending: the message stays queued and goes "
                            "when it's done.")
             return
+        self._sound(sound_events.SENT, info.key)
         del waiting[index]
         if not waiting:
             self._queued.pop(info.cli_session_id, None)
