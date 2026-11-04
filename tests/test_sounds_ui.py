@@ -61,7 +61,8 @@ def turn(frame, event, session="own-1", title="Loaded"):
 def running(frame, session="own-1"):
     frame._runners[session] = SimpleNamespace(cancelled=False, parser=None, prompt="hello",
                                               session_started=True, cwd="C:\\G\\Scratch",
-                                              steering=(), waiting_on_background=False)
+                                              steering=(), waiting_on_background=False,
+                                              elapsed=lambda: 1.0)
 
 
 # ---------------------------------------------------------------- whether anything plays
@@ -285,7 +286,6 @@ def test_copilot_counts_an_edit_only_once_it_has_worked():
 
 
 def test_context_warning_sounds_once(frame, env, monkeypatch):
-    frame._open.is_own = True
     monkeypatch.setattr(frame, "_context", lambda info: (900_000, 1_000_000))
     frame._check_context()
     frame._check_context()
