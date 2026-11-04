@@ -283,6 +283,9 @@ class FakeRunner:
     def cancel(self):
         self.cancelled = True
 
+    def join(self, timeout=None):
+        self.joined = timeout
+
     def respond(self, request_id, response):
         self.responses = getattr(self, "responses", []) + [(request_id, response)]
         return not getattr(self, "ended", False)

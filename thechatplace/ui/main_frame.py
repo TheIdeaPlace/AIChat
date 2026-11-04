@@ -1111,6 +1111,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         session). Otherwise a list with focus keeps its order, so nothing moves
         under Kelly while he arrows.
         """
+        if self._closing:
+            return  # the pool is shut (#545)
         if self._snapshot_busy:
             # Run again when the current pass lands, so F5 is never lost.
             previous = self._pending_refresh or (False, False)
@@ -3372,6 +3374,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     # ------------------------------------------------------------- sending
 
     def _update_send_state(self):
+        if self._closing:
+            return  # the sessions are closed (#545)
         info = self._open
         item = getattr(self, "stop_background_item", None)
         if item is not None:
@@ -5227,10 +5231,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     self._chat_loaded = False
                 holder["id"] = reported
                 session_id = reported
-            self._check_model(session_id, title, (event.data or {}).get("model", ""))
+            if not self._closing:
+                self._check_model(session_id, title, (event.data or {}).get("model", ""))
             own = self.store.get(session_id)
             if own is not None and not own.started:
                 self._store_write(self.store.update, session_id, started=True)
+            if self._closing:
+                return
             self._status(f"{title}: Claude is working.")
             self._say_mcp_problems(session_id, title, (event.data or {}).get("mcp_servers"))
             return
@@ -5567,6 +5574,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         try:
             self.store.update(session_id, state=state, detail=detail, unread=not is_open,
                               last_activity_ms=int(time.time() * 1000))
+            self._agent_stopped_by_quit("claude", session_id)
         except (OSError, ValueError):
             pass
 
@@ -8112,12 +8120,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         count = self._running_turn_count()
         waiting = self._relay_waiting_text()
         if (count or waiting) and event.CanVeto():
-            queued = bool(self._queued) or any(state.queued for state in self._codex_states.values())
+            queued = (bool(self._queued)
+                      or any(state.queued for state in self._codex_states.values())
+                      or any(getattr(runner, "steering", ()) for runner in self._runners.values()))
             if count:
                 question = (f"Work is running in {count} Chat Place session"
                             f"{'s' if count != 1 else ''}. Quit anyway? The running turn"
                             f"{'s' if count != 1 else ''} will be stopped"
-                            f"{', and queued messages will not be sent.' if queued else '.'}")
+                            f"{', and messages still waiting will not be sent.' if queued else '.'}")
                 if waiting:
                     question += f" {waiting[0].upper()}{waiting[1:]} will not be sent."
             else:
@@ -8165,8 +8175,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if job.get("thread") is not None:
                 job["thread"].join(timeout=10)
         self._closing = True
-        for runner in list(self._runners.values()):
+        runners = list(self._runners.values())
+        for runner in runners:
             runner.cancel()
+        # So how each turn ended is queued before the window goes, and saved
+        # (#545). Cancelling kills the process, so this is usually at once.
+        deadline = time.monotonic() + 1.0
+        for runner in runners:
+            runner.join(max(0.0, deadline - time.monotonic()))
         self.stop_timers()
         speaker.stop()
         speaker.on_problem = None

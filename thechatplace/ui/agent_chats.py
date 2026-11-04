@@ -698,6 +698,25 @@ class AgentChats:
             self._agent_after_change(conversation)
         return tuple(t for t in texts if t != sent) if kept else texts
 
+    def _agent_stopped_by_quit(self, provider, native_id):
+        """Quitting stopped a member's turn (#545). The conversation is saved
+        as a Stop would leave it, so what you type next goes to that agent and
+        not on past it. Nothing is said or refreshed: the app is going."""
+        identity = (provider, native_id)
+        awaited = self._agent_awaiting.pop(identity, None)
+        conversation = self.agents.containing(provider, native_id)
+        if (conversation is None or awaited is None
+                or awaited[0] != conversation.conversation_id):
+            return
+        index = conversation.member_index(provider, native_id)
+        self._agent_unbrief(conversation, index)
+        self._agent_turn_files.pop(identity, None)
+        conversation.next_index = index
+        conversation.paused, conversation.stop_reason = True, "Stopped."
+        conversation.unread = not self._agent_is_open(conversation)
+        self._agent_note(conversation, f"Stopped {conversation.members[index].name}.")
+        self._agent_save(conversation, touch=False)
+
     def _agent_turn_ended(self, provider, native_id, reply, failed, *, more_queued=False,
                           detail="", files=()):
         """A member's turn ended. If the conversation started it, hand the

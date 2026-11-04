@@ -815,6 +815,7 @@ def _quit_during_a_turn(frame, fake_runner):
     event.SetCanVeto(True)
     frame._on_close(event)
     assert fake_runner.instances[0].cancelled
+    assert fake_runner.instances[0].joined is not None  # its last event gets queued
     return session_id
 
 
@@ -848,6 +849,42 @@ def test_other_turn_events_while_quitting_do_nothing(frame, env, fake_runner):
                              TurnEvent(kind, text="More.", session_id=session_id))
     assert session_id in frame._runners
     assert frame.store.get(session_id).last_activity_ms == 1
+    assert frame._queued[session_id] == ["queued behind it"]
+    assert len(fake_runner.instances) == 1
+
+
+def test_a_turn_starting_as_the_app_quits_saves_that_and_says_nothing(frame, env, fake_runner,
+                                                                      monkeypatch):
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    frame.store.update(session_id, started=False)
+    said = []
+    monkeypatch.setattr(frame, "_say_mcp_problems", lambda *a: said.append(a))
+    monkeypatch.setattr(frame, "_check_model", lambda *a: said.append(a))
+    frame._on_turn_event({"id": session_id}, "Hub probe",
+                         TurnEvent("started", session_id=session_id))
+    assert frame.store.get(session_id).started
+    assert not said
+
+
+def test_late_callbacks_after_quitting_reach_nothing_closed(frame, env, fake_runner, monkeypatch):
+    _quit_during_a_turn(frame, fake_runner)
+    frame.sessions.close()
+    monkeypatch.setattr(frame._pool, "submit",
+                        lambda *a, **k: pytest.fail("the pool is shut"))
+    frame._update_send_state()
+    frame.refresh_sessions(force=True)
+
+
+def test_a_steered_message_not_taken_in_is_in_the_quit_question(frame, env, fake_runner):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("long job")
+    frame.on_send()
+    fake_runner.instances[0].steer("not that file")
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    assert "messages still waiting will not be sent" in env["boxes"][-1]
 
 
 def test_a_cancelled_quit_leaves_the_window_working(frame, env, fake_runner, monkeypatch):
@@ -1732,7 +1769,7 @@ def test_quit_prompt_mentions_queued_messages(frame, env, fake_runner):
     event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
     event.SetCanVeto(True)
     frame._on_close(event)
-    assert "queued messages will not be sent" in env["boxes"][-1]
+    assert "messages still waiting will not be sent" in env["boxes"][-1]
 
 
 # -- reading your own messages back (issue #178) ------------------------------------------

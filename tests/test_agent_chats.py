@@ -1787,3 +1787,27 @@ def test_a_message_still_on_its_way_stays_the_conversations(tmp_path):
     w._codex_send_pending['copilot:p1'] = 1
     w._agent_turn_ended('copilot', 'p1', 'Looks fine.', False)
     assert w._agent_sent_texts[('copilot', 'p1')]
+
+
+def test_quitting_during_a_turn_saves_the_conversation_as_stopped(tmp_path):
+    # #545: what you type next goes to the agent that was stopped, not on past it.
+    w = Window(tmp_path)
+    w.send('Build it.')
+    said = list(w.said)
+    w._agent_stopped_by_quit('claude', 'c1')
+    assert w.saved.paused and w.saved.stop_reason == "Stopped."
+    assert w.saved.next_index == 0
+    assert w.said == said  # nothing is spoken on the way out
+    assert ('claude', 'c1') not in w._agent_awaiting
+    w.send('Try again.')
+    assert len(w.claude_sent) == 2 and not w.codex_sent
+
+
+def test_quitting_a_chat_the_conversation_wasnt_waiting_for_changes_nothing(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w._agent_turn_ended('claude', 'c1', 'Done.', False)
+    stopped_before = w.saved.stop_reason
+    w._agent_stopped_by_quit('claude', 'c1')
+    assert w.saved.stop_reason == stopped_before and w.saved.stop_reason != "Stopped."
+    w._agent_stopped_by_quit('claude', 'not-a-member')
