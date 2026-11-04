@@ -5234,6 +5234,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._status(f"{title}: Claude is working.")
             self._say_mcp_problems(session_id, title, (event.data or {}).get("mcp_servers"))
             return
+        if self._closing:
+            # Quitting stopped this turn, and the sessions and speech are
+            # already closed. How it ended is saved and nothing else happens:
+            # a queued message would otherwise start a new turn on the way
+            # out, when the quit question promised it wouldn't be sent (#545).
+            if event.kind in ("finished", "failed"):
+                self._save_turn_end_while_closing(session_id, event)
+            return
         is_open_now = (self._open is not None and self._open.provider == "claude"
                        and self._open.cli_session_id == session_id)
         if self._live_turn_event(session_id, title, event, is_open_now):
@@ -5395,18 +5403,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             queued = self._take_queued(session_id)
             if queued and is_open:
                 self._rebuild_chat_list()  # sent, or given back: no longer queued
-            if event.kind == "failed" or event.is_error:
-                state, detail = NEEDS_YOU, announce.status_text(event.text or "error", 120)
-            elif denials:
-                count = len(denials)
-                state = NEEDS_YOU
-                detail = f"{count} tool{'s were' if count != 1 else ' was'} refused"
-            else:
-                state, detail = IDLE, ""
-            said_problem = self._said_problems.pop(session_id, "")
-            if state == IDLE and said_problem:
-                # Said when Claude answered; still needs you (#161).
-                state, detail = NEEDS_YOU, said_problem
+            state, detail = self._turn_end_state(session_id, event, denials)
             self._store_write(self.store.update, session_id, state=state, detail=detail,
                               unread=not is_open,
                               last_activity_ms=int(time.time() * 1000))
@@ -5541,6 +5538,37 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._refresh_chat()
         self._update_send_state()
         self.refresh_sessions()
+
+    def _turn_end_state(self, session_id: str, event: TurnEvent, denials) -> tuple:
+        """The state and detail a chat is left in when its turn ends."""
+        if event.kind == "failed" or event.is_error:
+            state, detail = NEEDS_YOU, announce.status_text(event.text or "error", 120)
+        elif denials:
+            count = len(denials)
+            state = NEEDS_YOU
+            detail = f"{count} tool{'s were' if count != 1 else ' was'} refused"
+        else:
+            state, detail = IDLE, ""
+        said_problem = self._said_problems.pop(session_id, "")
+        if state == IDLE and said_problem:
+            # Said when Claude answered; still needs you (#161).
+            state, detail = NEEDS_YOU, said_problem
+        return state, detail
+
+    def _save_turn_end_while_closing(self, session_id: str, event: TurnEvent) -> None:
+        """Save how a turn ended as the app quits (#545), so the chat keeps its
+        place and state in the list next time. A failed write has nowhere to
+        be said now."""
+        self._runners.pop(session_id, None)
+        denials = event.denials or self._denials.pop(session_id, [])
+        state, detail = self._turn_end_state(session_id, event, denials)
+        is_open = (self._open is not None and self._open.provider == "claude"
+                   and self._open.cli_session_id == session_id)
+        try:
+            self.store.update(session_id, state=state, detail=detail, unread=not is_open,
+                              last_activity_ms=int(time.time() * 1000))
+        except (OSError, ValueError):
+            pass
 
     def _take_queued(self, session_id: str) -> Optional[str]:
         """All of a session's queued messages, as the one message they're

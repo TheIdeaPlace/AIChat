@@ -18,7 +18,7 @@ wx = pytest.importorskip("wx")
 from thechatplace import hub, platform_paths, speech  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
-from thechatplace.sessions import NEEDS_YOU  # noqa: E402
+from thechatplace.sessions import IDLE, NEEDS_YOU  # noqa: E402
 
 from records import (assistant_block, lines, text_block, tool_result, tool_use_block,  # noqa: E402
                      user_text)
@@ -799,6 +799,55 @@ def test_close_during_turn_asks_and_stops(frame, env, fake_runner):
     assert "Quit anyway" in env["boxes"][-1]
     assert fake_runner.instances[0].cancelled
     assert frame._closing  # no context menu opens from here on
+
+
+def _quit_during_a_turn(frame, fake_runner):
+    """Quit with a turn running and a message queued behind it. Returns the
+    chat's id."""
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("long job")
+    frame.on_send()
+    session_id = frame._open.cli_session_id
+    frame._queued[session_id] = ["queued behind it"]
+    frame.store.update(session_id, last_activity_ms=1)
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    assert fake_runner.instances[0].cancelled
+    return session_id
+
+
+def test_a_turn_ending_as_the_app_quits_is_saved_and_starts_nothing(frame, env, fake_runner):
+    # #545: this raised "Session controller closed", which lost the save. It
+    # also must not reach the queued message: the quit question says it won't
+    # be sent.
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    frame._on_turn_event({"id": session_id}, "Hub probe",
+                         TurnEvent("finished", text="Done.", session_id=session_id))
+    assert len(fake_runner.instances) == 1
+    assert session_id not in frame._runners
+    saved = frame.store.get(session_id)
+    assert saved.last_activity_ms > 1
+    assert (saved.state, saved.detail) == (IDLE, "")
+
+
+def test_a_turn_stopped_by_quitting_says_so_next_time(frame, env, fake_runner):
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    frame._on_turn_event({"id": session_id}, "Hub probe",
+                         TurnEvent("failed", text="Stopped.", session_id=session_id))
+    assert len(fake_runner.instances) == 1
+    saved = frame.store.get(session_id)
+    assert saved.state == NEEDS_YOU and "Stopped" in saved.detail
+
+
+def test_other_turn_events_while_quitting_do_nothing(frame, env, fake_runner):
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    for kind in ("text", "tool", "steer_taken", "waiting"):
+        frame._on_turn_event({"id": session_id}, "Hub probe",
+                             TurnEvent(kind, text="More.", session_id=session_id))
+    assert session_id in frame._runners
+    assert frame.store.get(session_id).last_activity_ms == 1
 
 
 def test_a_cancelled_quit_leaves_the_window_working(frame, env, fake_runner, monkeypatch):
