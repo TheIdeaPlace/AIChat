@@ -52,6 +52,30 @@ def fake_chat_choices():
         "output_style": "default"})
 
 
+class RecordingPlayer:
+    """Stands in for app-kit's SoundPlayer, so no test or probe ever makes a sound."""
+
+    def __init__(self, played, previews, stops):
+        self.played, self.previews, self.stops = played, previews, stops
+
+    def play(self, path, *, key=None, priority="normal", volume=1.0, fallback=None):
+        self.played.append(key)
+        self.last = dict(path=path, key=key, priority=priority, volume=volume, fallback=fallback)
+        return True
+
+    def preview(self, path, *, volume=1.0):
+        self.previews.append((path, volume))
+
+    def stop(self):
+        self.stops.append("stop")
+
+    def stop_preview(self):
+        self.stops.append("stop_preview")
+
+    def close(self):
+        pass
+
+
 def now_ms():
     return int(time.time() * 1000)
 
@@ -124,6 +148,14 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         # formatted view put a fake in.
         patch(main_frame, "formatted_view_available", lambda: False)
         patch(dialogs, "formatted_view_available", lambda: False)
+    from thechatplace.ui import sound_host
+    sounds, previews, sound_stops, players = [], [], [], []
+
+    def make_player():
+        players.append(RecordingPlayer(sounds, previews, sound_stops))
+        return players[-1]
+    patch(sound_host, "SoundPlayer", make_player)
+    patch(sound_host, "quiet_now", lambda: False)
     opened = []
     patch(platform_paths, "open_url", lambda url: opened.append(url))
     # Nor real Claude Code files, an editor or Explorer (#92).
@@ -214,7 +246,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(mac_a11y, "activate_app", lambda: activated.append(True) or True)
     return {"desktop": desktop, "cowork": cowork, "projects": projects, "spoken": spoken,
             "copied": copied, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
-            "live": live, "notified": notified, "activated": activated, "mcp": mcp}
+            "live": live, "notified": notified, "activated": activated, "mcp": mcp,
+            "sounds": sounds, "previews": previews, "sound_stops": sound_stops, "players": players}
 
 
 def add_desktop(env, local, cli, title, cwd="C:\\G\\Repo", ago=60_000, **extra):

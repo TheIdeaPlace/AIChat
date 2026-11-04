@@ -1115,6 +1115,10 @@ def d_settings(frame, env):
     return show
 
 
+def d_sounds(frame, env):
+    return frame.on_sounds
+
+
 def d_settings_codex(frame, env):
     from thechatplace import platform_paths
     platform_paths.find_codex = lambda: "synthetic-native-codex"
@@ -2163,6 +2167,7 @@ SURFACES = {
     "message-plain": ("dialog", d_message_plain, "The same message as plain text"),
     "settings": ("dialog", d_settings, "Settings with no Codex installation"),
     "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
+    "sounds": ("dialog", d_sounds, "File, Sounds"),
     "settings-copilot": ("dialog", d_settings_copilot,
                          "Settings once Copilot CLI has a session: its check box shows"),
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
@@ -2300,6 +2305,7 @@ DIALOG_CLASSES = {
     "message-plain": "MessageDialog",
     "settings": "SettingsDialog",
     "settings-codex": "SettingsDialog",
+    "sounds": "SoundsDialog",
     "settings-copilot": "SettingsDialog",
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",

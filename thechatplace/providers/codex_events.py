@@ -25,6 +25,8 @@ class CodexEvent:
     #: A file change's paths, once Codex says it was made (agent
     #: conversations pass them on with the reply).
     paths: tuple = ()
+    #: A tool starting, as against Codex thinking or writing (#250).
+    tool: bool = False
 
 
 def _id(value):
@@ -136,7 +138,9 @@ def decode_event(method, params):
                 if command:
                     text = "Running command: " + command[:200]
             return CodexEvent("activity", thread_id, _id(params.get("turnId")),
-                              _id(item.get("id")), text)
+                              _id(item.get("id")), text,
+                              tool=(method == "item/started" and item["type"] in
+                                    ("mcpToolCall", "webSearch", "commandExecution")))
         if item.get("type") == "fileChange":
             changes = item.get("changes")
             if not isinstance(changes, list):
@@ -206,6 +210,9 @@ class CodexTurnBuffer:
         self.tasks = ()
         self.plan_received = False
         self.review_notices = {}
+        #: Counted for sounds (#250), since a state can reach the window merged with the next.
+        self.tools_started = 0
+        self.edits_started = 0
 
     @property
     def replies(self):
@@ -276,6 +283,8 @@ class CodexTurnBuffer:
                     text = text[:remaining]
                 self._file_characters += len(text) - len(self._file_changes.get(item_id, ""))
                 self._file_changes[item_id] = text
+                if event.paths and not self._file_paths.get(item_id):
+                    self.edits_started += 1
                 self._file_paths[item_id] = tuple(event.paths)
                 self.activity = "Reviewing file changes."
                 return True
@@ -286,6 +295,8 @@ class CodexTurnBuffer:
             try:
                 _id(event.item_id)
                 self.activity = _text(event.text)
+                if event.tool:
+                    self.tools_started += 1
                 return True
             except ValueError:
                 self.disconnect()

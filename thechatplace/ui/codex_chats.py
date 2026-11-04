@@ -15,7 +15,7 @@ from ..providers.codex_rpc import CodexRpcError, CodexSteerRefused, CodexTurnRej
 from ..providers.codex_runtime import STOP_TO_RECHECK
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
-from .. import announce
+from .. import announce, sound_events
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name
@@ -495,11 +495,13 @@ class CodexChats(CodexExtras):
             if error and not restore:
                 pass
             elif error:
+                self._sound(sound_events.NOT_SENT, key)
                 self._restore_codex_text(key, (text,))
                 self._feedback(queued or f'{provider_name(record.provider)} could not confirm this send. Check the chat history before sending again.')
             elif not announce_send:
-                pass
+                self._sound(sound_events.QUEUED if queued else sound_events.SENT, key)
             else:
+                self._sound(sound_events.QUEUED if queued else sound_events.SENT, key)
                 formatter = announce.queued_text if queued else announce.sent_text
                 self._feedback(formatter(record.title, text, self.speech.announce,
                                          self.speech.announce_own))
@@ -556,6 +558,7 @@ class CodexChats(CodexExtras):
                 # a queued message's turn has started since: it may never be
                 # used, so the history read next decides where it goes.
                 self._steers_turn_over(key)
+            self._sound(sound_events.NOT_SENT if error or refused else sound_events.SENT, key)
             if error:
                 # Not known whether it arrived: back in the box, never resent.
                 if index is None:
@@ -708,6 +711,7 @@ class CodexChats(CodexExtras):
                     key = (f'{provider}-account', warning.key)
                     if key not in self._warned:
                         self._warned.add(key)
+                        self._sound(sound_events.LIMIT)
                         self._say(warning.text, interrupt=False)
             # A second chat can finish after the first report was sampled.
             # Coalesce that request without overlapping queries or losing it.
@@ -772,6 +776,7 @@ class CodexChats(CodexExtras):
             asks = asks_now(state)
             if asks:
                 self._say(f"{record.title}: {asks}", interrupt=False)
+        self._sound_tools_since(provider, previous, state)
         loaded = self._open is not None and self._open.key == key
         seen = getattr(self, '_codex_permission_notices_seen', None)
         if seen is None:
@@ -795,6 +800,7 @@ class CodexChats(CodexExtras):
             # A Copilot chat being opened may be switched back to its mode
             # yet: its preparation's done() says a mode problem still left
             # (#424).
+            self._sound(sound_events.TROUBLE, key)
             self._say(f'{record.title}: {state.problem}', interrupt=False)
         from ..providers.copilot_runtime import notice_to_say
         new_notice = notice_to_say(previous.notice if previous is not None else '', state.notice)
@@ -821,6 +827,7 @@ class CodexChats(CodexExtras):
         if state.requests and not state.problem and (previous is None or previous.requests != state.requests):
             request = state.requests[0]
             summary = ' '.join(request.summary().split())[:200]
+            self._sound(sound_events.NEEDS_YOU, key)
             self._say(f'{record.title}: {name} needs your answer. {summary} {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
             self._notify(key, f'{record.title} needs you', summary, needs_you=True)
         if loaded and state.plan_received and provider == 'codex':  # plans are Codex's own
@@ -837,6 +844,13 @@ class CodexChats(CodexExtras):
             reply = '\n\n'.join(text for _identity, text in state.replies)
             # /compact runs as a turn of its own, which answers nothing (#467).
             compacted = getattr(state, 'compaction', False) and state.outcome == 'completed'
+            if compacted:
+                self._sound(sound_events.COMPACTED, key)
+            elif state.outcome == 'completed':
+                self._sound_turn_end(key)
+            else:
+                self._sound(sound_events.FAILED if state.outcome == 'failed'
+                            else sound_events.STOPPED, key)
             text = (f'{record.title}: context compacted.' if compacted else
                     f'{record.title}: {name} answered.' if state.outcome == 'completed'
                     else f'{record.title}: {name} turn {state.outcome}.')
@@ -853,6 +867,8 @@ class CodexChats(CodexExtras):
                              text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
         if unsent:
+            if state.outcome != 'interrupted':
+                self._sound(sound_events.NOT_SENT, key)
             # Queue this after interrupting error/reply speech, so the news
             # about recovered text is not immediately cut off by that speech.
             # Only what came back here: an agent conversation's own message

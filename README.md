@@ -1119,6 +1119,18 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   every listed session is announced or just the open one, and the speech route; its Reading
   messages group chooses whether full messages open as a formatted page or plain text.
   Ctrl+Shift+R repeats the last announcement.
+- **Sounds.** Off until you turn them on, in File, **Sounds**. They let you hear what a chat is doing
+  without tool activity on: a soft tap for each tool that runs, a different one when a file changes,
+  a faint pulse after 20 quiet seconds of a turn still working, and sounds for a message sent or
+  queued, a reply finishing, another chat finishing, a chat needing you, a failed or stopped turn,
+  service trouble, compaction, a usage warning and a message from another session. Each event can
+  have another sound, your own 16-bit WAV (up to 30 seconds and 5 MB, copied into the data folder's
+  `sounds` folder so backups carry it), or none. The dialog also chooses the volume (80% to start),
+  the style (Glass, Soft bell or Wood), whether tool sounds come from the loaded chat or every chat,
+  and which other chats make sounds. **Mute All Sounds** (Ctrl+Shift+X, or View) silences everything
+  at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
+  happen on their own hold back during a presentation or a full-screen program on Windows, but not
+  under Do Not Disturb, which Windows doesn't let apps detect: use Mute for that.
 - **Which voice speaks.** On Windows, Automatic (the default) speaks through JAWS or NVDA,
   whichever is running, in your screen reader's own voice and rate. NVDA needs nothing extra: The
   Chat Place ships NV Access's NVDA Controller Client. A system voice is used only when no screen
@@ -1661,6 +1673,7 @@ shows it as plain text instead.
 | Anywhere | Alt+H, G | The user guide |
 | Anywhere | Ctrl+Comma | Settings |
 | Anywhere | Ctrl+Shift+R | Repeat the last announcement |
+| Anywhere | Ctrl+Shift+X | Mute All Sounds |
 | Anywhere | Alt+F4 | Quit |
 
 Menus are File (Alt+F), View (Alt+V) and Help (Alt+H). Controls have their own Alt letters
