@@ -349,7 +349,7 @@ def test_a_command_named_like_compact_has_the_finished_sound(frame, env):
                                  "/compact-notes", True)
     frame._sound_claude_turn_end("own-1", TurnEvent("finished", text="Nothing to do."), [], None,
                                  "/compact", True)
-    assert env["sounds"] == [se.FINISHED]  # the same sound again within a second is the player's
+    assert env["sounds"] == [se.FINISHED, se.FINISHED]
     env["sounds"].clear()
     frame._sound_claude_turn_end("own-1", TurnEvent("finished", text="Compacted."), [], None,
                                  "/compact", True)
