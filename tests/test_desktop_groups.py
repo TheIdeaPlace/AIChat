@@ -1,5 +1,6 @@
 """The Claude desktop app's own session groups (#51)."""
 import json
+import os
 
 from thechatplace.desktop_groups import CONFIG_NAME, load_desktop_groups
 
@@ -58,3 +59,25 @@ def test_names_are_tidied_and_case_only_twins_kept_once(tmp_path):
     groups = load_desktop_groups([folder])
     assert groups.names == ["Quill app"]
     assert groups.by_session == {"local_a": "Quill app", "local_b": "QUILL APP"}
+
+
+def _copy_of_settings(root, written, name):
+    sessions = root / "claude-code-sessions"
+    (sessions / "acct/org").mkdir(parents=True)
+    prefs = {"preferences": {"epitaxyPrefs": {"dframe-group-scopes": {"acct/org": {
+        "groups": [{"id": "cg-1", "name": name}],
+        "assignments": {"code:local_a": "cg-1"}}}}}}
+    config = root / CONFIG_NAME
+    config.write_text(json.dumps(prefs), encoding="utf-8")
+    os.utime(config, (written, written))
+    return sessions
+
+
+def test_the_newest_copy_of_the_settings_wins_in_either_order(tmp_path):
+    # #542: a stale copy must not bring back a deleted group.
+    old = _copy_of_settings(tmp_path / "old", 1000, "Deleted group")
+    new = _copy_of_settings(tmp_path / "new", 2000, "Current group")
+    for folders in ([old, new], [new, old]):
+        groups = load_desktop_groups(folders)
+        assert groups.names == ["Current group"]
+        assert groups.by_session == {"local_a": "Current group"}

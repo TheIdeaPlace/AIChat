@@ -209,6 +209,10 @@ def preserve_sessions(sessions):
     store = keeper()
     saved = {token: metadata for token, metadata in store.records()}
     seen, result = set(), []
+    # A kept record's identity includes the Claude home, and a Cowork home
+    # moves with the desktop app's data (#542): the chat listed from its new
+    # home is the same chat as a record saved from the old one.
+    listed = {(session.cli_session_id, session.key) for session in sessions}
     for session in sessions:
         if not platform_paths.is_safe_id(session.cli_session_id):
             result.append(session)
@@ -228,6 +232,8 @@ def preserve_sessions(sessions):
             continue
         try:
             native_id = metadata['cli_session_id']
+            if (native_id, metadata.get('key')) in listed:
+                continue
             if (not platform_paths.is_safe_id(native_id)
                     or any(not isinstance(metadata.get(key), str) for key in
                            ('key', 'title', 'cwd', 'desktop_session_id', 'cowork_folder'))

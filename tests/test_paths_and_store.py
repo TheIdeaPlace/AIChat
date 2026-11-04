@@ -343,3 +343,36 @@ def test_git_names_diff_program_reads_what_git_config_lists(monkeypatch, tmp_pat
         assert platform_paths.git_names_diff_program(folder) is expected, reply
     monkeypatch.setattr(platform_paths, "find_tool", lambda name: None)
     assert platform_paths.git_names_diff_program(str(tmp_path / "none")) is None
+
+
+def test_an_unreadable_claude_data_folder_doesnt_hide_the_package_folder(monkeypatch, tmp_path):
+    _classic, store = _store_layout(tmp_path, monkeypatch)
+    real_glob = platform_paths.Path.glob
+
+    def glob(self, pattern, **kwargs):
+        if self.name == "Claude-Data":
+            raise OSError("no access")
+        return real_glob(self, pattern, **kwargs)
+
+    monkeypatch.setattr(platform_paths.Path, "glob", glob)
+    assert platform_paths.desktop_sessions_dirs() == [store]
+
+
+def test_claude_data_is_found_without_localappdata(monkeypatch, tmp_path):
+    monkeypatch.setattr(platform_paths.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    moved = (tmp_path / "AppData" / "Local" / "Claude-Data" / "claude_pkg"
+             / "claude-code-sessions")
+    moved.mkdir(parents=True)
+    assert platform_paths.desktop_sessions_dirs() == [moved]
+
+
+def test_plain_path_takes_off_only_the_long_form():
+    plain = platform_paths.plain_path
+    assert str(plain("\\\\?\\C:\\a")).endswith("a")
+    assert "?" not in str(plain("\\\\?\\C:\\a"))
+    assert "?" not in str(plain("\\\\?\\UNC\\server\\share"))
+    ordinary = platform_paths.Path("ordinary")
+    assert plain(ordinary) == ordinary

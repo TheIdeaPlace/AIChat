@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from markers import windows_paths
 from thechatplace import backup, platform_paths
 from thechatplace.providers import claude_backup
 
@@ -942,3 +943,22 @@ def test_a_whole_chats_open_page_isnt_backed_up(tmp_path, monkeypatch):
     inventory = backup.tcp_inventory()
     assert "groups.json" in str(inventory.items)
     assert platform_paths.WHOLE_CHAT_PAGE_FILE not in str(inventory.items)
+
+
+@windows_paths
+def test_a_folder_inside_a_long_form_root_is_refused_and_named_plainly(tmp_path, monkeypatch):
+    # #542: Cowork's folder comes in the long form, which a chosen folder's
+    # plain path never matched, so a backup could land in the desktop app's data.
+    plain = tmp_path / "local-agent-mode-sessions"
+    inside = plain / "chosen"
+    inside.mkdir(parents=True)
+    root = platform_paths.long_path(plain)
+    assert str(root).startswith("\\\\?\\")
+    assert backup._inside(inside, root)
+    assert not backup._inside(tmp_path, root)
+    monkeypatch.setattr(backup, "copied_roots", lambda: [root])
+    problem = backup.schedule_folder_problem(str(inside))
+    assert problem and "?" not in problem
+    inv = backup.Inventory("claude", "Claude", areas=[backup.Area("a", str(root), "Cowork")])
+    problem = backup.destination_problem(inside, [inv])
+    assert problem and "?" not in problem

@@ -302,13 +302,19 @@ def _store_app_sessions_dirs(name: str = "claude-code-sessions") -> List[Path]:
         return []
     local = os.environ.get("LOCALAPPDATA")
     root = Path(local) if local else Path.home() / "AppData" / "Local"
+    moved = [p / name for p in _folders_matching(root / "Claude-Data", "claude_*")]
+    packaged = [p / "LocalCache" / "Roaming" / "Claude" / name
+                for p in _folders_matching(root / "Packages", "Claude_*")]
+    return [*moved, *packaged]
+
+
+def _folders_matching(folder: Path, pattern: str) -> List[Path]:
+    """Sorted, or none if ``folder`` can't be read: one unreadable place
+    mustn't hide the sessions in another."""
     try:
-        moved = sorted(p / name for p in (root / "Claude-Data").glob("claude_*"))
-        packaged = sorted(p / "LocalCache" / "Roaming" / "Claude" / name
-                          for p in (root / "Packages").glob("Claude_*"))
+        return sorted(folder.glob(pattern))
     except OSError:
         return []
-    return [*moved, *packaged]
 
 
 def desktop_sessions_dirs() -> List[Path]:
@@ -357,6 +363,17 @@ def long_path(path: Path) -> Path:
     if text.startswith("\\\\"):
         return Path("\\\\?\\UNC\\" + text[2:])
     return Path("\\\\?\\" + text)
+
+
+def plain_path(path: Path) -> Path:
+    """``path`` without the long form ``long_path`` adds, to compare it with
+    an ordinary path or show it to someone."""
+    text = str(path)
+    if text.startswith("\\\\?\\UNC\\"):
+        return Path("\\\\" + text[8:])
+    if text.startswith("\\\\?\\"):
+        return Path(text[4:])
+    return Path(path)
 
 
 def os_name() -> str:
