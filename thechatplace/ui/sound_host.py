@@ -26,8 +26,11 @@ PULSE_SECONDS = 20.0
 class SoundHost:
     _sound_player_made: Optional[SoundPlayer] = None
     _sound_last_played: float = 0.0
-    #: When the loaded chat was first seen working, so its first pulse waits too.
+    #: When the loaded chat was first seen working, and which it was, so its first pulse waits
+    #: too, including after moving to another chat that's working.
     _sound_working_since: Optional[float] = None
+    _sound_working_key: Optional[str] = None
+    _sound_stops_asked: Optional[set] = None
 
     def _sound_player(self) -> SoundPlayer:
         if self._sound_player_made is None:
@@ -60,15 +63,19 @@ class SoundHost:
         except Exception:  # noqa: BLE001 - a sound never breaks a turn
             return None
 
-    def _sound(self, event_id: str, key: Optional[str] = None, own: bool = True) -> None:
+    def _sound(self, event_id: str, key: Optional[str] = None, own: bool = True,
+               on_its_own: bool = False) -> None:
         """An event happened in the chat with this presentation key. No key means it isn't about
-        one chat. ``own`` is whether The Chat Place runs that chat, as opposed to only watching."""
+        one chat. ``own`` is whether The Chat Place runs that chat, as opposed to only watching.
+        ``on_its_own`` is for what usually answers you but this time didn't, such as a queued
+        message going: it holds back during a presentation like anything else that just happens."""
         try:
-            self._sound_unchecked(event_id, key, own)
+            self._sound_unchecked(event_id, key, own, on_its_own)
         except Exception:  # noqa: BLE001 - a sound never breaks a turn
             pass
 
-    def _sound_unchecked(self, event_id: str, key: Optional[str], own: bool) -> None:
+    def _sound_unchecked(self, event_id: str, key: Optional[str], own: bool,
+                         on_its_own: bool = False) -> None:
         settings = self.speech
         if not settings.sounds_on or settings.sounds_muted:
             return
@@ -80,7 +87,7 @@ class SoundHost:
             elif (settings.sound_others == OTHERS_NONE
                   or (settings.sound_others == OTHERS_OWN and not own)):
                 return
-        if not event.answers_you and quiet_now():
+        if (on_its_own or not event.answers_you) and quiet_now():
             return
         chosen = sound_events.resolve(event_id, settings.sound_choices, settings.sound_style)
         if chosen is None:
@@ -98,13 +105,19 @@ class SoundHost:
 
     def _sound_tick(self, now: Optional[float] = None) -> None:
         """Called by the chat's timer. "Still working" after a silence, loaded chat only."""
-        now = time.monotonic() if now is None else now
+        try:
+            self._sound_tick_unchecked(time.monotonic() if now is None else now)
+        except Exception:  # noqa: BLE001 - the same timer refreshes the chat
+            pass
+
+    def _sound_tick_unchecked(self, now: float) -> None:
         settings = self.speech
         if (not settings.sounds_on or settings.sounds_muted or not self._sound_loaded_working()):
             self._sound_working_since = None
             return
-        if self._sound_working_since is None:
-            self._sound_working_since = now
+        key = self._open.key
+        if self._sound_working_since is None or self._sound_working_key != key:
+            self._sound_working_since, self._sound_working_key = now, key
         if now - max(self._sound_working_since, self._sound_last_played) >= PULSE_SECONDS:
             self._sound(sound_events.PULSE)
             # Let through or held back, the next waits its full time again.
@@ -139,10 +152,22 @@ class SoundHost:
         for however many: they've come together."""
         before = previous if (previous is not None and previous.turn_id == state.turn_id) else None
         key = f"{provider}:{state.native_id}"
-        if (getattr(state, "edits_started", 0) > getattr(before, "edits_started", 0)):
+        if (getattr(state, "edits_made", 0) > getattr(before, "edits_made", 0)):
             self._sound(sound_events.FILE_CHANGED, key)
         elif getattr(state, "tools_started", 0) > getattr(before, "tools_started", 0):
             self._sound(sound_events.TOOL, key)
+
+    def _sound_note_stop(self, key: str) -> None:
+        """You pressed Stop, so the turn's ending as interrupted is what you did."""
+        if self._sound_stops_asked is None:
+            self._sound_stops_asked = set()
+        self._sound_stops_asked.add(key)
+
+    def _sound_stop_was_asked(self, key: str) -> bool:
+        asked = self._sound_stops_asked is not None and key in self._sound_stops_asked
+        if asked:
+            self._sound_stops_asked.discard(key)
+        return asked
 
     def _sound_close(self) -> None:
         player, self._sound_player_made = self._sound_player_made, None

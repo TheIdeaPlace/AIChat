@@ -181,7 +181,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         def __init__(self, on_click, tooltip):
             self.on_click = on_click
 
-        def show(self, title, message, key):
+        def show(self, title, message, key, silent=False):
             notified.append((title, message, key))
             return True
 

@@ -205,7 +205,7 @@ def test_codex_tools_and_edits_sound_by_count_and_merged_states_sound_once(frame
     assert env["sounds"] == [se.TOOL]
     frame._on_codex_update(codex(tools_started=3))
     assert env["sounds"] == [se.TOOL]
-    frame._on_codex_update(codex(tools_started=4, edits_started=1))
+    frame._on_codex_update(codex(tools_started=4, edits_made=1))
     assert env["sounds"] == [se.TOOL, se.FILE_CHANGED]
 
 
@@ -217,11 +217,85 @@ def test_a_new_turn_counts_from_nothing(frame, env):
 
 
 @pytest.mark.parametrize("outcome,sound", [
-    ("completed", se.FINISHED_ELSEWHERE), ("failed", se.FAILED), ("interrupted", se.STOPPED)])
+    ("completed", se.FINISHED_ELSEWHERE), ("failed", se.FAILED), ("interrupted", se.TROUBLE)])
 def test_codex_turn_endings(frame, env, outcome, sound):
     frame._on_codex_update(codex("idle", outcome))
     frame._on_codex_update(codex("idle", outcome))  # the same end again is no news
     assert env["sounds"] == [sound]
+
+
+def test_an_interruption_you_asked_for_is_stopped_once(frame, env):
+    frame._sound_note_stop("codex:cdx-1")
+    frame._on_codex_update(codex("idle", "interrupted"))
+    assert env["sounds"] == [se.STOPPED]
+    frame._on_codex_update(CodexChatState("cdx-1", "idle", "turn2", "interrupted"))
+    assert env["sounds"] == [se.STOPPED, se.TROUBLE]
+
+
+def test_a_codex_send_failing_for_an_agent_conversation_sounds(frame, env, monkeypatch):
+    record = frame.store.get("cdx-1", provider="codex")
+    monkeypatch.setattr(frame, "_codex_work", lambda action, done: done(None, True))
+    frame._send_codex_owned(record, "hi", announce_send=False, restore=False)
+    assert env["sounds"] == [se.NOT_SENT]
+
+
+def test_what_goes_on_its_own_holds_back_in_a_presentation(frame, env, monkeypatch):
+    monkeypatch.setattr(sound_host, "quiet_now", lambda: True)
+    frame._sound(se.SENT, "own:own-1", on_its_own=True)
+    assert env["sounds"] == []
+    frame._sound(se.SENT, "own:own-1")
+    assert env["sounds"] == [se.SENT]
+
+
+def test_an_answer_with_background_work_left_has_its_sound(frame, env):
+    running(frame)
+    frame._answered_with_background("own-1", "Loaded", TurnEvent("waiting", text="Answer"), True)
+    assert env["sounds"] == [se.FINISHED]
+
+
+def test_a_failed_answer_with_background_work_left_is_failed(frame, env):
+    running(frame)
+    frame._answered_with_background("own-1", "Loaded",
+                                    TurnEvent("waiting", text="Bad", is_error=True), True)
+    assert env["sounds"] == [se.FAILED]
+
+
+def test_refusals_with_background_work_left_need_you(frame, env):
+    running(frame)
+    frame._answered_with_background("own-1", "Loaded",
+                                    TurnEvent("waiting", text="Ok", denials=["Bash"]), True)
+    assert env["sounds"] == [se.NEEDS_YOU]
+
+
+def test_copilot_counts_an_edit_only_once_it_has_worked():
+    from thechatplace.providers.copilot_runtime import _count_for_sounds
+    chat = SimpleNamespace(tools_started=0, edits_made=0, edit_calls=set())
+    _count_for_sounds(chat, "tool_call", {"toolCallId": "r", "kind": "read"})
+    assert (chat.tools_started, chat.edits_made) == (1, 0)
+    _count_for_sounds(chat, "tool_call_update", {"toolCallId": "r", "status": "completed"})
+    _count_for_sounds(chat, "tool_call", {"toolCallId": "e", "kind": "edit", "status": "pending"})
+    assert (chat.tools_started, chat.edits_made) == (1, 0)
+    _count_for_sounds(chat, "tool_call_update", {"toolCallId": "e", "status": "completed"})
+    _count_for_sounds(chat, "tool_call_update", {"toolCallId": "e", "status": "completed"})
+    assert chat.edits_made == 1
+    _count_for_sounds(chat, "tool_call", {"toolCallId": "d", "kind": "delete"})
+    _count_for_sounds(chat, "tool_call_update", {"toolCallId": "d", "status": "failed"})
+    _count_for_sounds(chat, "tool_call", {"toolCallId": "m", "kind": "move", "status": "completed"})
+    assert chat.edits_made == 2
+
+
+def test_context_warning_sounds_once(frame, env, monkeypatch):
+    frame._open.is_own = True
+    monkeypatch.setattr(frame, "_context", lambda info: (900_000, 1_000_000))
+    frame._check_context()
+    frame._check_context()
+    assert env["sounds"] == [se.LIMIT]
+
+
+def test_an_own_chat_seen_by_the_list_counts_as_own(frame, env):
+    frame.speech.sound_others = se.OTHERS_OWN
+    frame._sound_turn_end("codex:cdx-1", own=True)
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE]
 
 
 def test_codex_compaction_is_not_a_reply(frame, env):
@@ -266,6 +340,23 @@ def test_no_pulse_while_only_background_work_is_left(frame, env):
     frame._sound_tick(1000.0)
     frame._sound_tick(1100.0)
     assert env["sounds"] == []
+
+
+def test_moving_to_another_working_chat_starts_the_wait_again(frame, env):
+    running(frame)
+    running(frame, "own-2")
+    frame._sound_tick(1000.0)
+    frame._sound_tick(1019.0)
+    frame._open = next(s for s in frame._snapshot.sessions if s.key == "own:own-2")
+    frame._sound_tick(1020.0)
+    assert env["sounds"] == []
+    frame._sound_tick(1040.0)
+    assert env["sounds"] == [se.PULSE]
+
+
+def test_a_problem_in_the_tick_leaves_the_timer_alone(frame, monkeypatch):
+    monkeypatch.setattr(type(frame), "_sound_loaded_working", lambda self: 1 / 0)
+    frame._sound_tick(1000.0)  # no exception
 
 
 def test_no_pulse_for_a_chat_that_is_not_loaded(frame, env):
@@ -367,7 +458,7 @@ def test_preview_of_none_just_stops(dialog, env):
 def test_get_settings_carries_everything_else_through(frame, dialog):
     frame.speech.session_order = "title"
     dialog._original = frame.speech
-    dialog.tools.SetStringSelection("Every chat")
+    dialog.tools.SetStringSelection("Every chat run here")
     dialog.others.SetStringSelection("None")
     dialog.mute.SetValue(True)
     got = dialog.get_settings()
@@ -466,7 +557,10 @@ def test_choose_file_uses_it_and_lists_it(frame, dialog, env, tmp_path, monkeypa
         def GetPath(self):
             return good
     monkeypatch.setattr(wx, "FileDialog", Picker)
+    focused = []
+    monkeypatch.setattr(dialog.sound, "SetFocus", lambda: focused.append(True))
     dialog._choose_file()
+    assert focused, "focus goes where it's read that it worked"
     assert dialog.get_settings().sound_choices == {se.TOOL: se.custom_ref("mine.wav")}
     assert dialog.sound.GetStringSelection() == "Your file, mine.wav"
     assert dialog.events.GetString(0) == "Tool ran: Your file, mine.wav"

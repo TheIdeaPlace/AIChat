@@ -69,7 +69,7 @@ class CodexChatState:
     plan_unavailable: bool = False
     #: This turn's tools started and file changes made, for sounds (#250).
     tools_started: int = 0
-    edits_started: int = 0
+    edits_made: int = 0
 
 
 @dataclass(frozen=True)
@@ -1009,7 +1009,7 @@ class CodexChatRuntime:
                               state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received,
                               permission_notices, getattr(state, 'changed_paths', ()), steering,
                               getattr(state, 'compaction', False), proof.unavailable_mode == 'plan',
-                              getattr(state, 'tools_started', 0), getattr(state, 'edits_started', 0))
+                              getattr(state, 'tools_started', 0), getattr(state, 'edits_made', 0))
 
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():

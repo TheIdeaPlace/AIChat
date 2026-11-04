@@ -212,7 +212,7 @@ class CodexTurnBuffer:
         self.review_notices = {}
         #: Counted for sounds (#250), since a state can reach the window merged with the next.
         self.tools_started = 0
-        self.edits_started = 0
+        self.edits_made = 0
 
     @property
     def replies(self):
@@ -284,7 +284,7 @@ class CodexTurnBuffer:
                 self._file_characters += len(text) - len(self._file_changes.get(item_id, ""))
                 self._file_changes[item_id] = text
                 if event.paths and not self._file_paths.get(item_id):
-                    self.edits_started += 1
+                    self.edits_made += 1
                 self._file_paths[item_id] = tuple(event.paths)
                 self.activity = "Reviewing file changes."
                 return True

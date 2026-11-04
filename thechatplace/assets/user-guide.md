@@ -697,7 +697,7 @@ Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialo
 - **Mute all sounds** does the same as **Mute All Sounds**, below.
 - **Volume** starts at 80%. It's separate from your system and screen reader volume.
 - **Style** is Glass, Soft bell or Wood. Each plays the same melodies in a different tone, so a sound means the same thing in any of them.
-- **Tool sounds for** is the loaded chat, or every chat. Taps from several chats at once are hard to make sense of, so it starts with the loaded chat.
+- **Tool sounds for** is the loaded chat, or every chat run here. Taps from several chats at once are hard to make sense of, so it starts with the loaded chat. A desktop app, Cowork or terminal session taps only while it's loaded, as that's when its transcript is being read.
 - **Other chats** chooses which chats that aren't loaded make their other sounds: every listed chat, only those run in The Chat Place, or none.
 
 ### What you'll hear

@@ -493,13 +493,14 @@ class CodexChats(CodexExtras):
             else:
                 del self._codex_send_pending[key]
             if error and not restore:
-                pass
+                self._sound(sound_events.NOT_SENT, key, on_its_own=True)
             elif error:
                 self._sound(sound_events.NOT_SENT, key)
                 self._restore_codex_text(key, (text,))
                 self._feedback(queued or f'{provider_name(record.provider)} could not confirm this send. Check the chat history before sending again.')
             elif not announce_send:
-                self._sound(sound_events.QUEUED if queued else sound_events.SENT, key)
+                self._sound(sound_events.QUEUED if queued else sound_events.SENT, key,
+                            on_its_own=True)
             else:
                 self._sound(sound_events.QUEUED if queued else sound_events.SENT, key)
                 formatter = announce.queued_text if queued else announce.sent_text
@@ -587,6 +588,7 @@ class CodexChats(CodexExtras):
         record = self.store.get(info.cli_session_id, provider=info.provider)
         if record is None:
             return
+        self._sound_note_stop(info.key)
         name = provider_name(record.provider)
         state = self._codex_states.get(info.key)
         recover_idle = (record.provider == 'codex' and state is not None
@@ -848,9 +850,13 @@ class CodexChats(CodexExtras):
                 self._sound(sound_events.COMPACTED, key)
             elif state.outcome == 'completed':
                 self._sound_turn_end(key)
+            elif state.outcome == 'failed':
+                self._sound(sound_events.FAILED, key)
+            elif self._sound_stop_was_asked(key):
+                self._sound(sound_events.STOPPED, key)
             else:
-                self._sound(sound_events.FAILED if state.outcome == 'failed'
-                            else sound_events.STOPPED, key)
+                # The provider or its runtime ended it: not something you did.
+                self._sound(sound_events.TROUBLE, key)
             text = (f'{record.title}: context compacted.' if compacted else
                     f'{record.title}: {name} answered.' if state.outcome == 'completed'
                     else f'{record.title}: {name} turn {state.outcome}.')
@@ -868,7 +874,7 @@ class CodexChats(CodexExtras):
             self._check_codex_usage(record.to_info())
         if unsent:
             if state.outcome != 'interrupted':
-                self._sound(sound_events.NOT_SENT, key)
+                self._sound(sound_events.NOT_SENT, key, on_its_own=True)
             # Queue this after interrupting error/reply speech, so the news
             # about recovered text is not immediately cut off by that speech.
             # Only what came back here: an agent conversation's own message

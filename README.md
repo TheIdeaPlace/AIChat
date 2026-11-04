@@ -1126,7 +1126,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   service trouble, compaction, a usage warning and a message from another session. Each event can
   have another sound, your own 16-bit WAV (up to 30 seconds and 5 MB, copied into the data folder's
   `sounds` folder so backups carry it), or none. The dialog also chooses the volume (80% to start),
-  the style (Glass, Soft bell or Wood), whether tool sounds come from the loaded chat or every chat,
+  the style (Glass, Soft bell or Wood), whether tool sounds come from the loaded chat or every chat run here,
   and which other chats make sounds. **Mute All Sounds** (Ctrl+Shift+X, or View) silences everything
   at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
   happen on their own hold back during a presentation or a full-screen program on Windows, but not

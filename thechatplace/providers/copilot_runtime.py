@@ -261,6 +261,21 @@ def _answered(chat, call_id: str) -> None:
 MAX_PREVIEWS = 64
 
 
+def _count_for_sounds(chat, kind: str, update: dict) -> None:
+    """Counts a tool as it starts, and an edit once it has worked, as Claude and Codex report
+    theirs: one you decline, or that fails, changed nothing (#250). Only the first report of a
+    call says its kind, so an edit's id is kept for the update that says it's done."""
+    call_id = update.get("toolCallId")
+    if kind == "tool_call":
+        if update.get("kind") not in ("edit", "delete", "move"):
+            chat.tools_started += 1
+        elif isinstance(call_id, str) and len(chat.edit_calls) < 500:
+            chat.edit_calls.add(call_id)
+    if update.get("status") == "completed" and call_id in chat.edit_calls:
+        chat.edit_calls.discard(call_id)
+        chat.edits_made += 1
+
+
 def _remember_preview(chat, update: dict) -> None:
     """Keep what a tool_call update says a command is, by its toolCallId.
     Once anything says it runs in the background, it stays so. A finished or
@@ -527,10 +542,10 @@ class CopilotChatState:
     plan_received: bool = False
     permission_notices: tuple = field(default=(), repr=False)
     changed_paths: tuple = field(default=(), repr=False)
-    #: This turn's tool calls, for sounds (#250): ACP's edit, delete and move
-    #: kinds count as edits, and the rest as tools.
+    #: This turn's tool calls started, for sounds (#250), and its edits, ACP's
+    #: edit, delete and move kinds, counted once they've worked.
     tools_started: int = 0
-    edits_started: int = 0
+    edits_made: int = 0
     #: Context used and its size, from Copilot's usage_update (0 if unknown).
     context_used: int = 0
     context_size: int = 0
@@ -1068,7 +1083,8 @@ class _Chat:
         self.outcome = ""
         self.activity = ""
         self.tools_started = 0
-        self.edits_started = 0
+        self.edits_made = 0
+        self.edit_calls = set()  # toolCallIds of edits not known to have worked
         self.started_at = 0.0
         self.loading = False
         self.stopping = False
@@ -2004,7 +2020,8 @@ class CopilotChatRuntime:
         chat.started_at = time.monotonic()
         chat.reply_open = False
         chat.replies = []  # this turn's replies, as Codex's state has
-        chat.tools_started = chat.edits_started = 0
+        chat.tools_started = chat.edits_made = 0
+        chat.edit_calls = set()
         chat.changed_paths = ()
         chat.unsent = ()
         # Billing is checked on what this turn adds to the log, never on an
@@ -2544,11 +2561,7 @@ class CopilotChatRuntime:
                 chat.last_chunk_notice = now
             elif kind in ("tool_call", "tool_call_update"):
                 chat.reply_open = False  # text after a tool is a new reply
-                if kind == "tool_call":  # updates are about one already counted
-                    if update.get("kind") in ("edit", "delete", "move"):
-                        chat.edits_started += 1
-                    else:
-                        chat.tools_started += 1
+                _count_for_sounds(chat, kind, update)
                 shared = self._shared(chat)
                 _remember_preview(chat, update)
                 folder_changed = shared != self._shared(chat)
@@ -2607,7 +2620,7 @@ class CopilotChatRuntime:
             running=any(folder.live() for folder in self._related(chat)),
             background=any(folder.live_background() for folder in self._related(chat)),
             changed_paths=chat.changed_paths, model=chat.model, models=chat.models,
-            tools_started=chat.tools_started, edits_started=chat.edits_started,
+            tools_started=chat.tools_started, edits_made=chat.edits_made,
             token_usage=(ContextReport(min(1.0, chat.context[0] / chat.context[1]), chat.context[1])
                          if chat.context[1] > 0 and chat.context[0] >= 0 else None))
 

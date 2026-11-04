@@ -189,7 +189,9 @@ class SoundsDialog(wx.Dialog):
             return
         self._set_ref(sound_events.custom_ref(name))
         self._show_event()
-        self.choose.SetFocus()
+        # Here rather than back on Choose File, so what's read says it worked and which file:
+        # cancelling the picker sounds just like coming back to the button.
+        self.sound.SetFocus()
 
     def get_settings(self) -> SpeechSettings:
         return dataclasses.replace(

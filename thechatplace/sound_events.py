@@ -63,7 +63,8 @@ EVENTS: Tuple[SoundEvent, ...] = (
 BY_ID: Dict[str, SoundEvent] = {event.id: event for event in EVENTS}
 
 #: Tool sounds follow "Tool sounds for"; everything else from a chat that isn't
-#: loaded follows "Other chats".
+#: loaded follows "Other chats". A chat that's only watched has no tool sounds unless it's
+#: loaded: nothing reads its transcript until then.
 TOOL_EVENTS = frozenset({TOOL, FILE_CHANGED})
 
 #: Every built-in sound, in the order the Sound choice lists them, with its name there.
@@ -81,7 +82,7 @@ VOLUMES: List[int] = list(range(10, 101, 10))
 
 TOOLS_LOADED = "loaded"
 TOOLS_ALL = "all"
-TOOLS_LABELS: Dict[str, str] = {TOOLS_LOADED: "The loaded chat", TOOLS_ALL: "Every chat"}
+TOOLS_LABELS: Dict[str, str] = {TOOLS_LOADED: "The loaded chat", TOOLS_ALL: "Every chat run here"}
 
 OTHERS_ALL = "all"
 OTHERS_OWN = "own"

@@ -1255,9 +1255,9 @@ class MainFrame(SoundHost, CodexChats, RelayChats, RewindChats, AgentChats, Sess
                 if self._runtime_announces(info) or info.state == STATUS_UNAVAILABLE:
                     continue  # its own turn has its sounds
                 if info.state == NEEDS_YOU:
-                    self._sound(sound_events.NEEDS_YOU, info.key, own=False)
+                    self._sound(sound_events.NEEDS_YOU, info.key, own=info.is_own)
                 else:
-                    self._sound_turn_end(info.key, own=False)
+                    self._sound_turn_end(info.key, own=info.is_own)
         if not first and self.speech.announce_all_sessions:
             for info in ended:
                 if self._runtime_announces(info):
@@ -4328,6 +4328,7 @@ class MainFrame(SoundHost, CodexChats, RelayChats, RewindChats, AgentChats, Sess
             key = (f'{info.provider}-context', info.key, state.context_epoch, report.context_window)
             if key not in self._warned:
                 self._warned.add(key)
+                self._sound(sound_events.LIMIT)
                 self._say(f'{info.title}: {provider_name(info.provider)}\'s latest reported model request uses '
                           f'{round(100 * report.share)}% of its context window.', interrupt=False)
             return
@@ -4339,6 +4340,7 @@ class MainFrame(SoundHost, CodexChats, RelayChats, RewindChats, AgentChats, Sess
         if key in self._warned:
             return
         self._warned.add(key)
+        self._sound(sound_events.LIMIT)
         self._say(f"{info.title}: {usage.context_text(tokens, window)} Claude Code will "
                   "compact the conversation when it's full; /compact does it now.")
 
@@ -5063,7 +5065,8 @@ class MainFrame(SoundHost, CodexChats, RelayChats, RewindChats, AgentChats, Sess
                                           self.speech.announce_own)
                 if images:
                     said += f" With {len(images)} image{'s' if len(images) != 1 else ''}."
-                self._sound(sound_events.SENT, self._own_key(session_id))
+                self._sound(sound_events.SENT, self._own_key(session_id),
+                            on_its_own=not announce_send)
                 if announce_send:
                     self._feedback(said)
                 return True
@@ -5079,7 +5082,8 @@ class MainFrame(SoundHost, CodexChats, RelayChats, RewindChats, AgentChats, Sess
                 self._clear_attachments(session_id)
             self._update_send_state()
             self._rebuild_chat_list()  # the queued message joins the list
-            self._sound(sound_events.QUEUED, self._own_key(session_id))
+            self._sound(sound_events.QUEUED, self._own_key(session_id),
+                        on_its_own=not announce_send)
             # Only the newly added words are read back, not the whole queue.
             if announce_send:
                 self._feedback(announce.queued_text(info.title, message, self.speech.announce,
@@ -5207,7 +5211,8 @@ class MainFrame(SoundHost, CodexChats, RelayChats, RewindChats, AgentChats, Sess
                                   queued=queued)
         if images:
             said += f" With {len(images)} image{'s' if len(images) != 1 else ''}."
-        self._sound(sound_events.SENT, self._own_key(session_id))
+        self._sound(sound_events.SENT, self._own_key(session_id),
+                    on_its_own=queued or not announce_send)
         if announce_send:
             self._feedback(said)
         self._store_write(self.store.update, session_id, state=IDLE, detail="",
@@ -5509,7 +5514,7 @@ class MainFrame(SoundHost, CodexChats, RelayChats, RewindChats, AgentChats, Sess
                     # Feedback queues behind the reply instead of cutting it
                     # off; Ctrl+Shift+R must still repeat it if a keypress
                     # silenced it.
-                    self._sound(sound_events.NOT_SENT, self._own_key(session_id))
+                    self._sound(sound_events.NOT_SENT, self._own_key(session_id), on_its_own=True)
                     refused = (f"Your queued message for {title} wasn't sent: "
                                f"{problem.rstrip('.')}. It's back in the message box.")
                     self._feedback(refused)
@@ -5553,6 +5558,12 @@ class MainFrame(SoundHost, CodexChats, RelayChats, RewindChats, AgentChats, Sess
         self._store_write(self.store.update, session_id, unread=not is_open,
                           last_activity_ms=int(time.time() * 1000))
         key = self._own_key(session_id)
+        if event.is_error:
+            self._sound(sound_events.FAILED, key)
+        elif denials:
+            self._sound(sound_events.NEEDS_YOU, key)
+        else:
+            self._sound_turn_end(key)  # the turn's end, later, has no new answer to sound (#161)
         if quiet:
             pass  # its conversation says it when the turn ends (#248)
         elif event.is_error:
