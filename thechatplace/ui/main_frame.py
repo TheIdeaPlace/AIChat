@@ -722,7 +722,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._item(view, "Properties...\tAlt+Enter", lambda e: self.on_properties())
         self.activity_item = view.AppendCheckItem(wx.ID_ANY, "Show &Tool Activity\tCtrl+T")
         self.Bind(wx.EVT_MENU, self.on_toggle_activity_menu, self.activity_item)
-        self.mute_item = view.AppendCheckItem(wx.ID_ANY, "Mute All S&ounds\tCtrl+Shift+X")
+        # Every letter of "Mute All Sounds" is another item's access key, so its key is the way in.
+        self.mute_item = view.AppendCheckItem(wx.ID_ANY, "Mute All Sounds\tCtrl+Shift+X")
         self.mute_item.Check(self.speech.sounds_muted)
         self.Bind(wx.EVT_MENU, self.on_toggle_mute_sounds, self.mute_item)
         self._item(view, "Sto&p Running Turn\tCtrl+.", self.on_stop)
