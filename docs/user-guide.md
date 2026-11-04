@@ -113,6 +113,313 @@ recorded; whether that sign-in still works is only known once a Copilot chat sen
 7. Press **Escape** to go back to the session list, on the same chat. Press **Enter** on any
    chat in the list to load it and read its messages.
 
+Next, "Getting more out of Claude" goes through what else you can do, when you'd want it, and
+where it is. Codex and Copilot have parts of their own after it.
+
+## Getting more out of Claude
+
+Starting a chat and saying what you want goes a long way, and it's fine to stop there. These
+sections are for when you want to know what else you can do. Each starts from a situation you
+might be in, says what would help and why, and gives the menu path and key.
+
+They're about Claude chats started here. "Getting more out of Codex" and "Getting more out of
+GitHub Copilot CLI" follow. For more detail, see Anthropic's
+[Claude Code documentation](https://code.claude.com/docs) and its
+[best practices](https://code.claude.com/docs/en/best-practices).
+
+### You're not getting what you meant
+
+Claude finds its own way around your folder, so you don't need to say where things are. Tell it
+what it can't find there: what you're after, what you've tried, and what you've already decided.
+Compare "fix the login bug" with "people report login fails after the session times out; write a
+failing test that reproduces it, then fix it".
+
+- **When you can't tell whether it really worked,** say how to check. Claude does better with
+  something it can run that passes or fails, such as a test or a build. Ask it to run the check
+  and report what happened.
+- **When the job is large or you're not sure what you want,** try "ask me questions until you
+  understand this, then write it up in a file". Then start a new chat to build from that file, so
+  the building starts clean.
+- **When words won't do it,** show it: **Ctrl+Shift+F** (File, Attach Files) adds files and pictures
+  to your next message, and **Ctrl+V** in the reply box attaches a picture on the clipboard.
+- **When you keep typing the same message,** save it: **Ctrl+Shift+P** (File, Prompts) lists saved
+  messages, and **Ctrl+Shift+Enter** in the reply box saves what you've typed and sends it.
+- **When you've corrected the same thing twice and it's still wrong,** start again. A new chat
+  (**Ctrl+N**) with a better first message usually beats a third correction, because the old chat
+  still holds the failed attempts. The same goes for a new, unrelated job.
+
+### You want to agree the approach before anything changes
+
+Use **Plan** mode when a change is large, touches things you care about, or could go several ways.
+Claude reads and thinks, changes nothing, and gives you a plan to approve. It's cheaper to correct
+a plan than finished work. For a small, obvious change, skip it.
+
+- For a new chat, choose **Plan** under **Permission mode** in New Session (Ctrl+N). For one you've
+  started, press **Ctrl+Shift+O** (File, Change Permission Mode).
+- When the plan is ready, you hear that the chat needs you. Press **Ctrl+Shift+A** to read it, then
+  **Approve**, or **Keep Planning** with what to change.
+
+### You keep telling Claude the same things
+
+Each new chat starts knowing only what's written down, so anything you find yourself repeating
+belongs in one of two places. Both are ordinary files you can read and change.
+
+- **Instructions (CLAUDE.md files)** are yours to write, for how you always want things done.
+  `.claude\CLAUDE.md` in your user folder applies to every chat, and `CLAUDE.md` in a project's
+  folder applies to chats in that folder. Put in what Claude can't work out for itself, such as
+  how you like replies written or how this project is released, and keep them short, as long ones
+  are followed less reliably. Send `/init` in a project's chat and Claude writes a first one for
+  that folder. When Claude gets something wrong, you can also say "add that to CLAUDE.md".
+- **Memories** are notes Claude keeps for itself as it learns. Say "remember that I prefer…" to add
+  one.
+
+**Ctrl+Shift+K** (View, What AI Knows About You) lists all of this, along with your skills,
+subagents, commands and settings. Enter reads one, and Edit in Your Editor opens it to change it.
+If Claude has picked up something wrong, that's where to fix it.
+
+For something only one chat needs, such as "never change the tests" for this job, use
+**Instructions for this chat** in Chat Options (Alt+H in New Session, or File, Chat Options).
+
+### You keep explaining the same procedure
+
+Turn it into a **skill**: instructions Claude follows when you ask for that thing, or send its name
+with a slash, such as `/update-projects`. Use one when a job has several steps you'd otherwise
+spell out each time, such as publishing a release or writing up the week's work. CLAUDE.md is for
+how you always work; a skill is for a particular job, and costs little until it's needed.
+
+- **To see what you have,** press **Ctrl+/** (File, Insert Command or Skill) in the reply box. It
+  lists your skills and commands, then Claude Code's own, each with its description. Type to
+  filter, and Enter puts your choice in the reply box.
+- **To make one,** finish the job once, then say "turn what we just did into a skill called
+  update-projects". It's saved in `.claude\skills` in your user folder for every chat, or in a
+  project's folder for that project.
+- **Worth trying from that list:** `/code-review` has a separate helper review your changes,
+  `/verify` has Claude run your app to check its work, and `/goal` keeps Claude going until a
+  condition you set is met. What's there depends on your version of Claude Code.
+- **To use what others have written,** a plugin packages skills and agents together. Install one
+  with `claude plugin` in a terminal, and what it adds shows up here. A plugin can run commands on
+  your computer, so check where it comes from first.
+
+Learn more in Anthropic's guide to [skills](https://code.claude.com/docs/en/skills).
+
+### You want a job done apart from your chat
+
+A **subagent** is a helper with its own instructions, which works separately and reports back only
+a summary. Claude uses them by itself, and you can ask, such as "use a subagent to find everywhere
+this setting is read".
+
+- **When a job would fill your chat** with searching or long output, a subagent keeps that out and
+  brings back only what you need.
+- **When you want an independent look,** a reviewer that didn't write the code hasn't seen the
+  reasoning behind it, so it's more likely to question it.
+- **To see what they did,** **View, Subagents** (Alt+V, G) lists them, and Enter opens one's own
+  conversation.
+- **To make your own,** ask Claude, such as "make me a code-reviewer agent that reports problems
+  and never edits files". It's saved in `.claude\agents`, in your user folder or a project's.
+- **To run a whole chat as one,** choose it under **Agent** in Chat Options (Alt+H).
+
+Learn more in Anthropic's guide to [subagents](https://code.claude.com/docs/en/sub-agents).
+
+### You want Claude to use another service
+
+**Connected tools** (MCP servers and claude.ai connectors) let Claude act on services outside your
+computer, such as WordPress, Notion, GitHub or a calendar. Use one when you're copying things
+between Claude and a website, so you can say "post this as a draft" instead.
+
+- **View, Connected Tools (MCP)** (Alt+V, then Up) lists what the chat has, and whether each is
+  working. Sign In (Alt+S) signs one in, and Details (Alt+D) names what it can do.
+- You add new ones outside The Chat Place, on [claude.ai's connector settings](https://claude.ai/customize/connectors)
+  or with `claude mcp` in a terminal. See "Connected tools".
+- If a command-line tool does the job, such as `gh` for GitHub, Claude can use that without
+  connecting anything. Just ask.
+
+Claude in Chrome, which lets Claude use your browser, and computer use aren't available in chats
+The Chat Place runs yet. Both work in the Claude desktop app.
+
+### You're asked too often, or you want more control
+
+- **Asked too often:** **Auto**, the default for a new chat, runs what's judged safe and asks about
+  the rest. **Accept edits** changes files without asking, for when you'll review the changes
+  afterwards. Press **Ctrl+Shift+O** to change a chat's mode, even during a turn. When Claude asks
+  the same thing again and again, **Allow for This Chat** keeps a rule for that chat, and
+  **Ctrl+Shift+H** (File, Chat Permissions) lists those rules.
+- **Want to watch each step:** **Manual** asks before anything that needs approval. Use it in a
+  folder you don't know well, or for work you can't easily undo.
+- **Something must never be skipped:** put it in Claude Code's settings, not in instructions.
+  Instructions are requests that Claude reads and usually follows. A "never allowed" rule, or a
+  **hook** (a command Claude Code runs itself at a set moment, every time), is enforced whatever
+  Claude decides. If you keep adding emphasis to an instruction and it's still missed, this is what
+  you need. Ask Claude to add one, and see
+  [Anthropic's guide to hooks](https://code.claude.com/docs/en/hooks-guide).
+- **Claude stops to ask about small decisions:** an **output style** changes how it writes and works.
+  **Proactive** starts work and makes reasonable assumptions instead of asking. Choose one in Chat
+  Options (Alt+H), or set it for every chat in your Claude Code settings.
+
+For how all of this fits together, see "Permissions and questions".
+
+### Claude's heading the wrong way while it works
+
+You don't have to wait for a turn to end, and which key to use depends on how far off it is.
+
+- **Slightly off, or you've thought of something:** steer. **Ctrl+Alt+Enter** sends your message into
+  the running turn, such as "not that file" or "also update the README", and Claude carries on
+  with it in mind.
+- **It can wait:** queue. **Ctrl+Enter** during a turn sends your message when the turn finishes. If
+  it can't wait after all, Ctrl+Enter on the queued message sends it now.
+- **Badly off:** stop. **Ctrl+Period** ends the turn and anything it started, and you can then say
+  what you want instead. To end just one thing, such as a build, and keep the turn, use File,
+  Stop Background Task.
+- **Not sure what it's doing:** **Ctrl+Shift+T** (View, Turn Status) says, **Ctrl+T** (View, Show Tool
+  Activity) adds each step to the messages, and **Ctrl+Shift+J** (View, Tasks) lists its steps.
+
+### You want to go back, or try something else
+
+Going back in the conversation, and branching, each make a new chat and keep the original as it
+was, so neither loses anything. The difference is whether you want to take something back or to
+try something as well.
+
+**Use Rewind to Here** (**Ctrl+Shift+Z**, on one of your own messages) when you'd ask differently
+if you could do it again. It goes back to just before that message, with your message in the reply
+box to change and send. It asks what to take back:
+
+- **Conversation only:** the conversation went astray but the files are fine, or nothing changed.
+  Long wrong turns also leave clutter in the context, and this clears them out. It's the choice
+  to begin with, as it changes no files.
+- **Conversation and files:** Claude went the wrong way and changed files you don't want. For example,
+  you asked it to rework a dialog, and an hour later you wish you'd asked for something smaller.
+- **Files only:** the discussion was useful and you want to keep what Claude now understands, but not
+  what it did. No new chat is made, so you can tell it what to do differently.
+
+**Use Branch from Here** (File menu, or a message's menu) when you want to try something else from
+that point and keep what you have. It works on any message, Claude's replies too, and changes no
+files. For example:
+
+- Claude has laid out two options. Carry on with one, then branch from that reply to explore the
+  other.
+- You've had a long discussion and want to start a side job that needs all of it, without cluttering
+  the chat you're working in.
+- You want to ask "what if we did it this way?" and may well throw the answer away.
+
+A branch copies the conversation, not the files. Both chats work in the same folder, so if both
+are changing files, they can overwrite each other's work. Have only one change files at a time, or
+ask the branch to work in its own git worktree. After branching, neither chat learns what the other
+does unless you tell it.
+
+**Use Ask Aside** (**Ctrl+Shift+Y**) instead when you only have a question, such as "which file did
+you change for the login bug?". Nothing is added to the chat, and it works during a turn.
+
+**Use Continue Here** (**Ctrl+Shift+N**) when the chat you want started in the desktop app or a
+terminal. Those are read-only here, so this makes a copy of your own to carry on with.
+
+Going back in the files can't be undone, and it only covers files Claude changed with its edit
+tools, so a build or script's changes stay. See "Going back: Rewind to Here and Branch from Here"
+first. For work you care about, also ask Claude to commit to git as it goes, as that's a history
+you can always go back to.
+
+### You need to find something
+
+- **What changed:** **Ctrl+Shift+D** (View, Changed Files) lists every changed file, to read its
+  changes before you accept the work.
+- **Something in this chat:** **Ctrl+Shift+I** (View, Lists) gathers its code blocks, links, files,
+  commands and decisions, and **Ctrl+Shift+W** (View, Read Full Chat as a Web Page) opens the whole
+  chat as one page, to move through by heading.
+- **Which chat it was in:** **Ctrl+Shift+S** (View, Find in All Sessions) searches every chat. You can
+  also ask Claude, such as "find the chat where we fixed the upload test".
+
+### A chat has grown long
+
+A chat's **context** is what Claude has in front of it, and it has a limit. Claude Code makes room
+by itself when it's nearly full, by replacing earlier messages with a summary, and details can be
+lost along the way.
+
+- **To see where you stand:** **Ctrl+Shift+U** (View, Usage and Context) says how full it is, what
+  fills it, and how much of your plan's limits you've used.
+- **To make room on your terms:** send `/compact` between jobs, and say what matters, such as
+  `/compact keep the test results`.
+- **To keep it from filling up:** ask a subagent to do large searches and reports, and start a new
+  chat for a new job.
+
+### You want better answers, or to use less of your plan
+
+**Model** and **Effort** can be set in New Session, or changed with **File, Change Model** and
+**File, Change Effort**. Stronger models and more effort use your plan faster, so match them to the
+job.
+
+- **Opus** suits most hard work, **Sonnet** is quicker for everyday work, and **Haiku** suits small,
+  well-defined jobs. Default uses your Claude Code setting.
+- **Raise the effort** when details are easy to miss, such as a bug in code you didn't write, and
+  lower it for quick jobs.
+
+### You've got more than one thing going
+
+- **Several jobs:** start another chat with **Ctrl+N** and leave the first working. You hear when each
+  finishes or needs you, and **Ctrl+Shift+A** goes to whichever is waiting.
+- **Several chats changing one repository:** in New Session, choose **A new worktree** under **Work in**
+  (Alt+I), so each works on its own copy and branch and they can't overwrite each other.
+- **A second opinion on one reply:** **Ctrl+Shift+E** (File, Send Reply to Another Chat) sends it to
+  another chat, Claude's to Codex, say.
+- **Two agents working together:** **Ctrl+Shift+G** (File, New Agent Conversation) passes each one's
+  replies to the other, such as one building while the other reviews. Builder and reviewer, Second
+  opinion, Debate, and Plan and do are ready-made.
+- **Checking in when you're away:** File, Remote Control lets you follow a chat on claude.ai or your
+  phone.
+
+Work that runs by itself on a schedule isn't something The Chat Place does yet. The Claude desktop
+app has scheduled tasks.
+
+## Getting more out of Codex
+
+Most of "Getting more out of Claude" is true of Codex too: say what it can't find for itself, say
+how to check the work, use one chat for one job, and read Changed Files before you accept it. This
+part is about what's different in a Codex chat started here. See also OpenAI's
+[Codex documentation](https://developers.openai.com/codex).
+
+- **To agree the approach first:** choose `/plan` from **Ctrl+/**, then **Plan**. Codex makes a plan
+  for later turns, and you choose **Default** when you're ready for it to carry out the plan. This
+  is separate from what it's allowed to do.
+- **To keep work safe while it looks around:** start read-only, then press **Ctrl+Shift+O** (File,
+  Change Permission Mode) to allow editing in the folder when you're ready.
+  **Automatic approval review** asks you less. See "Permissions and questions".
+- **When you keep telling it the same things:** instructions go in `AGENTS.md` files, as CLAUDE.md
+  does for Claude. **Ctrl+Shift+K** (View, What AI Knows About You, with Codex chosen in Provider)
+  lists them with its memories, skills and saved prompts. If one chat shouldn't use or add to
+  memories, choose `/memories off` from Ctrl+/.
+- **When you keep explaining a procedure:** **Ctrl+/** lists your enabled skills, and a skill goes
+  with your next message.
+- **When it's heading the wrong way:** **Ctrl+Alt+Enter** steers the running turn. **Ctrl+Period** stops
+  it, and queued messages come back to the reply box. Queued messages can't be changed while they
+  wait, so stop first if you need to.
+- **To go back or try something else:** Rewind to Here and Branch from Here make a read-only copy
+  and keep the original, for the same reasons as in Claude. They work on the conversation only, so
+  your files stay as they are. Use Change Permission Mode in the copy to let it edit.
+- **When a chat has grown long:** choose `/compact` from Ctrl+/ while it's idle. **Ctrl+Shift+U** shows
+  how full the context is and your account's limits.
+- **To use other services:** **View, Connected Tools (MCP)** lists the servers set up for the folder.
+  Add them with `codex mcp` in a terminal, and turning one on or off makes a new copy of the chat.
+- **For a harder or lighter job:** File, **Change Model** and **Change Effort** work while the chat is
+  idle. See [Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md).
+
+## Getting more out of GitHub Copilot CLI
+
+Copilot chats are a preview here, and offer less so far: "What works for each provider" has the
+details. See also GitHub's [Copilot CLI documentation](https://docs.github.com/copilot/how-tos/copilot-cli).
+
+- **To agree the approach first:** use plan mode. Choose it under **Permission mode** in New Session,
+  or press **Ctrl+Shift+O**. Copilot works out a plan and doesn't edit your files.
+- **When you're asked too often:** Copilot asks before every command and file change, even ones that
+  only read. Press **Ctrl+Shift+O** and choose **Auto**, or keep a rule with Allow for This Chat. See
+  "Fewer questions: Auto, your rules and Allow for This Chat" for what these will and won't answer.
+- **When a chat is using up your allowance:** different models cost different numbers of premium
+  requests, so choose a lighter one for small jobs with File, **Change Model**, which shows each
+  one's cost. **Ctrl+Shift+U** shows what's been used.
+- **When it's heading the wrong way:** **Ctrl+Period** stops the turn, and queued messages come back to
+  the reply box. Copilot chats can't steer yet.
+- **When a chat started in Copilot CLI needs to carry on here:** press **Ctrl+Shift+N** (Continue Here).
+  Your first message goes with the conversation so far, as text.
+- **When you want another view:** bring Copilot into an agent conversation with **Ctrl+Shift+G**, or
+  send it another AI's reply with **Ctrl+Shift+E**.
+- **When Copilot seems stuck:** **Restart Copilot** (Alt+S) is in File, Chat Permissions.
+
 ## The window
 
 The window has three parts, in Tab order:
@@ -283,7 +590,7 @@ Claude Code does this by itself when the context is nearly full, or when you sen
 
 In Claude chats:
 
-- Claude Code's own commands, such as `/compact`, `/context` and `/cost`, show their output as
+- Claude Code's own commands, such as `/compact` and `/context`, show their output as
   **Claude Code** messages, even with Show Tool Activity off. A command that fails shows as a
   **Claude Code error** message.
 - After a compaction you hear that it happened, and the messages have a
