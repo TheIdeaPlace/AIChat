@@ -201,8 +201,8 @@ too).
 - **Escape** in the messages or the reply box (or Backspace in the messages) goes back to the
   session list, on the same session. Enter there on the session that's already loaded takes you
   back to its messages where you left them, without reloading.
-- **Command results and compaction:** local Claude Code output, such as `/context`
-  and `/cost`, appears as Claude Code messages with tool activity off. After `/compact`,
+- **Command results and compaction:** local Claude Code output, such as `/context`,
+  appears as Claude Code messages with tool activity off. After `/compact`,
   a Conversation compacted row and a queued announcement confirm it happened. Reported
   before/after token counts appear there and update Usage and Context. The earlier
   conversation summary remains available with tool activity on. Terminal formatting is
