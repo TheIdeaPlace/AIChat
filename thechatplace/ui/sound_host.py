@@ -10,12 +10,14 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+import wx
 from theideaplace_appkit.sounds import SoundPlayer, quiet_now
 
 from .. import sound_events
 from ..agents import AGENTS
 from ..sound_events import OTHERS_ALL, OTHERS_NONE, OTHERS_OWN, TOOL_EVENTS, TOOLS_ALL
 from ..sessions import WORKING
+from .sounds_dialog import SoundsDialog
 
 #: How long a loaded chat's turn can go without a sound before "Still working".
 #: A long command or long thinking sends no events, so without this the silence
@@ -25,6 +27,8 @@ PULSE_SECONDS = 20.0
 
 class SoundHost:
     _sound_player_made: Optional[SoundPlayer] = None
+    #: Quitting: a state already on its way can't start the player again.
+    _sound_closed: bool = False
     _sound_last_played: float = 0.0
     #: When the loaded chat was first seen working, and which it was, so its first pulse waits
     #: too, including after moving to another chat that's working.
@@ -77,7 +81,7 @@ class SoundHost:
     def _sound_unchecked(self, event_id: str, key: Optional[str], own: bool,
                          on_its_own: bool = False) -> None:
         settings = self.speech
-        if not settings.sounds_on or settings.sounds_muted:
+        if self._sound_closed or not settings.sounds_on or settings.sounds_muted:
             return
         event = sound_events.BY_ID[event_id]
         if key is not None and not self._sound_chat_loaded(key):
@@ -170,6 +174,7 @@ class SoundHost:
         return asked
 
     def _sound_close(self) -> None:
+        self._sound_closed = True
         player, self._sound_player_made = self._sound_player_made, None
         if player is not None:
             player.close()
@@ -199,8 +204,6 @@ class SoundHost:
 
     def on_sounds(self, _event=None) -> None:
         """File, Sounds: whether there are sounds, which, and for which chats."""
-        import wx
-        from .sounds_dialog import SoundsDialog
         dialog = SoundsDialog(self, self.speech, self._sound_player)
         try:
             if dialog.ShowModal() != wx.ID_OK:

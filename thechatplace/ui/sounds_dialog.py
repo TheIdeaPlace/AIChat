@@ -165,7 +165,7 @@ class SoundsDialog(wx.Dialog):
         if chosen is None:
             self.stop_preview()
             return
-        self._player().preview(chosen[0], volume=self._volume() / 100)
+        self._player().preview(chosen[0], volume=self._volume() / 100, fallback=chosen[1])
 
     def stop_preview(self) -> None:
         try:

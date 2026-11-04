@@ -298,6 +298,74 @@ def test_an_own_chat_seen_by_the_list_counts_as_own(frame, env):
     assert env["sounds"] == [se.FINISHED_ELSEWHERE]
 
 
+def test_codex_counts_reach_the_state_the_window_reads():
+    """Through the real turn executor: the window only sees what its snapshot copies."""
+    from test_codex_execution import Connection
+    from thechatplace.providers.codex_events import CodexEvent, decode_event
+    from thechatplace.providers.codex_execution import CodexTurnExecutor
+    connection = Connection()
+    proof = connection.proof("one")
+    executor = CodexTurnExecutor(connection)
+    turn = executor.start(proof, "A").turn_id
+
+    def started(kind, item):
+        return decode_event("item/started", {"threadId": "one", "turnId": turn, "item": {
+            "type": kind, "id": item, "command": "ls"}})
+    connection.events.extend([started("commandExecution", "c"), started("webSearch", "w"),
+                              started("mcpToolCall", "m"), started("reasoning", "r")])
+    executor.drain()
+    assert executor.snapshot(proof).tools_started == 3
+    for paths in ((), ("a.py",), ("a.py",)):  # started, made, and made again
+        connection.events.append(CodexEvent("file_changes", "one", turn, "f", "x", paths=paths))
+        executor.drain()
+    assert executor.snapshot(proof).edits_made == 1
+
+
+def test_a_stop_that_came_too_late_does_not_label_a_later_turn(frame, env):
+    frame._sound_note_stop("codex:cdx-1")
+    frame._on_codex_update(codex("idle", "completed"))
+    frame._on_codex_update(CodexChatState("cdx-1", "idle", "turn2", "interrupted"))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE, se.TROUBLE]
+
+
+def test_a_stop_from_before_a_turn_is_forgotten_when_it_starts(frame, env):
+    frame._on_codex_update(CodexChatState("cdx-1", "idle", "turn0", "completed"))
+    frame._sound_note_stop("codex:cdx-1")
+    frame._on_codex_update(CodexChatState("cdx-1", "working", "turn1", "inProgress"))
+    frame._on_codex_update(CodexChatState("cdx-1", "idle", "turn1", "interrupted"))
+    assert env["sounds"][-1] == se.TROUBLE
+
+
+def test_compaction_in_a_loaded_desktop_chat_counts_as_the_loaded_chat(frame, env):
+    frame.speech.sound_others = se.OTHERS_NONE
+    frame._open = SimpleNamespace(key="local_x", cli_session_id="cli-x", is_own=False,
+                                  provider="claude", title="Desktop", state="idle")
+    frame._announce_compaction("cli-x", "Desktop", "Compacted.", "reader", "k")
+    assert env["sounds"] == [se.COMPACTED]
+
+
+def test_a_command_named_like_compact_has_the_finished_sound(frame, env):
+    frame._sound_claude_turn_end("own-1", TurnEvent("finished", text="done"), [], None,
+                                 "/compact-notes", True)
+    frame._sound_claude_turn_end("own-1", TurnEvent("finished", text="Nothing to do."), [], None,
+                                 "/compact", True)
+    assert env["sounds"] == [se.FINISHED]  # the same sound again within a second is the player's
+    env["sounds"].clear()
+    frame._sound_claude_turn_end("own-1", TurnEvent("finished", text="Compacted."), [], None,
+                                 "/compact", True)
+    assert env["sounds"] == []
+    frame._sound_claude_turn_end("own-1", TurnEvent("finished", text="Compacted."), [], None,
+                                 "/compact", True, quiet=True)
+    assert env["sounds"] == [se.COMPACTED]
+
+
+def test_nothing_starts_the_player_again_once_closed(frame, env):
+    frame._sound(se.SENT)
+    frame._sound_close()
+    frame._sound(se.SENT)
+    assert env["sounds"] == [se.SENT] and len(env["players"]) == 1
+
+
 def test_codex_compaction_is_not_a_reply(frame, env):
     frame._on_codex_update(codex("idle", "completed", compaction=True))
     assert env["sounds"] == [se.COMPACTED]
@@ -446,6 +514,12 @@ def test_preview_uses_what_is_showing_even_when_muted(frame, dialog, env):
     dialog._preview()
     path, volume = env["previews"][-1]
     assert volume == 0.3 and Path(path).parts[-2:] == ("wood", "tap.wav")
+
+
+def test_preview_of_your_own_file_can_fall_back_as_real_playback_does(frame, dialog, env):
+    dialog._choices[se.TOOL] = se.custom_ref("gone.wav")
+    dialog._preview()
+    assert Path(env["players"][0].preview_fallback).name == "tap.wav"
 
 
 def test_preview_of_none_just_stops(dialog, env):

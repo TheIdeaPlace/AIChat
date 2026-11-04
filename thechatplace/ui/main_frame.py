@@ -66,6 +66,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           model_matches, model_spoken, new_session_id,
                           normalize_permission_mode)
 from .. import sound_events
+from .sound_host import SoundHost
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
                    forget_last_messages)
 from .. import lists, subagents, tasklist
@@ -242,7 +243,7 @@ REWIND_ACCEL = "" if sys.platform == "darwin" else "\tCtrl+Shift+Z"
 
 
 class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost,
-                LiveTurns, ClaudeExtras, wx.Frame):
+                LiveTurns, ClaudeExtras, SoundHost, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -2164,7 +2165,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return  # A late duplicate from an earlier turn with a known identity.
         state[source] = (state[source] + [key])[-32:]
         state['notified'] = True
-        self._sound(sound_events.COMPACTED, self._own_key(session_id))
+        loaded = self._open is not None and self._open.cli_session_id == session_id
+        self._sound(sound_events.COMPACTED, self._open.key if loaded else self._own_key(session_id),
+                    own=self._open.is_own if loaded else True)
         self._say(f"{title}: {text}", interrupt=False)
 
     def _command_speech_state(self, session_id):
@@ -3812,7 +3815,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if self.session_list.GetSelection() != row:
                 self.session_list.SetSelection(row)
 
-    def _sound_claude_turn_end(self, session_id, event, denials, runner, prompt, command_result):
+    def _sound_claude_turn_end(self, session_id, event, denials, runner, prompt, command_result,
+                               quiet=False):
         """Mirrors what the turn's end says, and ``_notify_turn_end``'s reasons (#250)."""
         key = self._own_key(session_id)
         if runner is not None and runner.cancelled:
@@ -3823,8 +3827,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._sound(sound_events.NEEDS_YOU, key)
         elif (event.data or {}).get("after_background"):
             pass  # no new answer, and the one before it had its sound (#161)
-        elif command_result and isinstance(prompt, str) and prompt.lstrip().startswith("/compact"):
-            pass  # compacted has its own sound, from _announce_compaction
+        elif (command_result and isinstance(prompt, str)
+              and prompt.lstrip().split(None, 1)[:1] == ["/compact"]
+              and event.text.casefold().startswith("compacted")):
+            # Has its own sound, from _announce_compaction, which an agent conversation's quiet
+            # member doesn't reach.
+            if quiet and not self._compaction_notices.get(session_id, {}).get("notified", False):
+                self._sound(sound_events.COMPACTED, key)
         else:
             self._sound_turn_end(key)
 
@@ -3985,6 +3994,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # Answered and only waiting on background work (#161): it goes in.
             if runner.send_follow_up(message):
                 self._update_send_state()
+                self._sound(sound_events.SENT, self._own_key(session_id))
                 self._feedback(said)
                 return
         if session_id in self._runners:
@@ -5466,7 +5476,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                               unread=not is_open,
                               last_activity_ms=int(time.time() * 1000))
             quiet = self._agent_quiet("claude", session_id)
-            self._sound_claude_turn_end(session_id, event, denials, runner, prompt, command_result)
+            self._sound_claude_turn_end(session_id, event, denials, runner, prompt, command_result,
+                                        quiet)
             if not quiet:
                 self._notify_turn_end(session_id, title, event, denials, detail,
                                       stopped=runner is not None and runner.cancelled)
@@ -5593,6 +5604,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         runner = self._runners.get(session_id)
         if queued:
             if runner is not None and runner.send_follow_up(queued):
+                self._sound(sound_events.SENT, key, on_its_own=True)
                 self._feedback(f"Sent your queued message. {title} is working.")
             else:
                 # Claude moved on already: it goes when the turn ends.
@@ -5912,6 +5924,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._clear_attachments(session_id)
         self._steer_row(session_id, text, "waiting for Claude")
         self._update_send_state()
+        self._sound(sound_events.SENT, info.key)
         self._feedback(announce.steered_text(info.title, message, self.speech.announce,
                                              self.speech.announce_own))
         self.reply_text.SetFocus()
@@ -5963,6 +5976,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._steer_row(info.cli_session_id, text, "waiting for Claude")
         self._update_send_state()
         # It was read back when it was queued.
+        self._sound(sound_events.SENT, info.key)
         self._feedback(announce.steered_text(info.title, text, self.speech.announce, False))
 
     def send_queued_now(self):
@@ -5992,6 +6006,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._queued.pop(info.cli_session_id, None)
             self._rebuild_chat_list()
             self._update_send_state()
+            self._sound(sound_events.SENT, info.key)
             self._feedback(f"Sent now to {info.title}.")
             return
         if not runner.send_now(text):

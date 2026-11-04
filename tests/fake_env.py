@@ -63,8 +63,9 @@ class RecordingPlayer:
         self.last = dict(path=path, key=key, priority=priority, volume=volume, fallback=fallback)
         return True
 
-    def preview(self, path, *, volume=1.0):
+    def preview(self, path, *, volume=1.0, fallback=None):
         self.previews.append((path, volume))
+        self.preview_fallback = fallback
 
     def stop(self):
         self.stops.append("stop")

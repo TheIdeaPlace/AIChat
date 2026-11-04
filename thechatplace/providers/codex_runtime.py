@@ -1009,7 +1009,7 @@ class CodexChatRuntime:
                               state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received,
                               permission_notices, getattr(state, 'changed_paths', ()), steering,
                               getattr(state, 'compaction', False), proof.unavailable_mode == 'plan',
-                              getattr(state, 'tools_started', 0), getattr(state, 'edits_made', 0))
+                              state.tools_started, state.edits_made)
 
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():

@@ -793,6 +793,7 @@ class CodexChats(SoundHost, CodexExtras):
             self._check_context()
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
                 and (previous is None or previous.turn_id != state.turn_id)):
+            self._sound_stop_was_asked(key)  # a Stop from before this turn isn't about it
             self._status(f'{record.title}: {name} is working.')
         from ..providers.copilot_runtime import MODE_PROBLEMS
         if (state.problem and (previous is None or previous.problem != state.problem)
@@ -840,6 +841,8 @@ class CodexChats(SoundHost, CodexExtras):
         fresh_terminal = (state.turn_id and state.outcome in ('completed', 'failed', 'interrupted')
                           and finished not in self._codex_finished)
         if fresh_terminal:
+            # Taken whatever the ending, so a Stop that came too late can't label a later turn.
+            stop_asked = self._sound_stop_was_asked(key)
             self._codex_finished.add(finished)
             self._store_write(self.store.update, state.native_id, provider=provider,
                               state=IDLE, unread=not loaded,
@@ -853,7 +856,7 @@ class CodexChats(SoundHost, CodexExtras):
                 self._sound_turn_end(key)
             elif state.outcome == 'failed':
                 self._sound(sound_events.FAILED, key)
-            elif self._sound_stop_was_asked(key):
+            elif stop_asked:
                 self._sound(sound_events.STOPPED, key)
             else:
                 # The provider or its runtime ended it: not something you did.

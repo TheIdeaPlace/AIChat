@@ -271,7 +271,7 @@ def _count_for_sounds(chat, kind: str, update: dict) -> None:
             chat.tools_started += 1
         elif isinstance(call_id, str) and len(chat.edit_calls) < 500:
             chat.edit_calls.add(call_id)
-    if update.get("status") == "completed" and call_id in chat.edit_calls:
+    if update.get("status") == "completed" and isinstance(call_id, str) and call_id in chat.edit_calls:
         chat.edit_calls.discard(call_id)
         chat.edits_made += 1
 
