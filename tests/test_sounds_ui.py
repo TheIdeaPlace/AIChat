@@ -11,6 +11,7 @@ import pytest
 import wx
 
 import fake_env
+from markers import windows_layout
 from test_ui_hidden import add_desktop, pump
 from thechatplace import platform_paths, sound_events as se
 from thechatplace.claude_cli import PermissionRequest, TurnEvent
@@ -478,17 +479,29 @@ def test_mute_is_on_the_menu_and_in_the_shortcuts():
 
 # ---------------------------------------------------------------- balloons
 
-def test_a_balloon_is_silent_with_sounds_on_or_muted(frame, env, monkeypatch):
+def test_windows_keeps_its_notification_sound_unless_you_choose_otherwise(frame, env, monkeypatch):
     silents = []
     monkeypatch.setattr(frame._notifier, "show",
                         lambda title, text, key, silent=False: silents.append(silent) or True)
     monkeypatch.setattr(type(frame), "_app_is_active", staticmethod(lambda: False))
+    # Sounds on, muted and off all leave it as it is.
     frame._notify("k", "t", "m", needs_you=True)
-    frame.speech.sounds_on, frame.speech.sounds_muted = False, True
+    frame.speech.sounds_muted = True
     frame._notify("k", "t", "m", needs_you=True)
-    frame.speech.sounds_muted = False
+    frame.speech.sounds_on = False
     frame._notify("k", "t", "m", needs_you=True)
-    assert silents == [True, True, False]
+    assert silents == [False, False, False]
+    frame.speech.sound_silent_notifications = True
+    frame._notify("k", "t", "m", needs_you=True)
+    assert silents[-1] is True
+
+
+@windows_layout
+def test_the_dialog_offers_it_off_and_keeps_your_choice(frame, dialog):
+    assert dialog.silent_notifications.GetValue() is False
+    assert dialog.get_settings().sound_silent_notifications is False
+    dialog.silent_notifications.SetValue(True)
+    assert dialog.get_settings().sound_silent_notifications is True
 
 
 # ---------------------------------------------------------------- the dialog

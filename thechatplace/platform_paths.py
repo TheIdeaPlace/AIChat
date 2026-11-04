@@ -480,10 +480,9 @@ def custom_sounds_dir() -> Path:
 
 def show_silent_balloon(hwnd: int, title: str, text: str) -> bool:
     """Windows: a tray balloon that makes no sound of its own, on wx's icon in the window
-    ``hwnd``. wx's ShowBalloon can't ask for this (it passes on only the icon flags), and
-    with The Chat Place's own sounds on, or muted, Windows' would be a second sound, or one
-    the person silenced. 99 is the id wx gives its one icon. False if it didn't work, so the
-    caller can fall back on wx."""
+    ``hwnd``, for someone who has chosen that in File, Sounds. wx's ShowBalloon can't ask for
+    this (it passes on only the icon flags). 99 is the id wx gives its one icon. False if it
+    didn't work, so the caller can fall back on wx."""
     if sys.platform != "win32" or not hwnd:
         return False
     import ctypes

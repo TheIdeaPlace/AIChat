@@ -3604,7 +3604,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._app_is_active():
             return
         self._notifier.show(title, text, key,
-                            silent=self.speech.sounds_on or self.speech.sounds_muted)
+                            silent=self.speech.sound_silent_notifications)
 
     @staticmethod
     def _app_is_active() -> bool:

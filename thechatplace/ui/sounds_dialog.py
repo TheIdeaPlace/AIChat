@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import shutil
+import sys
 from pathlib import Path
 from typing import Callable, Dict, List
 
@@ -42,7 +43,7 @@ def keep_custom_sound(source: str) -> str:
 
 class SoundsDialog(wx.Dialog):
     def __init__(self, parent, speech: SpeechSettings, player: Callable):
-        super().__init__(parent, title="Sounds", size=dialog_size(parent, 560, 560))
+        super().__init__(parent, title="Sounds", size=dialog_size(parent, 560, 590))
         self._original = speech
         self._player = player
         self._previewed = False  # so closing doesn't make a player only to stop it
@@ -57,6 +58,13 @@ class SoundsDialog(wx.Dialog):
         self.mute = wx.CheckBox(self, label="M&ute all sounds")
         self.mute.SetValue(speech.sounds_muted)
         outer.Add(self.mute, 0, wx.ALL, 10)
+        # Windows' notifications only. Off unless chosen: it's a change to what Windows does.
+        self.silent_notifications = None
+        if sys.platform == "win32":
+            self.silent_notifications = wx.CheckBox(
+                self, label="No &Windows sound for The Chat Place's notifications")
+            self.silent_notifications.SetValue(speech.sound_silent_notifications)
+            outer.Add(self.silent_notifications, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
@@ -209,4 +217,7 @@ class SoundsDialog(wx.Dialog):
             sound_style=self._style_id(),
             sound_tools=self._tool_ids[max(self.tools.GetSelection(), 0)],
             sound_others=self._other_ids[max(self.others.GetSelection(), 0)],
-            sound_choices=sound_events.clean_choices(self._choices))
+            sound_choices=sound_events.clean_choices(self._choices),
+            sound_silent_notifications=(self.silent_notifications.GetValue()
+                                        if self.silent_notifications is not None
+                                        else self._original.sound_silent_notifications))

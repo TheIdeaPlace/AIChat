@@ -695,6 +695,7 @@ This is a first version, and we'd like to hear which sounds help, which annoy, a
 Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialog:
 
 - **Mute all sounds** does the same as **Mute All Sounds**, below.
+- **No Windows sound for The Chat Place's notifications** is off to start. Windows plays its own sound with each notification, so with these sounds on you can hear two when a chat finishes while you're in another window. Turn this on if you'd rather hear only The Chat Place's. On Windows only.
 - **Volume** starts at 80%. It's separate from your system and screen reader volume.
 - **Style** is Glass, Soft bell or Wood. Each plays the same melodies in a different tone, so a sound means the same thing in any of them.
 - **Tool sounds for** is the loaded chat, or every chat run here. Taps from several chats at once are hard to make sense of, so it starts with the loaded chat. A desktop app, Cowork or terminal session taps only while it's loaded, as that's when its transcript is being read.
@@ -732,7 +733,7 @@ In **Sound events**, arrow to an event: each row says the event and its sound. *
 
 ### When sounds hold back
 
-On Windows, sounds that happen on their own hold back during a presentation or while a program is full screen. Sounds that answer what you just did still play. Windows doesn't let apps tell when Do Not Disturb is on, so sounds still play then: use Mute All Sounds. With sounds on or muted, The Chat Place's Windows notifications make no sound of their own, so you don't hear two.
+On Windows, sounds that happen on their own hold back during a presentation or while a program is full screen. Sounds that answer what you just did still play. Windows doesn't let apps tell when Do Not Disturb is on, so sounds still play then: use Mute All Sounds.
 
 ## Finding things
 

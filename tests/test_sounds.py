@@ -55,6 +55,7 @@ def test_a_sound_means_one_thing_by_default():
 
 def test_a_new_install_has_sounds_off_at_80_percent(tmp_path):
     settings = SpeechSettings.load(tmp_path / "none.json")
+    assert settings.sound_silent_notifications is False
     assert (settings.sounds_on, settings.sounds_muted, settings.sound_volume,
             settings.sound_style, settings.sound_tools, settings.sound_others) == (
         False, False, 80, "glass", "loaded", "all")
@@ -67,8 +68,10 @@ def test_settings_round_trip(tmp_path):
     settings.sound_volume, settings.sound_style = 50, "wood"
     settings.sound_tools, settings.sound_others = "all", "own"
     settings.sound_choices = {se.TOOL: se.NONE_REF, se.FINISHED: se.custom_ref("mine.wav")}
+    settings.sound_silent_notifications = True
     settings.save(path)
     loaded = SpeechSettings.load(path)
+    assert loaded.sound_silent_notifications is True
     assert (loaded.sounds_on, loaded.sounds_muted, loaded.sound_volume, loaded.sound_style,
             loaded.sound_tools, loaded.sound_others, loaded.sound_choices) == (
         True, True, 50, "wood", "all", "own", settings.sound_choices)
