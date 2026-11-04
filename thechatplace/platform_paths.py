@@ -466,6 +466,60 @@ def app_icon_path() -> Path:
     return Path(__file__).resolve().parent / "assets" / "app.ico"
 
 
+def built_in_sounds_dir() -> Path:
+    """The sounds shipped with the app (#250), a folder for each style. Copied from app-kit's
+    ``sounds``, whose README says where they come from and how they're made."""
+    return Path(__file__).resolve().parent / "assets" / "sounds"
+
+
+def custom_sounds_dir() -> Path:
+    """A person's own sounds (#250), copied here so they outlive the original and go with
+    backups."""
+    return app_data_dir() / "sounds"
+
+
+def show_silent_balloon(hwnd: int, title: str, text: str) -> bool:
+    """Windows: a tray balloon that makes no sound of its own, on wx's icon in the window
+    ``hwnd``, for someone who has chosen that in File, Sounds. wx's ShowBalloon can't ask for
+    this (it passes on only the icon flags). 99 is the id wx gives its one icon. False if it
+    didn't work, so the caller can fall back on wx."""
+    if sys.platform != "win32" or not hwnd:
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    class NotifyIconData(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("hWnd", wintypes.HWND), ("uID", wintypes.UINT),
+                    ("uFlags", wintypes.UINT), ("uCallbackMessage", wintypes.UINT),
+                    ("hIcon", wintypes.HICON), ("szTip", ctypes.c_wchar * 128),
+                    ("dwState", wintypes.DWORD), ("dwStateMask", wintypes.DWORD),
+                    ("szInfo", ctypes.c_wchar * 256), ("uTimeoutOrVersion", wintypes.UINT),
+                    ("szInfoTitle", ctypes.c_wchar * 64), ("dwInfoFlags", wintypes.DWORD),
+                    ("guidItem", ctypes.c_byte * 16), ("hBalloonIcon", wintypes.HICON)]
+
+    nim_modify, nim_setversion, nif_info = 1, 4, 0x10
+    niif_info, niif_nosound = 0x1, 0x10
+    try:
+        notify = ctypes.WinDLL("shell32").Shell_NotifyIconW
+        notify.argtypes = [wintypes.DWORD, ctypes.POINTER(NotifyIconData)]
+        notify.restype = wintypes.BOOL
+        data = NotifyIconData()
+        data.cbSize = ctypes.sizeof(NotifyIconData)
+        data.hWnd = hwnd
+        data.uID = 99
+        # As wx asks before each balloon, so clicks on one are still reported to it.
+        data.uTimeoutOrVersion = 3
+        notify(nim_setversion, ctypes.byref(data))
+        data.uTimeoutOrVersion = 0
+        data.uFlags = nif_info
+        data.szInfo = text
+        data.szInfoTitle = title
+        data.dwInfoFlags = niif_info | niif_nosound
+        return bool(notify(nim_modify, ctypes.byref(data)))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def user_guide_path() -> Path:
     """The user guide's Markdown (#102), shipped in ``assets`` like the icon so
     every build has it; tools/make_docs.py makes the docs/ copies from it."""

@@ -15,7 +15,7 @@ from typing import Callable, Dict, List, Optional
 
 import wx
 
-from .. import live_turn
+from .. import live_turn, sound_events
 from ..claude_cli import PERMISSION_MODE_VALUES, TURN_ENDED, normalize_permission_mode
 from ..speech import ANNOUNCE_FULL
 
@@ -74,6 +74,7 @@ class LiveTurns:
             text = live_turn.retry_text(data)
             said = text if is_open_now else f"{title}: {text}"
             if self._retry_throttle_for().should_speak(session_id, live_turn.retry_reason(data)):
+                self._sound(sound_events.TROUBLE, self._own_key(session_id))
                 self._say(said, interrupt=False)  # news, not over what's being read
             else:
                 self._status(said)
@@ -82,6 +83,7 @@ class LiveTurns:
             return True
         if kind == "fallback":
             text = live_turn.fallback_text(data)
+            self._sound(sound_events.TROUBLE, self._own_key(session_id))
             self._say(text if is_open_now else f"{title}: {text}", interrupt=False)
             return True
         if kind == "memory":

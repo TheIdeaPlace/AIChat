@@ -171,7 +171,8 @@ active window's ATK notification), and `speak-engine-linux.sh` is speech-dispatc
 **Other modules:** `updater.py` (Velopack updates for installed copies only, which refuse to run
 if the data folder is inside the install folder), `rendering.py` (markdown to safe HTML for the
 WebView2 formatted view), `usage.py`, `changes.py`, `codeblocks.py`, `attachments.py`, `export.py`,
-`bugreport.py`, `signin.py`.
+`bugreport.py`, `signin.py`, `sound_events.py` (which sound for which event; `ui/sound_host.py` and
+`ui/sounds_dialog.py` are its window side, and app-kit's `theideaplace_appkit.sounds` plays them).
 
 ## Tests
 

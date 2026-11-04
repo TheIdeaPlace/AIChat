@@ -166,6 +166,10 @@ def smoke_test(out_path: str) -> int:
             report["updater"] = str(manager.get_current_version())
         except Exception as exc:  # noqa: BLE001
             report["updater"] = f"unavailable: {exc}"
+    from . import sound_events
+    from theideaplace_appkit import sounds as appkit_sounds  # noqa: F401 - that it's bundled
+    for name in sound_events.missing_built_ins():
+        problems.append(f"missing sound {name}")
     scripts = speech._script_dir()
     for name in speech.engine_script_names():
         if not (scripts / name).is_file():

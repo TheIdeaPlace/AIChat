@@ -67,6 +67,9 @@ class CodexChatState:
     compaction: bool = False
     #: Plan is saved, but this Codex can't offer it, so turns run in Default.
     plan_unavailable: bool = False
+    #: This turn's tools started and file changes made, for sounds (#250).
+    tools_started: int = 0
+    edits_made: int = 0
 
 
 @dataclass(frozen=True)
@@ -1005,7 +1008,8 @@ class CodexChatRuntime:
                               state.replies, requests, queued, tuple(unsent), problem, state.file_changes,
                               state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received,
                               permission_notices, getattr(state, 'changed_paths', ()), steering,
-                              getattr(state, 'compaction', False), proof.unavailable_mode == 'plan')
+                              getattr(state, 'compaction', False), proof.unavailable_mode == 'plan',
+                              state.tools_started, state.edits_made)
 
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():

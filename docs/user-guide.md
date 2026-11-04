@@ -684,6 +684,57 @@ update. In Claude chats started here, Claude keeps a list only because The Chat 
 as the desktop app does. **Settings, "Let Claude keep a task list"** (Alt+K) turns that off from
 your next message. That setting applies only to Claude.
 
+## Sounds
+
+Sounds tell you what a chat is doing without a word being said: you can hear tools running with tool activity off, and know a chat needs you from across the room. They're off until you turn them on. A sound adds to what's announced or on the status bar, and never replaces it, so nothing is lost with sounds off.
+
+This is a first version, and we'd like to hear which sounds help, which annoy, and what's missing. **Report a Bug** on the Help menu reaches us.
+
+### Turning them on
+
+Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialog:
+
+- **Mute all sounds** does the same as **Mute All Sounds**, below.
+- **No Windows sound for The Chat Place's notifications** is off to start. Windows plays its own sound with each notification, so with these sounds on you can hear two when a chat finishes while you're in another window. Turn this on if you'd rather hear only The Chat Place's. On Windows only.
+- **Volume** starts at 80%. It's separate from your system and screen reader volume.
+- **Style** is Glass, Soft bell or Wood. Each plays the same melodies in a different tone, so a sound means the same thing in any of them.
+- **Tool sounds for** is the loaded chat, or every chat run here. Taps from several chats at once are hard to make sense of, so it starts with the loaded chat. A desktop app, Cowork or terminal session taps only while it's loaded, as that's when its transcript is being read.
+- **Other chats** chooses which chats that aren't loaded make their other sounds: every listed chat, only those run in The Chat Place, or none.
+
+### What you'll hear
+
+| Event | Sound |
+| --- | --- |
+| Tool ran | Tap: one very soft short note, whether tool activity is on or not |
+| File changed | Changed: two soft quick notes, rising, once the change has worked |
+| Still working | Pulse: one faint low note, after 20 quiet seconds of a turn in the loaded chat. A long command or long thinking reports nothing, so this tells you it hasn't stopped |
+| Message sent | Sent: two notes, rising |
+| Message queued | Queued: one note, repeated softer |
+| Message not sent | Error: two low notes, repeated, when a message comes back to you |
+| Reply finished | Arrived: three notes, rising |
+| Another chat finished | Elsewhere: the same rise, lower and softer |
+| Needs you | Attention: a repeated note, then a higher one, for a permission, a question or a plan to approve |
+| Turn failed | Failed: three notes, falling |
+| You stopped a turn | Stopped: one low damped note |
+| Service trouble | Disconnected: two low notes, falling, when the AI is retrying, moved to another model, or its turn ended without you stopping it |
+| Conversation compacted | Filed: two quick notes, a small step up |
+| Usage or context warning | Reminder: one high note, three times |
+| Message from another session | Matched: one bright note |
+
+When a lot happens at once, some sounds are left out so it never turns into noise. A tap is skipped if another sound is playing, and there's at most one every fifth of a second. The same sound doesn't repeat within a second. **Needs you** and **Turn failed** go first.
+
+### Changing a sound
+
+In **Sound events**, arrow to an event: each row says the event and its sound. **Sound** chooses another, or None. **Preview** plays what's showing, at the volume and style showing, even when sounds are muted or off. **Choose File** uses your own WAV file, which has to be 16-bit, at most 30 seconds and 5 MB. It's copied into the `sounds` folder in The Chat Place's data folder, so it goes with your backups and doesn't matter if the original moves. If it can't be played later, the event's usual sound plays instead.
+
+### Mute All Sounds
+
+**Ctrl+Shift+X**, or View, **Mute All Sounds**, silences everything at once, including a sound that's playing. Press it again to bring them back. It says "Sounds muted" or "Sounds on", even with announcements set to silent.
+
+### When sounds hold back
+
+On Windows, sounds that happen on their own hold back during a presentation or while a program is full screen. Sounds that answer what you just did still play. Windows doesn't let apps tell when Do Not Disturb is on, so sounds still play then: use Mute All Sounds.
+
 ## Finding things
 
 ### In this chat

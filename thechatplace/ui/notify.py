@@ -66,19 +66,22 @@ class Notifier:
         self._factory = factory or wx.adv.TaskBarIcon
         self._icon = None
         self._key: Optional[str] = None  # the latest notification's session
+        self._icon_hwnd = 0  # the hidden window wx made for the icon
         # A Mac's and Linux's way: one NotificationMessage each.
         self._mac = sys.platform != "win32" if mac is None else mac
         self._message_factory = message_factory or wx.adv.NotificationMessage
         self._messages: List = []  # the Mac notifications shown, newest last
 
-    def show(self, title: str, message: str, key: str) -> bool:
+    def show(self, title: str, message: str, key: str, silent: bool = False) -> bool:
+        """``silent``: you chose, in File, Sounds, to leave out Windows' sound (#250). Only
+        Windows' balloons need telling."""
         if self._mac:
             return self._show_mac(title, message, key)
         try:
             icon = self._ensure_icon()
-            shown = bool(icon.ShowBalloon(_fit(title, TITLE_LIMIT),
-                                          _fit(message or title, TEXT_LIMIT), 0,
-                                          wx.ICON_INFORMATION))
+            title, text = _fit(title, TITLE_LIMIT), _fit(message or title, TEXT_LIMIT)
+            shown = silent and platform_paths.show_silent_balloon(self._icon_hwnd, title, text)
+            shown = shown or bool(icon.ShowBalloon(title, text, 0, wx.ICON_INFORMATION))
         except Exception:  # noqa: BLE001 - a notification must never break the app
             return False
         if shown:
@@ -110,6 +113,7 @@ class Notifier:
             except Exception:  # noqa: BLE001
                 pass
         icon, self._icon, self._key = self._icon, None, None
+        self._icon_hwnd = 0
         if icon is None:
             return
         try:
@@ -120,11 +124,17 @@ class Notifier:
 
     def _ensure_icon(self):
         if self._icon is None:
+            before = {window.GetHandle() for window in wx.GetTopLevelWindows()}
             icon = self._factory()
             # The size the notification area asks for: 16 at 100%, 32 at 200%.
             image = app_icon(wx.SystemSettings.GetMetric(wx.SYS_SMALLICON_X) or 16)
             icon.SetIcon(image, self._tooltip)
             icon.Bind(wx.adv.EVT_TASKBAR_BALLOON_CLICK, self._balloon_clicked)
+            # wx keeps the icon's window to itself. It's the frame that appeared just now, and
+            # with none found, or two, balloons simply go through wx.
+            made = [window.GetHandle() for window in wx.GetTopLevelWindows()
+                    if window.GetHandle() not in before]
+            self._icon_hwnd = made[0] if len(made) == 1 else 0
             icon.Bind(wx.adv.EVT_TASKBAR_LEFT_UP, lambda event: self._on_click(None))
             self._icon = icon
         return self._icon
