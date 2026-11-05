@@ -1634,9 +1634,11 @@ instructions.
 To ask Claude something about a chat without adding to it, such as "which file did you change
 for the login bug?", press **Ctrl+Shift+Y** (File, Ask Aside, or Ask Aside on a chat's menu in
 the list). It's like Claude Code's /btw. It works for Claude chats started here, desktop app
-chats and terminal chats, even while a turn is running, when Claude answers from what the chat
-holds so far. It also works for local Codex chats, including chats started elsewhere. It isn't
-available for Cowork chats, kept copies or Copilot chats.
+chats and terminal chats, even while a turn is running. Then Claude answers from the chat up to
+its last finished turn: the running turn's work so far isn't included, and while a chat's first
+turn is still running, there's nothing to ask about yet. It also works for local Codex chats,
+including chats started elsewhere. It isn't available for Cowork chats, kept copies or Copilot
+chats.
 
 - Type in **Your question** (Alt+Q). Enter starts a new line; **Ctrl+Enter** asks, as does
   **Ask** (Alt+A). You hear which provider is answering, such as "Asking Codex."
@@ -1659,7 +1661,8 @@ starting with a slash is just a question). Each question uses your Claude plan, 
 
 For Codex, each question uses a temporary read-only copy in a separate Codex process and your
 ChatGPT plan. Commands, connected tools, hooks, memories, Goals and delegation are disabled in
-that copy. Closing the dialog cancels it. Its questions and answers aren't saved to the source.
+that copy. While a turn is running in a Codex chat started here, the copy leaves that turn out.
+Closing the dialog cancels it. Its questions and answers aren't saved to the source.
 
 ### Replying
 

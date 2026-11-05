@@ -66,10 +66,15 @@ class CodexExtras:
         if not self._require_capability('aside', info):
             return
         from ..providers.codex_aside import CodexAsideRunner
-        from .. import announce
+        from .. import announce, rewind
         def ask(question, on_event):
+            # A turn under way is left out of the copy (#559), decided as each
+            # question is asked.
+            state = self._codex_states.get(info.key)
+            running = getattr(state, 'turn_id', '') if rewind.turn_in_progress(state) else ''
             return CodexAsideRunner(info, question,
-                lambda event: wx.CallAfter(on_event, event)).start()
+                lambda event: wx.CallAfter(on_event, event),
+                before_turn_id=running or None).start()
         focus = wx.Window.FindFocus()
         dialog = AskAsideDialog(self, info.title, ask, provider='Codex',
             say=lambda text, failed=False: self._say(text if failed else

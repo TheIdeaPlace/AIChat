@@ -5,7 +5,8 @@ How it's asked
 --------------
 A read-only copy of the conversation that is never saved::
 
-    claude -p --resume <chat> --fork-session --no-session-persistence
+    claude -p --resume <chat> [--resume-session-at <cut>] --fork-session
+              --no-session-persistence
               --tools Read,Grep,Glob --strict-mcp-config
               --permission-mode manual --permission-prompts none
               --disable-slash-commands
@@ -20,8 +21,14 @@ Checked with Claude Code 2.1.296 and real Haiku runs:
   never is (``claude_cli.check_resume_allowed``).
 * It answered from the history ("the code word is ZEPHYR-42") and could read
   a file in the folder to answer.
-* It worked while the source chat had a turn running: it answers from what
-  the transcript holds so far.
+* While the source chat has a turn running, the copy ends with its last
+  finished turn: ``--resume-session-at`` the record before the message that
+  started the running turn, as Rewind to Here cuts (``finished_cut``, #559).
+  Without the cut the copy held the unfinished turn, the message and a tool
+  call with no result yet; Claude Code marked that work as stopped, and Claude
+  answered the chat's own message in the aside as well as, or instead of, the
+  question (checked with a ``sleep 45`` running). With the cut it answered only
+  the question. The chat's own turn was never affected either way.
 * ``--settings {"disableAllHooks": true}`` keeps your and the project's hooks
   from running: without it a project's Stop and UserPromptSubmit hooks ran
   (and wrote their file) on every aside.
@@ -58,6 +65,7 @@ from . import platform_paths
 from .claude_cli import (INIT_ANSWER_WAIT, ResumeRefused, StreamParser, api_key_problem,
                          child_environment, exit_message, fable_problem, initialize_line,
                          is_safe_dir, is_safe_model, message_line, resolved_model, _decode)
+from .transcript import USER
 
 #: The tools an aside may use: it can look at files, never change anything.
 ASIDE_TOOLS = "Read,Grep,Glob"
@@ -70,13 +78,40 @@ COWORK_REFUSED = ("Ask Aside isn't available for Cowork sessions: their conversa
                   "the desktop app's own files. Open the session in Claude to ask there.")
 
 
+#: Said instead of asking when the only turn in a chat is the one running (#559).
+NOTHING_FINISHED = ("There's nothing finished in this chat to ask about yet: its first turn is "
+                    "still running. Ask again once it's done.")
+
+
+def finished_cut(transcript) -> str:
+    """Where an aside's copy of a chat with a turn running should end (#559):
+    the record before your message that started that turn, so the copy ends
+    with the last finished turn, as Rewind to Here cuts. "" when there's no
+    finished turn (the first one is running) or nothing to go on.
+
+    Your message, not the latest record: a running turn goes on past tool
+    calls and their results, text Claude writes while a background subagent
+    works, and the ``<task-notification>`` saying it ended, and none of those
+    starts a turn. A message steered in mid-turn has no uuid (transcript.py),
+    so it's passed over too."""
+    for message in reversed(getattr(transcript, "messages", None) or ()):
+        if message.kind == USER and message.uuid:
+            return message.parent_uuid
+    return ""
+
+
 def build_aside_command(executable: str, source_id: str, model: str = "",
                         cowork_ids: Collection[str] = (),
-                        allowed_dirs: Collection[str] = ()) -> List[str]:
+                        allowed_dirs: Collection[str] = (),
+                        resume_at: str = "") -> List[str]:
     """The command that asks a side question about session ``source_id``.
     Never a plain ``--resume``: always a fork that isn't saved. ``allowed_dirs``
     are the chat's More Folders, so a question about a file in one can be
-    answered; the tools here can still only read them."""
+    answered; the tools here can still only read them. ``resume_at``, while
+    the chat has a turn running, is ``finished_cut``'s record: the copy ends
+    there, leaving the running turn out (#559)."""
+    if resume_at and not platform_paths.is_safe_id(resume_at):
+        raise ValueError("That isn't a place in the chat Claude Code can copy up to.")
     if not platform_paths.is_safe_id(source_id) or source_id.startswith("local_"):
         raise ResumeRefused("That is not a session id Claude Code can read from.")
     if source_id in cowork_ids:
@@ -99,7 +134,10 @@ def build_aside_command(executable: str, source_id: str, model: str = "",
     if dirs:
         # Its values run to the next flag: --resume, below.
         command += ["--add-dir", *dirs]
-    return command + ["--resume", source_id, "--fork-session", "--no-session-persistence"]
+    command += ["--resume", source_id]
+    if resume_at:
+        command += ["--resume-session-at", resume_at]
+    return command + ["--fork-session", "--no-session-persistence"]
 
 
 @dataclass
@@ -457,7 +495,8 @@ def aside_intro(provider: str = "Claude") -> str:
     plan = _PLAN_NAMES.get(provider, f"{provider} plan")
     return (f"Ask a question about this chat, such as which file {provider} changed or what a "
             f"reply meant. The question and its answer aren't added to the chat, and {provider} "
-            "can read files to answer but can't change anything. Your questions stay listed "
+            "can read files to answer but can't change anything. If the chat has a turn "
+            "running, that turn's work so far isn't included. Your questions stay listed "
             f"for this chat until you quit The Chat Place. Each question uses your {plan}, "
             "as a message does.")
 

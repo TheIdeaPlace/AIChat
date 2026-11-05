@@ -24,9 +24,13 @@ class AsideConnection(CodexExecutionConnection):
 
 
 class CodexAsideRunner:
-    def __init__(self, source, question, on_event, *, factory=AsideConnection):
+    def __init__(self, source, question, on_event, *, factory=AsideConnection,
+                 before_turn_id=None):
         self.source, self.question, self.on_event = source, question, on_event
         self.factory = factory
+        # The source's running turn, if it has one (#559): the copy ends
+        # before it, so Codex doesn't take up that turn's message in the aside.
+        self.before_turn_id = before_turn_id or None
         self._cancel = threading.Event()
         self._event_lock = threading.Lock()
         self._terminal = False
@@ -56,7 +60,8 @@ class CodexAsideRunner:
         try:
             connection = self._connection = self.factory()
             proof = CodexOwnedThreads(connection).fork(self.source, 'Ask Aside', ephemeral=True,
-                sandbox='read-only', approval_policy='never', passive=True)
+                sandbox='read-only', approval_policy='never', passive=True,
+                before_turn_id=self.before_turn_id)
             if self._cancel.is_set():
                 return
             connection.accept_aside(proof)

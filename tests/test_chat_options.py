@@ -11,7 +11,7 @@ import pytest
 
 from thechatplace import chat_options as co
 from thechatplace.aside import (ASIDE_TOOLS, AsideItem, AsideRunner, COWORK_REFUSED, answer_start,
-                                aside_intro, build_aside_command)
+                                aside_intro, build_aside_command, finished_cut)
 from thechatplace.chat_options import ChatOptions, choices_from_init
 from thechatplace.claude_cli import (ResumeRefused, build_fork_command, build_new_command,
                                      build_resume_command, child_environment)
@@ -361,6 +361,87 @@ def test_aside_refusals():
         build_aside_command(EXE, "dddd-2222", "sonnet[1m]")
 
 
+def test_an_aside_during_a_turn_is_cut_where_the_last_finished_turn_ends():
+    # #559: without the cut, Claude answered the running turn's message too.
+    command = build_aside_command(EXE, "dddd-2222", allowed_dirs=[os.getcwd()],
+                                  resume_at="0000-cut")
+    assert command[-6:] == ["--resume", "dddd-2222", "--resume-session-at", "0000-cut",
+                            "--fork-session", "--no-session-persistence"]
+    assert "--resume-session-at" not in build_aside_command(EXE, "dddd-2222")
+    assert "--resume-session-at" not in build_aside_command(EXE, "dddd-2222", resume_at="")
+
+
+@pytest.mark.parametrize("unsafe", ["-p", "--bare", "a b", "../x", "a\nb"])
+def test_an_aside_never_cuts_at_something_that_isnt_a_record_id(unsafe):
+    with pytest.raises(ValueError):
+        build_aside_command(EXE, "dddd-2222", resume_at=unsafe)
+
+
+def _chained(*records):
+    """``records`` as Claude Code chains them: each the parent of the next."""
+    for before, record in zip(records, records[1:]):
+        record["parentUuid"] = before["uuid"]
+    return list(records)
+
+
+def _first_turn():
+    from records import assistant_block, text_block, tool_use_block, tool_result, user_text
+    return [user_text("Which file has the parser?"),
+            assistant_block(tool_use_block("Grep", {"pattern": "parse"}, "toolu_g"), "m1"),
+            tool_result("toolu_g", "parser.py"),
+            assistant_block(text_block("parser.py."), "m2")]
+
+
+def _second_turn(case):
+    from records import (agent_call, agent_launched, assistant_block, task_notification,
+                         text_block, tool_result, tool_use_block, user_text)
+    ask = user_text("Run the tests")
+    sleep = assistant_block(tool_use_block("Bash", {"command": "sleep 45"}, "toolu_b"), "m3")
+    if case == "message only":
+        return [ask]
+    if case == "tool call, no result":
+        return [ask, sleep]
+    if case == "tool result":
+        return [ask, sleep, tool_result("toolu_b", "done")]
+    # A background subagent: Claude writes while it works, then hears it ended.
+    return [ask, agent_call("toolu_a", "Explore", "Look", "Look around", background=True),
+            agent_launched("toolu_a", "a1"), assistant_block(text_block("Waiting on it."), "m4"),
+            task_notification("t1", "completed", "Found it.", tool_id="toolu_a")]
+
+
+@pytest.mark.parametrize("case", ["message only", "tool call, no result", "tool result",
+                                  "background text, then its notification"])
+def test_finished_cut_is_where_the_last_finished_turn_ends(case):
+    from thechatplace.transcript import parse_lines
+    from records import lines
+    first = _first_turn()
+    records = _chained(*first, *_second_turn(case))
+    transcript = parse_lines(lines(*records))
+    assert finished_cut(transcript) == first[-1]["uuid"]
+
+
+def test_finished_cut_has_nothing_while_the_first_turn_runs():
+    from thechatplace.transcript import Transcript, parse_lines
+    from records import assistant_block, lines, tool_use_block, user_text
+    records = _chained(user_text("Run the tests"),
+                       assistant_block(tool_use_block("Bash", {"command": "sleep 45"}), "m1"))
+    assert finished_cut(parse_lines(lines(*records))) == ""
+    assert finished_cut(Transcript()) == ""
+    assert finished_cut(None) == ""
+
+
+def test_finished_cut_passes_over_a_message_steered_in_mid_turn():
+    # A steer has no uuid (it isn't a place to go back to): the running turn
+    # still starts at the message before it.
+    from thechatplace.transcript import parse_lines
+    from records import _base, lines, user_text
+    first = _first_turn()
+    steer = _base("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                            "prompt": "Use the fast tests"})
+    records = _chained(*first, user_text("Run the tests"), steer)
+    assert finished_cut(parse_lines(lines(*records))) == first[-1]["uuid"]
+
+
 def test_aside_rows_and_full_text():
     item = AsideItem("Which   file?")
     assert item.row() == "Q: Which file? A: asking…"
@@ -392,6 +473,8 @@ def test_aside_intro_says_the_right_plan():
     codex = aside_intro("Codex")
     assert "your ChatGPT plan" in codex and "Codex plan" not in codex
     assert "which file Codex changed" in codex and "Claude" not in codex
+    # #559: a running turn is left out of the copy, and the dialog says so.
+    assert "If the chat has a turn running, that turn's work so far isn't included." in codex
 
 
 def _boxes(text):

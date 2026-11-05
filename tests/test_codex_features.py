@@ -1208,7 +1208,7 @@ class AsideFake:
         raise AssertionError(method)
 
 
-def _aside_run(connection):
+def _aside_run(connection, **options):
     import threading
     from thechatplace.providers.codex_aside import CodexAsideRunner
     events, ended = [], threading.Event()
@@ -1218,7 +1218,7 @@ def _aside_run(connection):
         if event.kind in ('done', 'failed'):
             ended.set()
     runner = CodexAsideRunner(_session('source', is_own=False), 'Which file matters?', on_event,
-                              factory=lambda: connection).start()
+                              factory=lambda: connection, **options).start()
     assert ended.wait(5)
     return runner, events
 
@@ -1240,6 +1240,22 @@ def test_aside_forks_read_only_asks_and_reports_the_answer():
     assert turn['approvalPolicy'] == 'never' and turn['sandboxPolicy']['type'] == 'readOnly'
     assert turn['input'] == [{'type': 'text', 'text': 'Which file matters?'}]
     assert connection.closed  # its own process goes with it
+
+
+def test_an_aside_during_a_turn_forks_from_before_that_turn():
+    # #559: in Claude, a copy holding the unfinished turn had its message
+    # answered in the aside too. The copy ends before the running turn.
+    done = [CodexEvent('text_completed', 'aside-copy', 'aside-turn', 'reply', 'The parser.'),
+            CodexEvent('turn_completed', 'aside-copy', 'aside-turn', status='completed')]
+    connection = AsideFake(answer=done)
+    _runner, events = _aside_run(connection, before_turn_id='turn-2')
+    assert events[-1].kind == 'done'
+    fork = next(p for m, p in connection.calls if m == 'thread/fork')
+    assert fork['beforeTurnId'] == 'turn-2' and 'lastTurnId' not in fork
+    connection = AsideFake(answer=list(done))
+    _aside_run(connection)
+    fork = next(p for m, p in connection.calls if m == 'thread/fork')
+    assert 'beforeTurnId' not in fork and 'lastTurnId' not in fork
 
 
 def test_aside_says_when_codex_did_not_finish_the_question():
