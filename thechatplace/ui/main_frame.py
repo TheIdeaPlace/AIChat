@@ -4767,11 +4767,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.attach_list.SetFocus()
 
     def _on_reply_paste(self, event):
-        """Ctrl+V with a picture on the clipboard (a screenshot from
-        Win+Shift+S, say) attaches it; text pastes as usual."""
+        """Ctrl+V with files copied in File Explorer or the Finder attaches
+        them, and so does a picture on the clipboard (a screenshot from
+        Win+Shift+S, say); text pastes as usual."""
         info = self._open
-        bitmap = (self._clipboard_image()
-                  if info is not None and info.is_own and info.provider in ('claude', 'codex') else None)
+        own = info is not None and info.is_own and info.provider in ('claude', 'codex')
+        copied, folders = self._clipboard_files() if own else ([], [])
+        if copied:
+            self._add_attachments(self._attachment_key(info), copied)
+            return
+        if folders:
+            # Nothing would paste into the box, so say why rather than nothing.
+            self._feedback("A folder can't be attached. Copy the files in it instead.")
+            return
+        bitmap = self._clipboard_image() if own else None
         if bitmap is None:
             event.Skip()
             return
@@ -4784,6 +4793,24 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback(f"Couldn't attach the pasted picture: {exc}")
             return
         self._add_attachments(self._attachment_key(info), [str(path)])
+
+    def _clipboard_files(self):
+        """Files copied in File Explorer or the Finder, as ``(files, folders)``.
+        A copied picture file is a file, not a picture: without this Ctrl+V
+        did nothing with it."""
+        if not wx.TheClipboard.Open():
+            return [], []
+        try:
+            if not wx.TheClipboard.IsSupported(wx.DataFormat(wx.DF_FILENAME)):
+                return [], []
+            data = wx.FileDataObject()
+            if not wx.TheClipboard.GetData(data):
+                return [], []
+            names = list(data.GetFilenames())
+        finally:
+            wx.TheClipboard.Close()
+        files = [name for name in names if os.path.isfile(name)]
+        return files, [name for name in names if os.path.isdir(name)]
 
     def _clipboard_image(self):
         """The clipboard's picture, when it holds a picture and no text."""

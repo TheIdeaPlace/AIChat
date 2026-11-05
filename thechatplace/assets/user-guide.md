@@ -141,7 +141,8 @@ failing test that reproduces it, then fix it".
   understand this, then write it up in a file". Then start a new chat to build from that file, so
   the building starts clean.
 - **When words won't do it,** show it: **Ctrl+Shift+F** (File, Attach Files) adds files and pictures
-  to your next message, and **Ctrl+V** in the reply box attaches a picture on the clipboard.
+  to your next message, and **Ctrl+V** in the reply box attaches a picture on the clipboard or
+  files you copied.
 - **When you keep typing the same message,** save it: **Ctrl+Shift+P** (File, Prompts) lists saved
   messages, and **Ctrl+Shift+Enter** in the reply box saves what you've typed and sends it.
 - **When you've corrected the same thing twice and it's still wrong,** start again. A new chat
@@ -1159,7 +1160,8 @@ editable.
 ### More controls for Codex chats started here
 
 - **Attach Files** (Ctrl+Shift+F) adds files and pictures to your next message. **Ctrl+V** in the
-  reply box attaches a picture on the clipboard, such as a screenshot. Pictures reach Codex as
+  reply box attaches a picture on the clipboard, such as a screenshot, or files you copied in
+  File Explorer (the Finder on a Mac). Pictures reach Codex as
   images; other files are named for it to read. You can send attachments with an empty reply box,
   and queued messages keep their image and skill inputs. If a send fails, the recovered draft
   names its files; attach images again to resend them as images.
@@ -1741,7 +1743,8 @@ These are for Claude and Codex chats started here:
   chat, the same picker offers enabled skills and chat controls, such as `/plan` and `/compact`;
   see "More controls for Codex chats started here". Copilot doesn't have this picker yet.
 - **Ctrl+Shift+F** (or Attach Files) adds files and pictures to your next message, and **Ctrl+V**
-  in the reply box attaches a picture on the clipboard, such as a screenshot. The attachments are
+  in the reply box attaches a picture on the clipboard, such as a screenshot, or files you
+  copied. The attachments are
   listed under the reply box, and Delete there removes one (on a Mac, Delete or Fn+Delete).
   The provider sees pictures as pictures, and reads other files from where they are. Queued
   Codex messages keep their image and skill inputs. If a failed send returns a Codex message

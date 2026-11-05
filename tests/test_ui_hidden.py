@@ -3865,6 +3865,50 @@ def test_pasting_a_picture_attaches_it(frame, env, monkeypatch):
     assert Paste.skipped  # text pastes as usual
 
 
+class _Paste:
+    def __init__(self):
+        self.skipped = False
+
+    def Skip(self):
+        self.skipped = True
+
+
+def test_pasting_copied_files_attaches_them(frame, env, monkeypatch):
+    # Kelly copied a .jpg in File Explorer: a file on the clipboard, not a
+    # picture, and Ctrl+V did nothing.
+    image, note = _files(env)
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_files", lambda: ([str(image), str(note)], []))
+    monkeypatch.setattr(frame, "_clipboard_image", lambda: pytest.fail("files come first"))
+    paste = _Paste()
+    frame._on_reply_paste(paste)
+    assert frame._attachments["own-1"] == [str(image), str(note)]
+    assert not paste.skipped
+
+
+def test_pasting_only_a_folder_says_it_cant_be_attached(frame, env, monkeypatch):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_files", lambda: ([], [str(env["tmp"])]))
+    said = []
+    monkeypatch.setattr(frame, "_feedback", lambda text, *a, **k: said.append(text))
+    paste = _Paste()
+    frame._on_reply_paste(paste)
+    assert not frame._attachments.get("own-1")
+    assert said and "folder can't be attached" in said[-1]
+
+
+def test_pasting_files_into_a_chat_not_started_here_pastes_as_usual(frame, env, monkeypatch):
+    image, _note = _files(env)
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_files", lambda: ([str(image)], []))
+    paste = _Paste()
+    frame._on_reply_paste(paste)
+    assert paste.skipped
+
+
 def test_attachments_are_for_own_sessions_and_follow_the_session(frame, env):
     image, _note = _files(env)
     select(frame, "Quiet one")
