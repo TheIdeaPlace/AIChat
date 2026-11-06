@@ -575,7 +575,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    635
+    666
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1135,7 +1135,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    620
+    635
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1149,7 +1149,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    620
+    651
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1303,7 +1303,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    620
+    651
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1742,6 +1742,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "A whole chat as one page, on the selected message"
+  },
+  "new-session-worktree": {
+   "kind": "dialog",
+   "png": "new-session-worktree-light-100.png",
+   "json": "new-session-worktree-light-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session making a new worktree, with Start from on"
   }
  },
  "seconds": 278.6
