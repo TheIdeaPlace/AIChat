@@ -596,22 +596,51 @@ def test_your_words_starting_with_some_other_tag_still_show():
     assert [m.kind for m in tr.visible()] == ["user", "user"]
 
 
+def _relocated(folder):
+    """The record Claude Code writes when it moves a chat (seen in a real run)."""
+    return {"type": "relocated", "sessionId": "s", "relocatedCwd": str(folder)}
+
+
+def _write(path, records):
+    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+
+
 def test_latest_relocation_finds_where_claude_moved_the_chat(tmp_path):
-    # #561: a chat Claude moved into a worktree, read from the end.
+    # #561: from Claude Code's own record of the move, with the ordinary
+    # records that follow it in a real transcript.
     start = tmp_path / "Start"
     moved = start / ".claude" / "worktrees" / "wt1"
-    first = user_text("Make a worktree", cwd=str(start), entrypoint="sdk-cli")
     path = tmp_path / "t.jsonl"
-    path.write_text(json.dumps(first) + "\n", encoding="utf-8")
+    first = user_text("Make a worktree", cwd=str(start), entrypoint="sdk-cli")
+    _write(path, [first])
     assert t.latest_relocation(path) == ""
-    records = [first, {"type": "system", "cwd": str(moved), "relocatedCwd": str(moved)},
-               user_text("next", cwd=str(moved / "sub"), entrypoint="sdk-cli")]
-    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
-    assert t.latest_relocation(path) == str(moved)  # the worktree, not the subfolder
-    # Moved back out: Claude Code says where.
-    records.append({"type": "system", "cwd": str(start), "relocatedCwd": str(start)})
-    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    records = [first, _relocated(moved), user_text("next", cwd=str(moved), entrypoint="sdk-cli"),
+               user_text("more", cwd=str(moved / "sub"), entrypoint="sdk-cli")]
+    _write(path, records)
+    assert t.latest_relocation(path) == str(moved)
+    # Moved back out, with ordinary records after it: still found.
+    records += [_relocated(start), user_text("back", cwd=str(start), entrypoint="sdk-cli"),
+                {"type": "system", "subtype": "stop_hook_summary", "cwd": str(start)}]
+    _write(path, records)
     assert t.latest_relocation(path) == str(start)
-    # A cut-off first line in the tail and a missing file are fine.
-    assert t.latest_relocation(path, tail_bytes=40) in ("", str(start))
     assert t.latest_relocation(tmp_path / "missing.jsonl") == ""
+
+
+def test_a_worktree_folder_in_cwd_alone_isnt_a_move(tmp_path):
+    # A chat started in a worktree's subfolder, or one where Claude only ran
+    # cd into a worktree, writes that cwd without Claude Code moving it.
+    folder = tmp_path / "Repo" / ".claude" / "worktrees" / "wt1" / "src"
+    path = tmp_path / "t.jsonl"
+    _write(path, [user_text("hi", cwd=str(folder), entrypoint="sdk-cli"),
+                  {"type": "system", "cwd": str(folder.parent)}])
+    assert t.latest_relocation(path) == ""
+
+
+def test_a_move_far_back_is_found_past_the_short_read(tmp_path):
+    moved = tmp_path / "Repo" / ".claude" / "worktrees" / "wt1"
+    path = tmp_path / "t.jsonl"
+    padding = [user_text("x" * 2000, cwd=str(moved), entrypoint="sdk-cli") for _ in range(60)]
+    _write(path, [_relocated(moved), *padding])
+    assert path.stat().st_size > 64 * 1024
+    assert t.latest_relocation(path) == str(moved)
+    assert t.latest_relocation(path, tails=(1024,)) == ""  # past what's read: not guessed

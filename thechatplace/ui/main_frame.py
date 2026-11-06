@@ -5602,6 +5602,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if own is None:
             return
         info, before = own.to_info(), own.cwd
+        quiet = self._agent_quiet("claude", session_id)
 
         def work():
             path = info.transcript_path()
@@ -5613,14 +5614,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             repo = workplaces.repo_info(git, moved) if git else None
             branch = repo.branch if repo else ""
             start = workplaces.branch_start(git, repo) if repo and branch else ""
-            wx.CallAfter(self._worktree_moved, session_id, title, before, moved, branch, start)
+            wx.CallAfter(self._worktree_moved, session_id, title, before, moved, branch, start,
+                         quiet)
 
         try:
             self._pool.submit(work)
         except RuntimeError:
             pass  # closing: the pool is shut
 
-    def _worktree_moved(self, session_id, title, before, moved, branch, start):
+    def _worktree_moved(self, session_id, title, before, moved, branch, start, quiet=False):
         if self._gone() or self._closing:
             return
         own = self.store.get(session_id)
@@ -5636,7 +5638,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             text += f", on branch {branch}"
             if start and inside:
                 text += f", from {start}"
-        self._feedback(text + ".")
+        if quiet:
+            self._status(text + ".")  # the conversation says what happened (#248)
+        else:
+            self._say(text + ".", interrupt=False)  # news, after the reply
         self.refresh_sessions()
 
     def _turn_end_state(self, session_id: str, event: TurnEvent, denials) -> tuple:

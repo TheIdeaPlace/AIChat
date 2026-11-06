@@ -16134,15 +16134,32 @@ def test_a_chat_claude_moves_into_a_worktree_follows_it_and_says_so(frame, env):
     frame.store.add(OwnSession("moving-1", "Mover", str(start), last_activity_ms=1))
     path = platform_paths.direct_transcript_path(str(start), "moving-1")
     path.parent.mkdir(parents=True, exist_ok=True)
+    # The record Claude Code writes, then ordinary records in the worktree.
     records = [user_text("Make a worktree", cwd=str(start), entrypoint="sdk-cli"),
-               {"type": "system", "subtype": "worktree", "cwd": str(moved),
-                "relocatedCwd": str(moved), "sessionId": "moving-1"}]
+               {"type": "relocated", "sessionId": "moving-1", "relocatedCwd": str(moved)},
+               user_text("next", cwd=str(moved), entrypoint="sdk-cli")]
     path.write_text("".join(_json.dumps(r) + "\n" for r in records), encoding="utf-8")
     frame._note_worktree_move("moving-1", "Mover")
     assert pump(lambda: frame.store.get("moving-1").cwd == str(moved), timeout=15)
-    assert any(f.startswith("Mover moved to worktree wt1") for f in env["feedback"])
+    assert frame._last_announcement.startswith("Mover moved to worktree wt1")
     # Once it's there, nothing more is said.
-    said = len(env["feedback"])
+    frame._last_announcement = ""
     frame._note_worktree_move("moving-1", "Mover")
     pump(lambda: False, timeout=1)
-    assert len(env["feedback"]) == said
+    assert frame._last_announcement == ""
+
+
+def test_a_chat_started_in_a_worktree_subfolder_stays_there(frame, env):
+    # #561 review: a subfolder's cwd isn't a move to the worktree's top.
+    import json as _json
+    from records import user_text
+    folder = env["tmp"] / "Repo" / ".claude" / "worktrees" / "wt1" / "src"
+    folder.mkdir(parents=True)
+    frame.store.add(OwnSession("sub-1", "In a subfolder", str(folder), last_activity_ms=1))
+    path = platform_paths.direct_transcript_path(str(folder), "sub-1")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps(user_text("hi", cwd=str(folder), entrypoint="sdk-cli")) + "\n",
+                    encoding="utf-8")
+    frame._note_worktree_move("sub-1", "In a subfolder")
+    pump(lambda: False, timeout=1)
+    assert frame.store.get("sub-1").cwd == str(folder)

@@ -698,7 +698,8 @@ class NewSessionDialog(wx.Dialog):
         elif info is None:
             name = "Start from (not a git repository)"
         elif not new:
-            name = "Start from (not used: that branch exists, so it's used as it is)"
+            name = ("Start from (not used: that branch exists, so it's used as it is, or "
+                    "tracked if only the remote has it)")
         else:
             name = f"Start from (no remote, so {here})"
         set_accessible_name(self.start_from, name)
@@ -775,7 +776,10 @@ class NewSessionDialog(wx.Dialog):
         start = self.start_point()
         self._making = True
         self.start_btn.Enable(False)
-        self._feedback("Making the worktree.")
+        fetching = (start == workplaces.START_REMOTE and self._start_remote and self._repo
+                    and workplaces.is_new_branch(self._repo, branch))
+        self._feedback(f"Fetching {self._start_remote}, then making the worktree."
+                       if fetching else "Making the worktree.")
 
         def make():
             focus = self.branch

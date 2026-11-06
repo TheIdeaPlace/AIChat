@@ -1569,7 +1569,8 @@ asked for it. This is where each way starts, and how to say which you want.
     - If the repository has no remote, or the fetch fails, the branch starts from the folder's
       branch, and you hear that and why. It never starts from an old copy of main.
     - Start from is off for a branch that already exists, which is used as it is, and for one
-      only the remote has, which tracks it. Its name says why it's off.
+      only the remote has, which tracks it. Its name says why it's off. If the fetch takes a
+      while, you hear "Fetching origin/main, then making the worktree."
     - The new branch doesn't track main, so pushing it never goes to main.
     - This works whichever AI the chat is with: The Chat Place makes the worktree.
 - **Asking Claude for a new worktree during a chat,** such as "make a new worktree called fix-x":
@@ -1577,6 +1578,8 @@ asked for it. This is where each way starts, and how to say which you want.
   remote's main branch (or the current branch with `"baseRef": "head"`). The chat carries on
   there in later turns, and The Chat Place follows it: you hear "Fix it moved to worktree fix-x,
   on branch worktree-fix-x, from origin/main." The chat's folder in the list changes to match.
+  Asking Claude to leave the worktree moves the chat back, and you hear that too. A command that
+  only changes folder, such as cd, doesn't move the chat.
 - **Asking any AI for a new branch, without a worktree:** it starts from the branch the folder is
   on now, in the same folder.
 - **Codex and Copilot** run git themselves for a worktree, so where it starts depends on the

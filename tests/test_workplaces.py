@@ -524,12 +524,14 @@ def test_a_new_branch_can_start_from_the_current_branch(cloned):
     assert (made.how, made.base) == ("new", "work")
     assert (made.folder / "on-feature.txt").exists()
     assert made.said().endswith("on new branch fix/here, from work.")
+    # Its reflog names where it started, so Properties can say.
+    assert workplaces.branch_start(GIT, workplaces.repo_info(GIT, str(made.folder))) == "work"
 
 
 @needs_git
 def test_no_remote_starts_from_the_current_branch_and_says_so(repo):
     made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(repo)), "solo")
-    assert made.base == "main" and "has no remote" in made.note
+    assert made.base == "main" and "has no origin remote" in made.note
     assert made.note in made.said()
 
 
@@ -566,6 +568,16 @@ def test_names_are_checked_before_any_fetch(cloned, monkeypatch, name):
     with pytest.raises(workplaces.ToolError):
         workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), name)
     assert not called
+
+
+@needs_git
+def test_the_fetch_updates_origin_main_even_when_the_clone_doesnt_fetch_it(cloned, repo):
+    # A clone that fetches only some branches: a plain "fetch origin main"
+    # would leave origin/main old while saying it started from it.
+    git("config", "remote.origin.fetch", "+refs/heads/feature/old:refs/remotes/origin/feature/old",
+        cwd=cloned)
+    made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), "fix/narrow")
+    assert made.base == "origin/main" and _head(made.folder) == _head(repo)
 
 
 @needs_git

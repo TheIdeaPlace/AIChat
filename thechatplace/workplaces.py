@@ -647,7 +647,7 @@ def create_worktree(git: str, info: RepoInfo, branch: str,
             argv = ["--no-track", "-b", branch, "--", str(folder), base]
         else:
             base = _current(info)
-            argv = ["-b", branch, "--", str(folder)]
+            argv = ["-b", branch, "--", str(folder), *([info.branch] if info.branch else [])]
     try:
         _run([git, "-C", info.top, "worktree", "add", *argv], timeout=600)
     except ToolError as exc:
@@ -663,11 +663,12 @@ def _fetched_default(git: str, info: RepoInfo) -> tuple:
     """``(origin/main, "")`` once fetched, or ``("", why not)``."""
     remote_branch = default_remote_branch(git, info)
     if not remote_branch:
-        return "", (f"This repository has no remote to start from, so it starts from "
-                    f"{_current(info)}.")
+        return "", (f"This repository has no origin remote to start from, so it starts "
+                    f"from {_current(info)}.")
     remote, name = remote_branch.split("/", 1)
     try:
-        _run([git, "-C", info.top, "fetch", "--quiet", remote, name], timeout=120)
+        _run([git, "-C", info.top, "fetch", "--quiet", "--no-recurse-submodules", remote,
+              f"+refs/heads/{name}:refs/remotes/{remote}/{name}"], timeout=120)
     except ToolError:
         return "", (f"{remote_branch} couldn't be fetched, so it starts from "
                     f"{_current(info)} instead.")
