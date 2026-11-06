@@ -12,8 +12,7 @@ The preview checkout is not modified. `f859738` is an implementation checkpoint,
 ## Automated and VM results
 
 - Focused backend regression: 415 passed.
-- Focused VM GUI suite: 309 passed; the remaining test-double signature was
-  corrected and its complete callback test file then passed all 58 tests.
+- Focused VM GUI suite after integrating preview `c88f8be`: 318 passed.
 - Visual probe: 18 pictures across light and High Contrast, zero layout flags.
   Eight changed/new pictures reviewed; existing light-theme Connected Tools
   focus contrast remains tracked in #181.

@@ -1170,7 +1170,7 @@ class AsideFake:
     from thechatplace.providers.codex_aside import AsideConnection
     accept_aside = AsideConnection.accept_aside
 
-    def __init__(self, answer=None):
+    def __init__(self, answer=None, turns=(), later=()):
         import threading
         from collections import deque
         self._runtime_lock = threading.Lock()
@@ -1178,6 +1178,8 @@ class AsideFake:
         self.calls, self.events = [], deque()
         self.closed = False
         self.answer = answer
+        # The source's turns, newest first: one page, and a second if ``later``.
+        self.turns, self.later = list(turns), list(later)
 
     def close(self):
         self.closed = True
@@ -1196,6 +1198,10 @@ class AsideFake:
             return LifecycleConnection().request(method, params)
         if method == 'mcpServerStatus/list':
             return {'data': [], 'nextCursor': None}
+        if method == 'thread/turns/list':
+            if params.get('cursor') == 'page-2':
+                return {'data': self.later, 'nextCursor': None}
+            return {'data': self.turns, 'nextCursor': 'page-2' if self.later else None}
         if method == 'thread/fork':
             result = response('aside-copy')
             result['thread']['ephemeral'] = True
@@ -1208,7 +1214,7 @@ class AsideFake:
         raise AssertionError(method)
 
 
-def _aside_run(connection):
+def _aside_run(connection, **options):
     import threading
     from thechatplace.providers.codex_aside import CodexAsideRunner
     events, ended = [], threading.Event()
@@ -1218,7 +1224,7 @@ def _aside_run(connection):
         if event.kind in ('done', 'failed'):
             ended.set()
     runner = CodexAsideRunner(_session('source', is_own=False), 'Which file matters?', on_event,
-                              factory=lambda: connection).start()
+                              factory=lambda: connection, **options).start()
     assert ended.wait(5)
     return runner, events
 
@@ -1240,6 +1246,57 @@ def test_aside_forks_read_only_asks_and_reports_the_answer():
     assert turn['approvalPolicy'] == 'never' and turn['sandboxPolicy']['type'] == 'readOnly'
     assert turn['input'] == [{'type': 'text', 'text': 'Which file matters?'}]
     assert connection.closed  # its own process goes with it
+
+
+_DONE = [CodexEvent('text_completed', 'aside-copy', 'aside-turn', 'reply', 'The parser.'),
+         CodexEvent('turn_completed', 'aside-copy', 'aside-turn', status='completed')]
+
+
+def _turn(turn_id, status):
+    return {'id': turn_id, 'status': status, 'items': []}
+
+
+@pytest.mark.parametrize('turns, cut', [
+    # Newest first, as thread/turns/list gives them.
+    ([_turn('turn-2', 'inProgress'), _turn('turn-1', 'completed')], 'turn-1'),
+    # Always cut, even with nothing running: a turn that starts before the
+    # fork is left out too (and the moment after sending, before it's listed).
+    ([_turn('turn-1', 'completed')], 'turn-1'),
+    # A chat started elsewhere, running, after one you stopped.
+    ([_turn('turn-3', 'inProgress'), _turn('turn-2', 'interrupted'), _turn('turn-1', 'completed')],
+     'turn-1'),
+    # A turn that failed can leave your message unanswered.
+    ([_turn('turn-2', 'failed'), _turn('turn-1', 'completed')], 'turn-1'),
+    ([], None),
+])
+def test_an_aside_forks_up_to_the_newest_completed_turn(turns, cut):
+    # #559: in Claude, a copy holding an unfinished turn had its message
+    # answered in the aside too.
+    connection = AsideFake(answer=list(_DONE), turns=turns)
+    _runner, events = _aside_run(connection)
+    assert events[-1].kind == 'done'
+    fork = next(p for m, p in connection.calls if m == 'thread/fork')
+    assert fork.get('lastTurnId') == cut and 'beforeTurnId' not in fork
+    listed = next(p for m, p in connection.calls if m == 'thread/turns/list')
+    assert listed['threadId'] == 'source' and listed['sortDirection'] == 'desc'
+
+
+def test_an_aside_follows_the_turn_list_past_its_first_page():
+    connection = AsideFake(answer=list(_DONE), turns=[_turn('turn-3', 'inProgress')],
+                           later=[_turn('turn-2', 'completed')])
+    _aside_run(connection)
+    fork = next(p for m, p in connection.calls if m == 'thread/fork')
+    assert fork['lastTurnId'] == 'turn-2'
+
+
+@pytest.mark.parametrize('status', ['inProgress', 'failed', 'interrupted'])
+def test_an_aside_says_when_codex_has_nothing_finished_yet(status):
+    from thechatplace.aside import NOTHING_FINISHED
+    connection = AsideFake(answer=list(_DONE), turns=[_turn('turn-1', status)])
+    _runner, events = _aside_run(connection)
+    assert events[-1].kind == 'failed' and events[-1].text == NOTHING_FINISHED
+    assert not any(m == 'thread/fork' for m, _p in connection.calls)
+    assert connection.closed
 
 
 def test_aside_says_when_codex_did_not_finish_the_question():

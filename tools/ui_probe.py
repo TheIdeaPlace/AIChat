@@ -1147,6 +1147,41 @@ def d_new_session(frame, env):
     return frame.on_new_session
 
 
+def d_new_session_worktree(frame, env):
+    """New Session with A new worktree and a new branch, so Start from is on
+    (#561). The repository is described rather than made, as the test VM has
+    no git: what the dialog would read from a clone on branch work, whose
+    remote has a main branch."""
+    from thechatplace import workplaces
+    from thechatplace.ui.dialogs import NewSessionDialog, WORK_IN_WORKTREE
+    folder = str(env["folders"]["Scratch"])
+    dialog = NewSessionDialog(frame, folder)
+    info = workplaces.RepoInfo(top=folder, main=folder, common=folder + "\\.git", rel="",
+                               branch="work", branches=["older"], busy=["work"],
+                               remotes=["origin/main"])
+    # Every read of the folder, now and when the dialog opens and the folder
+    # box loses the focus, answers with that description.
+    def described(folder):
+        wx.CallAfter(dialog._repo_read, folder, info, "origin/main", False)
+        wx.CallAfter(choose)
+
+    def choose():
+        dialog.work_in.SetSelection(WORK_IN_WORKTREE)
+        dialog._on_work_in()
+        if dialog.branch.GetValue() != "fix/login":
+            dialog.branch.SetValue("fix/login")
+        dialog._sync_start_from()
+    for _ in range(150):  # its first, real read finishes first, so it can't land after
+        if dialog._repo_known:
+            break
+        wx.SafeYield()
+        time.sleep(0.1)
+    dialog._read_repo = described
+    dialog._repo_for = ""
+    dialog.refresh_repo()
+    return lambda: frame._modal(dialog)
+
+
 def d_codex_new(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
@@ -2180,6 +2215,8 @@ SURFACES = {
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
                                 "Settings after an announcement wasn't spoken: the reason box"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
+    "new-session-worktree": ("dialog", d_new_session_worktree,
+                             "New Session making a new worktree, with Start from on"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
     "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
@@ -2316,6 +2353,7 @@ DIALOG_CLASSES = {
     "settings-copilot": "SettingsDialog",
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
+    "new-session-worktree": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-auto-review": "NewSessionDialog",
     "codex-review-history": "ChatPermissionsDialog",

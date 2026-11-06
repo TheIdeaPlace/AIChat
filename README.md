@@ -201,8 +201,8 @@ too).
 - **Escape** in the messages or the reply box (or Backspace in the messages) goes back to the
   session list, on the same session. Enter there on the session that's already loaded takes you
   back to its messages where you left them, without reloading.
-- **Command results and compaction:** local Claude Code output, such as `/context`
-  and `/cost`, appears as Claude Code messages with tool activity off. After `/compact`,
+- **Command results and compaction:** local Claude Code output, such as `/context`,
+  appears as Claude Code messages with tool activity off. After `/compact`,
   a Conversation compacted row and a queued announcement confirm it happened. Reported
   before/after token counts appear there and update Usage and Context. The earlier
   conversation summary remains available with tool activity on. Terminal formatting is
@@ -356,8 +356,12 @@ too).
   there isn't one. **Work in** (Alt+I) is The folder as it is (naming its branch) or A new
   worktree, which a folder outside a git repository can't have (choosing it says so). **Branch**
   (Alt+R) lists the local branches no worktree has checked out; choose one, type the name of a
-  branch only a remote has (the new branch tracks it), or type a new name to branch from what
-  the folder has checked out. Start makes the worktree in the background with `git worktree
+  branch only a remote has (the new branch tracks it), or type a new name. For a new name,
+  **Start from** (Alt+A) is the remote's default branch, fetched first (the default, as Claude
+  Code's worktrees; a Claude chat follows Claude Code's `worktree.baseRef` when it's `head`), or
+  what the folder has checked out. With no remote, or a failed fetch, it starts from the folder's
+  branch and says so, and the new branch never tracks main. Once made, you hear what was made and
+  from where (#561). Start makes the worktree in the background with `git worktree
   add`, in `<repo>/.claude/worktrees/<branch>` where Claude Code and the desktop app put theirs
   (beside them even when the folder is a worktree itself), and starts the session in the same
   folder inside it as the one chosen. If git doesn't already ignore `.claude/worktrees/`, it's

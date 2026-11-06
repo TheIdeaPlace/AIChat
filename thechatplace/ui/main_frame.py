@@ -88,6 +88,8 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         SessionInfo, field_short_name, group_view, in_view, end_sentence, LISTED_PROVIDERS, RUNTIME_PROVIDERS, home_app,
                         state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
+from .. import workplaces
+from ..transcript import latest_relocation
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
                           PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, STEERING, TAIL_KINDS, TOOL, TOOL_RESULT, USER,
                           ChatMessage,
@@ -2816,8 +2818,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     subagent_count = subagents.count(path, copied_from, transcript)  # #468
             except Exception as exc:  # noqa: BLE001 - say what can be said without it
                 transcript, error = None, str(exc) or type(exc).__name__
+            # Its branch and worktree, for any provider's chat (#331, #561).
+            branch_facts = []
+            folder = info.cowork_folder if info.cowork else info.cwd
+            if folder and os.path.isdir(folder):
+                git = workplaces.find_git()
+                try:
+                    branch_facts = workplaces.branch_facts(git, folder) if git else []
+                except Exception:  # noqa: BLE001 - Properties without them, not an error
+                    branch_facts = []
             wx.CallAfter(self._session_properties_read, info, transcript, path, size, error,
-                         returning_to, subagent_count)
+                         returning_to, subagent_count, branch_facts)
 
         try:
             self._pool.submit(work)
@@ -2825,7 +2836,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._properties_busy = False
 
     def _session_properties_read(self, info, transcript, path, size, error, returning_to,
-                                 subagent_count=None):
+                                 subagent_count=None, branch_facts=()):
         self._properties_busy = False
         if self._gone() or self._closing:
             return
@@ -2850,6 +2861,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 read_error=error, subagent_count=subagent_count)
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
+        lines = properties.with_branch_facts(lines, branch_facts)
         self._show_properties(f"Properties of {info.title or 'Untitled session'}", lines,
                               returning_to, codex_info=info if info.provider == 'codex' else None)
 
@@ -4640,8 +4652,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             policy = getattr(dialog, 'codex_policy', lambda: {})() if provider == 'codex' else {}
             copilot_mode = getattr(dialog, "copilot_mode", lambda: "")()
             chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
+            # What New Session made, said once the chat has started (#561).
+            worktree_said = getattr(dialog, "worktree_said", "")
         finally:
             dialog.Destroy()
+        if worktree_said:
+            # Queued, so the chat's own announcements don't cut it off.
+            wx.CallAfter(self._feedback, worktree_said)
         if forward is None:
             self.speech.new_session_provider = provider
             try:
@@ -4769,11 +4786,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.attach_list.SetFocus()
 
     def _on_reply_paste(self, event):
-        """Ctrl+V with a picture on the clipboard (a screenshot from
-        Win+Shift+S, say) attaches it; text pastes as usual."""
+        """Ctrl+V with files copied in File Explorer or the Finder attaches
+        them, and so does a picture on the clipboard (a screenshot from
+        Win+Shift+S, say); text pastes as usual."""
         info = self._open
-        bitmap = (self._clipboard_image()
-                  if info is not None and info.is_own and info.provider in ('claude', 'codex') else None)
+        own = info is not None and info.is_own and info.provider in ('claude', 'codex')
+        copied, folders = self._clipboard_files() if own else ([], [])
+        if copied:
+            self._add_attachments(self._attachment_key(info), copied)
+            return
+        if folders:
+            # Nothing would paste into the box, so say why rather than nothing.
+            self._feedback("A folder can't be attached. Copy the files in it instead.")
+            return
+        bitmap = self._clipboard_image() if own else None
         if bitmap is None:
             event.Skip()
             return
@@ -4786,6 +4812,24 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback(f"Couldn't attach the pasted picture: {exc}")
             return
         self._add_attachments(self._attachment_key(info), [str(path)])
+
+    def _clipboard_files(self):
+        """Files copied in File Explorer or the Finder, as ``(files, folders)``.
+        A copied picture file is a file, not a picture: without this Ctrl+V
+        did nothing with it."""
+        if not wx.TheClipboard.Open():
+            return [], []
+        try:
+            if not wx.TheClipboard.IsSupported(wx.DataFormat(wx.DF_FILENAME)):
+                return [], []
+            data = wx.FileDataObject()
+            if not wx.TheClipboard.GetData(data):
+                return [], []
+            names = list(data.GetFilenames())
+        finally:
+            wx.TheClipboard.Close()
+        files = [name for name in names if os.path.isfile(name)]
+        return files, [name for name in names if os.path.isdir(name)]
 
     def _clipboard_image(self):
         """The clipboard's picture, when it holds a picture and no text."""
@@ -5418,6 +5462,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._store_write(self.store.update, session_id, state=state, detail=detail,
                               unread=not is_open,
                               last_activity_ms=int(time.time() * 1000))
+            self._note_worktree_move(session_id, title)
             quiet = self._agent_quiet("claude", session_id)
             if not quiet:
                 self._notify_turn_end(session_id, title, event, denials, detail,
@@ -5548,6 +5593,59 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._changes_due = True
             self._refresh_chat()
         self._update_send_state()
+        self.refresh_sessions()
+
+    def _note_worktree_move(self, session_id: str, title: str) -> None:
+        """A Claude chat of yours that Claude moved into a worktree, or back
+        out of one, during the turn (#561). Claude Code carries on there in
+        later turns whatever folder it's resumed from (checked with a real
+        claude -p run), so the chat's folder follows it, for the list,
+        Changed Files and Rewind, and you hear where it went: the folder,
+        the branch and, if git can tell, what the branch started from."""
+        own = self.store.get(session_id)
+        if own is None:
+            return
+        info, before = own.to_info(), own.cwd
+        quiet = self._agent_quiet("claude", session_id)
+
+        def work():
+            path = info.transcript_path()
+            moved = latest_relocation(path) if path is not None else ""
+            if (not moved or os.path.normcase(os.path.normpath(moved))
+                    == os.path.normcase(os.path.normpath(before)) or not os.path.isdir(moved)):
+                return
+            git = workplaces.find_git()
+            repo = workplaces.repo_info(git, moved) if git else None
+            branch = repo.branch if repo else ""
+            start = workplaces.branch_start(git, repo) if repo and branch else ""
+            wx.CallAfter(self._worktree_moved, session_id, title, before, moved, branch, start,
+                         quiet)
+
+        try:
+            self._pool.submit(work)
+        except RuntimeError:
+            pass  # closing: the pool is shut
+
+    def _worktree_moved(self, session_id, title, before, moved, branch, start, quiet=False):
+        if self._gone() or self._closing:
+            return
+        own = self.store.get(session_id)
+        if own is None or own.cwd != before:
+            return  # changed again since, or gone
+        if not self._store_write(self.store.update, session_id, cwd=moved):
+            return
+        name = os.path.basename(moved.rstrip("\\/"))
+        inside = workplaces.WORKTREE_FOLDER_PATTERN.search(moved) is not None
+        text = (f"{title} moved to worktree {name}" if inside
+                else f"{title} moved back to {moved}")
+        if branch:
+            text += f", on branch {branch}"
+            if start and inside:
+                text += f", from {start}"
+        if quiet:
+            self._status(text + ".")  # the conversation says what happened (#248)
+        else:
+            self._say(text + ".", interrupt=False)  # news, after the reply
         self.refresh_sessions()
 
     def _turn_end_state(self, session_id: str, event: TurnEvent, denials) -> tuple:

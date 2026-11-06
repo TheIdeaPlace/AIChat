@@ -1318,6 +1318,43 @@ def _moved_to(record: dict) -> str:
     return cwd[:match.end()] if match else ""
 
 
+def latest_relocation(path: Path, tails=(64 * 1024, 1024 * 1024)) -> str:
+    """Where Claude Code last moved a chat (#561), from its newest
+    ``relocated`` record's ``relocatedCwd``: into a worktree, or back out.
+    "" when the transcript's end says none. Only that record counts: an
+    ordinary record's ``cwd`` follows a ``cd`` and a subfolder, and isn't a
+    move. Read from the end, a short stretch first, as the move is usually
+    in the turn that's just ended; only whole lines."""
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            for tail in tails:
+                handle.seek(max(0, size - tail))
+                data = handle.read()
+                if b'"relocatedCwd"' not in data:
+                    if size <= tail:
+                        return ""
+                    continue
+                lines = data.split(b"\n")
+                if size > tail:
+                    lines = lines[1:]  # the first may be cut short
+                for line in reversed(lines):
+                    if b'"relocatedCwd"' not in line:
+                        continue
+                    record = _json_line(line)
+                    if record is None or record.get("isSidechain"):
+                        continue
+                    moved = record.get("relocatedCwd")
+                    if isinstance(moved, str) and moved:
+                        return moved
+                if size <= tail:
+                    return ""
+    except OSError:
+        return ""
+    return ""
+
+
 class _FactsReader:
     """One transcript's facts, read as the file grows (whole lines only)."""
 

@@ -5,7 +5,8 @@ How it's asked
 --------------
 A read-only copy of the conversation that is never saved::
 
-    claude -p --resume <chat> --fork-session --no-session-persistence
+    claude -p --resume <chat> [--resume-session-at <cut>] --fork-session
+              --no-session-persistence
               --tools Read,Grep,Glob --strict-mcp-config
               --permission-mode manual --permission-prompts none
               --disable-slash-commands
@@ -20,8 +21,16 @@ Checked with Claude Code 2.1.296 and real Haiku runs:
   never is (``claude_cli.check_resume_allowed``).
 * It answered from the history ("the code word is ZEPHYR-42") and could read
   a file in the folder to answer.
-* It worked while the source chat had a turn running: it answers from what
-  the transcript holds so far.
+* The copy always ends with the chat's newest finished reply:
+  ``--resume-session-at`` that record (``finished_cut``, #559). Without it, a
+  copy of a chat with a turn running, or stopped, quit or crashed part way,
+  held the unfinished turn, the message and a tool call with no result yet;
+  Claude Code marked that work as stopped, and Claude answered the chat's own
+  message in the aside as well as, or instead of, the question (checked with
+  a ``sleep 45`` running, and with the turn killed as Stop does). With the cut
+  it answered only the question. The chat's own turn was never affected. The
+  transcript decides, not whether a turn looks to be running: a turn stopped
+  here leaves the same unfinished end, and one just sent may not be written.
 * ``--settings {"disableAllHooks": true}`` keeps your and the project's hooks
   from running: without it a project's Stop and UserPromptSubmit hooks ran
   (and wrote their file) on every aside.
@@ -49,10 +58,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import threading
 from dataclasses import dataclass
-from typing import Callable, Collection, Dict, List, Optional
+from typing import Callable, Collection, Dict, Iterable, List, Optional
 
 from . import platform_paths
 from .claude_cli import (INIT_ANSWER_WAIT, ResumeRefused, StreamParser, api_key_problem,
@@ -70,13 +80,196 @@ COWORK_REFUSED = ("Ask Aside isn't available for Cowork sessions: their conversa
                   "the desktop app's own files. Open the session in Claude to ask there.")
 
 
+#: Said instead of asking when no turn in a chat has finished (#559).
+NOTHING_FINISHED = "Nothing in this chat has finished yet, so there's nothing to ask about."
+
+#: finished_cut's answer when the chat compacted after its newest finished
+#: reply. Never an id (``is_safe_id`` refuses it), so it can't be passed on.
+COMPACTED = "<compacted>"
+#: Said instead of asking then (#559).
+COMPACTED_SINCE = ("This chat was compacted after its last finished reply, so Ask Aside can't "
+                   "answer about it yet. Ask again after Claude's next reply.")
+#: Said when Claude Code can't find the reply the copy was cut at (#559): one
+#: left on a branch that a terminal chat's rewind abandoned, say.
+CUT_NOT_FOUND = ("Couldn't ask about this chat: Claude Code couldn't find its last "
+                 "finished reply. Ask again after Claude's next reply.")
+
+#: An assistant record's stop reason when its message went on to call a tool.
+_TOOL_USE_STOP = "tool_use"
+
+
+def is_finished_reply(record) -> bool:
+    """Whether a transcript record is Claude's text that ended a turn (#559):
+    text and no tool call, from a message that didn't stop to call one. Not a
+    subagent's, and not the synthetic text Claude Code closes a failed turn
+    with (``isApiErrorMessage``, model ``<synthetic>``: a session limit, the
+    API out of reach), which leaves your message unanswered.
+
+    Checked against every local transcript (structure only): of the text
+    records, those followed by a tool call in the same message say
+    ``stop_reason`` "tool_use"; the record before each message you typed
+    after a finished turn was one of these."""
+    if not isinstance(record, dict) or record.get("type") != "assistant":
+        return False
+    if record.get("isSidechain") or record.get("isApiErrorMessage"):
+        return False
+    message = record.get("message")
+    if not isinstance(message, dict) or message.get("model") == "<synthetic>":
+        return False
+    if message.get("stop_reason") == _TOOL_USE_STOP:
+        return False
+    content = message.get("content")
+    if isinstance(content, str):
+        return bool(content.strip())
+    if not isinstance(content, list):
+        return False
+    blocks = [block for block in content if isinstance(block, dict)]
+    if any(block.get("type") == "tool_use" for block in blocks):
+        return False
+    return any(block.get("type") == "text" and str(block.get("text") or "").strip()
+               for block in blocks)
+
+
+def finished_cut(lines: Iterable[str]) -> str:
+    """Where an aside's copy of a Claude chat ends (#559), from its
+    transcript's lines: the uuid of the newest finished reply
+    (``is_finished_reply``), "" when there's none, or ``COMPACTED`` when the
+    chat compacted after it and the compaction didn't keep it.
+
+    Always a cut, even when the chat ends with that reply: Claude Code reads
+    the transcript again a moment after this does, and anything written in
+    between (a message sent as a turn ends, a background task's notification)
+    would otherwise be in the copy unanswered. And never where an unfinished
+    turn starts: a message sent mid-turn is a plain user record too, and
+    another session's message is a meta one, so cutting at the reply is what
+    holds for every way a turn starts or goes on.
+
+    A compaction after that reply usually leaves no place to cut. Checked
+    with Claude Code 2.1.316 and Haiku on chats built like real ones:
+    * Automatic, in the middle of a turn (all 24 found locally were): cut
+      at the reply before it, Claude Code said "No message found with
+      message.uuid of: …"; at the ``compact_boundary``, the copy knew
+      nothing of the chat; at the summary, it knew the summary and named
+      the turn's unfinished task as outstanding, as the summary tells it to
+      carry on with it. Even with the reply among the messages the
+      compaction kept, the summary brought the unfinished task along.
+    * Manual (``/compact``) in an idle chat keeps its last messages
+      (``compactMetadata.preservedMessages``, since 2.1.229), the finished
+      reply among them. Cut there, the copy had the summary and answered
+      only the question. So that one is cut at as usual, as long as nothing
+      of a turn lies between the reply and the compaction: what it keeps is
+      sized in tokens, not turns, so a turn stopped before ``/compact`` can
+      be kept too, and its summary then carries that turn on.
+    Otherwise it's said instead of asking."""
+    compaction = None  # the newest compact_boundary passed, or True for a summary alone
+    turn_since = False  # part of a turn between that boundary and the reply
+    for line in reversed(lines if isinstance(lines, list) else list(lines)):
+        if ('"assistant"' not in line and "ompact" not in line
+                and not (compaction is not None and '"user"' in line)):
+            continue  # most records; not worth parsing
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, dict) or record.get("isSidechain"):
+            continue
+        if record.get("type") == "system" and record.get("subtype") == "compact_boundary":
+            if not isinstance(compaction, dict):
+                compaction = record
+            continue
+        if record.get("isCompactSummary"):
+            compaction = compaction or True
+            continue
+        if is_finished_reply(record):
+            uuid = record.get("uuid")
+            if not isinstance(uuid, str) or not platform_paths.is_safe_id(uuid):
+                return ""
+            if compaction is not None and (turn_since or not _kept_by(compaction, uuid)):
+                return COMPACTED
+            return uuid
+        if isinstance(compaction, dict) and _part_of_a_turn(record):
+            turn_since = True
+    return ""  # nothing finished, compacted or not
+
+
+_LOCAL_COMMAND = re.compile(r"\s*<(command-name|local-command-(stdout|stderr|caveat))>")
+
+
+def _part_of_a_turn(record: dict) -> bool:
+    """Whether a record is Claude's or a message to Claude: anything but a
+    local slash command (``/compact`` itself, say), a meta note or Claude
+    Code's own bookkeeping."""
+    if record.get("type") == "assistant":
+        return True
+    if record.get("type") != "user" or record.get("isMeta"):
+        return False
+    message = record.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, list):
+        if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
+            return True
+        content = "\n".join(str(b.get("text") or "") for b in content
+                            if isinstance(b, dict) and b.get("type") == "text")
+    return not (isinstance(content, str) and _LOCAL_COMMAND.match(content))
+
+
+def _kept_by(boundary, uuid: str) -> bool:
+    """Whether a manual compaction kept the record ``uuid`` (see
+    finished_cut): it's among its preserved messages."""
+    if not isinstance(boundary, dict):
+        return False
+    meta = boundary.get("compactMetadata")
+    if not isinstance(meta, dict) or meta.get("trigger") != "manual":
+        return False
+    kept = meta.get("preservedMessages")
+    if not isinstance(kept, dict):
+        return False
+    return any(isinstance(ids, list) and uuid in ids
+               for ids in (kept.get("uuids"), kept.get("allUuids")))
+
+
+#: How much of a transcript's end finished_cut_from_file reads at a time:
+#: most chats end with a finished reply, found in the first.
+CUT_STEPS = (64 * 1024, 1024 * 1024, 16 * 1024 * 1024)
+
+
+def finished_cut_from_file(path, steps=CUT_STEPS) -> str:
+    """``finished_cut`` for a transcript on disk, reading only as much of its
+    end as it takes (as transcript.py's tail reader does, #146): a long chat
+    can be tens of megabytes, read for every question otherwise. Raises
+    OSError when it can't be read."""
+    from .transcript import split_jsonl
+    with open(path, "rb") as handle:
+        size = os.fstat(handle.fileno()).st_size
+        for limit in (*steps, size):
+            start = max(0, size - limit)
+            handle.seek(start)
+            data = handle.read(size - start)
+            if start > 0:
+                # The first line is cut off, unless it started right here; a
+                # record cut off is read whole at the next step.
+                handle.seek(start - 1)
+                if handle.read(1) != b"\n":
+                    newline = data.find(b"\n")
+                    data = data[newline + 1:] if newline >= 0 else b""
+            cut = finished_cut(split_jsonl(data))
+            if cut or start == 0:
+                return cut
+    return ""
+
+
 def build_aside_command(executable: str, source_id: str, model: str = "",
                         cowork_ids: Collection[str] = (),
-                        allowed_dirs: Collection[str] = ()) -> List[str]:
+                        allowed_dirs: Collection[str] = (),
+                        resume_at: str = "") -> List[str]:
     """The command that asks a side question about session ``source_id``.
     Never a plain ``--resume``: always a fork that isn't saved. ``allowed_dirs``
     are the chat's More Folders, so a question about a file in one can be
-    answered; the tools here can still only read them."""
+    answered; the tools here can still only read them. ``resume_at`` is
+    ``finished_cut``'s record: the copy ends there, so a turn that's running
+    or didn't finish is left out (#559)."""
+    if resume_at and not platform_paths.is_safe_id(resume_at):
+        raise ValueError("That isn't a place in the chat Claude Code can copy up to.")
     if not platform_paths.is_safe_id(source_id) or source_id.startswith("local_"):
         raise ResumeRefused("That is not a session id Claude Code can read from.")
     if source_id in cowork_ids:
@@ -99,7 +292,10 @@ def build_aside_command(executable: str, source_id: str, model: str = "",
     if dirs:
         # Its values run to the next flag: --resume, below.
         command += ["--add-dir", *dirs]
-    return command + ["--resume", source_id, "--fork-session", "--no-session-persistence"]
+    command += ["--resume", source_id]
+    if resume_at:
+        command += ["--resume-session-at", resume_at]
+    return command + ["--fork-session", "--no-session-persistence"]
 
 
 @dataclass
@@ -116,14 +312,19 @@ _MISSING = ("Claude Code couldn't find this chat's conversation on disk, so ther
 
 
 def _missing_or(text: str) -> str:
-    """Claude Code's "No conversation found with session ID: …" in words."""
-    return _MISSING if "No conversation found" in (text or "") else text
+    """Claude Code's "No conversation found with session ID: …" in words,
+    and its "No message found with message.uuid of: …" for the cut (#559)."""
+    if "No conversation found" in (text or ""):
+        return _MISSING
+    return CUT_NOT_FOUND if "No message found" in (text or "") else text
 
 
 def _plain_problem(returncode, detail: str) -> str:
     """Why an aside ended without an answer, in words."""
     if "No conversation found" in (detail or ""):
         return _MISSING
+    if "No message found" in (detail or ""):
+        return CUT_NOT_FOUND
     return exit_message(returncode, detail).replace("the turn", "the question")
 
 
@@ -457,7 +658,9 @@ def aside_intro(provider: str = "Claude") -> str:
     plan = _PLAN_NAMES.get(provider, f"{provider} plan")
     return (f"Ask a question about this chat, such as which file {provider} changed or what a "
             f"reply meant. The question and its answer aren't added to the chat, and {provider} "
-            "can read files to answer but can't change anything. Your questions stay listed "
+            f"can read files to answer but can't change anything. {provider} answers from the "
+            "chat up to its last finished reply, so a turn that's running or didn't finish "
+            "isn't included. Your questions stay listed "
             f"for this chat until you quit The Chat Place. Each question uses your {plan}, "
             "as a message does.")
 

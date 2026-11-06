@@ -68,6 +68,7 @@ class CodexExtras:
         from ..providers.codex_aside import CodexAsideRunner
         from .. import announce
         def ask(question, on_event):
+            # The thread's turn list decides where the copy ends (#559).
             return CodexAsideRunner(info, question,
                 lambda event: wx.CallAfter(on_event, event)).start()
         focus = wx.Window.FindFocus()

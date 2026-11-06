@@ -702,6 +702,14 @@ def _drive_aside(frame, monkeypatch, steps):
 
     def show(dialog):
         seen["title"] = dialog.GetTitle()
+        asks = dialog.on_ask
+
+        def on_ask():
+            # Where the copy ends is found off the UI thread first (#559).
+            count = len(FakeAside.instances)
+            asks()
+            assert pump(lambda: len(FakeAside.instances) > count or not dialog.asking)
+        dialog.on_ask = on_ask
         steps(dialog)
         return wx.ID_CANCEL
     monkeypatch.setattr(claude_extras.AskAsideDialog, "ShowModal", show)
@@ -733,7 +741,9 @@ def test_ask_aside_asks_a_read_only_copy_and_says_the_answer(frame, env, folder,
     assert seen["title"] == "Ask Aside about Mine"
     runner = FakeAside.instances[-1]
     assert runner.question == "Which file did you change?" and runner.cwd == folder
-    assert runner.command[-4:] == ["--resume", "own-1", "--fork-session",
+    # Always cut at its newest finished reply (#559), here its last.
+    assert runner.command[-6:] == ["--resume", "own-1", "--resume-session-at",
+                                   _reply_uuid(env, folder, "own-1"), "--fork-session",
                                    "--no-session-persistence"]
     assert env["spoken"][-1] == "Answer. main.py, line 4."
     assert copied == ["main.py, line 4."]
@@ -781,6 +791,150 @@ def test_a_desktop_chat_has_no_more_folders_to_give_an_aside(frame, monkeypatch)
     select(frame, "Desktop one")
     _drive_aside(frame, monkeypatch, lambda d: (d.question.SetValue("q"), d.on_ask()))
     assert "--add-dir" not in FakeAside.instances[-1].command
+
+
+def _mid_turn(env, folder, cli="own-1"):
+    """A transcript whose second turn is unfinished: the second message and a
+    command with no result yet. Returns the first turn's last record."""
+    from records import tool_use_block
+    records = [user_text("Hello"), assistant_block(text_block("Hi"), "m1"),
+               user_text("Run the tests"),
+               assistant_block(tool_use_block("Bash", {"command": "sleep 45"}), "m2")]
+    for before, record in zip(records, records[1:]):
+        record["parentUuid"] = before["uuid"]
+    add_transcript(env, folder, cli, records)
+    return records[1]
+
+
+def _reply_uuid(env, folder, cli):
+    """The uuid of the last reply in a chat's transcript, as written."""
+    import json
+    path = env["projects"] / platform_paths.encode_cwd(folder) / f"{cli}.jsonl"
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+    return [r for r in records if r["type"] == "assistant"][-1]["uuid"]
+
+
+def _asked_until_read(dialog):
+    dialog.question.SetValue("Which file?")
+    dialog.on_ask()  # _drive_aside's waits for the transcript to be read
+
+
+def _cut_command(end):
+    return ["--resume", "own-1", "--resume-session-at", end["uuid"], "--fork-session",
+            "--no-session-persistence"]
+
+
+def test_ask_aside_during_a_turn_leaves_the_running_turn_out(frame, env, folder, monkeypatch):
+    # #559: a copy holding the unfinished turn had Claude answer its message too.
+    end = _mid_turn(env, folder)
+    frame._runners["own-1"] = FakeRunner([], "", "", None)
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, _asked_until_read)
+    assert FakeAside.instances[-1].command[-6:] == _cut_command(end)
+
+
+def test_ask_aside_after_a_turn_was_stopped_leaves_that_turn_out(frame, env, folder, monkeypatch):
+    # Stop kills claude -p, so the transcript ends mid-command with no runner
+    # left: the transcript decides, not whether a turn is running.
+    end = _mid_turn(env, folder)
+    assert "own-1" not in frame._runners
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, _asked_until_read)
+    assert FakeAside.instances[-1].command[-6:] == _cut_command(end)
+
+
+def test_ask_aside_just_after_send_cuts_at_the_last_finished_reply(frame, env, folder,
+                                                                   monkeypatch):
+    # The turn is running, but claude -p hasn't written your message yet: the
+    # chat as written ends with a finished reply. The copy is still cut
+    # there, so your message, written before Claude Code reads the chat
+    # again, isn't in it unanswered.
+    frame._runners["own-1"] = FakeRunner([], "", "", None)
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, _asked_until_read)
+    command = FakeAside.instances[-1].command
+    assert command[command.index("--resume-session-at") + 1] == _reply_uuid(env, folder, "own-1")
+
+
+def test_ask_aside_on_a_desktop_chat_listed_idle_still_leaves_its_turn_out(frame, env, folder,
+                                                                          monkeypatch):
+    # The list's snapshot can be a refresh behind a turn that has started.
+    from thechatplace.sessions import IDLE
+    end = _mid_turn(env, folder, cli="cli-a")
+    select(frame, "Desktop one")
+    assert frame._selected_session().state == IDLE
+    _drive_aside(frame, monkeypatch, _asked_until_read)
+    command = FakeAside.instances[-1].command
+    assert command[command.index("--resume-session-at") + 1] == end["uuid"]
+
+
+def test_ask_aside_says_when_only_the_first_turn_is_unfinished(frame, env, folder, monkeypatch):
+    from records import tool_use_block
+    from thechatplace.aside import NOTHING_FINISHED
+    records = [user_text("Run the tests"),
+               assistant_block(tool_use_block("Bash", {"command": "sleep 45"}), "m1")]
+    records[1]["parentUuid"] = records[0]["uuid"]
+    add_transcript(env, folder, "own-1", records)
+    seen = {}
+
+    def steps(dialog):
+        _asked_until_read(dialog)
+        seen["answer"] = dialog.answer.GetValue()
+        seen["row"] = dialog.history.GetString(0)
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+    assert FakeAside.instances == []  # nothing asked
+    assert seen["answer"].endswith("Not answered. " + NOTHING_FINISHED)
+    assert seen["row"].startswith("Q: Which file? A: not answered: Nothing in this chat has "
+                                  "finished yet")
+
+
+def test_ask_aside_says_when_the_chat_compacted_since_its_last_reply(frame, env, folder,
+                                                                   monkeypatch):
+    # #559: no place to cut a copy of it that Claude Code can find.
+    from records import _base, tool_use_block
+    from thechatplace.aside import COMPACTED_SINCE
+    ask = user_text("Run the tests")
+    summary = user_text("This session is being continued.", isCompactSummary=True)
+    # Automatic, mid-turn, keeping the turn so far (Claude Code 2.1.229 on).
+    kept = {"anchorUuid": summary["uuid"], "uuids": [ask["uuid"]], "allUuids": [ask["uuid"]]}
+    records = [user_text("Hello"), assistant_block(text_block("Hi"), "m1"), ask,
+               _base("system", subtype="compact_boundary", content="Conversation compacted",
+                     compactMetadata={"trigger": "auto", "preservedMessages": kept,
+                                      "preservedSegment": {"headUuid": ask["uuid"],
+                                                           "anchorUuid": summary["uuid"],
+                                                           "tailUuid": ask["uuid"]}}),
+               summary, assistant_block(tool_use_block("Bash", {"command": "make"}), "m2")]
+    add_transcript(env, folder, "own-1", records)
+    seen = {}
+
+    def steps(dialog):
+        _asked_until_read(dialog)
+        seen["answer"] = dialog.answer.GetValue()
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+    assert FakeAside.instances == []  # nothing asked
+    assert seen["answer"].endswith("Not answered. " + COMPACTED_SINCE)
+
+
+def test_stopping_an_aside_while_the_chat_is_read_asks_nothing(frame, env, folder, monkeypatch):
+    from thechatplace.ui.dialogs import AskAsideDialog
+    _mid_turn(env, folder)
+    seen = {}
+
+    def steps(dialog):
+        dialog.question.SetValue("Which file?")
+        AskAsideDialog.on_ask(dialog)  # not _drive_aside's, which waits
+        AskAsideDialog.on_ask(dialog)  # Stop, at once
+        seen["said_at_once"] = env["feedback"][-1]
+        assert pump(lambda: not dialog.asking)
+        pump(lambda: False, timeout=0.5)
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+    # "Stopped." comes later, as a runner's does, not in the middle of Stop.
+    assert seen["said_at_once"] == "Asking Claude."
+    assert FakeAside.instances == []
+    assert env["feedback"][-1] == "Stopped asking."
 
 
 def test_ask_aside_names_codex_and_its_plan(frame, monkeypatch):
@@ -857,12 +1011,14 @@ def test_enter_on_a_question_reads_its_answer_from_the_dialogs_key_hook(frame, e
     assert seen["answer"].endswith("Answer:\nmain.py, line 4.")
 
 
-def test_ask_aside_reads_a_desktop_session_without_resuming_it(frame, env, monkeypatch):
+def test_ask_aside_reads_a_desktop_session_without_resuming_it(frame, env, folder,
+                                                               monkeypatch):
     select(frame, "Desktop one")
     _drive_aside(frame, monkeypatch, lambda d: (d.question.SetValue("q"), d.on_ask()))
     command = FakeAside.instances[-1].command
-    assert command[command.index("--resume") + 1:] == ["cli-a", "--fork-session",
-                                                       "--no-session-persistence"]
+    assert command[command.index("--resume") + 1:] == [
+        "cli-a", "--resume-session-at", _reply_uuid(env, folder, "cli-a"), "--fork-session",
+        "--no-session-persistence"]
 
 
 def test_escape_while_asking_stops_and_keeps_the_dialog(frame, env, monkeypatch):
