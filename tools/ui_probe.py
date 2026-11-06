@@ -1159,8 +1159,11 @@ def d_new_session_worktree(frame, env):
     info = workplaces.RepoInfo(top=folder, main=folder, common=folder + "\\.git", rel="",
                                branch="work", branches=["older"], busy=["work"],
                                remotes=["origin/main"])
-    dialog._repo_for = folder
-    dialog._repo_read(folder, info, "origin/main", False)
+    # Its own read of the (not a repository) folder, still on its way, is
+    # then passed over: it answers for another folder than this one.
+    described = f"probe:{folder}"
+    dialog._repo_for = described
+    dialog._repo_read(described, info, "origin/main", False)
     dialog.work_in.SetSelection(WORK_IN_WORKTREE)
     dialog._on_work_in()
     dialog.branch.SetValue("fix/login")
