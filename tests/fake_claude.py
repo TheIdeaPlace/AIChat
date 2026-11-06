@@ -227,6 +227,12 @@ elif mode == 'no-message':
     sys.stderr.write("No message found with message.uuid of: 0000-cut\n")
     sys.stderr.flush()
     sys.exit(1)
+elif mode == 'no-message-result':
+    # The same, as an error result, as 'missing' reports its own (#559).
+    out(type="result", subtype="error_during_execution", is_error=True,
+        errors=["No message found with message.uuid of: 0000-cut"], session_id="abc-1")
+    sys.stdin.buffer.read()
+    sys.exit(1)
 elif mode == 'missing':
     out(type="result", subtype="error_during_execution", is_error=True,
         errors=["No conversation found with session ID: abc-1"], session_id="abc-1")

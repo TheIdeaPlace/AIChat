@@ -88,11 +88,11 @@ NOTHING_FINISHED = "Nothing in this chat has finished yet, so there's nothing to
 COMPACTED = "<compacted>"
 #: Said instead of asking then (#559).
 COMPACTED_SINCE = ("This chat was compacted after its last finished reply, so Ask Aside can't "
-                   "copy it yet. Ask again after Claude's next reply.")
+                   "answer about it yet. Ask again after Claude's next reply.")
 #: Said when Claude Code can't find the reply the copy was cut at (#559): one
 #: left on a branch that a terminal chat's rewind abandoned, say.
 CUT_NOT_FOUND = ("Couldn't ask about this chat: Claude Code couldn't find its last "
-                 "finished reply.")
+                 "finished reply. Ask again after Claude's next reply.")
 
 #: An assistant record's stop reason when its message went on to call a tool.
 _TOOL_USE_STOP = "tool_use"
@@ -134,7 +134,7 @@ def finished_cut(lines: Iterable[str]) -> str:
     """Where an aside's copy of a Claude chat ends (#559), from its
     transcript's lines: the uuid of the newest finished reply
     (``is_finished_reply``), "" when there's none, or ``COMPACTED`` when the
-    chat compacted after it.
+    chat compacted after it and the compaction didn't keep it.
 
     Always a cut, even when the chat ends with that reply: Claude Code reads
     the transcript again a moment after this does, and anything written in
@@ -144,15 +144,21 @@ def finished_cut(lines: Iterable[str]) -> str:
     another session's message is a meta one, so cutting at the reply is what
     holds for every way a turn starts or goes on.
 
-    A compaction after that reply leaves no place to cut. Every automatic
-    one found locally happened mid-turn, and a manual one leaves the chat
-    there until Claude next replies. Checked with Claude Code 2.1.316 and
-    Haiku on a chat that compacted mid-turn: cut at the reply before it,
-    Claude Code said "No message found with message.uuid of: …" (it reads
-    only from the compaction on); cut at the ``compact_boundary``, the copy
-    knew nothing of the chat; cut at the summary, it knew the summary and
-    named the turn's unfinished task as outstanding, as the summary tells
-    it to carry on with it. So that's said instead of asking."""
+    A compaction after that reply usually leaves no place to cut. Checked
+    with Claude Code 2.1.316 and Haiku on chats built like real ones:
+    * Automatic, in the middle of a turn (all 24 found locally were): cut
+      at the reply before it, Claude Code said "No message found with
+      message.uuid of: …"; at the ``compact_boundary``, the copy knew
+      nothing of the chat; at the summary, it knew the summary and named
+      the turn's unfinished task as outstanding, as the summary tells it to
+      carry on with it. Even with the reply among the messages the
+      compaction kept, the summary brought the unfinished task along.
+    * Manual (``/compact``) in an idle chat keeps its last messages
+      (``compactMetadata.preservedMessages``, since 2.1.229), the finished
+      reply among them. Cut there, the copy had the summary and answered
+      only the question. So that one is cut at as usual.
+    Otherwise it's said instead of asking."""
+    compaction = None  # the newest compact_boundary passed, or True for a summary alone
     for line in reversed(lines if isinstance(lines, list) else list(lines)):
         if '"assistant"' not in line and "ompact" not in line:
             continue  # most records; not worth parsing
@@ -162,13 +168,36 @@ def finished_cut(lines: Iterable[str]) -> str:
             continue
         if not isinstance(record, dict) or record.get("isSidechain"):
             continue
-        if record.get("isCompactSummary") or (record.get("type") == "system"
-                                              and record.get("subtype") == "compact_boundary"):
-            return COMPACTED
+        if record.get("type") == "system" and record.get("subtype") == "compact_boundary":
+            if not isinstance(compaction, dict):
+                compaction = record
+            continue
+        if record.get("isCompactSummary"):
+            compaction = compaction or True
+            continue
         if is_finished_reply(record):
             uuid = record.get("uuid")
-            return uuid if isinstance(uuid, str) and platform_paths.is_safe_id(uuid) else ""
-    return ""
+            if not isinstance(uuid, str) or not platform_paths.is_safe_id(uuid):
+                return ""
+            if compaction is not None and not _kept_by(compaction, uuid):
+                return COMPACTED
+            return uuid
+    return ""  # nothing finished, compacted or not
+
+
+def _kept_by(boundary, uuid: str) -> bool:
+    """Whether a manual compaction kept the record ``uuid`` (see
+    finished_cut): it's among its preserved messages."""
+    if not isinstance(boundary, dict):
+        return False
+    meta = boundary.get("compactMetadata")
+    if not isinstance(meta, dict) or meta.get("trigger") != "manual":
+        return False
+    kept = meta.get("preservedMessages")
+    if not isinstance(kept, dict):
+        return False
+    return any(isinstance(ids, list) and uuid in ids
+               for ids in (kept.get("uuids"), kept.get("allUuids")))
 
 
 #: How much of a transcript's end finished_cut_from_file reads at a time:

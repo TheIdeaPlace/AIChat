@@ -1637,8 +1637,8 @@ the list). It's like Claude Code's /btw. It works for Claude chats started here,
 chats and terminal chats, even while a turn is running. Claude answers from the chat up to its
 last finished reply, so a turn that's running or didn't finish (it was stopped, or ended in an
 error) isn't included, and until something in the chat has finished, there's nothing to ask
-about. A chat compacted since its last finished reply can be asked about again after Claude's
-next reply.
+about. A chat compacted after its last finished reply, as a long turn can be, can be asked
+about again after Claude's next reply.
 It also works for local Codex chats,
 including chats started elsewhere. It isn't available for Cowork chats, kept copies or Copilot
 chats.

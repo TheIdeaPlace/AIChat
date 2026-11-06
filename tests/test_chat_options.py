@@ -509,14 +509,21 @@ def test_finished_cut_never_hands_back_something_that_isnt_a_record_id():
     assert finished_cut(lines(user_text("Hello"), reply)) == ""
 
 
-def _compaction(trigger="auto"):
-    """A compaction as Claude Code writes it: the boundary (no parent), its
-    attachments, then the summary."""
+def _compaction(trigger="auto", kept=()):
+    """A compaction as Claude Code 2.1.229 on writes it: the boundary (no
+    parent) naming the records it ``kept`` before it, its attachments, then
+    the summary, which the kept records follow when the chat is read."""
     from records import _base, user_text
-    boundary = _base("system", subtype="compact_boundary", content="Conversation compacted",
-                     level="info", compactMetadata={"trigger": trigger, "preTokens": 150000})
     summary = user_text("This session is being continued from a previous conversation.",
                         isCompactSummary=True, isVisibleInTranscriptOnly=True)
+    meta = {"trigger": trigger, "preTokens": 150000, "postTokens": 4000}
+    ids = [record["uuid"] for record in kept]
+    if ids:
+        meta["preservedSegment"] = {"headUuid": ids[0], "anchorUuid": summary["uuid"],
+                                    "tailUuid": ids[-1]}
+        meta["preservedMessages"] = {"anchorUuid": summary["uuid"], "uuids": ids, "allUuids": ids}
+    boundary = _base("system", subtype="compact_boundary", content="Conversation compacted",
+                     level="info", compactMetadata=meta)
     return [boundary, _base("attachment", attachment={"type": "todo_reminder"}), summary]
 
 
@@ -536,13 +543,43 @@ def test_a_chat_compacted_since_its_last_finished_reply_has_nowhere_to_cut():
     from thechatplace import platform_paths
     sleep = assistant_block(tool_use_block("Bash", {"command": "sleep 45"}, "toolu_b"), "m3")
     more = assistant_block(tool_use_block("Bash", {"command": "make"}, "toolu_c"), "m4")
-    mid_turn = [*_first_turn(), user_text("Run the tests"), sleep, tool_result("toolu_b", "ok"),
-                *_compaction(), more]
-    manual = [*_first_turn(), user_text("<command-name>/compact</command-name>"),
-              *_compaction("manual"), _local_command()]
-    for records in (mid_turn, manual):
+    first = _first_turn()
+    turn = [user_text("Run the tests"), sleep, tool_result("toolu_b", "ok")]
+    # Automatic, mid-turn, keeping the turn so far, as all those found did;
+    # and, kept or not, the reply before it: its summary carries the task on.
+    for kept in (turn, [first[-1], *turn], ()):
+        records = [*first, *turn, *_compaction("auto", kept), more]
         assert finished_cut(lines(*_no_parent_for_boundaries(_chained(*records)))) == COMPACTED
+    # Manual, from before Claude Code kept anything (2.1.229).
+    old_manual = [*first, user_text("<command-name>/compact</command-name>"),
+                  *_compaction("manual"), _local_command()]
+    assert finished_cut(lines(*_no_parent_for_boundaries(_chained(*old_manual)))) == COMPACTED
     assert not platform_paths.is_safe_id(COMPACTED)  # never handed on as a cut
+
+
+def test_a_manual_compaction_that_kept_the_last_reply_is_cut_there():
+    # Checked with real Claude Code: the copy had the summary and the reply,
+    # and answered only the question.
+    from records import _base, lines, user_text
+    from thechatplace.aside import COMPACTED
+    first = _first_turn()
+    hook = _base("system", subtype="stop_hook_summary", hookCount=0)
+    records = [*first, hook, user_text("<command-name>/compact</command-name>"),
+               *_compaction("manual", kept=[first[-1], hook]), _local_command()]
+    assert finished_cut(lines(*_no_parent_for_boundaries(_chained(*records)))) == first[-1]["uuid"]
+    # Kept only by an older compaction, not the newest: not cut there.
+    again = [*records, user_text("<command-name>/compact</command-name>"),
+             *_compaction("manual", kept=[records[-1]]), _local_command()]
+    assert finished_cut(lines(*_no_parent_for_boundaries(_chained(*again)))) == COMPACTED
+
+
+def test_a_compaction_in_the_first_turn_leaves_nothing_finished():
+    from records import assistant_block, lines, tool_use_block, user_text
+    records = [user_text("Run the tests"),
+               assistant_block(tool_use_block("Bash", {"command": "sleep 45"}, "toolu_b"), "m1"),
+               *_compaction("auto"),
+               assistant_block(tool_use_block("Bash", {"command": "make"}, "toolu_c"), "m2")]
+    assert finished_cut(lines(*_no_parent_for_boundaries(_chained(*records)))) == ""
 
 
 def test_a_reply_after_a_compaction_is_cut_at_as_usual():
@@ -699,6 +736,8 @@ def test_aside_says_plainly_when_its_cut_isnt_found(tmp_path):
     events, _seen = run_aside(tmp_path, "no-message")
     assert events[-1].kind == "failed" and events[-1].text == CUT_NOT_FOUND
     assert _missing_or("No message found with message.uuid of: 0000-cut") == CUT_NOT_FOUND
+    events, _seen = run_aside(tmp_path, "no-message-result")  # as an error result
+    assert events[-1].kind == "failed" and events[-1].text == CUT_NOT_FOUND
     assert _missing_or("Something else.") == "Something else."
 
 

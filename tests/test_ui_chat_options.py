@@ -891,12 +891,17 @@ def test_ask_aside_says_when_the_chat_compacted_since_its_last_reply(frame, env,
     # #559: no place to cut a copy of it that Claude Code can find.
     from records import _base, tool_use_block
     from thechatplace.aside import COMPACTED_SINCE
-    records = [user_text("Hello"), assistant_block(text_block("Hi"), "m1"),
-               user_text("Run the tests"),
+    ask = user_text("Run the tests")
+    summary = user_text("This session is being continued.", isCompactSummary=True)
+    # Automatic, mid-turn, keeping the turn so far (Claude Code 2.1.229 on).
+    kept = {"anchorUuid": summary["uuid"], "uuids": [ask["uuid"]], "allUuids": [ask["uuid"]]}
+    records = [user_text("Hello"), assistant_block(text_block("Hi"), "m1"), ask,
                _base("system", subtype="compact_boundary", content="Conversation compacted",
-                     compactMetadata={"trigger": "auto"}),
-               user_text("This session is being continued.", isCompactSummary=True),
-               assistant_block(tool_use_block("Bash", {"command": "make"}), "m2")]
+                     compactMetadata={"trigger": "auto", "preservedMessages": kept,
+                                      "preservedSegment": {"headUuid": ask["uuid"],
+                                                           "anchorUuid": summary["uuid"],
+                                                           "tailUuid": ask["uuid"]}}),
+               summary, assistant_block(tool_use_block("Bash", {"command": "make"}), "m2")]
     add_transcript(env, folder, "own-1", records)
     seen = {}
 
