@@ -1069,7 +1069,7 @@ def test_a_chat_that_cannot_reopen_can_still_list_its_tools():
     connection.request = request
     provider = CodexProvider(connection, runtime=SimpleNamespace(tools_context=not_loaded))
     rows = provider.connected_tools(_session(), selected=['gone'])
-    assert [(r.name, r.missing) for r in rows] == [('gone', True), ('kept', False)]
+    assert [(r.name, r.missing) for r in rows] == [('gone', True), ('kept', False), ('Apps unavailable', False)]
     with pytest.raises(CodexFeatureError):  # with no saved selection, as before
         provider.connected_tools(_session())
     # A loaded chat's status failure isn't hidden.

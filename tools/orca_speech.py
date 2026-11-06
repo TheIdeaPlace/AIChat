@@ -169,6 +169,11 @@ STEPS = [
     # key. It opens on Agent, and Tab goes through every control in turn. The
     # list has no folders yet, so its one row says so. Add Folder's picker
     # comes back to Add Folder, as there's no folder to go to in the list.
+    Step("Codex Chat Options", [], trigger="codex-chat-options",
+         expect=["Chat Options: Codex review", "Instructions for this chat"]),
+    Step("Codex more folders", ["Tab"], expect=["More folders"]),
+    Step("Codex add folder", ["Tab"], expect=["Add Folder"]),
+    Step("Close Codex Chat Options", ["Escape"]),
     Step("Chat Options", [], trigger="chat-options", expect=["Chat Options: Visual probe", "Agent"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Chat Options, output style", ["Tab"], expect=["Output style"]),
@@ -487,6 +492,7 @@ TRIGGERS = {
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),
+    "codex-chat-options": lambda frame, env: _codex_dialog("d_codex_chat_options", frame, env),
     "chat-options": lambda frame, env: chat_options(frame),
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),

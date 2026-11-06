@@ -15,6 +15,7 @@ from .codex_events import _id
 COMMAND = 'item/commandExecution/requestApproval'
 FILES = 'item/fileChange/requestApproval'
 QUESTIONS = 'item/tool/requestUserInput'
+ELICITATION = 'mcpServer/elicitation/request'
 
 ACCEPT, ACCEPT_SESSION, DECLINE, CANCEL = 'accept', 'acceptForSession', 'decline', 'cancel'
 #: The command decisions this app can send. Codex lists the ones it allows
@@ -154,6 +155,52 @@ class CodexRequest:
     network_protocol: str = ''
     saved_rule_offered: bool = False
     proposed_prefix: tuple = field(default=(), repr=False)
+    server: str = ''
+    elicitation_json: str = field(default='', repr=False)
+    source_thread_id: str = ''
+    source_turn_id: str = ''
+    file_detail: str = field(default='', repr=False)
+
+    def elicitation(self):
+        import json
+        from ..claude_mcp import elicitation_from
+        data = json.loads(self.elicitation_json)
+        return elicitation_from(str(self.request_id), {
+            'mcp_server_name': self.server, 'message': data['message'],
+            'mode': data['mode'], 'requested_schema': data.get('requestedSchema', {}),
+            'url': data.get('url', ''), 'elicitation_id': data.get('elicitationId', '')})
+
+    def elicitation_answer(self, action, content=None):
+        import json
+        from ..claude_mcp import form_content, is_web_url
+        if self.method != ELICITATION or action not in (ACCEPT, DECLINE, CANCEL):
+            raise ValueError('Invalid connected tool answer')
+        if action != ACCEPT:
+            if content is not None:
+                raise ValueError('Declined forms have no content')
+        else:
+            form = self.elicitation()
+            if form.is_url:
+                if content is not None or not is_web_url(form.url):
+                    raise ValueError('Invalid connected tool address')
+            else:
+                if form.form_problem() or not isinstance(content, dict):
+                    raise ValueError('Unsupported connected tool form')
+                for field in form.fields():
+                    if field.key not in content:
+                        continue
+                    value = content[field.key]
+                    if ((field.kind == 'boolean' and type(value) is not bool) or
+                            (field.kind in ('number', 'integer') and type(value) not in (int, float))):
+                        raise ValueError('Invalid connected tool form answer type')
+                numeric = {f.key for f in form.fields() if f.kind in ('number', 'integer')}
+                values = {k: str(v) if k in numeric and type(v) in (int, float) else v for k, v in content.items()}
+                checked, problem = form_content(form.fields(), values)
+                if problem or checked != content:
+                    raise ValueError('Invalid connected tool form answers')
+        if len(json.dumps(content, allow_nan=False)) > 64000:
+            raise ValueError('Connected tool answers are too long')
+        return {'action': action, 'content': content}
 
     def offered(self):
         """The decisions to offer, in order. Never one Codex didn't list."""
@@ -208,7 +255,13 @@ class CodexRequest:
         return '\n\n'.join(parts)
 
     def summary(self):
+        prefix = "Codex subagent: " if self.source_thread_id else ""
+        return prefix + self._summary()
+
+    def _summary(self):
         """A short spoken line about what's wanted."""
+        if self.method == ELICITATION:
+            return self.elicitation().summary()
         if self.method == QUESTIONS:
             return 'Question: ' + self.questions[0].text if self.questions else 'Question.'
         if self.method != COMMAND:
@@ -249,6 +302,10 @@ class CodexRequest:
     def validate_answer(self, result):
         if not isinstance(result, dict):
             raise ValueError('Invalid Codex answer')
+        if self.method == ELICITATION:
+            if set(result) != {'action', 'content'}:
+                raise ValueError('Invalid connected tool answer')
+            return self.elicitation_answer(result['action'], result['content'])
         if self.method in (COMMAND, FILES):
             if set(result) != {'decision'}:
                 raise ValueError('Invalid Codex approval answer')
@@ -418,6 +475,22 @@ def decode_request(request_id, method, params):
         raise ValueError('Invalid Codex request identity')
     if isinstance(request_id, str):
         _id(request_id)
+    if method == ELICITATION:
+        import json
+        if not isinstance(params, dict) or params.get('mode') not in ('form', 'url'):
+            raise ValueError('Unsupported connected tool form')
+        body = {key: params[key] for key in ('mode', 'message', 'requestedSchema', 'url', 'elicitationId') if key in params}
+        _text(body.get('message'))
+        if body['mode'] == 'form' and not isinstance(body.get('requestedSchema'), dict):
+            raise ValueError('Invalid connected tool form')
+        if body['mode'] == 'url':
+            _text(body.get('url')); _text(body.get('elicitationId'))
+        encoded = json.dumps(body, allow_nan=False)
+        if len(encoded) > 64000:
+            raise ValueError('Connected tool form too large')
+        return CodexRequest(request_id, method, _id(params.get('threadId')),
+            _id(params['turnId']) if params.get('turnId') is not None else '', '',
+            server=_id(params.get('serverName')), elicitation_json=encoded)
     if method not in (COMMAND, FILES, QUESTIONS) or not isinstance(params, dict):
         raise ValueError('Unsupported Codex request')
     allowed = {'threadId', 'turnId', 'itemId'}

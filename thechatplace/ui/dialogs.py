@@ -836,7 +836,7 @@ class NewSessionDialog(wx.Dialog):
             self.note.SetValue((CONTINUE_NOTE + "\n\n" + PERMISSION_NOTE) if self.continuing else PERMISSION_NOTE)
         self._control_provider = provider
         self._sync_access_keys()
-        claude = provider == "claude"
+        claude = provider in ("claude", "codex")
         if self.chat_options_btn.IsShown() != claude:
             # Disabled too: hidden, Alt+H still opened Claude's Chat Options
             # for another provider's chat, and left the focus on the button.
@@ -864,7 +864,7 @@ class NewSessionDialog(wx.Dialog):
         dialog = ChatOptionsDialog(self, self.title_text.GetValue().strip(), folder,
                                    options=self._chat_options, folders=self._chat_folders,
                                    load_choices=self._load_chat_choices,
-                                   feedback=self._feedback, model=self.values()[4])
+                                   feedback=self._feedback, model=self.values()[4], provider=self.provider())
         try:
             if dialog.ShowModal() == wx.ID_OK:
                 self._chat_options = dialog.options()
@@ -881,9 +881,12 @@ class NewSessionDialog(wx.Dialog):
     def chat_options(self):
         """(ChatOptions, more folders) for a Claude chat; nothing otherwise."""
         from ..chat_options import ChatOptions
-        if self.provider() != "claude":
+        if self.provider() not in ("claude", "codex"):
             return ChatOptions(), []
-        return self._chat_options, list(self._chat_folders)
+        options = self._chat_options
+        if self.provider() == "codex":
+            options = ChatOptions(instructions=options.instructions)
+        return options, list(self._chat_folders)
 
     def effort(self) -> str:
         """The ``--effort`` chosen, "" for Claude Code's own setting (#189)."""
@@ -4377,7 +4380,7 @@ class ListsPage(wx.Panel):
                 button.Enable(item is not None)
         if self.category == lists.SUBAGENTS and self.open_btn is not None:
             self.open_btn.Enable(item is not None and item.subagent is not None
-                                 and item.subagent.path is not None)
+                                 and item.subagent.readable)
 
     def activate(self):
         """Enter: a link opens, a subagent's conversation opens (#468), as
@@ -4400,7 +4403,7 @@ class ListsPage(wx.Panel):
             self.owner.feedback(f"No {lists.NOUNS[self.category]} match." if self.items
                                 else lists.empty_text(self.category, self.owner.scope))
             return
-        if item.subagent.path is None:
+        if not item.subagent.readable:
             self.owner.feedback(f"{item.subagent.name}'s conversation isn't on disk.")
             return
         if self.owner.open_subagent is None:
@@ -5792,13 +5795,16 @@ class ChatOptionsDialog(wx.Dialog):
 
     def __init__(self, parent, chat_title: str, folder: str, options=None, folders=(),
                  choices=None, load_choices=None, existing: bool = False, feedback=None,
-                 model: str = ""):
+                 model: str = "", provider: str = "claude"):
         from ..chat_options import ChatOptions
         super().__init__(parent, title=f"Chat Options: {chat_title}" if chat_title
                          else "Chat Options", size=dialog_size(parent, 620, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._provider = provider
         self._folder = folder
         self._options = options or ChatOptions()
+        if provider == "codex":
+            self._options = ChatOptions(instructions=self._options.instructions)
         self._choices = choices
         self._chat_model = model
         self._feedback = feedback or (lambda text: None)
@@ -5816,6 +5822,9 @@ class ChatOptionsDialog(wx.Dialog):
         set_accessible_name(self.style, "Output style")
         grid.Add(self.style, 1, wx.EXPAND)
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
+        if provider == "codex":
+            grid.ShowItems(False)
+            sizer.Hide(grid)
 
         sizer.Add(wx.StaticText(self, label="&Instructions for this chat:"), 0, wx.LEFT, 10)
         # Enter starts a new line, as in the reply box; Ctrl+Enter is OK.
@@ -5849,7 +5858,10 @@ class ChatOptionsDialog(wx.Dialog):
         sizer.Add(row, 0, wx.ALL, 10)
 
         sizer.Add(wx.StaticText(self, label="A&bout these options:"), 0, wx.LEFT, 10)
-        note = CHAT_OPTIONS_NOTE + (" " + CHAT_OPTIONS_LATER_NOTE if existing else "")
+        note = ("Instructions are sent with each Codex turn. Additional folders are writable only "
+                "in Folder edits mode. Removing a folder removes that grant from the next turn. "
+                "Changes apply after you save these options." if provider == "codex" else
+                CHAT_OPTIONS_NOTE + (" " + CHAT_OPTIONS_LATER_NOTE if existing else ""))
         self.note = _read_only_text(self, note, "About these options", min_height=90)
         sizer.Add(self.note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
@@ -5869,13 +5881,13 @@ class ChatOptionsDialog(wx.Dialog):
         self.remove_folder_btn.Bind(wx.EVT_BUTTON, lambda e: self.remove_folder())
         self.folders.Bind(wx.EVT_KEY_DOWN, self._on_folders_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
-        if load_choices is not None:
+        if load_choices is not None and provider == "claude":
             if folder and os.path.isdir(folder):
                 wx.CallAfter(load_choices, folder, self._choices_loaded)
             elif choices is None:
                 wx.CallAfter(self._feedback, "Choose an existing folder first to see its "
                                              "agents and output styles.")
-        wx.CallAfter(lambda: self and self.agent.SetFocus())
+        wx.CallAfter(lambda: self and (self.instructions if provider == "codex" else self.agent).SetFocus())
 
     # -- the agent and style choices
 
@@ -5956,7 +5968,7 @@ class ChatOptionsDialog(wx.Dialog):
             return False
         same = workplaces.folder_key
         if self._folder and same(folder) == same(self._folder):
-            self._feedback("That's the chat's own folder; Claude works there already.")
+            self._feedback("That's the chat's own folder; the AI works there already.")
             return False
         if any(same(folder) == same(f) for f in self._folders):
             self._feedback(f"{folder} is in the list already.")
@@ -5967,7 +5979,7 @@ class ChatOptionsDialog(wx.Dialog):
         return True
 
     def on_add_folder(self):
-        with wx.DirDialog(self, "Choose a folder Claude may also work in",
+        with wx.DirDialog(self, "Choose an additional folder for this chat",
                           defaultPath=self._folder if os.path.isdir(self._folder) else "",
                           style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
             if dlg.ShowModal() == wx.ID_OK:

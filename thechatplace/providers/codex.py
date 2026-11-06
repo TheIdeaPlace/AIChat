@@ -13,7 +13,7 @@ import time
 from typing import Protocol
 
 from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE, TERMINAL, SessionInfo
-from ..transcript import ASSISTANT, ERROR, PLAN, TOOL, TOOL_RESULT, USER, ChatMessage, Transcript
+from ..transcript import ASSISTANT, ERROR, PLAN, TOOL, TOOL_RESULT, USER, THINKING, AgentCall, ChatMessage, Transcript
 from ..ui_text import last_message_line
 from ..changes import FileEdit, Hunk, parse_unified_diff
 from .base import Snapshot
@@ -144,6 +144,19 @@ def transcript_from_thread(thread: dict) -> Transcript:
             if kind in ("agentMessage", "plan"):
                 text = _text(item.get("text"))
                 message_kind = ASSISTANT if kind == "agentMessage" else PLAN
+            elif kind == 'collabAgentToolCall':
+                if item.get('tool') == 'spawnAgent':
+                    children = item.get('receiverThreadIds')
+                    for child in children if isinstance(children, list) else ():
+                        if isinstance(child, str) and child:
+                            transcript.agents.append(AgentCall(tool_id=item_id, agent_id=child,
+                                prompt=_text(item.get('prompt')), turn=transcript.turns, timestamp=timestamp))
+                text, message_kind = 'Subagent: ' + _text(item.get('tool')), TOOL
+            elif kind == "reasoning":
+                summary = item.get('summary')
+                # Only readable content supplied by the provider, never encrypted content.
+                text = '\n\n'.join(part for part in summary if isinstance(part, str)) if isinstance(summary, list) else ''
+                message_kind = THINKING
             elif kind == "userMessage":
                 content = item.get("content")
                 if not isinstance(content, list):
@@ -212,13 +225,17 @@ EMPTY_HISTORY = object()
 
 
 class CodexReader:
-    def __init__(self, connection: RpcConnection, native_id: str, *, route=None, plan_store=None):
+    def __init__(self, connection: RpcConnection, native_id: str, *, route=None, plan_store=None, live_state=None):
         self.connection, self.native_id = connection, native_id
         # route(native_id) -> EMPTY_HISTORY, an owner connection, or None for
         # the reconnecting discovery connection. Asked on every refresh, since
         # the open chat keeps its reader while the runtime's state changes.
         self._plan_store = plan_store
+        self._live_state = live_state
+        self._live_keys = set()
+        self._live_base = None
         self._turn_ids = []
+        self.last_turn_status = ''
         self._route = route
         self._discovery = connection
         self.transcript = Transcript()
@@ -276,7 +293,28 @@ class CodexReader:
 
     def refresh(self) -> bool:
         try:
-            return self._refresh()
+            before = list(self.transcript.messages)
+            if self._live_base is not None:
+                self.transcript.messages = self._live_base
+            self._live_base = None
+            self._live_keys.clear()
+            changed = self._refresh()
+            if self._live_state is not None:
+                state = self._live_state(self.native_id)
+                self._live_base = list(self.transcript.messages)
+                self.transcript.messages = list(self.transcript.messages)
+                positions = {m.key: i for i, m in enumerate(self.transcript.messages)}
+                turn = self._turn_ids.index(state.turn_id) + 1 if state.turn_id in self._turn_ids else len(self._turn_ids) + 1
+                for identity, text in getattr(state, 'reasoning', ()):
+                    key = state.turn_id + ':' + identity
+                    if text and (key not in positions or getattr(state, 'outcome', '') == 'inProgress'):
+                        message = ChatMessage(THINKING, text, key=key, turn=turn, assistant_name='Codex')
+                        if key in positions:
+                            message.timestamp = self.transcript.messages[positions[key]].timestamp
+                            self.transcript.messages[positions[key]] = message
+                        else:
+                            self.transcript.messages.append(message)
+            return changed or before != self.transcript.messages
         except Exception:
             # This reader is also used by Find, export and Properties. Never
             # let backend details or private payloads enter their error text.
@@ -326,6 +364,7 @@ class CodexReader:
             thread = self._paginated_thread(thread)
             history = transcript_from_thread(thread)
             self._turn_ids = [turn["id"] for turn in thread["turns"]]
+            self.last_turn_status = thread["turns"][-1].get("status", "") if thread["turns"] else ""
             self._restore_tasks(history)
         except Exception:
             self._failed_stamp = stamp
@@ -338,6 +377,104 @@ class CodexReader:
         return changed
 
 
+class CodexChildReader(CodexReader):
+    def __init__(self, connection, native_id, name, giver):
+        super().__init__(connection, native_id)
+        self.name, self.giver = name, giver
+
+    def refresh(self):
+        from dataclasses import replace
+        changed = super().refresh()
+        self.transcript.messages = [replace(m, assistant_name=self.name,
+            speaker=self.giver if m.kind == USER else m.speaker) for m in self.transcript.messages]
+        return changed
+
+
+class CodexSubagentTracker:
+    """Read child threads through app-server; discovery grants no ownership."""
+    def __init__(self, parent_reader):
+        self.parent_reader = parent_reader
+        self._rows = []
+        self._readers = {}
+        self._parents = {}
+
+    def refresh(self):
+        from dataclasses import replace
+        from ..subagents import Subagent, RUNNING, DONE, FAILED, STOPPED
+        root = self.parent_reader.native_id
+        connection = self.parent_reader.connection
+        calls = {call.agent_id: call for call in self.parent_reader.transcript.agents}
+        pending, seen, found = [(root, 0, '')], {root}, []
+        while pending and len(seen) < 256:
+            parent, inherited_turn, parent_name = pending.pop(0)
+            for archived in (False, True):
+                cursor, cursors = None, set()
+                for _ in range(100):
+                    params = {'parentThreadId': parent, 'limit': 100, 'archived': archived, 'sourceKinds': ['subAgentThreadSpawn', 'subAgentReview', 'subAgentOther']}
+                    if cursor:
+                        params['cursor'] = cursor
+                    page = connection.request('thread/list', params)
+                    if not isinstance(page.get('data'), list):
+                        raise ValueError('Codex did not return child threads')
+                    for row in page['data']:
+                        if not isinstance(row, dict) or row.get('parentThreadId') != parent:
+                            continue
+                        identity = row.get('id')
+                        if not isinstance(identity, str) or not identity or identity in seen:
+                            continue
+                        seen.add(identity)
+                        if len(seen) > 256:
+                            break
+                        self._parents[identity] = parent
+                        reader = self._readers.get(identity)
+                        if reader is None or reader.connection is not connection:
+                            reader = self._readers[identity] = CodexReader(connection, identity)
+                        read_problem = False
+                        try:
+                            reader.refresh()
+                        except (ValueError, OSError, RuntimeError):
+                            read_problem = True
+                        transcript = reader.transcript
+                        call = calls.get(identity)
+                        turn = call.turn if call else inherited_turn
+                        name = _text(row.get('agentRole')) or _text(row.get('agentNickname')) or 'Codex subagent'
+                        status = row.get('status', {}).get('type') if isinstance(row.get('status'), dict) else None
+                        state = (RUNNING if status == 'active' else FAILED if status == 'systemError' else
+                                 {'completed': DONE, 'failed': FAILED, 'interrupted': STOPPED}.get(reader.last_turn_status, 'unknown'))
+                        if read_problem:
+                            state = 'unknown'
+                        note = ('This child conversation could not be refreshed; showing the last readable history.'
+                                if read_problem else 'Codex has not reported its current running state.' if state == 'unknown' else '')
+                        messages = transcript.messages
+                        prompt = next((m.text for m in messages if m.kind == USER), _text(row.get('preview')))
+                        report = next((m.text for m in reversed(messages) if m.kind == ASSISTANT), '')
+                        sub = Subagent(identity, agent_type=name, prompt=call.prompt if call and call.prompt else prompt,
+                            status=state, note=note, started=_timestamp(row.get('createdAt')),
+                            finished=_timestamp(row.get('updatedAt')) if state in (DONE, FAILED, STOPPED) else '',
+                            messages=len(messages), tool_calls=sum(m.kind == TOOL for m in messages), report=report,
+                            edits=[replace(e, by=name, turn=turn) for e in transcript.edits], turn=turn,
+                            started_by=parent_name, native_id=identity, provider='codex')
+                        found.append(sub)
+                        pending.append((identity, turn, name))
+                    cursor = page.get('nextCursor')
+                    if cursor is None:
+                        break
+                    if not isinstance(cursor, str) or not cursor or cursor in cursors:
+                        raise ValueError('Invalid Codex child cursor')
+                    cursors.add(cursor)
+        self._rows = found
+        self._readers = {k: v for k, v in self._readers.items() if k in seen}
+
+    def subagents(self, parent, live):
+        return self._rows
+
+    def open_conversation(self, sub):
+        if sub.native_id not in self._readers:
+            raise ValueError('This child thread is no longer listed')
+        # Separate reader: the dialog and summary refresh run on different workers.
+        return CodexChildReader(self.parent_reader.connection, sub.native_id, sub.name, sub.started_by or 'Codex')
+
+
 class CodexProvider:
     provider_id = "codex"
     LAST_READ_BUDGET = 8
@@ -345,7 +482,7 @@ class CodexProvider:
     LAST_MESSAGE_SECONDS = 30
 
     def __init__(self, connection: RpcConnection | None = None, *, executable=None,
-                 execution=False, on_update=lambda state: None, runtime=None):
+                 execution=False, on_update=lambda state: None, runtime=None, session_tools=False):
         self.connection = (connection if connection is not None
                            else ManagedCodexConnection(executable))
         self._last_messages = OrderedDict()
@@ -356,7 +493,10 @@ class CodexProvider:
         self.runtime = runtime
         if execution and runtime is None:
             from .codex_runtime import CodexChatRuntime
-            self.runtime = CodexChatRuntime(on_update, executable=executable)
+            self.runtime = CodexChatRuntime(on_update, executable=executable, session_tools=session_tools)
+
+    def session_tool_owner(self, caller):
+        return self.runtime.session_tool_owner(caller) if self.runtime else None
 
     def saved_rule_count(self, cwd):
         """Worker-only inventory; never creates or resumes a chat."""
@@ -516,7 +656,7 @@ class CodexProvider:
         return SessionCapabilities(usage=True, changes=True, send=enabled and session.is_own, fork=enabled,
                                    approvals=enabled and session.is_own,
                                    steer=enabled and session.is_own, attachments=enabled and session.is_own,
-                                   options=enabled and session.is_own, branch=enabled, aside=enabled)
+                                   options=enabled and session.is_own, chat_options=enabled and session.is_own, branch=enabled, aside=enabled)
 
     def usage_lines(self, session):
         self._check(session)
@@ -535,22 +675,25 @@ class CodexProvider:
     def can_create(self):
         return self.runtime is not None
 
-    def create_owned(self, cwd, title, *, model=None, effort=None, sandbox=None, approval_policy=None, approvals_reviewer=None):
+    def create_owned(self, cwd, title, *, model=None, effort=None, sandbox=None, approval_policy=None, approvals_reviewer=None, instructions=None, extra_roots=()):
         options = {key: value for key, value in (('sandbox', sandbox), ('approval_policy', approval_policy))
                    if value is not None}
         if approvals_reviewer is not None:
             options['approvals_reviewer'] = approvals_reviewer
-        return self.runtime.create(cwd, title, model=model, effort=effort, **options)
+        return self.runtime.create(cwd, title, model=model, effort=effort, instructions=instructions, extra_roots=extra_roots, **options)
 
-    def fork_owned(self, source, title, *, model=None, effort=None, sandbox=None, approval_policy=None, approvals_reviewer=None):
+    def fork_owned(self, source, title, *, model=None, effort=None, sandbox=None, approval_policy=None, approvals_reviewer=None, instructions=None, extra_roots=()):
         options = {key: value for key, value in (('sandbox', sandbox), ('approval_policy', approval_policy))
                    if value is not None}
         if approvals_reviewer is not None:
             options['approvals_reviewer'] = approvals_reviewer
-        return self.runtime.fork(source, title, model=model, effort=effort, **options)
+        return self.runtime.fork(source, title, model=model, effort=effort, instructions=instructions, extra_roots=extra_roots, **options)
 
     def prepare_policy_owned(self, record, sandbox, approval_policy, approvals_reviewer='user'):
         return self.runtime.prepare_policy(record, sandbox, approval_policy, approvals_reviewer)
+
+    def prepare_chat_options_owned(self, record, instructions, folders):
+        return self.runtime.prepare_chat_options(record, instructions, folders)
 
     def prepare_settings_owned(self, record, model, effort):
         return self.runtime.prepare_settings(record, model, effort)
@@ -588,28 +731,52 @@ class CodexProvider:
                                    'description': str(skill.get('description') or '')[:2000]})
         return skills
 
-    def connected_tools(self, session, selected=None):
-        """``selected``: the chat's saved tool selection, for when it isn't
-        loaded. A chat whose selected server has been removed can't reopen,
-        and this list is the way out of that, so it mustn't need it open."""
+    def connected_tools(self, session, selected=None, apps=()):
         self._check(session)
         from .codex_features import CodexFeatureError
-        from .codex_tools import inventory
+        from .codex_tools import inventory, app_inventory, CodexTool
+        from .codex_rpc import CodexRpcError
+        connection, allowed = self.connection, tuple(selected or ())
+        optional = False
         if session.is_own and self.runtime is not None:
             try:
                 connection, allowed = self.runtime.tools_context(session.cli_session_id)
+                apps = self.runtime.selected_apps(session.cli_session_id)
             except CodexFeatureError:
                 if selected is None:
                     raise
-                return inventory(self.connection, session, tuple(selected), status_optional=True)
-            return inventory(connection, session, allowed)
-        return inventory(self.connection, session, read_only=True)
+                optional = True
+        rows = inventory(connection, session, allowed, read_only=not session.is_own, status_optional=optional)
+        try:
+            rows.extend(app_inventory(self.connection, session, apps, read_only=not session.is_own))
+        except CodexRpcError:
+            # Older servers can still show and operate configured MCP tools.
+            rows.append(CodexTool('Apps unavailable', 'Codex could not list apps',
+                read_only=True, display_name='Apps unavailable'))
+        return rows
 
-    def copy_with_tools(self, source, title, names):
+    def connected_tool_action(self, session, name, action, login_id=None):
+        self._check(session)
+        if not session.is_own or self.runtime is None:
+            raise ValueError('Open a Codex chat started here first')
+        connection, allowed = self.runtime.tools_context(session.cli_session_id)
+        if name not in allowed:
+            raise ValueError('Enable this connected tool in a copy first')
+        if action == 'login':
+            return connection.request('mcpServer/oauth/login', {
+                'name': name, 'threadId': session.cli_session_id, 'timeoutSecs': 180})
+        if action == 'login_status':
+            return connection.oauth_result(session.cli_session_id, name, login_id)
+        if action == 'reconnect':
+            connection.request('config/mcpServer/reload', {})
+            return self.connected_tools(session)
+        raise ValueError('Unknown connected tool action')
+
+    def copy_with_tools(self, source, title, names, apps=()):
         self._check(source)
         if self.runtime is None or not source.is_own:
             raise ValueError('Open a Codex chat started here first')
-        return self.runtime.copy_with_tools(source, title, names)
+        return self.runtime.copy_with_tools(source, title, names, apps)
 
     def finish_policy_owned(self, record, change, saved):
         if record.cli_session_id != change.proof.native_id:
@@ -667,7 +834,8 @@ class CodexProvider:
         route = self.runtime.history_route if session.is_own and self.runtime is not None else None
         from ..provider_storage import CodexPlanStore
         return CodexReader(self.connection, session.cli_session_id, route=route,
-                           plan_store=CodexPlanStore() if session.is_own else None)
+                           plan_store=CodexPlanStore() if session.is_own else None,
+                           live_state=self.runtime.snapshot if route is not None else None)
 
     def last_reply(self, session) -> str:
         reader = self.open_reader(session)

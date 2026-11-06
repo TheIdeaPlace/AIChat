@@ -285,7 +285,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             providers = [ClaudeConversations(), self._imported]
             if self.speech.includes_codex():
                 from ..providers.codex import CodexProvider
-                providers.append(CodexProvider(execution=True,
+                providers.append(CodexProvider(execution=True, session_tools=True,
                     on_update=lambda state: wx.CallAfter(self._on_codex_update, state)))
             if self.speech.copilot_enabled:
                 from ..providers.copilot import CopilotProvider
@@ -2725,7 +2725,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                                 "run in The Chat Place.")
             else:
                 unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
-            unavailable[lists.SUBAGENTS] = f"Subagents aren't listed for {provider} chats yet."
+            if info.provider != "codex":
+                unavailable[lists.SUBAGENTS] = f"Subagents aren't listed for {provider} chats yet."
 
         def build(tab, tab_scope):
             # Subagents as read now: after a conversation closes, its row
@@ -4652,7 +4653,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if provider == "codex":
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
             self._create_codex_owned(folder, title, message, **options, **policy,
-                                     made=made, joint=joint)
+                                     made=made, joint=joint, instructions=chat_options.instructions,
+                                     extra_roots=more_folders)
             return
         if provider == "copilot":
             self._create_codex_owned(folder, title, message, made=made, joint=joint,
@@ -4826,10 +4828,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 _folder, title, _mode, message, model = dialog.values()
                 effort = getattr(dialog, 'effort', lambda: '')()
                 policy = getattr(dialog, 'codex_policy', lambda: {})()
+                chat_options, more_folders = getattr(dialog, 'chat_options', _no_options)()
             finally:
                 dialog.Destroy()
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
-            self._create_codex_owned(info.cwd, title, message, source=info, **options, **policy)
+            self._create_codex_owned(info.cwd, title, message, source=info, **options, **policy,
+                                     instructions=chat_options.instructions, extra_roots=more_folders)
             return
         if info.provider == "copilot":
             # A new Copilot chat with the conversation so far ahead of your

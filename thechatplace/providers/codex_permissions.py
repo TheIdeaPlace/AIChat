@@ -115,7 +115,7 @@ class CodexChatRule:
 
 
 def candidate(request, cwd):
-    if (request.method != COMMAND or ACCEPT not in request.offered()
+    if (request.source_thread_id or request.method != COMMAND or ACCEPT not in request.offered()
             or not request.outside_sandbox or not safe_prefix(request.proposed_prefix)):
         return None
     words, shell = command_words(request.command)
@@ -129,7 +129,7 @@ def candidate(request, cwd):
 
 
 def matches(rule, request, cwd):
-    if request.method != COMMAND or ACCEPT not in request.offered() or not request.outside_sandbox:
+    if request.source_thread_id or request.method != COMMAND or ACCEPT not in request.offered() or not request.outside_sandbox:
         return False
     words, shell = command_words(request.command)
     if words[:len(rule.prefix)] != rule.prefix or shell != rule.shell or not reviewed_command(words):
