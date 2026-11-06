@@ -58,17 +58,21 @@ class SubagentsHost:
         transcripts too, in the background. Only a Claude transcript has
         them; another backend's reader is never given a Claude path."""
         info = self._open
-        if (info is None or info.provider != "claude" or generation != self._open_generation
+        if (info is None or info.provider not in ("claude", "codex") or generation != self._open_generation
                 or not isinstance(getattr(reader, "transcript", None), Transcript)
-                or getattr(reader, "path", None) is None):
+                or info.provider == "claude" and getattr(reader, "path", None) is None):
             return
         if self._subagents_busy:
             self._subagents_pending = True
             return
         tracker = self._subagent_tracker
         if tracker is None:
-            tracker = self._subagent_tracker = subagents.SubagentTracker(
-                reader.path, subagents.source_transcripts(self.store, info))
+            if info.provider == 'codex':
+                from ..providers.codex import CodexSubagentTracker
+                tracker = CodexSubagentTracker(reader)
+            else:
+                tracker = subagents.SubagentTracker(reader.path, subagents.source_transcripts(self.store, info))
+            self._subagent_tracker = tracker
         # A copy taken here, while no read of the transcript is running.
         parent = Transcript(agents=[dataclasses.replace(c) for c in reader.transcript.agents],
                             agent_notes=dict(reader.transcript.agent_notes))
@@ -138,7 +142,7 @@ class SubagentsHost:
         is called once it has closed. ``still_on()``: whether ``parent`` is
         still on this subagent, as it won't open over another one's row."""
         info = self._open
-        if info is None or sub.path is None:
+        if info is None or not sub.readable:
             return
         if self._subagent_opening:
             # Said, so a second Enter on a large one doesn't sound ignored.
@@ -146,13 +150,17 @@ class SubagentsHost:
             return
         generation = self._open_generation
         mark = self._codex_mark()
+        tracker = self._subagent_tracker
 
         def work():
             reader, problem = None, None
             try:
-                if os.path.getsize(sub.path) > LARGE_CONVERSATION:
-                    wx.CallAfter(self._feedback, f"Reading {sub.name}'s conversation…")
-                reader = subagents.open_conversation(sub.path, sub.agent_type)
+                if sub.provider == 'codex':
+                    reader = tracker.open_conversation(sub)
+                else:
+                    if os.path.getsize(sub.path) > LARGE_CONVERSATION:
+                        wx.CallAfter(self._feedback, f"Reading {sub.name}'s conversation…")
+                    reader = subagents.open_conversation(sub.path, sub.agent_type)
                 reader.refresh()
             except Exception as exc:  # noqa: BLE001 - said in the window
                 problem = exc

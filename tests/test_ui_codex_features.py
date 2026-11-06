@@ -507,7 +507,7 @@ def test_a_copy_drops_every_removed_server_and_says_it_is_being_made(frame, env,
             CodexTool('kept', 'connected', (), False)]
     asked, copied, boxes = [], [], []
     monkeypatch.setattr(frame.sessions, 'connected_tools', lambda info, **k: asked.append(k) or rows)
-    monkeypatch.setattr(frame.sessions, 'copy_with_tools', lambda s, t, names: copied.append(names))
+    monkeypatch.setattr(frame.sessions, 'copy_with_tools', lambda s, t, names, apps: copied.append(names))
     monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: boxes.append(text) or wx.YES)
     jobs = []
     monkeypatch.setattr(frame, '_codex_work', lambda action, done: jobs.append((action, done)))
@@ -515,7 +515,7 @@ def test_a_copy_drops_every_removed_server_and_says_it_is_being_made(frame, env,
     host.load(lambda rows, error: None)
     action, done = jobs.pop()
     done(action(), False)
-    assert asked == [{'selected': ('kept', 'gone', 'also gone')}]
+    assert asked == [{'selected': ('kept', 'gone', 'also gone'), 'apps': ()}]
     assert host.toggle_label(rows[0]) == 'Copy with Tool &Off'
     host.set_off(rows[0], True, lambda rows, error: None)
     assert "no longer in Codex's configuration" in boxes[-1]

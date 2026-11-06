@@ -1,0 +1,66 @@
+[
+  {
+    "file": "codex-chat-options-light-100.png",
+    "verdict": "FAIL",
+    "failed": [
+      5
+    ],
+    "note": "Body #000000/#FFFFFF 21:1; labels #000000/#F0F0F0 18.4273:1. New 620x600 dialog: instructions, one additional folder, Add Folder/Remove, explanation, OK/Cancel. No clipping, overlap or theme mismatch. Caret visible. Native text-box border #ABADB3 against #F0F0F0 1.9687:1 and #FFFFFF 2.2436:1 falls below review target 3:1; sample (20,47), adjacent (20,46)/(20,48). Standard unmodified Windows control appearance; distinguish native-control WCAG exception from the stricter visual review target. Selected text #FFFFFF/#0078D4 4.5285:1. Existing native-border limitation tracked in #532; no duplicate issue opened.",
+    "source_run": "20261106-005124"
+  },
+  {
+    "file": "codex-chat-options-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Body and labels #FFFFFF/#202020 16.2933:1. New 620x600 dialog: instructions, one additional folder, Add Folder/Remove, explanation, OK/Cancel. No clipping, overlap or theme mismatch. Caret visible. Selected folder text #263B50/#8EE3F0 7.8933:1; caret #DFDFDF/#202020 12.2263:1.",
+    "source_run": "20261106-005124"
+  },
+  {
+    "file": "codex-tools-light-100.png",
+    "verdict": "FAIL",
+    "failed": [
+      5
+    ],
+    "note": "Body #000000/#FFFFFF 21:1; labels #000000/#F0F0F0 18.4273:1. Compared new/baseline/diff: five rows replace three, Reconnect replaces Read Status; all labels and detail text fit. Existing #181: selected-row dotted focus #FF872B/#0078D4 1.8874:1 (below 3:1), unchanged baseline. Selected text #FFFFFF/#0078D4 4.5285:1.",
+    "source_run": "20261106-005124"
+  },
+  {
+    "file": "codex-tools-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Body and labels #FFFFFF/#202020 16.2933:1. Compared new/baseline/diff: five rows replace three, Reconnect replaces Read Status; all labels and detail text fit. Selected text #263B50/#8EE3F0 7.8933:1; focus #711C0F/#8EE3F0 7.6773:1.",
+    "source_run": "20261106-005124"
+  },
+  {
+    "file": "codex-models-light-100.png",
+    "verdict": "FAIL",
+    "failed": [
+      5
+    ],
+    "note": "Body #000000/#FFFFFF 21:1; labels #000000/#F0F0F0 18.4273:1. Native border #ABADB3 on #F0F0F0 1.9687:1 and on #FFFFFF 2.2436:1, below review target3:1: existing #532 limitation, unchanged Windows-native appearance. Compared new and prior baseline directly (different sizes, no diff generated): 680x635 becomes680x697; Start from row adds31px below Branch and Chat Options/None chosen adds31px below permissions. About text132px and First message72px remain; all labels fit. Long folder path is clipped in its dropdown as before. Provider focus visible: #020202/#FDFDFD 20.3974:1. Border sample(20,400), neighbors(20,399)/(20,401). No new clipping, overlap, off-window controls, stray text or theme defect. Accepted expected layout changes while retaining documented limitations; higher display scales not reviewed.",
+    "source_run": "20261106-093555"
+  },
+  {
+    "file": "codex-models-hc-aquatic-100.png",
+    "verdict": "PASS",
+    "failed": [],
+    "note": "Body and outlines #FFFFFF/#202020 16.2933:1. Theme followed. Compared new and prior baseline directly (different sizes, no diff generated): 680x635 becomes680x697; Start from row adds31px below Branch and Chat Options/None chosen adds31px below permissions. About text132px and First message72px remain; all labels fit. Long folder path is clipped in its dropdown as before. Provider focus visible: #DFDFDF/#202020 12.2263:1. No new clipping, overlap, off-window controls, stray text or theme defect. Accepted expected layout changes while retaining documented limitations; higher display scales not reviewed.",
+    "source_run": "20261106-093555"
+  },
+  {
+    "file": "codex-continue-light-100.png",
+    "verdict": "FAIL",
+    "failed": [
+      5
+    ],
+    "note": "Body #000000/#FFFFFF 21:1; labels #000000/#F0F0F0 18.4273:1. Native border #ABADB3 on #F0F0F0 1.9687:1 and on #FFFFFF 2.2436:1, below review target3:1: existing #532 limitation, unchanged Windows-native appearance. Compared new/baseline/diff: 680x620 remains; Chat Options/None chosen moves About/First message down31px and First message shrinks136 to105px. All paragraphs and controls fit. Checklist7 remains unsure: no caret visible in this static frame; a blinking-caret/keyboard observation is needed, not evidence of a focus regression. Border sample(20,458), neighbors(20,457)/(20,459). No new clipping, overlap, off-window controls, stray text or theme defect. Accepted expected layout changes while retaining documented limitations; higher display scales not reviewed.",
+    "source_run": "20261106-093555"
+  },
+  {
+    "file": "codex-continue-hc-aquatic-100.png",
+    "verdict": "UNSURE",
+    "failed": [],
+    "note": "Body and outlines #FFFFFF/#202020 16.2933:1. Theme followed. Compared new/baseline/diff: 680x620 remains; Chat Options/None chosen moves About/First message down31px and First message shrinks136 to105px. All paragraphs and controls fit. Checklist7 remains unsure: no caret visible in this static frame; a blinking-caret/keyboard observation is needed, not evidence of a focus regression. No new clipping, overlap, off-window controls, stray text or theme defect. Accepted expected layout changes while retaining documented limitations; higher display scales not reviewed.",
+    "source_run": "20261106-093555"
+  }
+]

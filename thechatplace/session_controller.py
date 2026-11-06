@@ -215,14 +215,21 @@ class SessionController:
     def connected_tools(self, session, **options):
         return self._provider(session).connected_tools(session, **options)
 
-    def copy_with_tools(self, source, title, names):
-        return self._provider(source).copy_with_tools(source, title, names)
+    def connected_tool_action(self, session, name, action, login_id=None):
+        return self._provider(session).connected_tool_action(session, name, action, login_id)
+
+    def copy_with_tools(self, source, title, names, apps=()):
+        return self._provider(source).copy_with_tools(source, title, names, apps)
+
+    def session_tool_owner(self, caller):
+        provider = self._providers.get('codex')
+        return provider.session_tool_owner(caller) if provider is not None else None
 
     def owned_action(self, action, record, *args):
         if action not in ("prepare", "reopen", "send", "steer", "steer_queued", "stop", "answer", "ready", "prepare_policy", "finish_policy",
                           "chat_rule_candidate", "allow_for_chat", "chat_rules", "remove_chat_rule", "review_history",
                           "recover", "set_model", "set_mode", "set_auto", "restart_warning", "restart",
-                          "prepare_settings", "prepare_mode", "feature"):
+                          "prepare_settings", "prepare_mode", "prepare_chat_options", "feature"):
             raise ValueError("Unsupported owned chat action")
         if not isinstance(record, OwnSession) or record.provider == "claude":
             raise ValueError("Foreign owned chat required")

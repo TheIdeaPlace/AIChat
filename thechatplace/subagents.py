@@ -44,7 +44,7 @@ RUNNING = "running"
 DONE = "done"
 FAILED = "failed"
 STOPPED = "stopped"
-STATUS_WORDS = {RUNNING: "Running", DONE: "Done", FAILED: "Failed", STOPPED: "Stopped"}
+STATUS_WORDS = {RUNNING: "Running", DONE: "Done", FAILED: "Failed", STOPPED: "Stopped", "unknown": "Status unavailable"}
 #: What's said when one ends: "Subagent code-reviewer finished."
 ENDED_WORDS = {DONE: "finished", FAILED: "failed", STOPPED: "stopped"}
 #: Who gives a subagent its work, in its conversation.
@@ -89,6 +89,12 @@ class Subagent:
     #: The subagent that started this one, by its type ("" if Claude did).
     started_by: str = ""
     unreadable_lines: int = 0
+    native_id: str = ''
+    provider: str = 'claude'
+
+    @property
+    def readable(self):
+        return self.path is not None or bool(self.native_id)
 
     @property
     def name(self) -> str:
@@ -96,7 +102,7 @@ class Subagent:
 
     @property
     def finished_status(self) -> bool:
-        return self.status != RUNNING
+        return self.status in (DONE, FAILED, STOPPED)
 
     def what(self) -> str:
         """What it was asked to do, in a few words."""
@@ -111,7 +117,7 @@ class Subagent:
 
     def counts(self, now_ms: Optional[int] = None) -> str:
         """"34 messages, 12 tool calls, 4 minutes"."""
-        if self.path is None:
+        if not self.readable:
             return "its conversation isn't on disk"
         parts = [_plural(self.messages, "message"), _plural(self.tool_calls, "tool call")]
         took = self.duration_ms(now_ms)
@@ -491,7 +497,7 @@ def in_turn(subagents: Iterable[Subagent], turn: Optional[int]) -> List[Subagent
 def newly_ended(before: Dict[str, str], subagents: Iterable[Subagent]) -> List[Subagent]:
     """The ones running at the last read that have ended since. ``before``
     maps each id to its status then."""
-    return [s for s in subagents if before.get(s.agent_id) == RUNNING and s.status != RUNNING]
+    return [s for s in subagents if before.get(s.agent_id) == RUNNING and s.finished_status]
 
 
 def statuses(subagents: Iterable[Subagent]) -> Dict[str, str]:

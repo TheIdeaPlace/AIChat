@@ -23,6 +23,8 @@ class FakeConnection:
         self.calls.append(method)
         if method == "config/read":
             return {"config": {"mcp_servers": self.servers}}
+        if method == "app/list":
+            return {"data": []}
         if self.status is None:
             raise CodexRpcError("Codex request failed")
         return {"data": self.status}
@@ -54,7 +56,7 @@ def _provider(connection, runtime=None):
 def test_the_provider_never_sends_another_chats_thread_id_to_discovery():
     connection = FakeConnection()
     rows = codex.CodexProvider.connected_tools(_provider(connection, runtime=object()), INFO)
-    assert connection.calls == ["config/read"] and rows[0].read_only
+    assert connection.calls == ["config/read", "app/list"] and rows[0].read_only
 
 
 def test_a_row_counts_tools_in_words_and_says_needs_sign_in():
@@ -76,7 +78,8 @@ def test_a_row_counts_tools_in_words_and_says_needs_sign_in():
 def test_a_chat_of_its_own_still_reads_status_on_its_own_connection():
     connection = FakeConnection(status=[{"name": "notes", "runtimeStatus": "connected",
                                          "tools": {"find": {}}}])
-    runtime = SimpleNamespace(tools_context=lambda native: (connection, ("notes",)))
+    runtime = SimpleNamespace(tools_context=lambda native: (connection, ("notes",)),
+                              selected_apps=lambda native: ())
     info = SimpleNamespace(cwd="folder", cli_session_id="native-1", is_own=True)
     rows = codex.CodexProvider.connected_tools(_provider(FakeConnection(), runtime), info)
     assert connection.calls == ["config/read", "mcpServerStatus/list"]

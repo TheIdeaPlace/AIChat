@@ -65,7 +65,7 @@ def select(frame, title):
 # -- New Session and the Chat Options dialog ------------------------------------------------
 
 
-def test_new_session_has_chat_options_for_claude_only(frame, folder):
+def test_new_session_keeps_chat_options_separate_by_provider(frame, folder):
     from thechatplace.ui.dialogs import NewSessionDialog
     dialog = NewSessionDialog(frame, folder, providers=("claude", "codex"), provider="claude")
     try:
@@ -77,8 +77,11 @@ def test_new_session_has_chat_options_for_claude_only(frame, folder):
         assert dialog.chat_options() == (ChatOptions(agent="Explore"), [folder])
         dialog.provider_choice.SetSelection(1)
         dialog._on_provider()
-        assert not dialog.chat_options_btn.IsShown()
-        assert dialog.chat_options() == (ChatOptions(), [])  # never for Codex
+        assert dialog.chat_options_btn.IsShown()
+        assert dialog.chat_options() == (ChatOptions(), [])
+        dialog.provider_choice.SetSelection(0)
+        dialog._on_provider()
+        assert dialog.chat_options() == (ChatOptions(agent="Explore"), [folder])
         order = list(dialog.GetChildren())
         assert order.index(dialog.mode) < order.index(dialog.chat_options_btn) < \
             order.index(dialog.message)
@@ -98,7 +101,7 @@ def test_continue_here_hidden_controls_dont_answer_their_keys(frame, folder, pro
         for control in (dialog.browse_btn, dialog.github_btn, dialog.work_in_label,
                         dialog.work_in, dialog.branch_label, dialog.branch):
             assert not control.IsShown() and not control.IsEnabled()
-        claude = provider == "claude"
+        claude = provider in ("claude", "codex")
         assert dialog.chat_options_btn.IsShown() == claude
         assert dialog.chat_options_btn.IsEnabled() == claude
         # A hidden label moves the focus on with its key: it has none to take.
@@ -121,7 +124,7 @@ def test_new_session_disables_chat_options_along_with_hiding_it(frame, folder):
         for index, provider in [(1, "codex"), (2, "copilot"), (0, "claude"), (2, "copilot")]:
             dialog.provider_choice.SetSelection(index)
             dialog._on_provider()
-            claude = provider == "claude"
+            claude = provider in ("claude", "codex")
             assert dialog.chat_options_btn.IsShown() == claude
             assert dialog.chat_options_btn.IsEnabled() == claude
             # These stay whichever provider it is.
@@ -130,7 +133,7 @@ def test_new_session_disables_chat_options_along_with_hiding_it(frame, folder):
         dialog.Destroy()
 
 
-@pytest.mark.parametrize("provider", ["codex", "copilot"])
+@pytest.mark.parametrize("provider", ["copilot"])
 def test_new_session_opened_on_another_provider_has_chat_options_disabled(frame, folder, provider):
     from thechatplace.ui.dialogs import NewSessionDialog
     dialog = NewSessionDialog(frame, folder, providers=("claude", "codex", "copilot"),
@@ -1242,5 +1245,19 @@ def test_a_codex_question_too_long_stays_in_the_box_and_says_why(frame):
         dialog.on_ask()
         assert asked == [] and "at most 32,000" in said[-1]
         assert len(dialog.question.GetValue()) == 32001 and not dialog.items
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_chat_options_hide_claude_choices_and_keep_instructions_and_folders(frame, folder):
+    from thechatplace.ui.dialogs import ChatOptionsDialog
+    dialog = ChatOptionsDialog(frame, 'Codex test', folder,
+        options=ChatOptions('Explore', 'Read carefully.', 'Concise'),
+        folders=[folder], provider='codex')
+    try:
+        assert not dialog.agent.IsShown() and not dialog.style.IsShown()
+        assert dialog.options() == ChatOptions(instructions='Read carefully.')
+        assert dialog.chosen_folders() == [folder]
+        assert 'writable only' in dialog.note.GetValue()
     finally:
         dialog.Destroy()

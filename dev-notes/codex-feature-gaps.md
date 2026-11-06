@@ -11,6 +11,15 @@ schema, with `--experimental`, on November 1, 2026. Relevant official reference:
 [app-server](https://learn.chatgpt.com/docs/app-server). Older runtimes can refuse
 new endpoints; unsupported methods do not trigger a shell fallback or replay.
 
+## Follow-up parity batch (#558)
+
+The `codex/05preview-parity` follow-up starts at preview commit `5c21f9b`.
+It adds standard MCP forms, child-thread history and routed approvals, per-chat
+instructions and additional folders, selected apps, MCP OAuth/reconnect,
+reasoning summaries, retry notices, and built-in session tools. Plugin installation
+and provider-specific verification forms remain unsupported.
+See [validation and manual checks](../testing/codex-parity.md).
+
 ## Coverage of the parent issue
 
 Numbers refer to the original #467 table. “Implemented” describes this branch;
@@ -24,7 +33,7 @@ it does not imply an unperformed live-provider or screen-reader check passed.
 | 4. Goals | Read status/usage, pause, clear. Autonomous creation/resume remains open. Goal tools are disabled because native continuations would bypass TCP's fresh per-turn account, route and permission checks. |
 | 5. Scheduled work | Open. Needs a provider-neutral scheduler, missed-run behavior, notifications and approval handling. Backup scheduling is not an agent scheduler. |
 | 6. Interactive command input | Open. Need a typed `writeStdin` approval showing exactly what is sent, rather than treating it as a command execution. |
-| 7. Folder/network scopes | Open. Current canonical workspace grants and one-time approvals remain. Multiple roots and destination scopes require independently verified policy serialization and recovery. |
+| 7. Folder/network scopes | Open. Current canonical workspace grants and one-time approvals remain. Additional canonical roots are implemented in #527; destination-specific network scopes remain open. |
 | 8. Remembered approvals | Existing limited Git approvals remain. Broader rule/session approvals require explicit scope, inspect/remove controls and replay-safe persistence. |
 | 9. Project rule files | Open. Trust must bind the approved rule content and applicable folders; removing the inventory check would silently broaden access. |
 | 10. External takeover | Open. Continue Here and branches create owned copies. In-place takeover needs confirmation of native idle status and coordination with other clients. |
@@ -35,7 +44,7 @@ it does not imply an unperformed live-provider or screen-reader check passed.
 | 15. Native Plan | `/plan` chooses advertised Plan/Default presets. Mode is persisted and pinned alongside the model, effort and policy on each turn. It is separate from the permission grant. |
 | 16. Dedicated review | Open. Existing prompted reviews and agent conversations remain. A dedicated review must start on an independently verified read-only fork, pin settings and present native review results. |
 | 17. Explicit skills | Current enabled folder inventory in the shared picker; sends a native `skill` item as well as `$name`. |
-| 18. Subagent history | Open. Claude's shared reader can be reused after a Codex child-thread adapter and ownership-aware approval routing are built. Never use a child ID as an owned parent proof. |
+| 18. Subagent history | Native child-thread history and ownership-aware approval routing are implemented in #521. Never use a child ID as an owned parent proof. |
 | 19. Background terminals | Shared Stop Background Task action and `/background`; paginated native list and confirmed single-terminal termination. |
 | 20. Native lifecycle | Open. Local names/hiding remain. Native archive/delete/rename need separate ownership, confirmation, discovery and recovery semantics. |
 | 21. Worktree handoff | Open. Needs canonical path rebinding, native cwd verification and recovery when paths move or disappear. Existing worktree creation remains. |

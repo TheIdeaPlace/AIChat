@@ -101,7 +101,7 @@ class SubagentChatDialog(wx.Dialog):
         return f"{self.subagent.name}'s conversation, {STATUS_WORDS[self.subagent.status].lower()}"
 
     def visible(self) -> List[ChatMessage]:
-        messages = self.reader.transcript.messages
+        messages = getattr(self, "_display_transcript", self.reader.transcript).messages
         return list(messages) if self.show_activity else [m for m in messages if not m.is_activity]
 
     def _fill(self, newest: bool = False):
@@ -182,7 +182,7 @@ class SubagentChatDialog(wx.Dialog):
         activity turned off) that of the nearest message shown before it,
         so you stay where you were rather than land on the last row."""
         rows = {m.key: i for i, m in enumerate(self._shown)}
-        messages = self.reader.transcript.messages
+        messages = getattr(self, "_display_transcript", self.reader.transcript).messages
         at = next((i for i, m in enumerate(messages) if m is message), len(messages))
         for candidate in [message, *reversed(messages[:at])]:
             if candidate.key in rows:
@@ -190,12 +190,39 @@ class SubagentChatDialog(wx.Dialog):
         return 0
 
     def refresh(self) -> bool:
+        if self.subagent.provider == 'codex':
+            if getattr(self, '_refresh_busy', False):
+                return False
+            self._refresh_busy = True
+            from copy import deepcopy
+            self._display_transcript = deepcopy(self.reader.transcript)
+            import threading
+            def work():
+                try:
+                    changed = self.reader.refresh()
+                except Exception:
+                    changed = False
+                wx.CallAfter(finish, changed)
+            def finish(changed):
+                if not self or self.IsBeingDeleted():
+                    return
+                self._refresh_busy = False
+                self._display_transcript = self.reader.transcript
+                self._apply_refresh(changed)
+            threading.Thread(target=work, name='codex-child-read', daemon=True).start()
+            return False
+        return self._refresh_local()
+
+    def _refresh_local(self) -> bool:
         """Read what the subagent added, and notice it ending or being sent
         on again."""
         try:
             changed = self.reader.refresh()
         except Exception:  # noqa: BLE001 - a bad read waits for the next tick
             changed = False
+        return self._apply_refresh(changed)
+
+    def _apply_refresh(self, changed):
         if changed:
             self._fill()
         latest = self._latest() if self._latest is not None else None
@@ -204,7 +231,7 @@ class SubagentChatDialog(wx.Dialog):
             self.subagent = latest
             set_accessible_name(self.list, self._list_name())
             refresh_list_item(self.list)
-            if was_running and latest.status != RUNNING:
+            if was_running and latest.finished_status:
                 self.timer.Start(FINISHED_REFRESH_MS)
                 self.feedback(latest.ended_text())
             elif latest.status == RUNNING:

@@ -360,7 +360,7 @@ it is in Claude Code's list. The Claude desktop app has scheduled tasks.</p>
 <p>Much of "Getting more out of Claude" is true of Codex too: say what it can't find for itself, say
 how to check the work, and use one chat for one job. These sections are what's different in a Codex
 chat started here. See also OpenAI's <a href="https://developers.openai.com/codex">Codex documentation</a>.</p>
-<p>Some of the Claude part doesn't apply: Chat Options, output styles, Claude Code's own commands such
+<p>Some of the Claude part doesn't apply: Claude's Agent and Output Style choices, Claude Code's own commands such
 as <code>/init</code> and <code>/code-review</code>, restoring files, editing a queued message and Remote Control.</p>
 <h3>Codex: agree the approach first</h3>
 <p>Press <strong>Ctrl+/</strong>, choose <code>/plan</code> and press <strong>Ctrl+Enter</strong>, then choose <strong>Plan</strong>. Codex then makes a
@@ -380,6 +380,20 @@ prompts.</p>
 <p>For a procedure you keep explaining, make a skill. <strong>Ctrl+/</strong> lists your enabled skills, and the one
 you choose goes in as <code>$name</code> and is sent with your next message. If one chat shouldn't use or add to
 memories, choose <code>/memories off</code> from Ctrl+/ and send it.</p>
+<p>For this chat alone, use <strong>Chat Options</strong> (Alt+H in New Session or Continue Here;
+File, Chat Options later). Instructions accompany each turn. More folders grants
+writes only in Folder edits mode; read-only stays read-only. Changes are saved
+while idle, and removing a folder removes its grant from the next turn.</p>
+<h3>Codex: follow delegated work and progress</h3>
+<p><strong>View, Subagents</strong> lists child conversations, including nested and archived work.
+Read Conversation opens their history. Child approvals identify the subagent and
+are tied to its running parent; command approvals are one-time only.</p>
+<p><strong>Show Tool Activity</strong> (Ctrl+T) includes reasoning summaries supplied by Codex,
+live and in history. They are not announced as final replies. Retry status is
+announced when it changes and clears with new progress; your prompt is not resent.</p>
+<p>Built-in session tools let Codex list, search and read chats through The Chat Place
+and hide eligible idle chats. They cannot hide the caller, open chats or running
+work. They require the app to be running and are unavailable in Ask Aside.</p>
 <h3>Codex: change course or go back</h3>
 <ul>
 <li><strong>Heading the wrong way:</strong> <strong>Ctrl+Alt+Enter</strong> steers the running turn. <strong>Ctrl+Period</strong> stops it, and
@@ -397,8 +411,12 @@ memories, choose <code>/memories off</code> from Ctrl+/ and send it.</p>
 <ul>
 <li><strong>A long chat:</strong> choose <code>/compact</code> from Ctrl+/ and send it while the chat is idle. <strong>Ctrl+Shift+U</strong>
   shows how full the context is and your account's limits.</li>
-<li><strong>Other services:</strong> <strong>View, Connected Tools (MCP)</strong> lists the servers set up for the folder. Add them
-  with <code>codex mcp</code> in a terminal. Turning one on or off makes a new copy of the chat.</li>
+<li><strong>Other services:</strong> <strong>View, Connected Tools (MCP)</strong> lists configured servers and available apps.
+  Add servers with <code>codex mcp</code> in a terminal. Changing a selection makes a new read-only copy;
+  the original keeps its tools. Sign In confirms the web address before opening it. Complete
+  sign-in in the browser, then Refresh if needed. Reconnect reloads configured servers.
+  Standard form and URL questions use the Answer dialog. Plugin installation and provider-specific
+  verification forms are unsupported; unsupported questions are declined.</li>
 <li><strong>A harder or lighter job:</strong> File, <strong>Change Model</strong> and <strong>Change Effort</strong> work while the chat is idle.
   See <a href="https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md">Choosing a model in Codex</a>.</li>
 <li><strong>Pictures and files:</strong> <strong>Ctrl+Shift+F</strong> (File, Attach Files) adds them to your next message.</li>
