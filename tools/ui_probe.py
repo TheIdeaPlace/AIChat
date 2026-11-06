@@ -1159,15 +1159,26 @@ def d_new_session_worktree(frame, env):
     info = workplaces.RepoInfo(top=folder, main=folder, common=folder + "\\.git", rel="",
                                branch="work", branches=["older"], busy=["work"],
                                remotes=["origin/main"])
-    # Its own read of the (not a repository) folder, still on its way, is
-    # then passed over: it answers for another folder than this one.
-    described = f"probe:{folder}"
-    dialog._repo_for = described
-    dialog._repo_read(described, info, "origin/main", False)
-    dialog.work_in.SetSelection(WORK_IN_WORKTREE)
-    dialog._on_work_in()
-    dialog.branch.SetValue("fix/login")
-    dialog._sync_start_from()
+    # Every read of the folder, now and when the dialog opens and the folder
+    # box loses the focus, answers with that description.
+    def described(folder):
+        wx.CallAfter(dialog._repo_read, folder, info, "origin/main", False)
+        wx.CallAfter(choose)
+
+    def choose():
+        dialog.work_in.SetSelection(WORK_IN_WORKTREE)
+        dialog._on_work_in()
+        if dialog.branch.GetValue() != "fix/login":
+            dialog.branch.SetValue("fix/login")
+        dialog._sync_start_from()
+    for _ in range(150):  # its first, real read finishes first, so it can't land after
+        if dialog._repo_known:
+            break
+        wx.SafeYield()
+        time.sleep(0.1)
+    dialog._read_repo = described
+    dialog._repo_for = ""
+    dialog.refresh_repo()
     return lambda: frame._modal(dialog)
 
 
