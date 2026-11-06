@@ -66,6 +66,31 @@ def _rules(path: Path) -> Optional[dict]:
     return permissions if isinstance(permissions, dict) else None
 
 
+def worktree_base_ref(folder: str) -> str:
+    """Claude Code's ``worktree.baseRef`` for ``folder`` (#561): "head" makes
+    its new worktrees start from the current branch, and "fresh", the
+    default, from the remote's default branch. Your settings, then the
+    folder's shared and local ones, the last that sets it winning."""
+    chosen = "fresh"
+    home = platform_paths.claude_home()
+    candidates = [home / "settings.json"]
+    if folder:
+        candidates += [Path(folder) / ".claude" / "settings.json",
+                       Path(folder) / ".claude" / "settings.local.json"]
+    for path in candidates:
+        try:
+            if path.stat().st_size > MAX_SIZE:
+                continue
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        worktree = data.get("worktree") if isinstance(data, dict) else None
+        value = worktree.get("baseRef") if isinstance(worktree, dict) else None
+        if value in ("head", "fresh"):
+            chosen = value
+    return chosen
+
+
 def rules_for(folder: str) -> Tuple[List[SettingsRule], List[str]]:
     """The rules that apply to ``folder``, in Claude Code's order of
     sources, and any files that couldn't be read."""

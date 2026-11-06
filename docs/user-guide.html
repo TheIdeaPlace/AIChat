@@ -1532,12 +1532,14 @@ Chat can send a reply into it.</p>
 <li><strong>Work in</strong> (Alt+I): <strong>The folder as it is</strong> (it says which branch the folder is on), or
   <strong>A new worktree</strong>. A <strong>worktree</strong> is a separate copy of the repository on a branch of its
   own, so the chat's changes stay apart from the folder and from your other chats. With a
-  worktree, choose a branch in <strong>Branch</strong> (Alt+R), or type a new name to make that branch from
-  the folder's current one. A branch that's already checked out somewhere isn't offered, since a
-  branch can be in only one place. When you press Start, you hear "Making the worktree", and
-  the chat starts once it's made, inside the repository's .claude folder where Claude Code
-  and the desktop app make theirs. It stays there when you're done; remove it with git worktree
-  remove.</li>
+  worktree, choose a branch in <strong>Branch</strong> (Alt+R), or type a new name. A branch that's already
+  checked out somewhere isn't offered, since a branch can be in only one place. For a new name,
+  <strong>Start from</strong> (Alt+A) chooses where the branch starts: the remote's main branch, such as
+  origin/main, fetched first, or what the folder has checked out. When you press Start, you hear
+  "Making the worktree", then what was made, such as "Made worktree fix-login on new branch
+  fix/login, from origin/main." The chat starts inside the repository's .claude folder, where
+  Claude Code and the desktop app make theirs. It stays there when you're done; remove it with
+  git worktree remove. See "Branches and worktrees".</li>
 <li><strong>Title:</strong> optional; without one, it's made from the first words of your message.</li>
 <li><strong>Model:</strong><ul>
 <li>Claude: Default (your Claude Code setting), Opus, Sonnet or Haiku, each the latest of its
@@ -1577,6 +1579,44 @@ Chat can send a reply into it.</p>
 <p>Press <strong>Ctrl+Enter</strong> from anywhere in the dialog (or Start). For Codex, the model and effort
 are checked again as the chat starts. If the first message never reaches Claude (Claude Code
 isn't signed in, for example), it goes back into the reply box, and Send starts the chat again.</p>
+<h3>Branches and worktrees</h3>
+<p>A new branch starts from some point in the repository's history, and where depends on how you
+asked for it. This is where each way starts, and how to say which you want.</p>
+<ul>
+<li><strong>New Session, A new worktree, with a new branch name:</strong> <strong>Start from</strong> (Alt+A) chooses.<ul>
+<li><strong>The remote's main branch, fetched first</strong>, such as origin/main, is chosen to begin with.
+  It's fetched just before the worktree is made, so the branch starts from the newest main,
+  not an old copy. It's what Claude Code's own worktrees do.</li>
+<li><strong>What the folder has checked out</strong>, named, such as "work, what the folder has checked
+  out", starts from the branch the folder is on now, with any changes it has that main
+  doesn't.</li>
+<li>For a Claude chat, if your Claude Code settings say <code>"worktree": {"baseRef": "head"}</code>, the
+  folder's branch is chosen to begin with instead.</li>
+<li>If the repository has no remote, or the fetch fails, the branch starts from the folder's
+  branch, and you hear that and why. It never starts from an old copy of main.</li>
+<li>Start from is off for a branch that already exists, which is used as it is, and for one
+  only the remote has, which tracks it. Its name says why it's off. If the fetch takes a
+  while, you hear "Fetching origin/main, then making the worktree."</li>
+<li>The new branch doesn't track main, so pushing it never goes to main.</li>
+<li>This works whichever AI the chat is with: The Chat Place makes the worktree.</li>
+</ul>
+</li>
+<li><strong>Asking Claude for a new worktree during a chat,</strong> such as "make a new worktree called fix-x":
+  Claude Code makes <code>.claude\worktrees\fix-x</code> on a branch called <code>worktree-fix-x</code>, from the
+  remote's main branch (or the current branch with <code>"baseRef": "head"</code>). The chat carries on
+  there in later turns, and The Chat Place follows it: you hear "Fix it moved to worktree fix-x,
+  on branch worktree-fix-x, from origin/main." The chat's folder in the list changes to match.
+  Asking Claude to leave the worktree moves the chat back, and you hear that too. A command that
+  only changes folder, such as cd, doesn't move the chat.</li>
+<li><strong>Asking any AI for a new branch, without a worktree:</strong> it starts from the branch the folder is
+  on now, in the same folder.</li>
+<li><strong>Codex and Copilot</strong> run git themselves for a worktree, so where it starts depends on the
+  command they run. The Chat Place doesn't follow a Codex or Copilot chat into a worktree yet.</li>
+</ul>
+<p>To be sure, say which you want, such as "make a new worktree called fix-x from origin/main" or
+"...from the current branch". To check afterwards, <strong>Properties</strong> (Alt+Enter) lists the chat's
+<strong>Branch</strong>, its <strong>Worktree</strong> if it's in one, and what the branch <strong>started from</strong>, when git
+still records it.</p>
 <h3>Changing a chat's model, effort or permission mode</h3>
 <p>For a Claude chat started here, these File menu items change what its next turns use. Each opens
 a list that starts on the current choice, marked "(now)"; choose another and press Enter, or
