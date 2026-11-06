@@ -13,8 +13,8 @@ import time
 import wx
 
 from .. import announce, platform_paths
-from ..aside import (COWORK_REFUSED, NOTHING_FINISHED, AsideEvent, AsideRunner,
-                     build_aside_command, finished_cut_from_file)
+from ..aside import (COMPACTED, COMPACTED_SINCE, COWORK_REFUSED, NOTHING_FINISHED, AsideEvent,
+                     AsideRunner, build_aside_command, finished_cut_from_file)
 from ..chat_options import OptionsChange, choices_from_init
 from ..claude_cli import ResumeRefused
 from .dialogs import AskAsideDialog, ChatOptionsDialog
@@ -283,8 +283,8 @@ class _AsideAtFinishedTurn:
             self._on_event(AsideEvent("failed", "Couldn't read this chat's conversation to "
                                                 "find its last finished reply."))
             return
-        if not cut:
-            self._on_event(AsideEvent("failed", NOTHING_FINISHED))
+        if not cut or cut == COMPACTED:
+            self._on_event(AsideEvent("failed", COMPACTED_SINCE if cut else NOTHING_FINISHED))
             return
         try:
             command = self._command_at(cut)

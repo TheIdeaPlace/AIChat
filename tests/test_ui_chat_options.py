@@ -882,7 +882,31 @@ def test_ask_aside_says_when_only_the_first_turn_is_unfinished(frame, env, folde
     _drive_aside(frame, monkeypatch, steps)
     assert FakeAside.instances == []  # nothing asked
     assert seen["answer"].endswith("Not answered. " + NOTHING_FINISHED)
-    assert seen["row"].startswith("Q: Which file? A: not answered: There's nothing finished")
+    assert seen["row"].startswith("Q: Which file? A: not answered: Nothing in this chat has "
+                                  "finished yet")
+
+
+def test_ask_aside_says_when_the_chat_compacted_since_its_last_reply(frame, env, folder,
+                                                                   monkeypatch):
+    # #559: no place to cut a copy of it that Claude Code can find.
+    from records import _base, tool_use_block
+    from thechatplace.aside import COMPACTED_SINCE
+    records = [user_text("Hello"), assistant_block(text_block("Hi"), "m1"),
+               user_text("Run the tests"),
+               _base("system", subtype="compact_boundary", content="Conversation compacted",
+                     compactMetadata={"trigger": "auto"}),
+               user_text("This session is being continued.", isCompactSummary=True),
+               assistant_block(tool_use_block("Bash", {"command": "make"}), "m2")]
+    add_transcript(env, folder, "own-1", records)
+    seen = {}
+
+    def steps(dialog):
+        _asked_until_read(dialog)
+        seen["answer"] = dialog.answer.GetValue()
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, steps)
+    assert FakeAside.instances == []  # nothing asked
+    assert seen["answer"].endswith("Not answered. " + COMPACTED_SINCE)
 
 
 def test_stopping_an_aside_while_the_chat_is_read_asks_nothing(frame, env, folder, monkeypatch):

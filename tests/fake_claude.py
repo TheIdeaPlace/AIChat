@@ -222,6 +222,11 @@ elif mode == 'aside':
     out(type="assistant", parent_tool_use_id=None,
         message={"content": [{"type": "text", "text": "The code word is ZEPHYR."}]})
     result = "The code word is ZEPHYR."
+elif mode == 'no-message':
+    # A cut Claude Code can't find (#559): said on stderr, then it exits.
+    sys.stderr.write("No message found with message.uuid of: 0000-cut\n")
+    sys.stderr.flush()
+    sys.exit(1)
 elif mode == 'missing':
     out(type="result", subtype="error_during_execution", is_error=True,
         errors=["No conversation found with session ID: abc-1"], session_id="abc-1")

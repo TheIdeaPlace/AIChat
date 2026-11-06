@@ -1634,9 +1634,11 @@ instructions.
 To ask Claude something about a chat without adding to it, such as "which file did you change
 for the login bug?", press **Ctrl+Shift+Y** (File, Ask Aside, or Ask Aside on a chat's menu in
 the list). It's like Claude Code's /btw. It works for Claude chats started here, desktop app
-chats and terminal chats, even while a turn is running. A turn that's running or didn't finish
-(it was stopped, or ended in an error) isn't included: Claude answers from the chat up to its last
-finished reply, and until a chat's first turn has finished, there's nothing to ask about yet.
+chats and terminal chats, even while a turn is running. Claude answers from the chat up to its
+last finished reply, so a turn that's running or didn't finish (it was stopped, or ended in an
+error) isn't included, and until something in the chat has finished, there's nothing to ask
+about. A chat compacted since its last finished reply can be asked about again after Claude's
+next reply.
 It also works for local Codex chats,
 including chats started elsewhere. It isn't available for Cowork chats, kept copies or Copilot
 chats.
@@ -1662,7 +1664,8 @@ starting with a slash is just a question). Each question uses your Claude plan, 
 
 For Codex, each question uses a temporary read-only copy in a separate Codex process and your
 ChatGPT plan. Commands, connected tools, hooks, memories, Goals and delegation are disabled in
-that copy. A turn that's running or didn't finish is left out of the copy.
+that copy. It holds the chat up to its last completed turn, so a turn that's running or didn't
+finish is left out.
 Closing the dialog cancels it. Its questions and answers aren't saved to the source.
 
 ### Replying

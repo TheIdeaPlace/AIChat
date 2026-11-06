@@ -81,8 +81,18 @@ COWORK_REFUSED = ("Ask Aside isn't available for Cowork sessions: their conversa
 
 
 #: Said instead of asking when no turn in a chat has finished (#559).
-NOTHING_FINISHED = ("There's nothing finished in this chat to ask about yet: its first turn "
-                    "hasn't finished.")
+NOTHING_FINISHED = "Nothing in this chat has finished yet, so there's nothing to ask about."
+
+#: finished_cut's answer when the chat compacted after its newest finished
+#: reply. Never an id (``is_safe_id`` refuses it), so it can't be passed on.
+COMPACTED = "<compacted>"
+#: Said instead of asking then (#559).
+COMPACTED_SINCE = ("This chat was compacted after its last finished reply, so Ask Aside can't "
+                   "copy it yet. Ask again after Claude's next reply.")
+#: Said when Claude Code can't find the reply the copy was cut at (#559): one
+#: left on a branch that a terminal chat's rewind abandoned, say.
+CUT_NOT_FOUND = ("Couldn't ask about this chat: Claude Code couldn't find its last "
+                 "finished reply.")
 
 #: An assistant record's stop reason when its message went on to call a tool.
 _TOOL_USE_STOP = "tool_use"
@@ -123,7 +133,8 @@ def is_finished_reply(record) -> bool:
 def finished_cut(lines: Iterable[str]) -> str:
     """Where an aside's copy of a Claude chat ends (#559), from its
     transcript's lines: the uuid of the newest finished reply
-    (``is_finished_reply``), or "" when there's none.
+    (``is_finished_reply``), "" when there's none, or ``COMPACTED`` when the
+    chat compacted after it.
 
     Always a cut, even when the chat ends with that reply: Claude Code reads
     the transcript again a moment after this does, and anything written in
@@ -133,16 +144,27 @@ def finished_cut(lines: Iterable[str]) -> str:
     another session's message is a meta one, so cutting at the reply is what
     holds for every way a turn starts or goes on.
 
-    Known gap: if the chat compacted after its newest finished reply, the
-    copy goes back to before the compaction and carries the history from
-    then (none of the local transcripts checked had that)."""
+    A compaction after that reply leaves no place to cut. Every automatic
+    one found locally happened mid-turn, and a manual one leaves the chat
+    there until Claude next replies. Checked with Claude Code 2.1.316 and
+    Haiku on a chat that compacted mid-turn: cut at the reply before it,
+    Claude Code said "No message found with message.uuid of: …" (it reads
+    only from the compaction on); cut at the ``compact_boundary``, the copy
+    knew nothing of the chat; cut at the summary, it knew the summary and
+    named the turn's unfinished task as outstanding, as the summary tells
+    it to carry on with it. So that's said instead of asking."""
     for line in reversed(lines if isinstance(lines, list) else list(lines)):
-        if '"assistant"' not in line:
+        if '"assistant"' not in line and "ompact" not in line:
             continue  # most records; not worth parsing
         try:
             record = json.loads(line)
         except ValueError:
             continue
+        if not isinstance(record, dict) or record.get("isSidechain"):
+            continue
+        if record.get("isCompactSummary") or (record.get("type") == "system"
+                                              and record.get("subtype") == "compact_boundary"):
+            return COMPACTED
         if is_finished_reply(record):
             uuid = record.get("uuid")
             return uuid if isinstance(uuid, str) and platform_paths.is_safe_id(uuid) else ""
@@ -233,14 +255,19 @@ _MISSING = ("Claude Code couldn't find this chat's conversation on disk, so ther
 
 
 def _missing_or(text: str) -> str:
-    """Claude Code's "No conversation found with session ID: …" in words."""
-    return _MISSING if "No conversation found" in (text or "") else text
+    """Claude Code's "No conversation found with session ID: …" in words,
+    and its "No message found with message.uuid of: …" for the cut (#559)."""
+    if "No conversation found" in (text or ""):
+        return _MISSING
+    return CUT_NOT_FOUND if "No message found" in (text or "") else text
 
 
 def _plain_problem(returncode, detail: str) -> str:
     """Why an aside ended without an answer, in words."""
     if "No conversation found" in (detail or ""):
         return _MISSING
+    if "No message found" in (detail or ""):
+        return CUT_NOT_FOUND
     return exit_message(returncode, detail).replace("the turn", "the question")
 
 
@@ -574,8 +601,9 @@ def aside_intro(provider: str = "Claude") -> str:
     plan = _PLAN_NAMES.get(provider, f"{provider} plan")
     return (f"Ask a question about this chat, such as which file {provider} changed or what a "
             f"reply meant. The question and its answer aren't added to the chat, and {provider} "
-            "can read files to answer but can't change anything. A turn that's running or "
-            "didn't finish isn't included. Your questions stay listed "
+            f"can read files to answer but can't change anything. {provider} answers from the "
+            "chat up to its last finished reply, so a turn that's running or didn't finish "
+            "isn't included. Your questions stay listed "
             f"for this chat until you quit The Chat Place. Each question uses your {plan}, "
             "as a message does.")
 

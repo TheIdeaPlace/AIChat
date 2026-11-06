@@ -509,6 +509,53 @@ def test_finished_cut_never_hands_back_something_that_isnt_a_record_id():
     assert finished_cut(lines(user_text("Hello"), reply)) == ""
 
 
+def _compaction(trigger="auto"):
+    """A compaction as Claude Code writes it: the boundary (no parent), its
+    attachments, then the summary."""
+    from records import _base, user_text
+    boundary = _base("system", subtype="compact_boundary", content="Conversation compacted",
+                     level="info", compactMetadata={"trigger": trigger, "preTokens": 150000})
+    summary = user_text("This session is being continued from a previous conversation.",
+                        isCompactSummary=True, isVisibleInTranscriptOnly=True)
+    return [boundary, _base("attachment", attachment={"type": "todo_reminder"}), summary]
+
+
+def _no_parent_for_boundaries(records):
+    for record in records:
+        if record.get("subtype") == "compact_boundary":
+            record["logicalParentUuid"], record["parentUuid"] = record["parentUuid"], None
+    return records
+
+
+def test_a_chat_compacted_since_its_last_finished_reply_has_nowhere_to_cut():
+    # #559, checked with real Claude Code: a cut before the compaction isn't
+    # found ("No message found"), one at the boundary knows nothing and one at
+    # the summary takes up the turn's unfinished task. So it's said instead.
+    from records import (assistant_block, lines, tool_result, tool_use_block, user_text)
+    from thechatplace.aside import COMPACTED
+    from thechatplace import platform_paths
+    sleep = assistant_block(tool_use_block("Bash", {"command": "sleep 45"}, "toolu_b"), "m3")
+    more = assistant_block(tool_use_block("Bash", {"command": "make"}, "toolu_c"), "m4")
+    mid_turn = [*_first_turn(), user_text("Run the tests"), sleep, tool_result("toolu_b", "ok"),
+                *_compaction(), more]
+    manual = [*_first_turn(), user_text("<command-name>/compact</command-name>"),
+              *_compaction("manual"), _local_command()]
+    for records in (mid_turn, manual):
+        assert finished_cut(lines(*_no_parent_for_boundaries(_chained(*records)))) == COMPACTED
+    assert not platform_paths.is_safe_id(COMPACTED)  # never handed on as a cut
+
+
+def test_a_reply_after_a_compaction_is_cut_at_as_usual():
+    from records import assistant_block, lines, sidechain, text_block, user_text
+    reply = assistant_block(text_block("Done."), "m9")
+    records = _no_parent_for_boundaries(_chained(*_first_turn(), *_compaction(),
+                                                 user_text("Go on"), reply))
+    assert finished_cut(lines(*records)) == reply["uuid"]
+    # A subagent's own compaction after it isn't the chat's.
+    later = [sidechain(record, "a1") for record in _compaction()]
+    assert finished_cut(lines(*records, *later)) == reply["uuid"]
+
+
 def test_the_cut_is_found_from_the_end_of_a_file(tmp_path):
     # Read a growing tail at a time, as the tail reader does (#146); the
     # answer is the same as reading it all.
@@ -528,6 +575,22 @@ def test_the_cut_is_found_from_the_end_of_a_file(tmp_path):
     assert finished_cut_from_file(path, steps=(200,)) == ""
     with pytest.raises(OSError):
         finished_cut_from_file(tmp_path / "gone.jsonl")
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_the_tail_reader_agrees_wherever_a_step_cuts_the_file(tmp_path, newline):
+    # Every step size, so a step starts inside a multi-byte character, on a
+    # line's \r or \n, and inside the reply itself.
+    from records import assistant_block, lines, text_block, tool_use_block, user_text
+    from thechatplace.aside import finished_cut_from_file
+    reply = assistant_block(text_block("Fertig: Größe geändert, 日本語 ✓ " * 3), "m2")
+    records = _chained(user_text("Ändere die Größe"), reply, user_text("Und jetzt? 🙂"),
+                       assistant_block(tool_use_block("Bash", {"command": "echo ü"}), "m3"))
+    path = tmp_path / "chat.jsonl"
+    path.write_bytes((newline.join(lines(*records)) + newline).encode("utf-8"))
+    size = path.stat().st_size
+    for limit in range(1, size + 2):
+        assert finished_cut_from_file(path, steps=(limit,)) == reply["uuid"], limit
 
 
 def test_aside_rows_and_full_text():
@@ -564,7 +627,8 @@ def test_aside_intro_says_the_right_plan():
     # #559: a turn that's running or didn't finish is left out of the copy,
     # for every chat that has Ask Aside, and the dialog says so.
     for provider in ("Claude", "Codex"):
-        assert "A turn that's running or didn't finish isn't included." in aside_intro(provider)
+        assert (f"{provider} answers from the chat up to its last finished reply, so a turn "
+                "that's running or didn't finish isn't included.") in aside_intro(provider)
 
 
 def _boxes(text):
@@ -627,6 +691,15 @@ def test_aside_streams_then_answers(tmp_path):
     assert [e.text for e in events if e.kind == "text"] == ["The code word ",
                                                            "The code word is ZEPHYR."]
     assert events[-1].kind == "done" and events[-1].text == "The code word is ZEPHYR."
+
+
+def test_aside_says_plainly_when_its_cut_isnt_found(tmp_path):
+    # A reply on a branch a terminal chat's rewind left behind (#559).
+    from thechatplace.aside import CUT_NOT_FOUND, _missing_or
+    events, _seen = run_aside(tmp_path, "no-message")
+    assert events[-1].kind == "failed" and events[-1].text == CUT_NOT_FOUND
+    assert _missing_or("No message found with message.uuid of: 0000-cut") == CUT_NOT_FOUND
+    assert _missing_or("Something else.") == "Something else."
 
 
 def test_aside_says_plainly_when_there_is_no_conversation(tmp_path):
