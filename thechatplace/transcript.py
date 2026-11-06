@@ -1318,6 +1318,37 @@ def _moved_to(record: dict) -> str:
     return cwd[:match.end()] if match else ""
 
 
+def latest_relocation(path: Path, tail_bytes: int = 4 * 1024 * 1024) -> str:
+    """The folder a chat is in now, if Claude moved it into a worktree or
+    out of one (#561), from the newest record near the transcript's end that
+    says where it is; "" when none does. The facts reader stops early in a
+    chat that isn't a terminal's, so this reads only the end, and only whole
+    lines."""
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - tail_bytes))
+            data = handle.read()
+    except OSError:
+        return ""
+    lines = data.split(b"\n")
+    if size > tail_bytes:
+        lines = lines[1:]  # the first may be cut short
+    for line in reversed(lines):
+        if b'"cwd"' not in line and b'"relocatedCwd"' not in line:
+            continue
+        record = _json_line(line)
+        if record is None or record.get("isSidechain"):
+            continue
+        moved = _moved_to(record)
+        if moved:
+            return moved
+        if isinstance(record.get("cwd"), str) and record["cwd"]:
+            return ""  # the newest place it says is where it started: not moved
+    return ""
+
+
 class _FactsReader:
     """One transcript's facts, read as the file grows (whole lines only)."""
 

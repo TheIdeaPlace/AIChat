@@ -75,6 +75,18 @@ def saved_rule_lines(count=None, error='', *, pending=False):
     return ['Saved user/system rule files: not checked']
 
 
+def with_branch_facts(lines: List[str], facts) -> List[str]:
+    """``lines`` with the chat's branch, worktree and what the branch started
+    from (#331, #561) after its Folder line, or at the end without one."""
+    extra = [f"{name}: {value}" for name, value in facts or ()]
+    if not extra:
+        return list(lines)
+    for index, line in enumerate(lines):
+        if line.startswith("Folder: "):
+            return [*lines[:index + 1], *extra, *lines[index + 1:]]
+    return [*lines, *extra]
+
+
 def session_properties(info: SessionInfo, transcript: Optional[Transcript] = None,
                        transcript_path: Optional[str] = None, transcript_size: int = 0,
                        own=None, reported_window: int = 0,

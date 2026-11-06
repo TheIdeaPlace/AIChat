@@ -8094,11 +8094,12 @@ def test_new_session_without_recent_folders_starts_at_the_root(frame):
         assert dialog.work_in.GetString(WORK_IN_FOLDER) == \
             "The folder as it is (not a git repository, so no worktree)"
         assert not dialog.branch.IsEnabled()
-        # Tab order: folder, Browse, From GitHub, Work in, Branch, Title.
+        # Tab order: folder, Browse, From GitHub, Work in, Branch, Start from, Title.
         order = list(dialog.GetChildren())
         assert order.index(dialog.folder) < order.index(dialog.github_btn) < \
             order.index(dialog.work_in) < order.index(dialog.branch) < \
-            order.index(dialog.title_text)
+            order.index(dialog.start_from) < order.index(dialog.title_text)
+        assert not dialog.start_from.IsEnabled()
     finally:
         dialog.Destroy()
 
@@ -8426,10 +8427,108 @@ def test_new_session_in_a_new_worktree(frame, env, fake_runner, monkeypatch):
     assert env["feedback"][0] == "Making the worktree."
     worktree = repo / ".claude" / "worktrees" / "fix-the-thing"
     assert worktree.is_dir()
+    # What was made is said (#561); with no remote, from the current branch.
+    assert pump(lambda: any(f.startswith("Made worktree fix-the-thing on new branch "
+                                         "fix/the-thing, from main.") for f in env["feedback"]))
+    assert any("has no remote" in f for f in env["feedback"])
     runner = fake_runner.instances[-1]
     assert runner.cwd == str(worktree) and runner.prompt == "Fix it"
     session_id = runner.command[runner.command.index("--session-id") + 1]
     assert frame.store.get(session_id).cwd == str(worktree)
+
+
+def _cloned_repo(env):
+    """A repository with a remote whose main is ahead, on a branch of its own."""
+    import subprocess
+    origin = _git_repo(env["tmp"] / "Origin")
+    clone = env["tmp"] / "Clone"
+    subprocess.run(["git", "clone", "-q", str(origin), str(clone)], check=True,
+                   capture_output=True)
+    subprocess.run(["git", "checkout", "-q", "-b", "work"], cwd=clone, check=True,
+                   capture_output=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "commit",
+                    "-q", "--allow-empty", "-m", "newer on main"], cwd=origin, check=True,
+                   capture_output=True)
+    return origin, clone
+
+
+def _start_from_name(dialog):
+    return dialog.start_from.GetName()
+
+
+def test_start_from_is_only_for_a_new_branch_and_says_why_not(frame, env, monkeypatch):
+    # #561: an existing branch is used as it is, so Start from is off then.
+    from thechatplace.ui.dialogs import NewSessionDialog, START_FROM_REMOTE, START_FROM_HERE
+    _origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        assert not dialog.start_from.IsEnabled()
+        assert "for a new branch in a new worktree" in _start_from_name(dialog)
+        assert dialog.start_label.GetLabel() == "Start from:"   # no Alt key while it's off
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/new")
+        dialog._sync_start_from()
+        assert dialog.start_from.IsEnabled() and dialog.start_label.GetLabel() == "St&art from:"
+        assert _start_from_name(dialog) == "Start from"
+        assert dialog.start_from.GetString(START_FROM_REMOTE) == "origin/main, fetched first"
+        assert dialog.start_from.GetString(START_FROM_HERE) == "work, what the folder has checked out"
+        assert dialog.start_from.GetSelection() == START_FROM_REMOTE
+        dialog.branch.SetValue("main")         # only the remote has it: tracked as it is
+        dialog._sync_start_from()
+        assert not dialog.start_from.IsEnabled()
+        assert "that branch exists" in _start_from_name(dialog)
+    finally:
+        dialog.Destroy()
+
+
+def test_start_from_follows_claude_codes_base_ref(frame, env, monkeypatch):
+    from thechatplace import claude_settings
+    from thechatplace.ui.dialogs import NewSessionDialog, START_FROM_REMOTE, START_FROM_HERE
+    _origin, clone = _cloned_repo(env)
+    monkeypatch.setattr(claude_settings, "worktree_base_ref", lambda folder: "head")
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/new")
+        dialog._sync_start_from()
+        assert dialog.start_from.GetSelection() == START_FROM_HERE
+        # Your own choice stays.
+        dialog.start_from.SetSelection(START_FROM_REMOTE)
+        dialog._on_start_from()
+        dialog.branch.SetValue("fix/newer")
+        dialog._sync_start_from()
+        assert dialog.start_from.GetSelection() == START_FROM_REMOTE
+    finally:
+        dialog.Destroy()
+
+
+def test_a_worktree_started_from_the_remote_says_so(frame, env):
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.message.SetValue("hi")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/fresh")
+        dialog._sync_start_from()
+        dialog._on_ok(None)
+        assert pump(lambda: dialog.GetReturnCode() == wx.ID_OK, timeout=30)
+        assert dialog.worktree_said == ("Made worktree fix-fresh on new branch fix/fresh, "
+                                        "from origin/main.")
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=dialog.values()[0],
+                              capture_output=True, text=True).stdout.strip()
+        main = subprocess.run(["git", "rev-parse", "main"], cwd=origin,
+                              capture_output=True, text=True).stdout.strip()
+        assert head == main
+    finally:
+        dialog.Destroy()
 
 
 def test_worktree_problems_are_said_and_cancel_waits_for_one_being_made(frame, env, monkeypatch):
@@ -8475,7 +8574,7 @@ def test_continue_here_has_no_folder_choices(frame):
     dialog = NewSessionDialog(frame, "C:\\G\\Repo", continue_from="Work")
     try:
         assert not dialog.folder.IsEditable()
-        for control in (dialog.github_btn, dialog.work_in, dialog.branch):
+        for control in (dialog.github_btn, dialog.work_in, dialog.branch, dialog.start_from):
             assert not control.IsShown()
     finally:
         dialog.Destroy()
@@ -16021,3 +16120,29 @@ def test_reading_usage_leaves_the_status_bar_when_its_done(frame, monkeypatch):
     frame._status('Something newer.')
     callbacks[1](['Line'], False)
     assert frame._status_latest == 'Something newer.'
+
+
+def test_a_chat_claude_moves_into_a_worktree_follows_it_and_says_so(frame, env):
+    # #561: Claude Code carries on in the worktree in later turns, so the
+    # chat's folder follows it, and you hear where it went.
+    import json as _json
+    from records import user_text
+    start = env["tmp"] / "Start"
+    start.mkdir()
+    moved = start / ".claude" / "worktrees" / "wt1"
+    moved.mkdir(parents=True)
+    frame.store.add(OwnSession("moving-1", "Mover", str(start), last_activity_ms=1))
+    path = platform_paths.direct_transcript_path(str(start), "moving-1")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    records = [user_text("Make a worktree", cwd=str(start), entrypoint="sdk-cli"),
+               {"type": "system", "subtype": "worktree", "cwd": str(moved),
+                "relocatedCwd": str(moved), "sessionId": "moving-1"}]
+    path.write_text("".join(_json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    frame._note_worktree_move("moving-1", "Mover")
+    assert pump(lambda: frame.store.get("moving-1").cwd == str(moved), timeout=15)
+    assert any(f.startswith("Mover moved to worktree wt1") for f in env["feedback"])
+    # Once it's there, nothing more is said.
+    said = len(env["feedback"])
+    frame._note_worktree_move("moving-1", "Mover")
+    pump(lambda: False, timeout=1)
+    assert len(env["feedback"]) == said

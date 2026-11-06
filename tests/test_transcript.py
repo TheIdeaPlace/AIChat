@@ -594,3 +594,24 @@ def test_your_words_starting_with_some_other_tag_still_show():
                                         "prompt": '<my-widget class="x"> renders wrong'}),
     ))
     assert [m.kind for m in tr.visible()] == ["user", "user"]
+
+
+def test_latest_relocation_finds_where_claude_moved_the_chat(tmp_path):
+    # #561: a chat Claude moved into a worktree, read from the end.
+    start = tmp_path / "Start"
+    moved = start / ".claude" / "worktrees" / "wt1"
+    first = user_text("Make a worktree", cwd=str(start), entrypoint="sdk-cli")
+    path = tmp_path / "t.jsonl"
+    path.write_text(json.dumps(first) + "\n", encoding="utf-8")
+    assert t.latest_relocation(path) == ""
+    records = [first, {"type": "system", "cwd": str(moved), "relocatedCwd": str(moved)},
+               user_text("next", cwd=str(moved / "sub"), entrypoint="sdk-cli")]
+    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    assert t.latest_relocation(path) == str(moved)  # the worktree, not the subfolder
+    # Moved back out: Claude Code says where.
+    records.append({"type": "system", "cwd": str(start), "relocatedCwd": str(start)})
+    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    assert t.latest_relocation(path) == str(start)
+    # A cut-off first line in the tail and a missing file are fine.
+    assert t.latest_relocation(path, tail_bytes=40) in ("", str(start))
+    assert t.latest_relocation(tmp_path / "missing.jsonl") == ""
